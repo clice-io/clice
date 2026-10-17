@@ -46,12 +46,6 @@ std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef
 
 }  // namespace
 
-Tester::~Tester() {
-    for(auto& path: pcm_paths) {
-        vfs::remove(path);
-    }
-}
-
 bool Tester::try_compile() {
     auto built = clice::compile(std::move(params));
     if(!built->completed()) {
@@ -86,11 +80,7 @@ bool Tester::compile(llvm::StringRef standard) {
 bool Tester::compile_with_pch(llvm::StringRef standard) {
     prepare(standard);
 
-    auto pch_path = vfs::temp_file("clice", "pch");
-    if(!pch_path) {
-        LOG_ERROR("{}", pch_path.error().message());
-        return false;
-    }
+    auto pch_path = artifact("pch");
 
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
         llvm::makeIntrusiveRefCnt<vfs::View>());
@@ -103,7 +93,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     CompilationParams preamble{
         .kind = CompilationKind::Preamble,
         .input = params.input,
-        .output_file = *pch_path,
+        .output_file = pch_path,
     };
     preamble.input.add_remapped_file(TestVFS::path(src_path), main_source.content, bound);
     {
@@ -118,7 +108,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
 
     // Phase 2: Compile content using the PCH. Content compiles read the
     // sources through remapping too.
-    params.input.pch = {*pch_path, bound};
+    params.input.pch = {pch_path, bound};
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {
             params.input.add_remapped_file(file, source.content);
@@ -223,18 +213,13 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     for(auto idx: order) {
         auto& mod = modules[idx];
 
-        auto pcm_path = vfs::temp_file("clice", "pcm");
-        if(!pcm_path) {
-            LOG_ERROR("{}", pcm_path.error().message());
-            return false;
-        }
-        pcm_paths.push_back(*pcm_path);
+        auto pcm_path = artifact("pcm");
 
         Tester builder;
         builder.add_main(mod.filename, mod.content);
         builder.prepare(standard);
         builder.params.kind = CompilationKind::ModuleInterface;
-        builder.params.output_file = *pcm_path;
+        builder.params.output_file = pcm_path;
         builder.params.input.vfs = overlay;
         builder.params.input.pcms = built_pcms;
 
@@ -246,7 +231,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
             return false;
         }
 
-        built_pcms.try_emplace(mod.module_name, *pcm_path);
+        built_pcms.try_emplace(mod.module_name, pcm_path);
     }
 
     prepare(standard);
@@ -388,10 +373,6 @@ void Tester::clear() {
     src_path.clear();
     vfs.reset();
     module_files.clear();
-    for(auto& path: pcm_paths) {
-        vfs::remove(path);
-    }
-    pcm_paths.clear();
 }
 
 }  // namespace clice::testing

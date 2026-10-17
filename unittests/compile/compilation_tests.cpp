@@ -198,9 +198,8 @@ int main() { return 0; }
     // Switch to Preamble kind for PCH building.
     params.kind = CompilationKind::Preamble;
 
-    auto pch_path = vfs::temp_file("clice-test", "pch");
-    ZASSERT(pch_path.operator bool());
-    params.output_file = *pch_path;
+    auto pch_path = artifact("pch");
+    params.output_file = pch_path;
 
     // Add truncated main file buffer for preamble build.
     auto& source = sources.all_files["main.cpp"];
@@ -223,9 +222,6 @@ int main() { return 0; }
         ZASSERT(!dep.path.empty());
         ZASSERT(dep.hash != 0);
     }
-
-    // Clean up the temp file.
-    llvm::sys::fs::remove(*pch_path);
 }
 
 ZEST_CASE(CorruptPCHAttributable) {
@@ -248,8 +244,7 @@ int main() { return preamble_func(); }
     overlay->pushOverlay(vfs);
     params.input.vfs = overlay;
 
-    auto pch_path = vfs::temp_file("clice-test", "pch");
-    ZASSERT(pch_path.operator bool());
+    auto pch_path = artifact("pch");
 
     auto& source = sources.all_files["main.cpp"];
     auto bound = compute_preamble_bound(source.content);
@@ -273,7 +268,7 @@ int main() { return preamble_func(); }
         CompilationParams preamble{
             .kind = CompilationKind::Preamble,
             .input = params.input,
-            .output_file = *pch_path,
+            .output_file = pch_path,
         };
         preamble.input.add_remapped_file(main_vfs_path, source.content, bound);
         {
@@ -281,12 +276,12 @@ int main() { return preamble_func(); }
             ZASSERT(preamble_unit->has_output());
         }
 
-        auto blob = read_file(*pch_path);
+        auto blob = read_file(pch_path);
         ZASSERT(blob.operator bool());
-        ZASSERT(!vfs::write(*pch_path, corrupt(std::move(*blob), shape)));
+        ZASSERT(!vfs::write(pch_path, corrupt(std::move(*blob), shape)));
 
         CompilationParams reuse{.kind = CompilationKind::Content, .input = params.input};
-        reuse.input.pch = {*pch_path, bound};
+        reuse.input.pch = {pch_path, bound};
         auto content_unit = clice::compile(std::move(reuse));
         ZASSERT((content_unit->setup_fail() || content_unit->fatal_error()));
         // The blame signal the master's retraction keys on (pch_suspect):
@@ -294,13 +289,11 @@ int main() { return preamble_func(); }
         // that family's messages do not reliably carry the path ("Blob
         // ends too soon").
         bool blames_pch = std::ranges::any_of(content_unit->diagnostics(), [&](auto& diag) {
-            return llvm::StringRef(diag.message).contains(*pch_path) ||
+            return llvm::StringRef(diag.message).contains(pch_path) ||
                    diag.id.is_deserialization_error();
         });
         ZASSERT(blames_pch);
     }
-
-    llvm::sys::fs::remove(*pch_path);
 }
 
 ZEST_CASE(PCHIgnoresInputMtime) {
@@ -317,22 +310,21 @@ ZEST_CASE(PCHIgnoresInputMtime) {
     overlay->pushOverlay(vfs);
     params.input.vfs = overlay;
 
-    auto pch_path = vfs::temp_file("clice-test", "pch");
-    ZASSERT(pch_path.operator bool());
+    auto pch_path = artifact("pch");
     auto main_vfs_path = TestVFS::path("main.cpp");
     auto bound = compute_preamble_bound(content);
 
     CompilationParams preamble{
         .kind = CompilationKind::Preamble,
         .input = params.input,
-        .output_file = *pch_path,
+        .output_file = pch_path,
     };
     preamble.input.add_remapped_file(main_vfs_path, content, bound);
     ZASSERT(clice::compile(std::move(preamble))->has_output());
 
     auto compile_with = [&] {
         CompilationParams reuse{.kind = CompilationKind::Content, .input = params.input};
-        reuse.input.pch = {*pch_path, bound};
+        reuse.input.pch = {pch_path, bound};
         return clice::compile(std::move(reuse));
     };
 
@@ -349,8 +341,6 @@ ZEST_CASE(PCHIgnoresInputMtime) {
     // A size change still rejects it.
     tmp.touch("preamble.h", "int preamble_func();\nint more;\n");
     ZASSERT(!compile_with()->completed());
-
-    llvm::sys::fs::remove(*pch_path);
 }
 
 ZEST_CASE(PCHBuildAndReuse) {
@@ -463,9 +453,8 @@ export int a_value() { return b_value() + 1; }
     params_b.kind = CompilationKind::ModuleInterface;
     params_b.input.arguments = cxx20_command(cdb, tmp, "mod_b.cppm");
 
-    auto pcm_b_path = vfs::temp_file("mod_b", "pcm");
-    ZASSERT(pcm_b_path.operator bool());
-    params_b.output_file = *pcm_b_path;
+    auto pcm_b_path = artifact("pcm");
+    params_b.output_file = pcm_b_path;
 
     auto unit_b = clice::compile(std::move(params_b));
     ZASSERT(unit_b->completed());
@@ -475,19 +464,14 @@ export int a_value() { return b_value() + 1; }
     CompilationParams params_a;
     params_a.kind = CompilationKind::ModuleInterface;
     params_a.input.arguments = cxx20_command(cdb, tmp, "mod_a.cppm");
-    params_a.input.pcms.try_emplace("mod_b", *pcm_b_path);
+    params_a.input.pcms.try_emplace("mod_b", pcm_b_path);
 
-    auto pcm_a_path = vfs::temp_file("mod_a", "pcm");
-    ZASSERT(pcm_a_path.operator bool());
-    params_a.output_file = *pcm_a_path;
+    auto pcm_a_path = artifact("pcm");
+    params_a.output_file = pcm_a_path;
 
     auto unit_a = clice::compile(std::move(params_a));
     ZASSERT(unit_a->completed());
     ZASSERT(unit_a->has_output());
-
-    // Clean up temp PCM files.
-    llvm::sys::fs::remove(*pcm_b_path);
-    llvm::sys::fs::remove(*pcm_a_path);
 }
 
 ZEST_CASE(PCHKeepsModuleImports) {
@@ -503,22 +487,20 @@ ZEST_CASE(PCHKeepsModuleImports) {
     CompilationParams module_params;
     module_params.kind = CompilationKind::ModuleInterface;
     module_params.input.arguments = cxx20_command(cdb, tmp, "b.cppm");
-    auto pcm_path = vfs::temp_file("b", "pcm");
-    ZASSERT(pcm_path.operator bool());
-    module_params.output_file = *pcm_path;
+    auto pcm_path = artifact("pcm");
+    module_params.output_file = pcm_path;
     ZASSERT(clice::compile(std::move(module_params))->has_output());
 
     CompilationParams preamble;
     preamble.kind = CompilationKind::Preamble;
     preamble.input.arguments = cxx20_command(cdb, tmp, "main.cpp");
-    preamble.input.pcms.try_emplace("B", *pcm_path);
-    auto pch_path = vfs::temp_file("clice-test", "pch");
-    ZASSERT(pch_path.operator bool());
-    preamble.output_file = *pch_path;
+    preamble.input.pcms.try_emplace("B", pcm_path);
+    auto pch_path = artifact("pch");
+    preamble.output_file = pch_path;
     auto bound = compute_preamble_bound(content);
 
     CompilationParams params{.kind = CompilationKind::Content, .input = preamble.input};
-    params.input.pch = {*pch_path, bound};
+    params.input.pch = {pch_path, bound};
 
     preamble.input.add_remapped_file(tmp.path("main.cpp"), content, bound);
     ZASSERT(clice::compile(std::move(preamble))->has_output());
@@ -528,9 +510,6 @@ ZEST_CASE(PCHKeepsModuleImports) {
     ZASSERT(std::ranges::none_of(unit->diagnostics(), [](auto& diag) {
         return diag.id.level >= DiagnosticLevel::Error;
     }));
-
-    llvm::sys::fs::remove(*pch_path);
-    llvm::sys::fs::remove(*pcm_path);
 }
 
 ZEST_CASE(PCHWithoutModule) {
@@ -550,16 +529,13 @@ ZEST_CASE(PCHWithoutModule) {
     preamble.input.add_remapped_file(tmp.path("main.cpp"),
                                      content,
                                      compute_preamble_bound(content));
-    auto pch_path = vfs::temp_file("clice-test", "pch");
-    ZASSERT(pch_path.operator bool());
-    preamble.output_file = *pch_path;
+    auto pch_path = artifact("pch");
+    preamble.output_file = pch_path;
 
     // A preamble whose module fails to load gets no PCH.
     auto unit = clice::compile(std::move(preamble));
     ZASSERT(unit->completed());
     ZEXPECT(!unit->has_output());
-
-    llvm::sys::fs::remove(*pch_path);
 }
 
 ZEST_CASE(PCHContentDifference) {
@@ -595,12 +571,12 @@ int bar() { return 3; }
     ZASSERT(unit->top_level_decls().size() >= 1U);
 }
 
-/// The preamble build of `content` as main.cpp, writing its PCH to `pch`.
-std::unique_ptr<CompilationUnit> build_preamble(llvm::StringRef content, llvm::StringRef pch) {
+/// The preamble build of `content` as main.cpp.
+std::unique_ptr<CompilationUnit> build_preamble(llvm::StringRef content) {
     add_main("main.cpp", content);
     prepare();
     params.kind = CompilationKind::Preamble;
-    params.output_file = pch.str();
+    params.output_file = artifact("pch");
     params.input.add_remapped_file(TestVFS::path("main.cpp"),
                                    content,
                                    compute_preamble_bound(content));
@@ -620,19 +596,13 @@ inline int four() {
 }
 )");
 
-    auto pch = vfs::temp_file("clice-test", "pch");
-    ZASSERT(pch.operator bool());
-    {
-        auto preamble = build_preamble(R"(
+    auto preamble = build_preamble(R"(
 #include "twice.h"
 
 int main() { return four(); }
-)",
-                                       *pch);
-        ZASSERT(preamble->has_output());
-        ZEXPECT(defines_specialization(*preamble, "twice"));
-    }
-    llvm::sys::fs::remove(*pch);
+)");
+    ZASSERT(preamble->has_output());
+    ZEXPECT(defines_specialization(*preamble, "twice"));
 }
 
 ZEST_CASE(PCHInstantiationFallsBack) {
@@ -652,24 +622,18 @@ inline void demo() {
 }
 )");
 
-    auto pch = vfs::temp_file("clice-test", "pch");
-    ZASSERT(pch.operator bool());
-    {
-        // Where the preamble ends, show<app::Point> finds no describe: the
-        // PCH leaves it to the parse loading it, which sees main.cpp's.
-        auto preamble = build_preamble(R"(
+    // Where the preamble ends, show<app::Point> finds no describe: the PCH
+    // leaves it to the parse loading it, which sees main.cpp's.
+    auto preamble = build_preamble(R"(
 #include "show.h"
 
 namespace app {
 void describe(Point) {}
 }  // namespace app
-)",
-                                       *pch);
-        ZASSERT(preamble->has_output());
-        ZEXPECT(collect_errors(*preamble).empty());
-        ZEXPECT(!defines_specialization(*preamble, "show"));
-    }
-    llvm::sys::fs::remove(*pch);
+)");
+    ZASSERT(preamble->has_output());
+    ZEXPECT(collect_errors(*preamble).empty());
+    ZEXPECT(!defines_specialization(*preamble, "show"));
 }
 
 };  // ZEST_SUITE(Compiler)

@@ -90,6 +90,7 @@ struct GraphShim {
 /// in PrebuiltModuleFiles, so we pass every available PCM.
 DispatchFn make_dispatch(CompilationDatabase& cdb,
                          DependencyGraph& graph,
+                         const TempDir& tmp,
                          llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
     return [&](std::uint32_t path_id, bool) -> kota::task<RoundOutcome> {
         auto file_path = cdb.files().resolve(Fid{path_id});
@@ -119,16 +120,13 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
             }
         }
 
-        auto tmp = vfs::temp_file("test-pcm", "pcm");
-        if(!tmp) {
-            co_return RoundOutcome::Failed;
-        }
-        cp.output_file = *tmp;
+        auto pcm = tmp.path(std::format("{}.pcm", path_id));
+        cp.output_file = pcm;
 
         auto unit = compile(std::move(cp));
 
         if(unit->has_output()) {
-            pcm_paths[path_id] = *tmp;
+            pcm_paths[path_id] = pcm;
             co_return RoundOutcome::Success;
         }
         co_return RoundOutcome::Failed;
@@ -187,7 +185,7 @@ ModuleTestEnv env;
 std::optional<GraphShim> cg;
 
 DispatchFn default_dispatch() {
-    return make_dispatch(env.cdb, env.graph, env.pcm_paths);
+    return make_dispatch(env.cdb, env.graph, env.tmp, env.pcm_paths);
 }
 
 ResolveFn default_resolver() {

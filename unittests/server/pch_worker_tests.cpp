@@ -115,9 +115,6 @@ ZEST_CASE(BuildPCHThenCompile) {
     });
 
     ZASSERT(phase2_done);
-
-    // Cleanup PCH temp file.
-    std::remove(pch_path.c_str());
 }
 
 ZEST_CASE(UserFatalErrorSparesPCH) {
