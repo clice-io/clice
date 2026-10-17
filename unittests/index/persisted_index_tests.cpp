@@ -107,9 +107,9 @@ ZEST_CASE(ManifestFanoutRejected) {
     ZASSERT(!decodes(mirror));
 }
 
-ZEST_CASE(ManifestReservedResolutionRejected) {
+ZEST_CASE(ManifestCorruptResolutionsRejected) {
     // A resolution the manifest uses keys a DenseMap at load: a sentinel
-    // value must not decode.
+    // value must not decode, nor a resolution no file lists.
     ManifestBlobMirror mirror;
     mirror.format_version = index::index_format_version;
     mirror.instantiation_files = {1};
@@ -123,6 +123,10 @@ ZEST_CASE(ManifestReservedResolutionRejected) {
     mirror.instantiation_resolutions = {~0ull};
     ZEXPECT(!decodes());
     mirror.instantiation_resolutions = {~0ull - 1};
+    ZEXPECT(!decodes());
+    mirror.instantiation_files = {};
+    mirror.instantiation_ends = {};
+    mirror.instantiation_resolutions = {42};
     ZEXPECT(!decodes());
 }
 

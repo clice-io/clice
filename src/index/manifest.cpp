@@ -234,8 +234,9 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
 
     if(blob.instantiation_ends.size() != blob.instantiation_files.size() ||
        !monotone_ends(blob.instantiation_ends, blob.instantiation_resolutions.size()) ||
-       (!blob.instantiation_ends.empty() &&
-        blob.instantiation_ends.back() != blob.instantiation_resolutions.size()) ||
+       (blob.instantiation_ends.empty()
+            ? !blob.instantiation_resolutions.empty()
+            : blob.instantiation_ends.back() != blob.instantiation_resolutions.size()) ||
        llvm::any_of(blob.instantiation_resolutions,
                     [](std::uint64_t resolution) { return reserved_key(resolution); })) {
         return std::nullopt;
