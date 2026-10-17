@@ -63,8 +63,9 @@ struct TUManifest {
     std::vector<VersionID> absent;
 
     /// The versions the modules the TU imports were built from, their own
-    /// imports' included: the parse read those interfaces without
-    /// entering their files, which carry no variant of the TU.
+    /// imports' included, and the precompiled header it loads: the parse
+    /// read those without entering their files, which carry no variant of
+    /// the TU.
     std::vector<VersionID> imports;
 
     /// Sorted by symbol.

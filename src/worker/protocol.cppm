@@ -197,7 +197,8 @@ struct CompileResult {
     bool index_in_file = false;
 };
 
-/// Build a PCH (and its paired pch.idx index) from preamble content.
+/// Build a PCH (and its paired pch.idx index) from preamble content, or
+/// from a whole file the build precompiles for other files.
 struct BuildPCHParams {
     std::string file;
     std::string directory;
@@ -211,6 +212,16 @@ struct BuildPCHParams {
     /// The preamble content, remapped over the file.
     std::string content;
     uint32_t preamble_bound = UINT32_MAX;
+
+    /// Build the PCH of the whole file as it is on disk: a precompiled
+    /// header the build declares (Build::pch_unit). content and
+    /// preamble_bound are unused.
+    bool whole_file = false;
+
+    /// The precompiled header the build declares for the command, built by
+    /// clice: the preamble's PCH is built over it and chains onto it. Empty
+    /// for none.
+    std::string pch;
 
     /// Every built module's PCM (module name -> artifact path), where the
     /// preamble's imports load theirs from.
@@ -255,6 +266,10 @@ struct TURunParams {
 
     /// PCM dependencies for TUs that import modules.
     std::unordered_map<std::string, std::string> pcms;
+
+    /// The precompiled header the build declares for the command, built by
+    /// clice; empty for none.
+    std::string pch;
 
     /// Products of the run: the index, the errors the compile reports, and
     /// a clang-tidy pass under this frozen configuration.

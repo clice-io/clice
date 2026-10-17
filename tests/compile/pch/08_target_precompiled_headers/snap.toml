@@ -1,0 +1,36 @@
+[navigation.use]
+definition = ["include/shapes.h │ inline double ⟦area⟧(const Circle& circle) {"]
+
+["units share the target's pch".area]
+references = [
+    "inline double ⟦area⟧(const Circle& circle) {",
+    "src/area.cpp │ return 2 * ⟦area⟧(circle);",
+    "src/main.cpp │ return ⟦area⟧(unit) > 3 ? 0 : 1;",
+]
+
+["the target indexes"."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 4 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a header of the pch changes"."main.cpp"]
+errors = [
+    {
+        at = "return ⟦area⟧(unit) > 3 ? 0 : 1;",
+        severity = "error",
+        message = "use of undeclared identifier 'area'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]
+
+["a header of the pch changes".surface]
+workspace_symbols = [
+    {
+        name = "surface(const Circle &circle)",
+        kind = "Function",
+        at = "include/shapes.h │ inline double ⟦surface⟧(const Circle& circle) {",
+    },
+]

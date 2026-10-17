@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :compile.tidy;
+import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.families.turun;
 import :support.logging;
@@ -20,9 +21,11 @@ TURunFamily::TURunFamily(TaskGraph& graph,
                          Project& project,
                          CommandResolver& commands,
                          PCMFamily& pcm,
+                         PCHFamily& pch,
                          IndexStore& store,
                          WorkerPool& pool) :
-    graph(graph), project(project), commands(commands), pcm(pcm), store(store), pool(pool) {}
+    graph(graph), project(project), commands(commands), pcm(pcm), pch(pch), store(store),
+    pool(pool) {}
 
 void TURunFamily::register_runner() {
     graph.register_family(Family::TURun, [this](RoundContext& ctx, NodeId id) {
@@ -146,10 +149,33 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         }
     }
 
+    // A unit of a target with precompiled headers parses over clice's own
+    // build of them: the header its command forces in then reads nothing
+    // again. One that did not build leaves that header to parse them all,
+    // as the command alone does.
+    DepsSnapshot precompiled;
+    if(auto request = pch.command_pch(resolved.ref.config)) {
+        auto key = request->pch_key;
+        switch(co_await ctx.depend(pch.prepare(std::move(*request)))) {
+            case DependResult::Ready:
+                if(auto it = project.pch_cache.find(key);
+                   it != project.pch_cache.end() && !it->second.path.empty()) {
+                    params.pch = it->second.path;
+                    precompiled = it->second.deps;
+                }
+                break;
+            case DependResult::Failed: break;
+            case DependResult::Cancelled:
+                finished[path_id] = {.result = Result::Preempted};
+                co_return RoundOutcome::Stale;
+        }
+    }
+
     project.fill_pcm_deps(params.pcms, pcm.closure(deps.resolved).getArrayRef());
-    // The modules the parse reads, taken with the PCM paths: a module
-    // rebuilt while the parse runs is no input of it.
+    // The modules and the precompiled header the parse reads, taken with
+    // their paths: one rebuilt while the parse runs is no input of it.
     auto imports = project.module_inputs(deps.resolved);
+    merge_deps(imports, {&precompiled});
     if(plan.index && !send_in_full.erase(path_id)) {
         params.known_variants = store.known_variants(path_id);
     }

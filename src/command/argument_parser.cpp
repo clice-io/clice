@@ -235,6 +235,7 @@ bool names_path(unsigned id, llvm::StringRef value) {
         case OPT_fprofile_sample_use_EQ:
         case OPT_fprofile_remapping_file_EQ:
         case OPT_fbuild_session_file:
+        case OPT_include_pch:
         case OPT_working_directory: return true;
         case OPT_config: return value.contains('/') || value.contains('\\');
         default: return false;

@@ -413,6 +413,24 @@ bool Build::declared(Fid file) {
     return default_command(path).has_value() && default_source(path);
 }
 
+std::optional<Fid> Build::pch_unit(ConfigID config) const {
+    if(cdb.pch_output(config)) {
+        return std::nullopt;
+    }
+    for(auto& input: cdb.pch_inputs(config)) {
+        auto pch = files.find(input);
+        if(!pch) {
+            continue;
+        }
+        for(auto writer: cdb.pch_writers(*pch)) {
+            if(!entries(writer).empty()) {
+                return writer;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 llvm::SmallVector<const CompiledRule*> Build::covering_rules() const {
     llvm::SmallVector<const CompiledRule*> result;
     for(auto& rule: config.compiled_rules) {

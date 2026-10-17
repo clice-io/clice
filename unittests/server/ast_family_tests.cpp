@@ -31,13 +31,17 @@ struct ASTFamilyFixture {
                                        std::uint64_t license_epoch,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments) {
+        auto& project = ast.project;
+        Resolution resolution{
+            .ref = {.config = project.build.builtin(project.file_table.resolve(session->path_id))},
+        };
         auto key = co_await ast.ensure_pch(session,
                                            session->text,
                                            license_generation,
                                            license_epoch,
                                            directory,
                                            arguments,
-                                           nullptr,
+                                           resolution,
                                            {});
         co_return key.has_value();
     }
@@ -59,7 +63,7 @@ struct Stack {
     WorkerPool pool{loop};
     TaskGraph graph;
     PCMFamily pcm{graph, project, commands, pool};
-    PCHFamily pch{graph, project, pool};
+    PCHFamily pch{graph, project, commands, pool};
     SessionStore sessions;
     ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions};
     Dispatcher dispatcher{project, contexts, ast, pool};

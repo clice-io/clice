@@ -232,7 +232,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments,
                                        const SynthesizedContext* synthesized,
-                                       const PCMFamily::ModuleDeps& imports) {
+                                       const PCMFamily::ModuleDeps& imports,
+                                       llvm::StringRef base) {
     auto path = project.file_table.resolve(path_id);
     // The part of the prefix inside braces comes after the preamble, which
     // the header's own directives would otherwise precede. A preamble still
@@ -246,7 +247,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     if(bound == 0 && !synthesized) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts end up here too: they borrow
-        // a command but inject nothing.
+        // a command but inject nothing. A precompiled header the build
+        // declares is loaded by the parse itself.
         return {};
     }
 
@@ -302,8 +304,14 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // blobs a newer bundled clang would reject, and the build configuration
     // keeps the blob with the library that records its dependencies:
     // shared across configurations, one could rebuild it while another's
-    // records still confirmed the old content.
+    // records still confirmed the old content. A PCH built over the
+    // build's precompiled header names the very build it chains onto:
+    // rebuilt, that one has another name.
     auto preamble_text = text.substr(0, bound);
+    llvm::StringRef base_blob;
+    if(auto it = project.pch_cache.find(base); it != project.pch_cache.end()) {
+        base_blob = it->second.blob;
+    }
     auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               pch_build_rule,
@@ -313,7 +321,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                               own_path,
                               preamble_text,
                               canonicalize(arguments),
-                              pcm_keys});
+                              pcm_keys,
+                              base_blob});
     PCHPlan plan{
         .decision = PCHPlan::Decision::Acquire,
         .request =
@@ -325,6 +334,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .content = std::string(text),
                       .preamble_bound = bound,
                       .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
+                      .base = base.str(),
                       },
     };
     if(imported) {
@@ -952,13 +962,27 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // degradation: the compile proceeds preamble-less.
         std::optional<std::string> adopted_pch;
         std::optional<std::string> failed_pch;
+        // The precompiled header the build declares for the command: the
+        // preamble's PCH is built over it, and with none the parse loads
+        // it itself. One that did not build leaves the header the command
+        // forces in to parse what it holds.
+        std::optional<std::string> base_pch;
         if(readonly != ReadonlyMode::On) {
+            if(auto request = pch.command_pch(resolution.ref.config)) {
+                auto key = request->pch_key;
+                switch(co_await ctx.depend(pch.prepare(std::move(*request)))) {
+                    case DependResult::Ready: base_pch = key; break;
+                    case DependResult::Failed: break;
+                    case DependResult::Cancelled: co_return RoundOutcome::Stale;
+                }
+            }
             auto plan = plan_pch(path_id,
                                  params.text,
                                  params.directory,
                                  params.arguments,
                                  synthesized,
-                                 *imports);
+                                 *imports,
+                                 base_pch.value_or(""));
             switch(plan.decision) {
                 // No PCH build left to crash on.
                 case PCHPlan::Decision::None: session->quarantine->on_success(pch_kind); break;
@@ -1021,6 +1045,17 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 adopted_pch.reset();
             }
         }
+        if(!adopted_pch && base_pch) {
+            if(auto pch_it = project.pch_cache.find(*base_pch);
+               pch_it != project.pch_cache.end() && !pch_it->second.path.empty()) {
+                params.pch = {pch_it->second.path, 0};
+            } else {
+                base_pch.reset();
+            }
+        }
+        // What the parse loads, a crash or a failed read of which may be
+        // the pair's fault: the preamble's PCH, else the build's.
+        auto consumed_pch = adopted_pch ? adopted_pch : base_pch;
 
         project.fill_pcm_deps(params.pcms, pcm.closure(imports->resolved).getArrayRef());
 
@@ -1066,7 +1101,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // pch_suspect gate below never gets a say. The first such death
         // retracts the pair and the round respawns on a rebuilt one; a
         // death on the rebuilt pair is the document's own.
-        bool consuming_pch = adopted_pch.has_value();
+        bool consuming_pch = consumed_pch.has_value();
         bool pch_crashed = false;
         bool tidy_crashed = false;
         auto interrupt = std::make_unique<kota::cancellation_source>();
@@ -1107,7 +1142,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                     return;
                 }
                 session->tidy_crash.reset();
-                if(consuming_pch && session->crashed_pch != *adopted_pch) {
+                if(consuming_pch && session->crashed_pch != *consumed_pch) {
                     pch_crashed = true;
                 } else {
                     record_crash(session, compile_kind, error);
@@ -1121,10 +1156,10 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         if(pch_crashed) {
             LOG_WARN("Compile crashed consuming PCH pair {} for {}; retracting the pair",
-                     *adopted_pch,
+                     *consumed_pch,
                      file_path);
-            session->crashed_pch = *adopted_pch;
-            pch.blame(*adopted_pch);
+            session->crashed_pch = *consumed_pch;
+            pch.blame(*consumed_pch);
             co_return RoundOutcome::Stale;
         }
 
@@ -1167,7 +1202,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // long as that failure persists.
         if(result.value().pch_suspect && consuming_pch) {
             LOG_WARN("Compile blamed PCH pair {} for {}; retracting the pair",
-                     *adopted_pch,
+                     *consumed_pch,
                      file_path);
             // Retract unconditionally — a blamed pair never survives, even
             // when the retry budget is spent — but rerun only once. The
@@ -1175,7 +1210,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             // Stale (the retract re-dirties the key its candidate edge
             // points at), the waiter respawns it, and without the parked
             // key each respawn would rebuild and blame forever.
-            pch.blame(*adopted_pch);
+            pch.blame(*consumed_pch);
             if(!artifact_retried) {
                 artifact_retried = true;
                 // Rerun the same attempt so the trial semantics are
@@ -1288,12 +1323,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // of the shared key, and clearing here would reset the strike
         // count it just paid for.
         if(current && consuming_pch && !result.value().pch_suspect) {
-            pch.consumed_ok(*adopted_pch);
+            pch.consumed_ok(*consumed_pch);
         }
 
         auto& index_data = result.value().tu_index_data;
         auto next = std::make_shared<ASTProjection>();
-        next->pch_key = adopted_pch;
+        next->pch_key = consumed_pch;
         next->failed_pch_key = failed_pch;
         // The AST and the file index commit together — that pairing is
         // what lets navigation trust the index after ensure_compiled. A
@@ -1371,7 +1406,7 @@ kota::task<std::optional<std::string>>
                           std::uint64_t license_epoch,
                           const std::string& directory,
                           const std::vector<std::string>& arguments,
-                          const SynthesizedContext* synthesized,
+                          const Resolution& resolution,
                           const PCMFamily::ModuleDeps& imports) {
     auto path_id = session->path_id;
     auto license = [&] {
@@ -1379,14 +1414,30 @@ kota::task<std::optional<std::string>>
                projections.epoch(path_id) == license_epoch;
     };
 
-    auto plan = plan_pch(path_id, text, directory, arguments, synthesized, imports);
+    // The precompiled header the build declares for the command, as a
+    // compile round takes it (see run()).
+    std::optional<std::string> base;
+    if(auto request = pch.command_pch(resolution.ref.config)) {
+        auto key = request->pch_key;
+        if(co_await pch.acquire(std::move(*request)) == PCHFamily::Outcome::Ready) {
+            base = key;
+        }
+    }
+
+    auto plan = plan_pch(path_id,
+                         text,
+                         directory,
+                         arguments,
+                         resolution.synthesized.get(),
+                         imports,
+                         base.value_or(""));
     switch(plan.decision) {
         case PCHPlan::Decision::None:
             if(license()) {
-                projections.set_pch_key(path_id, std::nullopt);
+                projections.set_pch_key(path_id, base);
                 session->quarantine->on_success(evidence_kind(EvidenceKind::PCH));
             }
-            co_return std::nullopt;
+            co_return base;
         case PCHPlan::Decision::Acquire: break;
     }
     auto pch_key = plan.request.pch_key;
@@ -1399,13 +1450,13 @@ kota::task<std::optional<std::string>>
         if(!session->quarantine->crashed(pch_kind)) {
             record_crash(session, pch_kind, *crash);
         }
-        co_return std::nullopt;
+        co_return base;
     }
     if(co_await pch.acquire(std::move(plan.request)) != PCHFamily::Outcome::Ready) {
         if(auto* crash = pch.crashed(pch_key)) {
             record_crash(session, pch_kind, *crash);
         }
-        co_return std::nullopt;
+        co_return base;
     }
 
     // Adoption is gated on the round outcome, never on leftover cache
@@ -1460,7 +1511,7 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
                                            license_epoch,
                                            directory,
                                            arguments,
-                                           synthesized,
+                                           resolution,
                                            *imports);
         if(pch_key) {
             if(auto pch_it = project.pch_cache.find(*pch_key); pch_it != project.pch_cache.end()) {

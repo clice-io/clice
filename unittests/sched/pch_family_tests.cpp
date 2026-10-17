@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :project.command_resolver;
 import :sched.families.pch;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
@@ -25,8 +26,9 @@ std::string src;
 FileTable files;
 Project project{files};
 WorkerPool pool{loop};
+CommandResolver commands{project};
 TaskGraph graph;
-PCHFamily pch{graph, project, pool};
+PCHFamily pch{graph, project, commands, pool};
 
 PCHFamilyAcquisitionTEST() {
     // Hang detection: real workers build here, slowly on a loaded machine.

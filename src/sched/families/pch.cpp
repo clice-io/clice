@@ -15,8 +15,11 @@ import :worker.protocol;
 
 namespace clice {
 
-PCHFamily::PCHFamily(TaskGraph& graph, Project& project, WorkerPool& pool) :
-    graph(graph), project(project), pool(pool) {}
+PCHFamily::PCHFamily(TaskGraph& graph,
+                     Project& project,
+                     CommandResolver& commands,
+                     WorkerPool& pool) :
+    graph(graph), project(project), commands(commands), pool(pool) {}
 
 void PCHFamily::register_runner() {
     graph.register_family(Family::PCH,
@@ -29,6 +32,24 @@ std::uint64_t PCHFamily::intern(llvm::StringRef pch_key) {
         states.emplace_back();
     }
     return it->second;
+}
+
+std::optional<PCHFamily::Request> PCHFamily::command_pch(ConfigID config) {
+    auto unit = project.build.pch_unit(config);
+    if(!unit) {
+        return std::nullopt;
+    }
+    // The key names the build but the file's content, which the build's
+    // inputs cover, its own source among them.
+    Request request{.file = std::string(project.file_table.resolve(*unit)), .whole_file = true};
+    commands.resolve_command(*unit, request.directory, request.arguments);
+    request.pch_key = cache_key({clang::getClangFullVersion(),
+                                 pch_build_rule,
+                                 project.build.active_configuration(),
+                                 request.directory,
+                                 request.file,
+                                 canonicalize(request.arguments)});
+    return request;
 }
 
 NodeId PCHFamily::prepare(Request request) {
@@ -171,17 +192,28 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     bp.arguments = std::move(request.arguments);
     bp.content = std::move(request.content);
     bp.preamble_bound = request.preamble_bound;
+    bp.whole_file = request.whole_file;
     bp.synthesized = std::move(request.synthesized);
     bp.pcms = std::move(request.pcms);
     bp.output_path = pending.tmp_path;
     bp.index_output_path = pending_idx.tmp_path;
 
-    // What the imported modules' PCMs were built from as the build starts:
-    // one rebuilt meanwhile stales the PCH.
+    // What the imported modules' PCMs and the PCH built over were built
+    // from as the build starts: one rebuilt meanwhile stales the PCH.
     auto imported = project.module_inputs(request.modules);
+    DepsSnapshot base;
+    if(!request.base.empty()) {
+        auto it = project.pch_cache.find(request.base);
+        if(it == project.pch_cache.end() || it->second.path.empty()) {
+            LOG_DEBUG("PCH build for {} skipped: the PCH it builds over is gone", bp.file);
+            co_return RoundOutcome::Failed;
+        }
+        bp.pch = it->second.path;
+        base = it->second.deps;
+    }
     auto inputs = [&](const worker::ArtifactBuildResult& built) {
         auto deps = capture_deps_snapshot(project.file_table, built.deps, built.build_at);
-        merge_deps(deps, {&imported});
+        merge_deps(deps, {&imported, &base});
         return deps;
     };
 
@@ -191,10 +223,13 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // over IPC while this frame keeps awaiting the real reply
     // (contract 2). A crash is recorded on the key; its
     // consumers book it on their documents when they find it there.
+    // A background index unit waiting on a precompiled header the build
+    // declares leaves the interactive work its priority.
+    auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
     auto result = co_await deliver(
         pool,
         false,
-        [&] { return pool.send_stateless(bp, worker::Priority::High, ctx.token()); },
+        [&] { return pool.send_stateless(bp, priority, ctx.token()); },
         [&](const kota::ipc::Error& error) { build_crashes.insert_or_assign(pch_key, error); });
 
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
@@ -284,6 +319,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     st.superseded = std::exchange(st.blob, std::move(blob));
     st.path = *committed.pch_path;
     st.bound = request.preamble_bound;
+    st.base = request.base;
     st.deps = inputs(result.value());
     st.index_path = *committed.index_path;
     // Replace the previous blob's mapping (same key, rebuilt content);

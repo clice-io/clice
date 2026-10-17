@@ -6,3 +6,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_executable(compat src/main.cpp src/util.c)
 target_include_directories(compat PRIVATE include)
 target_compile_definitions(compat PRIVATE COMPAT_DEFINE=1)
+
+if(COMPAT_PCH)
+  target_precompile_headers(compat PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<string>;<vector>>")
+endif()

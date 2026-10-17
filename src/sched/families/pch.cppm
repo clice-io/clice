@@ -4,6 +4,7 @@ module;
 
 module clice:sched.families.pch;
 
+import :project.command_resolver;
 import :project.project;
 import :sched.blame_budget;
 import :sched.graph;
@@ -14,7 +15,9 @@ namespace clice {
 /// Preamble artifacts (a PCH and its pch.idx index, committed as one
 /// pair) as a task-graph family: one node per content-addressed pch_key,
 /// no edges, one round = one revalidation or build. The facade is the
-/// only surface consumers touch.
+/// only surface consumers touch. The precompiled headers the build
+/// declares (Build::pch_unit) are built here too, a whole file each, and
+/// a preamble's PCH is built over the one its command reads.
 ///
 /// The family owns the shared side of the policy: the pair-atomic store
 /// commit and cache metadata (a round runs to a real reply, so no
@@ -25,7 +28,7 @@ namespace clice {
 /// failed acquisition's crash from crashed() and books it for itself.
 class PCHFamily {
 public:
-    PCHFamily(TaskGraph& graph, Project& project, WorkerPool& pool);
+    PCHFamily(TaskGraph& graph, Project& project, CommandResolver& commands, WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic build register their own runner under
@@ -50,6 +53,12 @@ public:
         /// The built modules the preamble imports, whose inputs the PCH
         /// depends on.
         llvm::SmallVector<Fid> modules;
+        /// The key of the precompiled header the build declares for the
+        /// command (command_pch), built already: the preamble's PCH is
+        /// built over it, and what it read is the preamble's input too.
+        std::string base;
+        /// See worker::BuildPCHParams::whole_file.
+        bool whole_file = false;
     };
 
     enum class Outcome : std::uint8_t {
@@ -68,6 +77,12 @@ public:
     /// acquire observes exactly one attempt; retry policy stays with the
     /// caller.
     kota::task<Outcome> acquire(Request request);
+
+    /// The precompiled header `config`'s command reads that the build
+    /// writes (Build::pch_unit), as the request for clice's own build of
+    /// it: the whole file of the unit writing it, under the unit's
+    /// command. Nullopt when the command reads none.
+    std::optional<Request> command_pch(ConfigID config);
 
     /// The stash-only half of acquire, for waits that must be recorded as
     /// graph edges: intern the key, re-dirty a stale clean node, and
@@ -189,6 +204,7 @@ private:
 
     TaskGraph& graph;
     Project& project;
+    CommandResolver& commands;
     WorkerPool& pool;
 
     /// Move a pch key to the front of the loaded-state LRU. Called

@@ -200,6 +200,14 @@ public:
     /// or a default-command rule covers it and it is a source.
     bool declared(Fid file);
 
+    /// The unit whose entry writes the precompiled header `config`'s
+    /// command reads (CompilationDatabase::pch_inputs) — the
+    /// `cmake_pch.hxx.cxx` of a CMake target with precompiled headers. Its
+    /// PCH on disk may come from another compiler, so clice builds its own
+    /// from the unit's command. Nullopt when the build writes none of them,
+    /// and for a command writing a precompiled header itself.
+    std::optional<Fid> pch_unit(ConfigID config) const;
+
     /// Whether a file joins the background index: no matching active rule
     /// says `index = false`.
     bool indexed(CanonicalRef path) const;

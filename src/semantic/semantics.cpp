@@ -222,10 +222,15 @@ public:
             }
 
             // The declarations this unit parsed: noload_decls leaves those of
-            // the modules it imports on disk, indexed by their own units —
-            // loading them costs a deserialization of whole interfaces, and
-            // their headers would ride in every importer's index.
+            // the modules it imports and of the precompiled header it loads
+            // on disk, indexed by their own units — loading them costs a
+            // deserialization of whole interfaces, and their headers would
+            // ride in every importer's index. A pass that loaded them
+            // already (clang-tidy's) left them in the list.
             for(auto* decl: tu->noload_decls()) {
+                if(decl->isFromASTFile()) {
+                    continue;
+                }
                 if(!canIgnoreChildDeclWhileTraversingDeclContext(decl) && !TraverseDecl(decl)) {
                     return false;
                 }

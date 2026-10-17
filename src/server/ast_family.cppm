@@ -252,15 +252,19 @@ private:
         PCHFamily::Request request;
     };
 
+    /// `base` is the key of the precompiled header the build declares for
+    /// the command, built already; empty for none.
     PCHPlan plan_pch(Fid path_id,
                      llvm::StringRef text,
                      const std::string& directory,
                      const std::vector<std::string>& arguments,
                      const SynthesizedContext* synthesized,
-                     const PCMFamily::ModuleDeps& imports);
+                     const PCMFamily::ModuleDeps& imports,
+                     llvm::StringRef base);
 
-    /// Revalidate or build the preamble PCH of `text` through the family
-    /// and adopt its key under the request's license (see
+    /// Revalidate or build the preamble PCH of `text` through the family,
+    /// over the precompiled header the build declares for the command, and
+    /// adopt the key of what the request loads under its license (see
     /// prepare_stateless_inputs). Returns the key the request compiles
     /// against, adopted or not; none when it compiles without a PCH.
     kota::task<std::optional<std::string>> ensure_pch(const std::shared_ptr<Session>& session,
@@ -269,7 +273,7 @@ private:
                                                       std::uint64_t license_epoch,
                                                       const std::string& directory,
                                                       const std::vector<std::string>& arguments,
-                                                      const SynthesizedContext* synthesized,
+                                                      const Resolution& resolution,
                                                       const PCMFamily::ModuleDeps& imports);
 
     friend struct testing::ASTFamilyFixture;

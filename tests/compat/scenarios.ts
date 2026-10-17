@@ -127,6 +127,23 @@ export const SCENARIOS: Scenario[] = [
             "MinGW's GCC 15 defines _REENTRANT and defaults C to gnu23; clice does neither",
     }),
     {
+        // Every C++ unit loads the target's PCH, which clice builds itself
+        // from cmake_pch.hxx.cxx: CMake's own is clang 17's.
+        name: "cmake ninja clang-17 precompiled headers",
+        platforms: ["linux"],
+        requires: ["cmake", "ninja", "/usr/bin/clang-17", "/usr/bin/clang++-17"],
+        build: cmake("Ninja", "/usr/bin/clang-17", "/usr/bin/clang++-17", "-DCOMPAT_PCH=ON"),
+        files: { "src/main.cpp": { recorded: [["-Xclang", "-include-pch"]] }, "src/util.c": {} },
+    },
+    {
+        // GCC finds its .gch beside the header the command forces in.
+        name: "cmake ninja gcc precompiled headers",
+        platforms: ["linux"],
+        requires: ["cmake", "ninja", GCC, GXX],
+        build: cmake("Ninja", GCC, GXX, "-DCOMPAT_PCH=ON"),
+        files: { "src/main.cpp": { recorded: [["-Winvalid-pch"]] }, "src/util.c": {} },
+    },
+    {
         name: "cmake make clang",
         platforms: ["linux"],
         requires: ["cmake", "make", CLANG, CLANGXX],

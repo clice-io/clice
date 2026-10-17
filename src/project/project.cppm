@@ -141,6 +141,10 @@ struct PCHState {
     std::uint32_t bound = 0;
     DepsSnapshot deps;
 
+    /// The key of the precompiled header the build declares that this
+    /// preamble's PCH is built over and chains onto; empty for none.
+    std::string base;
+
     /// Path of the paired pch.idx index.
     std::string index_path;
 
