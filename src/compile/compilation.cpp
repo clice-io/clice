@@ -363,6 +363,31 @@ private:
     CompilationUnit& unit;
 };
 
+/// Whether clang refused the unit's precompiled header for the options it
+/// was built under, which conflict with the unit's own — not for its
+/// bytes, a failure the master must still see to retract the PCH.
+static bool refused_for_options(CompilationUnit& unit) {
+    return llvm::any_of(unit.diagnostics(), [](const Diagnostic& diag) {
+        if(diag.id.source != DiagnosticSource::Clang) {
+            return false;
+        }
+        switch(diag.id.value) {
+            case clang::diag::err_ast_file_codegenopt_mismatch:
+            case clang::diag::err_ast_file_codegenopt_value_mismatch:
+            case clang::diag::err_ast_file_diagopt_mismatch:
+            case clang::diag::err_ast_file_langopt_mismatch:
+            case clang::diag::err_ast_file_langopt_value_mismatch:
+            case clang::diag::err_ast_file_macro_def_conflict:
+            case clang::diag::err_ast_file_macro_def_undef:
+            case clang::diag::err_ast_file_pp_detailed_record:
+            case clang::diag::err_ast_file_targetopt_feature_mismatch:
+            case clang::diag::err_ast_file_targetopt_mismatch:
+            case clang::diag::err_ast_file_undef: return true;
+            default: return false;
+        }
+    });
+}
+
 static std::unique_ptr<clang::FrontendAction> frontend_action(CompilationKind kind,
                                                               bool reduced_bmi) {
     switch(kind) {
@@ -529,7 +554,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
     // under, where GCC takes the .gch for unusable and ignores it — leaves
     // the header the command forces in to parse what it holds.
     if(auto& [pch, bound] = unit->params.input.pch;
-       unit->setup_fail() && !pch.empty() && bound == 0) {
+       unit->setup_fail() && !pch.empty() && bound == 0 && refused_for_options(*unit)) {
         LOG_WARN("Compiling without the precompiled header {}, which clang refused", pch);
         auto& built = unit->params;
         CompilationParams again{

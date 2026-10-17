@@ -155,10 +155,12 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // A preamble whose PCH build killed a worker is refused before the
     // dispatch: the artifact is shared, so one document's quarantine
     // cannot contain it — every session with this preamble would burn a
-    // worker of its own. The key is content-derived: editing the poison
-    // starts a fresh key. Consumption strikes park the key the same way:
-    // rebuilding a pair whose every rebuild gets blamed again would fare
-    // no better (see blame).
+    // worker of its own. A preamble's key is content-derived: editing the
+    // poison starts a fresh key. A precompiled header the build declares
+    // is keyed by its command alone, so its refusal lasts the session:
+    // its consumers parse the header it holds instead. Consumption strikes
+    // park the key the same way: rebuilding a pair whose every rebuild gets
+    // blamed again would fare no better (see blame).
     if(build_crashes.contains(pch_key)) {
         LOG_WARN("PCH build for {} refused: key {} crashed a worker", request.file, pch_key);
         co_return RoundOutcome::Failed;

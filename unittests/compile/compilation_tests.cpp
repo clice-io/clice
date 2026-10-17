@@ -711,6 +711,13 @@ int main() { return scale(); }
     ZASSERT(conflicting->completed());
     ZEXPECT(collect_errors(*conflicting).empty());
     ZEXPECT(!scale_from_pch(*conflicting));
+
+    // Bytes clang cannot read are the PCH's fault: the failure stays.
+    auto blob = read_file(pch_path);
+    ZASSERT(blob.operator bool());
+    ZASSERT(!vfs::write(pch_path, std::string(blob->size(), '\x5A')));
+    auto corrupt = compile_with("-DSCALE=1");
+    ZEXPECT((corrupt->setup_fail() || corrupt->fatal_error()));
 }
 
 };  // ZEST_SUITE(Compiler)
