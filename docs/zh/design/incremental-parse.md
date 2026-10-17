@@ -85,7 +85,7 @@ clice 采用拉取式（pull-based）编译模型：编译不会在文件发生�
 
 磁盘上的 PCH 文件以 Preamble 内容、与前端相关的编译选项、目录和 clang 版本共同计算出的哈希命名（例如 `a3f7e8c1d2b4f6e9.pch`），从而实现内容寻址存储。这带来两个好处：
 
-- **磁盘共享**：preamble 内容和编译配置一致的不同文件会自然共享磁盘上的同一 PCH 文件，无需额外的去重逻辑。
+- **磁盘共享**：preamble 内容和编译配置一致的不同文件会自然共享磁盘上的同一 PCH 文件，无需额外的去重逻辑。如果 preamble 定义了宏，或在条件中检测了宏，它的键就会保留所属文件的路径：PCH 会把这些宏和条件记在构建它的那个文件中，而共享它的文件会到自己的文件中去找它们。
 - **跨会话持久化**：PCH 缓存元数据（路径、哈希、边界、依赖快照）与符号索引一起持久化到索引数据库中。服务器重启时加载这些元数据，并通过两层失效检测验证每个 PCH 的有效性，避免冷启动时重建所有 PCH。
 
 当 preamble 内容变化时，新 PCH 的文件名会使用不同的哈希值，旧文件则成为孤立文件。孤立文件由产物存储的淘汰机制回收：PCH 和 PCM 缓存位于有容量预算的命名空间中，一旦超过预算，最冷的条目会优先被淘汰。
@@ -107,24 +107,19 @@ Preamble 边界通过词法扫描确定：项目的 `Lexer` 从文件开头逐�
 import std.core        // missing semicolon, user is typing a module declaration
 ```
 
-用语法不完整的 preamble 构建 PCH，会使 PCH 包含错误的预处理器状态。后续编译加载这个错误的 PCH 后，会产生大量伪错误。因此，检测到 preamble 不完整时，会推迟重建，并继续使用旧 PCH（若存在）。
+用语法不完整的 preamble 构建 PCH，会使 PCH 包含错误的预处理器状态。后续编译加载这个错误的 PCH 后，会产生大量伪错误。因此，preamble 在第一条未写完的指令之前结束：它上方已写完的指令照常预编译——在 include 块末尾正在添加的一行不会改变 preamble 文本，因而也不会改变它的 PCH——未写完的那一行则与正文一起解析，并在那里报告自己的错误。
 
 ### PCH 构建流水线
 
 当编译请求需要 PCH 时，将执行以下流水线：
 
 ```
-Compute preamble boundary and hash
+Compute preamble boundary (before an unfinished directive) and hash
          │
          ▼
    ┌─ Cache hit? ──── yes → Reuse cached PCH
    │     │
    │    no
-   │     │
-   │     ▼
-   │  Preamble complete? ── no → Defer rebuild, keep old PCH
-   │     │
-   │   yes
    │     │
    │     ▼
    │  Another coroutine building? ── yes → Wait for completion, use result
@@ -174,7 +169,7 @@ AST 的依赖文件（preamble 之后通过 `#include` 包含的头文件）也�
 
 ### 缓存持久化
 
-PCH 和 PCM 缓存元数据以元数据 blob 的形式持久化在索引数据库中。该 blob 会在每次成功构建后不久刷盘，并在服务器启动时加载；blob 写入是原子的，每条记录还会绑定其所描述的确切产物文件（大小、mtime、文件系统标识和内容哈希）。因此，即使在发布产物文件和刷写其元数据之间发生崩溃，系统也能检测到这种情况，并重新验证产物文件，而不会直接信任它。
+PCH 和 PCM 缓存元数据以元数据 blob 的形式持久化在索引数据库中。该 blob 会在每次成功构建后不久刷盘，并在服务器启动时加载；blob 写入是原子的，每条记录指向的都是它自己那次构建的产物文件——文件名由键加上一个 nonce 组成，之后的构建不会再写入同名文件。因此，即使在发布产物和刷写其元数据之间发生崩溃，旧记录指向的仍是旧文件，绝不会是新写入的字节。
 
 启动时加载缓存后，所有 PCH 条目都会经过两层失效检测。过时的条目会在下次编译时自动重建，无需特殊的缓存一致性恢复逻辑。
 

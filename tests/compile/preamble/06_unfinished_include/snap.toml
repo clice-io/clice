@@ -15,5 +15,11 @@ range = "return a() + ⟦c⟧();"
 
 ["file cut inside the preamble".errors]
 errors = [
-    { at = '#include ⟦"c⟧', severity = "error", message = 'expected "FILENAME" or <FILENAME>', source = "clang", code = "err_pp_expects_filename" },
+    {
+        at = '#include ⟦"c⟧',
+        severity = "error",
+        message = 'expected "FILENAME" or <FILENAME>',
+        source = "clang",
+        code = "err_pp_expects_filename",
+    },
 ]
