@@ -22,6 +22,7 @@
 /// CLICE_EXECUTABLE names the clice under test.
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { cliceExecutable } from "../client/session.ts";
@@ -90,10 +91,43 @@ fs.mkdirSync(values.dir, { recursive: true });
 // Build systems write the physical paths into their databases.
 const dir = fs.realpathSync(values.dir);
 
+/// `clice` behind a script that makes it, and every process it starts, the
+/// first the kernel kills when memory runs out: a run that exhausts the
+/// machine ends as clice's crash, which the job reports, instead of taking
+/// this runner or the CI runner's agent with it.
+function killedFirst(clice: string): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-nightly-"));
+    // The answers' renderer finds clang's resource directory beside the
+    // executable, as clice does.
+    fs.symlinkSync(
+        path.join(path.dirname(fs.realpathSync(clice)), "..", "lib"),
+        path.join(root, "lib"),
+    );
+    fs.mkdirSync(path.join(root, "bin"));
+    const wrapper = path.join(root, "bin", "clice");
+    fs.writeFileSync(
+        wrapper,
+        `#!/bin/sh\necho 1000 > /proc/self/oom_score_adj\nexec '${clice.replaceAll("'", "'\\''")}' "$@"\n`,
+        { mode: 0o755 },
+    );
+    return wrapper;
+}
+
+// A notification sent to a server that has died fails with nobody awaiting
+// it; the server's exit check reports the death.
+process.on("unhandledRejection", (reason) => {
+    if ((reason as NodeJS.ErrnoException | undefined)?.code !== "ERR_STREAM_DESTROYED") {
+        throw reason;
+    }
+});
+
+const clice = cliceExecutable();
+process.env["CLICE_EXECUTABLE"] = killedFirst(clice);
+
 const results = await runNightly({
     job: findJob(projects, name),
     dir,
-    clice: cliceExecutable(),
+    clice,
     steps,
     seed: values.seed,
     ...(values.file === undefined ? {} : { files: values.file }),
