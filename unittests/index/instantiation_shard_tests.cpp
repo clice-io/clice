@@ -288,6 +288,9 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.sym_hashes = {~0ull};
     ZEXPECT(!make(bytes_of()).loaded());
     blob.sym_hashes = {11};
+    blob.resolutions = {~0ull};
+    ZEXPECT(!make(bytes_of()).loaded());
+    blob.resolutions = {5};
 
     // Producers name every key or none.
     blob.producer_units = {100};

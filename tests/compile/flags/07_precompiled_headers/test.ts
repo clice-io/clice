@@ -49,6 +49,14 @@ test("units share the target's pch", async (t) => {
     await t.show("completion", s.completion(t.at("src/main.cpp", "return are|a(")));
 });
 
+test("an instantiation over the pch resolves in the header", async (t) => {
+    const s = await t.start();
+    await s.indexed();
+    // main.cpp instantiates the header's template over the PCH, and what
+    // the instantiation resolves there is the header's.
+    await t.show("radius", s.references(t.at("include/shapes.h", "double |radius")));
+});
+
 test("the targets index", async (t) => {
     await t.cli("index");
 });

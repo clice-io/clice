@@ -254,6 +254,25 @@ std::optional<Named> named_at(const Shard& shard,
     return named;
 }
 
+void add_resolved(const InstantiationShard& shard,
+                  std::uint32_t offset,
+                  std::optional<Named>& named) {
+    shard.lookup(offset, [&](const InstantiationRecord& record) {
+        if(record.kind == InstantiationKind::Call ||
+           record.kind == InstantiationKind::TypeDefinition ||
+           (named && !(named->range == record.range))) {
+            return true;
+        }
+        if(!named) {
+            named = Named{.range = record.range};
+        }
+        if(!llvm::is_contained(named->symbols, record.target)) {
+            named->symbols.push_back(record.target);
+        }
+        return true;
+    });
+}
+
 std::vector<Highlight>
     highlights(llvm::ArrayRef<const Shard*> shards,
                llvm::ArrayRef<const InstantiationShard*> instantiations,
@@ -649,33 +668,12 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
         return text && llvm::is_contained({":", "=", "&&", "||", "?"},
                                           text->slice(named.range.begin, named.range.end));
     };
-    // An instantiation resolves a name its template leaves open (a member
-    // of a dependent object), or more of what a name means.
-    auto resolved_at = [&](std::optional<Named>& named) {
-        if(!resolved) {
-            return;
-        }
-        for(auto* instantiations: source->instantiations) {
-            instantiations->lookup(offset, [&](const InstantiationRecord& record) {
-                if(record.kind == InstantiationKind::Call ||
-                   record.kind == InstantiationKind::TypeDefinition ||
-                   (named && !(named->range == record.range))) {
-                    return true;
-                }
-                if(!named) {
-                    named = Named{.range = record.range};
-                }
-                if(!llvm::is_contained(named->symbols, record.target)) {
-                    named->symbols.push_back(record.target);
-                }
-                return true;
-            });
-        }
-    };
     auto hit = [&](const Shard& shard) {
         auto named = named_at(shard, offset, is_macro);
-        if(&shard == source->shard) {
-            resolved_at(named);
+        if(resolved && &shard == source->shard) {
+            for(auto* instantiations: source->instantiations) {
+                add_resolved(*instantiations, offset, named);
+            }
         }
         if(!named) {
             return false;

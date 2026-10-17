@@ -179,6 +179,13 @@ std::optional<Named> named_at(const Shard& shard,
                               std::uint32_t offset,
                               llvm::function_ref<bool(SymbolHash)> is_macro);
 
+/// Adds to `named` what an instantiation or a macro expansion resolves at
+/// `offset`: a name its template leaves open (a member of a dependent
+/// object), or more of what the name means.
+void add_resolved(const InstantiationShard& shard,
+                  std::uint32_t offset,
+                  std::optional<Named>& named);
+
 /// How the code at a highlighted name accesses its symbol.
 enum class HighlightKind : std::uint8_t {
     /// A declaration or definition, a use of a symbol nothing reads or

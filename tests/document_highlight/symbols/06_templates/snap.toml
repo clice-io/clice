@@ -31,3 +31,9 @@ highlights = [
     { at = "T ⟦get⟧() const { return value; }", kind = "text" },
     { at = "return box.⟦get⟧();", kind = "text" },
 ]
+
+[answers.instantiated]
+highlights = [
+    { at = "void ⟦go⟧();", kind = "text" },
+    { at = "gear.⟦go⟧();", kind = "text" },
+]

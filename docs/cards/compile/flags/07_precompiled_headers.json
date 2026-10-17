@@ -35,7 +35,7 @@
     },
     {
       "path": "include/shapes.h",
-      "text": "#pragma once\n\nstruct Circle {\n    double radius;\n};\n\ninline double area(const Circle& circle) {\n    return 3.14159 * circle.radius * circle.radius;\n}\n\n[[deprecated(\"use area\")]] inline double surface(const Circle& circle) {\n    return area(circle);\n}\n\ninline double legacy(const Circle& circle) {\n    return surface(circle);\n}\n",
+      "text": "#pragma once\n\nstruct Circle {\n    double radius;\n};\n\ninline double area(const Circle& circle) {\n    return 3.14159 * circle.radius * circle.radius;\n}\n\n[[deprecated(\"use area\")]] inline double surface(const Circle& circle) {\n    return area(circle);\n}\n\ninline double legacy(const Circle& circle) {\n    return surface(circle);\n}\n\ntemplate <class Shape>\ndouble twice(const Shape& shape) {\n    return 2 * shape.radius;\n}\n",
       "markers": []
     },
     {
@@ -52,12 +52,12 @@
     },
     {
       "path": "src/main.cpp",
-      "text": "int main() {\n    Circle unit{1.0};\n    return area(unit) > 3 ? 0 : 1;\n}\n",
+      "text": "double unit_twice() {\n    return twice(Circle{1.0});\n}\n\nint main() {\n    Circle unit{1.0};\n    return area(unit) > 3 ? 0 : 1;\n}\n",
       "markers": [
         {
           "name": "use",
-          "begin": 46,
-          "end": 46,
+          "begin": 102,
+          "end": 102,
           "range": false
         }
       ]
@@ -224,11 +224,11 @@
                 "path": "src/main.cpp",
                 "range": {
                   "start": {
-                    "line": 2,
+                    "line": 6,
                     "character": 11
                   },
                   "end": {
-                    "line": 2,
+                    "line": 6,
                     "character": 15
                   }
                 }
@@ -267,12 +267,80 @@
       ]
     },
     {
+      "name": "an instantiation over the pch resolves in the header",
+      "blocks": [
+        {
+          "label": "radius",
+          "value": {
+            "references": [
+              {
+                "$place": "double ⟦radius⟧;",
+                "path": "include/shapes.h",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 17
+                  }
+                }
+              },
+              {
+                "$place": "return 3.14159 * circle.⟦radius⟧ * circle.radius;",
+                "path": "include/shapes.h",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 28
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 34
+                  }
+                }
+              },
+              {
+                "$place": "return 3.14159 * circle.radius * circle.⟦radius⟧;",
+                "path": "include/shapes.h",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 44
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 50
+                  }
+                }
+              },
+              {
+                "$place": "return 2 * shape.⟦radius⟧;",
+                "path": "include/shapes.h",
+                "range": {
+                  "start": {
+                    "line": 20,
+                    "character": 21
+                  },
+                  "end": {
+                    "line": 20,
+                    "character": 27
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "the targets index",
       "blocks": [
         {
           "label": "$ clice index",
           "value": {
-            "stdout": "Indexed 5 translation units in #s: 6 file shards (# KB), 9 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "stdout": "Indexed 5 translation units in #s: 6 file shards (# KB), 11 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
             "exit": 0
           }
         }
@@ -291,11 +359,11 @@
                   "path": "src/main.cpp",
                   "range": {
                     "start": {
-                      "line": 2,
+                      "line": 6,
                       "character": 11
                     },
                     "end": {
-                      "line": 2,
+                      "line": 6,
                       "character": 15
                     }
                   }

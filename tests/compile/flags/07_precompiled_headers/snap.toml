@@ -30,9 +30,17 @@ items = [
     { label = "area(const Circle &circle)", kind = "Function", detail = "double" },
 ]
 
+["an instantiation over the pch resolves in the header".radius]
+references = [
+    "double ⟦radius⟧;",
+    "return 3.14159 * circle.⟦radius⟧ * circle.radius;",
+    "return 3.14159 * circle.radius * circle.⟦radius⟧;",
+    "return 2 * shape.⟦radius⟧;",
+]
+
 ["the targets index"."$ clice index"]
 stdout = '''
-Indexed 5 translation units in #s: 6 file shards (# KB), 9 symbols.
+Indexed 5 translation units in #s: 6 file shards (# KB), 11 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0

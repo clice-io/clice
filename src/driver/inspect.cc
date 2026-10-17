@@ -2274,12 +2274,13 @@ std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnit& uni
         auto symbol = tu.find_symbol(hash);
         return symbol && symbol->kind == SymbolKind::Macro;
     });
-    if(!named) {
-        return to_raw_json(std::vector<index::Highlight>{});
-    }
     llvm::SmallVector<const index::InstantiationShard*, 1> instantiations;
     if(auto section = tu.instantiation_section_of(tu.path_count() - 1)) {
         instantiations.push_back(&tu.instantiation_shard(*section));
+        index::add_resolved(*instantiations.front(), offset, named);
+    }
+    if(!named) {
+        return to_raw_json(std::vector<index::Highlight>{});
     }
     return to_raw_json(index::highlights({&shard},
                                          instantiations,

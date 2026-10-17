@@ -15,3 +15,8 @@ inline double area(const Circle& circle) {
 inline double legacy(const Circle& circle) {
     return surface(circle);
 }
+
+template <class Shape>
+double twice(const Shape& shape) {
+    return 2 * shape.radius;
+}

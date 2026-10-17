@@ -203,6 +203,25 @@ ZEST_CASE(StandardLibraryUnwalked) {
     ZEXPECT(view.instantiation_shard(*library).resolutions().size() == 3u);
 }
 
+ZEST_CASE(ExplicitInstantiationsWalked) {
+    // An explicit instantiation declaration instantiates no initializer,
+    // the definition does.
+    llvm::StringRef code = R"(
+        struct A { static const int v = 1; };
+        template <typename T>
+        int value = T::v;
+        extern template int value<A>;
+    )";
+    build(code);
+    ZEXPECT(keys().empty());
+
+    build((code + "template int value<A>;").str());
+    ZEXPECT(keys().size() == 1u);
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"v", Reference, "v"},
+    });
+}
+
 ZEST_CASE(EachInstantiationItsResolution) {
     build(R"(
         struct A { void go(); };

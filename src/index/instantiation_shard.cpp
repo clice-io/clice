@@ -131,7 +131,8 @@ struct KeyTable {
     }
 };
 
-// Decoded symbol hashes, like producer units, key DenseMaps (reserved_key).
+// Decoded symbol hashes, like resolution hashes and producer units, key
+// DenseMaps (reserved_key).
 CheckResult symbols_ok(BlobView root) {
     auto hashes = to_array_ref(root[&InstantiationBlob::sym_hashes]);
     if(!std::ranges::is_sorted(hashes, std::less_equal{})) {
@@ -202,6 +203,9 @@ CheckResult resolutions_ok(BlobView root) {
     auto record_count = RecordTable::of(root).size();
     if(!std::ranges::is_sorted(table.hashes, std::less_equal{})) {
         return std::unexpected("resolutions are not strictly ascending");
+    }
+    if(llvm::any_of(table.hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
+        return std::unexpected("a reserved resolution hash");
     }
     if(table.ends.size() != table.hashes.size() ||
        !monotone_ends(table.ends, table.records.size()) ||
