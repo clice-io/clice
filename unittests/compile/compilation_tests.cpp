@@ -585,6 +585,48 @@ int bar() { return 3; }
     ZASSERT(unit->top_level_decls().size() >= 1U);
 }
 
+ZEST_CASE(PCHInstantiatesTemplates) {
+    add_file("twice.h", R"(
+#pragma once
+template <typename T>
+T twice(T value) {
+    return value + value;
+}
+
+inline int four() {
+    return twice(2);
+}
+)");
+
+    llvm::StringRef content = R"(
+#include "twice.h"
+
+int main() { return four(); }
+)";
+
+    add_main("main.cpp", content);
+    prepare();
+    params.kind = CompilationKind::Preamble;
+    auto pch_path = vfs::temp_file("clice-test", "pch");
+    ZASSERT(pch_path.operator bool());
+    params.output_file = *pch_path;
+    params.input.add_remapped_file(TestVFS::path("main.cpp"),
+                                   content,
+                                   compute_preamble_bound(content));
+
+    auto preamble_unit = clice::compile(std::move(params));
+    ZASSERT(preamble_unit->has_output());
+
+    auto& name = preamble_unit->context().Idents.get("twice");
+    auto* pattern =
+        llvm::dyn_cast<clang::FunctionTemplateDecl>(preamble_unit->tu()->lookup(&name).front());
+    ZASSERT(pattern);
+    ZASSERT(llvm::range_size(pattern->specializations()) == 1U);
+    ZEXPECT((*pattern->specializations().begin())->isDefined());
+
+    llvm::sys::fs::remove(*pch_path);
+}
+
 };  // ZEST_SUITE(Compiler)
 
 ZEST_SUITE(PreambleHash) {

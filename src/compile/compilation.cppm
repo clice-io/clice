@@ -625,10 +625,11 @@ private:
     CompilationUnit& unit;
 };
 
-/// How a PCH built by compile() checks its inputs when loaded: by size
-/// alone. Keys of cached PCHs include it, so a blob built under another
-/// rule is never reused.
-constexpr inline llvm::StringRef pch_input_check = "size";
+/// How compile() builds a PCH: its inputs are checked by size alone when
+/// it is loaded, and the templates its preamble uses are instantiated in
+/// it. Keys of cached PCHs include it, so a blob built under another rule
+/// is never reused.
+constexpr inline llvm::StringRef pch_build_rule = "size,instantiated";
 
 /// The messages of a finished compilation's error-level diagnostics, in
 /// the order clang raised them.

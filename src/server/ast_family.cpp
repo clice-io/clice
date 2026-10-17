@@ -306,7 +306,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     auto preamble_text = text.substr(0, bound);
     auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
     auto pch_key = cache_key({clang::getClangFullVersion(),
-                              pch_input_check,
+                              pch_build_rule,
                               project.build.active_configuration(),
                               directory,
                               path::parent_path(path),

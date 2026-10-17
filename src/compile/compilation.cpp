@@ -186,6 +186,11 @@ std::unique_ptr<clang::CompilerInvocation>
             // reader against offsets past the end of a shrunk file.
             front_opts.IncludeTimestamps = false;
             lang_opts.CompilingPCH = true;
+            // The function templates the preamble uses are instantiated once,
+            // here, instead of at the end of every parse loading the PCH. An
+            // instantiation then sees only what the preamble declares: an
+            // overload the main file declares later is not found by ADL.
+            lang_opts.PCHInstantiateTemplates = true;
             break;
         }
 
