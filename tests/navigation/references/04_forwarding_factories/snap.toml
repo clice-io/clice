@@ -1,3 +1,3 @@
 [answers.constructor]
 wrong = "make<Widget>(800, 600) runs the constructor, so it should be among the references (clangd#716, clangd#1872)"
-references = ["⟦Widget⟧(int w, int h);"]
+references = ["return T⟦(⟧static_cast<Args&&>(args)...);", "⟦Widget⟧(int w, int h);"]

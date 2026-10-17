@@ -163,6 +163,18 @@ public:
     /// hashes (TUIndexOptions::known_variants).
     std::vector<std::uint64_t> known_variants(Fid tu) const;
 
+    /// The instantiation keys stored for the same files but `tu` itself
+    /// whose walk still holds, sorted: what the worker indexing `tu` may
+    /// skip (TUIndexOptions::known_instantiations). A key holds while the
+    /// run that walked it is its unit's current one and that unit is fresh
+    /// — an edit of a file the instantiation read makes every unit
+    /// including it stale, and the first to rebuild walks the key again —
+    /// and never for `tu` itself, whose rebuild is what would confirm it.
+    /// The file `tu` names walks its own instantiations: an open buffer's
+    /// index stands in for the file's stored one. Valid within one
+    /// freshness round, like need_update.
+    std::vector<std::uint64_t> known_instantiations(Fid tu);
+
     /// Drop a TU's index wholesale: manifest and contributions now (the
     /// affected shards' live masks follow), persisted blobs at the next
     /// save. For invalidation content-based freshness cannot see — a
@@ -246,12 +258,13 @@ public:
     /// window where save() has snapshot-cleared the dirty set but its
     /// commit (and the last_save_shards update) is still in flight.
     std::size_t pending_shard_writes() const {
-        return dirty_shards.size() + saving_shards;
+        return dirty_shards.size() + dirty_instantiations.size() + saving_shards;
     }
 
-    /// How many shard blobs the last save() durably committed. A
-    /// steady-state save commits 0 — only variant-set changes rewrite a
-    /// blob — so the stats endpoint can pin full-rewrite regressions.
+    /// How many shard and instantiation blobs the last save() durably
+    /// committed. A steady-state save commits 0 — only variant-set and
+    /// resolution changes rewrite a blob — so the stats endpoint can pin
+    /// full-rewrite regressions.
     std::size_t last_save_shards() const {
         return saved_shards;
     }
@@ -260,7 +273,8 @@ public:
     /// save this means write failures whose retry never came — the one-shot
     /// `clice index` must not report a durable index from this.
     bool has_unsaved_state() const {
-        return !dirty_shards.empty() || !dirty_manifests.empty() || global_dirty || cdb_dirty ||
+        return !dirty_shards.empty() || !dirty_instantiations.empty() || !dirty_manifests.empty() ||
+               global_dirty || cdb_dirty ||
                serialized_records != project.build.recorded_generation() || !search_bytes.empty();
     }
 
@@ -313,7 +327,8 @@ private:
     /// live variants changed: searches scan its shard until the next build.
     void search_file_changed(Fid path_id);
 
-    /// Recompute a shard's live variants from the manifests.
+    /// Recompute a file's live variants and live resolutions from the
+    /// manifests.
     void refresh_live(Fid path_id);
 
     /// A rebuilt search blob no batch has committed yet.
@@ -322,7 +337,12 @@ private:
     /// Blobs mutated since the last save, plus whether the global blob
     /// (symbols, FileVersion table) changed.
     llvm::DenseSet<Fid> dirty_shards;
+    llvm::DenseSet<Fid> dirty_instantiations;
     llvm::DenseSet<Fid> dirty_manifests;
+
+    /// Instantiation shards retired since the last save, whose persisted
+    /// blobs it removes.
+    llvm::DenseSet<Fid> retired_instantiations;
     bool global_dirty = false;
 
     /// Blob removals discovered during load (stale manifests, orphan
@@ -389,6 +409,9 @@ private:
     /// match after a stat mismatch repairs the version's stat fast path in
     /// place for every consumer.
     bool file_version_stale(VersionID fv_id);
+
+    /// Retire a file's instantiation shard, now or at the next save.
+    void retire_instantiations(Fid path_id);
 
     /// Add every TU contributing to `path_id`'s shard to the report's
     /// reindex debt. Used when the file's resident index is lost while its

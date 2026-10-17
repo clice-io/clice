@@ -124,6 +124,16 @@ tests/config/loading/04_edited_file
 
 <div class="config-option">
 
+| 选项                              | 类型   | 默认值  |
+| --------------------------------- | ------ | ------- |
+| `standard_library_instantiations` | `bool` | `false` |
+
+为标准库自身的模板实例化和宏在库内部解析到的目标建立索引——`std::sort` 调用的比较器、`std::vector` 运行的析构函数——让查找引用和调用层次结构能到达这些位置。默认关闭：它们属于库的内部实现，遍历它们要耗费索引时间和空间。修改之后，只对此后索引的翻译单元生效。
+
+</div>
+
+<div class="config-option">
+
 | 选项       | 类型     | 默认值  |
 | ---------- | -------- | ------- |
 | `readonly` | `string` | `"off"` |

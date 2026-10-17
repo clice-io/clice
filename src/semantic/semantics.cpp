@@ -195,10 +195,21 @@ class SemanticsBuilder : public clang::RecursiveASTVisitor<SemanticsBuilder> {
 public:
     static void build(Semantics& semantics, CompilationUnit& unit, SemanticsOptions options) {
         SemanticsBuilder builder(semantics, unit, options);
-        builder.TraverseAST(unit.context());
+        if(!options.only_instantiations) {
+            builder.TraverseAST(unit.context());
+        }
+        if(options.all_files) {
+            builder.traverse_instantiations();
+        }
         assert(builder.stack.size() == 1 && "Unpaired push/pop?");
         builder.append_directives();
         builder.finalize();
+    }
+
+    /// RAV reaches into an implicitly instantiated variable template only
+    /// when asked to; the instantiation roots ask.
+    bool shouldVisitTemplateInstantiations() const {
+        return visiting_root != nullptr;
     }
 
     // We traverse all "well-behaved" nodes the same way:
@@ -242,6 +253,12 @@ public:
         }
 
         if(!X) {
+            return true;
+        }
+
+        // An instantiation inside another one — a member function of a
+        // local class inside its function — is a root of its own.
+        if(visiting_root && X != visiting_root && root_set.contains(X)) {
             return true;
         }
 
@@ -450,6 +467,25 @@ public:
 
 private:
     using Base = RecursiveASTVisitor<SemanticsBuilder>;
+
+    void traverse_instantiations() {
+        for(const auto* decl: unit.instantiations()) {
+            if(!llvm::isa<clang::CXXRecordDecl>(decl)) {
+                root_set.insert(decl);
+            }
+        }
+        // An implicit definition skips the head that flags its nodes.
+        instantiation_depth += 1;
+        for(const auto* decl: options.instantiations) {
+            visiting_root = decl;
+            auto begin = static_cast<std::uint32_t>(semantics.nodes.size());
+            TraverseDecl(const_cast<clang::Decl*>(decl));
+            semantics.roots.push_back(
+                {decl, begin, static_cast<std::uint32_t>(semantics.nodes.size())});
+        }
+        instantiation_depth -= 1;
+        visiting_root = nullptr;
+    }
 
     SemanticsBuilder(Semantics& semantics, CompilationUnit& unit, SemanticsOptions options) :
         semantics(semantics), unit(unit), options(options), SM(unit.context().getSourceManager()) {
@@ -904,6 +940,11 @@ private:
     /// Depth of enclosing instantiation subtrees; nodes pushed while it is
     /// non-zero are flagged in_instantiation.
     std::uint32_t instantiation_depth = 0;
+
+    /// The instantiation root traverse_instantiations is in, and every
+    /// root it traverses.
+    const clang::Decl* visiting_root = nullptr;
+    llvm::DenseSet<const clang::Decl*> root_set;
 
     /// The source ranges of the binary operators popped so far.
     llvm::DenseMap<const clang::Expr*, clang::SourceRange> operator_ranges;

@@ -2,7 +2,7 @@
 definition = ["struct ⟦Widget⟧ {};"]
 
 [answers.several_instantiations]
-definition = []
+definition = ["struct ⟦Widget⟧ {};", "struct ⟦Gadget⟧ {};"]
 
 [answers.deduced_return]
 definition = ["struct ⟦Widget⟧ {};"]

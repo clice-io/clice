@@ -19,6 +19,9 @@ inline std::string blob_key(llvm::StringRef name) {
 enum class IndexBlobKind : std::uint8_t {
     /// Per-file shard blobs (ShardBlob), keyed by a path hash.
     Shard,
+    /// Per-file instantiation blobs (InstantiationBlob), keyed like the
+    /// file's shard.
+    Instantiations,
     /// Per-TU manifests, keyed by a path hash.
     Manifest,
     /// The single global blob (FileVersion table + symbols), key "global".

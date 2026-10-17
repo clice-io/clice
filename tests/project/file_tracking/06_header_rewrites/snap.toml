@@ -1,26 +1,50 @@
 ["checkout under an open header".v1]
-alpha = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦alpha⟧() { return 1; }"]
+alpha = [
+    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
+    "#define TARGET ⟦alpha⟧",
+    "inline int ⟦alpha⟧() { return 1; }",
+]
 beta = ["inline int ⟦beta⟧() { return 2; }"]
 
 ["checkout under an open header".v2]
 alpha = ["inline int ⟦alpha⟧() { return 1; }"]
-beta = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦beta⟧() { return 2; }"]
+beta = [
+    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
+    "#define TARGET ⟦beta⟧",
+    "inline int ⟦beta⟧() { return 2; }",
+]
 
 ["rewrite before first tick reported".v1]
-alpha = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦alpha⟧() { return 1; }"]
+alpha = [
+    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
+    "#define TARGET ⟦alpha⟧",
+    "inline int ⟦alpha⟧() { return 1; }",
+]
 beta = ["inline int ⟦beta⟧() { return 2; }"]
 
 ["rewrite before first tick reported".v2]
 alpha = ["inline int ⟦alpha⟧() { return 1; }"]
-beta = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦beta⟧() { return 2; }"]
+beta = [
+    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
+    "#define TARGET ⟦beta⟧",
+    "inline int ⟦beta⟧() { return 2; }",
+]
 
 ["background ticks see a rewrite".v1]
-alpha = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦alpha⟧() { return 1; }"]
+alpha = [
+    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
+    "#define TARGET ⟦alpha⟧",
+    "inline int ⟦alpha⟧() { return 1; }",
+]
 beta = ["inline int ⟦beta⟧() { return 2; }"]
 
 ["background ticks see a rewrite".v2]
 alpha = ["inline int ⟦alpha⟧() { return 1; }"]
-beta = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦beta⟧() { return 2; }"]
+beta = [
+    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
+    "#define TARGET ⟦beta⟧",
+    "inline int ⟦beta⟧() { return 2; }",
+]
 
 ["deleted header reaches open includer".deleted]
 errors = [

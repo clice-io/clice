@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :index.instantiation_shard;
 import :server.live_sources;
 
 namespace clice {
@@ -26,13 +27,29 @@ index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kin
                                                     Fid file,
                                                     const Session& session,
                                                     const index::Shard& shard) const {
-    return {
+    index::IndexSource source{
         .kind = kind,
         .file = file,
         .path = project.file_table.display(file),
         .shard = &shard,
         .positions = session.positions(),
     };
+    // The buffer's own compile resolved what it instantiates and expands;
+    // what the other units do in the file serves while the buffer is the
+    // text they read.
+    if(kind == index::IndexSource::Kind::SessionShard) {
+        auto& state = *projections.projection(file)->index;
+        if(auto section = state.instantiation_section_of(state.path_count() - 1)) {
+            source.instantiations.push_back(&state.instantiation_shard(*section));
+        }
+    }
+    auto it = project.project_index.instantiations.find(file);
+    if(kind != index::IndexSource::Kind::PreambleShard &&
+       it != project.project_index.instantiations.end() &&
+       it->second.content_hash() == session.hash) {
+        source.instantiations.push_back(&it->second);
+    }
+    return source;
 }
 
 const index::Shard* ServerLiveSources::session_shard(Fid file, const Session& session) const {

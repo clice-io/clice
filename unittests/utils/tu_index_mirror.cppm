@@ -22,6 +22,12 @@ struct TUIndexMirror {
         std::vector<std::uint8_t> blob;
     };
 
+    struct InstantiationSection {
+        std::uint32_t path_id = 0;
+        std::vector<std::uint8_t> blob;
+        std::vector<std::uint64_t> skipped;
+    };
+
     std::uint32_t format_version = index::index_format_version;
     std::int64_t built_at = 0;
     std::vector<std::string> paths;
@@ -43,12 +49,16 @@ struct TUIndexMirror {
     std::vector<std::uint32_t> sym_files;
     std::vector<std::uint32_t> sym_reference_ends;
     std::vector<std::uint32_t> sym_references;
+    std::vector<std::uint32_t> sym_instantiation_ends;
+    std::vector<std::uint32_t> sym_instantiations;
     std::vector<Section> sections;
+    std::vector<InstantiationSection> instantiations;
 
     /// Append a symbol entry; the reader requires ascending hashes.
     void add_symbol(index::SymbolHash hash,
                     const index::SymbolIdentity& identity,
-                    llvm::ArrayRef<std::uint32_t> references = {}) {
+                    llvm::ArrayRef<std::uint32_t> references = {},
+                    llvm::ArrayRef<std::uint32_t> instantiation_files = {}) {
         sym_hashes.push_back(hash);
         sym_names += identity.name;
         sym_name_ends.push_back(static_cast<std::uint32_t>(sym_names.size()));
@@ -65,6 +75,8 @@ struct TUIndexMirror {
         sym_files.push_back(identity.file);
         sym_references.insert(sym_references.end(), references.begin(), references.end());
         sym_reference_ends.push_back(static_cast<std::uint32_t>(sym_references.size()));
+        llvm::append_range(sym_instantiations, instantiation_files);
+        sym_instantiation_ends.push_back(static_cast<std::uint32_t>(sym_instantiations.size()));
     }
 
     /// A loaded TU index's fields through the sections.
@@ -78,10 +90,16 @@ struct TUIndexMirror {
         for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
             mirror.nodes.push_back(view.node(i));
         }
+        llvm::DenseMap<index::SymbolHash, llvm::ArrayRef<std::uint32_t>> instantiation_files;
+        view.iterate_instantiation_files(
+            [&](index::SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
+                instantiation_files[hash] = files;
+                return true;
+            });
         view.iterate_symbols([&](index::SymbolHash hash,
                                  const index::SymbolIdentity& identity,
                                  llvm::ArrayRef<std::uint32_t> references) {
-            mirror.add_symbol(hash, identity, references);
+            mirror.add_symbol(hash, identity, references, instantiation_files.lookup(hash));
             return true;
         });
         for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
@@ -89,6 +107,15 @@ struct TUIndexMirror {
             mirror.sections.push_back({view.section_path(i),
                                        view.section_hash(i),
                                        std::vector<std::uint8_t>(blob.begin(), blob.end())});
+        }
+        for(std::uint32_t i = 0; i < view.instantiation_count(); i += 1) {
+            auto blob = view.instantiation_blob(i);
+            auto skipped = view.skipped_instantiations(i);
+            mirror.instantiations.push_back({
+                view.instantiation_path(i),
+                std::vector<std::uint8_t>(blob.begin(), blob.end()),
+                {skipped.begin(), skipped.end()}
+            });
         }
         return mirror;
     }

@@ -5,6 +5,7 @@ module;
 module clice:index.project_index;
 
 import :index.database;
+import :index.instantiation_shard;
 import :index.manifest;
 import :index.search_index;
 import :index.shard;
@@ -26,7 +27,9 @@ namespace clice::index {
 ///   the file's live variants — the mask Shard queries filter by — and its
 ///   emptiness is what retires a shard blob,
 /// - the per-file shard blobs (`shards`), fetched from the database on first
-///   use by a reader and kept whole by the writer,
+///   use by a reader and kept whole by the writer, and beside them the
+///   per-file instantiation blobs (`instantiations`), whose resolutions live
+///   while some manifest uses them,
 /// - the name search index and the entries it does not describe.
 ///
 /// The FileVersion table manifests reference lives in clice::FileTable,
@@ -99,6 +102,9 @@ struct ProjectIndex {
     /// The files referencing the symbol, as the file table's ids.
     void each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
 
+    /// The files whose instantiation shards name the symbol.
+    void each_instantiation_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
+
     /// Every symbol, base entries and changed entries alike, in no particular
     /// order; `visit` returns false to stop.
     void for_each_symbol(
@@ -162,6 +168,32 @@ struct ProjectIndex {
     /// importing it (TUManifest::imports).
     llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> importers;
 
+    /// Derived from `manifests`: file -> (instantiation resolution -> how many
+    /// TUs use it). Its resolutions are the file's live ones.
+    llvm::DenseMap<Fid, llvm::DenseMap<std::uint64_t, std::uint32_t>> instantiation_uses;
+
+    /// The live instantiation resolutions of `path_id`, ascending.
+    llvm::SmallVector<std::uint64_t> live_resolutions(Fid path_id) const;
+
+    /// What an instantiation shard names a TU by: the hash of its database
+    /// key.
+    std::uint64_t unit_of(const FileTable& files, Fid tu) const {
+        return llvm::xxh3_64bits(key_of(files, tu));
+    }
+
+    /// The TU with a manifest a unit hash names.
+    std::optional<Fid> unit(std::uint64_t hash) const {
+        auto it = units.find(hash);
+        return it != units.end() ? std::optional(it->second) : std::nullopt;
+    }
+
+    /// Whether the run that walked a key is its TU's current manifest: a
+    /// key outlives it only until the next compaction of its file.
+    bool current_run(const Producer& producer) const {
+        auto tu = unit(producer.unit);
+        return tu && manifests.find(*tu)->second.built_at == producer.run;
+    }
+
     /// The file table's id for a version id the loaded global blob
     /// carries; nullopt for any other.
     std::optional<VersionID> runtime_version(std::uint32_t persisted) const;
@@ -223,6 +255,13 @@ struct ProjectIndex {
     /// opened over. Null when the file has no index.
     const Shard* shard(Fid file) const;
 
+    /// Per-file instantiation blobs, held and fetched like `shards`. One
+    /// lives with its file's shard of the same content generation.
+    mutable std::map<Fid, InstantiationShard> instantiations;
+
+    /// The file's instantiation shard, like shard().
+    const InstantiationShard* instantiation_shard(Fid file) const;
+
     /// The name search index over the symbol table as last built, and the
     /// entries it does not describe — merged or changed since — which a
     /// search reads from the table instead until the writer folds them
@@ -256,6 +295,7 @@ struct ProjectIndex {
         std::size_t args = 0;
         std::size_t signatures = 0;
         std::size_t bitmaps = 0;
+        std::size_t instantiation_bitmaps = 0;
         /// Hash, parent, kind, flags and file per symbol.
         std::size_t fixed = 0;
         std::size_t contributors = 0;
@@ -282,6 +322,9 @@ private:
     /// The database shard() fetches from, when opened over one.
     BlobDatabase* db = nullptr;
     const FileTable* files = nullptr;
+
+    /// Derived from `manifests`: unit hash (unit_of) -> TU.
+    llvm::DenseMap<std::uint64_t, Fid> units;
 
     /// The persisted FileVersion id space: the global blob and the
     /// manifests name versions by ids private to this index's lineage,

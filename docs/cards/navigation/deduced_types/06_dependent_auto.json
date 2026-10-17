@@ -4,7 +4,7 @@
   "subtopic": "deduced_types",
   "title": "`auto` in templates",
   "summary": "Inside a template, an `auto` whose initializer depends on a template parameter reaches the type the initializer resolves to",
-  "prose": "A template parameter, whether of a function template or a class template,\nstands for its argument when the template is instantiated once, and for\nitself when it is instantiated with several types.",
+  "prose": "An `auto` whose type is a template parameter, of a function template or a\nclass template, reaches the parameter and its argument in each\ninstantiation.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -71,6 +71,20 @@
           "value": {
             "definition": [
               {
+                "$place": "template <typename ⟦T⟧> @-3",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 20
+                  }
+                }
+              },
+              {
                 "$place": "struct ⟦Widget⟧ {};",
                 "path": "main.cpp",
                 "range": {
@@ -105,6 +119,34 @@
                     "character": 20
                   }
                 }
+              },
+              {
+                "$place": "struct ⟦Widget⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 17,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 17,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "struct ⟦Gadget⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 19,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 19,
+                    "character": 13
+                  }
+                }
               }
             ]
           }
@@ -125,6 +167,20 @@
                   "end": {
                     "line": 19,
                     "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "template <typename ⟦T⟧> @-3",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 27,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 27,
+                    "character": 20
                   }
                 }
               }

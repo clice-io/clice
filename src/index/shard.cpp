@@ -6,6 +6,7 @@ module;
 
 module clice;
 
+import :index.columns;
 import :index.serialization;
 import :index.shard;
 import :semantic.token_class;
@@ -26,10 +27,6 @@ enum class MaskEncoding : std::uint8_t {
 namespace {
 
 using BlobView = kota::codec::fbs::table_view<ShardBlob>;
-
-/// Load-time verification outcome: the violated invariant, spelled for the
-/// log, or success.
-using CheckResult = std::expected<void, llvm::StringRef>;
 
 MaskEncoding encoding_of(std::size_t variant_count) {
     if(variant_count <= 1) {
@@ -65,86 +62,7 @@ MaskEncoding encoding_of(BlobView root) {
     return encoding_of(variant_count_of(root));
 }
 
-/// The no-range sentinel of pair relations: the default LocalSourceRange.
-bool is_no_range(std::uint32_t begin, std::uint32_t end) {
-    return LocalSourceRange{begin, end} == LocalSourceRange{};
-}
-
-/// The symbol-id column of one entry table in whichever width the blob
-/// stores; validation proves exactly one width is present.
-struct SymIds {
-    llvm::ArrayRef<std::uint8_t> ids8;
-    llvm::ArrayRef<std::uint16_t> ids16;
-    llvm::ArrayRef<std::uint32_t> ids32;
-
-    std::size_t size() const {
-        return ids8.size() + ids16.size() + ids32.size();
-    }
-
-    std::uint32_t operator[](std::size_t i) const {
-        if(!ids8.empty()) {
-            return ids8[i];
-        }
-        if(!ids16.empty()) {
-            return ids16[i];
-        }
-        return ids32[i];
-    }
-};
-
 }  // namespace
-
-/// One side of the blob's entry storage as contiguous column refs,
-/// encoding-agnostic: the range accessors read whichever range encoding the
-/// blob stores, the mask columns whichever mask encoding.
-struct RangeColumnsView {
-    llvm::ArrayRef<std::uint32_t> packed;
-    llvm::ArrayRef<std::uint32_t> begins;
-    llvm::ArrayRef<std::uint8_t> lengths;
-    llvm::ArrayRef<std::uint32_t> long_entries;
-    llvm::ArrayRef<std::uint32_t> long_ends;
-    llvm::ArrayRef<std::uint32_t> masks32;
-    llvm::ArrayRef<std::uint64_t> masks64;
-    llvm::ArrayRef<std::uint32_t> roaring_offsets;
-    llvm::ArrayRef<std::uint8_t> roaring;
-
-    std::size_t size() const {
-        return packed.empty() ? begins.size() : packed.size();
-    }
-
-    std::uint32_t begin_of(std::uint32_t entry) const {
-        if(packed.empty()) {
-            return begins[entry];
-        }
-        return packed[entry] == packed_sentinel ? ~std::uint32_t(0) : packed[entry] >> 8;
-    }
-
-    std::uint32_t end_of(std::uint32_t entry) const {
-        if(!packed.empty() && packed[entry] == packed_sentinel) {
-            return ~std::uint32_t(0);
-        }
-        auto length =
-            packed.empty() ? lengths[entry] : static_cast<std::uint8_t>(packed[entry] & 0xff);
-        if(length == length_escape) {
-            // validate() proves every sentinel owns exactly one escape
-            // entry, so the search always finds it.
-            auto it = std::ranges::lower_bound(long_entries, entry);
-            return long_ends[it - long_entries.begin()];
-        }
-        return begin_of(entry) + length;
-    }
-
-    LocalSourceRange range_of(std::uint32_t entry) const {
-        return {begin_of(entry), end_of(entry)};
-    }
-
-    /// The slice bounds were validated monotonic and in-bounds at load, and
-    /// every slice proven to decode, so this cannot fail.
-    Bitmap bitmap_of(std::uint32_t entry) const {
-        auto begin = roaring_offsets[entry];
-        return *view_bitmap(roaring.data() + begin, roaring_offsets[entry + 1] - begin);
-    }
-};
 
 /// The live mask against one side's mask columns, resolved once per query.
 struct LiveFilter {
@@ -178,23 +96,6 @@ struct LiveFilter {
 };
 
 namespace {
-
-RangeColumnsView columns_of(kota::codec::fbs::table_view<RangeColumns> view) {
-    if(!view.valid()) {
-        return {};
-    }
-    return {
-        to_array_ref(view[&RangeColumns::packed]),
-        to_array_ref(view[&RangeColumns::begins]),
-        to_array_ref(view[&RangeColumns::lengths]),
-        to_array_ref(view[&RangeColumns::long_entries]),
-        to_array_ref(view[&RangeColumns::long_ends]),
-        to_array_ref(view[&RangeColumns::masks32]),
-        to_array_ref(view[&RangeColumns::masks64]),
-        to_array_ref(view[&RangeColumns::roaring_offsets]),
-        to_array_ref(view[&RangeColumns::roaring]),
-    };
-}
 
 /// The occurrence table: each occurrence's range and the symbol it names.
 struct OccurrenceTable {
@@ -358,69 +259,6 @@ struct LocalTable {
     }
 };
 
-/// The escape table must pair one-to-one, in column order, with the sentinel
-/// lengths: readers trust the pairing, and a sentinel missing its entry
-/// (or a stray entry masking one elsewhere) can pass every range bound
-/// while serving a wrong value forever.
-bool escapes_ok(llvm::ArrayRef<std::uint8_t> lengths,
-                llvm::ArrayRef<std::uint32_t> escaped,
-                std::size_t escape_values) {
-    if(escape_values != escaped.size()) {
-        return false;
-    }
-    std::size_t cursor = 0;
-    for(std::uint32_t entry = 0; entry < lengths.size(); entry += 1) {
-        if(lengths[entry] != length_escape) {
-            continue;
-        }
-        if(cursor == escaped.size() || escaped[cursor] != entry) {
-            return false;
-        }
-        cursor += 1;
-    }
-    return cursor == escaped.size();
-}
-
-/// Sentinel lengths inside the packed column, extracted for escapes_ok.
-/// The no-range sentinel word shares the escape byte pattern but owns no
-/// escape entry — report it as a plain length.
-llvm::SmallVector<std::uint8_t> packed_lengths(llvm::ArrayRef<std::uint32_t> packed) {
-    llvm::SmallVector<std::uint8_t> lengths;
-    lengths.reserve(packed.size());
-    for(auto value: packed) {
-        lengths.push_back(value == packed_sentinel ? 0 : static_cast<std::uint8_t>(value & 0xff));
-    }
-    return lengths;
-}
-
-/// A sparse entry table: one value per listed entry, entries strictly
-/// ascending and inside the entry count.
-bool sparse_ok(llvm::ArrayRef<std::uint32_t> entries, std::size_t values, std::size_t count) {
-    return entries.size() == values && std::ranges::is_sorted(entries, std::less_equal{}) &&
-           (entries.empty() || entries.back() < count);
-}
-
-/// Exactly one id width, chosen by the symbol table's size, one id per entry
-/// and every id inside the table.
-CheckResult sym_ids_ok(const SymIds& ids, std::size_t count, std::size_t table_size) {
-    if(ids.size() != count) {
-        return std::unexpected("symbol id column does not match the row count");
-    }
-    bool width_ok = table_size <= 0x100     ? ids.ids16.empty() && ids.ids32.empty()
-                    : table_size <= 0x10000 ? ids.ids8.empty() && ids.ids32.empty()
-                                            : ids.ids8.empty() && ids.ids16.empty();
-    if(!width_ok) {
-        return std::unexpected("symbol id width is not the canonical one");
-    }
-    auto in_table = [&](auto column) {
-        return llvm::all_of(column, [&](std::uint32_t id) { return id < table_size; });
-    };
-    if(!in_table(ids.ids8) || !in_table(ids.ids16) || !in_table(ids.ids32)) {
-        return std::unexpected("symbol id past the symbol table");
-    }
-    return {};
-}
-
 // A variant is identified by its hash everywhere (set_live, the merge
 // keep filter), so stored hashes must be unique: occurrences and
 // relations owned only by a duplicated entry would serve and survive
@@ -531,26 +369,11 @@ CheckResult symbol_table_ok(BlobView root) {
     return {};
 }
 
-// Exactly one range encoding, chosen by the content size, with its escape
-// table paired on both sides.
 CheckResult range_encodings_ok(BlobView root) {
     auto content_size = root[&ShardBlob::content_size];
     for(auto columns: {columns_of(root[&ShardBlob::occs]), columns_of(root[&ShardBlob::rels])}) {
-        bool encoding_ok =
-            content_size <= packed_range_limit
-                ? columns.begins.empty() && columns.lengths.empty()
-                : columns.packed.empty() && columns.lengths.size() == columns.begins.size();
-        if(!encoding_ok) {
-            return std::unexpected("range tier is not the canonical one");
-        }
-        bool escaped_ok =
-            columns.packed.empty()
-                ? escapes_ok(columns.lengths, columns.long_entries, columns.long_ends.size())
-                : escapes_ok(packed_lengths(columns.packed),
-                             columns.long_entries,
-                             columns.long_ends.size());
-        if(!escaped_ok) {
-            return std::unexpected("range escape table does not pair with its rows");
+        if(auto ok = range_encoding_ok(columns, content_size); !ok) {
+            return ok;
         }
     }
     return {};
@@ -1468,54 +1291,30 @@ void collect_locals(BlobView root, llvm::DenseMap<SymbolHash, LocalSymbol>& loca
 /// Appends one side's entries in the encodings chosen for the whole blob:
 /// the range encoding by content size, the mask encoding by variant count.
 struct SideWriter {
-    RangeColumns& side;
-    bool narrow;
+    RangeWriter ranges;
     MaskEncoding encoding;
-    std::uint32_t count = 0;
 
     template <typename MaskT>
     void add(LocalSourceRange range, const MaskT& mask) {
-        add_range(range);
+        ranges.add(range);
         add_mask(mask);
-        count += 1;
+    }
+
+    std::uint32_t count() const {
+        return ranges.count;
     }
 
     /// The roaring encoding's offset column ends with the size of the slices.
     void finish() {
         if(encoding == MaskEncoding::Roaring) {
+            auto& side = ranges.side;
             side.roaring_offsets.push_back(static_cast<std::uint32_t>(side.roaring.size()));
-        }
-    }
-
-    void add_range(LocalSourceRange range) {
-        if(is_no_range(range.begin, range.end)) {
-            // The no-range sentinel of pair relations; the wide columns hold
-            // it natively, the packed column spells it as the reserved word.
-            if(narrow) {
-                side.packed.push_back(packed_sentinel);
-            } else {
-                side.begins.push_back(range.begin);
-                side.lengths.push_back(0);
-            }
-            return;
-        }
-        auto length = range.end - range.begin;
-        std::uint8_t stored =
-            length >= length_escape ? length_escape : static_cast<std::uint8_t>(length);
-        if(stored == length_escape) {
-            side.long_entries.push_back(count);
-            side.long_ends.push_back(range.end);
-        }
-        if(narrow) {
-            side.packed.push_back(pack_range(range.begin, stored));
-        } else {
-            side.begins.push_back(range.begin);
-            side.lengths.push_back(stored);
         }
     }
 
     template <typename MaskT>
     void add_mask(const MaskT& mask) {
+        auto& side = ranges.side;
         switch(encoding) {
             case MaskEncoding::Single: {
                 break;
@@ -1542,29 +1341,6 @@ struct SideWriter {
                 }
                 break;
             }
-        }
-    }
-};
-
-/// Appends symbol ids in the width chosen for the whole blob from the
-/// symbol table's size.
-struct SymIdWriter {
-    enum class Width : std::uint8_t { U8, U16, U32 };
-
-    Width width;
-    std::vector<std::uint8_t>& ids8;
-    std::vector<std::uint16_t>& ids16;
-    std::vector<std::uint32_t>& ids32;
-
-    static Width width_for(std::size_t table_size) {
-        return table_size <= 0x100 ? Width::U8 : table_size <= 0x10000 ? Width::U16 : Width::U32;
-    }
-
-    void add(std::uint32_t id) {
-        switch(width) {
-            case Width::U8: ids8.push_back(static_cast<std::uint8_t>(id)); break;
-            case Width::U16: ids16.push_back(static_cast<std::uint16_t>(id)); break;
-            case Width::U32: ids32.push_back(id); break;
         }
     }
 };
@@ -1624,7 +1400,10 @@ void emit_blob(const MergedEntries<MaskT>& merged,
     bool narrow = content.size <= packed_range_limit;
     auto width = SymIdWriter::width_for(blob.sym_hashes.size());
 
-    SideWriter occs{blob.occs, narrow, encoding};
+    SideWriter occs{
+        .ranges = {.side = blob.occs, .narrow = narrow},
+        .encoding = encoding,
+    };
     SymIdWriter occ_syms{width, blob.occ_syms8, blob.occ_syms16, blob.occ_syms32};
     for(auto& entry: merged.occurrences) {
         occs.add(entry.occurrence.range, entry.mask);
@@ -1634,12 +1413,15 @@ void emit_blob(const MergedEntries<MaskT>& merged,
 
     // Relation groups follow symbol-table order; a symbol with occurrences
     // only gets an empty slice.
-    SideWriter rels{blob.rels, narrow, encoding};
+    SideWriter rels{
+        .ranges = {.side = blob.rels, .narrow = narrow},
+        .encoding = encoding,
+    };
     SymIdWriter rel_syms{width, blob.rel_sym8, blob.rel_sym16, blob.rel_sym32};
     blob.sym_rel_offsets.reserve(blob.sym_hashes.size() + 1);
     auto group = merged.relations.begin();
     for(auto hash: blob.sym_hashes) {
-        blob.sym_rel_offsets.push_back(rels.count);
+        blob.sym_rel_offsets.push_back(rels.count());
         if(group == merged.relations.end() || group->symbol != hash) {
             continue;
         }
@@ -1649,11 +1431,11 @@ void emit_blob(const MergedEntries<MaskT>& merged,
             if(relation.target_symbol != 0) {
                 if(RelationKind(relation.kind).carries_extent()) {
                     auto range = std::bit_cast<LocalSourceRange>(relation.target_symbol);
-                    blob.rel_def_entries.push_back(rels.count);
+                    blob.rel_def_entries.push_back(rels.count());
                     blob.rel_def_begins.push_back(range.begin);
                     blob.rel_def_ends.push_back(range.end);
                 } else {
-                    blob.rel_sym_entries.push_back(rels.count);
+                    blob.rel_sym_entries.push_back(rels.count());
                     rel_syms.add(sym_id(relation.target_symbol));
                 }
             }
@@ -1661,7 +1443,7 @@ void emit_blob(const MergedEntries<MaskT>& merged,
         }
         group += 1;
     }
-    blob.sym_rel_offsets.push_back(rels.count);
+    blob.sym_rel_offsets.push_back(rels.count());
     rels.finish();
 
     serialize_blob(blob, os);

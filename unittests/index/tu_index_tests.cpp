@@ -2161,18 +2161,10 @@ ZEST_CASE(ClassParametersStayUnbound) {
     )");
     ZASSERT(compile());
 
-    // The only instantiation binds the class's parameter in an open file's
-    // index, where `auto` stands for Widget; a stored index leaves it
-    // unbound, as every unit shares it, and `auto` stands for `T`.
+    // Every unit shares a template's entries, so its parameter stays
+    // unbound there, an open file's index included: `auto` stands for `T`.
+    // What an instantiation deduces is its own record.
     decode_index(index::build_tu_index(*unit, {.all_files = true}));
-    ZEXPECT(spelled_in("local") == std::vector<Spelled>{
-                                       {"auto", SymbolKind::Struct,   {RelationKind::Deduced}   },
-                                       {"copy", SymbolKind::Variable, {RelationKind::Definition}},
-                                       {"T",    SymbolKind::Type,     {RelationKind::Reference} },
-    });
-    kind = CompilationKind::Whole;
-    ZASSERT(compile());
-    decode_index(index::build_tu_index(*unit));
     ZEXPECT(spelled_in("local") == std::vector<Spelled>{
                                        {"auto", SymbolKind::Type,     {RelationKind::Deduced}   },
                                        {"copy", SymbolKind::Variable, {RelationKind::Definition}},
@@ -2217,11 +2209,11 @@ ZEST_CASE(DeducedKeywords) {
     ZEXPECT(spelled_in("self") == std::vector<Spelled>{
                                       {"size", SymbolKind::Field, {RelationKind::Reference}},
     });
-    // The keyword stands for the type the only call passes; it names no
-    // template parameter of its own.
+    // The keyword names no template parameter of its own, and the type a
+    // call passes is that instantiation's, recorded apart from the written
+    // code (InstantiationIndex.AbbreviatedParameterDeduced).
     ZEXPECT(spelled_in("parameter") ==
             std::vector<Spelled>{
-                {"auto",  SymbolKind::Struct,    {RelationKind::Deduced}   },
                 {"value", SymbolKind::Parameter, {RelationKind::Definition}},
     });
     // A library's internal alias gives way to the type it names.

@@ -14,6 +14,7 @@
                 "cache_dir": "",
                 "logging_dir": "",
                 "enable_indexing": true,
+                "standard_library_instantiations": false,
                 "readonly": "off",
                 "idle_timeout_ms": 3000,
                 "test_hooks": false,
@@ -146,6 +147,11 @@
                     "type": "boolean",
                     "description": "Build the background index that serves cross-TU features (find references, workspace symbols, ...).",
                     "default": true
+                },
+                "standard_library_instantiations": {
+                    "type": "boolean",
+                    "description": "Index what the standard library's own template instantiations and macros resolve inside the library — the comparator `std::sort` calls, the destructor `std::vector` runs — so references and the call hierarchy reach those places. Off by default: they are library internals, and walking them costs indexing time and space. Applies to the units indexed after a change.",
+                    "default": false
                 },
                 "readonly": {
                     "type": "string",

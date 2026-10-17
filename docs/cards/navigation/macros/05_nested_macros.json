@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "macros",
   "title": "Nested macro references",
-  "summary": "Find references on a macro does not include the mentions of it written inside the bodies of other macro definitions",
-  "prose": "",
-  "status": "unsupported",
+  "summary": "Find references on a macro includes its mentions in the bodies of other macros that expand somewhere",
+  "prose": "A body that never expands names nothing: what its names mean is up to each\nexpansion.",
+  "status": "supported",
   "issues": [
     "clangd#346"
   ],
@@ -31,7 +31,6 @@
           "label": "width",
           "marker": "width",
           "value": {
-            "wrong": "the two WIDTH in the body of AREA should be among the references (clangd#346)",
             "definition": [
               {
                 "$place": "#define ⟦WIDTH⟧ 100",
@@ -60,6 +59,34 @@
                   "end": {
                     "line": 0,
                     "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "#define AREA (⟦WIDTH⟧ * WIDTH)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 19
+                  }
+                }
+              },
+              {
+                "$place": "#define AREA (WIDTH * ⟦WIDTH⟧)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 22
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 27
                   }
                 }
               }

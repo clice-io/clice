@@ -67,6 +67,7 @@ TUIndex        Raw artifact from one compilation, discarded after merging
     ↓ merge
 ProjectIndex   Global directory: external symbols + which TUs contributed which files
 Shard          Per-file variant storage (exact positions and relations), loaded on demand
+Instantiations Per-file storage of what instantiations and macro expansions resolve
     ↑ overlay
 Live rows      The open buffer's latest compile results, owned by its published projection
 ```
@@ -76,6 +77,8 @@ Live rows      The open buffer's latest compile results, owned by its published 
 **ProjectIndex** is the global directory. It has two jobs: the global symbol table for **externally visible** symbols (external or module linkage), and the record of which translation units contributed which files (the basis for variant liveness and reconciliation when TUs disappear). That record is persisted with the table as a reverse include graph, so a reader that loads no manifest still finds the translation units of a file. A symbol table row holds what a symbol is, not where it is: its own name (`bar`, never `Foo::bar`), the entity of its parent — the enclosing namespace, class, enum or function, from which the qualified name is spelled — the arguments of a specialization, a function's signature (its parameters and qualifiers as every feature shows them, which tell overloads apart), the kind, a set of flags (whether some unit defines it, whether it is a template or a specialization, deprecated, an inline namespace, unnamed, spelled by a macro, declared in a system header, offered by unqualified completion, and the form of its name), the file holding its canonical declaration, and the bitmap of files referencing it, compressed as a Roaring Bitmap. Flags are the union over the translation units that saw the symbol. The rows carry no positions — the table tells you which files a symbol exists in; the positions live in the corresponding shard. This separation keeps `ProjectIndex` compact enough to reside in memory at all times.
 
 **Shard** is the per-file storage unit and the layer that actually serves queries. Each compilation context that preprocesses the file differently contributes one **variant** — a self-contained, canonically encoded blob of the file's rows. Names that are local to the file (internal linkage, function locals, anonymous-namespace members) live in the shard's own local-name table; only external names enter the `ProjectIndex`. A function local never leaves its file; an internal-linkage name a translation unit uses from several files is listed, with those files, in that unit's manifest. Shards are loaded on demand — most are never touched in a session.
+
+**Instantiations** of a file hold what the template instantiations and macro expansions of every indexed translation unit resolve in that file's text and its shard leaves open (see below). They live beside the shard, at its content generation.
 
 **Live rows** for an open file come from its most recent in-memory compilation and are owned by the document's published projection. They are never written to global state — they only overlay queries, so results reflect the buffer the user is actually editing.
 
@@ -105,6 +108,20 @@ In practice the bookkeeping-only path covers the overwhelming majority of merges
 
 Which variants are **live** is controlled by variant masks derived from the contribution records: when a translation unit is removed or re-indexed, the variants it no longer vouches for drop out of the live set and are filtered from queries.
 
+### Instantiations and Macro Expansions
+
+A template's own rows say what its body names before any argument is known: `value.print()` in `Box<T>::show` names no `print`, since `value` has type `T`. What it names depends on the instantiation — `A::print` in `Box<A>`, `B::print` in `Box<B>` — and every unit that includes `box.h` shares one shard of it, so writing either answer into the shard would make the header vary with the unit that indexed it. A macro body is the same: `#define AREA (WIDTH * WIDTH)` names whatever `WIDTH` is where `AREA` expands.
+
+Each instantiated definition (a function body, a variable's initializer, a class's bases) and each macro expansion is therefore projected on its own, at the place of the template's or the `#define`'s text, and keeps only what the written rows there do not already say: the calls and member accesses of dependent code, the declarations an `auto` deduces, the bases a dependent base specifier names, the names a macro body spells. Those records form a **resolution**, identified by the hash of the file's content generation and the records, and the resolutions of a file are stored in its **instantiation shard**, where a record several resolutions hold is stored once. A record is a range, a kind (reference, deduced type, implied target, call, base, the type an `auto` declaration takes), its target, for a call, a base or a type the function, class or declaration it belongs to, and whether a macro expansion resolves it — one record answers the cursor, references and call hierarchy alike.
+
+The standard library's own instantiations and macros — templates of namespace `std` and macros of reserved names, in system headers — are not walked unless `project.standard_library_instantiations` asks for them: what `std::sort` resolves inside the library is its internals, and the library holds most of a unit's instantiations.
+
+A resolution lives while some manifest uses it: a manifest lists, per file, the resolutions of its unit's instantiations and expansions there. Resolutions nobody uses any more stop serving at once and are erased at the next save, as dead variants are. The instantiation shard lives with its file's shard of the same content generation and is retired with it.
+
+An instantiated function or variable is keyed by its declaration's entity — the template and its canonical arguments. Walking the bodies of every instantiation would double the time of indexing, so a file's instantiation shard also keeps the keys walked there, each with its resolution (or none, when it resolves nothing in the file) and the run of the unit that walked it. With each task the main process sends the keys of the files the unit is expected to include whose walk still holds: the run that walked the key is its unit's current one and that unit is fresh. The worker does not walk an instantiation whose key is among them and names the key instead, and the main process records the stored resolution for the unit. A file the instantiation read that changes makes every unit including it stale, the walker included, so its keys are offered again only once a unit rebuilds and walks them anew. A unit's own keys are never offered to itself: its rebuild is what confirms them. Macro expansions are not keyed: one body resolves differently from one expansion to the next, and projecting them costs little. Nor are a class's dependent bases, which cost less to compute than to look up, or an instantiation whose body includes another file (`#include "Instruction.def"` inside a `switch`), since a skipped key stands for its home file's records alone.
+
+External symbols list the files whose instantiation shards name them in a bitmap of their own, beside the reference files. References, call hierarchy, type hierarchy and go-to-definition read it; rename and the name search do not: a dependent name or a macro body's name refers to something else in another instantiation or expansion, so a rename leaves it among the spellings it does not confirm. The command line marks a reference or a call such records make with its `via`, `instantiation` or `expansion`. Records answer in the coordinates of their file's shard, so they serve exactly when the shard does; an open file's compile resolves its own instantiations, in the buffer's coordinates, and skips the stored keys of the files it includes, never those of its own file, which its index stands in for.
+
 ### Zero-Copy Storage
 
 All index blobs — shards, manifests, the serialized `ProjectIndex` — live in a single embedded LMDB database. Blob encodings are canonical and self-describing; on load a blob is validated once and then used directly as a memory-mapped, zero-copy view. There is no deserialize-into-structs step on the read path.
@@ -122,11 +139,11 @@ Context information — which files a translation unit saw and through which inc
 Using "find references" as an example to illustrate the full cross-file query flow:
 
 1. In the current file, use the cursor's byte offset to binary-search the `Occurrence` rows and obtain the `SymbolHash` of the symbol under the cursor
-2. Find the files holding the symbol's rows. For an external symbol, its reference-file bitmap in `ProjectIndex` lists them. A symbol below that scope starts from the file the cursor stands in: a function local is that file's alone, and an internal-linkage symbol also reaches the files the manifests of that file's translation units list for it, and from each of those the same way — a `static` in a header is found in every unit that includes the header
+2. Find the files holding the symbol's rows. For an external symbol, its reference-file bitmap in `ProjectIndex` lists them, and its instantiation-file bitmap the files whose instantiations name it. A symbol below that scope starts from the file the cursor stands in: a function local is that file's alone, and an internal-linkage symbol also reaches the files the manifests of that file's translation units list for it, and from each of those the same way — a `static` in a header is found in every unit that includes the header
 3. Query each file in the list:
    - If the file is open, its live rows (from the latest in-memory compile) answer, provided they are current for the buffer
    - Disk data for an **open** file is consulted only when the buffer content is byte-identical to the content the shard indexed — an edited buffer never serves stale disk positions
-   - Files that are not open answer from their shard's live variants
+   - Files that are not open answer from their shard's live variants and their instantiation shard's live resolutions
 4. Aggregate all `Relation` rows found across files (filtering by the target `RelationKind`), convert to LSP positions, and return to the client
 
 For open files whose preamble is compiled into a PCH, the paired preamble-state blob (see below) supplies the rows the PCH swallowed.
@@ -186,6 +203,10 @@ Background indexing scheduling must balance index timeliness against interferenc
   They have opposite shapes. Index blobs are numerous (one shard per project file), individually small, and written in bursts during background indexing — exactly the profile where a single LMDB database wins: batched atomic commits, no per-file dirent pressure at scale, and memory-mapped reads that preserve the zero-copy path. PCH and PCM files are the opposite: few, large (hundreds of MB), memory-mapped directly by Clang itself, with a trivial create/read/evict lifecycle — the filesystem plus the artifact store's atomic-rename commits handles them well, and Clang could not consume them out of a database anyway. On filesystems where the database cannot operate safely (network mounts), index persistence is disabled rather than degraded.
 
 ## Known Limitations
+
+- **What an instantiation resolves follows the unit that walked it.** A unit skips an instantiation another fresh unit walked, on the assumption that one instantiation means the same in every unit (the one-definition rule). A program that breaks it — an overload found by argument-dependent lookup in a header only some units include — answers, in a unit that skipped the instantiation, as the unit that walked it.
+
+- **Instantiations do not name their arguments.** The index answers what an instantiation's dependent code resolves to, not which arguments it was instantiated with, nor where: implicit instantiation points vary from unit to unit.
 
 - ~~**PCH-induced index split**~~ (resolved). When using PCH optimization, a file's compilation is split into two phases: the preamble is compiled into the PCH, then the PCH compiles the rest of the file. The PCH swallows everything before the preamble bound — the main file's compilation cannot see the headers' contents or the preamble region's own directives, and an open buffer's preamble may describe a compilation context that no disk translation unit was ever indexed with.
 

@@ -1,0 +1,409 @@
+{
+  "id": "navigation/projects/09_instantiated_templates",
+  "topic": "navigation",
+  "subtopic": "projects",
+  "title": "Uses inside templates and macros",
+  "summary": "Find references and the call hierarchy include what a template's dependent code and a macro's body resolve to wherever a source instantiates or expands them, open or not",
+  "prose": "`item.open()` in `measure` names `Box::open` only once `measure` is\ninstantiated with `Box`, and `reset()` in the body of `RESET_ALL` names the\nfunction only where the macro expands: here both happen in a source that is\nnot open, and still answer while the headers are open.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "box.h",
+      "text": "#pragma once\n\nstruct Box {\n    void open();\n};\n\nvoid reset();\n\n#define RESET_ALL reset()\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"box.h\"\n\nvoid Box::open() {}\n\nvoid reset() {}\n",
+      "markers": [
+        {
+          "name": "open",
+          "begin": 28,
+          "end": 28,
+          "range": false
+        },
+        {
+          "name": "reset",
+          "begin": 44,
+          "end": 44,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "measure.h",
+      "text": "#pragma once\n\ntemplate <typename T>\nvoid measure(T& item) {\n    item.open();\n}\n",
+      "markers": [
+        {
+          "name": "measure",
+          "begin": 41,
+          "end": 41,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "use.cpp",
+      "text": "#include \"box.h\"\n#include \"measure.h\"\n\nvoid use(Box& box) {\n    measure(box);\n    RESET_ALL;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "closed source",
+      "blocks": [
+        {
+          "label": "open",
+          "marker": "open",
+          "value": {
+            "references": [
+              {
+                "$place": "box.h │ void ⟦open⟧();",
+                "path": "box.h",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "void Box::⟦open⟧() {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 14
+                  }
+                }
+              },
+              {
+                "$place": "measure.h │ item.⟦open⟧();",
+                "path": "measure.h",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 13
+                  }
+                }
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "measure",
+                "kind": "Function",
+                "at": {
+                  "$place": "measure.h │ void ⟦measure⟧(T& item) {",
+                  "path": "measure.h",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 12
+                    }
+                  }
+                },
+                "detail": "measure(T &item)",
+                "sites": [
+                  {
+                    "$place": "measure.h │ item.⟦open⟧();",
+                    "path": "measure.h",
+                    "range": {
+                      "start": {
+                        "line": 4,
+                        "character": 9
+                      },
+                      "end": {
+                        "line": 4,
+                        "character": 13
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "reset",
+          "marker": "reset",
+          "value": {
+            "references": [
+              {
+                "$place": "box.h │ void ⟦reset⟧();",
+                "path": "box.h",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 10
+                  }
+                }
+              },
+              {
+                "$place": "box.h │ #define RESET_ALL ⟦reset⟧()",
+                "path": "box.h",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 23
+                  }
+                }
+              },
+              {
+                "$place": "void ⟦reset⟧() {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 10
+                  }
+                }
+              },
+              {
+                "$place": "use.cpp │ ⟦RESET_ALL⟧;",
+                "path": "use.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 13
+                  }
+                }
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "use",
+                "kind": "Function",
+                "at": {
+                  "$place": "use.cpp │ void ⟦use⟧(Box& box) {",
+                  "path": "use.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 8
+                    }
+                  }
+                },
+                "detail": "use(Box &box)",
+                "sites": [
+                  {
+                    "$place": "use.cpp │ ⟦RESET_ALL⟧;",
+                    "path": "use.cpp",
+                    "range": {
+                      "start": {
+                        "line": 5,
+                        "character": 4
+                      },
+                      "end": {
+                        "line": 5,
+                        "character": 13
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "measure",
+          "marker": "measure",
+          "value": {
+            "outgoing_calls": [
+              {
+                "name": "open",
+                "kind": "Method",
+                "at": {
+                  "$place": "main.cpp │ void Box::⟦open⟧() {}",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 14
+                    }
+                  }
+                },
+                "detail": "Box::open()",
+                "sites": [
+                  {
+                    "$place": "item.⟦open⟧();",
+                    "path": "measure.h",
+                    "range": {
+                      "start": {
+                        "line": 4,
+                        "character": 9
+                      },
+                      "end": {
+                        "line": 4,
+                        "character": 13
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "open header",
+      "blocks": [
+        {
+          "label": "open",
+          "marker": "open",
+          "value": {
+            "references": [
+              {
+                "$place": "box.h │ void ⟦open⟧();",
+                "path": "box.h",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "void Box::⟦open⟧() {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 14
+                  }
+                }
+              },
+              {
+                "$place": "measure.h │ item.⟦open⟧();",
+                "path": "measure.h",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "reset",
+          "marker": "reset",
+          "value": {
+            "references": [
+              {
+                "$place": "box.h │ void ⟦reset⟧();",
+                "path": "box.h",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 10
+                  }
+                }
+              },
+              {
+                "$place": "box.h │ #define RESET_ALL ⟦reset⟧()",
+                "path": "box.h",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 23
+                  }
+                }
+              },
+              {
+                "$place": "void ⟦reset⟧() {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 10
+                  }
+                }
+              },
+              {
+                "$place": "use.cpp │ ⟦RESET_ALL⟧;",
+                "path": "use.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

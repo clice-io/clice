@@ -152,7 +152,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     auto imports = project.module_inputs(deps.resolved);
     if(plan.index && !send_in_full.erase(path_id)) {
         params.known_variants = store.known_variants(path_id);
+        params.known_instantiations = store.known_instantiations(path_id);
     }
+    params.standard_library_instantiations = project.config.project.standard_library_instantiations;
 
     std::optional<CacheStore::PendingEntry> transfer;
     if(plan.index && project.store) {

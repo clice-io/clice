@@ -3,14 +3,14 @@
   "topic": "rename",
   "subtopic": "refusals",
   "title": "Names a rename refuses",
-  "summary": "Pressing rename on a macro, an operator or a symbol of the system headers says why it cannot be renamed; off any name, nothing happens",
+  "summary": "Pressing rename on a macro, an operator, a symbol of the system headers or a name only instantiations resolve says why it cannot be renamed; off any name, nothing happens",
   "prose": "",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "#include <cstdio>\n\n#define TWICE(v) ((v) * 2)\n\nstruct Point {\n    int x;\n    Point operator+(const Point& other) const { return {x + other.x}; }\n};\n\nint main() {\n    Point p{1};\n    std::printf(\"%d\", (p + p).x);\n    return TWICE(p.x);\n}\n",
+      "text": "#include <cstdio>\n\n#define TWICE(v) ((v) * 2)\n\nstruct Point {\n    int x;\n    Point operator+(const Point& other) const { return {x + other.x}; }\n};\n\ntemplate <typename T>\nint width(const T& shape) {\n    return shape.x;\n}\n\nint main() {\n    Point p{1};\n    std::printf(\"%d\", (p + p).x);\n    return TWICE(p.x) + width(p);\n}\n",
       "markers": [
         {
           "name": "include",
@@ -31,15 +31,21 @@
           "range": false
         },
         {
+          "name": "dependent",
+          "begin": 216,
+          "end": 216,
+          "range": false
+        },
+        {
           "name": "system",
-          "begin": 187,
-          "end": 187,
+          "begin": 260,
+          "end": 260,
           "range": false
         },
         {
           "name": "macro_use",
-          "begin": 223,
-          "end": 223,
+          "begin": 296,
+          "end": 296,
           "range": false
         }
       ]
@@ -71,6 +77,15 @@
           "value": {
             "prepare_rename": {
               "error": "`operator+` is named by the language, not by an identifier"
+            }
+          }
+        },
+        {
+          "label": "dependent",
+          "marker": "dependent",
+          "value": {
+            "prepare_rename": {
+              "error": "what the name here refers to differs from one instantiation or macro expansion to the next; rename from a declaration"
             }
           }
         },

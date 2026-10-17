@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :index.database;
+import :index.instantiation_shard;
 import :index.manifest;
 import :index.query;
 import :index.serialization;
@@ -515,6 +516,72 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         section_contributions.emplace_back(local_id, blob_hash);
     }
 
+    // Instantiations: a skipped key stands for the resolution its file stores
+    // for it, a walked one merges in. Staged like the shards.
+    index::Producer producer{
+        .unit = project_index.unit_of(project.file_table, tu_path_id),
+        .run = static_cast<std::uint64_t>(view.built_at()),
+    };
+    llvm::SmallVector<std::pair<Fid, index::InstantiationShard>> instantiation_replacements;
+    llvm::DenseMap<Fid, std::pair<std::uint32_t, std::vector<std::uint64_t>>> instantiation_uses;
+    for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
+        auto local_id = view.instantiation_path(section);
+        auto global_id = file_ids_map[local_id];
+        auto generation =
+            consumed_hashes[local_id] != 0 ? consumed_hashes[local_id] : view.path_hash(local_id);
+        auto stored_it = project_index.instantiations.find(global_id);
+        const index::InstantiationShard* stored =
+            stored_it != project_index.instantiations.end() &&
+                    stored_it->second.content_hash() == generation
+                ? &stored_it->second
+                : nullptr;
+
+        auto& [use_id, used] = instantiation_uses[global_id];
+        use_id = local_id;
+        for(auto key: view.skipped_instantiations(section)) {
+            auto found = stored ? stored->find_key(key) : std::nullopt;
+            if(!found) {
+                LOG_INFO("Rerun {}: {} stores no instantiation it skipped",
+                         main_tu_path,
+                         project.file_table.resolve(global_id));
+                return std::unexpected(MergeError::Outdated);
+            }
+            if(found->resolution) {
+                used.push_back(*found->resolution);
+            }
+        }
+
+        auto bytes = view.instantiation_blob(section);
+        if(bytes.empty()) {
+            continue;
+        }
+        auto fresh = index::InstantiationShard::from_bytes(bytes);
+        if(!fresh.loaded()) {
+            LOG_WARN("Reject merge for {}: instantiations for {} do not form a valid blob",
+                     main_tu_path,
+                     project.file_table.resolve(global_id));
+            return std::unexpected(MergeError::Invalid);
+        }
+        if(!record_consumed(local_id, fresh.content_hash())) {
+            return std::unexpected(MergeError::Invalid);
+        }
+        llvm::append_range(used, fresh.resolutions());
+        const static index::InstantiationShard none;
+        std::string merged;
+        llvm::raw_string_ostream os(merged);
+        index::merge_instantiations(
+            stored ? *stored : none,
+            stored ? stored->resolutions() : llvm::ArrayRef<std::uint64_t>(),
+            [&](const index::Producer& run) { return project_index.current_run(run); },
+            &fresh,
+            producer,
+            os);
+        auto replacement =
+            index::InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(merged));
+        assert(replacement.loaded() && "a freshly merged instantiation blob must verify");
+        instantiation_replacements.emplace_back(global_id, std::move(replacement));
+    }
+
     // The manifest's contributions follow section_contributions' order.
     auto local_fanout =
         view.local_fanout(llvm::to_vector(llvm::make_first_range(section_contributions)));
@@ -579,6 +646,15 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         manifest.contributions.emplace_back(fv_of[local_id], variant);
     }
     manifest.local_fanout = std::move(*local_fanout);
+    for(auto& [local_id, used]: llvm::make_second_range(instantiation_uses)) {
+        if(used.empty()) {
+            continue;
+        }
+        llvm::sort(used);
+        used.erase(llvm::unique(used), used.end());
+        manifest.instantiations.push_back(
+            {.file = fv_of[local_id], .resolutions = std::move(used)});
+    }
 
     // The places the parse's failed lookups looked: the file table watches
     // them from here on. One that holds a file by now makes the index stale
@@ -614,6 +690,20 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         report.add_index_changed(global_id);
         search_file_changed(global_id);
     }
+    // A file's instantiations live with its shard of the same generation.
+    for(auto path_id: rebuilt_ids) {
+        auto it = project_index.instantiations.find(path_id);
+        if(it != project_index.instantiations.end() &&
+           it->second.content_hash() != project_index.shards.find(path_id)->second.content_hash()) {
+            retire_instantiations(path_id);
+        }
+    }
+    for(auto& [global_id, replacement]: instantiation_replacements) {
+        project_index.instantiations[global_id] = std::move(replacement);
+        dirty_instantiations.insert(global_id);
+        retired_instantiations.erase(global_id);
+        report.add_index_changed(global_id);
+    }
 
     // Replace this TU's manifest wholesale: files it no longer touches lose
     // their contribution here, which is also what retires their variants —
@@ -622,6 +712,9 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         project_index.apply_manifest(project.file_table, tu_path_id, std::move(manifest));
     for(auto path_id: affected) {
         report.add_index_changed(path_id);
+        refresh_live(path_id);
+    }
+    for(auto path_id: llvm::make_first_range(instantiation_replacements)) {
         refresh_live(path_id);
     }
 
@@ -675,6 +768,51 @@ std::vector<std::uint64_t> IndexStore::known_variants(Fid tu) const {
     return known;
 }
 
+std::vector<std::uint64_t> IndexStore::known_instantiations(Fid tu) {
+    auto files = project.dep_graph.include_closure(tu);
+    auto& index = project.project_index;
+    if(auto it = index.manifests.find(tu); it != index.manifests.end()) {
+        for(auto version: llvm::make_first_range(it->second.contributions)) {
+            files.insert(project.file_table.version(version).fid);
+        }
+    }
+    files.erase(tu);
+
+    llvm::DenseMap<std::pair<std::uint64_t, std::uint64_t>, bool> holds;
+    auto walk_holds = [&](const index::Producer& producer) {
+        auto [it, inserted] = holds.try_emplace(std::pair(producer.unit, producer.run));
+        if(inserted) {
+            auto unit = index.unit(producer.unit);
+            it->second = unit && *unit != tu && index.current_run(producer) && !need_update(*unit);
+        }
+        return it->second;
+    };
+    std::vector<std::uint64_t> known;
+    for(auto file: files) {
+        auto it = index.instantiations.find(file);
+        auto shard = index.shards.find(file);
+        if(it == index.instantiations.end() || shard == index.shards.end() ||
+           shard->second.content_hash() != it->second.content_hash()) {
+            continue;
+        }
+        it->second.for_each_key([&](const index::InstantiationShard::Key& key) {
+            if(walk_holds(*key.producer)) {
+                known.push_back(key.key);
+            }
+            return true;
+        });
+    }
+    llvm::sort(known);
+    known.erase(llvm::unique(known), known.end());
+    return known;
+}
+
+void IndexStore::retire_instantiations(Fid path_id) {
+    project.project_index.instantiations.erase(path_id);
+    dirty_instantiations.erase(path_id);
+    retired_instantiations.insert(path_id);
+}
+
 IndexStore::Report IndexStore::drop_index(Fid tu_path_id) {
     Report report;
     drop_index_into(tu_path_id, report);
@@ -689,11 +827,15 @@ void IndexStore::search_file_changed(Fid path_id) {
 }
 
 void IndexStore::refresh_live(Fid path_id) {
-    auto it = project.project_index.shards.find(path_id);
-    if(it == project.project_index.shards.end()) {
+    auto& index = project.project_index;
+    if(auto it = index.instantiations.find(path_id); it != index.instantiations.end()) {
+        it->second.set_live(index.live_resolutions(path_id));
+    }
+    auto it = index.shards.find(path_id);
+    if(it == index.shards.end()) {
         return;
     }
-    it->second.set_live(project.project_index.live_variants(path_id));
+    it->second.set_live(index.live_variants(path_id));
     search_file_changed(path_id);
 }
 
@@ -773,6 +915,58 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         requeue_owners(path_id, report);
     }
 
+    // A file's instantiations live with its shard of the same generation.
+    // Dead resolutions compact like dead variants, and the keys of runs that
+    // are no longer their unit's current one leave with them; a file left
+    // with neither is retired.
+    auto current_run = [&](const index::Producer& run) {
+        return project_index.current_run(run);
+    };
+    llvm::SmallVector<Fid> retired_files;
+    for(auto& [path_id, instantiations]: project_index.instantiations) {
+        auto shard = project_index.shards.find(path_id);
+        if(shard == project_index.shards.end() || !shard->second.loaded() ||
+           shard->second.content_hash() != instantiations.content_hash()) {
+            retired_files.push_back(path_id);
+            continue;
+        }
+        bool gone_runs = false;
+        instantiations.for_each_key([&](const index::InstantiationShard::Key& key) {
+            gone_runs = !current_run(*key.producer);
+            return !gone_runs;
+        });
+        if(!instantiations.has_dead_resolutions() && !gone_runs) {
+            continue;
+        }
+        auto live = project_index.live_resolutions(path_id);
+        auto survives = [&](const std::optional<std::uint64_t>& resolution) {
+            return resolution ? std::ranges::binary_search(live, *resolution) : true;
+        };
+        bool kept = llvm::any_of(live, [&](std::uint64_t resolution) {
+            return instantiations.has_resolution(resolution);
+        });
+        instantiations.for_each_key([&](const index::InstantiationShard::Key& key) {
+            kept = kept || (current_run(*key.producer) && survives(key.resolution));
+            return !kept;
+        });
+        if(!kept) {
+            retired_files.push_back(path_id);
+            continue;
+        }
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::merge_instantiations(instantiations, live, current_run, nullptr, {}, os);
+        auto replacement =
+            index::InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+        assert(replacement.loaded() && "a freshly written instantiation blob must verify");
+        instantiations = std::move(replacement);
+        dirty_instantiations.insert(path_id);
+    }
+    for(auto path_id: retired_files) {
+        retire_instantiations(path_id);
+        report.add_index_changed(path_id);
+    }
+
     // Snapshot the dirty state on the loop: everything below serializes
     // from copies, so merges committing across the write await simply re-dirty
     // for the next save. The id vectors parallel the batch so a failed
@@ -786,6 +980,13 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         removals.push_back({index::IndexBlobKind::Shard,
                             project.project_index.key_of(project.file_table, path_id)});
     }
+    llvm::SmallVector<Fid> retired_ids(retired_instantiations.begin(),
+                                       retired_instantiations.end());
+    retired_instantiations.clear();
+    for(auto path_id: retired_ids) {
+        removals.push_back({index::IndexBlobKind::Instantiations,
+                            project.project_index.key_of(project.file_table, path_id)});
+    }
     for(auto path_id: dirty_shards) {
         auto it = project.project_index.shards.find(path_id);
         assert(it != project.project_index.shards.end() &&
@@ -796,6 +997,17 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         shard_ids.push_back(path_id);
     }
     auto shard_count = batch.size();
+    llvm::SmallVector<Fid> instantiation_ids;
+    for(auto path_id: dirty_instantiations) {
+        auto it = project_index.instantiations.find(path_id);
+        assert(it != project_index.instantiations.end() &&
+               "dirty instantiation shards stay resident until retirement");
+        batch.push_back({index::IndexBlobKind::Instantiations,
+                         project.project_index.key_of(project.file_table, path_id),
+                         it->second.bytes().str()});
+        instantiation_ids.push_back(path_id);
+    }
+    auto instantiation_count = batch.size() - shard_count;
 
     // One generation per persisted global blob, recorded in every
     // manifest of the batch and pinned per TU inside the global blob
@@ -824,7 +1036,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         batch.push_back({index::IndexBlobKind::Manifest, std::move(key), std::move(bytes)});
         manifest_ids.push_back(tu_path_id);
     }
-    auto manifest_count = batch.size() - shard_count;
+    auto manifest_count = batch.size() - shard_count - instantiation_count;
 
     // The global blob follows the shards and manifests: a crash mid-batch
     // then strands only manifests, which load() drops by their generation
@@ -901,6 +1113,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
 
     bool had_global = global_dirty;
     dirty_shards.clear();
+    dirty_instantiations.clear();
     dirty_manifests.clear();
     global_dirty = false;
     // Serialization failures keep their dirty flag for the next attempt.
@@ -942,7 +1155,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     // keeps pending_shard_writes() truthful meanwhile — a stats reader
     // polling for "shard writes finished" must not observe zero while the
     // commit is still running (and saved_shards still holds its reset).
-    saving_shards = shard_count;
+    saving_shards = shard_count + instantiation_count;
     llvm::SmallVector<std::size_t> failed;
     // Cancellation while the write is still queued dequeues it (see
     // kota::queue): the batch dies with this frame, so the snapshot-
@@ -951,8 +1164,21 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     // after restart. Restoration unions with whatever re-dirtied across
     // the await; the startup removal keys in `removals` go back to the deferred
     // list they came from.
+    // A merge across the await may retire a file's instantiations: retired,
+    // they stay so.
+    auto redirty_instantiations = [&](Fid path_id) {
+        if(project_index.instantiations.contains(path_id)) {
+            dirty_instantiations.insert(path_id);
+        }
+    };
     auto restore = llvm::make_scope_exit([&] {
         dirty_shards.insert(shard_ids.begin(), shard_ids.end());
+        llvm::for_each(instantiation_ids, redirty_instantiations);
+        for(auto path_id: retired_ids) {
+            if(!project_index.instantiations.contains(path_id)) {
+                retired_instantiations.insert(path_id);
+            }
+        }
         dirty_manifests.insert(manifest_ids.begin(), manifest_ids.end());
         global_dirty = global_dirty || had_global;
         project_index.restore_unwritten();
@@ -978,8 +1204,11 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         if(i < shard_count) {
             failed_shards += 1;
             dirty_shards.insert(shard_ids[i]);
-        } else if(i - shard_count < manifest_count) {
-            dirty_manifests.insert(manifest_ids[i - shard_count]);
+        } else if(i - shard_count < instantiation_count) {
+            failed_shards += 1;
+            redirty_instantiations(instantiation_ids[i - shard_count]);
+        } else if(i - shard_count - instantiation_count < manifest_count) {
+            dirty_manifests.insert(manifest_ids[i - shard_count - instantiation_count]);
         } else if(cdb_index && i == *cdb_index) {
             // Keep the old persisted bytes and stay dirty so the next
             // save retries even when nothing else changes by then.
@@ -1009,7 +1238,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         persisted_cdb_snapshot = std::move(cdb_bytes);
         cdb_dirty = false;
     }
-    saved_shards = shard_count - failed_shards;
+    saved_shards = shard_count + instantiation_count - failed_shards;
     saving_shards = 0;
 
     // Context choices as of the snapshot point are durable: advance the
@@ -1032,6 +1261,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         for(auto path_id: shard_ids) {
             dirty_shards.insert(path_id);
         }
+        llvm::for_each(instantiation_ids, redirty_instantiations);
         recover_corrupt_database(report);
         co_return report;
     }
@@ -1273,6 +1503,36 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
             requeue_owners(path_id, report);
         }
     }
+    llvm::SmallVector<Fid> resident_instantiations;
+    for(auto path_id: llvm::make_first_range(project.project_index.instantiations)) {
+        if(!dirty_instantiations.contains(path_id)) {
+            resident_instantiations.push_back(path_id);
+        }
+    }
+    for(std::size_t i = 0; i < resident_instantiations.size() && !db.corrupted(); i += 1) {
+        if(!grew && i != 0 && i % rebind_batch == 0) {
+            co_await kota::yield(loop);
+        }
+        auto path_id = resident_instantiations[i];
+        auto it = project.project_index.instantiations.find(path_id);
+        if(it == project.project_index.instantiations.end() ||
+           dirty_instantiations.contains(path_id)) {
+            continue;
+        }
+        auto blob = db.read(index::IndexBlobKind::Instantiations,
+                            project.project_index.key_of(project.file_table, path_id));
+        if(!blob || !it->second.rebind(std::move(blob.buffer))) {
+            if(db.corrupted()) {
+                break;
+            }
+            LOG_ERROR("Index instantiations for {} diverged during snapshot migration",
+                      project.file_table.resolve(path_id));
+            assert(false && "persisted instantiations must survive snapshot migration");
+            project.project_index.instantiations.erase(path_id);
+            report.add_index_changed(path_id);
+            requeue_owners(path_id, report);
+        }
+    }
     // Corruption observed by any read since the write-time check — this
     // loop's, or a query's during its yields — condemns the database; the
     // recovery sheds every borrowed view before the environment closes.
@@ -1302,6 +1562,18 @@ void IndexStore::shed_borrowed_shards(Report& report) {
     }
     for(auto path_id: shed) {
         project.project_index.shards.erase(path_id);
+        report.add_index_changed(path_id);
+        requeue_owners(path_id, report);
+    }
+    // Their users are the TUs including the file, which contribute to it.
+    llvm::SmallVector<Fid> shed_instantiations;
+    for(auto path_id: llvm::make_first_range(project.project_index.instantiations)) {
+        if(!dirty_instantiations.contains(path_id)) {
+            shed_instantiations.push_back(path_id);
+        }
+    }
+    for(auto path_id: shed_instantiations) {
+        project.project_index.instantiations.erase(path_id);
         report.add_index_changed(path_id);
         requeue_owners(path_id, report);
     }
@@ -1357,6 +1629,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
             return;
         }
         for(auto kind: {index::IndexBlobKind::Shard,
+                        index::IndexBlobKind::Instantiations,
                         index::IndexBlobKind::Manifest,
                         index::IndexBlobKind::Search}) {
             db.for_each_key(kind, [&](llvm::StringRef key) {
@@ -1587,11 +1860,63 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         refresh_live(path_id);
     }
 
+    // Each loaded shard's instantiations, at its generation. A resolution some
+    // manifest uses that its file no longer stores lost what that TU's
+    // instantiations resolved there: the TU reindexes, keeping its index
+    // meanwhile.
+    llvm::StringSet<> expected_instantiations;
+    llvm::DenseSet<Fid> lost_instantiations;
+    for(auto& [path_id, shard]: project.project_index.shards) {
+        auto key = project.project_index.key_of(project.file_table, path_id);
+        auto blob = db.read(index::IndexBlobKind::Instantiations, key);
+        if(!blob) {
+            continue;
+        }
+        if(read_only && !options.borrow && blob.generation != 0) {
+            blob.buffer = llvm::MemoryBuffer::getMemBufferCopy(blob.buffer->getBuffer());
+        }
+        auto instantiations = index::InstantiationShard::from_buffer(std::move(blob.buffer));
+        // A stored blob names the run behind each key; a worker's names none.
+        auto keys = instantiations.keys();
+        if(!instantiations.loaded() || instantiations.content_hash() != shard.content_hash() ||
+           (!keys.empty() && !instantiations.find_key(keys.front())->producer)) {
+            LOG_INFO("Discarding unservable instantiations for {}",
+                     project.file_table.resolve(path_id));
+            continue;
+        }
+        expected_instantiations.insert(key);
+        instantiations.set_live(project_index.live_resolutions(path_id));
+        project_index.instantiations[path_id] = std::move(instantiations);
+    }
+    for(auto& [path_id, uses]: project_index.instantiation_uses) {
+        auto it = project_index.instantiations.find(path_id);
+        if(it == project_index.instantiations.end() ||
+           llvm::any_of(llvm::make_first_range(uses), [&](std::uint64_t resolution) {
+               return !it->second.has_resolution(resolution);
+           })) {
+            lost_instantiations.insert(path_id);
+        }
+    }
+    if(!lost_instantiations.empty()) {
+        for(auto& [tu, manifest]: project_index.manifests) {
+            if(llvm::any_of(manifest.instantiations, [&](const index::InstantiationUse& use) {
+                   return lost_instantiations.contains(project.file_table.version(use.file).fid);
+               })) {
+                report.add_reindex(tu);
+            }
+        }
+    }
+
     // Remove shard blobs nothing references any more.
     if(!read_only) {
         db.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
             if(!expected_keys.contains(key)) {
                 startup_removes.push_back({index::IndexBlobKind::Shard, key.str()});
+            }
+        });
+        db.for_each_key(index::IndexBlobKind::Instantiations, [&](llvm::StringRef key) {
+            if(!expected_instantiations.contains(key)) {
+                startup_removes.push_back({index::IndexBlobKind::Instantiations, key.str()});
             }
         });
         retire_excluded(report);

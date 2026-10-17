@@ -1,0 +1,67 @@
+{
+  "id": "query/basics/12_instantiations",
+  "topic": "query",
+  "subtopic": "basics",
+  "title": "Answers through instantiations",
+  "summary": "References and the call graph include what instantiations and macro expansions resolve, each marked with its `via`",
+  "prose": "A use the written code leaves open — a dependent call in a template, a name\nin a macro body — answers with `\"via\": \"instantiation\"` or\n`\"via\": \"expansion\"`; the written code's answers carry no `via`. A caller\ncarries one only when instantiations make all its calls.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "box.h",
+      "text": "#pragma once\n\nstruct Box {\n    void open();\n};\n\nvoid reset();\n\n#define RESET_ALL reset()\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"box.h\"\n\nvoid Box::open() {}\n\nvoid reset() {}\n\ntemplate <typename T>\nvoid twice(T& item, Box& box) {\n    item.open();\n    box.open();\n}\n\nvoid run(Box& box) {\n    twice(box, box);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "measure.h",
+      "text": "#pragma once\n\ntemplate <typename T>\nvoid measure(T& item) {\n    item.open();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "use.cpp",
+      "text": "#include \"box.h\"\n#include \"measure.h\"\n\nvoid use(Box& box) {\n    measure(box);\n    RESET_ALL;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 2 translation units in #s: 4 file shards (# KB), 8 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query references Box::open",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"name\": \"open\",\n    \"kind\": \"Method\",\n    \"symbol\": \"#66ed736b7a4ce853\",\n    \"references\": [\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 9,\n        \"context\": \"    item.open();\",\n        \"function\": \"twice\",\n        \"via\": \"instantiation\"\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 10,\n        \"context\": \"    box.open();\",\n        \"function\": \"twice\"\n      },\n      {\n        \"file\": \"${WS}/measure.h\",\n        \"line\": 5,\n        \"context\": \"    item.open();\",\n        \"function\": \"measure\",\n        \"via\": \"instantiation\"\n      }\n    ],\n    \"total\": 3\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query call-graph Box::open --direction callers",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"root\": {\n      \"name\": \"open\",\n      \"signature\": \"()\",\n      \"kind\": \"Method\",\n      \"file\": \"${WS}/main.cpp\",\n      \"line\": 3,\n      \"symbol\": \"#66ed736b7a4ce853\"\n    },\n    \"callers\": [\n      {\n        \"name\": \"measure\",\n        \"signature\": \"(T &item)\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/measure.h\",\n        \"line\": 4,\n        \"symbol\": \"#64a3c7bc5112a824\",\n        \"via\": \"instantiation\"\n      },\n      {\n        \"name\": \"twice\",\n        \"signature\": \"(T &item, Box &box)\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 8,\n        \"symbol\": \"#395c652bed3c1db9\"\n      }\n    ],\n    \"callees\": []\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query references reset",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"name\": \"reset\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#e241f31da004350a\",\n    \"references\": [\n      {\n        \"file\": \"${WS}/box.h\",\n        \"line\": 9,\n        \"context\": \"#define RESET_ALL reset()\",\n        \"function\": null,\n        \"via\": \"expansion\"\n      },\n      {\n        \"file\": \"${WS}/use.cpp\",\n        \"line\": 6,\n        \"context\": \"    RESET_ALL;\",\n        \"function\": \"use\"\n      }\n    ],\n    \"total\": 2\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

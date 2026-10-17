@@ -404,7 +404,7 @@ tests/navigation/implementation/04_derived_classes
 
 **Template duck-type navigation**
 
-Go to implementation on a dependent call reaches the method it resolves to in the template's only instantiation
+Go to implementation on a dependent call reaches the method it resolves to in each of the template's instantiations
 
 This applies to function templates and generic lambdas alike, and to a
 conversion operator called by name.
@@ -470,7 +470,7 @@ tests/navigation/references/03_implicit_construction
 
 **References through forwarding functions**
 
-Find references on a constructor does not include call sites that reach it indirectly through a perfect-forwarding factory
+Find references on a constructor includes the construction inside a perfect-forwarding factory, not the call sites that reach it through the factory
 
 ```case
 tests/navigation/references/04_forwarding_factories
@@ -482,9 +482,7 @@ tests/navigation/references/04_forwarding_factories
 
 **Dependent template references**
 
-Find references on a member includes its dependent call sites in an open file's template instantiated only with the member's class
-
-Files that are not open contribute no such call sites.
+Find references on a member includes its dependent call sites in the templates instantiated with the member's class
 
 ```case
 tests/navigation/references/05_dependent_calls
@@ -619,11 +617,10 @@ tests/navigation/deduced_types/04_deduced_templates
 
 **`auto` parameters and return types**
 
-The `auto` of an abbreviated template's parameter reaches the type of its only instantiation, and an `auto` return type the type returned
+The `auto` of an abbreviated template's parameter reaches the type of each of its instantiations, and an `auto` return type the type returned
 
-A parameter whose template is instantiated with several types reaches
-none of them. The leading `auto` of a trailing return type reaches the
-type after the arrow.
+The leading `auto` of a trailing return type reaches the type after the
+arrow.
 
 ```case
 tests/navigation/deduced_types/05_parameters_and_returns
@@ -637,9 +634,9 @@ tests/navigation/deduced_types/05_parameters_and_returns
 
 Inside a template, an `auto` whose initializer depends on a template parameter reaches the type the initializer resolves to
 
-A template parameter, whether of a function template or a class template,
-stands for its argument when the template is instantiated once, and for
-itself when it is instantiated with several types.
+An `auto` whose type is a template parameter, of a function template or a
+class template, reaches the parameter and its argument in each
+instantiation.
 
 ```case
 tests/navigation/deduced_types/06_dependent_auto
@@ -782,11 +779,14 @@ tests/navigation/macros/04_macro_references
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#346 -->
+<!-- BEGIN CAPABILITY: supported clangd#346 -->
 
 **Nested macro references**
 
-Find references on a macro does not include the mentions of it written inside the bodies of other macro definitions
+Find references on a macro includes its mentions in the bodies of other macros that expand somewhere
+
+A body that never expands names nothing: what its names mean is up to each
+expansion.
 
 ```case
 tests/navigation/macros/05_nested_macros
@@ -806,6 +806,18 @@ go-to-definition lists both.
 
 ```case
 tests/navigation/macros/10_header_variants
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macro bodies through the preamble**
+
+Find references includes the names a macro body spells where a header the preamble reads expands the macro, with no background index to read
+
+```case
+tests/navigation/macros/11_preamble_expansions
 ```
 
 <!-- END CAPABILITY -->
@@ -1256,6 +1268,23 @@ tests/navigation/projects/03_uses_across_sources
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Uses inside templates and macros**
+
+Find references and the call hierarchy include what a template's dependent code and a macro's body resolve to wherever a source instantiates or expands them, open or not
+
+`item.open()` in `measure` names `Box::open` only once `measure` is
+instantiated with `Box`, and `reset()` in the body of `RESET_ALL` names the
+function only where the macro expands: here both happen in a source that is
+not open, and still answer while the headers are open.
+
+```case
+tests/navigation/projects/09_instantiated_templates
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Call Hierarchy
@@ -1374,7 +1403,7 @@ tests/navigation/call_hierarchy/08_lambda_bodies
 
 **Constructor calls through forwarding functions**
 
-Incoming calls of a constructor do not include the call sites that reach it through a perfect-forwarding factory
+Incoming calls of a constructor include the perfect-forwarding factory that runs it, not the call sites that reach it through the factory
 
 ```case
 tests/navigation/call_hierarchy/09_forwarding_factories
@@ -1456,11 +1485,23 @@ tests/navigation/type_hierarchy/04_template_bases
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Bases a template parameter names**
+
+A class template that derives from its own parameter is a subtype of each class it is instantiated with
+
+```case
+tests/navigation/type_hierarchy/09_dependent_bases
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Document Highlight
 
-Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`). Highlights come from the same index as Find References, so they cover the same names and work in read-only mode too; a variable, a field or a parameter is marked written or read where the code writes or reads it; every other highlight is plain.
+Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`). Highlights come from the same index as Find References, so they cover the same names and work in read-only mode too; a variable, a field or a parameter is marked written or read where the code writes or reads it; every other highlight is plain, as is a use only an instantiation or a macro expansion resolves.
 
 ### Declarations and Uses
 
@@ -1486,7 +1527,7 @@ tests/document_highlight/symbols/01_declarations_and_uses
 
 A macro highlights at its definition, its expansions, the conditionals testing it and its `#undef`
 
-A name written in a macro argument highlights where it is written; a name the macro's replacement spells highlights the whole invocation. A macro used in another macro's replacement highlights neither there nor at that macro's invocations.
+A name written in a macro argument highlights where it is written; a name the macro's replacement spells highlights the whole invocation. A macro used in another macro's replacement highlights there, as a plain text occurrence, but not at that macro's invocations.
 
 ```case
 tests/document_highlight/symbols/03_macros

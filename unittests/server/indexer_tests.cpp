@@ -11,6 +11,7 @@ import :command.argument_parser;
 import :compile.compilation;
 import :config.config;
 import :index.database;
+import :index.instantiation_shard;
 import :index.manifest;
 import :index.serialization;
 import :index.shard;
@@ -195,11 +196,13 @@ struct IndexedTU {
 };
 
 /// Index a real on-disk file in-process into its TU index bytes, the
-/// sections of `known` variants left empty.
+/// sections of `known` variants left empty and the `known_instantiations`
+/// not walked.
 IndexedTU index_file(TempDir& tmp,
                      llvm::StringRef file,
                      std::vector<std::string> extra_args = {},
-                     llvm::ArrayRef<std::uint64_t> known = {}) {
+                     llvm::ArrayRef<std::uint64_t> known = {},
+                     llvm::ArrayRef<std::uint64_t> known_instantiations = {}) {
     std::string resource = std::string(resource_dir());
     std::vector<std::string> args =
         {"clang++", "-fsyntax-only", "-resource-dir", resource, "-c", std::string(file)};
@@ -215,7 +218,9 @@ IndexedTU index_file(TempDir& tmp,
         return {};
     }
     IndexedTU result;
-    result.data = index::build_tu_index(*unit, {.known_variants = known});
+    result.data = index::build_tu_index(
+        *unit,
+        {.known_variants = known, .known_instantiations = known_instantiations});
     auto view = index::TUIndex::from_bytes(result.data);
     if(!view.loaded()) {
         return {};
@@ -3784,6 +3789,43 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     ZASSERT(!project.project_index.search_index.loaded());
 }
 
+ZEST_CASE(InstantiationsPersist) {
+    TempDir tmp;
+    tmp.touch("box.h", R"(#pragma once
+template <typename T>
+struct Box {
+    T value;
+    void show() { value.print(); }
+};
+)");
+    tmp.touch("a.cpp", R"(#include "box.h"
+struct A { void print(); };
+void a() { Box<A>{}.show(); }
+)");
+    std::vector<std::uint64_t> stored;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, tmp.path("a.cpp"));
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
+        auto resolutions =
+            f.project.project_index.instantiations.find(box_id)->second.resolutions();
+        stored.assign(resolutions.begin(), resolutions.end());
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
+    auto* instantiations = f.project.project_index.instantiation_shard(box_id);
+    ZASSERT(instantiations);
+    ZEXPECT(std::ranges::equal(instantiations->resolutions(), stored));
+    ZEXPECT(f.project.project_index.live_resolutions(box_id) ==
+            llvm::SmallVector<std::uint64_t>(stored.begin(), stored.end()));
+}
+
 };  // ZEST_SUITE(IndexerPersist)
 
 ZEST_SUITE(TURunLint) {
@@ -3980,6 +4022,185 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
 }
 
 };  // ZEST_SUITE(TURunIndex)
+
+ZEST_SUITE(IndexerInstantiations) {
+
+// box.h's template instantiated by units each with their own argument.
+TempDir tmp;
+IndexerFixture f;
+
+IndexerInstantiationsTEST() {
+    tmp.touch("box.h", R"(#pragma once
+template <typename T>
+struct Box {
+    T value;
+    void show() { value.print(); }
+};
+)");
+    tmp.touch("a.h", R"(#pragma once
+struct A { void print(); };
+)");
+    tmp.touch("b.h", R"(#pragma once
+struct B { void print(); };
+)");
+    tmp.touch("a.cpp", R"(#include "box.h"
+#include "a.h"
+void a() { Box<A>{}.show(); }
+)");
+    tmp.touch("a2.cpp", R"(#include "box.h"
+#include "a.h"
+void a2() { Box<A>{}.show(); }
+)");
+    tmp.touch("b.cpp", R"(#include "box.h"
+#include "b.h"
+void b() { Box<B>{}.show(); }
+)");
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("a.cpp"),  {}},
+                  {tmp.root, tmp.path("a2.cpp"), {}},
+                  {tmp.root, tmp.path("b.cpp"),  {}},
+    }));
+    scan_all(f.project.cdb, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+    open_store(tmp, f.project);
+}
+
+Fid id(llvm::StringRef name) {
+    return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+}
+
+/// Index a unit, skipping what the store offers it, and merge it.
+bool index(llvm::StringRef name) {
+    f.begin_round();
+    auto known = f.index_store.known_instantiations(id(name));
+    auto indexed = index_file(tmp, tmp.path(name), {}, {}, known);
+    return !indexed.data.empty() && f.merge(indexed.data.data(), indexed.data.size());
+}
+
+const index::InstantiationShard* box() {
+    return f.project.project_index.instantiation_shard(id("box.h"));
+}
+
+/// The live records naming `print` in box.h: one per argument some unit
+/// instantiates the template with.
+std::size_t prints() {
+    std::size_t count = 0;
+    box()->for_each_record([&](const index::InstantiationRecord& record) {
+        count += record.kind == index::InstantiationKind::Reference ? 1 : 0;
+        return true;
+    });
+    return count;
+}
+
+ZEST_CASE(ResolutionsSharedAndSkipped) {
+    ZASSERT(index("a.cpp"));
+    ZASSERT(box());
+    ZEXPECT(box()->resolutions().size() == 1u);
+    ZEXPECT(prints() == 1u);
+
+    // a2.cpp skips Box<A>::show, which a.cpp walked, and uses its resolution.
+    f.begin_round();
+    auto known = f.index_store.known_instantiations(id("a2.cpp"));
+    ZEXPECT(!known.empty());
+    ZASSERT(index("a2.cpp"));
+    auto& manifest = f.project.project_index.manifests.find(id("a2.cpp"))->second;
+    ZASSERT(manifest.instantiations.size() == 1u);
+    ZEXPECT(llvm::ArrayRef(manifest.instantiations.front().resolutions) == box()->resolutions());
+
+    ZASSERT(index("b.cpp"));
+    ZEXPECT(box()->resolutions().size() == 2u);
+    ZEXPECT(prints() == 2u);
+}
+
+ZEST_CASE(ResolutionLivesWhileUsed) {
+    ZASSERT(index("a.cpp"));
+    ZASSERT(index("a2.cpp"));
+    ZASSERT(index("b.cpp"));
+
+    // a2.cpp still uses Box<A>'s resolution when its producer leaves.
+    f.drop_index(id("a.cpp"));
+    ZEXPECT(prints() == 2u);
+    // Without a current run behind it the key is offered no more.
+    f.begin_round();
+    auto key = f.index_store.known_instantiations(id("b.cpp"));
+    ZEXPECT(key.empty());
+
+    f.drop_index(id("a2.cpp"));
+    ZEXPECT(prints() == 1u);
+    f.save();
+    ZEXPECT(box()->resolutions().size() == 1u);
+}
+
+ZEST_CASE(StaleProducerNotOffered) {
+    ZASSERT(index("a.cpp"));
+    f.begin_round();
+    ZEXPECT(!f.index_store.known_instantiations(id("a2.cpp")).empty());
+    // Its own run would confirm the key, not skip it.
+    ZEXPECT(f.index_store.known_instantiations(id("a.cpp")).empty());
+    // An open box.h stands in for its stored instantiations: it walks them.
+    ZEXPECT(f.index_store.known_instantiations(id("box.h")).empty());
+
+    // An edit of what the instantiation read makes its producer stale.
+    tmp.touch("a.h", R"(#pragma once
+struct A { void print(); void print(int); };
+)");
+    f.begin_round();
+    ZEXPECT(f.index_store.known_instantiations(id("a2.cpp")).empty());
+}
+
+ZEST_CASE(ReplacedRunNotOffered) {
+    ZASSERT(index("a.cpp"));
+    // a.cpp's next run instantiates Box<A> no more: the key's run is gone.
+    tmp.touch("a.cpp", R"(#include "box.h"
+#include "a.h"
+void a() {}
+)");
+    ZASSERT(index("a.cpp"));
+    f.begin_round();
+    ZEXPECT(f.index_store.known_instantiations(id("a2.cpp")).empty());
+}
+
+ZEST_CASE(GoneRunKeysCompacted) {
+    // Box<A>::show resolves nothing: box.h holds its key alone.
+    tmp.touch("box.h", R"(#pragma once
+template <typename T>
+struct Box {
+    void show() {}
+};
+)");
+    ZASSERT(index("a.cpp"));
+    ZASSERT(box());
+    ZEXPECT(box()->resolutions().empty());
+    ZEXPECT(box()->keys().size() == 1u);
+
+    // a.cpp's next run instantiates Box<A> no more: nothing of box.h's
+    // instantiation shard holds, and the save retires it.
+    tmp.touch("a.cpp", R"(#include "box.h"
+#include "a.h"
+void a() {}
+)");
+    ZASSERT(index("a.cpp"));
+    f.save();
+    ZEXPECT(!box());
+}
+
+ZEST_CASE(GoneKeyReruns) {
+    ZASSERT(index("a.cpp"));
+    f.begin_round();
+    auto known = f.index_store.known_instantiations(id("a2.cpp"));
+    ZASSERT(!known.empty());
+    // The key leaves before a2.cpp's run that skipped it merges.
+    f.drop_index(id("a.cpp"));
+    f.save();
+    auto indexed = index_file(tmp, tmp.path("a2.cpp"), {}, {}, known);
+    auto merged = f.index_store.merge(indexed.data.data(), indexed.data.size(), {});
+    ZASSERT(!merged);
+    ZEXPECT(merged.error() == IndexStore::MergeError::Outdated);
+}
+
+};  // ZEST_SUITE(IndexerInstantiations)
 
 }  // namespace
 }  // namespace clice::testing

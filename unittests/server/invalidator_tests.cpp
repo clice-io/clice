@@ -40,13 +40,13 @@ struct Harness {
     WorkerPool pool{loop};
     PCMFamily pcm;
     PCHFamily pch;
-    ASTFamily ast;
     IndexStore index;
+    ASTFamily ast;
 
     Harness(Project& project, EditorContext& resolver, SessionStore& store) :
         pcm(graph, project, resolver.commands, pool), pch(graph, project, pool),
-        ast(project, resolver, graph, pcm, pch, pool, store),
-        index(loop, project, resolver.commands) {}
+        index(loop, project, resolver.commands),
+        ast(project, resolver, graph, pcm, pch, pool, store, index) {}
 };
 
 ZEST_SUITE(Invalidator) {

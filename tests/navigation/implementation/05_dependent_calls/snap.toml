@@ -5,7 +5,7 @@ implementation = ["void ⟦foo⟧() {} @+4"]
 implementation = ["void ⟦bar⟧() {}"]
 
 [answers.several_calls]
-implementation = []
+implementation = ["void ⟦foo⟧() {} @-18", "void ⟦foo⟧() {} @+4"]
 
 [answers.conversion_call]
 implementation = ["⟦operator int⟧() {"]

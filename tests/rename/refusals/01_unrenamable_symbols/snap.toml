@@ -7,6 +7,9 @@ error = "renaming a macro is not supported yet"
 [answers.operator.prepare_rename]
 error = "`operator+` is named by the language, not by an identifier"
 
+[answers.dependent.prepare_rename]
+error = "what the name here refers to differs from one instantiation or macro expansion to the next; rename from a declaration"
+
 [answers.system.prepare_rename]
 error = "`printf` is declared in a system header"
 

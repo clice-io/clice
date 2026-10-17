@@ -1,0 +1,7 @@
+[test.reset]
+references = [
+    "defs.h │ void ⟦reset⟧();",
+    "defs.h │ #define RESET_ALL ⟦reset⟧()",
+    "void ⟦reset⟧() {}",
+    "user.h │ ⟦RESET_ALL⟧;",
+]

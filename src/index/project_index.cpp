@@ -6,6 +6,7 @@ module;
 
 module clice;
 
+import :index.instantiation_shard;
 import :index.project_index;
 import :index.serialization;
 import :semantic.token_class;
@@ -64,6 +65,10 @@ struct GlobalBlob {
     std::vector<std::uint32_t> sym_reference_counts;
     std::vector<std::uint32_t> sym_bitmap_ends;
     std::vector<std::uint8_t> sym_bitmaps;
+    /// The files whose instantiation shards name each symbol, as portable
+    /// roaring images back to back; an empty slice for none.
+    std::vector<std::uint32_t> sym_instantiation_ends;
+    std::vector<std::uint8_t> sym_instantiations;
 
     /// tu_fv -> generation of every manifest current at this save.
     /// The loader adopts a manifest blob only on an exact generation match, so
@@ -120,6 +125,8 @@ struct ProjectIndex::Base {
     llvm::ArrayRef<std::uint32_t> reference_counts;
     llvm::ArrayRef<std::uint32_t> bitmap_ends;
     llvm::ArrayRef<std::uint8_t> bitmaps;
+    llvm::ArrayRef<std::uint32_t> instantiation_ends;
+    llvm::ArrayRef<std::uint8_t> instantiation_images;
 
     llvm::ArrayRef<std::uint32_t> manifest_fvs;
     llvm::ArrayRef<std::uint64_t> manifest_gens;
@@ -168,6 +175,19 @@ struct ProjectIndex::Base {
 
     std::optional<Bitmap> bitmap(std::uint32_t doc) const {
         auto bytes = image(doc);
+        return view_bitmap(bytes.data(), bytes.size());
+    }
+
+    llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t doc) const {
+        return back_to_back(instantiation_images, instantiation_ends, doc);
+    }
+
+    /// Empty for a symbol no instantiation names.
+    std::optional<Bitmap> instantiation_bitmap(std::uint32_t doc) const {
+        auto bytes = instantiation_image(doc);
+        if(bytes.empty()) {
+            return Bitmap();
+        }
         return view_bitmap(bytes.data(), bytes.size());
     }
 
@@ -242,6 +262,8 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     reference_counts = to_array_ref(root[&GlobalBlob::sym_reference_counts]);
     bitmap_ends = to_array_ref(root[&GlobalBlob::sym_bitmap_ends]);
     bitmaps = to_array_ref(root[&GlobalBlob::sym_bitmaps]);
+    instantiation_ends = to_array_ref(root[&GlobalBlob::sym_instantiation_ends]);
+    instantiation_images = to_array_ref(root[&GlobalBlob::sym_instantiations]);
     manifest_fvs = to_array_ref(root[&GlobalBlob::manifest_fvs]);
     manifest_gens = to_array_ref(root[&GlobalBlob::manifest_gens]);
     search_generation = root[&GlobalBlob::search_generation];
@@ -275,7 +297,8 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     if(name_ends.size() != count || args_ends.size() != count || signature_ends.size() != count ||
        parents.size() != count || kinds.size() != count || flags.size() != count ||
        token_kinds.size() != count || token_modifiers.size() != count || files.size() != count ||
-       reference_counts.size() != count || bitmap_ends.size() != count) {
+       reference_counts.size() != count || bitmap_ends.size() != count ||
+       instantiation_ends.size() != count) {
         return std::unexpected("symbol columns do not line up");
     }
     if(!all_token_kinds(token_kinds)) {
@@ -283,7 +306,8 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     }
     if(!monotone_ends(name_ends, names.size()) || !monotone_ends(args_ends, args.size()) ||
        !monotone_ends(signature_ends, signatures.size()) ||
-       !monotone_ends(bitmap_ends, bitmaps.size())) {
+       !monotone_ends(bitmap_ends, bitmaps.size()) ||
+       !monotone_ends(instantiation_ends, instantiation_images.size())) {
         return std::unexpected("symbol arenas do not line up");
     }
     // Hashes, parents and pending entries become table keys downstream, which
@@ -443,9 +467,11 @@ bool ProjectIndex::verify_bitmaps() const {
     if(!base) {
         return true;
     }
+    auto in_paths = [&](const std::optional<Bitmap>& decoded) {
+        return decoded && (decoded->isEmpty() || decoded->maximum() < base->paths.size());
+    };
     for(std::uint32_t doc = 0; doc < base->count(); doc += 1) {
-        auto decoded = base->bitmap(doc);
-        if(!decoded || (!decoded->isEmpty() && decoded->maximum() >= base->paths.size())) {
+        if(!in_paths(base->bitmap(doc)) || !in_paths(base->instantiation_bitmap(doc))) {
             return false;
         }
     }
@@ -542,6 +568,39 @@ void ProjectIndex::each_reference_file(SymbolHash hash, llvm::function_ref<void(
     }
 }
 
+void ProjectIndex::each_instantiation_file(SymbolHash hash,
+                                           llvm::function_ref<void(Fid)> visit) const {
+    auto own = [&](const Symbol& symbol) {
+        for(auto id: symbol.instantiation_files) {
+            visit(Fid{id});
+        }
+    };
+    if(auto it = changed.find(hash); it != changed.end()) {
+        own(it->second);
+        return;
+    }
+    if(auto it = written.find(hash); it != written.end()) {
+        own(it->second);
+        return;
+    }
+    if(!base) {
+        return;
+    }
+    auto doc = base->find(hash);
+    if(!doc) {
+        return;
+    }
+    auto decoded = base->instantiation_bitmap(*doc);
+    if(!decoded) {
+        return;
+    }
+    for(auto id: *decoded) {
+        if(id < base->remap.size()) {
+            visit(base->remap[id]);
+        }
+    }
+}
+
 void ProjectIndex::for_each_symbol(
     llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, std::uint32_t)> visit) const {
     for(auto& [hash, symbol]: changed) {
@@ -620,6 +679,13 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
         for(auto id: *decoded) {
             if(id < base->remap.size()) {
                 symbol.reference_files.add(base->remap[id].raw);
+            }
+        }
+    }
+    if(auto decoded = base->instantiation_bitmap(*doc)) {
+        for(auto id: *decoded) {
+            if(id < base->remap.size()) {
+                symbol.instantiation_files.add(base->remap[id].raw);
             }
         }
     }
@@ -705,6 +771,13 @@ void ProjectIndex::merge(const TUIndex& index,
         }
         return true;
     });
+    index.iterate_instantiation_files([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
+        auto& target = touch(hash);
+        for(auto file: files) {
+            target.instantiation_files.add(file_ids_map[file].raw);
+        }
+        return true;
+    });
 }
 
 void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& files) {
@@ -727,6 +800,9 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         }
         for(auto& [fv, hash]: manifest.contributions) {
             referenced.insert(fv);
+        }
+        for(auto& use: manifest.instantiations) {
+            referenced.insert(use.file);
         }
         referenced.insert(manifest.absent.begin(), manifest.absent.end());
         referenced.insert(manifest.imports.begin(), manifest.imports.end());
@@ -788,6 +864,7 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     blob.sym_files.reserve(count);
     blob.sym_reference_counts.reserve(count);
     blob.sym_bitmap_ends.reserve(count);
+    blob.sym_instantiation_ends.reserve(count);
     auto emit_base = [&](std::uint32_t doc) {
         blob.sym_hashes.push_back(base->hashes[doc]);
         blob.sym_names += base->name(doc);
@@ -806,6 +883,12 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         auto image = base->image(doc);
         blob.sym_bitmaps.insert(blob.sym_bitmaps.end(), image.begin(), image.end());
         blob.sym_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.sym_bitmaps.size()));
+        auto instantiations = base->instantiation_image(doc);
+        blob.sym_instantiations.insert(blob.sym_instantiations.end(),
+                                       instantiations.begin(),
+                                       instantiations.end());
+        blob.sym_instantiation_ends.push_back(
+            static_cast<std::uint32_t>(blob.sym_instantiations.size()));
     };
     auto emit_symbol = [&](SymbolHash hash, const Symbol& symbol) {
         blob.sym_hashes.push_back(hash);
@@ -831,6 +914,19 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         auto* bytes = reinterpret_cast<const std::uint8_t*>(image.data());
         blob.sym_bitmaps.insert(blob.sym_bitmaps.end(), bytes, bytes + image.size());
         blob.sym_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.sym_bitmaps.size()));
+        if(!symbol.instantiation_files.isEmpty()) {
+            Bitmap instantiations;
+            for(auto id: symbol.instantiation_files) {
+                instantiations.add(path_id(Fid{id}));
+            }
+            auto encoded = write_bitmap(instantiations);
+            auto* encoded_bytes = reinterpret_cast<const std::uint8_t*>(encoded.data());
+            blob.sym_instantiations.insert(blob.sym_instantiations.end(),
+                                           encoded_bytes,
+                                           encoded_bytes + encoded.size());
+        }
+        blob.sym_instantiation_ends.push_back(
+            static_cast<std::uint32_t>(blob.sym_instantiations.size()));
     };
 
     llvm::SmallVector<SymbolHash> keys;
@@ -940,6 +1036,11 @@ bool ProjectIndex::import_manifest(TUManifest& manifest) const {
             return false;
         }
     }
+    for(auto& use: manifest.instantiations) {
+        if(!import(use.file.raw)) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -957,6 +1058,9 @@ TUManifest ProjectIndex::export_manifest(const TUManifest& manifest) {
     }
     for(auto& fv: exported.imports) {
         fv.raw = persisted_id(fv);
+    }
+    for(auto& use: exported.instantiations) {
+        use.file.raw = persisted_id(use.file);
     }
     return exported;
 }
@@ -989,6 +1093,15 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
     for(auto fv: manifest.imports) {
         importers[files.version(fv).fid].insert(tu_path_id);
     }
+    for(auto& use: manifest.instantiations) {
+        auto path_id = files.version(use.file).fid;
+        auto& uses = instantiation_uses[path_id];
+        for(auto resolution: use.resolutions) {
+            uses[resolution] += 1;
+        }
+        affected.push_back(path_id);
+    }
+    units[unit_of(files, tu_path_id)] = tu_path_id;
     manifests[tu_path_id] = std::move(manifest);
 
     llvm::sort(affected);
@@ -1034,6 +1147,22 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
             importers.erase(importer_it);
         }
     }
+    for(auto& use: it->second.instantiations) {
+        auto path_id = files.version(use.file).fid;
+        auto& uses = instantiation_uses.find(path_id)->second;
+        for(auto resolution: use.resolutions) {
+            auto used = uses.find(resolution);
+            used->second -= 1;
+            if(used->second == 0) {
+                uses.erase(used);
+            }
+        }
+        if(uses.empty()) {
+            instantiation_uses.erase(path_id);
+        }
+        affected.push_back(path_id);
+    }
+    units.erase(unit_of(files, tu_path_id));
     manifests.erase(it);
 
     llvm::sort(affected);
@@ -1053,6 +1182,16 @@ llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(Fid path_id) const 
     llvm::sort(variants);
     variants.erase(llvm::unique(variants), variants.end());
     return variants;
+}
+
+llvm::SmallVector<std::uint64_t> ProjectIndex::live_resolutions(Fid path_id) const {
+    llvm::SmallVector<std::uint64_t> resolutions;
+    if(auto it = instantiation_uses.find(path_id); it != instantiation_uses.end()) {
+        resolutions.assign(llvm::make_first_range(it->second).begin(),
+                           llvm::make_first_range(it->second).end());
+    }
+    llvm::sort(resolutions);
+    return resolutions;
 }
 
 void ProjectIndex::each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const {
@@ -1156,6 +1295,21 @@ const Shard* ProjectIndex::shard(Fid file) const {
     return slot.loaded() ? &slot : nullptr;
 }
 
+const InstantiationShard* ProjectIndex::instantiation_shard(Fid file) const {
+    auto it = instantiations.find(file);
+    if(it != instantiations.end()) {
+        return it->second.loaded() ? &it->second : nullptr;
+    }
+    if(!db) {
+        return nullptr;
+    }
+    auto& slot = instantiations[file];
+    if(auto blob = db->read(IndexBlobKind::Instantiations, key_of(*files, file))) {
+        slot = InstantiationShard::from_buffer(std::move(blob.buffer));
+    }
+    return slot.loaded() ? &slot : nullptr;
+}
+
 bool ProjectIndex::bind_search(std::unique_ptr<llvm::MemoryBuffer> blob) {
     SearchIndex built;
     if(!built.load(std::move(blob)) || built.generation() != search_generation) {
@@ -1195,6 +1349,7 @@ ProjectIndex::GlobalColumns ProjectIndex::global_columns() const {
         .args = base->args.size(),
         .signatures = base->signatures.size(),
         .bitmaps = base->bitmaps.size(),
+        .instantiation_bitmaps = base->instantiation_images.size(),
         .fixed = base->count() * (8 + 8 + 1 + 2 + 4 + 4),
         .contributors = base->contributors.size() + base->contributed_files.size() * (4 + 4),
     };

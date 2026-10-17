@@ -260,6 +260,16 @@ struct SemanticsOptions {
     /// top-level decls are traversed — the shape features consume, cached
     /// on the unit, owning the focus file's spelled tokens.
     bool all_files = false;
+
+    /// With all_files, also traverse these function and variable
+    /// definitions the unit instantiated (CompilationUnit::instantiations),
+    /// each a root of its own after the written declarations, its nodes
+    /// flagged in_instantiation.
+    llvm::ArrayRef<const clang::Decl*> instantiations;
+
+    /// Traverse the instantiations alone: a Content compile's written
+    /// declarations have the shape features share.
+    bool only_instantiations = false;
 };
 
 /// The semantic map of the main file, built once after a successful
@@ -333,6 +343,22 @@ public:
         return nodes[index];
     }
 
+    /// One instantiated definition SemanticsOptions::instantiations
+    /// traversed, as the nodes [begin, end): every node of the definition
+    /// but those of the instantiations it contains, which are roots of their
+    /// own. An implicit definition (a lambda's call operator) has no node of
+    /// its own, its children are the segment's top-level nodes.
+    struct InstantiationRoot {
+        const clang::Decl* decl = nullptr;
+        std::uint32_t begin = 0;
+        std::uint32_t end = 0;
+    };
+
+    /// The roots in the order SemanticsOptions::instantiations lists them.
+    llvm::ArrayRef<InstantiationRoot> instantiation_roots() const {
+        return roots;
+    }
+
     /// The spelled tokens of the main file (a view into the unit's tokens,
     /// not a copy); empty for the whole-TU shape. They cover the whole file
     /// even under a preamble PCH — what the PCH consumes is the preamble's
@@ -377,6 +403,8 @@ private:
     friend class SemanticsBuilder;
 
     std::vector<Node> nodes;
+
+    std::vector<InstantiationRoot> roots;
 
     llvm::ArrayRef<clang::syntax::Token> tokens;
 

@@ -1,0 +1,18 @@
+[answers.base]
+type_hierarchy = [
+    { name = "Base", kind = "Struct", at = "struct ⟦Base⟧ {};" },
+]
+supertypes = []
+subtypes = [
+    { name = "Mixin", kind = "Struct", at = "struct ⟦Mixin⟧ : T {};" },
+]
+
+[answers.mixin]
+type_hierarchy = [
+    { name = "Mixin", kind = "Struct", at = "struct ⟦Mixin⟧ : T {};" },
+]
+supertypes = [
+    { name = "Base", kind = "Struct", at = "struct ⟦Base⟧ {};" },
+    { name = "Other", kind = "Struct", at = "struct ⟦Other⟧ {};" },
+]
+subtypes = []

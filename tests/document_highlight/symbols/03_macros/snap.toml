@@ -1,6 +1,8 @@
 [answers.macro_def]
 highlights = [
     { at = "#define ⟦LIMIT⟧ 10", kind = "text" },
+    { at = "#define CLAMP(v) ((v) > ⟦LIMIT⟧ ? LIMIT : (v))", kind = "text" },
+    { at = "#define CLAMP(v) ((v) > LIMIT ? ⟦LIMIT⟧ : (v))", kind = "text" },
     { at = "#ifdef ⟦LIMIT⟧", kind = "text" },
     { at = "return ⟦LIMIT⟧;", kind = "text" },
     { at = "#undef ⟦LIMIT⟧", kind = "text" },
@@ -8,6 +10,7 @@ highlights = [
 
 [answers.total]
 highlights = [
+    { at = "#define RESET_TOTAL ⟦total⟧ = 0", kind = "text" },
     { at = "int ⟦total⟧;", kind = "text" },
     { at = "⟦total⟧ = CLAMP(total);", kind = "write" },
     { at = "total = CLAMP(⟦total⟧);", kind = "read" },
@@ -16,6 +19,7 @@ highlights = [
 
 [answers.arg]
 highlights = [
+    { at = "#define RESET_TOTAL ⟦total⟧ = 0", kind = "text" },
     { at = "int ⟦total⟧;", kind = "text" },
     { at = "⟦total⟧ = CLAMP(total);", kind = "write" },
     { at = "total = CLAMP(⟦total⟧);", kind = "read" },
@@ -25,6 +29,8 @@ highlights = [
 [answers.macro_use]
 highlights = [
     { at = "#define ⟦LIMIT⟧ 10", kind = "text" },
+    { at = "#define CLAMP(v) ((v) > ⟦LIMIT⟧ ? LIMIT : (v))", kind = "text" },
+    { at = "#define CLAMP(v) ((v) > LIMIT ? ⟦LIMIT⟧ : (v))", kind = "text" },
     { at = "#ifdef ⟦LIMIT⟧", kind = "text" },
     { at = "return ⟦LIMIT⟧;", kind = "text" },
     { at = "#undef ⟦LIMIT⟧", kind = "text" },

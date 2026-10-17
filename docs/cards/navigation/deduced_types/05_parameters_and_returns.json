@@ -3,8 +3,8 @@
   "topic": "navigation",
   "subtopic": "deduced_types",
   "title": "`auto` parameters and return types",
-  "summary": "The `auto` of an abbreviated template's parameter reaches the type of its only instantiation, and an `auto` return type the type returned",
-  "prose": "A parameter whose template is instantiated with several types reaches\nnone of them. The leading `auto` of a trailing return type reaches the\ntype after the arrow.",
+  "summary": "The `auto` of an abbreviated template's parameter reaches the type of each of its instantiations, and an `auto` return type the type returned",
+  "prose": "The leading `auto` of a trailing return type reaches the type after the\narrow.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -75,7 +75,36 @@
           "label": "several_instantiations",
           "marker": "several_instantiations",
           "value": {
-            "definition": []
+            "definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "struct ⟦Gadget⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 13
+                  }
+                }
+              }
+            ]
           }
         },
         {

@@ -9,6 +9,7 @@ module clice;
 import :config.config;
 import :driver.driver;
 import :index.database;
+import :index.instantiation_shard;
 import :index.query;
 import :index.serialization;
 import :index.symbol_query;
@@ -279,6 +280,14 @@ struct ShardStat {
     std::uint64_t relations = 0;
 };
 
+struct InstantiationStat {
+    std::string path;
+    std::uint64_t bytes = 0;
+    std::size_t resolutions = 0;
+    std::uint64_t records = 0;
+    std::size_t keys = 0;
+};
+
 /// The byte split of the shard blobs, mirroring the ShardBlob columns.
 struct ShardColumns {
     std::uint64_t content = 0;
@@ -349,6 +358,18 @@ struct IndexStats {
     Histogram references_per_symbol;
     Histogram name_lengths;
     Histogram variants_per_shard;
+
+    std::vector<InstantiationStat> instantiations;
+    std::uint64_t instantiation_bytes = 0;
+    std::uint64_t resolutions = 0;
+    std::uint64_t records = 0;
+    std::uint64_t keys = 0;
+    /// Keys whose instantiation resolves nothing in its file.
+    std::uint64_t empty_keys = 0;
+    /// (file, resolution) pairs the manifests list, summed over the TUs.
+    std::uint64_t resolution_uses = 0;
+    /// Per template, how many of its instantiations the shards key.
+    llvm::DenseMap<index::SymbolHash, std::uint32_t> keys_per_template;
 };
 
 IndexStats collect_stats(Project& project) {
@@ -385,6 +406,28 @@ IndexStats collect_stats(Project& project) {
     }
     std::ranges::sort(stats.shards, std::ranges::greater{}, &ShardStat::bytes);
 
+    for(auto& [path_id, instantiations]: project_index.instantiations) {
+        InstantiationStat stat{.path = project.file_table.display(path_id),
+                               .bytes = instantiations.bytes().size(),
+                               .resolutions = instantiations.resolutions().size(),
+                               .keys = instantiations.keys().size()};
+        instantiations.for_each_record([&](const index::InstantiationRecord&) {
+            stat.records += 1;
+            return true;
+        });
+        instantiations.for_each_key([&](const index::InstantiationShard::Key& key) {
+            stats.empty_keys += key.resolution ? 0 : 1;
+            stats.keys_per_template[key.pattern] += 1;
+            return true;
+        });
+        stats.instantiation_bytes += stat.bytes;
+        stats.resolutions += stat.resolutions;
+        stats.records += stat.records;
+        stats.keys += stat.keys;
+        stats.instantiations.push_back(std::move(stat));
+    }
+    std::ranges::sort(stats.instantiations, std::ranges::greater{}, &InstantiationStat::bytes);
+
     stats.global = project_index.global_columns();
     project_index.for_each_symbol(
         [&](index::SymbolHash, const index::SymbolIdentity& symbol, std::uint32_t references) {
@@ -394,6 +437,9 @@ IndexStats collect_stats(Project& project) {
         });
     for(auto& [tu, manifest]: project_index.manifests) {
         stats.local_fanout += manifest.local_fanout.size();
+        for(auto& use: manifest.instantiations) {
+            stats.resolution_uses += use.resolutions.size();
+        }
         if(auto blob = project.index_db->read(index::IndexBlobKind::Manifest,
                                               project_index.key_of(project.file_table, tu))) {
             stats.manifest_bytes += blob.buffer->getBufferSize();
@@ -437,6 +483,16 @@ void print_stats(const Project& project,
                     format_bytes(stats.shard_bytes),
                     stats.occurrences,
                     stats.relations);
+    driver::println(
+        "Instantiation shards: {} ({}), {} resolutions, {} records, {} keys ({} resolve "
+        "nothing), {} uses of resolutions",
+        stats.instantiations.size(),
+        format_bytes(stats.instantiation_bytes),
+        stats.resolutions,
+        stats.records,
+        stats.keys,
+        stats.empty_keys,
+        stats.resolution_uses);
     driver::println("Global symbols: {}, file versions: {}",
                     project_index.symbol_count(),
                     project.file_table.versions.size());
@@ -466,13 +522,14 @@ void print_stats(const Project& project,
 
     auto& global = stats.global;
     auto column_bytes = global.names + global.args + global.signatures + global.bitmaps +
-                        global.fixed + global.contributors;
+                        global.instantiation_bitmaps + global.fixed + global.contributors;
     driver::println();
     driver::println("Global blob ({}):", format_bytes(stats.global_bytes));
     column("symbol names", global.names, stats.global_bytes);
     column("specialization args", global.args, stats.global_bytes);
     column("function signatures", global.signatures, stats.global_bytes);
     column("reference bitmaps", global.bitmaps, stats.global_bytes);
+    column("instantiation bitmaps", global.instantiation_bitmaps, stats.global_bytes);
     column("symbol fixed columns", global.fixed, stats.global_bytes);
     column("reverse include graph", global.contributors, stats.global_bytes);
     column("file versions + paths",
@@ -498,6 +555,31 @@ void print_stats(const Project& project,
                         stat.occurrences,
                         stat.relations,
                         stat.path);
+    }
+
+    driver::println();
+    driver::println("Top {} instantiation shards by size:",
+                    std::min<std::size_t>(top, stats.instantiations.size()));
+    for(auto& stat: stats.instantiations | std::views::take(top)) {
+        driver::println("  {:>10}  {:>6} resolutions  {:>8} records  {:>7} keys  {}",
+                        format_bytes(stat.bytes),
+                        stat.resolutions,
+                        stat.records,
+                        stat.keys,
+                        stat.path);
+    }
+
+    std::vector<std::pair<std::uint32_t, index::SymbolHash>> templates;
+    for(auto [pattern, count]: stats.keys_per_template) {
+        templates.emplace_back(count, pattern);
+    }
+    std::ranges::sort(templates, std::ranges::greater{});
+    driver::println();
+    driver::println("Top {} templates by instantiations:",
+                    std::min<std::size_t>(top, templates.size()));
+    for(auto [count, pattern]: templates | std::views::take(top)) {
+        auto identity = project_index.identity_of(pattern);
+        driver::println("  {:>8}  {}", count, identity ? identity->name : llvm::StringRef("?"));
     }
 }
 

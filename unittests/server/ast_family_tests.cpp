@@ -61,7 +61,8 @@ struct Stack {
     PCMFamily pcm{graph, project, commands, pool};
     PCHFamily pch{graph, project, pool};
     SessionStore sessions;
-    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions};
+    IndexStore index{loop, project, commands};
+    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions, index};
     Dispatcher dispatcher{project, contexts, ast, pool};
 
     Stack() {

@@ -99,8 +99,11 @@ inline std::string symbol_id(SymbolHash hash) {
 /// aliases, an abbreviated template's `auto` names no parameter, a virtual
 /// function named by qualification carries a Direct relation, and the
 /// global blob lists the files whose names of internal linkage the search
-/// index misses.
-constexpr inline std::uint32_t index_format_version = 36;
+/// index misses; v37: what instantiations and macro expansions resolve
+/// lives in per-file instantiation blobs, manifests list the resolutions of
+/// those they use, symbols the files whose instantiation blobs name them,
+/// and no entry resolves through a template's only instantiation.
+constexpr inline std::uint32_t index_format_version = 37;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
@@ -248,6 +251,75 @@ struct ShardBlob {
     std::vector<std::uint32_t> rel_def_entries;
     std::vector<std::uint32_t> rel_def_begins;
     std::vector<std::uint32_t> rel_def_ends;
+};
+
+/// A column of ids into a table, in the width the table's size picks: u8
+/// up to 256 entries, u16 up to 65536, u32 beyond. Exactly one width is
+/// present.
+struct IdColumn {
+    std::vector<std::uint8_t> ids8;
+    std::vector<std::uint16_t> ids16;
+    std::vector<std::uint32_t> ids32;
+};
+
+/// A file's instantiation shard as one persisted blob: what the template
+/// instantiations and the macro expansions of the indexed TUs resolve in the
+/// file's text, which its shard leaves open — the calls and member
+/// accesses of a template's dependent code, the declarations an `auto`
+/// deduces, the bases a dependent base specifier names, the names a
+/// `#define` body spells.
+///
+/// One instantiated definition or macro expansion resolves a set of records,
+/// its resolution; resolutions are identified by the hash of the file's content
+/// generation and their records, so the TUs agreeing on one share it, and a
+/// record several resolutions hold is stored once. A worker emits one blob per
+/// file with its TU's resolutions there and the keys it walked; the
+/// master merges them into the file's blob, which records who walked each
+/// key.
+struct InstantiationBlob {
+    /// index_format_version, gated by InstantiationShard::from_buffer.
+    std::uint32_t format_version = 0;
+
+    /// The content generation of the file the records lie in
+    /// (ShardBlob::content_hash), and its size, which bounds every range.
+    std::uint64_t content_hash = 0;
+    std::uint32_t content_size = 0;
+
+    /// The symbols the records and the keys name, sorted by hash; an index
+    /// into this table is a symbol id.
+    std::vector<std::uint64_t> sym_hashes;
+
+    /// Records sorted by (begin, end, kind, expansion, target, from) — no
+    /// masks: the resolutions list their records.
+    RangeColumns records;
+    /// The InstantiationKind, its high bit set for a macro expansion's
+    /// record.
+    std::vector<std::uint8_t> record_kinds;
+    IdColumn record_targets;
+    /// The caller of a call, the derived class of a base, the declaration
+    /// of a type definition; id 0 for the kinds without one.
+    IdColumn record_froms;
+
+    /// Resolution identities, ascending; resolution i's records are
+    /// resolution_records[resolution_ends[i - 1], resolution_ends[i]), ascending.
+    std::vector<std::uint64_t> resolutions;
+    std::vector<std::uint32_t> resolution_ends;
+    IdColumn resolution_records;
+
+    /// The instantiation keys walked (the entity of the instantiated
+    /// declaration), ascending: per key the template it instantiates, its
+    /// resolution plus one (0: the instantiation resolves nothing here) and the
+    /// run that walked it, an index into the producers. A worker's blob
+    /// has no producers: the master knows the run.
+    std::vector<std::uint64_t> keys;
+    IdColumn key_patterns;
+    IdColumn key_resolutions;
+    IdColumn key_producers;
+
+    /// The runs that walked keys, ascending: the TU (the hash of its
+    /// database key) and its manifest's built_at.
+    std::vector<std::uint64_t> producer_units;
+    std::vector<std::uint64_t> producer_runs;
 };
 
 /// The bytes of `data` as the span every kota fbs entry point takes.

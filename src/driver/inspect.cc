@@ -14,6 +14,7 @@ import :config.config;
 import :driver.driver;
 import :feature.feature;
 import :feature.semantic_token_stream;
+import :index.instantiation_shard;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
@@ -2276,7 +2277,12 @@ std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnit& uni
     if(!named) {
         return to_raw_json(std::vector<index::Highlight>{});
     }
+    llvm::SmallVector<const index::InstantiationShard*, 1> instantiations;
+    if(auto section = tu.instantiation_section_of(tu.path_count() - 1)) {
+        instantiations.push_back(&tu.instantiation_shard(*section));
+    }
     return to_raw_json(index::highlights({&shard},
+                                         instantiations,
                                          named->symbols,
                                          [&](index::SymbolHash hash) -> std::optional<SymbolKind> {
                                              if(auto symbol = tu.find_symbol(hash)) {

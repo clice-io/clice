@@ -1,0 +1,50 @@
+["closed source".open]
+references = ["box.h │ void ⟦open⟧();", "void Box::⟦open⟧() {}", "measure.h │ item.⟦open⟧();"]
+incoming_calls = [
+    {
+        name = "measure",
+        kind = "Function",
+        at = "measure.h │ void ⟦measure⟧(T& item) {",
+        detail = "measure(T &item)",
+        sites = ["measure.h │ item.⟦open⟧();"],
+    },
+]
+
+["closed source".reset]
+references = [
+    "box.h │ void ⟦reset⟧();",
+    "box.h │ #define RESET_ALL ⟦reset⟧()",
+    "void ⟦reset⟧() {}",
+    "use.cpp │ ⟦RESET_ALL⟧;",
+]
+incoming_calls = [
+    {
+        name = "use",
+        kind = "Function",
+        at = "use.cpp │ void ⟦use⟧(Box& box) {",
+        detail = "use(Box &box)",
+        sites = ["use.cpp │ ⟦RESET_ALL⟧;"],
+    },
+]
+
+["closed source".measure]
+outgoing_calls = [
+    {
+        name = "open",
+        kind = "Method",
+        at = "main.cpp │ void Box::⟦open⟧() {}",
+        detail = "Box::open()",
+        sites = ["item.⟦open⟧();"],
+    },
+]
+
+["open header".open]
+references = ["box.h │ void ⟦open⟧();", "void Box::⟦open⟧() {}", "measure.h │ item.⟦open⟧();"]
+
+["open header".reset]
+references = [
+    "box.h │ void ⟦reset⟧();",
+    "box.h │ #define RESET_ALL ⟦reset⟧()",
+    "void ⟦reset⟧() {}",
+    "use.cpp │ ⟦RESET_ALL⟧;",
+]

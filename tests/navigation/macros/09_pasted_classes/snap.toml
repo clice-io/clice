@@ -1,6 +1,11 @@
 [answers.base]
 definition = ["struct ⟦TestBase⟧ {"]
-references = ["struct ⟦TestBase⟧ {", "virtual ~⟦TestBase⟧() = default;", "⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {"]
+references = [
+    "struct ⟦TestBase⟧ {",
+    "virtual ~⟦TestBase⟧() = default;",
+    'struct suite##_##name##_Test : ⟦TestBase⟧ {                                                      \',
+    "⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {",
+]
 subtypes = [
     { name = "Parser_HandlesEmpty_Test", kind = "Struct", at = "⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {" },
 ]

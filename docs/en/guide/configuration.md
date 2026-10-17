@@ -124,6 +124,16 @@ Build the background index that serves cross-TU features (find references, works
 
 <div class="config-option">
 
+| Option                            | Type   | Default |
+| --------------------------------- | ------ | ------- |
+| `standard_library_instantiations` | `bool` | `false` |
+
+Index what the standard library's own template instantiations and macros resolve inside the library — the comparator `std::sort` calls, the destructor `std::vector` runs — so references and the call hierarchy reach those places. Off by default: they are library internals, and walking them costs indexing time and space. Applies to the units indexed after a change.
+
+</div>
+
+<div class="config-option">
+
 | Option     | Type     | Default |
 | ---------- | -------- | ------- |
 | `readonly` | `string` | `"off"` |

@@ -59,6 +59,7 @@ std::size_t default_mapsize() {
 char kind_prefix(IndexBlobKind kind) {
     switch(kind) {
         case IndexBlobKind::Shard: return 'S';
+        case IndexBlobKind::Instantiations: return 'I';
         case IndexBlobKind::Manifest: return 'M';
         case IndexBlobKind::Global: return 'G';
         case IndexBlobKind::CDB: return 'C';

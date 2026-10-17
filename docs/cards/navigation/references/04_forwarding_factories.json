@@ -3,7 +3,7 @@
   "topic": "navigation",
   "subtopic": "references",
   "title": "References through forwarding functions",
-  "summary": "Find references on a constructor does not include call sites that reach it indirectly through a perfect-forwarding factory",
+  "summary": "Find references on a constructor includes the construction inside a perfect-forwarding factory, not the call sites that reach it through the factory",
   "prose": "",
   "status": "unsupported",
   "issues": [
@@ -34,6 +34,20 @@
           "value": {
             "wrong": "make<Widget>(800, 600) runs the constructor, so it should be among the references (clangd#716, clangd#1872)",
             "references": [
+              {
+                "$place": "return T⟦(⟧static_cast<Args&&>(args)...);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 13
+                  }
+                }
+              },
               {
                 "$place": "⟦Widget⟧(int w, int h);",
                 "path": "main.cpp",

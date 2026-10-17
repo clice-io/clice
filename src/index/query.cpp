@@ -150,12 +150,79 @@ bool covers(const Site& site, const Site& cursor) {
 
 void dedup_sites(std::vector<Site>& sites) {
     std::ranges::sort(sites, [](const Site& lhs, const Site& rhs) {
-        return site_key(lhs) < site_key(rhs);
+        return std::tuple(site_key(lhs), lhs.origin) < std::tuple(site_key(rhs), rhs.origin);
     });
     auto dup = std::ranges::unique(sites, [](const Site& lhs, const Site& rhs) {
         return site_key(lhs) == site_key(rhs);
     });
     sites.erase(dup.begin(), dup.end());
+}
+
+bool resolved_relations(const InstantiationShard& shard,
+                        SymbolHash symbol,
+                        RelationKind kind,
+                        llvm::function_ref<bool(const Relation&, bool expansion)> visit) {
+    bool completed = true;
+    shard.lookup(symbol, [&](const InstantiationRecord& record) {
+        std::optional<Relation> relation;
+        bool names = record.target == symbol;
+        switch(record.kind) {
+            case InstantiationKind::Reference: {
+                if(names && kind.is_one_of(RelationKind::Reference)) {
+                    relation = Relation{.kind = RelationKind::Reference, .range = record.range};
+                }
+                break;
+            }
+            case InstantiationKind::Deduced: {
+                if(names && kind.is_one_of(RelationKind::Deduced)) {
+                    relation = Relation{.kind = RelationKind::Deduced, .range = record.range};
+                }
+                break;
+            }
+            case InstantiationKind::Implied: {
+                if(names && kind.is_one_of(RelationKind::Implied)) {
+                    relation = Relation{.kind = RelationKind::Implied, .range = record.range};
+                }
+                break;
+            }
+            case InstantiationKind::Call: {
+                if(names && kind.is_one_of(RelationKind::Caller)) {
+                    relation = Relation{.kind = RelationKind::Caller,
+                                        .range = record.range,
+                                        .target_symbol = record.from};
+                } else if(record.from == symbol && kind.is_one_of(RelationKind::Callee)) {
+                    relation = Relation{.kind = RelationKind::Callee,
+                                        .range = record.range,
+                                        .target_symbol = record.target};
+                }
+                break;
+            }
+            case InstantiationKind::Base: {
+                // Base and derived relations pair symbols without a range.
+                if(names && kind.is_one_of(RelationKind::Reference)) {
+                    relation = Relation{.kind = RelationKind::Reference, .range = record.range};
+                } else if(names && kind.is_one_of(RelationKind::Derived)) {
+                    relation =
+                        Relation{.kind = RelationKind::Derived, .target_symbol = record.from};
+                } else if(record.from == symbol && kind.is_one_of(RelationKind::Base)) {
+                    relation = Relation{.kind = RelationKind::Base, .target_symbol = record.target};
+                }
+                break;
+            }
+            case InstantiationKind::TypeDefinition: {
+                // The type a declaration's placeholder takes, as the
+                // declared type's relation carries no range.
+                if(record.from == symbol && kind.is_one_of(RelationKind::TypeDefinition)) {
+                    relation = Relation{.kind = RelationKind::TypeDefinition,
+                                        .target_symbol = record.target};
+                }
+                break;
+            }
+        }
+        completed = !relation || visit(*relation, record.expansion);
+        return completed;
+    });
+    return completed;
 }
 
 std::optional<Named> named_at(const Shard& shard,
@@ -189,6 +256,7 @@ std::optional<Named> named_at(const Shard& shard,
 
 std::vector<Highlight>
     highlights(llvm::ArrayRef<const Shard*> shards,
+               llvm::ArrayRef<const InstantiationShard*> instantiations,
                llvm::ArrayRef<SymbolHash> symbols,
                llvm::function_ref<std::optional<SymbolKind>(SymbolHash)> kind_of) {
     std::vector<Highlight> result;
@@ -229,6 +297,17 @@ std::vector<Highlight>
                 add(constructor, RelationKind::Declaration, HighlightKind::Text);
                 add(constructor, RelationKind::Definition, HighlightKind::Text);
             }
+        }
+    }
+    for(auto* shard: instantiations) {
+        for(auto symbol: symbols) {
+            shard->lookup(symbol, [&](const InstantiationRecord& record) {
+                if(record.target == symbol && (record.kind == InstantiationKind::Reference ||
+                                               record.kind == InstantiationKind::Base)) {
+                    result.push_back({.range = record.range, .kind = HighlightKind::Text});
+                }
+                return true;
+            });
         }
     }
     // The strongest kind of a range sorts first and survives the dedup.
@@ -272,11 +351,24 @@ std::optional<IndexSource> IndexQuery::serving(Fid file) const {
     if(!shard || (gate && gate->stale(file, shard->content_hash()))) {
         return std::nullopt;
     }
-    return IndexSource{.kind = IndexSource::Kind::Shard,
+    IndexSource source{.kind = IndexSource::Kind::Shard,
                        .file = file,
                        .path = files.display(file),
                        .shard = shard,
                        .positions = shard->positions()};
+    if(auto* instantiations = instantiations_of(file, *shard)) {
+        source.instantiations.push_back(instantiations);
+    }
+    return source;
+}
+
+const InstantiationShard* IndexQuery::instantiations_of(Fid file, const Shard& shard) const {
+    if(!resolved) {
+        return nullptr;
+    }
+    auto* instantiations = index.instantiation_shard(file);
+    return instantiations && instantiations->content_hash() == shard.content_hash() ? instantiations
+                                                                                    : nullptr;
 }
 
 const Shard* IndexQuery::shard_matching(Fid file, llvm::StringRef text) const {
@@ -294,6 +386,40 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
                                          RelationVisitor visitor) const {
     auto main_id = state.path_count() - 1;
     bool stopped = false;
+    // What the TU's instantiations resolve in its other files, in the
+    // coordinates of the text the TU read: the overlay's own entries of
+    // the file, or the disk shard of that very text.
+    for(std::uint32_t i = 0; resolved && i < state.instantiation_count() && !stopped; i += 1) {
+        auto local_id = state.instantiation_path(i);
+        auto& instantiations = state.instantiation_shard(i);
+        if(local_id == main_id || !instantiations.loaded()) {
+            continue;
+        }
+        auto file = files.intern(Spelling::absolute(state.path(local_id)));
+        const Shard* shard = &state.shard_of(local_id);
+        if(!shard->loaded()) {
+            shard = index.shard(file);
+        }
+        if(!shard || shard->content_hash() != instantiations.content_hash() ||
+           live->is_open(file) || (gate && gate->stale(file, shard->content_hash()))) {
+            continue;
+        }
+        IndexSource instantiated{.kind = IndexSource::Kind::Overlay,
+                                 .file = file,
+                                 .path = files.display(file),
+                                 .shard = shard,
+                                 .positions = shard->positions(),
+                                 .origin = SiteOrigin::Instantiation};
+        auto expanded = instantiated;
+        expanded.origin = SiteOrigin::Expansion;
+        stopped =
+            !resolved_relations(instantiations,
+                                hash,
+                                kind,
+                                [&](const Relation& relation, bool expansion) {
+                                    return visitor(expansion ? expanded : instantiated, relation);
+                                });
+    }
     for(std::uint32_t i = 0; i < state.section_count() && !stopped; i += 1) {
         auto local_id = state.section_path(i);
         if(local_id == main_id) {
@@ -357,6 +483,25 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             }
             return true;
         });
+        if(stopped || !resolved || source.instantiations.empty()) {
+            return !stopped;
+        }
+        auto instantiated = source;
+        instantiated.origin = SiteOrigin::Instantiation;
+        auto expanded = source;
+        expanded.origin = SiteOrigin::Expansion;
+        for(auto* instantiations: source.instantiations) {
+            stopped = !resolved_relations(*instantiations,
+                                          hash,
+                                          kind,
+                                          [&](const Relation& relation, bool expansion) {
+                                              return visitor(expansion ? expanded : instantiated,
+                                                             relation);
+                                          });
+            if(stopped) {
+                break;
+            }
+        }
         return !stopped;
     };
 
@@ -365,8 +510,9 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             return true;
         }
         bool completed = true;
-        each_disk_file(hash, anchor, [&](Fid file) {
-            if(!completed) {
+        llvm::SmallDenseSet<Fid, 8> seen;
+        auto visit = [&](Fid file) {
+            if(!completed || !seen.insert(file).second) {
                 return;
             }
             auto source = serving(file);
@@ -374,7 +520,11 @@ void IndexQuery::for_each_relation(SymbolHash hash,
                 return;
             }
             completed = emit(*source);
-        });
+        };
+        each_disk_file(hash, anchor, visit);
+        if(resolved) {
+            index.each_instantiation_file(hash, visit);
+        }
         return completed;
     };
     auto sessions = [&] {
@@ -499,8 +649,34 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
         return text && llvm::is_contained({":", "=", "&&", "||", "?"},
                                           text->slice(named.range.begin, named.range.end));
     };
+    // An instantiation resolves a name its template leaves open (a member
+    // of a dependent object), or more of what a name means.
+    auto resolved_at = [&](std::optional<Named>& named) {
+        if(!resolved) {
+            return;
+        }
+        for(auto* instantiations: source->instantiations) {
+            instantiations->lookup(offset, [&](const InstantiationRecord& record) {
+                if(record.kind == InstantiationKind::Call ||
+                   record.kind == InstantiationKind::TypeDefinition ||
+                   (named && !(named->range == record.range))) {
+                    return true;
+                }
+                if(!named) {
+                    named = Named{.range = record.range};
+                }
+                if(!llvm::is_contained(named->symbols, record.target)) {
+                    named->symbols.push_back(record.target);
+                }
+                return true;
+            });
+        }
+    };
     auto hit = [&](const Shard& shard) {
         auto named = named_at(shard, offset, is_macro);
+        if(&shard == source->shard) {
+            resolved_at(named);
+        }
         if(!named) {
             return false;
         }
@@ -1177,7 +1353,7 @@ std::vector<IndexQuery::PlacedHighlight>
         return std::nullopt;
     };
     auto place = [&](llvm::ArrayRef<const Shard*> shards) {
-        for(auto& highlight: highlights(shards, cursor.symbols, kind_of)) {
+        for(auto& highlight: highlights(shards, source->instantiations, cursor.symbols, kind_of)) {
             if(auto site = source->site(highlight.range)) {
                 result.push_back({.site = std::move(*site), .kind = highlight.kind});
             }
