@@ -261,9 +261,10 @@ public:
         return dirty_shards.size() + dirty_instantiations.size() + saving_shards;
     }
 
-    /// How many shard blobs the last save() durably committed. A
-    /// steady-state save commits 0 — only variant-set changes rewrite a
-    /// blob — so the stats endpoint can pin full-rewrite regressions.
+    /// How many shard and instantiation blobs the last save() durably
+    /// committed. A steady-state save commits 0 — only variant-set and
+    /// resolution changes rewrite a blob — so the stats endpoint can pin
+    /// full-rewrite regressions.
     std::size_t last_save_shards() const {
         return saved_shards;
     }

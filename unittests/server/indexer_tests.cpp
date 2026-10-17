@@ -4162,6 +4162,30 @@ void a() {}
     ZEXPECT(f.index_store.known_instantiations(id("a2.cpp")).empty());
 }
 
+ZEST_CASE(GoneRunKeysCompacted) {
+    // Box<A>::show resolves nothing: box.h holds its key alone.
+    tmp.touch("box.h", R"(#pragma once
+template <typename T>
+struct Box {
+    void show() {}
+};
+)");
+    ZASSERT(index("a.cpp"));
+    ZASSERT(box());
+    ZEXPECT(box()->resolutions().empty());
+    ZEXPECT(box()->keys().size() == 1u);
+
+    // a.cpp's next run instantiates Box<A> no more: nothing of box.h's
+    // instantiation shard holds, and the save retires it.
+    tmp.touch("a.cpp", R"(#include "box.h"
+#include "a.h"
+void a() {}
+)");
+    ZASSERT(index("a.cpp"));
+    f.save();
+    ZEXPECT(!box());
+}
+
 ZEST_CASE(GoneKeyReruns) {
     ZASSERT(index("a.cpp"));
     f.begin_round();

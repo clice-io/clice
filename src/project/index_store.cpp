@@ -930,7 +930,12 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
             retired_files.push_back(path_id);
             continue;
         }
-        if(!instantiations.has_dead_resolutions()) {
+        bool gone_runs = false;
+        instantiations.for_each_key([&](const index::InstantiationShard::Key& key) {
+            gone_runs = !current_run(*key.producer);
+            return !gone_runs;
+        });
+        if(!instantiations.has_dead_resolutions() && !gone_runs) {
             continue;
         }
         auto live = project_index.live_resolutions(path_id);
@@ -1200,6 +1205,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
             failed_shards += 1;
             dirty_shards.insert(shard_ids[i]);
         } else if(i - shard_count < instantiation_count) {
+            failed_shards += 1;
             redirty_instantiations(instantiation_ids[i - shard_count]);
         } else if(i - shard_count - instantiation_count < manifest_count) {
             dirty_manifests.insert(manifest_ids[i - shard_count - instantiation_count]);
@@ -1232,7 +1238,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         persisted_cdb_snapshot = std::move(cdb_bytes);
         cdb_dirty = false;
     }
-    saved_shards = shard_count - failed_shards;
+    saved_shards = shard_count + instantiation_count - failed_shards;
     saving_shards = 0;
 
     // Context choices as of the snapshot point are durable: advance the
