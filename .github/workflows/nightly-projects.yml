@@ -11,6 +11,8 @@ on:
   schedule:
     - cron: "37 4 * * *"
   workflow_dispatch:
+  push:
+    branches: [test/nightly-projects]
 
 # A dispatch on a branch replaces the branch's run still going; main's
 # nights all finish.
