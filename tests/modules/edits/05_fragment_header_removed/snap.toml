@@ -1,0 +1,21 @@
+[asked.errors]
+errors = [
+    {
+        at = "import ⟦A;⟧",
+        severity = "error",
+        message = "could not build module 'A': 'leaf.h' file not found",
+        source = "clang",
+        code = "err_module_not_built",
+    },
+]
+
+["seen by the tick".errors]
+errors = [
+    {
+        at = "import ⟦A;⟧",
+        severity = "error",
+        message = "could not build module 'A': 'leaf.h' file not found",
+        source = "clang",
+        code = "err_module_not_built",
+    },
+]

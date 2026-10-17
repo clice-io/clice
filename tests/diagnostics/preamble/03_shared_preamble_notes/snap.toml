@@ -1,0 +1,27 @@
+[test."a.cpp"]
+diagnostics = [
+    {
+        at = '#include ⟦"c.h"⟧',
+        severity = "warning",
+        message = "non-default #pragma pack value changes the alignment of struct or union members in the included file",
+        source = "clang",
+        code = "-Wpragma-pack-suspicious-include",
+        related = [
+            { at = "#pragma ⟦pack⟧(1)", message = "previous '#pragma pack' directive that modifies alignment is here" },
+        ],
+    },
+]
+
+[test."b.cpp"]
+diagnostics = [
+    {
+        at = '#include ⟦"c.h"⟧',
+        severity = "warning",
+        message = "non-default #pragma pack value changes the alignment of struct or union members in the included file",
+        source = "clang",
+        code = "-Wpragma-pack-suspicious-include",
+        related = [
+            { at = "#pragma ⟦pack⟧(1)", message = "previous '#pragma pack' directive that modifies alignment is here" },
+        ],
+    },
+]

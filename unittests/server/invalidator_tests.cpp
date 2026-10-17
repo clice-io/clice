@@ -32,9 +32,6 @@ index::Shard shard_of(llvm::StringRef content) {
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
 }
 
-/// Non-module fixtures need the invalidator's PCMFamily and index store
-/// references but never drive them; this bundles the inert plumbing
-/// behind them.
 /// The inert family stack an Invalidator reads through: no worker ever
 /// starts, so no round dispatches.
 struct Harness {

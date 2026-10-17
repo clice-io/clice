@@ -92,8 +92,8 @@ public:
     /// in-flight rounds: their next rounds check their builds again, and a
     /// build whose key and inputs still hold is kept — the single write
     /// point for PCM content invalidation. Artifact-only loss (cache
-    /// eviction) goes through revalidate_blobs' graph.mark_dirty instead:
-    /// no cascade, importers' results still describe unchanged content.
+    /// eviction) goes through revalidate_blobs instead, which re-dirties
+    /// without voiding in-flight rounds: what they read is unchanged.
     /// Returns the dirtied nodes' path_ids, of every family.
     llvm::SmallVector<Fid> invalidate(Fid path_id);
 

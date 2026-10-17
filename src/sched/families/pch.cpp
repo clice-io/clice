@@ -345,8 +345,8 @@ void PCHFamily::invalidate(llvm::StringRef pch_key) {
 
 void PCHFamily::blame(llvm::StringRef pch_key) {
     auto it = project.pch_cache.find(pch_key);
-    bool gone = it != project.pch_cache.end() && project.store &&
-                !project.store->lookup("pch", it->second.blob);
+    bool gone = it == project.pch_cache.end() ||
+                (project.store && !project.store->lookup("pch", it->second.blob));
     if(!gone) {
         consume_blames.on_blame(pch_key);
     }

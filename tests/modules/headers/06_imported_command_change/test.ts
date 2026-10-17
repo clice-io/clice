@@ -9,7 +9,7 @@ test(async (t) => {
     const use = t.at("main.cpp", "return |value;");
     await t.show("before", s.hover(use));
     t.disk.database({ "b.cppm": ["-DVALUE=2"], "a.cppm": [], "main.cpp": [] });
-    expect(await s.poll("cdb")).toBeGreaterThan(0);
+    expect(await s.poll("cdb")).toBe(1);
     expect(await s.errors("main.cpp")).toEqual([]);
     await t.show("after", s.hover(use));
     await s.sync();

@@ -3868,7 +3868,9 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     ZEXPECT(results == (std::vector<TURunFamily::Result>{Completed, Completed, Completed}));
     ZEXPECT(pcms_before_impl == 0u);
     ZEXPECT(f.project.pcm_builds.size() == 1u);
-    ZEXPECT(f.project.pcm_builds.contains(id("m.cppm")));
+    auto build = f.project.pcm_builds.find(id("m.cppm"));
+    ZASSERT(build != f.project.pcm_builds.end());
+    ZEXPECT(!build->second.path.empty());
 }
 
 };  // ZEST_SUITE(TURunIndex)

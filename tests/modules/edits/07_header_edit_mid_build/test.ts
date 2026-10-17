@@ -8,8 +8,8 @@ test(async (t) => {
     const first = s.errors("main.cpp");
     await park.reached();
     t.disk.edit("leaf.h", { replace: "int helper()", with: "int renamed()" });
-    expect(await s.poll("workspace")).toBeGreaterThan(0);
+    expect(await s.poll("workspace")).toBe(1);
     await park.release();
     await first;
-    expect(await s.errors("main.cpp")).toHaveLength(1);
+    await t.show("errors", s.errors("main.cpp"));
 });

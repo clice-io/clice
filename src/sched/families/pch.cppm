@@ -181,7 +181,8 @@ private:
 
     /// Per-key slot for the dispatch owner's stash; replaced by the
     /// spawning acquire, read by its round and any stale-retry rounds, and
-    /// retired when a current round commits a result.
+    /// retired when a current round commits a result or nobody waits on
+    /// the key any more.
     struct KeyState {
         Request inputs;
     };

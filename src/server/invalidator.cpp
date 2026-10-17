@@ -126,8 +126,7 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
                 }
             }
         } else {
-            // A dirtied module unit: the family already dropped its
-            // cached PCM state; its importers are in this same list.
+            // A dirtied module unit: its importers are in this same list.
             mark_dependent(path_id, dirty);
         }
     }

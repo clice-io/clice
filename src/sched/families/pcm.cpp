@@ -204,21 +204,28 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         }
     }
     // The last round's failed import stands while this one waits: an
-    // importer explains its diagnostics from it meanwhile.
-    for(auto dep: deps.resolved) {
-        switch(co_await ctx.depend(node(dep))) {
-            case DependResult::Ready: break;
-            case DependResult::Failed: {
-                auto& build = project.pcm_builds[path_id];
-                retire_blob(build);
-                build = {
-                    .superseded = std::move(build.superseded),
-                    .failure = PCMBuild::Failure{.import = dep},
-                };
-                co_return RoundOutcome::Failed;
+    // importer explains its diagnostics from it meanwhile. An import ready
+    // early can have lost its PCM by the time the last one is, and be
+    // rebuilding it: the key and the build read what each import built.
+    for(bool built = false; !built;) {
+        for(auto dep: deps.resolved) {
+            switch(co_await ctx.depend(node(dep))) {
+                case DependResult::Ready: break;
+                case DependResult::Failed: {
+                    auto& build = project.pcm_builds[path_id];
+                    retire_blob(build);
+                    build = {
+                        .superseded = std::move(build.superseded),
+                        .failure = PCMBuild::Failure{.import = dep},
+                    };
+                    co_return RoundOutcome::Failed;
+                }
+                case DependResult::Cancelled: co_return RoundOutcome::Stale;
             }
-            case DependResult::Cancelled: co_return RoundOutcome::Stale;
         }
+        built = llvm::all_of(deps.resolved, [&](Fid dep) {
+            return !project.pcm_builds.find(dep)->second.path.empty();
+        });
     }
 
     // Copied before any suspension below: while a PCM build is awaited, a

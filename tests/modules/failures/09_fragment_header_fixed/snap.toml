@@ -1,0 +1,2 @@
+["seen by the tick".references]
+references = ["export int ⟦a⟧() {", "closed.cpp │ return ⟦a⟧();", "main.cpp │ return ⟦a⟧();"]

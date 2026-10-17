@@ -1,4 +1,4 @@
-[test.p1]
+[nearest.p1]
 diagnostics = [
     {
         at = "⟦import util;⟧",
@@ -9,7 +9,62 @@ diagnostics = [
     },
 ]
 
-[test.p2]
+[nearest.p2]
+diagnostics = [
+    {
+        at = "⟦import util;⟧",
+        severity = "warning",
+        message = "module 'util' is declared by more than one file; this file imports ${WS}/p2/util.cppm, the nearest, not ${WS}/p1/util.cppm",
+        source = "clice",
+        code = "ambiguous-module",
+    },
+]
+
+[nearest.root]
+diagnostics = [
+    {
+        at = "⟦import util;⟧",
+        severity = "warning",
+        message = "module 'util' is declared by more than one file; this file imports ${WS}/p1/util.cppm, the nearest, not ${WS}/p2/util.cppm",
+        source = "clice",
+        code = "ambiguous-module",
+    },
+]
+
+["declared on disk".before]
+diagnostics = [
+    {
+        at = "return ⟦p2_only⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'p2_only'; did you mean 'p1_only'?",
+        source = "clang",
+        code = "err_undeclared_var_use_suggest",
+    },
+]
+
+["declared on disk".after]
+diagnostics = [
+    {
+        at = "⟦import util;⟧",
+        severity = "warning",
+        message = "module 'util' is declared by more than one file; this file imports ${WS}/p2/util.cppm, the nearest, not ${WS}/p1/util.cppm",
+        source = "clice",
+        code = "ambiguous-module",
+    },
+]
+
+["added to the database".before]
+diagnostics = [
+    {
+        at = "return ⟦p2_only⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'p2_only'; did you mean 'p1_only'?",
+        source = "clang",
+        code = "err_undeclared_var_use_suggest",
+    },
+]
+
+["added to the database".after]
 diagnostics = [
     {
         at = "⟦import util;⟧",

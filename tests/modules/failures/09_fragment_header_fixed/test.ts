@@ -16,9 +16,8 @@ test("seen by the tick", async (t) => {
     expect(await s.errors("main.cpp")).toHaveLength(1);
     await s.indexed();
     t.disk.edit("frag.h", { replace: "return missing_name;", with: "return 1;" });
-    expect(await s.poll("workspace")).toBeGreaterThan(0);
+    expect(await s.poll("workspace")).toBe(1);
     expect(await s.errors("main.cpp")).toEqual([]);
     await s.indexed();
-    const refs = await s.references(t.at("a.cppm", "int |a()"));
-    expect(JSON.stringify(refs)).toContain("closed.cpp");
+    await t.show("references", s.references(t.at("a.cppm", "int |a()")));
 });

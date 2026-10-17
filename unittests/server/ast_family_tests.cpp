@@ -485,7 +485,9 @@ ZEST_CASE(BufferImportBuildsPCM) {
     ZEXPECT(stack.ast.projections.current(session->path_id));
     auto mod_ids = stack.project.dep_graph.lookup_module("m");
     ZASSERT(!mod_ids.empty());
-    ZEXPECT(stack.project.pcm_builds.contains(mod_ids[0]));
+    auto build = stack.project.pcm_builds.find(mod_ids[0]);
+    ZASSERT(build != stack.project.pcm_builds.end());
+    ZEXPECT(!build->second.path.empty());
 }
 
 ZEST_CASE(DiamondDepsDeduplicated) {

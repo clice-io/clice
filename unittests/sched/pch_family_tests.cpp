@@ -198,7 +198,9 @@ ZEST_CASE(BlameParksKey) {
     // and acquisition fails fast, before any dispatch.
     std::optional<PCHFamily::Outcome> cleared, parked;
     execute([&]() -> kota::task<> {
+        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHFamily::Outcome::Ready);
         pch.blame("shared-key");
+        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHFamily::Outcome::Ready);
         pch.consumed_ok("shared-key");
         pch.blame("shared-key");
         cleared = co_await pch.acquire(request("#define X 1\n"));
@@ -208,6 +210,19 @@ ZEST_CASE(BlameParksKey) {
     });
     ZEXPECT(cleared == PCHFamily::Outcome::Ready);
     ZEXPECT(parked == PCHFamily::Outcome::Failed);
+}
+
+ZEST_CASE(SharedPairStrikesOnce) {
+    // Two parses consumed the same pair and both blame it: the second blame
+    // finds it retracted already, and the key keeps building.
+    std::optional<PCHFamily::Outcome> rebuilt;
+    execute([&]() -> kota::task<> {
+        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHFamily::Outcome::Ready);
+        pch.blame("shared-key");
+        pch.blame("shared-key");
+        rebuilt = co_await pch.acquire(request("#define X 1\n"));
+    });
+    ZEXPECT(rebuilt == PCHFamily::Outcome::Ready);
 }
 
 ZEST_CASE(EvictedPairNotBlamed) {
