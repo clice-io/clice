@@ -110,6 +110,8 @@ jobs:
   docs-check:
     needs: changes
     if: ${{ needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
