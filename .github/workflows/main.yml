@@ -104,6 +104,22 @@ jobs:
           project: clice
           token: ${{ secrets.CLICE_DOCS }}
 
+  # Builds the site with this PR's pages, as deploy will after the merge: a
+  # page that reads fine on GitHub can still fail VitePress (`{{` in inline
+  # code is a Vue interpolation). Its own job, since the action switches node.
+  docs-check:
+    needs: changes
+    if: ${{ needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: clice-io/docs@main
+        with:
+          project: clice
+          mode: check
+
   vscode:
     needs: changes
     if: ${{ needs.changes.outputs.vscode == 'true' }}
@@ -202,6 +218,7 @@ jobs:
       - changes
       - lint
       - deploy
+      - docs-check
       - vscode
       - zed
       - test
@@ -213,6 +230,6 @@ jobs:
         uses: re-actors/alls-green@v1.2.2
         with:
           allowed-skips: >-
-            lint,deploy,vscode,zed,
+            lint,deploy,docs-check,vscode,zed,
             test,instant-vscode
           jobs: ${{ toJSON(needs) }}
