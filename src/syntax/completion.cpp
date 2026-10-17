@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :support.text;
 import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.include_resolver;
@@ -57,17 +58,19 @@ bool looks_like_header(llvm::StringRef name,
 bool follows_access_operator(llvm::StringRef text,
                              std::uint32_t offset,
                              const clang::LangOptions& dialect) {
+    auto line = text.substr(logical_line_begin(text, offset));
+    auto end = offset - static_cast<std::uint32_t>(text.size() - line.size());
     Token before;
     Token last;
-    Lexer lexer(text, dialect);
-    for(auto token = lexer.advance(); !token.is_eof() && token.range.end <= offset;
+    Lexer lexer(line, dialect);
+    for(auto token = lexer.advance(); !token.is_eof() && token.range.end <= end;
         token = lexer.advance()) {
         if(!token.is_eod()) {
             before = last;
             last = token;
         }
     }
-    if(!last.valid() || last.range.end != offset) {
+    if(!last.valid() || last.range.end != end) {
         return false;
     }
     if(last.kind == clang::tok::coloncolon || last.kind == clang::tok::arrow) {
@@ -135,6 +138,16 @@ std::vector<WrittenDesignator> written_designators(llvm::StringRef text,
 PreambleCompletionContext detect_completion_context(llvm::StringRef text,
                                                     std::uint32_t offset,
                                                     const clang::LangOptions& dialect) {
+    // Only a line opening with a directive, an import or a module
+    // declaration has a context, and only then is the text before it lexed,
+    // for the comment the line may be in.
+    auto line = text.substr(logical_line_begin(text, offset));
+    auto opening = Lexer(line, dialect).advance();
+    auto word = opening.is_identifier() ? opening.text(line) : llvm::StringRef();
+    if(!opening.is_directive_hash() && word != "import" && word != "export" && word != "module") {
+        return {};
+    }
+
     // The tokens of the logical line the cursor is on, through its end. The
     // cursor applies as a logical bound: a keyword must end at or before it
     // to count as typed.

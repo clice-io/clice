@@ -47,7 +47,8 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text,
 /// Whether the code before `offset` ends in a member or scope access
 /// operator (`.`, `->`, `::`) — outside a directive, the only trigger
 /// characters worth a candidate build. A pack ellipsis is not a member
-/// access.
+/// access. The cursor's logical line is lexed alone: one inside a block
+/// comment reads as code, which costs no more than a build.
 bool follows_access_operator(llvm::StringRef text,
                              std::uint32_t offset,
                              const clang::LangOptions& dialect);

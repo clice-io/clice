@@ -65,11 +65,10 @@ private:
         auto& sm = pp.getSourceManager();
         auto main = sm.getMainFileID();
         auto text = sm.getBufferData(main);
-        auto lexical = lexical_scan(text, pp.getLangOpts());
+        // A prefix is lexed off a copy: the lexer reads up to a NUL
+        // terminator, which a prefix lacks.
+        auto lexical = lexical_scan(text.take_front(bound).str(), pp.getLangOpts());
         for(auto& directive: lexical.directives) {
-            if(directive.range.begin >= bound) {
-                return;
-            }
             if(in_inactive(directive.range.begin) ||
                (directive.kind != Kind::Include && directive.kind != Kind::Define)) {
                 continue;
