@@ -12,6 +12,12 @@ on:
     - cron: "37 4 * * *"
   workflow_dispatch:
 
+# A dispatch on a branch replaces the branch's run still going; main's
+# nights all finish.
+concurrency:
+  group: nightly-projects-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 permissions:
   contents: read
   actions: read
