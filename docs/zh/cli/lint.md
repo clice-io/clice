@@ -4,12 +4,14 @@
 
 clice 将 clang-tidy 集成为内置 Lint 引擎。`clice lint` 借助常驻 worker 池，对工作区内的翻译单元运行 `.clang-tidy` 中配置的检查，并输出一份合并后的报告。
 
-**用法**：`clice lint [--workspace <dir>] [--configuration <tag>] [--jobs <n>] [--index]`
+**用法**：`clice lint [--workspace <dir>] [--configuration <tag>] [--jobs <n>] [--index] [--json]`
 
 对编译数据库中属于下文检查范围的每个翻译单元运行 clang-tidy，
 输出合并后的检查结果；发现问题时以非零状态退出。
 `--index` 还会利用同一批解析结果构建并持久化项目索引，
 因此后续运行 `clice index` 时无需再执行任何操作。
+`--json` 则改为以一个 JSON 对象输出报告：各项计数，
+以及每条检查结果及其位置、检查项和 note。
 
 退出码：`0` 表示检查通过，`1` 表示发现了问题，`2` 表示本次运行未能按要求完成——参数无法解析、某个翻译单元运行失败，或索引未能持久化。运行被中断时退出码为 `130`。
 

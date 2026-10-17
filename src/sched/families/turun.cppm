@@ -88,6 +88,9 @@ public:
         /// Failure detail for the requester's logs.
         std::string error;
 
+        /// The errors a completed run compiled with.
+        std::vector<worker::LocatedMessage> errors;
+
         struct Perf {
             std::size_t bytes = 0;
             long long index_ms = 0;

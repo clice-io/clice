@@ -215,6 +215,26 @@ struct JobsOption {
     <std::uint32_t> jobs;
 };
 
+/// --json, of the batch subcommands that report a run.
+struct JsonReportOption {
+    DecoFlag(names = {"--json"},
+             help = "Print the run's report as JSON on stdout instead of text",
+             required = false)
+    json;
+};
+
+/// Where a message is, as compilers print it; nothing for one no file
+/// holds, the file alone for one about its whole compile.
+inline std::string location(llvm::StringRef file, std::uint32_t line, std::uint32_t column) {
+    if(file.empty()) {
+        return {};
+    }
+    if(line == 0) {
+        return std::format("{}: ", file);
+    }
+    return std::format("{}:{}:{}: ", file, line, column);
+}
+
 /// The file an operation is about.
 struct FileTarget {
     DecoInput(meta_var = "<PATH>",

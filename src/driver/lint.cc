@@ -26,20 +26,9 @@ struct LintOptions {
 
     WorkspaceOptions where;
     JobsOption jobs;
+    JsonReportOption report;
     LogLevelOption log;
 };
-
-/// Where a finding or a note is, as compilers print it; nothing for one no
-/// file holds, the file alone for one about its whole compile.
-std::string location(llvm::StringRef file, std::uint32_t line, std::uint32_t column) {
-    if(file.empty()) {
-        return {};
-    }
-    if(line == 0) {
-        return std::format("{}: ", file);
-    }
-    return std::format("{}:{}:{}: ", file, line, column);
-}
 
 void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
     for(auto& d: diagnostics) {
@@ -60,6 +49,7 @@ int run_lint(Spelling root,
              std::string configuration,
              std::uint32_t jobs,
              bool with_index,
+             bool json,
              const char* self_path) {
     auto config = Config::load_from_workspace(CanonicalPath(root));
     if(auto checked = check_requested_configuration(config, configuration); !checked) {
@@ -74,6 +64,10 @@ int run_lint(Spelling root,
         .self_path = self_path,
         .with_index = with_index,
     });
+    if(json) {
+        print_json(result);
+        return result.exit_code;
+    }
     print_findings(result.findings);
     if(result.interrupted) {
         driver::println("Lint interrupted. Rerun `clice lint` for a full report.");
@@ -112,6 +106,7 @@ CommandHandler build(const char* self_path) {
                                                       opts.where.configuration.tag(),
                                                       opts.jobs.jobs.value_or(0),
                                                       static_cast<bool>(opts.index),
+                                                      static_cast<bool>(opts.report.json),
                                                       self_path);
                                   });
 }

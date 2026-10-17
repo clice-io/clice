@@ -297,6 +297,17 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         result.failed.emplace_back(project.file_table.display(file));
     }
     std::ranges::sort(result.failed);
+    auto& files = project.file_table;
+    for(auto& [unit, errors]: stack.sched.pump.compiled_with_errors()) {
+        auto& shown = result.compiled_with_errors.emplace_back(
+            BatchResult::UnitErrors{.unit = files.display(unit), .errors = errors});
+        for(auto& error: shown.errors) {
+            if(!error.file.empty()) {
+                error.file = files.display(files.intern(Spelling::absolute(error.file)));
+            }
+        }
+    }
+    std::ranges::sort(result.compiled_with_errors, {}, &BatchResult::UnitErrors::unit);
     if(!result.failed.empty() || result.unsaved) {
         result.exit_code = 1;
     }

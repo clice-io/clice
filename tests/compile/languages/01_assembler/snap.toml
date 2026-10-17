@@ -32,8 +32,12 @@ Expands to:
 range = ".quad ⟦SIZE⟧"
 
 [index."$ clice index --jobs 1"]
+wrong = "an assembler source is parsed as C after preprocessing: its comment and directive lines, which the build accepts, count as errors"
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+1 translation unit compiled with errors; the index holds what parsed:
+  ${WS}/entry.S
+    ${WS}/entry.S:2:1: expected identifier or '('
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0

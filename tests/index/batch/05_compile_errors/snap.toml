@@ -1,0 +1,54 @@
+[text."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 4 file shards (# KB), 4 symbols.
+2 translation units compiled with errors; the index holds what parsed:
+  ${WS}/broken.cpp
+    ${WS}/broken.cpp:2:12: use of undeclared identifier 'missing'
+  ${WS}/uses_header.cpp
+    ${WS}/include/oops.h:2:12: use of undeclared identifier 'undefined_name'
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[json."$ clice index --json"]
+stdout = '''
+{
+  "exitCode": 0,
+  "interrupted": false,
+  "completed": true,
+  "indexedTus": 3,
+  "standaloneHeaders": 0,
+  "shardCount": 4,
+  "shardBytes": "#",
+  "symbolCount": 4,
+  "failed": [],
+  "compiledWithErrors": [
+    {
+      "unit": "${WS}/broken.cpp",
+      "errors": [
+        {
+          "file": "${WS}/broken.cpp",
+          "line": 2,
+          "column": 12,
+          "message": "use of undeclared identifier 'missing'"
+        }
+      ]
+    },
+    {
+      "unit": "${WS}/uses_header.cpp",
+      "errors": [
+        {
+          "file": "${WS}/include/oops.h",
+          "line": 2,
+          "column": 12,
+          "message": "use of undeclared identifier 'undefined_name'"
+        }
+      ]
+    }
+  ],
+  "logDir": "${WS}/.clice/logs/${SESSION}",
+  "unsaved": false,
+  "seconds": "#"
+}
+'''
+exit = 0

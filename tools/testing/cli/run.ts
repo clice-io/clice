@@ -147,9 +147,30 @@ function mapStrings(value: unknown, map: (text: string) => string): unknown {
     return value;
 }
 
+/// A key whose number is a duration or a size, which every run reads
+/// differently: `seconds`, `mergeMs`, `shardBytes`.
+const MEASURE = /^(seconds|ms|bytes)$|(Seconds|Ms|Bytes)$/;
+
+/// The numbers of a JSON value under a duration's or a size's key elided
+/// to `#`, as the text's are.
+function elideMeasures(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map(elideMeasures);
+    }
+    if (typeof value === "object" && value !== null) {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, item]) => [
+                key,
+                typeof item === "number" && MEASURE.test(key) ? "#" : elideMeasures(item),
+            ]),
+        );
+    }
+    return value;
+}
+
 /// stdout normalized, JSON pretty-printed: its strings are normalized as
 /// parsed, so an escape is never read as part of a path.
-function stdoutText(stdout: string, root: string): string {
+export function stdoutText(stdout: string, root: string): string {
     const trimmed = stdout.trimEnd();
     let json: unknown;
     try {
@@ -161,7 +182,7 @@ function stdoutText(stdout: string, root: string): string {
             .join("\n");
     }
     return JSON.stringify(
-        mapStrings(json, (text) => normalize(text, root)),
+        elideMeasures(mapStrings(json, (text) => normalize(text, root))),
         null,
         2,
     );

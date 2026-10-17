@@ -33,6 +33,7 @@ struct IndexOptions {
     kota::deco::decl::HelpOption help;
     WorkspaceOptions where;
     JobsOption jobs;
+    JsonReportOption report;
     LogLevelOption log;
 };
 
@@ -86,11 +87,17 @@ std::string format_time(std::uint64_t epoch_ms) {
 /// Index through the serving writer: the editor's server holds the cache
 /// directory's writer lock, so it runs the pass and the command waits
 /// for the index to be committed.
-int run_indexing_via_server(const index::ServerEndpoint& endpoint, llvm::StringRef configuration) {
+int run_indexing_via_server(const index::ServerEndpoint& endpoint,
+                            llvm::StringRef configuration,
+                            bool json) {
     auto result = control::request_index(endpoint, configuration);
     if(!result) {
         LOG_ERROR("{}", result.error());
         return 1;
+    }
+    if(json) {
+        print_json(*result);
+        return result->failed.empty() ? 0 : 1;
     }
     driver::println("Indexed through the running clice server (pid {}).", endpoint.pid);
     if(!result->failed.empty()) {
@@ -109,6 +116,7 @@ int run_indexing_via_server(const index::ServerEndpoint& endpoint, llvm::StringR
 int run_indexing(Spelling root,
                  std::string configuration,
                  std::uint32_t workers,
+                 bool json,
                  const char* self_path) {
     auto config = Config::load_from_workspace(CanonicalPath(root));
     if(auto checked = check_requested_configuration(config, configuration); !checked) {
@@ -121,7 +129,8 @@ int run_indexing(Spelling root,
         case index::WriterProbe::State::Free: break;
         case index::WriterProbe::State::Server:
             return run_indexing_via_server(writer.endpoint,
-                                           resolve_configuration(config, configuration));
+                                           resolve_configuration(config, configuration),
+                                           json);
         case index::WriterProbe::State::Held: {
             LOG_ERROR("{}", index::held_writer_message(writer, cache_dir));
             return 1;
@@ -151,6 +160,10 @@ int run_indexing(Spelling root,
         .self_path = self_path,
         .on_progress = report_progress,
     });
+    if(json) {
+        print_json(result);
+        return result.exit_code;
+    }
     if(result.interrupted) {
         if(result.unsaved) {
             driver::println(
@@ -182,6 +195,23 @@ int run_indexing(Spelling root,
             "commands.",
             result.standalone_headers,
             plural_s(result.standalone_headers));
+    }
+    if(!result.compiled_with_errors.empty()) {
+        driver::println("{} translation unit{} compiled with errors; the index holds what parsed:",
+                        result.compiled_with_errors.size(),
+                        plural_s(result.compiled_with_errors.size()));
+        for(auto& [unit, errors]: result.compiled_with_errors) {
+            auto& first = errors.front();
+            driver::println("  {}", unit);
+            driver::println("    {}{}",
+                            location(first.file, first.line, first.column),
+                            first.message);
+            if(errors.size() > 1) {
+                driver::println("    and {} more error{}",
+                                errors.size() - 1,
+                                plural_s(errors.size() - 1));
+            }
+        }
     }
     if(!result.failed.empty()) {
         driver::println(
@@ -852,19 +882,21 @@ CommandHandler build(const char* self_path) {
         .description = "A translation unit's persisted manifest: include tree and contributions",
         .run = show_file("clice index unit <PATH> [OPTIONS]", run_show_tu),
     });
-    auto index = operation<IndexOptions>("clice index [OPTIONS]",
-                                         "index",
-                                         Errors::Text,
-                                         [self_path](const IndexOptions& opts) {
-                                             auto spelling = opts.where.root();
-                                             if(!workspace_exists(spelling)) {
-                                                 return 1;
-                                             }
-                                             return run_indexing(std::move(spelling),
-                                                                 opts.where.configuration.tag(),
-                                                                 opts.jobs.jobs.value_or(0),
-                                                                 self_path);
-                                         });
+    auto index =
+        operation<IndexOptions>("clice index [OPTIONS]",
+                                "index",
+                                Errors::Text,
+                                [self_path](const IndexOptions& opts) {
+                                    auto spelling = opts.where.root();
+                                    if(!workspace_exists(spelling)) {
+                                        return 1;
+                                    }
+                                    return run_indexing(std::move(spelling),
+                                                        opts.where.configuration.tag(),
+                                                        opts.jobs.jobs.value_or(0),
+                                                        static_cast<bool>(opts.report.json),
+                                                        self_path);
+                                });
     return with_operations("", std::move(operations), Errors::Text, std::move(index));
 }
 

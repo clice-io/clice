@@ -128,6 +128,9 @@ exit = 0
 [test."$ clice index --jobs 2 #2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 10 symbols.
+1 translation unit compiled with errors; the index holds what parsed:
+  ${WS}/main.cpp
+    ${WS}/main.cpp:7:34: use of undeclared identifier 'compute'
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0

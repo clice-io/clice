@@ -68,6 +68,16 @@ struct BatchResult {
     /// Paths of the units that failed for good, sorted.
     std::vector<std::string> failed;
 
+    /// A unit indexed although its compile reported errors.
+    struct UnitErrors {
+        std::string unit;
+        std::vector<worker::LocatedMessage> errors;
+    };
+
+    /// The units indexed although their compile reported errors, sorted
+    /// by path: their index holds what parsed.
+    std::vector<UnitErrors> compiled_with_errors;
+
     /// The session log directory; empty when file logging is off.
     std::string log_dir;
 

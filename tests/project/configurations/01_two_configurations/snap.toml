@@ -134,6 +134,9 @@ exit = 1
 ["batch index per configuration"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 4 translation units in #s: 6 file shards (# KB), 7 symbols.
+1 translation unit compiled with errors; the index holds what parsed:
+  ${WS}/gated.cpp
+    ${WS}/gated.cpp:2:2: missing RELEASE
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0

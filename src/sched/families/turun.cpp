@@ -188,6 +188,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         Outcome outcome;
         outcome.result = Result::Completed;
         outcome.tidy_diagnostics = std::move(value.tidy_diagnostics);
+        outcome.errors = std::move(value.errors);
         outcome.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
         if(plan.index) {
             // Merge guard: a newer content-level invalidation during this

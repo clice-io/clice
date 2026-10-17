@@ -296,6 +296,20 @@ kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
     LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
 }
 
+void IndexPump::record_indexed(Fid file, std::vector<worker::LocatedMessage> compile_errors) {
+    failed_ids.erase(file);
+    if(compile_errors.empty()) {
+        errors.erase(file);
+    } else {
+        errors[file] = std::move(compile_errors);
+    }
+}
+
+void IndexPump::record_failed(Fid file) {
+    failed_ids.insert(file);
+    errors.erase(file);
+}
+
 kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
                                        std::size_t index,
                                        std::size_t total,
@@ -333,7 +347,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
         apply_report(outcome.report);
         switch(outcome.result) {
             case TURunFamily::Result::Completed: {
-                failed_ids.erase(server_path_id);
+                record_indexed(server_path_id, std::move(outcome.errors));
                 indexed_total += 1;
                 LOG_PERF("index",
                          "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
@@ -350,7 +364,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
             }
             case TURunFamily::Result::Failed: {
                 LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, outcome.error);
-                failed_ids.insert(server_path_id);
+                record_failed(server_path_id);
                 break;
             }
             case TURunFamily::Result::Crashed:
@@ -395,7 +409,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
                             total,
                             file_path,
                             outcome.error);
-                        failed_ids.insert(server_path_id);
+                        record_failed(server_path_id);
                         break;
                     }
                     case PendingTable::FailureDecision::Requeued: {

@@ -9,6 +9,7 @@ module;
 module clice;
 
 import :compile.compilation;
+import :compile.diagnostic;
 import :feature.feature;
 import :index.include_tree;
 import :index.tu_index;
@@ -292,7 +293,7 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
     // it by.
     llvm::StringMap<File> files;
     auto locate = [&](const clang::tooling::DiagnosticMessage& message) {
-        worker::TidyNote located{.message = message.Message};
+        worker::LocatedMessage located{.message = message.Message};
         if(message.FilePath.empty()) {
             return located;
         }
@@ -331,6 +332,24 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
             diagnostic.notes.push_back(locate(note));
         }
     }
+}
+
+/// The errors a unit compiled with, each where it is.
+static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit) {
+    auto& sm = unit.context().getSourceManager();
+    std::vector<worker::LocatedMessage> errors;
+    for(auto& diag: unit.diagnostics()) {
+        if(diag.id.level < DiagnosticLevel::Error) {
+            continue;
+        }
+        auto& error = errors.emplace_back(worker::LocatedMessage{.message = diag.message});
+        if(diag.fid.isValid()) {
+            error.file = unit.file_path(diag.fid).str();
+            error.line = sm.getLineNumber(diag.fid, diag.range.begin);
+            error.column = sm.getColumnNumber(diag.fid, diag.range.begin);
+        }
+    }
+    return errors;
 }
 
 static worker::IncludeTreeResult
@@ -415,6 +434,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     }
     worker::TURunResult result;
     result.success = true;
+    result.errors = located_errors(*unit);
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
     if(params.index) {

@@ -278,7 +278,9 @@ exit = 0
   `warning: …`), `exit` (or `killed` and the signal), and `files`, each file
   the command wrote as a diff. A command run again in one test is `#2`.
   Paths read `${WS}/…`, a session's log directory `${SESSION}`, a worker's
-  cause of death `${CRASH}`, durations and sizes `#ms`, `# KB`.
+  cause of death `${CRASH}`, durations and sizes `#ms`, `# KB`, and in
+  JSON the number under a duration's or a size's key (`seconds`, `…Ms`,
+  `…Bytes`) `#`.
 - **Paths apart.** An answers test whose clients answer differently on
   purpose (`paths: { separate }`) has an `inspect` and a `server` block,
   each holding the blocks of its client.

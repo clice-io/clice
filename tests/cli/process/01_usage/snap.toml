@@ -89,6 +89,7 @@ Options:
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
+  --json                          Print the run's report as JSON on stdout instead of text
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
 
@@ -110,6 +111,7 @@ Options:
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
+  --json                          Print the run's report as JSON on stdout instead of text
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
 '''

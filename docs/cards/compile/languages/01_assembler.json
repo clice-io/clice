@@ -101,7 +101,8 @@
         {
           "label": "$ clice index --jobs 1",
           "value": {
-            "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "wrong": "an assembler source is parsed as C after preprocessing: its comment and directive lines, which the build accepts, count as errors",
+            "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.\n1 translation unit compiled with errors; the index holds what parsed:\n  ${WS}/entry.S\n    ${WS}/entry.S:2:1: expected identifier or '('\nSession log: ${WS}/.clice/logs/${SESSION}",
             "exit": 0
           }
         }

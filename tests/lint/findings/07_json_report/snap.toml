@@ -1,0 +1,42 @@
+[test."$ clice lint --json"]
+stdout = '''
+{
+  "exitCode": 1,
+  "interrupted": false,
+  "completed": true,
+  "checkedTus": 1,
+  "failedTus": 0,
+  "findings": [
+    {
+      "file": "${WS}/main.cpp",
+      "line": 4,
+      "column": 15,
+      "error": false,
+      "compilerError": false,
+      "message": "argument name 'disabled' in comment does not match parameter name 'enabled'",
+      "check": "bugprone-argument-comment",
+      "notes": [
+        {
+          "file": "${WS}/main.cpp",
+          "line": 1,
+          "column": 21,
+          "message": "'enabled' declared here"
+        }
+      ]
+    },
+    {
+      "file": "${WS}/main.cpp",
+      "line": 5,
+      "column": 12,
+      "error": true,
+      "compilerError": true,
+      "message": "use of undeclared identifier 'missing'",
+      "check": "clang-diagnostic-error",
+      "notes": []
+    }
+  ],
+  "unsaved": false,
+  "seconds": "#"
+}
+'''
+exit = 1

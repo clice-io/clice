@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, test } from "vitest";
 import { elideCrash } from "../render/lsp.ts";
-import { normalize, splitCommand } from "./run.ts";
+import { normalize, splitCommand, stdoutText } from "./run.ts";
 
 describe("splitCommand", () => {
     test("quotes group words", () => {
@@ -44,6 +44,16 @@ describe("normalize", () => {
         } finally {
             fs.rmSync(root, { recursive: true });
         }
+    });
+
+    test("a JSON report's durations and sizes are elided", () => {
+        const report = { seconds: 1.5, shardBytes: 1024, mergeMs: 3, symbolCount: 10 };
+        expect(JSON.parse(stdoutText(JSON.stringify(report), os.tmpdir()))).toEqual({
+            seconds: "#",
+            shardBytes: "#",
+            mergeMs: "#",
+            symbolCount: 10,
+        });
     });
 
     test("a worker's death reads the same everywhere", () => {
