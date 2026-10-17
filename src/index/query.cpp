@@ -1585,7 +1585,8 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
                         std::uint32_t reference_files,
                         Fid anchor) {
         if(!is_searchable_kind(identity.kind) || identity.name.empty() ||
-           has_flag(identity.flags, SymbolFlags::Unnamed) || seen.contains(hash)) {
+           has_flag(identity.flags, SymbolFlags::Unnamed) || seen.contains(hash) ||
+           (query.external_only && identity.scope != SymbolScope::External)) {
             return;
         }
         if(!query.kinds.empty() && !llvm::is_contained(query.kinds, identity.kind)) {
@@ -1644,18 +1645,20 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
     }
     // The names of internal linkage of the files merged since the build
     // live in their shards alone.
-    for(auto file: index.search_pending_files) {
-        auto* shard = declaring_shard(file);
-        if(!shard) {
-            continue;
-        }
-        llvm::StringRef path = files.resolve(file);
-        shard->for_each_local_symbol([&](SymbolHash hash, const SymbolIdentity& identity) {
-            if(identity.scope == SymbolScope::TULocal && declares(*shard, hash)) {
-                consider(hash, identity, path, 0, file);
+    if(!query.external_only) {
+        for(auto file: index.search_pending_files) {
+            auto* shard = declaring_shard(file);
+            if(!shard) {
+                continue;
             }
-            return true;
-        });
+            llvm::StringRef path = files.resolve(file);
+            shard->for_each_local_symbol([&](SymbolHash hash, const SymbolIdentity& identity) {
+                if(identity.scope == SymbolScope::TULocal && declares(*shard, hash)) {
+                    consider(hash, identity, path, 0, file);
+                }
+                return true;
+            });
+        }
     }
     if(live) {
         live->each_session_index([&](const TUIndex& state) {
@@ -1752,8 +1755,7 @@ std::vector<IndexQuery::Located> IndexQuery::search(const SymbolQuery& query,
 IndexQuery::Completables IndexQuery::completables(llvm::StringRef prefix,
                                                   Fid file,
                                                   std::size_t limit) const {
-    SymbolQuery query;
-    query.pattern = prefix.str();
+    SymbolQuery query{.pattern = prefix.str(), .external_only = true};
     // Members outnumber the names of namespaces: the ranking is fetched
     // wider than the names wanted.
     auto ranked = ranked_search(query, limit * 8);
@@ -1791,8 +1793,7 @@ IndexQuery::Completables IndexQuery::completables(llvm::StringRef prefix,
 
     Completables result{.exhausted = ranked.exhausted};
     for(auto& hit: ranked.hits) {
-        if(!has_flag(hit.symbol.flags, SymbolFlags::Completable) ||
-           hit.symbol.scope != SymbolScope::External) {
+        if(!has_flag(hit.symbol.flags, SymbolFlags::Completable)) {
             continue;
         }
         if(result.names.size() == limit) {

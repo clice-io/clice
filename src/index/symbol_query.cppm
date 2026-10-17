@@ -81,6 +81,10 @@ struct SymbolQuery {
     /// only some files see has no project-wide entry.
     std::vector<std::string> paths;
 
+    /// Leave out the names of internal linkage, which only their own unit
+    /// can name.
+    bool external_only = false;
+
     /// Set instead of a pattern: the symbol with this id.
     std::optional<SymbolHash> handle;
 

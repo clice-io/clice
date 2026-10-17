@@ -965,6 +965,14 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         }
         narrow(std::move(allowed));
     }
+    if(query.external_only && !index.local_docs.empty()) {
+        Bitmap allowed;
+        allowed.addRange(0, index.count());
+        for(auto doc: index.local_docs) {
+            allowed.remove(doc);
+        }
+        narrow(std::move(allowed));
+    }
     if(query.absolute || !query.scope.empty()) {
         // The containers the scope leads to: the top level for an empty
         // absolute scope, else every container named like the last
