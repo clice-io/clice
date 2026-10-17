@@ -295,7 +295,9 @@ exit = 0
   in `snap.toml`, written for a reader of the docs:
   `wrong = "clang 22 drops it (clangd#696)"`. Every update keeps it while the
   block exists. A case's status in the docs follows its flags: none
-  `supported`, some `partial`, all `unsupported`.
+  `supported`, some `partial`, all `unsupported`. What clice answers on code
+  the standard makes ill-formed with no diagnostic required is never fixed:
+  a case pins it, flagged known wrong.
 - **Updating.** `UPDATE_SNAPSHOTS=1` rewrites every output and prints, per
   case, the blocks whose output changed — those flagged known wrong (likely
   fixed) apart from the rest (likely regressed) — and the blocks added and
