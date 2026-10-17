@@ -27,18 +27,8 @@ references = [
 
 ["units share the target's pch".completion.completion]
 items = [
-    { label = "main()", kind = "Function", detail = "int" },
-    { label = "unit", kind = "Variable", detail = "Circle" },
-    { label = "alignof", kind = "Keyword" },
-    { label = "co_await", kind = "Keyword" },
-    { label = "co_yield", kind = "Keyword" },
-    { label = "const_cast", kind = "Keyword" },
-    { label = "decltype", kind = "Keyword" },
-    { label = "delete", kind = "Keyword" },
-    { label = "dynamic_cast", kind = "Keyword" },
-    { label = "false", kind = "Keyword" },
+    { label = "area(const Circle &circle)", kind = "Function", detail = "double" },
 ]
-more = 38
 
 ["the targets index"."$ clice index"]
 stdout = '''

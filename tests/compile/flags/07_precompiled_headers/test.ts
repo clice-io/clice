@@ -46,7 +46,7 @@ test("units share the target's pch", async (t) => {
         built: (await s.stats()).pchCacheEntries,
     }).toEqual({ app: 1, tool: 1, main: 0, area: 1, built: 3 });
     await t.show("area", s.references(t.at("include/shapes.h", "inline double |area(")));
-    await t.show("completion", s.completion(t.at("src/main.cpp", "return |area(")));
+    await t.show("completion", s.completion(t.at("src/main.cpp", "return are|a(")));
 });
 
 test("the targets index", async (t) => {
