@@ -378,7 +378,7 @@ tests/navigation/implementation/04_derived_classes
 
 **模板鸭子类型导航**
 
-在依赖调用上执行“跳转到实现”，会到达该调用在模板唯一实例化中解析到的方法
+在依赖调用上执行“跳转到实现”，会到达该调用在模板的每个实例化中解析到的方法
 
 函数模板和泛型 Lambda 均适用，按名称调用的转换运算符也是如此。
 
@@ -440,7 +440,7 @@ tests/navigation/references/03_implicit_construction
 
 **通过转发函数产生的引用**
 
-在构造函数上执行“查找引用”，不会包含通过完美转发工厂间接调用它的位置
+在构造函数上执行“查找引用”，结果包含完美转发工厂内部的构造，但不包含经由工厂间接调用它的位置
 
 ```case
 tests/navigation/references/04_forwarding_factories
@@ -452,9 +452,7 @@ tests/navigation/references/04_forwarding_factories
 
 **模板中的依赖引用**
 
-在成员上执行“查找引用”，结果会包含已打开文件的模板中的依赖调用位置，前提是该模板只用该成员所属的类实例化
-
-未打开的文件不提供这类调用位置。
+在成员上执行“查找引用”，结果会包含以该成员所属的类实例化的模板中的依赖调用位置
 
 ```case
 tests/navigation/references/05_dependent_calls
@@ -578,9 +576,9 @@ tests/navigation/deduced_types/04_deduced_templates
 
 **`auto` 参数和返回类型**
 
-简写函数模板的参数中的 `auto` 会跳转到其唯一实例化所用的类型；返回类型中的 `auto` 则跳转到返回的类型
+简写函数模板的参数中的 `auto` 会跳转到其每个实例化所用的类型；返回类型中的 `auto` 则跳转到返回的类型
 
-如果模板以多种类型实例化，参数中的 `auto` 不会跳转到其中任何一个。尾置返回类型（trailing return type）开头的 `auto` 跳转到箭头之后的类型。
+尾置返回类型（trailing return type）开头的 `auto` 跳转到箭头之后的类型。
 
 ```case
 tests/navigation/deduced_types/05_parameters_and_returns
@@ -594,7 +592,7 @@ tests/navigation/deduced_types/05_parameters_and_returns
 
 在模板内部，若 `auto` 的初始化器依赖于模板参数，则会跳转到该初始化器解析出的类型
 
-模板参数无论属于函数模板还是类模板，在模板只实例化一次时都代表其实参；以多种类型实例化时则代表它自身。
+类型为模板参数的 `auto`，无论该参数属于函数模板还是类模板，都会跳转到该参数以及它在每个实例化中的实参。
 
 ```case
 tests/navigation/deduced_types/06_dependent_auto
@@ -726,11 +724,13 @@ tests/navigation/macros/04_macro_references
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#346 -->
+<!-- BEGIN CAPABILITY: supported clangd#346 -->
 
 **嵌套宏引用**
 
-查找宏引用时，不会包含其他宏定义的宏体中对该宏的引用
+查找宏引用时，结果包含其他宏的宏体中对该宏的引用，只要那些宏在某处展开
+
+从未展开的宏体不指向任何东西：其中的名称指什么，由每次展开决定。
 
 ```case
 tests/navigation/macros/05_nested_macros
@@ -1158,6 +1158,20 @@ tests/navigation/projects/03_uses_across_sources
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板和宏内部的使用**
+
+只要有源文件实例化模板或展开宏，无论它是否打开，“查找引用”和调用层次结构都会包含模板的依赖代码和宏体在那里解析到的目标
+
+`measure` 中的 `item.open()` 只有在 `measure` 以 `Box` 实例化之后才指向 `Box::open`，`RESET_ALL` 宏体中的 `reset()` 也只在该宏展开处才指向这个函数：这里两者都发生在一个未打开的源文件中，打开头文件时照样能给出答案。
+
+```case
+tests/navigation/projects/09_instantiated_templates
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 调用层次结构
@@ -1270,7 +1284,7 @@ tests/navigation/call_hierarchy/08_lambda_bodies
 
 **通过转发函数调用构造函数**
 
-构造函数的传入调用不包含通过完美转发工厂调用该构造函数的位置
+构造函数的传入调用包含运行该构造函数的完美转发工厂，但不包含经由工厂调用它的位置
 
 ```case
 tests/navigation/call_hierarchy/09_forwarding_factories
@@ -1350,11 +1364,23 @@ tests/navigation/type_hierarchy/04_template_bases
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板参数所指的基类**
+
+以自身模板参数为基类的类模板，是实例化它所用的每个类的子类型
+
+```case
+tests/navigation/type_hierarchy/09_dependent_bases
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 文档高亮
 
-高亮显示当前文件中对光标所在符号的所有引用（`textDocument/documentHighlight`）。高亮与查找引用来自同一份索引，因此覆盖的名称与查找引用相同，在只读模式下同样可用；变量、字段或参数在代码写入或读取它的位置会被标为写入或读取，其他高亮则不作标记。
+高亮显示当前文件中对光标所在符号的所有引用（`textDocument/documentHighlight`）。高亮与查找引用来自同一份索引，因此覆盖的名称与查找引用相同，在只读模式下同样可用；变量、字段或参数在代码写入或读取它的位置会被标为写入或读取，其他高亮则不作标记，只有实例化或宏展开才能解析出的使用也是如此。
 
 ### 声明与使用
 
@@ -1380,7 +1406,7 @@ tests/document_highlight/symbols/01_declarations_and_uses
 
 宏会在定义、展开、检测它的条件编译指令和 `#undef` 处高亮显示
 
-宏参数中写出的名称会在其书写位置高亮显示；来自宏替换文本的名称则会高亮显示整个宏调用。在另一个宏的替换文本中使用的宏，既不会在该处高亮显示，也不会在另一个宏的调用处高亮显示。
+宏参数中写出的名称会在其书写位置高亮显示；来自宏替换文本的名称则会高亮显示整个宏调用。在另一个宏的替换文本中使用的宏，会在该处作为普通文本出现而高亮显示，但不会在另一个宏的调用处高亮显示。
 
 ```case
 tests/document_highlight/symbols/03_macros

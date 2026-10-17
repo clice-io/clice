@@ -128,6 +128,20 @@ tests/query/basics/11_declaration_only
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**经由实例化得出的答案**
+
+引用和调用图包含实例化与宏展开解析出的结果，每条都用 `via` 标明来源
+
+所写代码本身确定不了的使用——模板中的依赖调用、宏体中的名称——在答案中带有 `"via": "instantiation"` 或 `"via": "expansion"`；所写代码本身给出的答案不带 `via`。只有当一个调用方的所有调用都来自实例化时，它才带有 `via`。
+
+```case
+tests/query/basics/12_instantiations
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ### 按路径缩小范围
