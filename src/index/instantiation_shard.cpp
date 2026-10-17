@@ -131,10 +131,14 @@ struct KeyTable {
     }
 };
 
+// Decoded symbol hashes, like producer units, key DenseMaps (reserved_key).
 CheckResult symbols_ok(BlobView root) {
-    if(!std::ranges::is_sorted(to_array_ref(root[&InstantiationBlob::sym_hashes]),
-                               std::less_equal{})) {
+    auto hashes = to_array_ref(root[&InstantiationBlob::sym_hashes]);
+    if(!std::ranges::is_sorted(hashes, std::less_equal{})) {
         return std::unexpected("symbol hashes are not strictly ascending");
+    }
+    if(llvm::any_of(hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
+        return std::unexpected("a reserved symbol hash");
     }
     return {};
 }
@@ -243,6 +247,9 @@ CheckResult keys_ok(BlobView root) {
     auto producers = table.producer_units.size();
     if(table.producer_runs.size() != producers) {
         return std::unexpected("producer columns do not line up");
+    }
+    if(llvm::any_of(table.producer_units, [](std::uint64_t unit) { return reserved_key(unit); })) {
+        return std::unexpected("a reserved producer unit");
     }
     for(std::size_t i = 1; i < producers; i += 1) {
         if(std::pair(table.producer_units[i - 1], table.producer_runs[i - 1]) >=

@@ -284,12 +284,19 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.key_resolutions.ids8 = {1};
     ZEXPECT(make(bytes_of()).loaded());
 
+    // Hashes that key DenseMaps once decoded.
+    blob.sym_hashes = {~0ull};
+    ZEXPECT(!make(bytes_of()).loaded());
+    blob.sym_hashes = {11};
+
     // Producers name every key or none.
     blob.producer_units = {100};
     blob.producer_runs = {1};
     ZEXPECT(!make(bytes_of()).loaded());
     blob.key_producers.ids8 = {0};
     ZEXPECT(make(bytes_of()).loaded());
+    blob.producer_units = {~0ull - 1};
+    ZEXPECT(!make(bytes_of()).loaded());
 }
 
 };  // ZEST_SUITE(InstantiationShard)
