@@ -60,7 +60,7 @@ Each question names a symbol or a file and answers with what the index knows abo
 
 **References of a symbol**
 
-Every place naming a method, its declarations included
+Every place naming a method, its declarations included, each with the function it lies in
 
 ```case
 tests/query/basics/01_references
@@ -84,7 +84,7 @@ tests/query/basics/02_symbol_search
 
 **Questions about symbols**
 
-Look a symbol up by name, by its id or by a line, and ask where it is defined and used, who calls it, what it derives from and what a file declares
+Look a symbol up by name, by its id or by a line, and ask where it is defined and used, who calls it, what it derives from, what derives from it and what a file declares
 
 ```case
 tests/query/basics/03_symbol_questions
@@ -116,6 +116,18 @@ tests/query/basics/10_documentation
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**A symbol nothing defines**
+
+The definition of a symbol nothing defines is its declaration, as go-to-definition answers in the editor
+
+```case
+tests/query/basics/11_declaration_only
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ### Narrowing by Path
@@ -128,7 +140,7 @@ A `path:` term narrows a search to some files, and finds the names only one file
 
 **File-local symbols**
 
-Symbols only one file can name, such as statics, locals and parameters, are found by name within that file with `path:`
+A static found by name anywhere; locals and parameters, which only their function names, found by name within their file with `path:`
 
 ```case
 tests/query/names/05_file_local_names

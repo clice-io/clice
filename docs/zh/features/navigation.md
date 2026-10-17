@@ -84,13 +84,27 @@ tests/navigation/definition/07_error_recovery
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**纯虚函数**
+
+在纯虚函数的声明上执行“跳转到定义”，会列出它的重写方法
+
+纯虚函数没有定义：在它的声明上执行“跳转到定义”，会跳转到给出了定义的那些重写方法。通过它发起的调用则跳转到其声明，与其他没有定义的函数一样。
+
+```case
+tests/navigation/definition/10_pure_virtual
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 跳转到声明
 
 从符号的使用处或定义处跳转到其声明。在 C++ 中，许多实体的声明和定义是分开的。
 
-clice 返回声明和定义的位置，并排除光标当前所在的位置；内联定义的符号没有单独的声明。因此，声明与定义位置会像“跳转到定义”一样交替跳转。
+clice 返回声明和定义的位置，并排除光标当前所在的位置；内联定义的符号没有单独的声明。因此，声明与定义位置会像“跳转到定义”一样交替跳转。对于有定义却没有自己的声明的函数，则退而列出同一作用域中同名且没有定义的函数：也就是因参数改动而与它分离的那个声明。
 
 <!-- BEGIN GENERATED ITEMS: navigation/declaration -->
 
@@ -174,11 +188,25 @@ tests/navigation/declaration/06_signature_spelling
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**声明已改动的定义**
+
+在与声明不再匹配的定义上执行“跳转到声明”，会跳转到与它分离的那个声明
+
+只在一侧改动参数时，定义和头文件中的声明就成了两个函数，定义也就没有了自己的声明。在这样的定义上执行“跳转到声明”，会退而列出同一作用域中同名且没有定义的函数：也就是需要做同样修改的那个声明。自身已有定义的重载不在候选之列。
+
+```case
+tests/navigation/declaration/07_changed_signatures
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 跳转到类型定义
 
-跳转到符号的类型定义。适用于变量、参数、字段以及其他具有类型的命名实体。当类型是类型别名或类似指针的包装类型时，应解开别名或包装，跳转到其底层类型或所指向类型的定义。
+跳转到符号的类型定义。适用于变量、参数、字段以及其他具有类型的命名实体。类型别名会同时跳转到别名本身和它所指代的类型，类似指针的包装类型会同时跳转到包装类型和它所指向的类型；类型自身的名称以及 `this` 会跳转到该类型本身。
 
 <!-- BEGIN GENERATED ITEMS: navigation/type_definition -->
 
@@ -230,11 +258,13 @@ tests/navigation/type_definition/04_smart_pointers
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **类型别名**
 
-在使用类型别名的变量上执行“跳转到类型定义”，会跳转到 `using` 或 `typedef` 声明；尚不能解析别名并跳转到底层类型的定义
+在使用类型别名的变量上执行“跳转到类型定义”，会同时跳转到 `using` 或 `typedef` 声明以及它所指代的类型
+
+对于别名模板，别名会跳转到其目标类型所特化的那个模板。
 
 ```case
 tests/navigation/type_definition/05_type_aliases
@@ -266,11 +296,23 @@ tests/navigation/type_definition/07_pointers_and_references
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**`this`**
+
+在 `this` 上执行“跳转到类型定义”，会跳转到它所指向的类
+
+```case
+tests/navigation/type_definition/11_this
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 跳转到实现
 
-在虚方法上执行“跳转到实现”，会列出它的重写方法；在类上执行，则会列出其派生类。
+在虚方法上执行“跳转到实现”，会列出它之下各层的所有重写方法；在类上执行，则会列出直接或间接派生自它的所有类。纯虚函数没有定义，在它的声明上执行“跳转到定义”同样会列出这些重写方法。
 
 <!-- BEGIN GENERATED ITEMS: navigation/implementation -->
 
@@ -278,9 +320,9 @@ tests/navigation/type_definition/07_pointers_and_references
 
 **重写链**
 
-沿重写链逐级跳转到实现
+跳转到实现会列出其下各层的重写方法
 
-在三级重写链中，从每个方法执行“跳转到实现”都会到达下一级的重写方法：从基类到中间类，再从中间类到叶子类。
+在三级重写链中，从基类方法执行“跳转到实现”会到达中间类和叶子类的重写方法，从中间类方法执行则会到达叶子类的重写方法。
 
 ```case
 tests/navigation/implementation/01_override_chain
@@ -336,7 +378,7 @@ tests/navigation/implementation/04_derived_classes
 
 在依赖调用上执行“跳转到实现”，会到达该调用在模板唯一实例化中解析到的方法
 
-函数模板和泛型 Lambda 均适用。
+函数模板和泛型 Lambda 均适用，按名称调用的转换运算符也是如此。
 
 ```case
 tests/navigation/implementation/05_dependent_calls
@@ -348,7 +390,7 @@ tests/navigation/implementation/05_dependent_calls
 
 ## 查找引用
 
-“查找引用”会列出所有使用该符号名称的位置，包括其声明。
+“查找引用”会列出所有使用该符号名称的位置，包括其声明。方法的引用包括通过它所重写的方法发起的调用，因为这些调用可能分派到它；类的引用包括其构造函数的名称。
 
 <!-- BEGIN GENERATED ITEMS: navigation/references -->
 
@@ -378,11 +420,13 @@ tests/navigation/references/02_range_for
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **隐式构造函数和析构函数调用**
 
-在构造函数上执行“查找引用”，只会返回显式使用它的位置；隐式调用该构造函数或对应析构函数的对象定义不会包含在结果中
+在构造函数或析构函数上执行“查找引用”，会列出写出其名称的位置，而不是隐式调用它的对象
+
+`Blob b;` 会调用构造函数，其作用域结束时会调用析构函数，但两者的名称都没有写出：如果把每个这样的对象都列出来，任何带有局部变量的类，其引用都会被淹没。
 
 ```case
 tests/navigation/references/03_implicit_construction
@@ -432,7 +476,9 @@ tests/navigation/references/06_access_kinds
 
 **引用的上下文**
 
-每条引用只提供位置信息，不附带其所在函数的名称，因此结果中除文件和行号外没有其他上下文
+每条引用传给编辑器时只是一个位置，不附带包含它的函数
+
+对于声明支持该扩展的客户端，clangd 会通过扩展字段（`containerName`）附上所在的函数；clice 尚未读取这一声明。`clice query references` 会给出每条引用所在的函数。
 
 ```case
 tests/navigation/references/07_enclosing_functions
@@ -448,6 +494,20 @@ tests/navigation/references/07_enclosing_functions
 
 ```case
 tests/navigation/references/08_labels
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1558 -->
+
+**通过被重写方法发起的调用**
+
+在重写方法上执行“查找引用”，结果包含通过它所重写的方法发起的调用，因为这些调用可能分派到它
+
+`shape.area()` 在 `Shape&` 上调用时可能执行 `Circle::area`，因此它属于该重写方法的引用。通过 `Circle` 发起的调用绝不会执行 `Shape::area`，因此它不属于被重写方法的引用。
+
+```case
+tests/navigation/references/13_override_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -536,6 +596,20 @@ tests/navigation/deduced_types/05_parameters_and_returns
 
 ```case
 tests/navigation/deduced_types/06_dependent_auto
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**库内部别名**
+
+通过库的内部别名推导出的 `auto` 会跳转到别名所指代的类型；通过公开别名推导出的则跳转到该别名
+
+`std::__detail::__unique_ptr_t` 这类库留给自己使用的名称，代码不会去写，因此 `auto` 会透过它跳转到 `unique_ptr`。`iterator` 这样的公开别名，则是库提供给使用者的名称。
+
+```case
+tests/navigation/deduced_types/08_library_aliases
 ```
 
 <!-- END CAPABILITY -->
@@ -658,6 +732,20 @@ tests/navigation/macros/04_macro_references
 
 ```case
 tests/navigation/macros/05_nested_macros
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**按翻译单元定义的头文件宏**
+
+在共享头文件所用的宏上执行“跳转到定义”，会跳转到包含该头文件的各个翻译单元所展开的每一个定义
+
+两个翻译单元都包含 `config.h`，其中一个定义了 `FAST`：头文件中的 `MODE` 在两者中展开为不同的定义，在未打开的头文件中执行“跳转到定义”会把两者都列出。
+
+```case
+tests/navigation/macros/10_header_variants
 ```
 
 <!-- END CAPABILITY -->
@@ -1072,7 +1160,7 @@ tests/navigation/projects/03_uses_across_sources
 
 ## 调用层次结构
 
-调用层次结构列出函数的调用方以及该函数调用的函数。
+调用层次结构列出函数的调用方以及该函数调用的函数；通过函数所重写的方法发起的调用，也算作它的调用方。每个条目都显示函数的参数，用以区分不同的重载。函数的局部变量和参数没有条目：它们唯一的调用方就是函数本身。
 
 <!-- BEGIN GENERATED ITEMS: navigation/call_hierarchy -->
 
@@ -1112,11 +1200,11 @@ tests/navigation/call_hierarchy/03_outgoing_calls
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **调用层次结构条目详情**
 
-调用层次结构条目仅包含名称，详情字段中没有函数签名，因此无法在层次结构中区分不同的重载
+调用层次结构条目会在名称旁显示函数的参数，从而区分不同的重载
 
 ```case
 tests/navigation/call_hierarchy/04_signature_details
@@ -1140,9 +1228,9 @@ tests/navigation/call_hierarchy/05_qualified_names
 
 **经由重写方法的调用**
 
-通过重写了虚方法的类发起的调用，只算作该重写方法的传入调用
+通过虚方法发起的调用，是它可能分派到的每个重写方法的传入调用；通过重写方法发起的调用，则不是它所重写方法的传入调用
 
-`d.draw()` 在 `Derived&` 上调用时，执行的是 `Derived::draw` 或更下层派生类中的重写方法，绝不会是 `Base::draw`，因此只有该重写方法会把这次调用列为传入调用。
+`b.draw()` 在 `Base&` 上调用时，可能执行 `Base::draw` 或 `Derived::draw`，因此两者都会把这次调用列为传入调用。`d.draw()` 在 `Derived&` 上调用时，执行的是 `Derived::draw` 或更下层派生类中的重写方法，绝不会是 `Base::draw`，因此只有该重写方法会列出这次调用。
 
 ```case
 tests/navigation/call_hierarchy/06_virtual_dispatch
@@ -1184,6 +1272,20 @@ tests/navigation/call_hierarchy/08_lambda_bodies
 
 ```case
 tests/navigation/call_hierarchy/09_forwarding_factories
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**函数的局部符号**
+
+函数的局部变量和参数没有调用层次结构条目
+
+能使用它们的只有声明它们的那个函数，因此为它们提供条目，也只会得到一个事先就已知道的调用方。
+
+```case
+tests/navigation/call_hierarchy/15_function_locals
 ```
 
 <!-- END CAPABILITY -->
@@ -1250,7 +1352,7 @@ tests/navigation/type_hierarchy/04_template_bases
 
 ## 文档高亮
 
-高亮显示当前文件中对光标所在符号的所有引用（`textDocument/documentHighlight`）。高亮与查找引用来自同一份索引，因此覆盖的名称与查找引用相同，在只读模式下同样可用；每处高亮都会标明该处代码是写入、读取还是声明该符号。
+高亮显示当前文件中对光标所在符号的所有引用（`textDocument/documentHighlight`）。高亮与查找引用来自同一份索引，因此覆盖的名称与查找引用相同，在只读模式下同样可用；变量、字段或参数在代码写入或读取它的位置会被标为写入或读取，其他高亮则不作标记。
 
 ### 声明与使用
 
@@ -1366,7 +1468,7 @@ tests/document_highlight/modules/01_module_units
 
 ## 工作区符号
 
-按名称在整个项目中搜索符号（`workspace/symbol`）。
+按名称在整个项目中搜索符号（`workspace/symbol`），包括命名空间作用域中具有内部链接的名称（`static`、匿名命名空间）。每个结果的种类与大纲中给出的一致，函数还会显示其参数。
 
 ### 查询
 
@@ -1490,16 +1592,30 @@ tests/workspace_symbol/ranking/01_exact_name
 
 <!-- BEGIN GENERATED ITEMS: workspace_symbol/results -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1344 -->
+<!-- BEGIN CAPABILITY: supported clangd#1344 -->
 
 **重载消歧**
 
-工作区符号结果省略了参数类型，导致无法区分重载
+工作区符号结果会显示每个函数的参数，从而区分不同的重载
 
-查询重载名称会找到所有重载，但每个条目都只显示名称本身，因此只有分别打开两个 `process` 结果对应的位置，才能区分它们。
+查询重载名称会找到所有重载，每个条目都带有其参数：两个 `process` 结果一眼就能区分。
 
 ```case
 tests/workspace_symbol/results/01_overloads
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**具有内部链接的名称**
+
+搜索能找到命名空间作用域中具有内部链接的名称，每个声明了它的文件各给出一条，但绝不会找到函数内的局部名称
+
+`static` 变量或匿名命名空间的成员只有它所在的文件才知道，但它仍是项目声明的名称：搜索会列出它，每个声明了它的文件各列一次。局部变量则不会列出。
+
+```case
+tests/workspace_symbol/results/06_internal_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1522,6 +1638,20 @@ tests/workspace_symbol/results/01_overloads
 
 ```case
 tests/workspace_symbol/projects/01_closed_files
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**同一份检出的多个副本**
+
+并排打开同一份代码的两个检出时，每个符号只列出一次，取自正在编辑的那个文件夹
+
+把同一仓库的两个 worktree 作为工作区文件夹打开时，它们在各自文件夹中的相同位置含有相同的符号。搜索只列出每个符号一次，取自有已打开文档的那个文件夹中的副本：也就是编辑器正在工作的那一个。
+
+```case
+tests/workspace_symbol/projects/03_worktree_copies
 ```
 
 <!-- END CAPABILITY -->
