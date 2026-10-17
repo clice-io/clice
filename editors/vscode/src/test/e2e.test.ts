@@ -42,19 +42,19 @@ const scenarios: Record<string, Scenario> = {
     hello_world: {
         file: "main.cpp",
         symbol: "add(1, 2)",
-        indexSymbol: "add",
+        indexSymbol: "add(int a, int b)",
         definitionFile: "main.cpp",
     },
     imported_symbol: {
         file: "main.cpp",
         symbol: "magic_number()",
-        indexSymbol: "magic_number",
+        indexSymbol: "magic_number()",
         definitionFile: "defs.cppm",
     },
     two_hosts: {
         file: "shared.h",
         symbol: "VALUE_TYPE",
-        indexSymbol: "get_value",
+        indexSymbol: "get_value()",
         context: "int_host.cpp",
     },
 };
@@ -339,7 +339,7 @@ suite("clice E2E", function () {
         assert.deepStrictEqual(pending, [], "the server is still busy");
         const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
             "vscode.executeWorkspaceSymbolProvider",
-            scenario.indexSymbol,
+            scenario.indexSymbol.split("(")[0],
         );
         assert.ok(
             symbols.some((s) => s.name === scenario.indexSymbol),

@@ -40,19 +40,19 @@ local scenarios = {
     hello_world = {
         file = 'main.cpp',
         symbol = 'add(1, 2)',
-        index_symbol = 'add',
+        index_symbol = 'add(int a, int b)',
         definition_file = 'main.cpp',
     },
     imported_symbol = {
         file = 'main.cpp',
         symbol = 'magic_number()',
-        index_symbol = 'magic_number',
+        index_symbol = 'magic_number()',
         definition_file = 'defs.cppm',
     },
     two_hosts = {
         file = 'shared.h',
         symbol = 'VALUE_TYPE',
-        index_symbol = 'get_value',
+        index_symbol = 'get_value()',
         context = 'int_host.cpp',
     },
 }
@@ -143,7 +143,7 @@ end
 -- Definition is index-based.
 step 'wait for index'
 sync()
-local symbols = request('workspace/symbol', { query = scenario.index_symbol })
+local symbols = request('workspace/symbol', { query = scenario.index_symbol:match('^[^(]+') })
 if not vim.iter(symbols or {}):any(function(symbol)
     return symbol.name == scenario.index_symbol
 end) then
