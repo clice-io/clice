@@ -2471,12 +2471,10 @@ void run_feature(FileEntry& entry,
         .directory = command.directory,
         .workspace = command.workspace,
     };
-    std::string text = file.content;
+    input.add_remapped_file(file.path, file.content);
     if(command.synthesized) {
-        input.add_synthesized(command.synthesized->files);
-        command.synthesized->append_suffix_include(text);
+        input.add_synthesized(command.synthesized->files, file.path);
     }
-    input.add_remapped_file(file.path, text);
 
     CompilationParams params{.kind = CompilationKind::Content, .input = input};
     if(config.diagnostics.clang_tidy) {

@@ -185,11 +185,11 @@ private:
             return focus.contains(note.fid);
         };
         if(focus.contains(main.fid)) {
-            // A scope the main file leaves open swallows the includer's
-            // remainder appended past its text: the error the buffer's end
-            // raises shows where the scope opened.
+            // A scope the focus file leaves open swallows the suffix
+            // appended past its text: the error the buffer's end raises
+            // shows where the scope opened.
             auto anchor = main.range;
-            if(past_suffix_include(anchor.begin)) {
+            if(past_text(anchor.begin)) {
                 auto note = llvm::find_if(main.notes, in_main);
                 if(note == main.notes.end()) {
                     return false;
@@ -271,15 +271,12 @@ private:
         return true;
     }
 
-    /// Whether `offset` lies past the include of the includer's remainder
-    /// that a borrowed context appends to the main file.
-    bool past_suffix_include(std::uint32_t offset) {
-        if(!unit.borrows_context()) {
-            return false;
-        }
-        auto& includes = unit.directives()[unit.focus_file().file()].includes;
-        return !includes.empty() && unit.synthesized(includes.back().fid) &&
-               offset > unit.seen_at(includes.back().location).offset;
+    /// Whether `offset` lies past the editor's text, on the include of a
+    /// header context's suffix the focus file's buffer goes on with.
+    bool past_text(std::uint32_t offset) {
+        auto focus = unit.focus_file();
+        auto end = unit.text_end(focus.file());
+        return end < focus.content().size() && offset >= end;
     }
 
     /// The filename of the #include in the main file that `fid` was

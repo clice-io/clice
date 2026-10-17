@@ -489,7 +489,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
                   params.offset <= params.pch.second ? decltype(params.pch){} : params.pch,
                   params.pcms);
     cp.input.add_remapped_file(params.file, params.text);
-    cp.input.add_synthesized(params.synthesized);
+    cp.input.add_synthesized(params.synthesized, params.file);
 
     auto completion = feature::code_complete(std::move(cp),
                                              params.config.code_completion,
@@ -515,7 +515,7 @@ static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpPa
     };
     use_artifacts(cp.input, params.pch, params.pcms);
     cp.input.add_remapped_file(params.file, params.text);
-    cp.input.add_synthesized(params.synthesized);
+    cp.input.add_synthesized(params.synthesized, params.file);
 
     auto help = feature::signature_help(std::move(cp),
                                         params.config.signature_help,

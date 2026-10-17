@@ -7,6 +7,7 @@ module clice;
 import :command.command;
 import :command.toolchain;
 import :compile.compilation;
+import :syntax.header_context;
 import :syntax.scan;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -148,6 +149,51 @@ int main() { return 0; }
     // CompileStatus::Cancelled, which the master discards without blaming
     // any artifact.
     ZASSERT(!built->setup_fail());
+}
+
+ZEST_CASE(SuffixFollowsText) {
+    // The compile appends the include of a header context's suffix to the
+    // focus file's text, which still ends where the editor's does: the
+    // class the text sits in closes, and its member functions read the
+    // members declared after the text.
+    llvm::StringRef text = "int sum() { return a + later; }\nint a;";
+    add_main("body.h", text);
+    prepare();
+    auto focus = TestVFS::path("body.h");
+    params.input.add_remapped_file(focus, text);
+    params.input.add_synthesized(
+        {
+            {.path = TestVFS::path(".clice-open.h"),
+             .content = "struct S {\n",
+             .entry = SynthesizedFile::Entry::Forced  },
+            {.path = TestVFS::path(".clice-suffix.h"),
+             .content = "int later;\n};\n",
+             .entry = SynthesizedFile::Entry::Appended},
+    },
+        focus);
+    ZASSERT(try_compile());
+    ZEXPECT(unit->diagnostics().empty());
+    auto file = unit->focus_file();
+    ZEXPECT(unit->text_end(file.file()) == text.size());
+    ZEXPECT(file.content().take_front(text.size()) == text);
+    ZEXPECT(file.content().drop_front(text.size()).starts_with("\n#include "));
+}
+
+ZEST_CASE(SuffixNeedsFocus) {
+    // A compile given no focus file path — a preamble's build, a compile
+    // of the file on disk — takes no suffix.
+    llvm::StringRef text = "int a;\n";
+    add_main("body.h", text);
+    prepare();
+    params.input.add_synthesized({
+        {.path = TestVFS::path(".clice-suffix.h"),
+         .content = "int later;\n",
+         .entry = SynthesizedFile::Entry::Appended},
+    });
+    ZASSERT(try_compile());
+    auto file = unit->focus_file();
+    ZEXPECT(file.content() == text);
+    ZEXPECT(unit->text_end(file.file()) == text.size());
 }
 
 ZEST_CASE(NoErrorLimit) {

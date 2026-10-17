@@ -5,16 +5,18 @@ module;
 module clice;
 
 import :support.text;
+import :syntax.header_context;
 import :syntax.lexer;
 import :syntax.lexical_scan;
-import :syntax.preamble_synthesis;
 import :syntax.scan;
 
 namespace clice {
 
+namespace {
+
 /// Emit `path` as a quoted include/marker operand, escaping backslashes
 /// and quotes so Windows paths survive string-literal parsing.
-static void append_quoted_path(std::string& out, llvm::StringRef path) {
+void append_quoted_path(std::string& out, llvm::StringRef path) {
     out += '"';
     for(char c: path) {
         if(c == '\\' || c == '"') {
@@ -25,18 +27,48 @@ static void append_quoted_path(std::string& out, llvm::StringRef path) {
     out += '"';
 }
 
+/// The directives of a chain file that enter a header the resolver can
+/// find: `#include` and `#include_next` naming one, not a macro spelling
+/// it.
+std::vector<ScanResult::IncludeInfo> includes_of(const LexicalInfo& lexical,
+                                                 llvm::StringRef content) {
+    std::vector<ScanResult::IncludeInfo> includes;
+    for(const auto& directive: lexical.directives) {
+        if(directive.kind != LexicalInfo::Directive::Kind::Include) {
+            continue;
+        }
+        auto words = lexical.words(directive);
+        auto keyword = words.front().text(content);
+        if(keyword == "import" || words.size() < 2 || !words[1].is_header_name()) {
+            continue;
+        }
+        auto name = words[1].text(content);
+        includes.push_back({
+            .path = name.drop_front().drop_back().str(),
+            .offset = directive.range.begin,
+            .name_offset = words[1].range.begin,
+            .name_length = words[1].range.length(),
+            .conditional = directive.depth > 0,
+            .conditional_depth = static_cast<std::uint16_t>(directive.depth),
+            .is_angled = name.starts_with("<"),
+            .is_include_next = keyword == "include_next",
+        });
+    }
+    return includes;
+}
+
 /// Pick the directive to cut at: the one on `line` when the include tree
 /// names it and the directive does not name another file, else among
 /// those resolving to `next_path`. An explicit
 /// occurrence indexes them in directive order; otherwise unconditional
 /// directives win over ones inside #if blocks, so an include occurrence in
 /// an untaken branch does not shadow the real one.
-static std::optional<std::size_t> find_match(llvm::StringRef content,
-                                             llvm::ArrayRef<ScanResult::IncludeInfo> includes,
-                                             llvm::ArrayRef<std::optional<ResolveResult>> resolved,
-                                             llvm::StringRef next_path,
-                                             std::uint32_t line,
-                                             std::optional<std::uint32_t> occurrence) {
+std::optional<std::size_t> find_match(llvm::StringRef content,
+                                      llvm::ArrayRef<ScanResult::IncludeInfo> includes,
+                                      llvm::ArrayRef<std::optional<ResolveResult>> resolved,
+                                      llvm::StringRef next_path,
+                                      std::uint32_t line,
+                                      std::optional<std::uint32_t> occurrence) {
     // A #line in the file moves what the tree counts lines by: a directive
     // there naming another file leaves the choice to the names.
     if(line != 0) {
@@ -70,83 +102,137 @@ static std::optional<std::size_t> find_match(llvm::StringRef content,
     return candidates.front();
 }
 
-/// Where a chain file's text last stood outside every brace before its cut,
-/// and how many conditional blocks are open there.
-struct TopLevel {
+/// Where a chain file is cut among its braces. Braces count lexically,
+/// inactive branches' and a macro's too: a miscount only moves where the
+/// prefix splits and where the suffix ends.
+struct Cut {
+    /// The `#` of the directive entering the next file.
     std::uint32_t offset = 0;
-    std::uint16_t conditionals = 0;
+
+    /// How many braces are open at the cut; at most zero outside every
+    /// brace.
+    std::int32_t braces = 0;
+
+    /// With braces open: the last place before the cut outside every
+    /// brace — past a `;`, a `}` or a directive — whose open conditional
+    /// blocks are all still open at the cut, so the branches it sits in
+    /// are ones the compile took; and how many blocks are open there.
+    std::uint32_t top = 0;
+    std::uint16_t top_conditionals = 0;
 };
 
-/// The last place before `cut` outside every brace — past a `;`, a `}` or
-/// a directive — whose open conditional blocks are all still open at
-/// `cut`, so the branches it sits in are ones the compile took. Nullopt
-/// when `cut` itself sits outside every brace. Braces count lexically,
-/// inactive branches' too: a miscount only moves where the prefix
-/// splits, never what it holds.
-static std::optional<TopLevel> last_top_level(llvm::StringRef content, std::uint32_t cut) {
+Cut place_cut(const LexicalInfo& lexical, llvm::StringRef content, std::uint32_t offset) {
     struct Candidate {
         std::uint32_t offset;
         llvm::SmallVector<std::uint32_t> branches;
     };
 
-    Lexer lexer(content, dialect_of());
-    std::int32_t depth = 0;
-    // One id per conditional branch open, innermost last.
+    Cut cut{.offset = offset};
+    // The conditional branches open, innermost last, each by the directive
+    // opening it.
     llvm::SmallVector<std::uint32_t> branches;
-    std::uint32_t next_branch = 0;
     std::vector<Candidate> candidates{
         {.offset = 0, .branches = {}}
     };
-    auto mark = [&](std::uint32_t offset) {
-        if(depth <= 0) {
-            candidates.push_back({.offset = offset, .branches = branches});
+    auto mark = [&](std::uint32_t at) {
+        if(cut.braces <= 0) {
+            candidates.push_back({.offset = at, .branches = branches});
         }
     };
-    for(auto token = lexer.advance(); !token.is_eof() && token.range.begin < cut;
-        token = lexer.advance()) {
-        if(token.is_directive_hash()) {
+    auto directive = lexical.directives.begin();
+    for(std::uint32_t index = 0;
+        index < lexical.tokens.size() && lexical.tokens[index].range.begin < offset;
+        index += 1) {
+        const auto& token = lexical.tokens[index];
+        if(directive != lexical.directives.end() && index == directive->first) {
             using enum LexicalInfo::Directive::Kind;
-            auto keyword = lexer.advance();
-            auto kind = directive_kind(keyword.is_eod() ? "" : keyword.text(content), "");
-            if(kind == If) {
-                branches.push_back(next_branch);
-                next_branch += 1;
-            } else if(kind == Else) {
-                if(!branches.empty()) {
-                    branches.back() = next_branch;
-                    next_branch += 1;
-                }
-            } else if(kind == EndIf && !branches.empty()) {
+            auto id = static_cast<std::uint32_t>(directive - lexical.directives.begin());
+            if(directive->kind == If) {
+                branches.push_back(id);
+            } else if(directive->kind == Else && !branches.empty()) {
+                branches.back() = id;
+            } else if(directive->kind == EndIf && !branches.empty()) {
                 branches.pop_back();
             }
-            auto end = keyword.is_eod() ? keyword : lexer.advance_until(clang::tok::eod);
-            mark(line_end(content, end.range.begin));
+            mark(line_end(content, lexical.tokens[directive->last].range.begin));
+            index = directive->last;
+            ++directive;
             continue;
         }
         if(token.kind == clang::tok::l_brace) {
-            depth += 1;
+            cut.braces += 1;
         } else if(token.kind == clang::tok::r_brace) {
-            depth -= 1;
+            cut.braces -= 1;
             mark(token.range.end);
         } else if(token.kind == clang::tok::semi) {
             mark(token.range.end);
         }
     }
-    if(depth <= 0) {
-        return std::nullopt;
+    if(cut.braces > 0) {
+        auto taken = llvm::find_if(llvm::reverse(candidates), [&](const Candidate& candidate) {
+            return candidate.branches.size() <= branches.size() &&
+                   std::equal(candidate.branches.begin(),
+                              candidate.branches.end(),
+                              branches.begin());
+        });
+        cut.top = taken->offset;
+        cut.top_conditionals = static_cast<std::uint16_t>(taken->branches.size());
     }
-    auto taken = llvm::find_if(llvm::reverse(candidates), [&](const Candidate& candidate) {
-        return candidate.branches.size() <= branches.size() &&
-               std::equal(candidate.branches.begin(), candidate.branches.end(), branches.begin());
-    });
-    return TopLevel{
-        .offset = taken->offset,
-        .conditionals = static_cast<std::uint16_t>(taken->branches.size()),
-    };
+    return cut;
+}
+
+/// Where the braces open at `cut` close, reading on from `resume`: past
+/// the `}` closing them and a `;` right after it; the content's end when
+/// they never do.
+std::uint32_t braces_close(const LexicalInfo& lexical,
+                           llvm::StringRef content,
+                           const Cut& cut,
+                           std::uint32_t resume) {
+    auto depth = cut.braces;
+    auto& tokens = lexical.tokens;
+    auto first = lexical.token_at(resume);
+    auto directive = llvm::partition_point(lexical.directives,
+                                           [&](const auto& each) { return each.first < first; });
+    for(auto index = first; index < tokens.size(); index += 1) {
+        if(directive != lexical.directives.end() && index == directive->first) {
+            index = directive->last;
+            ++directive;
+            continue;
+        }
+        if(tokens[index].kind == clang::tok::l_brace) {
+            depth += 1;
+        } else if(tokens[index].kind == clang::tok::r_brace) {
+            depth -= 1;
+            if(depth == 0) {
+                auto next = lexical.code_from(tokens[index].range.end);
+                if(!next.empty() && next.begin()->kind == clang::tok::semi) {
+                    return next.begin()->range.end;
+                }
+                return tokens[index].range.end;
+            }
+        }
+    }
+    return static_cast<std::uint32_t>(content.size());
+}
+
+/// How many conditional blocks are open at `offset`.
+std::uint32_t open_conditionals(const LexicalInfo& lexical, std::uint32_t offset) {
+    std::uint32_t open = 0;
+    for(const auto& directive: lexical.directives) {
+        if(directive.range.begin >= offset) {
+            break;
+        }
+        if(directive.kind == LexicalInfo::Directive::Kind::If) {
+            open += 1;
+        } else if(directive.kind == LexicalInfo::Directive::Kind::EndIf && open > 0) {
+            open -= 1;
+        }
+    }
+    return open;
 }
 
 /// Append a #line marker for line `line` (1-based) of `path`.
-static void append_line_marker(std::string& out, llvm::StringRef path, std::uint32_t line) {
+void append_line_marker(std::string& out, llvm::StringRef path, std::uint32_t line) {
     out += "#line ";
     out += std::to_string(line);
     out += ' ';
@@ -155,11 +241,11 @@ static void append_line_marker(std::string& out, llvm::StringRef path, std::uint
 }
 
 /// Append content[from, from + length) to `out`, recording the run.
-static void copy_run(std::string& out,
-                     std::vector<SourceRun>& runs,
-                     llvm::StringRef content,
-                     std::uint32_t from,
-                     std::uint32_t length) {
+void copy_run(std::string& out,
+              std::vector<SourceRun>& runs,
+              llvm::StringRef content,
+              std::uint32_t from,
+              std::uint32_t length) {
     if(length == 0) {
         return;
     }
@@ -178,15 +264,15 @@ static void copy_run(std::string& out,
 /// cut from, so its includes, `__has_include` probes and macro-spelled
 /// includes resolve there as they do in that file. Returns whether the
 /// fragment names the snapshot.
-static bool emit_fragment(std::string& out,
-                          std::vector<SourceRun>& runs,
-                          llvm::StringRef content,
-                          std::uint32_t from,
-                          std::uint32_t to,
-                          llvm::ArrayRef<ScanResult::IncludeInfo> includes,
-                          llvm::ArrayRef<std::optional<ResolveResult>> resolved,
-                          llvm::StringRef target_path,
-                          llvm::StringRef snapshot_path) {
+bool emit_fragment(std::string& out,
+                   std::vector<SourceRun>& runs,
+                   llvm::StringRef content,
+                   std::uint32_t from,
+                   std::uint32_t to,
+                   llvm::ArrayRef<ScanResult::IncludeInfo> includes,
+                   llvm::ArrayRef<std::optional<ResolveResult>> resolved,
+                   llvm::StringRef target_path,
+                   llvm::StringRef snapshot_path) {
     std::uint32_t pos = from;
     bool names_snapshot = false;
     for(std::size_t j = 0; j < includes.size(); j += 1) {
@@ -221,7 +307,7 @@ static bool emit_fragment(std::string& out,
 /// The path of a synthesized file with `content` in `directory`: named by
 /// the content, the dot-prefixed name cannot collide with a real header
 /// anyone includes.
-static std::string synthesized_path(llvm::StringRef directory, llvm::StringRef content) {
+std::string synthesized_path(llvm::StringRef directory, llvm::StringRef content) {
     llvm::SmallString<256> path(directory);
     llvm::sys::path::append(path,
                             llvm::sys::path::Style::posix,
@@ -237,23 +323,29 @@ struct Fragment {
 };
 
 /// Add a fragment cut from `source` to the context and return its path.
-static std::string add_file(SynthesizedContext& context,
-                            llvm::StringRef source,
-                            Fragment fragment) {
+std::string add_file(SynthesizedContext& context,
+                     llvm::StringRef source,
+                     Fragment fragment,
+                     SynthesizedFile::Entry entry = SynthesizedFile::Entry::Included) {
     auto path = synthesized_path(llvm::sys::path::parent_path(source), fragment.text);
     context.files.push_back({
         .path = path,
         .content = std::move(fragment.text),
         .origin = {.source = source.str(), .runs = std::move(fragment.runs)},
+        .entry = entry,
     });
     return path;
 }
 
-/// Emit an include of a synthesized file, on its own line.
-static void append_include(std::string& out, llvm::StringRef path) {
-    out += "#include ";
-    append_quoted_path(out, path);
-    out += '\n';
+}  // namespace
+
+void append_include(std::string& text, llvm::StringRef path) {
+    if(!text.empty() && !text.ends_with('\n')) {
+        text += '\n';
+    }
+    text += "#include ";
+    append_quoted_path(text, path);
+    text += '\n';
 }
 
 std::optional<SynthesizedContext>
@@ -270,32 +362,34 @@ std::optional<SynthesizedContext>
     }
 
     // Each chain file cut at its include of the next one: the text before
-    // the cut (closing the conditionals it lands in) and the text after it
-    // (reopening them).
+    // the cut (closing the conditionals it lands in) and, inside braces,
+    // the text after it (reopening them).
     llvm::SmallVector<Fragment> before;
-    llvm::SmallVector<Fragment> after;
+    llvm::SmallVector<std::pair<std::size_t, Fragment>> after;
     // The part of the first chain file cut inside braces from its last
     // top-level place on (SynthesizedContext::open).
     std::optional<Fragment> open;
     std::size_t open_index = 0;
     std::optional<unsigned> found_dir;
+    const auto& dialect = dialect_of(chain.empty() ? "" : chain.front().path);
     for(std::size_t i = 0; i < chain.size(); i += 1) {
         auto& entry = chain[i];
         bool is_last = i + 1 == chain.size();
         auto next_path = is_last ? target_path : chain[i + 1].path;
         auto includer_dir = llvm::sys::path::parent_path(entry.path);
 
-        auto scan_result = scan_quick(entry.content);
+        auto lexical = lexical_scan(entry.content, dialect);
+        auto includes = includes_of(lexical, entry.content);
 
         std::vector<std::optional<ResolveResult>> resolved;
-        resolved.reserve(scan_result.includes.size());
-        for(auto& include: scan_result.includes) {
+        resolved.reserve(includes.size());
+        for(auto& include: includes) {
             resolved.push_back(resolve(include, includer_dir, found_dir));
         }
 
         // The occurrence choice applies to the direct includer only.
         auto match = find_match(entry.content,
-                                scan_result.includes,
+                                includes,
                                 resolved,
                                 next_path,
                                 entry.line,
@@ -304,8 +398,7 @@ std::optional<SynthesizedContext>
             return std::nullopt;
         }
 
-        auto& matched = scan_result.includes[*match];
-        auto cut = matched.offset;
+        auto& matched = includes[*match];
         auto depth = matched.conditional_depth;
         // A directive the scan cannot resolve (its name spelled by a
         // macro) was still entered there: the next one's #include_next
@@ -323,46 +416,51 @@ std::optional<SynthesizedContext>
                                               entry.content,
                                               from,
                                               to,
-                                              scan_result.includes,
+                                              includes,
                                               resolved,
                                               target_path,
                                               snapshot_path);
         };
-        std::optional<TopLevel> top;
-        if(!open) {
-            top = last_top_level(entry.content, cut);
-        }
+        auto cut = place_cut(lexical, entry.content, matched.offset);
+        bool splits = !open && cut.braces > 0;
         auto& head = before.emplace_back();
         append_line_marker(head.text, entry.path, 1);
-        emit(head, 0, top ? top->offset : cut);
-        if(top) {
-            for(std::uint16_t d = top->conditionals; d > 0; d -= 1) {
+        emit(head, 0, splits ? cut.top : cut.offset);
+        if(splits) {
+            for(std::uint16_t d = cut.top_conditionals; d > 0; d -= 1) {
                 head.text += "#endif\n";
             }
             open_index = i;
             auto& rest = open.emplace();
-            for(std::uint16_t d = top->conditionals; d > 0; d -= 1) {
+            for(std::uint16_t d = cut.top_conditionals; d > 0; d -= 1) {
                 rest.text += "#if 1\n";
             }
             auto line =
-                static_cast<std::uint32_t>(entry.content.substr(0, top->offset).count('\n')) + 1;
+                static_cast<std::uint32_t>(entry.content.substr(0, cut.top).count('\n')) + 1;
             append_line_marker(rest.text, entry.path, line);
-            emit(rest, top->offset, cut);
+            emit(rest, cut.top, cut.offset);
         }
-        auto& closing = top ? *open : head;
+        auto& closing = splits ? *open : head;
         for(std::uint16_t d = depth; d > 0; d -= 1) {
             closing.text += "#endif\n";
         }
 
-        // After the cut: everything past the matched directive's line. The
-        // text before closed `depth` conditionals early, so reopen them
-        // with `#if 1` to keep the fragment's own #endifs balanced.
-        auto resume = line_end(entry.content, cut);
-        // The header's buffer appends its include of the suffix, and a
-        // file the context did not cut can enter the header again before
-        // the cut — an earlier occurrence: there the header is its text
-        // alone, the includer's remainder belonging to the main file.
-        auto& tail = after.emplace_back();
+        // After the cut, inside braces: past the matched directive's line,
+        // up to where the braces this file opened close, or the whole rest
+        // inside an earlier file's. The text before closed `depth`
+        // conditionals early, so reopen them with `#if 1`, and close those
+        // still open where the text ends. The focus file appends the
+        // innermost fragment's include, and a file the context did not cut
+        // can enter the header again before the cut — an earlier
+        // occurrence: there the header is its text alone, the includer's
+        // remainder belonging to the focus file.
+        if(!open) {
+            continue;
+        }
+        auto resume = line_end(entry.content, cut.offset);
+        auto end = splits ? braces_close(lexical, entry.content, cut, resume)
+                          : static_cast<std::uint32_t>(entry.content.size());
+        auto& tail = after.emplace_back(i, Fragment{}).second;
         if(is_last) {
             tail.text += "#if __INCLUDE_LEVEL__ == 1\n";
         }
@@ -372,7 +470,10 @@ std::optional<SynthesizedContext>
         auto resume_line =
             static_cast<std::uint32_t>(entry.content.substr(0, resume).count('\n')) + 1;
         append_line_marker(tail.text, entry.path, resume_line);
-        emit(tail, resume, entry.content.size());
+        emit(tail, resume, end);
+        for(auto d = open_conditionals(lexical, end); d > 0; d -= 1) {
+            tail.text += "#endif\n";
+        }
     }
 
     // The fragments nest the way the chain does: each one ends by
@@ -386,20 +487,27 @@ std::optional<SynthesizedContext>
             append_include(splits ? open->text : head.text, context.prefix);
         }
         if(splits) {
-            context.open = add_file(context, chain[i - 1].path, std::move(*open));
-            context.files.back().origin.forced = true;
+            context.open = add_file(context,
+                                    chain[i - 1].path,
+                                    std::move(*open),
+                                    SynthesizedFile::Entry::Forced);
         }
         context.prefix = add_file(context, chain[i - 1].path, std::move(head));
     }
-    for(std::size_t i = 0; i < chain.size(); i += 1) {
-        auto& tail = after[i];
-        if(!context.suffix.empty()) {
-            append_include(tail.text, context.suffix);
+    std::string suffix;
+    for(auto& [i, tail]: after) {
+        if(!suffix.empty()) {
+            append_include(tail.text, suffix);
         }
-        if(i + 1 == chain.size()) {
+        bool is_last = i + 1 == chain.size();
+        if(is_last) {
             tail.text += "#endif\n";
         }
-        context.suffix = add_file(context, chain[i].path, std::move(tail));
+        suffix =
+            add_file(context,
+                     chain[i].path,
+                     std::move(tail),
+                     is_last ? SynthesizedFile::Entry::Appended : SynthesizedFile::Entry::Included);
     }
     if(context.snapshot) {
         auto length = static_cast<std::uint32_t>(target_content->size());
@@ -413,16 +521,6 @@ std::optional<SynthesizedContext>
         });
     }
     return context;
-}
-
-void SynthesizedContext::append_suffix_include(std::string& text) const {
-    if(suffix.empty()) {
-        return;
-    }
-    if(!text.ends_with('\n')) {
-        text += '\n';
-    }
-    append_include(text, suffix);
 }
 
 }  // namespace clice

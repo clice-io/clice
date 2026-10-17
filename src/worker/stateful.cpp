@@ -296,7 +296,7 @@ RequestResult<worker::CompileParams>
             };
             use_artifacts(cp.input, doc->pch, doc->pcms);
             cp.input.add_remapped_file(params.path, doc->text);
-            cp.input.add_synthesized(params.synthesized);
+            cp.input.add_synthesized(params.synthesized, params.path);
 
             auto unit = compile(std::move(cp));
 

@@ -7,9 +7,9 @@ module clice:compile.compilation;
 import :compile.diagnostic;
 import :compile.directive;
 import :compile.tokens;
+import :syntax.header_context;
 import :syntax.lexical_scan;
 import :syntax.position;
-import :syntax.preamble_synthesis;
 import :syntax.token;
 import :vfs.file_system;
 import :vfs.path;
@@ -129,25 +129,38 @@ struct CompilationInput {
     llvm::StringMap<SynthesizedOrigin> synthesized;
 
     /// Synthesized files entered after the command's -includes by every
-    /// compile but a preamble's (SynthesizedFile::forced).
+    /// compile but a preamble's (SynthesizedFile::Entry::Forced).
     std::vector<std::string> forced_includes;
 
-    /// The preamble PCH to load, and how many bytes of the main file it
+    /// Where the focus file's text as the editor has it ends, when its
+    /// buffer goes on with the include of a header context's suffix (see
+    /// add_synthesized).
+    std::optional<std::uint32_t> text_end;
+
+    /// The preamble PCH to load, and how many bytes of the focus file it
     /// stands for.
     std::pair<std::string, std::uint32_t> pch;
 
     /// The PCMs to load, by module name.
     llvm::StringMap<std::string> pcms;
 
-    /// Serve files the command names from memory: a header context's
-    /// synthesized fragments.
-    void add_synthesized(const SynthesizedFiles& files) {
+    /// Serve a header context's synthesized files from memory. `focus` is
+    /// the path the focus file's text is already served by, when the
+    /// compile reads all of it: the text then goes on with the include of
+    /// the context's suffix. A preamble's build and a compile of the file on
+    /// disk pass none.
+    void add_synthesized(const SynthesizedFiles& files, llvm::StringRef focus = {}) {
         for(auto& file: files) {
             add_remapped_file(file.path, file.content);
             // Named the way CompilationUnit::file_path names it.
             synthesized[CanonicalPath(Spelling::absolute(file.path)).str()] = file.origin;
-            if(file.origin.forced) {
+            if(file.entry == SynthesizedFile::Entry::Forced) {
                 forced_includes.push_back(file.path);
+            } else if(file.entry == SynthesizedFile::Entry::Appended && !focus.empty()) {
+                auto text = buffers.find(focus);
+                assert(text != buffers.end() && "the focus file is served before its context");
+                text_end = static_cast<std::uint32_t>(text->second.size());
+                append_include(text->second, file.path);
             }
         }
     }
@@ -346,13 +359,13 @@ public:
     /// carries its bytes, so nothing may depend on it.
     bool synthesized(clang::FileID fid);
 
-    /// Whether the compile borrows an includer context: its main file is
+    /// Whether the compile borrows an includer context: its focus file is
     /// a header, compiled as its host sees it.
     bool borrows_context();
 
-    /// Where the text of `fid` ends: in a compile that borrows an includer
-    /// context, the main file's ends at the line break before the include
-    /// of the includer's remainder appended past the editor's text.
+    /// Where the text of `fid` ends: the focus file's, where the editor's
+    /// ends, before the include of a header context's suffix
+    /// (CompilationInput::text_end).
     auto text_end(clang::FileID fid) -> std::uint32_t;
 
     /// The path of the file `fid` stands for: its own, or for a synthesized

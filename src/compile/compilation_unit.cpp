@@ -271,18 +271,11 @@ const SynthesizedOrigin* CompilationUnit::origin(clang::FileID fid) {
 }
 
 auto CompilationUnit::text_end(clang::FileID fid) -> std::uint32_t {
-    auto content = file_content(fid);
-    auto size = static_cast<std::uint32_t>(content.size());
-    if(!borrows_context() || fid != SM().getMainFileID()) {
-        return size;
+    if(fid == SM().getMainFileID() && params.input.text_end) {
+        // Clang's copy of a completion's buffer carries a NUL at the point.
+        return *params.input.text_end + (params.kind == CompilationKind::Completion ? 1 : 0);
     }
-    auto it = directives().find(fid);
-    if(it == directives().end() || it->second.includes.empty() ||
-       !synthesized(it->second.includes.back().fid)) {
-        return size;
-    }
-    auto keyword = SM().getFileOffset(it->second.includes.back().location);
-    return static_cast<std::uint32_t>(content.rfind('\n', keyword));
+    return static_cast<std::uint32_t>(file_content(fid).size());
 }
 
 bool CompilationUnit::synthesized(clang::FileID fid) {
@@ -322,22 +315,26 @@ bool CompilationUnit::host_source(clang::FileID fid) {
     if(!synthesized(fid)) {
         return false;
     }
-    // The host's first fragment is the one the compile -includes, from
-    // the predefines buffer.
+    // The host's first fragment is the one the command -includes, from
+    // the predefines buffer, ahead of the fragment the compile enters
+    // after the command's -includes (SynthesizedFile::Entry::Forced).
     if(!host) {
         host.emplace();
         auto& SM = this->SM();
         auto predefines = instance->getPreprocessor().getPredefinesFileID();
-        for(auto& [path, cut]: params.input.synthesized) {
-            if(cut.forced) {
+        std::optional<std::uint32_t> first;
+        for(auto& entry: params.input.synthesized) {
+            auto file = SM.getFileManager().getOptionalFileRef(entry.first());
+            if(!file) {
                 continue;
             }
-            auto entry = SM.getFileManager().getOptionalFileRef(path);
-            if(!entry) {
+            auto root = SM.translateFile(*file);
+            if(!root.isValid()) {
                 continue;
             }
-            auto root = SM.translateFile(*entry);
-            if(root.isValid() && SM.getFileID(SM.getIncludeLoc(root)) == predefines) {
+            auto [includer, offset] = SM.getDecomposedLoc(SM.getIncludeLoc(root));
+            if(includer == predefines && (!first || offset < *first)) {
+                first = offset;
                 *host = source_path(root);
             }
         }

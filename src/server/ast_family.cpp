@@ -385,7 +385,6 @@ void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
                                    .version = std::nullopt,
                                    .source = previous->output->source,
                                    .diagnostics = {},
-                                   .line_limit = std::nullopt,
                                });
     }
     republish(session);
@@ -399,7 +398,6 @@ void ASTFamily::republish(const std::shared_ptr<Session>& session) {
                                    .version = std::nullopt,
                                    .source = CommandSource::CDBExact,
                                    .diagnostics = {},
-                                   .line_limit = std::nullopt,
                                });
     }
     on_output.emit(session);
@@ -907,18 +905,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         auto source = resolution.source;
         auto* synthesized = resolution.synthesized.get();
 
-        // The line the appended suffix #include ends up on — anything at or
-        // past it is phantom text the user cannot see.
-        std::optional<std::uint32_t> suffix_line_limit;
         auto* header_context = contexts.header_context(path_id);
         if(synthesized) {
             params.synthesized = synthesized->files;
-            if(!synthesized->suffix.empty()) {
-                auto newlines = std::ranges::count(params.text, '\n');
-                suffix_line_limit =
-                    static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
-            }
-            synthesized->append_suffix_include(params.text);
         }
 
         // Whether this round is the self-containment probe: a header
@@ -1212,7 +1201,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                     .version = setup_fail ? std::optional(session->version) : std::nullopt,
                     .source = source,
                     .diagnostics = std::move(result.value().diagnostics),
-                    .line_limit = suffix_line_limit,
                     .failed = setup_fail,
                 });
             co_return RoundOutcome::Failed;
@@ -1322,7 +1310,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             .version = session->version,
             .source = source,
             .diagnostics = std::move(diagnostics),
-            .line_limit = suffix_line_limit,
             .unmatched_host = resolution.unmatched_host.valid()
                                   ? project.file_table.display(resolution.unmatched_host)
                                   : std::string(),
@@ -1435,20 +1422,15 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     auto path_id = session->path_id;
     auto license_epoch = projections.epoch(path_id);
 
-    // The scan runs under the request's command with the same text the
-    // dispatch will compile — buffer plus any appended suffix include — so an
-    // unsaved `import m;` (or one inside a contextual header's suffix)
-    // builds its PCM before the parse needs it.
+    // The scan runs under the request's command with the text the dispatch
+    // will compile, so an unsaved `import m;` builds its PCM before the parse
+    // needs it.
     llvm::SmallVector<const char*, 32> argv;
     argv.reserve(arguments.size());
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
-    auto scan_text = text.str();
-    if(synthesized) {
-        synthesized->append_suffix_include(scan_text);
-    }
-    auto imports = co_await pcm.prepare_deps(path_id, resolution, argv, directory, scan_text);
+    auto imports = co_await pcm.prepare_deps(path_id, resolution, argv, directory, text);
     if(!imports) {
         co_return false;
     }

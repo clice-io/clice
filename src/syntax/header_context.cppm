@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:syntax.preamble_synthesis;
+module clice:syntax.header_context;
 
 import :syntax.include_resolver;
 import :syntax.scan;
@@ -11,7 +11,7 @@ namespace clice {
 
 /// One file along an include chain, from the host source file down to the
 /// direct includer of the target header. The target itself is not part of
-/// the chain — its buffer is the compilation main file.
+/// the chain — its buffer is the compile's focus file.
 struct ChainEntry {
     /// Absolute path, used for #line markers and include resolution.
     llvm::StringRef path;
@@ -47,19 +47,29 @@ struct SynthesizedOrigin {
     /// of that file.
     std::string source;
     std::vector<SourceRun> runs;
-
-    /// Entered ahead of the main file, after the command's own -includes,
-    /// by every compile but the preamble's build (see
-    /// SynthesizedContext::open).
-    bool forced = false;
 };
 
 /// A file a compile reads from memory instead of disk: a fragment of a
 /// header context, or the header's snapshot.
 struct SynthesizedFile {
+    /// How a compile enters the file.
+    enum class Entry : std::uint8_t {
+        /// Through an include in another synthesized file or on the command
+        /// line.
+        Included,
+        /// Ahead of the focus file, after the command's own -includes, by
+        /// every compile but the preamble's build: SynthesizedContext::open.
+        Forced,
+        /// Through an include appended to the focus file's text, by every
+        /// compile serving that text from memory but the preamble's build:
+        /// the suffix.
+        Appended,
+    };
+
     std::string path;
     std::string content;
     SynthesizedOrigin origin;
+    Entry entry = Entry::Included;
 };
 
 using SynthesizedFiles = std::vector<SynthesizedFile>;
@@ -69,30 +79,32 @@ using SynthesizedFiles = std::vector<SynthesizedFile>;
 /// before the cut and the part after it each becoming one fragment that
 /// sits in the chain file's own directory — so its includes resolve there
 /// as they do in that file — and ends by including the next fragment.
+///
+/// The part after the cut, the suffix, closes the braces the header sits
+/// in (an X-macro list in an enum or a function body, members in a class
+/// body): of the first chain file cut inside braces, the rest up to the
+/// `}` closing them and a `;` right after it; of every later one, which
+/// those braces enclose, the whole rest; of a chain file cut outside every
+/// brace, nothing. A class body thus goes on to its end, as its member
+/// functions read members declared after them. Braces count lexically, a
+/// macro's and an inactive branch's too: a count that never closes takes
+/// the rest of the file. Each fragment starts with a #line marker; a cut
+/// inside #if blocks opens matching `#if 1`s, and a suffix fragment ending
+/// inside #if blocks closes them. Only the focus file's include enters the
+/// suffix: where another file enters the header (an earlier occurrence),
+/// the header is its text alone.
 struct SynthesizedContext {
     /// The fragment of the host before its cut, entering every later one:
     /// injected via -include. Restores the preprocessor state the header
     /// sees inside the host's translation unit. Empty for an empty chain.
     std::string prefix;
 
-    /// The part of the prefix inside the braces the header sits in (a
-    /// class body, an enumerator list), split off from the last place the
-    /// chain stood outside every brace: a precompiled preamble cannot end
-    /// in a declaration, so the prefix up to there is the preamble and
-    /// this file the compile enters after it. Empty when the header sits
-    /// outside every brace.
+    /// The part of the prefix inside the braces the header sits in, split
+    /// off from the last place the chain stood outside every brace: a
+    /// precompiled preamble cannot end in a declaration, so the prefix up
+    /// to there is the preamble and this file the compile enters after it.
+    /// Empty when the header sits outside every brace.
     std::string open;
-
-    /// The fragment of the direct includer after its cut, entering the
-    /// rest of the chain up to the host: injected by appending one
-    /// #include line to the header's buffer, so X-macro fragments
-    /// embedded in enums or function bodies see their surrounding braces
-    /// close. Each fragment starts with a #line marker; a cut inside #if
-    /// blocks opens matching `#if 1`s so the fragment's own #endifs stay
-    /// balanced. Only the main file's include enters it: where another
-    /// file enters the header (an earlier occurrence), the header is its
-    /// text alone. Empty for an empty chain.
-    std::string suffix;
 
     /// Every synthesized file: the fragments, and the header's snapshot
     /// when one names it.
@@ -102,21 +114,15 @@ struct SynthesizedContext {
     /// includes the header besides the cut, so the context embeds the
     /// header's disk content.
     bool snapshot = false;
-
-    /// Append the suffix as one trailing #include line: the suffix content
-    /// lives in its own synthesized file so features never see it, while
-    /// the token stream still closes any braces the fragment is embedded
-    /// in. The single extra line sits past the editor's EOF and is
-    /// invisible to the client.
-    void append_suffix_include(std::string& text) const;
 };
 
 /// Synthesize both sides of the includer context of `target_path`.
 ///
 /// For each file in the chain, scans its include directives and finds the
 /// one on the entry's line, or else the one that resolves to the next file
-/// in the chain (the target for the last entry). The host is the main file; every later chain file
-/// is found where its includer's directive resolved, which is where its own
+/// in the chain (the target for the last entry). The host's own include
+/// directives resolve from no search directory; every later chain file is
+/// found where its includer's directive resolved, which is where its own
 /// `#include_next` resumes. Returns nullopt when a chain step cannot be
 /// matched.
 ///
@@ -131,15 +137,18 @@ struct SynthesizedContext {
 /// `target_content`: the header's disk content, snapshotted next to it
 /// for includes of the header itself (other occurrences along the chain).
 /// At compile time the target's path is remapped to the open buffer with
-/// a trailing suffix include, so keeping such directives verbatim would
-/// recurse; they are redirected to the snapshot instead, or blanked (line
-/// count preserved) without one or when the header guards itself with
-/// `#pragma once`, which the compile enters once.
+/// the suffix's include appended, so keeping such directives verbatim
+/// would recurse; they are redirected to the snapshot instead, or blanked
+/// (line count preserved) without one or when the header guards itself
+/// with `#pragma once`, which the compile enters once.
 std::optional<SynthesizedContext>
     synthesize_context(llvm::ArrayRef<ChainEntry> chain,
                        llvm::StringRef target_path,
                        IncludeResolver resolve,
                        std::optional<std::uint32_t> occurrence = {},
                        std::optional<llvm::StringRef> target_content = {});
+
+/// Append an include of `path` to `text` on a line of its own.
+void append_include(std::string& text, llvm::StringRef path);
 
 }  // namespace clice
