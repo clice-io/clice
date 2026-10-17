@@ -461,8 +461,10 @@ CompilationStatus CompilationUnit::run() {
     /// Add PPCallbacks to collect preprocessing information.
     instance->getPreprocessor().addPPCallbacks(directive_collector());
 
-    // What clang raises past the end of the main file, it raises
-    // instantiating the templates the preamble uses.
+    // Past the end of the main file clang instantiates the templates the
+    // preamble uses, and checks little else: the end of the last
+    // declaration's body, an unclosed `#pragma clang attribute`. Their
+    // errors cost a needless rebuild (see compile()).
     if(params.kind == CompilationKind::Preamble && instantiate) {
         instance->getPreprocessor().setTokenWatcher([this](const clang::Token& token) {
             if(token.is(clang::tok::eof) && !errors_at_end) {
