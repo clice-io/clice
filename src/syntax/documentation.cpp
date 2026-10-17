@@ -633,17 +633,7 @@ private:
     /// One line of a block a command opened: code up to the closing
     /// command, and what follows that command on the line.
     llvm::StringRef block_line(llvm::StringRef line) {
-        auto end = llvm::StringRef::npos;
-        for(llvm::StringRef marker: {"\\", "@"}) {
-            auto at = line.find((marker + block_end).str());
-            if(at == llvm::StringRef::npos) {
-                continue;
-            }
-            auto after = line.substr(at + 1 + block_end.size());
-            if(after.empty() || !identifier_char(after.front())) {
-                end = std::min(end, at);
-            }
-        }
+        auto end = find_doc_closer(line, block_end);
         auto code = line.substr(0, end);
         if(!hidden && !(end != llvm::StringRef::npos && code.trim().empty())) {
             push_raw(code.rtrim().str());
@@ -1148,6 +1138,21 @@ llvm::StringRef doc_command_name(llvm::StringRef text) {
 bool at_doc_word_start(llvm::StringRef line, std::size_t index) {
     return index == 0 || llvm::isSpace(line[index - 1]) ||
            llvm::StringRef("([{\"'*_").contains(line[index - 1]);
+}
+
+std::size_t find_doc_closer(llvm::StringRef text, llvm::StringRef closer) {
+    auto end = llvm::StringRef::npos;
+    for(llvm::StringRef marker: {"\\", "@"}) {
+        auto at = text.find((marker + closer).str());
+        if(at == llvm::StringRef::npos) {
+            continue;
+        }
+        auto after = text.substr(at + 1 + closer.size());
+        if(after.empty() || !identifier_char(after.front())) {
+            end = std::min(end, at);
+        }
+    }
+    return end;
 }
 
 llvm::StringRef doc_raw_end(llvm::StringRef name) {

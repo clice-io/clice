@@ -126,6 +126,16 @@ bool applied_by_pragma(const clang::ASTContext& context, clang::SourceLocation l
     return content.slice(line_begin(content, offset), offset).ltrim().starts_with("#");
 }
 
+const clang::NamespaceDecl* outermost_namespace(const clang::Decl* decl) {
+    const clang::NamespaceDecl* outermost = nullptr;
+    for(const auto* scope = decl->getDeclContext(); scope; scope = scope->getParent()) {
+        if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(scope)) {
+            outermost = ns;
+        }
+    }
+    return outermost;
+}
+
 bool is_exported(const clang::Decl* decl) {
     // A concept's or alias template's parameters sit in the enclosing
     // context, the `export` block included.

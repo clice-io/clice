@@ -2773,12 +2773,7 @@ auto ReadableTypes::standard_alias(const clang::ClassTemplateSpecializationDecl&
     const auto* typedefs = llvm::find_if(standard_typedefs, [&](const StandardTypedefs& entry) {
         return entry.pattern == spec.getSpecializedTemplate()->getName();
     });
-    const clang::NamespaceDecl* outermost = nullptr;
-    for(const auto* scope = spec.getDeclContext(); scope; scope = scope->getParent()) {
-        if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(scope)) {
-            outermost = ns;
-        }
-    }
+    const auto* outermost = decls::outermost_namespace(&spec);
     if(typedefs == std::end(standard_typedefs) || !outermost || !outermost->isStdNamespace()) {
         return nullptr;
     }

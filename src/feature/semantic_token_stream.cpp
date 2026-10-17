@@ -166,6 +166,15 @@ struct ConversionCursor {
         }
     }
 
+    /// C23's bit-width length modifier, the `w32` of `%w32d` or the `wf8`
+    /// of `%wf8u`.
+    void width_length() {
+        if(take('w')) {
+            take('f');
+            skip("0123456789");
+        }
+    }
+
     /// The specification's length if one of `conversions` ends it, else zero.
     std::size_t end(llvm::StringRef conversions) const {
         return i < text.size() && conversions.contains(text[i]) ? i + 1 : 0;
@@ -190,6 +199,7 @@ std::size_t printf_conversion_length(llvm::StringRef text) {
             cursor.skip("0123456789");
         }
     }
+    cursor.width_length();
     cursor.skip("hljztLqI0123456789");
     return cursor.end("diouxXbBeEfFgGaAcspnCSm");
 }
@@ -203,6 +213,7 @@ std::size_t scanf_conversion_length(llvm::StringRef text) {
     cursor.take('*');
     cursor.skip("0123456789");
     cursor.take('m');
+    cursor.width_length();
     cursor.skip("hljztLq");
     if(cursor.take('[')) {
         // A `]` first in the set, after the `^` too, is one of its characters.
@@ -276,7 +287,7 @@ public:
                 comment(token.range);
                 continue;
             }
-            doc_closer.clear();
+            doc_closer = {};
             classify(lexer, token);
         }
         return std::move(tokens);
@@ -742,7 +753,7 @@ private:
     void comment(LocalSourceRange range) {
         auto text = content.slice(range.begin, range.end);
         if(!is_doc_comment(text)) {
-            doc_closer.clear();
+            doc_closer = {};
             emit(range, {{.kind = Kind::Comment}, false});
             return;
         }
@@ -771,12 +782,12 @@ private:
         std::size_t payload = text.size() > 3 && text[3] == '<' ? 4 : 3;
         for(std::size_t i = payload; i < text.size(); i += 1) {
             if(!doc_closer.empty()) {
-                auto close = text.find(doc_closer, i);
+                auto close = find_doc_closer(text.substr(i), doc_closer);
                 if(close == llvm::StringRef::npos) {
                     break;
                 }
-                mark(close, close + doc_closer.size(), Kind::Keyword, false);
-                doc_closer.clear();
+                mark(i + close, i + close + 1 + doc_closer.size(), Kind::Keyword, false);
+                doc_closer = {};
                 i = segment - 1;
                 continue;
             }
@@ -788,11 +799,10 @@ private:
             if(name.empty() || !is_doc_command(name)) {
                 continue;
             }
-            auto marker = text[i];
             mark(i, i + 1 + name.size(), Kind::Keyword, false);
             i = segment - 1;
-            if(auto closer = doc_raw_end(name); !closer.empty()) {
-                doc_closer = (llvm::Twine(marker) + closer).str();
+            doc_closer = doc_raw_end(name);
+            if(!doc_closer.empty()) {
                 continue;
             }
             if(name != "param" && name != "tparam") {
@@ -898,8 +908,8 @@ private:
 
     /// The command closing the raw text — code, a formula, hidden text — a
     /// documentation comment opened, which may end on a later line of a
-    /// `///` block (`@endcode`).
-    std::string doc_closer;
+    /// `///` block (`endcode`).
+    llvm::StringRef doc_closer;
 
     std::size_t next_span = 0;
     std::vector<SemanticToken> tokens;

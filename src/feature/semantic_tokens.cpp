@@ -122,6 +122,10 @@ bool is_format_string(clang::QualType type) {
     if(!record || !record->getIdentifier()) {
         return false;
     }
+    const auto* library = decls::outermost_namespace(record);
+    if(!library || (!library->isStdNamespace() && library->getName() != "fmt")) {
+        return false;
+    }
     auto name = record->getName();
     return name == "basic_format_string" || name == "basic_fstring" || name == "fstring";
 }

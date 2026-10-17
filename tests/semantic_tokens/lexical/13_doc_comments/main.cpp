@@ -22,7 +22,8 @@ int clamp(int value);
 /// Doubles a value.
 /// @code
 /// twice(2); // @param here is example text
-/// @endcode
+/// \endcode
+/// @param value what to double
 int twice(int value);
 
 // @param plain comments have no commands

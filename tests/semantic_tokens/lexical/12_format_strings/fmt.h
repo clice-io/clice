@@ -29,3 +29,14 @@ struct Logger {
     [[gnu::format(printf, 2, 3)]] void log(const char* format, ...);
     [[gnu::format(printf, 2, 3)]] void operator()(const char* format, ...);
 };
+
+namespace notes {
+
+template <class... Args>
+struct basic_format_string {
+    basic_format_string(const char* text) {}
+};
+
+void add(basic_format_string<> text);
+
+}  // namespace notes

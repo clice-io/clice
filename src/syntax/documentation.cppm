@@ -93,6 +93,11 @@ bool at_doc_word_start(llvm::StringRef line, std::size_t index);
 /// in which no command is read; empty for any other command.
 llvm::StringRef doc_raw_end(llvm::StringRef name);
 
+/// Where `closer`, the command ending a raw block, is written in `text`
+/// with either marker (`@endcode`, `\endcode`) and no longer name; npos if
+/// nowhere.
+std::size_t find_doc_closer(llvm::StringRef text, llvm::StringRef closer);
+
 /// A name as `@copydoc` writes it: `name`, `Class::member`,
 /// `Class#member`, `::name`, and for one overload of a function its
 /// parameter types, `f(int, const char*)`.

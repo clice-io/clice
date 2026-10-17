@@ -30,6 +30,10 @@ bool applied_by_pragma(const clang::ASTContext& context, clang::SourceLocation l
 /// Members of an exported class are not exported entities of their own.
 bool is_exported(const clang::Decl* decl);
 
+/// The outermost namespace the decl is declared in, the library it belongs
+/// to (`std`, `fmt`); null for one at the global scope.
+const clang::NamespaceDecl* outermost_namespace(const clang::Decl* decl);
+
 /// Check whether the decl is an implicit template instantiation.
 bool is_implicit_instantiation(const clang::NamedDecl* decl);
 
