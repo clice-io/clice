@@ -436,9 +436,6 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     }
     worker::TURunResult result;
     result.success = true;
-    if(params.errors) {
-        result.errors = located_errors(*unit);
-    }
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
     if(params.index) {
@@ -451,6 +448,9 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     auto index_ms = index_timer.ms();
     if(params.tidy) {
         collect_tidy_diagnostics(*unit, result.tidy_diagnostics);
+    }
+    if(params.errors) {
+        result.errors = located_errors(*unit);
     }
 
     // AST teardown for a large TU is material work that belongs to this
