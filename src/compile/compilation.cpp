@@ -13,6 +13,7 @@ import :compile.diagnostic;
 import :compile.tidy;
 import :compile.tokens;
 import :support.logging;
+import :syntax.scan;
 import :vfs.file_system;
 
 namespace clice {
@@ -427,6 +428,20 @@ CompilationStatus CompilationUnit::run() {
 
     if(params.kind == CompilationKind::Completion) {
         complete_at(*instance, params.completion.offset);
+    }
+
+    // The PCH files what its build learned of the main file under the
+    // preamble's size, which the whole file does not have: a header's
+    // `#pragma once` in its preamble is lost with it, and an include of the
+    // header past the preamble, through another header, enters it again.
+    if(auto& [pch, bound] = params.input.pch;
+       !pch.empty() && instance->getLangOpts().IsHeaderFile) {
+        auto& SM = instance->getSourceManager();
+        auto main = SM.getMainFileID();
+        if(pragma_once(SM.getBufferData(main).take_front(bound))) {
+            instance->getPreprocessor().getHeaderSearchInfo().MarkFileIncludeOnce(
+                *SM.getFileEntryRefForID(main));
+        }
     }
 
     /// FIXME: include-fixer, etc?

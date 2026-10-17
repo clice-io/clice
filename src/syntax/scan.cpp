@@ -495,4 +495,22 @@ bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound) {
     }
 }
 
+bool pragma_once(llvm::StringRef content) {
+    Lexer lexer(content);
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        if(!token.is_directive_hash()) {
+            continue;
+        }
+        auto keyword = lexer.advance();
+        if(keyword.is_eod() || keyword.text(content) != "pragma") {
+            continue;
+        }
+        auto name = lexer.advance();
+        if(!name.is_eod() && name.text(content) == "once") {
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // namespace clice
