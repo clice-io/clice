@@ -12,6 +12,7 @@ stdout = '''
     "symbols": [
       {
         "name": "UTIL_LIMIT",
+        "signature": null,
         "kind": "Macro",
         "file": "${WS}/before/inc/util.h",
         "line": 2,
@@ -32,6 +33,7 @@ stdout = '''
     "symbols": [
       {
         "name": "helper",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/before/src/a.cpp",
         "line": 2,
@@ -59,6 +61,7 @@ stdout = '''
     "symbols": [
       {
         "name": "UTIL_LIMIT",
+        "signature": null,
         "kind": "Macro",
         "file": "${WS}/after/inc/util.h",
         "line": 2,
@@ -79,6 +82,7 @@ stdout = '''
     "symbols": [
       {
         "name": "helper",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/after/src/a.cpp",
         "line": 2,

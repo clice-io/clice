@@ -5,3 +5,13 @@ int total(int §(parameter)count) {
     }
     return sum;
 }
+
+void run() {
+    struct Counter {
+        int §(field)hits = 0;
+
+        void bump() {
+            hits += 1;
+        }
+    };
+}

@@ -188,6 +188,59 @@ ZEST_CASE(MergePicksOneSpelling) {
     }
 }
 
+ZEST_CASE(LatestSignatureStands) {
+    // Renaming a parameter keeps the function's hash: the unit merged last
+    // tells how it reads now.
+    TUIndexMirror before;
+    before.paths = {"/proj/main.cpp"};
+    before.add_symbol(42, {.name = "scale", .signature = "(int x)"});
+    TUIndexMirror after;
+    after.paths = {"/proj/main.cpp"};
+    after.add_symbol(42, {.name = "scale", .signature = "(int count)"});
+    auto before_bytes = before.bytes();
+    auto after_bytes = after.bytes();
+
+    clice::FileTable pool;
+    index::ProjectIndex project;
+    auto before_view = index::TUIndex::from_bytes(before_bytes);
+    auto after_view = index::TUIndex::from_bytes(after_bytes);
+    project.merge(before_view, intern_paths(before_view, pool));
+    project.merge(after_view, intern_paths(after_view, pool));
+    ZASSERT(project.identity_of(42)->signature == "(int count)");
+}
+
+ZEST_CASE(DefinitionDecidesSignature) {
+    // A header declaring `scale(int)` and the unit defining it with a named
+    // parameter read the same function differently: the definition's
+    // reading stands whatever merges first.
+    TUIndexMirror declares;
+    declares.paths = {"/proj/main.cpp"};
+    declares.add_symbol(42, {.name = "scale", .signature = "(int)"});
+    TUIndexMirror defines;
+    defines.paths = {"/proj/main.cpp"};
+    defines.add_symbol(42,
+                       {
+                           .name = "scale",
+                           .signature = "(int count)",
+                           .flags = index::SymbolFlags::HasDefinition,
+                       });
+    auto declares_bytes = declares.bytes();
+    auto defines_bytes = defines.bytes();
+
+    clice::FileTable pool;
+    for(auto [first, second]: {
+            std::pair{&declares_bytes, &defines_bytes },
+            std::pair{&defines_bytes,  &declares_bytes}
+    }) {
+        index::ProjectIndex project;
+        auto first_view = index::TUIndex::from_bytes(*first);
+        auto second_view = index::TUIndex::from_bytes(*second);
+        project.merge(first_view, intern_paths(first_view, pool));
+        project.merge(second_view, intern_paths(second_view, pool));
+        ZASSERT(project.identity_of(42)->signature == "(int count)");
+    }
+}
+
 ZEST_CASE(DefinitionDecidesTokenKind) {
     // A unit that sees only `struct S;` and one that defines `class S {}`
     // must leave the definition's kind whichever merges first.

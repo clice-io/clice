@@ -74,9 +74,11 @@ struct GlobalBlob {
     std::vector<std::uint64_t> manifest_gens;
 
     /// The generation of the search blob this table was saved with, and
-    /// the entries changed since that blob was built.
+    /// the entries and the files whose names of internal linkage (path
+    /// ids, ascending) changed since that blob was built.
     std::uint64_t search_generation = 0;
     std::vector<std::uint64_t> search_pending;
+    std::vector<std::uint32_t> search_pending_files;
 
     /// The reverse include graph, for readers holding no manifests: every
     /// file some TU contributed a variant to (path ids, ascending), and those
@@ -124,6 +126,7 @@ struct ProjectIndex::Base {
 
     std::uint64_t search_generation = 0;
     llvm::ArrayRef<std::uint64_t> search_pending;
+    llvm::ArrayRef<std::uint32_t> search_pending_files;
 
     llvm::ArrayRef<std::uint32_t> contributed_files;
     llvm::ArrayRef<std::uint32_t> contributor_ends;
@@ -243,6 +246,7 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     manifest_gens = to_array_ref(root[&GlobalBlob::manifest_gens]);
     search_generation = root[&GlobalBlob::search_generation];
     search_pending = to_array_ref(root[&GlobalBlob::search_pending]);
+    search_pending_files = to_array_ref(root[&GlobalBlob::search_pending_files]);
     contributed_files = to_array_ref(root[&GlobalBlob::contributed_files]);
     contributor_ends = to_array_ref(root[&GlobalBlob::contributor_ends]);
     contributors = to_array_ref(root[&GlobalBlob::contributors]);
@@ -299,6 +303,11 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     for(auto hash: search_pending) {
         if(reserved_key(hash)) {
             return std::unexpected("reserved pending search row");
+        }
+    }
+    for(auto file: search_pending_files) {
+        if(file >= paths.size()) {
+            return std::unexpected("pending search file outside the path table");
         }
     }
     // The writer only emits interned paths, which are never empty; an
@@ -462,6 +471,10 @@ std::expected<void, llvm::StringRef>
     search_generation = base->search_generation;
     search_pending.clear();
     search_pending.insert(base->search_pending.begin(), base->search_pending.end());
+    search_pending_files.clear();
+    for(auto file: base->search_pending_files) {
+        search_pending_files.insert(base->remap[file]);
+    }
     return {};
 }
 
@@ -661,7 +674,14 @@ void ProjectIndex::merge(const TUIndex& index,
         }
         symbol_changed = prefer(target.name, identity.name) || symbol_changed;
         symbol_changed = prefer(target.args, identity.args) || symbol_changed;
-        symbol_changed = prefer(target.signature, identity.signature) || symbol_changed;
+        // An edit to a function, a parameter renamed, keeps its hash: the
+        // unit merging last describes it — a unit defining it, when one
+        // does, which sees the names of every declaration.
+        if(!identity.signature.empty() && target.signature != identity.signature &&
+           (defines || !has_flag(target.flags, SymbolFlags::HasDefinition))) {
+            target.signature = identity.signature.str();
+            symbol_changed = true;
+        }
         // A unit that defines the symbol always places it: the table never
         // retracts a unit's earlier report, so an old definition bit must
         // not pin the file after the definition moved. Declarations only
@@ -856,6 +876,10 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     blob.search_generation = search_generation;
     blob.search_pending.assign(search_pending.begin(), search_pending.end());
     llvm::sort(blob.search_pending);
+    for(auto file: search_pending_files) {
+        blob.search_pending_files.push_back(path_id(file));
+    }
+    llvm::sort(blob.search_pending_files);
 
     serialize_blob(blob, os);
 }
@@ -1150,6 +1174,10 @@ bool ProjectIndex::open(BlobDatabase& db, FileTable& files) {
     search_generation = base->search_generation;
     search_pending.clear();
     search_pending.insert(base->search_pending.begin(), base->search_pending.end());
+    search_pending_files.clear();
+    for(auto file: base->search_pending_files) {
+        search_pending_files.insert(base->remap[file]);
+    }
     if(auto search = db.read(IndexBlobKind::Search, "search")) {
         bind_search(std::move(search.buffer));
     }

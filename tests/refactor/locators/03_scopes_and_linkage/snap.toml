@@ -25,6 +25,7 @@ stdout = '''
         "candidates": [
           {
             "name": "f",
+            "signature": "(double x)",
             "kind": "Function",
             "file": "${WS}/src/main.cpp",
             "line": 2,
@@ -33,6 +34,7 @@ stdout = '''
           },
           {
             "name": "f",
+            "signature": "(int x)",
             "kind": "Function",
             "file": "${WS}/src/main.cpp",
             "line": 1,
@@ -72,6 +74,7 @@ stdout = '''
         "candidates": [
           {
             "name": "helper",
+            "signature": "(double x)",
             "kind": "Function",
             "file": "${WS}/src/two.cpp",
             "line": 1,
@@ -80,6 +83,7 @@ stdout = '''
           },
           {
             "name": "helper",
+            "signature": "(int x)",
             "kind": "Function",
             "file": "${WS}/src/one.cpp",
             "line": 1,

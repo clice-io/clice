@@ -858,19 +858,30 @@ IndexQuery::CallGraph IndexQuery::call_graph(SymbolHash root,
                                  {SymbolKind::Variable, SymbolKind::Field, SymbolKind::EnumMember},
                                  info->kind);
         if(value) {
-            graph.callers = referencing_functions(root, anchor);
-        } else {
-            // A call through a method the root overrides may dispatch to it.
-            llvm::SmallVector<Target> called{
-                {.symbol = root, .anchor = anchor}
-            };
-            if(info && is_function(info->kind)) {
-                llvm::append_range(called,
-                                   transitive_targets(root, anchor, RelationKind::Interface));
+            // A function's local has no caller but that function.
+            if(info->kind != SymbolKind::Variable || info->scope != SymbolScope::FileLocal) {
+                graph.callers = referencing_functions(root, anchor);
             }
+        } else {
             llvm::DenseMap<SymbolHash, std::vector<Site>> by_caller;
-            for(auto target: called) {
-                collect_by_target(target.symbol, target.anchor, RelationKind::Caller, by_caller);
+            collect_by_target(root, anchor, RelationKind::Caller, by_caller);
+            // A call through a method the root overrides may dispatch to it,
+            // save one naming that method by qualification.
+            if(info && is_function(info->kind)) {
+                for(auto base: transitive_targets(root, anchor, RelationKind::Interface)) {
+                    llvm::DenseMap<SymbolHash, std::vector<Site>> through_base;
+                    collect_by_target(base.symbol, base.anchor, RelationKind::Caller, through_base);
+                    auto direct = sites(base.symbol, base.anchor, RelationKind::Direct);
+                    for(auto& [caller, calls]: through_base) {
+                        for(auto& call: calls) {
+                            if(llvm::none_of(direct, [&](const Site& site) {
+                                   return site_key(site) == site_key(call);
+                               })) {
+                                by_caller[caller].push_back(std::move(call));
+                            }
+                        }
+                    }
+                }
             }
             graph.callers = located_edges(by_caller);
         }
@@ -915,13 +926,32 @@ llvm::SmallVector<IndexQuery::Target> IndexQuery::targets(SymbolHash hash,
 }
 
 std::vector<Site> IndexQuery::definition_sites(SymbolHash hash, Fid anchor) const {
-    if(auto info = symbol_info(hash, anchor); info && info->kind == SymbolKind::Namespace) {
-        if(auto placed = canonical_placed(hash, anchor)) {
-            return {std::move(placed->site)};
-        }
-        return {};
+    auto info = symbol_info(hash, anchor);
+    if(!info || info->kind != SymbolKind::Namespace) {
+        return sites(hash, anchor, RelationKind::Definition);
     }
-    return sites(hash, anchor, RelationKind::Definition);
+    // The first block in the file the table names for the namespace stands
+    // for every block, whichever files are open.
+    if(auto identity = index.identity_of(hash); identity && identity->file != no_file) {
+        if(auto source = serving(Fid{identity->file})) {
+            std::optional<Site> first;
+            source->shard->lookup(hash, RelationKind::Definition, [&](const Relation& relation) {
+                if(!first || relation.range.begin < first->range.begin) {
+                    if(auto site = source->site(relation.range)) {
+                        first = std::move(*site);
+                    }
+                }
+                return true;
+            });
+            if(first) {
+                return {std::move(*first)};
+            }
+        }
+    }
+    if(auto placed = canonical_placed(hash, anchor)) {
+        return {std::move(placed->site)};
+    }
+    return {};
 }
 
 llvm::SmallVector<IndexQuery::Target> IndexQuery::transitive_targets(SymbolHash hash,
@@ -994,8 +1024,31 @@ std::vector<Site> IndexQuery::definition(const Cursor& cursor) const {
 
 std::vector<Site> IndexQuery::mismatched_declarations(SymbolHash hash, Fid anchor) const {
     auto info = symbol_info(hash, anchor);
-    if(!info || !is_function(info->kind) || sites(hash, anchor, RelationKind::Definition).empty()) {
+    if(!info || !is_function(info->kind)) {
         return {};
+    }
+    auto defined = sites(hash, anchor, RelationKind::Definition);
+    if(defined.empty()) {
+        return {};
+    }
+    // A method defined in its class never had a declaration apart.
+    if(auto parent = symbol_info(info->parent, anchor); parent && is_class(parent->kind)) {
+        bool in_class = false;
+        for_each_relation(info->parent,
+                          anchor,
+                          RelationKind::Definition,
+                          Order::DiskFirst,
+                          {},
+                          [&](const IndexSource& source, const Relation& relation) {
+                              auto extent = extent_of(source, relation);
+                              in_class = extent && llvm::any_of(defined, [&](const Site& site) {
+                                             return covers(*extent, site);
+                                         });
+                              return !in_class;
+                          });
+        if(in_class) {
+            return {};
+        }
     }
     SymbolQuery query{.mode = SymbolQuery::Mode::Exact, .absolute = true, .pattern = info->name};
     for(auto& container: container_chain(hash, anchor)) {
@@ -1005,6 +1058,7 @@ std::vector<Site> IndexQuery::mismatched_declarations(SymbolHash hash, Fid ancho
     for(auto& namesake: locate(query)) {
         auto& other = namesake.symbol;
         if(other.hash == hash || other.name != info->name || !is_function(other.kind) ||
+           other.scope != info->scope ||
            !sites(other.hash, namesake.site.file, RelationKind::Definition).empty()) {
             continue;
         }
@@ -1062,12 +1116,20 @@ std::vector<Site> IndexQuery::references(const Cursor& cursor, bool include_decl
         if(!info) {
             continue;
         }
-        // A call through a method it overrides may dispatch to it.
+        // A call through a method it overrides may dispatch to it, save one
+        // naming that method by qualification.
         if(is_function(info->kind)) {
             for(auto base: transitive_targets(symbol, anchor, RelationKind::Interface)) {
-                add(base.symbol,
-                    base.anchor,
-                    {RelationKind::Reference, RelationKind::WeakReference});
+                auto direct = sites(base.symbol, base.anchor, RelationKind::Direct);
+                for(auto kind: {RelationKind::Reference, RelationKind::WeakReference}) {
+                    for(auto& site: sites(base.symbol, base.anchor, kind)) {
+                        if(llvm::none_of(direct, [&](const Site& call) {
+                               return site_key(call) == site_key(site);
+                           })) {
+                            result.push_back(std::move(site));
+                        }
+                    }
+                }
             }
         }
         // Its constructors are named by the class's name; the name in a
@@ -1477,6 +1539,10 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
             Fid anchor;
             if(!hit.file.empty()) {
                 anchor = files.find(index.local(hit.file)).value_or(Fid{});
+                // Read from the file's shard below.
+                if(index.search_pending_files.contains(anchor)) {
+                    continue;
+                }
             }
             auto info = symbol_info(hit.hash, anchor);
             if(info && seen.insert(hit.hash).second) {
@@ -1563,6 +1629,21 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
                 consider_symbol(hash, *symbol, index.reference_count(hash));
             }
         }
+    }
+    // The names of internal linkage of the files merged since the build
+    // live in their shards alone.
+    for(auto file: index.search_pending_files) {
+        auto* shard = declaring_shard(file);
+        if(!shard) {
+            continue;
+        }
+        llvm::StringRef path = files.resolve(file);
+        shard->for_each_local_symbol([&](SymbolHash hash, const SymbolIdentity& identity) {
+            if(identity.scope == SymbolScope::TULocal && declares(*shard, hash)) {
+                consider(hash, identity, path, 0, file);
+            }
+            return true;
+        });
     }
     if(live) {
         live->each_session_index([&](const TUIndex& state) {

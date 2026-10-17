@@ -7,3 +7,18 @@ outgoing_calls = []
 call_hierarchy = []
 incoming_calls = []
 outgoing_calls = []
+
+[answers.field]
+call_hierarchy = [
+    { name = "hits", kind = "Field", at = "int ⟦hits⟧ = 0;", detail = "run::Counter::hits" },
+]
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Method",
+        at = "void ⟦bump⟧() {",
+        detail = "run::Counter::bump()",
+        sites = ["⟦hits⟧ += 1;"],
+    },
+]
+outgoing_calls = []

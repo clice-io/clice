@@ -1686,9 +1686,10 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
         auto kind = located.symbol.kind;
         bool function = kind == SymbolKind::Function || kind == SymbolKind::Method ||
                         kind == SymbolKind::Operator;
-        bool value = kind == SymbolKind::Variable || kind == SymbolKind::Field ||
-                     kind == SymbolKind::EnumMember;
-        if(function || (value && located.symbol.scope != index::SymbolScope::FileLocal)) {
+        bool value =
+            kind == SymbolKind::Field || kind == SymbolKind::EnumMember ||
+            (kind == SymbolKind::Variable && located.symbol.scope != index::SymbolScope::FileLocal);
+        if(function || value) {
             items.push_back(to_lsp::call_hierarchy_item(
                 located.symbol,
                 located.site,
@@ -1870,9 +1871,11 @@ std::vector<Features::WorkspaceSymbol> Features::workspace_symbol(llvm::StringRe
         if(qualified && !container.empty()) {
             info.name = container + "::" + info.name;
         }
+        auto source = query.serving(located.site.file);
         results.push_back({
             .info = std::move(info),
             .file = project.project_index.portable(project.file_table.resolve(located.site.file)),
+            .content = source ? source->shard->content_hash() : 0,
         });
     }
     return results;

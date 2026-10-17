@@ -21,7 +21,7 @@
   ],
   "tests": [
     {
-      "name": "answers",
+      "name": "test",
       "blocks": [
         {
           "label": "cache",

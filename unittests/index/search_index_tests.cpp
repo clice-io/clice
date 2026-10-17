@@ -405,7 +405,7 @@ ZEST_CASE(PortablePathsFiltered) {
     ZEXPECT(found("side path:/opt/") == Names{"outside"});
 }
 
-ZEST_CASE(LocalSymbolsNameTheirFile) {
+ZEST_CASE(LocalHitsNameFile) {
     // A symbol of internal linkage is in no project table: a hit on it
     // names the file whose shard holds it.
     Corpus corpus;

@@ -5,4 +5,9 @@ workspace_symbols = [
         kind = "Function",
         at = "main/widget.cpp │ int ⟦widget_area⟧(int width, int height) {",
     },
+    {
+        name = "widget_area(int width, int height)",
+        kind = "Function",
+        at = "other/widget.cpp │ int ⟦widget_area⟧(int width, int height) {",
+    },
 ]

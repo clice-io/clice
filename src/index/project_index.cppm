@@ -232,6 +232,9 @@ struct ProjectIndex {
     /// with.
     SearchIndex search_index;
     llvm::DenseSet<SymbolHash> search_pending;
+    /// The files whose names of internal linkage, in no table, changed
+    /// since the build: a search reads them from the files' shards.
+    llvm::DenseSet<Fid> search_pending_files;
     std::uint64_t search_generation = 0;
 
     /// Adopt a persisted search blob when the bound global pins its

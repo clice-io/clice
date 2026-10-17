@@ -56,6 +56,7 @@ stdout = '''
     "symbols": [
       {
         "name": "Holder",
+        "signature": null,
         "kind": "Struct",
         "file": "${WS}/main.cpp",
         "line": 2,
@@ -64,6 +65,7 @@ stdout = '''
       },
       {
         "name": "Holder<bool>",
+        "signature": null,
         "kind": "Struct",
         "file": "${WS}/main.cpp",
         "line": 7,

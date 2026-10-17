@@ -33,28 +33,28 @@
         {
           "label": "$ clice query symbol-search \"\\\"rows\\\"\"",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/b.cpp\",\n        \"line\": 1,\n        \"container\": null,\n        \"symbol\": \"#91b81847324836ae path:${WS}/b.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"signature\": null,\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/b.cpp\",\n        \"line\": 1,\n        \"container\": null,\n        \"symbol\": \"#91b81847324836ae path:${WS}/b.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
           "label": "$ clice query symbol-search \"\\\"rows\\\" path:a.cpp\"",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/a.cpp\",\n        \"line\": 4,\n        \"container\": \"a\",\n        \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\"\n      },\n      {\n        \"name\": \"rows\",\n        \"kind\": \"Parameter\",\n        \"file\": \"${WS}/a.cpp\",\n        \"line\": 2,\n        \"container\": \"helper\",\n        \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"signature\": null,\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/a.cpp\",\n        \"line\": 4,\n        \"container\": \"a\",\n        \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\"\n      },\n      {\n        \"name\": \"rows\",\n        \"signature\": null,\n        \"kind\": \"Parameter\",\n        \"file\": \"${WS}/a.cpp\",\n        \"line\": 2,\n        \"container\": \"helper\",\n        \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
           "label": "$ clice query symbol-search \"\\\"rows\\\" path:b.cpp\"",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/b.cpp\",\n        \"line\": 1,\n        \"container\": null,\n        \"symbol\": \"#91b81847324836ae path:${WS}/b.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"signature\": null,\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/b.cpp\",\n        \"line\": 1,\n        \"container\": null,\n        \"symbol\": \"#91b81847324836ae path:${WS}/b.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
           "label": "$ clice query symbol-search \"helper::rows path:a.cpp\"",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"kind\": \"Parameter\",\n        \"file\": \"${WS}/a.cpp\",\n        \"line\": 2,\n        \"container\": \"helper\",\n        \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"signature\": null,\n        \"kind\": \"Parameter\",\n        \"file\": \"${WS}/a.cpp\",\n        \"line\": 2,\n        \"container\": \"helper\",\n        \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
@@ -68,7 +68,7 @@
         {
           "label": "$ clice query definition \"\\\"rows\\\" path:a.cpp\"",
           "value": {
-            "stdout": "{\n  \"error\": \"ambiguous: 2 symbols match; name one by the `symbol` of a candidate\",\n  \"candidates\": [\n    {\n      \"name\": \"rows\",\n      \"kind\": \"Variable\",\n      \"file\": \"${WS}/a.cpp\",\n      \"line\": 4,\n      \"container\": \"a\",\n      \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\"\n    },\n    {\n      \"name\": \"rows\",\n      \"kind\": \"Parameter\",\n      \"file\": \"${WS}/a.cpp\",\n      \"line\": 2,\n      \"container\": \"helper\",\n      \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\"\n    }\n  ],\n  \"stale\": []\n}",
+            "stdout": "{\n  \"error\": \"ambiguous: 2 symbols match; name one by the `symbol` of a candidate\",\n  \"candidates\": [\n    {\n      \"name\": \"rows\",\n      \"signature\": null,\n      \"kind\": \"Variable\",\n      \"file\": \"${WS}/a.cpp\",\n      \"line\": 4,\n      \"container\": \"a\",\n      \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\"\n    },\n    {\n      \"name\": \"rows\",\n      \"signature\": null,\n      \"kind\": \"Parameter\",\n      \"file\": \"${WS}/a.cpp\",\n      \"line\": 2,\n      \"container\": \"helper\",\n      \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\"\n    }\n  ],\n  \"stale\": []\n}",
             "exit": 1
           }
         },

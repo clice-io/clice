@@ -12,6 +12,7 @@ stdout = '''
     "symbols": [
       {
         "name": "helper",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/local.cpp",
         "line": 1,

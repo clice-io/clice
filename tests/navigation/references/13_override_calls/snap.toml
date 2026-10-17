@@ -1,5 +1,5 @@
 [answers.base]
-references = ["virtual double ⟦area⟧() const = 0;", "return shape.⟦area⟧();"]
+references = ["virtual double ⟦area⟧() const {", "return Shape::⟦area⟧() + 3.0;", "return shape.⟦area⟧();"]
 
 [answers.override]
 references = ["double ⟦area⟧() const override {", "return shape.⟦area⟧();", "return circle.⟦area⟧();"]

@@ -12,6 +12,7 @@ stdout = '''
     "symbols": [
       {
         "name": "add",
+        "signature": "(int a, int b)",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 2,
@@ -123,6 +124,7 @@ stdout = '''
   "result": {
     "root": {
       "name": "add",
+      "signature": "(int a, int b)",
       "kind": "Function",
       "file": "${WS}/main.cpp",
       "line": 2,
@@ -131,6 +133,7 @@ stdout = '''
     "callers": [
       {
         "name": "compute",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 4,
@@ -150,6 +153,7 @@ stdout = '''
   "result": {
     "root": {
       "name": "Dog",
+      "signature": null,
       "kind": "Struct",
       "file": "${WS}/main.cpp",
       "line": 3,
@@ -158,6 +162,7 @@ stdout = '''
     "supertypes": [
       {
         "name": "Animal",
+        "signature": null,
         "kind": "Struct",
         "file": "${WS}/a.h",
         "line": 3,
@@ -177,6 +182,7 @@ stdout = '''
   "result": {
     "root": {
       "name": "Animal",
+      "signature": null,
       "kind": "Struct",
       "file": "${WS}/a.h",
       "line": 3,
@@ -185,10 +191,39 @@ stdout = '''
     "implementations": [
       {
         "name": "Dog",
+        "signature": null,
         "kind": "Struct",
         "file": "${WS}/main.cpp",
         "line": 3,
         "symbol": "#7316a0a19122a8ae"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query implementation add"]
+stdout = '''
+{
+  "result": {
+    "root": {
+      "name": "add",
+      "signature": "(int a, int b)",
+      "kind": "Function",
+      "file": "${WS}/main.cpp",
+      "line": 2,
+      "symbol": "#5c1bf8ca24c752f7"
+    },
+    "implementations": [
+      {
+        "name": "add",
+        "signature": "(int a, int b)",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 2,
+        "symbol": "#5c1bf8ca24c752f7"
       }
     ]
   },
@@ -244,6 +279,7 @@ stdout = '''
     "symbols": [
       {
         "name": "Animal",
+        "signature": null,
         "kind": "Struct",
         "file": "${WS}/a.h",
         "line": 3,
@@ -252,6 +288,7 @@ stdout = '''
       },
       {
         "name": "add",
+        "signature": "(int a, int b)",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 2,
@@ -260,6 +297,7 @@ stdout = '''
       },
       {
         "name": "Dog",
+        "signature": null,
         "kind": "Struct",
         "file": "${WS}/main.cpp",
         "line": 3,
@@ -268,6 +306,7 @@ stdout = '''
       },
       {
         "name": "compute",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 4,
@@ -276,6 +315,7 @@ stdout = '''
       },
       {
         "name": "main",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 5,

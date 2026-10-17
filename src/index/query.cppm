@@ -365,7 +365,8 @@ public:
     /// declarations and definitions, deduplicated across the kinds — relations
     /// of different kinds can share one anchor. A method's include the
     /// references of the methods it overrides, a call through which may
-    /// dispatch to it; a class's the names of its constructors.
+    /// dispatch to it, but not one naming that method by qualification
+    /// (`Base::f()`); a class's the names of its constructors.
     std::vector<Site> references(const Cursor& cursor, bool include_declaration) const;
 
     /// The qualified name of the function whose definition holds each site,
@@ -482,8 +483,10 @@ public:
     /// The functions calling `root` and the ones it calls, with the call
     /// sites; only the sides asked for are walked. A method's callers
     /// include those of the methods it overrides, whose calls may dispatch
-    /// to it. A variable, a field or an enumerator has as callers the
-    /// functions using it. A neighbour no source places is left out.
+    /// to it, but not one naming that method by qualification. A
+    /// variable, a field or an enumerator has as callers the functions
+    /// using it, a function's local none. A neighbour no source places is
+    /// left out.
     struct CallGraphOptions {
         bool callers = true;
         bool callees = true;
@@ -606,10 +609,10 @@ private:
     /// references, weak ones included.
     std::vector<Edge> referencing_functions(SymbolHash hash, Fid anchor) const;
 
-    /// The declarations of the functions of `hash`'s name in its scope that
-    /// nothing defines, when `hash` is a function defined with no other
-    /// declaration: the one it parted from when a parameter changed on one
-    /// side, which wants the same edit.
+    /// The declarations of the functions of `hash`'s name and linkage in
+    /// its scope that nothing defines, when `hash` is a function defined
+    /// out of its class with no other declaration: the one it parted from
+    /// when a parameter changed on one side, which wants the same edit.
     std::vector<Site> mismatched_declarations(SymbolHash hash, Fid anchor) const;
 
     /// The functions `source` defines.

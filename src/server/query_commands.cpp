@@ -100,13 +100,17 @@ std::optional<std::string> documentation_of(Context& ctx,
 
 template <typename Entry>
 Entry graph_entry(const index::IndexQuery::Located& located) {
-    return {
+    Entry entry{
         .name = located.symbol.display_name(),
         .kind = kind_name(located.symbol.kind),
         .file = std::string(located.site.path),
         .line = lines_of(located.site).start,
         .symbol = symbol_of(located),
     };
+    if(!located.symbol.signature.empty()) {
+        entry.signature = located.symbol.signature;
+    }
+    return entry;
 }
 
 SymbolEntry symbol_entry(Context& ctx, const index::IndexQuery::Located& located) {

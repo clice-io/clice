@@ -1,7 +1,6 @@
 ["shared header symbol listed once".shared_fn]
 workspace_symbols = [
     { name = "shared_fn()", kind = "Function", at = "lib/include/lib.h │ inline int ⟦shared_fn⟧() { return 2; }" },
-    { name = "shared_fn()", kind = "Function", at = "lib/include/lib.h │ inline int ⟦shared_fn⟧() { return 2; }" },
 ]
 
 ["definition crosses folders".lib_fn]

@@ -40,6 +40,7 @@ stdout = '''
     "symbols": [
       {
         "name": "use",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 3,
@@ -48,6 +49,7 @@ stdout = '''
       },
       {
         "name": "value",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 2,

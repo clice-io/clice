@@ -23,5 +23,4 @@ host = "alpha/shared.cpp"
 ["shared source listed once".symbols]
 workspace_symbols = [
     { name = "shared()", kind = "Function", at = "alpha/shared.cpp │ int ⟦shared⟧() { return 0; }" },
-    { name = "shared()", kind = "Function", at = "alpha/shared.cpp │ int ⟦shared⟧() { return 0; }" },
 ]

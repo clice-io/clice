@@ -1265,6 +1265,14 @@ public:
                     if(!entries[i].flags.in_instantiation && is_written(semantics, i)) {
                         add_self_relation(occurrence.decl, RelationKind::Write, name);
                     }
+                    if(const auto* member = node.get<clang::MemberExpr>();
+                       member && member->hasQualifier()) {
+                        if(const auto* method =
+                               llvm::dyn_cast<clang::CXXMethodDecl>(occurrence.decl);
+                           method && method->isVirtual()) {
+                            add_self_relation(occurrence.decl, RelationKind::Direct, name);
+                        }
+                    }
                     add_specialized_type(occurrence.decl, name);
                 }
 

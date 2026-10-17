@@ -4,7 +4,7 @@
   "subtopic": "projects",
   "title": "Copies of one checkout",
   "summary": "Two checkouts of the same code opened side by side list each symbol once, from the folder being edited",
-  "prose": "Two worktrees of one repository opened as workspace folders hold the same\nsymbols at the same places in their folders. Search lists each once, the copy\nof the folder with an open document: the one the editor works in.",
+  "prose": "Two worktrees of one repository opened as workspace folders hold the same\nsymbols at the same places in the same text. Search lists each once, the\ncopy of the folder with an open document: the one the editor works in. A\nfolder whose file reads otherwise holds a symbol of its own, listed too.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -16,6 +16,11 @@
     {
       "path": "main/widget.cpp",
       "text": "int widget_area(int width, int height) {\n    return width * height;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "other/widget.cpp",
+      "text": "int widget_area(int width, int height) {\n    return width + height;\n}\n",
       "markers": []
     }
   ],
@@ -33,6 +38,24 @@
                 "at": {
                   "$place": "main/widget.cpp │ int ⟦widget_area⟧(int width, int height) {",
                   "path": "main/widget.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 15
+                    }
+                  }
+                }
+              },
+              {
+                "name": "widget_area(int width, int height)",
+                "kind": "Function",
+                "at": {
+                  "$place": "other/widget.cpp │ int ⟦widget_area⟧(int width, int height) {",
+                  "path": "other/widget.cpp",
                   "range": {
                     "start": {
                       "line": 0,

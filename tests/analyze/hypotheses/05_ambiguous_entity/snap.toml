@@ -123,6 +123,7 @@ stdout = '''
   "candidates": [
     {
       "name": "value",
+      "signature": null,
       "kind": "Variable",
       "file": "${WS}/core/traits.h",
       "line": 7,
@@ -131,6 +132,7 @@ stdout = '''
     },
     {
       "name": "value",
+      "signature": null,
       "kind": "Variable",
       "file": "${WS}/core/key.h",
       "line": 10,
@@ -139,6 +141,7 @@ stdout = '''
     },
     {
       "name": "value",
+      "signature": null,
       "kind": "Variable",
       "file": "${WS}/third/lib.h",
       "line": 5,

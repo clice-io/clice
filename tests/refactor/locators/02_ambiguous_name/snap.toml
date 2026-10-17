@@ -25,6 +25,7 @@ stdout = '''
         "candidates": [
           {
             "name": "value",
+            "signature": null,
             "kind": "Variable",
             "file": "${WS}/main.cpp",
             "line": 6,
@@ -33,6 +34,7 @@ stdout = '''
           },
           {
             "name": "value",
+            "signature": null,
             "kind": "Variable",
             "file": "${WS}/main.cpp",
             "line": 2,

@@ -317,6 +317,7 @@ struct GlobalBlobMirror {
     std::vector<std::uint64_t> manifest_gens;
     std::uint64_t search_generation = 0;
     std::vector<std::uint64_t> search_pending;
+    std::vector<std::uint32_t> search_pending_files;
 
     /// Append an entry; hashes must arrive ascending.
     void add_symbol(std::uint64_t hash,

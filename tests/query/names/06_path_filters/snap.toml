@@ -12,6 +12,7 @@ stdout = '''
     "symbols": [
       {
         "name": "sum_src",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/src/a.cpp",
         "line": 2,
@@ -32,6 +33,7 @@ stdout = '''
     "symbols": [
       {
         "name": "tally",
+        "signature": null,
         "kind": "Variable",
         "file": "${WS}/src/a.cpp",
         "line": 1,
@@ -52,6 +54,7 @@ stdout = '''
     "symbols": [
       {
         "name": "tally",
+        "signature": null,
         "kind": "Variable",
         "file": "${WS}/lib/src/b.cpp",
         "line": 1,
@@ -72,6 +75,7 @@ stdout = '''
     "symbols": [
       {
         "name": "tally",
+        "signature": null,
         "kind": "Variable",
         "file": "${WS}/lib/src/b.cpp",
         "line": 1,
@@ -92,6 +96,7 @@ stdout = '''
     "symbols": [
       {
         "name": "sum_lib",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/lib/src/b.cpp",
         "line": 2,

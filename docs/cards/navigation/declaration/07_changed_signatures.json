@@ -4,18 +4,25 @@
   "subtopic": "declaration",
   "title": "A definition whose declaration changed",
   "summary": "Go-to-declaration on a definition that no longer matches its declaration reaches the declaration it parted from",
-  "prose": "When a parameter changes on one side only, the definition and the header\ndeclaration become two functions, and the definition has no declaration of\nits own. Go-to-declaration on it falls back to the functions of its name in\nits scope that nothing defines: the declaration that wants the same edit. An\noverload with a definition of its own is no candidate.",
+  "prose": "When a parameter changes on one side only, the definition and the header\ndeclaration become two functions, and the definition has no declaration of\nits own. Go-to-declaration on it falls back to the functions of its name and\nlinkage in its scope that nothing defines: the declaration that wants the\nsame edit. An overload with a definition of its own is no candidate, nor is a\nfunction of external linkage for a `static` one, and a method defined in\nits class never had a declaration apart.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "geometry.h",
-      "text": "int scale(int factor);\nint scale(double factor);\n",
-      "markers": []
+      "text": "int scale(int factor);\nint scale(double factor);\n\nint checksum(const char* data);\n\nclass Mutex {\npublic:\n    Mutex() {}\n\nprivate:\n    Mutex(const Mutex&);\n};\n",
+      "markers": [
+        {
+          "name": "in_class",
+          "begin": 109,
+          "end": 109,
+          "range": false
+        }
+      ]
     },
     {
       "path": "main.cpp",
-      "text": "#include \"geometry.h\"\n\nint scale(long factor) {\n    return static_cast<int>(factor * 2);\n}\n\nint scale(double factor) {\n    return static_cast<int>(factor * 2);\n}\n",
+      "text": "#include \"geometry.h\"\n\nint scale(long factor) {\n    return static_cast<int>(factor * 2);\n}\n\nint scale(double factor) {\n    return static_cast<int>(factor * 2);\n}\n\nstatic int checksum(const char* data, int size) {\n    return data[0] + size;\n}\n\nint use() {\n    Mutex mutex;\n    return checksum(\"x\", 1);\n}\n",
       "markers": [
         {
           "name": "changed",
@@ -28,6 +35,12 @@
           "begin": 96,
           "end": 96,
           "range": false
+        },
+        {
+          "name": "internal",
+          "begin": 174,
+          "end": 174,
+          "range": false
         }
       ]
     }
@@ -36,6 +49,28 @@
     {
       "name": "answers",
       "blocks": [
+        {
+          "label": "in_class",
+          "marker": "in_class",
+          "value": {
+            "declaration": [
+              {
+                "$place": "⟦Mutex⟧() {}",
+                "path": "geometry.h",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
         {
           "label": "changed",
           "marker": "changed",
@@ -74,6 +109,28 @@
                   "end": {
                     "line": 1,
                     "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "internal",
+          "marker": "internal",
+          "value": {
+            "declaration": [
+              {
+                "$place": "static int ⟦checksum⟧(const char* data, int size) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 19
                   }
                 }
               }

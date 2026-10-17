@@ -33,14 +33,14 @@
         {
           "label": "$ clice query symbol-search extra --fresh",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"extra\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 5,\n        \"container\": null,\n        \"symbol\": \"#c9be3d07e9d6b64f\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"extra\",\n        \"signature\": \"()\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 5,\n        \"container\": null,\n        \"symbol\": \"#c9be3d07e9d6b64f\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
           "label": "$ clice query symbol-search extra",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"extra\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 5,\n        \"container\": null,\n        \"symbol\": \"#c9be3d07e9d6b64f\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"extra\",\n        \"signature\": \"()\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 5,\n        \"container\": null,\n        \"symbol\": \"#c9be3d07e9d6b64f\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         }
@@ -66,7 +66,7 @@
         {
           "label": "$ clice query symbol-search compute",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"compute\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 4,\n        \"container\": null,\n        \"symbol\": \"#81df9416985c4402\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"compute\",\n        \"signature\": \"()\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 4,\n        \"container\": null,\n        \"symbol\": \"#81df9416985c4402\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         }

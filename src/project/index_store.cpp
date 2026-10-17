@@ -529,7 +529,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     project_index.merge(view, file_ids_map, &added);
     project.project_index.search_pending.insert(added.begin(), added.end());
     if(changed_during_search_build) {
-        changed_during_search_build->insert(added.begin(), added.end());
+        changed_during_search_build->symbols.insert(added.begin(), added.end());
     }
     merges_since_search_build += 1;
 
@@ -612,6 +612,10 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         project.project_index.shards[global_id] = std::move(replacement);
         dirty_shards.insert(global_id);
         report.add_index_changed(global_id);
+        project.project_index.search_pending_files.insert(global_id);
+        if(changed_during_search_build) {
+            changed_during_search_build->files.insert(global_id);
+        }
     }
 
     // Replace this TU's manifest wholesale: files it no longer touches lose
@@ -1139,6 +1143,8 @@ kota::task<> IndexStore::rebuild_search_index() {
     // during the build stay pending once it is adopted.
     llvm::SmallVector<index::SymbolHash> pending_in_snapshot(project_index.search_pending.begin(),
                                                              project_index.search_pending.end());
+    llvm::SmallVector<Fid> pending_files_in_snapshot(project_index.search_pending_files.begin(),
+                                                     project_index.search_pending_files.end());
     changed_during_search_build.emplace();
     auto finished = llvm::make_scope_exit([&] { changed_during_search_build.reset(); });
 
@@ -1157,8 +1163,13 @@ kota::task<> IndexStore::rebuild_search_index() {
     merges_since_search_build -= merges_in_snapshot;
     for(auto hash: pending_in_snapshot) {
         if(project_index.search_index.contains(hash) &&
-           !changed_during_search_build->contains(hash)) {
+           !changed_during_search_build->symbols.contains(hash)) {
             project_index.search_pending.erase(hash);
+        }
+    }
+    for(auto file: pending_files_in_snapshot) {
+        if(!changed_during_search_build->files.contains(file)) {
+            project_index.search_pending_files.erase(file);
         }
     }
     search_bytes = std::move(bytes);

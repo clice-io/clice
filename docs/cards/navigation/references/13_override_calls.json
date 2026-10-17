@@ -4,7 +4,7 @@
   "subtopic": "references",
   "title": "Calls through overridden methods",
   "summary": "Find references on an override includes the calls made through the methods it overrides, which may dispatch to it",
-  "prose": "`shape.area()` on a `Shape&` may run `Circle::area`, so it is among the\nreferences of the override. A call through `Circle` never runs\n`Shape::area`, so it is not among the references of the method overridden.",
+  "prose": "`shape.area()` on a `Shape&` may run `Circle::area`, so it is among the\nreferences of the override. A call through `Circle` never runs\n`Shape::area`, so it is not among the references of the method overridden;\nnor is `Shape::area()` in the override's own body, which names the method\noverridden.",
   "status": "supported",
   "issues": [
     "clangd#1558"
@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Shape {\n    virtual double area() const = 0;\n};\n\nstruct Circle : Shape {\n    double area() const override {\n        return 3.0;\n    }\n};\n\ndouble through_base(const Shape& shape) {\n    return shape.area();\n}\n\ndouble through_circle(const Circle& circle) {\n    return circle.area();\n}\n",
+      "text": "struct Shape {\n    virtual double area() const {\n        return 0.0;\n    }\n};\n\nstruct Circle : Shape {\n    double area() const override {\n        return Shape::area() + 3.0;\n    }\n};\n\ndouble through_base(const Shape& shape) {\n    return shape.area();\n}\n\ndouble through_circle(const Circle& circle) {\n    return circle.area();\n}\n",
       "markers": [
         {
           "name": "base",
@@ -22,8 +22,8 @@
         },
         {
           "name": "override",
-          "begin": 91,
-          "end": 91,
+          "begin": 114,
+          "end": 114,
           "range": false
         }
       ]
@@ -39,7 +39,7 @@
           "value": {
             "references": [
               {
-                "$place": "virtual double ⟦area⟧() const = 0;",
+                "$place": "virtual double ⟦area⟧() const {",
                 "path": "main.cpp",
                 "range": {
                   "start": {
@@ -53,15 +53,29 @@
                 }
               },
               {
+                "$place": "return Shape::⟦area⟧() + 3.0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 22
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 26
+                  }
+                }
+              },
+              {
                 "$place": "return shape.⟦area⟧();",
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 11,
+                    "line": 13,
                     "character": 17
                   },
                   "end": {
-                    "line": 11,
+                    "line": 13,
                     "character": 21
                   }
                 }
@@ -79,11 +93,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 5,
+                    "line": 7,
                     "character": 11
                   },
                   "end": {
-                    "line": 5,
+                    "line": 7,
                     "character": 15
                   }
                 }
@@ -93,11 +107,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 11,
+                    "line": 13,
                     "character": 17
                   },
                   "end": {
-                    "line": 11,
+                    "line": 13,
                     "character": 21
                   }
                 }
@@ -107,11 +121,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 15,
+                    "line": 17,
                     "character": 18
                   },
                   "end": {
-                    "line": 15,
+                    "line": 17,
                     "character": 22
                   }
                 }

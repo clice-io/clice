@@ -603,7 +603,7 @@ ZEST_CASE(MidSaveMergeKept) {
     ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int second_value() { return 2; }\n"));
 }
 
-ZEST_CASE(SearchRebuildKeepsPendingFindable) {
+ZEST_CASE(RebuildKeepsPendingFindable) {
     TempDir tmp;
     tmp.touch("a.cpp", "int first_value() { return 1; }\n");
     tmp.touch("b.cpp", "int second_value() { return 2; }\n");
@@ -645,6 +645,47 @@ ZEST_CASE(SearchRebuildKeepsPendingFindable) {
     for(auto hash: merged) {
         ZASSERT(project.project_index.search_index.contains(hash));
         ZASSERT(!project.project_index.search_pending.contains(hash));
+    }
+}
+
+ZEST_CASE(RebuildKeepsMidBuildChanges) {
+    TempDir tmp;
+    tmp.touch("a.cpp", "int first_value() { return 1; }\n");
+    tmp.touch("b.cpp", "int second_value() { return 2; }\n");
+    tmp.touch("c.cpp", "int second_value() { return 3; }\n");
+    open_store(tmp, project);
+    auto first = index_file(tmp, tmp.path("a.cpp"));
+    ZASSERT(!first.data.empty());
+    merge(first.data.data(), first.data.size());
+    fx.save(IndexStore::SearchRebuild::Idle);
+
+    auto second = index_file(tmp, tmp.path("b.cpp"));
+    ZASSERT(!second.data.empty());
+    merge(second.data.data(), second.data.size());
+    llvm::SmallVector<index::SymbolHash> merged(project.project_index.search_pending.begin(),
+                                                project.project_index.search_pending.end());
+    ZASSERT(!merged.empty());
+    auto moved = index_file(tmp, tmp.path("c.cpp"));
+    ZASSERT(!moved.data.empty());
+
+    // The definition moves to c.cpp while the build reads the table from
+    // before: the built entry describes the old file, so the symbol stays
+    // pending, where a search reads the table.
+    auto save_body = [&]() -> kota::task<> {
+        co_await fx.async_save(IndexStore::SearchRebuild::Idle);
+    };
+    auto merge_body = [&]() -> kota::task<> {
+        merge(moved.data.data(), moved.data.size());
+        co_return;
+    };
+    auto save_task = save_body();
+    auto merge_task = merge_body();
+    loop.schedule(save_task);
+    loop.schedule(merge_task);
+    loop.run();
+
+    for(auto hash: merged) {
+        ZASSERT(project.project_index.search_pending.contains(hash));
     }
 }
 

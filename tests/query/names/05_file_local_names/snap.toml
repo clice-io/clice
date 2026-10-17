@@ -12,6 +12,7 @@ stdout = '''
     "symbols": [
       {
         "name": "rows",
+        "signature": null,
         "kind": "Variable",
         "file": "${WS}/b.cpp",
         "line": 1,
@@ -32,6 +33,7 @@ stdout = '''
     "symbols": [
       {
         "name": "rows",
+        "signature": null,
         "kind": "Variable",
         "file": "${WS}/a.cpp",
         "line": 4,
@@ -40,6 +42,7 @@ stdout = '''
       },
       {
         "name": "rows",
+        "signature": null,
         "kind": "Parameter",
         "file": "${WS}/a.cpp",
         "line": 2,
@@ -60,6 +63,7 @@ stdout = '''
     "symbols": [
       {
         "name": "rows",
+        "signature": null,
         "kind": "Variable",
         "file": "${WS}/b.cpp",
         "line": 1,
@@ -80,6 +84,7 @@ stdout = '''
     "symbols": [
       {
         "name": "rows",
+        "signature": null,
         "kind": "Parameter",
         "file": "${WS}/a.cpp",
         "line": 2,
@@ -120,6 +125,7 @@ stdout = '''
   "candidates": [
     {
       "name": "rows",
+      "signature": null,
       "kind": "Variable",
       "file": "${WS}/a.cpp",
       "line": 4,
@@ -128,6 +134,7 @@ stdout = '''
     },
     {
       "name": "rows",
+      "signature": null,
       "kind": "Parameter",
       "file": "${WS}/a.cpp",
       "line": 2,

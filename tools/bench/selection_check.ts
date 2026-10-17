@@ -37,6 +37,7 @@ import {
     type Token,
     type TokenKind,
     lex,
+    sample,
     snippet,
     start,
     stop,
@@ -63,21 +64,6 @@ function cursorOffsets(text: string, tokens: Token[], lines: Lines): number[] {
     return [...set]
         .filter((offset) => !(text[offset - 1] === "\r" && text[offset] === "\n"))
         .sort((a, b) => a - b);
-}
-
-function sample<T>(values: T[], limit: number): T[] {
-    if (values.length <= limit) {
-        return values;
-    }
-    const stride = values.length / limit;
-    const picked: T[] = [];
-    for (let i = 0; i < limit; i += 1) {
-        const value = values[Math.floor(i * stride)];
-        if (value !== undefined) {
-            picked.push(value);
-        }
-    }
-    return picked;
 }
 
 /// Where each offset sits relative to the tokens.

@@ -42,6 +42,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& main) {
         // bytes verbatim, as the indexer's first-variant path does.
         project_index.shards[global_id] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
+        project_index.search_pending_files.insert(global_id);
         consumed[local_id] = project_index.shards[global_id].content_hash();
     }
 

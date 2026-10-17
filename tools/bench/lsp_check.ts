@@ -284,6 +284,22 @@ export interface Span {
     end: number;
 }
 
+/// At most `limit` of the values, spread evenly over them.
+export function sample<T>(values: T[], limit: number): T[] {
+    if (values.length <= limit) {
+        return values;
+    }
+    const stride = values.length / limit;
+    const picked: T[] = [];
+    for (let i = 0; i < limit; i += 1) {
+        const value = values[Math.floor(i * stride)];
+        if (value !== undefined) {
+            picked.push(value);
+        }
+    }
+    return picked;
+}
+
 /// One line around a span, the span marked: `a ⟦b⟧ c`, a span over
 /// several lines shown from its first line to its last.
 export function snippet(lines: Lines, span: Span): string {

@@ -1,8 +1,9 @@
 /// Navigation check: ask every navigation request — definition,
 /// declaration, type definition, implementation, references, document
 /// highlight, the call and type hierarchies — at every name of real files,
-/// through clice's index (the file closed), clice's compiled document (the
-/// file open), `clice query` and, given a binary, clangd with its
+/// through clice's index (a read-only session, the open file served from
+/// the index), clice's compiled document, `clice query` and, given a
+/// binary, clangd with its
 /// background index; diff the answers, grouped by what the symbol is and
 /// what the place one side alone gives is. Workspace symbol search is asked
 /// for names of the same files, of clice, `clice query symbol-search` and
@@ -25,6 +26,7 @@
 ///   --json <path>           write every finding as JSON
 ///   --at <file:line:col>    print every answer at these 1-based positions
 ///                           instead of checking; repeatable
+///   --full                  with --at, print every answer whole
 ///
 /// clice indexes the workspace with `clice index` first; clangd builds its
 /// background index before the first file is asked.
@@ -53,6 +55,7 @@ import {
     type Server,
     type Token,
     lex,
+    sample,
     snippet,
     start,
     stop,
@@ -171,21 +174,6 @@ function options(): Options {
     };
 }
 
-function sample<T>(values: T[], limit: number): T[] {
-    if (values.length <= limit) {
-        return values;
-    }
-    const stride = values.length / limit;
-    const picked: T[] = [];
-    for (let i = 0; i < limit; i += 1) {
-        const value = values[Math.floor(i * stride)];
-        if (value !== undefined) {
-            picked.push(value);
-        }
-    }
-    return picked;
-}
-
 /// Run `work` over `items`, `jobs` at a time.
 async function pool<T>(items: T[], jobs: number, work: (item: T) => Promise<void>): Promise<void> {
     let next = 0;
@@ -259,6 +247,27 @@ interface Place {
     file: string;
     line: number;
     column: number;
+}
+
+/// A workspace symbol's name split before the parameter list a function's
+/// carries, `operator()(int x) const` into `operator()` and `(int x) const`.
+function splitSignature(name: string): [string, string] {
+    const close = name.lastIndexOf(")");
+    if (close < 0) {
+        return [name, ""];
+    }
+    let depth = 0;
+    for (let i = close; i >= 0; i -= 1) {
+        if (name[i] === ")") {
+            depth += 1;
+        } else if (name[i] === "(") {
+            depth -= 1;
+            if (depth === 0) {
+                return [name.slice(0, i), name.slice(i)];
+            }
+        }
+    }
+    return [name, ""];
 }
 
 function parsePlace(key: string): Place {
@@ -1191,7 +1200,11 @@ class Checker {
         const group = this.group("workspace symbol");
         const chosen = sample([...names].sort(), opts.symbols);
         interface Entry {
+            /// The place and the bare name, as clangd names it.
             key: string;
+            /// The place, the name and a function's signature, as the CLI
+            /// lists them.
+            full: string;
             name: string;
             kind: string;
             container: string;
@@ -1200,9 +1213,12 @@ class Checker {
             (reply ?? []).map((s): Entry => {
                 const location = s.location as proto.Location;
                 const start = "range" in location ? location.range.start.line + 1 : 0;
-                const name = s.name.replace(/^.*::/, "");
+                const [qualified, signature] = splitSignature(s.name);
+                const name = qualified.replace(/^.*::/, "");
+                const place = `${files.name(URI.parse(location.uri).fsPath)}:${start}`;
                 return {
-                    key: `${files.name(URI.parse(location.uri).fsPath)}:${start}:${name}`,
+                    key: `${place}:${name}`,
+                    full: `${place}:${name}${signature}`,
                     name,
                     kind: SYMBOL_KINDS.get(s.kind) ?? String(s.kind),
                     container: s.containerName ?? "",
@@ -1221,11 +1237,18 @@ class Checker {
             const cliList = (
                 (
                     cli.result as
-                        | { symbols?: { name: string; file: string; line: number }[] }
+                        | {
+                              symbols?: {
+                                  name: string;
+                                  signature: string | null;
+                                  file: string;
+                                  line: number;
+                              }[];
+                          }
                         | undefined
                 )?.symbols ?? []
-            ).map((s) => `${files.name(s.file)}:${s.line}:${s.name}`);
-            const editorKeys = mine.map((e) => e.key);
+            ).map((s) => `${files.name(s.file)}:${s.line}:${s.name}${s.signature ?? ""}`);
+            const editorKeys = mine.map((e) => e.full);
             const sameCli = cliList.slice(0, 20).join("\n") === editorKeys.slice(0, 20).join("\n");
             this.agree("symbol cli top 20", sameCli);
             if (!sameCli) {

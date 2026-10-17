@@ -30,6 +30,7 @@ stdout = '''
     "symbols": [
       {
         "name": "add",
+        "signature": "(int a, int b)",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 2,
@@ -74,6 +75,7 @@ stdout = '''
     "symbols": [
       {
         "name": "add",
+        "signature": "(int a, int b)",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 2,

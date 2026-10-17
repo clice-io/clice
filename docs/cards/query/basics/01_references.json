@@ -3,7 +3,7 @@
   "topic": "query",
   "subtopic": "basics",
   "title": "References of a symbol",
-  "summary": "Every place naming a method, its declarations included, each with the function it lies in",
+  "summary": "Every place naming a method, its declarations and the calls through the method it overrides included, each with the function it lies in",
   "prose": "",
   "status": "supported",
   "issues": [],

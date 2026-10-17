@@ -229,9 +229,11 @@ public:
 
     struct WorkspaceSymbol {
         protocol::SymbolInformation info;
-        /// Its file's name relative to the project (path::portable), which
-        /// another checkout of the same code shares.
+        /// Its file's name relative to the project (path::portable) and the
+        /// hash of the text indexed, which another checkout of the same code
+        /// shares.
         std::string file;
+        std::uint64_t content = 0;
     };
 
     /// The project's symbols matching `query`, best first; the master

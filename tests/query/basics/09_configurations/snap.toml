@@ -12,6 +12,7 @@ stdout = '''
     "symbols": [
       {
         "name": "release_only",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 2,
@@ -49,6 +50,7 @@ stdout = '''
     "symbols": [
       {
         "name": "debug_only",
+        "signature": "()",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 4,

@@ -1,4 +1,4 @@
-[answers.cache]
+[test.cache]
 workspace_symbols = [
     { name = "Cache", kind = "Struct", at = "main.cpp │ struct ⟦Cache⟧ {};" },
     { name = "cache_size()", kind = "Function", at = "main.cpp │ int ⟦cache_size⟧() {" },

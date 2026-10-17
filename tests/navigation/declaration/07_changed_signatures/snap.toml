@@ -1,5 +1,11 @@
+[answers.in_class]
+declaration = ["⟦Mutex⟧() {}"]
+
 [answers.changed]
 declaration = ["geometry.h │ int ⟦scale⟧(int factor);"]
 
 [answers.overload]
 declaration = ["geometry.h │ int ⟦scale⟧(double factor);"]
+
+[answers.internal]
+declaration = ["static int ⟦checksum⟧(const char* data, int size) {"]

@@ -109,6 +109,10 @@ struct RelationKind {
         /// the outline lists the directive, which navigation reaches through
         /// the Reference beside it and never as a declaration.
         Instantiation,
+        /// A virtual function named by qualification (`Base::f()`),
+        /// recorded next to the Reference of the same name: the call runs
+        /// that function, never an override.
+        Direct,
     };
 
     constexpr RelationKind() = default;

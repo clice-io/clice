@@ -320,7 +320,8 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     lower_names.reserve(count);
     for(std::uint32_t doc = 0; doc < count; doc += 1) {
         auto& entry = entry_of(doc);
-        if(entry.local && entry.file != no_file) {
+        if(entry.local) {
+            assert(entry.file != no_file && "an entry of internal linkage names its file");
             blob.local_docs.push_back(doc);
             blob.local_paths.push_back(entry.file);
         }

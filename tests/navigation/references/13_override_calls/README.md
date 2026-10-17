@@ -8,4 +8,6 @@ Find references on an override includes the calls made through the methods it ov
 
 `shape.area()` on a `Shape&` may run `Circle::area`, so it is among the
 references of the override. A call through `Circle` never runs
-`Shape::area`, so it is not among the references of the method overridden.
+`Shape::area`, so it is not among the references of the method overridden;
+nor is `Shape::area()` in the override's own body, which names the method
+overridden.

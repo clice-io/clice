@@ -283,6 +283,27 @@ ZEST_CASE(SearchSymbols) {
     ZASSERT(results.front().symbol.name == "Searchable");
 }
 
+ZEST_CASE(InternalNamesSearched) {
+    // A file merged since the search index was built is read for its
+    // names of internal linkage, in no table; a function's locals stay
+    // out.
+    add_main("main.cpp", R"(
+        static int cached_total(int cached_count) {
+            int cached_sum = cached_count;
+            return cached_sum;
+        }
+        namespace { struct CachedEntry {}; }
+    )");
+    index_workspace();
+
+    std::vector<std::string> names;
+    for(auto& result: search("cached")) {
+        names.push_back(result.symbol.name);
+    }
+    llvm::sort(names);
+    ZEXPECT(names == (std::vector<std::string>{"CachedEntry", "cached_total"}));
+}
+
 ZEST_CASE(UnnamedScopes) {
     // An unnamed enum's enumerators and an anonymous union's members are
     // named through the enclosing scope, as lookup names them.

@@ -839,8 +839,9 @@ void MasterServer::serve_again(ProjectServer& project, std::shared_ptr<Session> 
 std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::StringRef query) {
     constexpr std::size_t limit = Features::workspace_symbol_limit;
     // Another checkout of the same code opened beside it (a worktree) holds
-    // a copy of each symbol at the same place in its folder: the copy of a
-    // folder with open documents, the one being edited, stands for them.
+    // a copy of each symbol at the same place in the same text of its
+    // folder: the copy of a folder with open documents, the one being
+    // edited, stands for them.
     auto ordered = projects;
     std::ranges::stable_partition(ordered, [](const std::shared_ptr<ProjectServer>& project) {
         bool open = false;
@@ -855,7 +856,11 @@ std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::St
         ranked.push_back(project->features.workspace_symbol(query));
     }
     std::vector<protocol::SymbolInformation> merged;
-    std::set<std::tuple<std::string, std::uint32_t, std::uint32_t, std::string, std::string>> seen;
+    // A file several projects see, a header of one an application includes,
+    // lists its symbols once too.
+    using Place = std::tuple<std::string, std::uint32_t, std::uint32_t, std::string, std::string>;
+    std::set<Place> places;
+    std::set<std::pair<Place, std::uint64_t>> copies;
     for(std::size_t rank = 0; merged.size() < limit; rank += 1) {
         bool any = false;
         for(auto& list: ranked) {
@@ -863,14 +868,19 @@ std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::St
                 continue;
             }
             any = true;
-            auto& [info, file] = list[rank];
+            auto& [info, file, content] = list[rank];
             auto& start = info.location.range.start;
-            if(seen.emplace(std::move(file),
-                            start.line,
-                            start.character,
-                            info.name,
-                            info.container_name.value_or(""))
-                   .second) {
+            auto container = info.container_name.value_or("");
+            bool new_place =
+                places.emplace(info.location.uri, start.line, start.character, info.name, container)
+                    .second;
+            bool new_copy =
+                copies
+                    .emplace(
+                        Place(std::move(file), start.line, start.character, info.name, container),
+                        content)
+                    .second;
+            if(new_place && new_copy) {
                 merged.push_back(std::move(info));
             }
         }

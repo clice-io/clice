@@ -12,6 +12,7 @@ stdout = '''
   "candidates": [
     {
       "name": "measure",
+      "signature": "() const",
       "kind": "Method",
       "file": "${WS}/src/circle.cpp",
       "line": 5,
@@ -20,6 +21,7 @@ stdout = '''
     },
     {
       "name": "measure",
+      "signature": "() const",
       "kind": "Method",
       "file": "${WS}/include/shapes/shape.h",
       "line": 9,

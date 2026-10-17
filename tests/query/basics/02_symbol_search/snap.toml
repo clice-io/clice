@@ -12,6 +12,7 @@ stdout = '''
     "symbols": [
       {
         "name": "Circle",
+        "signature": null,
         "kind": "Class",
         "file": "${WS}/include/shapes/circle.h",
         "line": 7,
@@ -20,6 +21,7 @@ stdout = '''
       },
       {
         "name": "circumference",
+        "signature": "() const",
         "kind": "Method",
         "file": "${WS}/src/circle.cpp",
         "line": 9,
@@ -28,6 +30,7 @@ stdout = '''
       },
       {
         "name": "Circle",
+        "signature": "(double radius)",
         "kind": "Method",
         "file": "${WS}/include/shapes/circle.h",
         "line": 9,

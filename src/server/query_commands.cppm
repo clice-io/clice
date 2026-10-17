@@ -64,6 +64,9 @@ struct ImpactAnalysisResult {
 
 struct SymbolEntry {
     std::string name;
+    /// A function's parameters and qualifiers, which tell its overloads
+    /// apart; null for any other symbol.
+    std::optional<std::string> signature;
     std::string kind;
     std::string file;
     int line = 0;
@@ -155,6 +158,9 @@ struct ReferencesResult {
 
 struct GraphEntry {
     std::string name;
+    /// A function's parameters and qualifiers, which tell its overloads
+    /// apart; null for any other symbol.
+    std::optional<std::string> signature;
     std::string kind;
     std::string file;
     int line = 0;

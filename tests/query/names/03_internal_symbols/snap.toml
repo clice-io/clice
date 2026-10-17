@@ -212,6 +212,7 @@ stdout = '''
     "symbols": [
       {
         "name": "helper",
+        "signature": "(int x)",
         "kind": "Function",
         "file": "${WS}/util.h",
         "line": 2,
@@ -252,6 +253,7 @@ stdout = '''
     "symbols": [
       {
         "name": "helper",
+        "signature": "(int x)",
         "kind": "Function",
         "file": "${WS}/util.h",
         "line": 2,
