@@ -195,6 +195,7 @@ bool names_path(unsigned id, llvm::StringRef value) {
         return false;
     }
     switch(id) {
+        case OPT_o:
         case OPT_I:
         case OPT_isystem:
         case OPT_iquote:

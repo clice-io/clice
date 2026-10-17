@@ -1066,7 +1066,7 @@ std::optional<Spelling> CompilationDatabase::pch_output(ConfigID id) const {
     if(!emits || !output) {
         return std::nullopt;
     }
-    return Spelling(output, Spelling::absolute(config(id).directory));
+    return Spelling::absolute(output);
 }
 
 llvm::SmallVector<Spelling, 2> CompilationDatabase::pch_inputs(ConfigID id) const {
