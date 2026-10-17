@@ -1810,6 +1810,9 @@ bool is_written(const Semantics& semantics, std::uint32_t index) {
     auto is_mutable = [](clang::QualType type) {
         return !type.isConstQualified() && !type->isDependentType() && !type->isFunctionType();
     };
+    auto to_mutable = [&](clang::QualType type) {
+        return type->isPointerType() && is_mutable(type->getPointeeType());
+    };
 
     if(auto* op = llvm::dyn_cast<clang::BinaryOperator>(parent)) {
         return op->isAssignmentOp() && is_expr(op->getLHS());
@@ -1821,10 +1824,8 @@ bool is_written(const Semantics& semantics, std::uint32_t index) {
         const auto* call = enclosing(parent_index).first;
         return call && llvm::any_of(decls::parameter_bindings(call),
                                     [&](const decls::ParameterBinding& binding) {
-                                        auto type = binding.forwarded->getType();
                                         return binding.argument->IgnoreParenImpCasts() == op &&
-                                               type->isPointerType() &&
-                                               is_mutable(type->getPointeeType());
+                                               to_mutable(binding.forwarded->getType());
                                     });
     }
 
@@ -1833,11 +1834,14 @@ bool is_written(const Semantics& semantics, std::uint32_t index) {
         auto op = call->getOperator();
         return call->isAssignmentOp() || op == clang::OO_PlusPlus || op == clang::OO_MinusMinus;
     }
-    return llvm::any_of(decls::parameter_bindings(parent),
-                        [&](const decls::ParameterBinding& binding) {
-                            return is_expr(binding.argument) && binding.mutable_reference() &&
-                                   is_mutable(binding.forwarded->getType().getNonReferenceType());
-                        });
+    return llvm::any_of(
+        decls::parameter_bindings(parent),
+        [&](const decls::ParameterBinding& binding) {
+            auto type = binding.forwarded->getType();
+            return is_expr(binding.argument) &&
+                   ((binding.mutable_reference() && is_mutable(type.getNonReferenceType())) ||
+                    (expr->getType()->isArrayType() && to_mutable(type)));
+        });
 }
 
 bool NameOccurrence::owns_whole_name() const {

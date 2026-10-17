@@ -9,4 +9,8 @@ void run() {
     modify_through(&§(by_pointer)value);
     inspect(§(by_const_reference)value);
     peek(&§(by_pointer_to_const)value);
+
+    int values[4] = {};
+    modify_through(§(by_array_decay)values);
+    peek(§(by_array_decay_to_const)values);
 }

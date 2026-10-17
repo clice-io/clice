@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "void modify(int& out);\nvoid modify_through(int* out);\nvoid inspect(const int& in);\nvoid peek(const int* in);\n\nvoid run() {\n    int value = 0;\n    modify(value);\n    modify_through(&value);\n    inspect(value);\n    peek(&value);\n}\n",
+      "text": "void modify(int& out);\nvoid modify_through(int* out);\nvoid inspect(const int& in);\nvoid peek(const int* in);\n\nvoid run() {\n    int value = 0;\n    modify(value);\n    modify_through(&value);\n    inspect(value);\n    peek(&value);\n\n    int values[4] = {};\n    modify_through(values);\n    peek(values);\n}\n",
       "markers": [
         {
           "name": "by_reference",
@@ -36,6 +36,18 @@
           "name": "by_pointer_to_const",
           "begin": 219,
           "end": 219,
+          "range": false
+        },
+        {
+          "name": "by_array_decay",
+          "begin": 271,
+          "end": 271,
+          "range": false
+        },
+        {
+          "name": "by_array_decay_to_const",
+          "begin": 289,
+          "end": 289,
           "range": false
         }
       ]
@@ -92,6 +104,33 @@
           "value": {
             "semantic_token": {
               "text": "value",
+              "type": "variable",
+              "modifiers": [
+                "local"
+              ]
+            }
+          }
+        },
+        {
+          "label": "by_array_decay",
+          "marker": "by_array_decay",
+          "value": {
+            "semantic_token": {
+              "text": "values",
+              "type": "variable",
+              "modifiers": [
+                "modification",
+                "local"
+              ]
+            }
+          }
+        },
+        {
+          "label": "by_array_decay_to_const",
+          "marker": "by_array_decay_to_const",
+          "value": {
+            "semantic_token": {
+              "text": "values",
               "type": "variable",
               "modifiers": [
                 "local"

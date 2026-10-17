@@ -17,3 +17,13 @@ modifiers = ["local"]
 text = "value"
 type = "variable"
 modifiers = ["local"]
+
+[answers.by_array_decay.semantic_token]
+text = "values"
+type = "variable"
+modifiers = ["modification", "local"]
+
+[answers.by_array_decay_to_const.semantic_token]
+text = "values"
+type = "variable"
+modifiers = ["local"]
