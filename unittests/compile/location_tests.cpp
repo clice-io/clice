@@ -25,7 +25,7 @@ const clang::VarDecl* variable(llvm::StringRef name) {
 }
 
 ZEST_CASE(MacroArgumentAndBody) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define CALL(f) f(§(one)1) + 0
 int helper(int);
 int x = §(call)⟦CALL(§(arg)⟦helper⟧)⟧;
@@ -58,7 +58,7 @@ int x = §(call)⟦CALL(§(arg)⟦helper⟧)⟧;
 }
 
 ZEST_CASE(SplitAngleBrackets) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template <typename T>
 struct Box {};
 
@@ -80,7 +80,7 @@ struct Box {};
 }
 
 ZEST_CASE(SplitAfterMacro) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 namespace n {
 template <typename T>
 struct Box {};
@@ -105,7 +105,7 @@ Vec<§(inner)⟦Vec<int>⟧> v;
 }
 
 ZEST_CASE(UnclosedBlock) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 void f() §(body)⟦{
     int x = 1;⟧
 // trailing
@@ -127,7 +127,7 @@ void f() §(body)⟦{
 
 ZEST_CASE(PreambleIsFocus) {
     add_file("a.h", "int a();\n");
-    add_main("main.cpp", R"cpp(#include "a.h"
+    add_focus("main.cpp", R"cpp(#include "a.h"
 #define §(name)⟦LOCAL⟧ 1
 int x = LOCAL;
 )cpp");

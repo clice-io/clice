@@ -392,7 +392,6 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
 
     if(resolution.synthesized) {
         wp.synthesized = resolution.synthesized->files;
-        resolution.synthesized->append_suffix_include(wp.text);
     }
 
     Quarantine::Attempt attempt(*session.quarantine, evidence);

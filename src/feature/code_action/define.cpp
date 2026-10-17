@@ -174,7 +174,7 @@ public:
         fid = begin.file;
         base = begin.offset;
         source = *text;
-        // Lexed here: the unit's spelled tokens cover the main file only.
+        // Lexed here: the unit's spelled tokens cover the focus file only.
         tokens = clang::syntax::tokenize(clang::syntax::FileRange(fid, base, base + source.size()),
                                          unit.context().getSourceManager(),
                                          unit.lang_options());
@@ -703,7 +703,7 @@ std::optional<Placement> placement_after(CompilationUnit& unit, const clang::Dec
 }
 
 /// After the last out-of-line definition of the class's members in the
-/// main file, else after the class.
+/// focus file, else after the class.
 std::optional<Placement> member_placement(CompilationUnit& unit,
                                           const clang::CXXRecordDecl* record) {
     auto definitions = out_of_line_definitions(unit, record);
@@ -813,7 +813,7 @@ bool defines_from(const clang::FunctionDecl* decl, const clang::DeclContext* fro
 }
 
 /// The placement moved past `definition` when it lies further on in the
-/// main file; nullopt when the definition comes later elsewhere, or a
+/// focus file; nullopt when the definition comes later elsewhere, or a
 /// definition of the function past it could not name the function.
 std::optional<Placement> placement_past(CompilationUnit& unit,
                                         Placement placement,
@@ -860,7 +860,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
         return qualifier_at(decl->getDeclContext(), from) + name;
     };
     auto needed = last_needed_definition(unit, decl);
-    bool header_once = ctx.main_is_header && defined_once(decl);
+    bool header_once = ctx.focus_is_header && defined_once(decl);
 
     // A body written in the class is compiled at the end of the outermost
     // class, where the types it needs must be complete.
@@ -964,7 +964,7 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
                       bool host) {
         std::vector<DefinitionPiece> pieces;
         for(const auto* function: functions) {
-            bool header_once = ctx.main_is_header && defined_once(function);
+            bool header_once = ctx.focus_is_header && defined_once(function);
             if(host && !header_once) {
                 continue;
             }
@@ -986,7 +986,7 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
             });
         }
     }
-    if(ctx.main_is_header) {
+    if(ctx.focus_is_header) {
         if(auto host = pieces(missing, unit.tu(), true); !host.empty()) {
             out.push_back(CodeAction{
                 .title = title,

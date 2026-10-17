@@ -103,7 +103,7 @@ std::string origins() {
     return out;
 }
 
-/// The main-file offset of the spelled token the `nth` expanded token
+/// The focus-file offset of the spelled token the `nth` expanded token
 /// spelled `spelling` stands for.
 std::optional<std::uint32_t> origin_offset(llvm::StringRef spelling, std::size_t nth) {
     auto& token = expanded(spelling, nth);
@@ -117,7 +117,7 @@ std::optional<std::uint32_t> origin_offset(llvm::StringRef spelling, std::size_t
 }
 
 ZEST_CASE(PreprocessedAway) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define EMPTY
 #define ID(x) x
 int a EMPTY;
@@ -133,7 +133,7 @@ int c = ID(1);
 }
 
 ZEST_CASE(TopLevelExpansions) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define F(x) x + 1
 #define E
 #define ON 1
@@ -147,7 +147,7 @@ int w;
 }
 
 ZEST_CASE(NestedInvocationsMerge) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define ID(x) x
 #define B(x) x
 #define A 1 + B
@@ -159,7 +159,7 @@ int w = A(2);
 }
 
 ZEST_CASE(SpelledForRanges) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define ID(x) x
 #define BAR 1 + 2
 int a1, a2;
@@ -173,7 +173,7 @@ int y = ID(ID(ID(a1) + a2));
 }
 
 ZEST_CASE(SpelledForArguments) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define ID(X) X
 #define ID2(X, Y) X Y
 #define FOO(X) foo(X)
@@ -191,7 +191,7 @@ INDIRECT
 }
 
 ZEST_CASE(PragmaExpansions) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define THREADS 4
 void f() {
 #pragma omp parallel num_threads(THREADS)
@@ -205,7 +205,7 @@ void f() {
 }
 
 ZEST_CASE(BuiltinMacroArgument) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define ATTR nodiscard
 int v = __has_cpp_attribute(ATTR);
 )cpp");
@@ -223,7 +223,7 @@ int v = __has_cpp_attribute(ATTR);
 }
 
 ZEST_CASE(MacroOrigins) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 int a;
 #define TWICE(x) (x + x)
 #define ID(x) x
@@ -240,7 +240,7 @@ int w = ID(ID(§(nested)a));
 }
 
 ZEST_CASE(RereadArguments) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define FIRST(a, ...) a
 #define REST(a, ...) __VA_ARGS__
 #define LOG(...) log(FIRST(__VA_ARGS__), __VA_ARGS__)
@@ -265,7 +265,7 @@ void f() {
 }
 
 ZEST_CASE(StringizedArguments) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define STR(x) #x
 #define CHECK(e) ((e) ? 0 : fail(STR(e)))
 int fail(const char*);
@@ -282,7 +282,7 @@ ZEST_CASE(HeaderOrigins) {
 int h;
 HM
 )cpp");
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 int m;
 #include "header.h"
 )cpp");
@@ -294,7 +294,7 @@ int m;
 }
 
 ZEST_CASE(TouchingFileEnd) {
-    add_main("main.cpp", "int x");
+    add_focus("main.cpp", "int x");
     ZASSERT(compile());
     auto& SM = unit->context().getSourceManager();
     auto end = SM.getLocForEndOfFile(SM.getMainFileID());
@@ -302,7 +302,7 @@ ZEST_CASE(TouchingFileEnd) {
 }
 
 ZEST_CASE(SplitShiftRange) {
-    add_main("main.cpp", "template <class T> struct A {};\nA<A<int>> x;\n");
+    add_focus("main.cpp", "template <class T> struct A {};\nA<A<int>> x;\n");
     ZASSERT(compile());
     auto& shift = expanded(">>");
     auto range =
@@ -312,7 +312,7 @@ ZEST_CASE(SplitShiftRange) {
 
 ZEST_CASE(PreambleAway) {
     add_file("a.h", "#define A 1\n");
-    add_main("main.cpp", "#include \"a.h\"\nint x = A;\n");
+    add_focus("main.cpp", "#include \"a.h\"\nint x = A;\n");
     ZASSERT(compile_with_pch());
     ZEXPECT(spelled_where(false) == "int x = A ;");
     ZEXPECT(spelled_where(true) == "# include \"a.h\"");
@@ -320,7 +320,7 @@ ZEST_CASE(PreambleAway) {
 }
 
 ZEST_CASE(AssemblerComment) {
-    add_main("main.S", "# comment\n.text\n");
+    add_focus("main.S", "# comment\n.text\n");
     prepare("-std=c11");
     auto language = std::ranges::find(params.input.arguments, "c");
     ZASSERT(language != params.input.arguments.end());
@@ -334,7 +334,7 @@ ZEST_CASE(AssemblerComment) {
 }
 
 ZEST_CASE(PrivateFragmentAnchor) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 export module app;
 #if 0
 module :private;

@@ -88,14 +88,14 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     params.input.vfs = overlay;
 
     // Phase 1: Build PCH from the preamble portion.
-    auto& main_source = sources.all_files[src_path];
-    auto bound = compute_preamble_bound(main_source.content);
+    auto& focus_source = sources.all_files[src_path];
+    auto bound = compute_preamble_bound(focus_source.content);
     CompilationParams preamble{
         .kind = CompilationKind::Preamble,
         .input = params.input,
         .output_file = pch_path,
     };
-    preamble.input.add_remapped_file(TestVFS::path(src_path), main_source.content, bound);
+    preamble.input.add_remapped_file(TestVFS::path(src_path), focus_source.content, bound);
     {
         auto preamble_unit = clice::compile(std::move(preamble));
         if(!preamble_unit->has_output()) {
@@ -216,7 +216,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         auto pcm_path = artifact("pcm");
 
         Tester builder;
-        builder.add_main(mod.filename, mod.content);
+        builder.add_focus(mod.filename, mod.content);
         builder.prepare(standard);
         builder.params.kind = CompilationKind::ModuleInterface;
         builder.params.output_file = pcm_path;
@@ -315,12 +315,12 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     overlay->pushOverlay(vfs);
     params.input.vfs = overlay;
 
-    Spelling main(file_table.resolve(entry->file));
+    Spelling focus(file_table.resolve(entry->file));
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {
-            params.input.add_remapped_file(main, source.content);
+            params.input.add_remapped_file(focus, source.content);
         } else {
-            params.input.add_remapped_file(Spelling(file, main.parent()), source.content);
+            params.input.add_remapped_file(Spelling(file, focus.parent()), source.content);
         }
     }
 }

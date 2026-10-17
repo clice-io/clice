@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :syntax.preamble_synthesis;
+import :syntax.header_context;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -65,7 +65,7 @@ std::optional<std::string> prefix_of(llvm::ArrayRef<ChainEntry> chain,
     return context->prefix.empty() ? "" : flatten(*context, context->prefix);
 }
 
-ZEST_SUITE(PreambleSynthesis) {
+ZEST_SUITE(HeaderContext) {
 
 ZEST_CASE(BasicChain) {
     llvm::StringMap<std::string> mapping = {
@@ -410,11 +410,35 @@ ZEST_CASE(EmptyChain) {
     ZEXPECT(*result == "");
 }
 
-ZEST_CASE(SuffixClosesBraces) {
-    // Function-body X-macro: the suffix restores the closing brace and
-    // trailing directives after the include position, entered from the
-    // main file only; the function's head, inside its braces, is entered
-    // after the prefix.
+ZEST_CASE(PrefixNamesHost) {
+    // The command -includes the host's fragment, which includes the next
+    // chain file's.
+    llvm::StringMap<std::string> mapping = {
+        {"mid.h",    "/proj/mid.h"   },
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", "#include \"mid.h\"\n"};
+    ChainEntry mid{"/proj/mid.h", "#include \"target.h\"\n"};
+
+    auto result = synthesize_context({host, mid}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    for(auto& file: result->files) {
+        if(file.path == result->prefix) {
+            ZEXPECT(file.entry == SynthesizedFile::Entry::Prefix);
+            ZEXPECT(file.origin.source == "/proj/main.cpp");
+        } else if(file.origin.source == "/proj/mid.h" &&
+                  file.entry != SynthesizedFile::Entry::Appended) {
+            ZEXPECT(file.entry == SynthesizedFile::Entry::Included);
+        }
+    }
+}
+
+ZEST_CASE(SuffixEndsAtClose) {
+    // Function-body X-macro: the suffix restores the closing brace and the
+    // directives before it, entered from the focus file only, and stops
+    // there; the function's head, inside its braces, is entered after the
+    // prefix.
     llvm::StringMap<std::string> mapping = {
         {"errors.def", "/proj/errors.def"},
     };
@@ -424,6 +448,7 @@ ZEST_CASE(SuffixClosesBraces) {
 #include "errors.def"
 #undef X
 }
+int after() { return 0; }
 )"};
 
     auto result = synthesize_context({entry}, "/proj/errors.def", map_resolver(mapping));
@@ -434,7 +459,7 @@ ZEST_CASE(SuffixClosesBraces) {
 void register_all() {
 #define X(name) handle(name);
 )");
-    ZEXPECT(flatten(*result, result->suffix) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 4 "/proj/main.cpp"
 #undef X
 }
@@ -442,16 +467,172 @@ void register_all() {
 )");
 }
 
+ZEST_CASE(TopLevelSuffixEmpty) {
+    // Outside every brace nothing after the cut bears on the header: the
+    // includer's remainder is left out, not parsed with it, and the suffix
+    // the focus file includes is empty.
+    llvm::StringMap<std::string> mapping = {
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry entry{"/proj/main.cpp", R"(#define HOST 1
+#include "target.h"
+int main() { return HOST; }
+)"};
+
+    auto result = synthesize_context({entry}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(result->open.empty());
+    ZEXPECT(result->files.size() == 2U);
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 3 "/proj/main.cpp"
+#endif
+)");
+}
+
+ZEST_CASE(SuffixTakesSemicolon) {
+    // An enumerator list ends with its `};`; what follows is left out.
+    llvm::StringMap<std::string> mapping = {
+        {"ops.def", "/proj/ops.def"},
+    };
+
+    ChainEntry entry{"/proj/main.cpp", R"(enum Op {
+#include "ops.def"
+};
+int use = 0;
+)"};
+
+    auto result = synthesize_context({entry}, "/proj/ops.def", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 3 "/proj/main.cpp"
+};
+#endif
+)");
+}
+
+ZEST_CASE(SuffixKeepsClassRest) {
+    // A class body runs to its end, its declarators included: the header's
+    // member functions read members declared after it.
+    llvm::StringMap<std::string> mapping = {
+        {"body.inc", "/proj/body.inc"},
+    };
+
+    ChainEntry entry{"/proj/main.cpp", R"(struct S {
+#include "body.inc"
+int later;
+void inline_member() { later = 1; }
+} s;
+int after;
+)"};
+
+    auto result = synthesize_context({entry}, "/proj/body.inc", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 3 "/proj/main.cpp"
+int later;
+void inline_member() { later = 1; }
+} s;
+#endif
+)");
+}
+
+ZEST_CASE(SuffixTakesInitializedDeclarators) {
+    // The declarators after a class's `}` run to their `;`, braced
+    // initializers included, over as many lines as they take.
+    llvm::StringMap<std::string> mapping = {
+        {"fields.inc", "/proj/fields.inc"},
+    };
+
+    ChainEntry entry{"/proj/main.cpp", R"(struct Point {
+#include "fields.inc"
+} origin{}, corners[] = {
+    {0, 0},
+    {1, 1},
+};
+int after;
+)"};
+
+    auto result = synthesize_context({entry}, "/proj/fields.inc", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 3 "/proj/main.cpp"
+} origin{}, corners[] = {
+    {0, 0},
+    {1, 1},
+};
+#endif
+)");
+}
+
+ZEST_CASE(SuffixWithoutClose) {
+    // A brace closed by a macro never closes lexically: the suffix takes
+    // the rest of the file, as the compile reads it.
+    llvm::StringMap<std::string> mapping = {
+        {"body.inc", "/proj/body.inc"},
+    };
+
+    ChainEntry entry{"/proj/main.cpp", R"(#define END };
+struct S {
+#include "body.inc"
+END
+int after;
+)"};
+
+    auto result = synthesize_context({entry}, "/proj/body.inc", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 4 "/proj/main.cpp"
+END
+int after;
+#endif
+)");
+}
+
+ZEST_CASE(SuffixTakesWholeConditional) {
+    // Braces closed in both branches of a conditional: the suffix ends
+    // with the block, whichever branch the compile takes.
+    llvm::StringMap<std::string> mapping = {
+        {"body.inc", "/proj/body.inc"},
+    };
+
+    ChainEntry entry{"/proj/main.cpp", R"(struct S {
+#include "body.inc"
+#if A
+};
+#else
+int later;
+} s;
+#endif
+int after;
+)"};
+
+    auto result = synthesize_context({entry}, "/proj/body.inc", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 3 "/proj/main.cpp"
+#if A
+};
+#else
+int later;
+} s;
+#endif
+#endif
+)");
+}
+
 ZEST_CASE(SuffixReopensGuard) {
     // The prefix closed the include guard early with a balancing #endif;
-    // the suffix reopens it with `#if 1` so its own #endif stays matched.
+    // the suffix reopens it with `#if 1` and closes it where it ends.
     llvm::StringMap<std::string> mapping = {
         {"target.h", "/proj/target.h"},
     };
 
     ChainEntry entry{"/proj/a.h", R"(#ifndef A_H
 #define A_H
+struct A {
 #include "target.h"
+};
 void tail();
 #endif
 )"};
@@ -463,24 +644,66 @@ void tail();
 #define A_H
 #endif
 )");
-    ZEXPECT(flatten(*result, result->suffix) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, result->open) == R"(#if 1
+#line 3 "/proj/a.h"
+struct A {
+#endif
+)");
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#if 1
+#line 5 "/proj/a.h"
+};
+#endif
+#endif
+)");
+}
+
+ZEST_CASE(SuffixKeepsIncluderGuard) {
+    // A guarded header cut inside its host's braces: the whole rest of it,
+    // its own #endif closing the `#if 1` reopening the guard, then the
+    // host's closing brace.
+    llvm::StringMap<std::string> mapping = {
+        {"a.h",      "/proj/a.h"     },
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", R"(namespace n {
+#include "a.h"
+}
+int main() {}
+)"};
+    ChainEntry a{"/proj/a.h", R"(#ifndef A_H
+#define A_H
+#include "target.h"
+void tail();
+#endif
+)"};
+
+    auto result = synthesize_context({host, a}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #if 1
 #line 4 "/proj/a.h"
 void tail();
 #endif
+#line 3 "/proj/main.cpp"
+}
 #endif
 )");
 }
 
 ZEST_CASE(SuffixMirrorsChain) {
     // Multi-level: the suffix is assembled innermost-first, mirroring the
-    // prefix's host-first order.
+    // prefix's host-first order. Inside the host's braces a later chain
+    // file's whole rest is enclosed.
     llvm::StringMap<std::string> mapping = {
         {"mid.h",    "/proj/mid.h"   },
         {"target.h", "/proj/target.h"},
     };
 
-    ChainEntry host{"/proj/main.cpp", R"(#include "mid.h"
+    ChainEntry host{"/proj/main.cpp", R"(namespace n {
+#include "mid.h"
+}
 int main() {}
 )"};
     ChainEntry mid{"/proj/mid.h", R"(#include "target.h"
@@ -489,11 +712,37 @@ void mid_tail();
 
     auto result = synthesize_context({host, mid}, "/proj/target.h", map_resolver(mapping));
     ZASSERT(result);
-    ZEXPECT(flatten(*result, result->suffix) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 2 "/proj/mid.h"
 void mid_tail();
-#line 2 "/proj/main.cpp"
+#line 3 "/proj/main.cpp"
+}
+#endif
+)");
+}
+
+ZEST_CASE(SuffixOnlyFromBraces) {
+    // A chain file cut outside every brace before the one cut inside
+    // braces has no part after its cut.
+    llvm::StringMap<std::string> mapping = {
+        {"mid.h",   "/proj/mid.h"  },
+        {"ops.def", "/proj/ops.def"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", R"(#include "mid.h"
 int main() {}
+)"};
+    ChainEntry mid{"/proj/mid.h", R"(enum Op {
+#include "ops.def"
+};
+void mid_tail();
+)"};
+
+    auto result = synthesize_context({host, mid}, "/proj/ops.def", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 3 "/proj/mid.h"
+};
 #endif
 )");
 }
@@ -509,8 +758,10 @@ ZEST_CASE(FragmentsBesideFiles) {
 
     ChainEntry host{"/proj/main.cpp", R"(#include "lib/mid.h"
 )"};
-    ChainEntry mid{"/proj/lib/mid.h", R"(#include "target.h"
+    ChainEntry mid{"/proj/lib/mid.h", R"(struct S {
 #include "target.h"
+#include "target.h"
+};
 )"};
 
     auto result = synthesize_context({host, mid},
@@ -520,15 +771,15 @@ ZEST_CASE(FragmentsBesideFiles) {
                                      llvm::StringRef("int t;\n"));
     ZASSERT(result);
     ZEXPECT(llvm::sys::path::parent_path(result->prefix) == "/proj");
-    ZEXPECT(llvm::sys::path::parent_path(result->suffix) == "/proj/lib");
+    ZEXPECT(llvm::sys::path::parent_path(suffix_path(result->files)) == "/proj/lib");
     ZASSERT(result->files.size() == 5u);
     auto& snapshot = result->files.front();
     ZEXPECT(llvm::sys::path::parent_path(snapshot.path) == "/proj/lib");
     ZEXPECT(snapshot.content == "int t;\n");
-    ZEXPECT(flatten(*result, result->suffix) == R"(#if __INCLUDE_LEVEL__ == 1
-#line 2 "/proj/lib/mid.h"
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 3 "/proj/lib/mid.h"
 int t;
-#line 2 "/proj/main.cpp"
+};
 #endif
 )");
 }
@@ -584,8 +835,10 @@ ZEST_CASE(PragmaOnceBlanksOthers) {
         {"target.h", "/proj/target.h"},
     };
 
-    ChainEntry host{"/proj/main.cpp", R"(#include "target.h"
+    ChainEntry host{"/proj/main.cpp", R"(struct S {
 #include "target.h"
+#include "target.h"
+};
 int main() {}
 )"};
 
@@ -596,10 +849,10 @@ int main() {}
                                      llvm::StringRef("#pragma once\nint t;\n"));
     ZASSERT(result);
     ZEXPECT(!result->snapshot);
-    ZEXPECT(flatten(*result, result->suffix) == R"(#if __INCLUDE_LEVEL__ == 1
-#line 2 "/proj/main.cpp"
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 3 "/proj/main.cpp"
 
-int main() {}
+};
 #endif
 )");
 }
@@ -634,7 +887,14 @@ struct S {
 )");
     auto open = llvm::find_if(result->files, [&](auto& file) { return file.path == result->open; });
     ZASSERT(open != result->files.end());
-    ZEXPECT(open->origin.forced);
+    ZEXPECT(open->entry == SynthesizedFile::Entry::Forced);
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#if 1
+#line 5 "/proj/main.cpp"
+};
+#endif
+#endif
+)");
 }
 
 ZEST_CASE(SplitInIncluder) {
@@ -673,9 +933,11 @@ ZEST_CASE(RunsMapToSource) {
     };
 
     ChainEntry host{"/proj/main.cpp", R"(#define HOST 1
+struct S {
 #include "target.h"
 #include "target.h"
 int tail;
+};
 )"};
 
     auto result = synthesize_context({host},
@@ -684,13 +946,13 @@ int tail;
                                      std::uint32_t(0),
                                      llvm::StringRef("int t;\n"));
     ZASSERT(result);
-    auto suffix =
-        llvm::find_if(result->files, [&](auto& file) { return file.path == result->suffix; });
+    auto path = suffix_path(result->files);
+    auto suffix = llvm::find_if(result->files, [&](auto& file) { return file.path == path; });
     ZASSERT(suffix != result->files.end());
     ZASSERT(suffix->origin.runs.size() == 2u);
     auto& after = suffix->origin.runs.back();
-    ZEXPECT(suffix->content.substr(after.offset, after.length) == "\nint tail;\n");
-    ZEXPECT(host.content.substr(after.source_offset, after.length) == "\nint tail;\n");
+    ZEXPECT(suffix->content.substr(after.offset, after.length) == "\nint tail;\n};");
+    ZEXPECT(host.content.substr(after.source_offset, after.length) == "\nint tail;\n};");
     auto prefix =
         llvm::find_if(result->files, [&](auto& file) { return file.path == result->prefix; });
     ZASSERT(prefix != result->files.end());
@@ -701,7 +963,15 @@ int tail;
     ZEXPECT(run.source_offset == 0u);
 }
 
-};  // ZEST_SUITE(PreambleSynthesis)
+ZEST_CASE(AppendIncludeStartsLine) {
+    std::string text = "int a;";
+    append_include(text, R"(C:\proj\.clice-1.h)");
+    ZEXPECT(text == R"(int a;
+#include "C:\\proj\\.clice-1.h"
+)");
+}
+
+};  // ZEST_SUITE(HeaderContext)
 
 }  // namespace
 }  // namespace clice::testing

@@ -26,7 +26,7 @@ struct LiveFilter;
 ///
 /// The same blob encoding serves every holder of a file's index: the
 /// worker's per-file product travelling in an indexing result, the disk
-/// shard, a session's main-file index and the preamble index entries.
+/// shard, a session's focus-file index and the preamble index entries.
 class Shard {
 public:
     Shard() = default;

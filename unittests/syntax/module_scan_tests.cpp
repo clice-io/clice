@@ -14,13 +14,13 @@ namespace {
 /// Sets up a TestVFS from one `#[file]`-marked source blob (the unit-test
 /// multi-file grammar, split by AnnotatedSources::add_sources) and calls
 /// the given scan function with standard C++20 arguments. The first
-/// marked file is the scanned main file.
+/// marked file is the scanned file.
 struct ModuleScanFixture {
     llvm::IntrusiveRefCntPtr<TestVFS> vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    std::string main_path;
+    std::string scanned_path;
     std::vector<const char*> args;
 
-    // Non-copyable/non-movable: args stores raw pointers (main_path.c_str())
+    // Non-copyable/non-movable: args stores raw pointers (scanned_path.c_str())
     // that would dangle after copy/move.
     ModuleScanFixture(const ModuleScanFixture&) = delete;
     ModuleScanFixture& operator=(const ModuleScanFixture&) = delete;
@@ -31,7 +31,7 @@ struct ModuleScanFixture {
         auto begin = content.find("#[");
         assert(begin != llvm::StringRef::npos && "fixture content needs a #[file] marker");
         auto end = content.find(']', begin);
-        main_path = TestVFS::path(content.slice(begin + 2, end));
+        scanned_path = TestVFS::path(content.slice(begin + 2, end));
 
         AnnotatedSources sources;
         sources.add_sources(content);
@@ -44,7 +44,7 @@ struct ModuleScanFixture {
         for(auto arg: extra_args) {
             args.push_back(arg);
         }
-        args.push_back(main_path.c_str());
+        args.push_back(scanned_path.c_str());
     }
 
     ScanResult decl() {
@@ -497,7 +497,7 @@ import :io;
 // include-produced pp-import is ill-formed ([cpp.import]/3), and the
 // global module fragment cannot hold imports — so plain TUs are exactly
 // why module dependency discovery needs preprocessing, never just the
-// main file's text.
+// scanned file's text.
 ZEST_CASE(ImportFromIncludedHeader) {
     ModuleScanFixture f(R"(
 #[main.cpp]

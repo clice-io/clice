@@ -11,6 +11,7 @@ import :sched.families.build_common;
 import :sched.families.pcm;
 import :support.anomaly;
 import :support.logging;
+import :syntax.header_context;
 import :syntax.scan;
 import :vfs.file_system;
 import :vfs.path;
@@ -123,6 +124,17 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
                 llvm::makeIntrusiveRefCnt<vfs::View>());
             overlay->pushOverlay(std::move(memory));
             vfs = std::move(overlay);
+        }
+        // The compile reads the text gone on with the include of a header
+        // context's suffix (CompilationInput::add_synthesized), which may
+        // import.
+        std::string text;
+        if(auto suffix = resolution.synthesized ? suffix_path(resolution.synthesized->files)
+                                                : llvm::StringRef();
+           content && !suffix.empty()) {
+            text = content->str();
+            append_include(text, suffix);
+            content = text;
         }
         import_scans += 1;
         auto scanned = co_await kota::queue(

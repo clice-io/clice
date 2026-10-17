@@ -74,7 +74,7 @@ void test() {
     source += "}\n";
 
     clear();
-    add_main("main.cpp", source);
+    add_focus("main.cpp", source);
     if(!compile() || !unit->diagnostics().empty()) {
         return std::nullopt;
     }
@@ -83,7 +83,7 @@ void test() {
 }
 
 ZEST_CASE(ModuleNodes) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 module;
 export module §(name)⟦demo⟧.core;
 export int value = 1;
@@ -111,7 +111,7 @@ module :private;
 }
 
 ZEST_CASE(CommentNodes) {
-    add_main("main.cpp", "// note\nint x = 1; /* tail */\n");
+    add_focus("main.cpp", "// note\nint x = 1; /* tail */\n");
     ZASSERT(compile());
     auto& semantics = unit->get<Semantics>();
 
@@ -136,7 +136,7 @@ ZEST_CASE(CommentNodes) {
 ZEST_CASE(DisabledDuplicateDeclaration) {
     // A duplicate declaration in a disabled branch fails the DefinitionLoc
     // anchor; only the live one becomes a node.
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 export §(live)⟦module⟧ app;
 #if 0
 export module app;
@@ -154,7 +154,7 @@ export module app;
 ZEST_CASE(NoModuleNoNodes) {
     // `module` as an ordinary identifier in a non-module unit: the lexical
     // candidates (if any) must not survive the compiler cross-check.
-    add_main("main.cpp", "int module = 1;\nvoid f() { module = 2; }\n");
+    add_focus("main.cpp", "int module = 1;\nvoid f() { module = 2; }\n");
     ZASSERT(compile());
     auto& semantics = unit->get<Semantics>();
 

@@ -46,7 +46,7 @@ ResolvedSearchConfig resolve_search_config(const SearchConfig& config, vfs::Scop
 /// @param includer_dir     Directory of the file containing the #include
 /// @param is_include_next  Whether this is #include_next
 /// @param found_dir_idx    For #include_next: the search dir index of the includer;
-///                         none (the main file, or one found outside the search
+///                         none (the source file, or one found outside the search
 ///                         dirs) looks the include up like a plain one, as clang does
 /// @param config           Pre-resolved search configuration
 /// @return Resolved path and the search dir index, or nullopt if not found

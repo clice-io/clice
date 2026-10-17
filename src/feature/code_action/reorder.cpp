@@ -13,7 +13,7 @@ namespace clice::feature::action {
 
 namespace {
 
-/// One definition's lines in the main file: the comment block directly
+/// One definition's lines in the focus file: the comment block directly
 /// above it through the end of its last line.
 struct Slot {
     LocalSourceRange range;
@@ -29,7 +29,7 @@ struct Slot {
     std::optional<std::uint32_t> branch;
 };
 
-/// The innermost conditional branch open at `offset` of the main file.
+/// The innermost conditional branch open at `offset` of the focus file.
 /// The lexical block directives rather than the directive table: the
 /// preamble's conditionals are compiled into the PCH and never reach it.
 std::optional<std::uint32_t> enclosing_branch(CompilationUnit& unit, std::uint32_t offset) {
@@ -160,7 +160,7 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     return lines;
 }
 
-/// An order the text relies on, between two offsets of the main file: a
+/// An order the text relies on, between two offsets of the focus file: a
 /// name's declaration and its use, a macro's definition and its
 /// expansion, an expansion and the macro's `#undef`, a using-declaration
 /// and the definitions after it, an include and the definitions around

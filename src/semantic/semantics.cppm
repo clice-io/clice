@@ -272,7 +272,7 @@ struct SemanticsOptions {
     bool only_instantiations = false;
 };
 
-/// The semantic map of the main file, built once after a successful
+/// The semantic map of the focus file, built once after a successful
 /// parse and serving every consumer that used to run its own traversal:
 /// selection, semantic tokens, hover and the TUIndex projection.
 ///
@@ -359,7 +359,7 @@ public:
         return roots;
     }
 
-    /// The spelled tokens of the main file (a view into the unit's tokens,
+    /// The spelled tokens of the focus file (a view into the unit's tokens,
     /// not a copy); empty for the whole-TU shape. They cover the whole file
     /// even under a preamble PCH — what the PCH consumes is the preamble's
     /// AST and directives (those travel through the pch.idx index
@@ -368,7 +368,7 @@ public:
         return tokens;
     }
 
-    /// Byte offset of spelled token `index` in the main file.
+    /// Byte offset of spelled token `index` in the focus file.
     std::uint32_t token_offset(std::uint32_t index) const {
         return tokens[index].location().getRawEncoding() - file_begin.getRawEncoding();
     }
@@ -386,13 +386,13 @@ public:
             .slice(owner_begin[index], owner_begin[index + 1] - owner_begin[index]);
     }
 
-    /// The main file's comments in source order (the spelled token
+    /// The focus file's comments in source order (the spelled token
     /// stream drops them). The same objects back the Comment nodes.
     llvm::ArrayRef<LexicalInfo::Comment> comments() const {
-        return main_comments;
+        return focus_comments;
     }
 
-    /// The main file's module declarations, already cross-checked
+    /// The focus file's module declarations, already cross-checked
     /// against the compiled module (bogus lexical matches are dropped at
     /// build time). The same objects back the Module nodes.
     llvm::ArrayRef<LexicalInfo::ModuleDeclaration> module_declarations() const {
@@ -408,7 +408,7 @@ private:
 
     llvm::ArrayRef<clang::syntax::Token> tokens;
 
-    /// Start location of the main file, for O(1) offset computation.
+    /// Start location of the focus file, for O(1) offset computation.
     clang::SourceLocation file_begin;
 
     /// Per spelled token, whether it was preprocessed to nothing (a view
@@ -420,13 +420,13 @@ private:
     std::vector<std::uint32_t> owner_begin;
     std::vector<std::uint32_t> owner_nodes;
 
-    /// The main file's module declarations the compile confirms; Module
+    /// The focus file's module declarations the compile confirms; Module
     /// nodes point into this storage.
     std::vector<LexicalInfo::ModuleDeclaration> modules;
 
-    /// The unit's comments of the main file (CompilationUnit::comments);
+    /// The unit's comments of the focus file (CompilationUnit::comments);
     /// Comment nodes point into them.
-    llvm::ArrayRef<LexicalInfo::Comment> main_comments;
+    llvm::ArrayRef<LexicalInfo::Comment> focus_comments;
 };
 
 /// resolve_references with tree context: a dependent name that is the

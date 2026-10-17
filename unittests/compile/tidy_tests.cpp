@@ -109,7 +109,7 @@ ZEST_CASE(BatchTraversesHeaders) {
     ZASSERT(filtered->completed());
     ZEXPECT(findings(*filtered).empty());
 
-    // The editor matches the main file's declarations whatever the
+    // The editor matches the focus file's declarations whatever the
     // configuration reports on.
     auto editor =
         compile_main(sources, {.checks = "-*,bugprone-integer-division", .header_filter = ".*"});

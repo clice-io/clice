@@ -94,7 +94,7 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
         };
     }
 
-    auto main = SM.getMainFileID();
+    auto focus = SM.getMainFileID();
     if(range.getBegin().isFileID() && range.getEnd().isFileID()) {
         auto begin = decompose(SM, range.getBegin());
         auto end = decompose(SM, range.getEnd());
@@ -115,13 +115,13 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
 
     // Macros are mapped through the tokens the parse saw: only those of
     // the focus file are collected.
-    if(collected_tokens && SM.getFileID(SM.getExpansionLoc(range.getBegin())) == main) {
+    if(collected_tokens && SM.getFileID(SM.getExpansionLoc(range.getBegin())) == focus) {
         auto spelled = collected_tokens->spelled_for(range);
         if(spelled.empty()) {
             return std::nullopt;
         }
         return FileRange{
-            main,
+            focus,
             {SM.getFileOffset(spelled.front().location()),
               SM.getFileOffset(spelled.back().endLocation())}
         };
@@ -271,18 +271,11 @@ const SynthesizedOrigin* CompilationUnit::origin(clang::FileID fid) {
 }
 
 auto CompilationUnit::text_end(clang::FileID fid) -> std::uint32_t {
-    auto content = file_content(fid);
-    auto size = static_cast<std::uint32_t>(content.size());
-    if(!borrows_context() || fid != SM().getMainFileID()) {
-        return size;
+    if(fid == SM().getMainFileID() && params.input.text_end) {
+        // Clang's copy of a completion's buffer carries a NUL at the point.
+        return *params.input.text_end + (params.kind == CompilationKind::Completion ? 1 : 0);
     }
-    auto it = directives().find(fid);
-    if(it == directives().end() || it->second.includes.empty() ||
-       !synthesized(it->second.includes.back().fid)) {
-        return size;
-    }
-    auto keyword = SM().getFileOffset(it->second.includes.back().location);
-    return static_cast<std::uint32_t>(content.rfind('\n', keyword));
+    return static_cast<std::uint32_t>(file_content(fid).size());
 }
 
 bool CompilationUnit::synthesized(clang::FileID fid) {
@@ -322,27 +315,7 @@ bool CompilationUnit::host_source(clang::FileID fid) {
     if(!synthesized(fid)) {
         return false;
     }
-    // The host's first fragment is the one the compile -includes, from
-    // the predefines buffer.
-    if(!host) {
-        host.emplace();
-        auto& SM = this->SM();
-        auto predefines = instance->getPreprocessor().getPredefinesFileID();
-        for(auto& [path, cut]: params.input.synthesized) {
-            if(cut.forced) {
-                continue;
-            }
-            auto entry = SM.getFileManager().getOptionalFileRef(path);
-            if(!entry) {
-                continue;
-            }
-            auto root = SM.translateFile(*entry);
-            if(root.isValid() && SM.getFileID(SM.getIncludeLoc(root)) == predefines) {
-                *host = source_path(root);
-            }
-        }
-    }
-    return source_path(fid) == *host;
+    return source_path(fid) == params.input.host;
 }
 
 bool CompilationUnit::from_context(clang::FileID fid) {
@@ -363,7 +336,7 @@ bool CompilationUnit::from_context(clang::FileID fid) {
     return result;
 }
 
-bool CompilationUnit::encloses_main_file(const clang::Decl* decl) {
+bool CompilationUnit::encloses_focus_file(const clang::Decl* decl) {
     auto& SM = this->SM();
     auto start = SM.getLocForStartOfFile(SM.getMainFileID());
     // A scope left open at the end of the unit has no end.

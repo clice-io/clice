@@ -69,7 +69,7 @@ void format_actions(CompilationUnit& unit, std::vector<CodeAction>& actions, std
 /// each spec its innermost matching node, once.
 void enumerate(CompilationUnit& unit,
                const SelectionTree& tree,
-               bool main_is_header,
+               bool focus_is_header,
                std::vector<CodeAction>& out) {
     const auto* innermost = tree.common_ancestor();
     if(!innermost) {
@@ -86,7 +86,7 @@ void enumerate(CompilationUnit& unit,
             }
             fired[index] = true;
             auto before = out.size();
-            spec.run(Context{unit, *node, main_is_header}, out);
+            spec.run(Context{unit, *node, focus_is_header}, out);
             if(spec.format) {
                 format_actions(unit, out, before);
             }
@@ -1066,10 +1066,10 @@ auto code_actions(CompilationUnit& unit, LocalSourceRange selection) -> std::vec
     action::add_include(unit, selection, out);
 
     auto path = unit.file_path(unit.focus_file().file());
-    bool main_is_header = is_header_path(path);
+    bool focus_is_header = is_header_path(path);
     SelectionTree::create_each(unit, selection, [&](SelectionTree tree) {
         auto before = out.size();
-        action::enumerate(unit, tree, main_is_header, out);
+        action::enumerate(unit, tree, focus_is_header, out);
         return out.size() > before;
     });
 

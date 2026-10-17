@@ -40,8 +40,8 @@ struct DecodedShard {
 
 struct DecodedIndex {
     index::TUIndex view;
-    DecodedShard main_file_index;
-    /// Non-main sections keyed by path id.
+    DecodedShard focus_file_index;
+    /// Non-focus sections keyed by path id.
     std::vector<std::pair<std::uint32_t, DecodedShard>> file_indices;
     index::SymbolTable symbols{};
 };
@@ -67,11 +67,11 @@ void decode_index(const std::string& bytes) {
     auto& view = tu_index.view;
     ZASSERT(view.loaded());
 
-    auto main_path = view.path_count() - 1;
+    auto focus_path = view.path_count() - 1;
     for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
         auto decoded = decode_shard(view.shard_of(view.section_path(i)));
-        if(view.section_path(i) == main_path) {
-            tu_index.main_file_index = std::move(decoded);
+        if(view.section_path(i) == focus_path) {
+            tu_index.focus_file_index = std::move(decoded);
         } else {
             tu_index.file_indices.emplace_back(view.section_path(i), std::move(decoded));
         }
@@ -112,7 +112,7 @@ void decode_index(const std::string& bytes) {
             record_local(hash);
         }
     };
-    record_locals(tu_index.main_file_index);
+    record_locals(tu_index.focus_file_index);
     for(auto& decoded: llvm::make_second_range(tu_index.file_indices)) {
         record_locals(decoded);
     }
@@ -149,7 +149,7 @@ int scope(llvm::StringRef name) {
 
 void build_index(llvm::StringRef code,
                  std::source_location location = std::source_location::current()) {
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile());
 
     decode_index(index::build_tu_index(*unit));
@@ -157,7 +157,7 @@ void build_index(llvm::StringRef code,
 
 auto select(llvm::StringRef pos) -> std::vector<index::Occurrence> {
     auto offset = point(pos);
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
 
     auto it =
         std::ranges::lower_bound(index.occurrences, offset, {}, [](index::Occurrence& occurrence) {
@@ -188,7 +188,7 @@ void EXPECT_SELECT(llvm::StringRef pos,
     ZASSERT(occurrences.front().range == expected);
 };
 
-/// Whether the main file holds a symbol-pair relation of `kind` from the
+/// Whether the focus file holds a symbol-pair relation of `kind` from the
 /// symbol at marker `source` to the one at marker `target`.
 bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef target) {
     auto sources = select(source);
@@ -196,8 +196,8 @@ bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef t
     if(sources.empty() || targets.empty()) {
         return false;
     }
-    auto it = tu_index.main_file_index.relations.find(sources.front().target);
-    if(it == tu_index.main_file_index.relations.end()) {
+    auto it = tu_index.focus_file_index.relations.find(sources.front().target);
+    if(it == tu_index.focus_file_index.relations.end()) {
         return false;
     }
     return llvm::any_of(it->second, [&](const index::Relation& relation) {
@@ -205,7 +205,7 @@ bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef t
     });
 }
 
-/// One main-file occurrence: the text it covers, its symbol's kind and the
+/// One focus-file occurrence: the text it covers, its symbol's kind and the
 /// kinds of that symbol's relations whose range holds it.
 struct Spelled {
     std::string text;
@@ -215,12 +215,12 @@ struct Spelled {
     bool operator==(const Spelled&) const = default;
 };
 
-/// Every main-file occurrence inside range `name`, in file order.
+/// Every focus-file occurrence inside range `name`, in file order.
 std::vector<Spelled> spelled_in(llvm::StringRef name) {
     auto scope = range(name);
     llvm::StringRef content = sources.all_files[src_path].content;
     std::vector<Spelled> spelled;
-    for(auto& occurrence: tu_index.main_file_index.occurrences) {
+    for(auto& occurrence: tu_index.focus_file_index.occurrences) {
         if(!scope.contains(occurrence.range)) {
             continue;
         }
@@ -228,7 +228,7 @@ std::vector<Spelled> spelled_in(llvm::StringRef name) {
             .text = content.slice(occurrence.range.begin, occurrence.range.end).str(),
             .kind = tu_index.symbols.lookup(occurrence.target).kind,
         };
-        for(auto& relation: tu_index.main_file_index.relations.lookup(occurrence.target)) {
+        for(auto& relation: tu_index.focus_file_index.relations.lookup(occurrence.target)) {
             if(relation.range.contains(occurrence.range)) {
                 entry.relations.push_back(relation.kind);
             }
@@ -246,7 +246,7 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
 
     ZASSERT(occurrences.size() == 1U);
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
     auto it = index.relations.find(occurrences.front().target);
     ZASSERT(it != index.relations.end());
 
@@ -268,7 +268,7 @@ ZEST_CASE(Basic) {
             }
         )");
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
     ZASSERT(index.relations.size() == 2U);
     ZASSERT(index.occurrences.size() == 3U);
 
@@ -492,7 +492,7 @@ ZEST_CASE(Reference) {
             }
         )");
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
     auto occurrences = select("ref");
     ZASSERT(occurrences.size() == 1U);
 
@@ -580,7 +580,7 @@ ZEST_CASE(SpecializationRelations) {
     ZASSERT(!has_pair("fn", RelationKind::Specialization, "fn_int"));
 
     // Instantiations, explicit or implicit, specialize nothing.
-    auto& relations = tu_index.main_file_index.relations[select("box").front().target];
+    auto& relations = tu_index.focus_file_index.relations[select("box").front().target];
     ZASSERT(llvm::count_if(relations, [](const index::Relation& relation) {
                 return relation.kind == RelationKind::Specialization;
             }) == 2);
@@ -595,7 +595,7 @@ ZEST_CASE(CallerAndCallee) {
             }
         )");
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
 
     // Find caller symbol and check for Callee relation.
     auto caller_occs = select("caller_def");
@@ -643,7 +643,7 @@ ZEST_CASE(MethodCallerCallee) {
             };
         )");
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
 
     // Calls inside a method body produce call edges, with the method as
     // the caller.
@@ -686,7 +686,7 @@ ZEST_CASE(UsingRelationKey) {
             using ns::§(use)⟦§(use)foo⟧;
         )");
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
 
     // The relation of a using declaration is keyed by the same symbol
     // its occurrence references, so looking the occurrence's symbol up in
@@ -769,7 +769,7 @@ ZEST_CASE(DependentWeakReference) {
             int use() { return Base<T>::§(use)⟦§(use)value⟧; }
         )");
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
 
     /// The dependent name resolves through the template resolver to the
     /// pattern's member; both sites share one symbol.
@@ -827,7 +827,7 @@ ZEST_CASE(SpecializedMemberType) {
 
     // At a name of the member in Box<Widget>, a relation spanning the name
     // gives the type the member has there.
-    auto& relations = tu_index.main_file_index.relations;
+    auto& relations = tu_index.focus_file_index.relations;
     auto it = relations.find(select("value").front().target);
     ZASSERT(it != relations.end());
     auto widget = select("widget").front().target;
@@ -845,7 +845,7 @@ ZEST_CASE(ConstructorDestructorRelations) {
             };
         )");
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
     auto class_occs = select("s");
     auto ctor_occs = select("ctor");
     ZASSERT(!class_occs.empty());
@@ -888,7 +888,7 @@ ZEST_CASE(MacroRelations) {
             int x = §(use)⟦§(use)FOO⟧;
         )");
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
     auto def_occs = select("def");
     auto use_occs = select("use");
     ZASSERT(!def_occs.empty());
@@ -920,7 +920,7 @@ ZEST_CASE(MacroDefinedOperand) {
         )");
 
     auto target = select("def").front().target;
-    auto& relations = tu_index.main_file_index.relations[target];
+    auto& relations = tu_index.focus_file_index.relations[target];
     for(auto name: {"paren", "bare"}) {
         auto occurrences = select(name);
         ZASSERT(occurrences.size() == 1U);
@@ -947,7 +947,7 @@ ZEST_CASE(DependentOperatorUnreferenced) {
     )");
 
     for(auto name: {"operator==", "operator<=>"}) {
-        auto& relations = tu_index.main_file_index.relations[symbol_named(name).first];
+        auto& relations = tu_index.focus_file_index.relations[symbol_named(name).first];
         ZASSERT(relations.size() == 1U);
         ZASSERT(relations.front().kind == RelationKind::Declaration);
     }
@@ -958,7 +958,7 @@ ZEST_CASE(PastedFragmentUses) {
     add_file("kinds.inc", "KIND(red)\nKIND(green)\n");
     add_file("decls.inc", "int helper();\nint value = helper();\n");
     add_file("take.h", "constexpr int fallback = 1;\nint take(int x = fallback);\n");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "decls.inc"
         #include "take.h"
         int take(int x) { return x; }
@@ -977,7 +977,7 @@ ZEST_CASE(PastedFragmentUses) {
 
     auto pasted_at = [&](llvm::StringRef name) {
         std::vector<LocalSourceRange> ranges;
-        for(auto& relation: tu_index.main_file_index.relations[symbol_named(name).first]) {
+        for(auto& relation: tu_index.focus_file_index.relations[symbol_named(name).first]) {
             if(relation.kind == RelationKind::Pasted) {
                 ranges.push_back(relation.range);
             }
@@ -996,7 +996,7 @@ ZEST_CASE(PastedFragmentUses) {
 ZEST_CASE(ModuleName) {
     build_index(R"(export module §(m)⟦§(m)foo⟧;)");
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
     auto occs = select("m");
     ZASSERT(!occs.empty());
     ZASSERT(occs.front().target == unit->get<EntityTable>().module_entity("foo"));
@@ -1022,7 +1022,7 @@ ZEST_CASE(ModulePartitionName) {
     ZASSERT(!occs.empty());
     ZASSERT(occs.front().range == range("m"));
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
     auto it = index.relations.find(occs.front().target);
     ZASSERT(it != index.relations.end());
 
@@ -1043,7 +1043,7 @@ ZEST_CASE(InternalPartitionName) {
     ZASSERT(!occs.empty());
     ZASSERT(occs.front().range == range("m"));
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
     auto it = index.relations.find(occs.front().target);
     ZASSERT(it != index.relations.end());
     ZEXPECT(llvm::any_of(it->second, [](auto& r) { return r.kind == RelationKind::Definition; }));
@@ -1108,7 +1108,7 @@ int main() {
     ZASSERT(compile_with_modules());
     decode_index(index::build_tu_index(*unit));
 
-    // The main file's index declares what it names from the module, in the
+    // The focus file's index declares what it names from the module, in the
     // module's file; the header behind the module is the module's to index.
     ZASSERT(tu_index.file_indices.size() == 1U);
     auto& [path_id, module_index] = tu_index.file_indices.front();
@@ -1142,7 +1142,7 @@ module §(m)⟦§(m)foo⟧;
     ZASSERT(!occs.empty());
     ZASSERT(occs.front().range == range("m"));
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
     auto it = index.relations.find(occs.front().target);
     ZASSERT(it != index.relations.end());
 
@@ -1187,7 +1187,7 @@ ZEST_CASE(OverrideRelation) {
         }
     };
 
-    check_relations(tu_index.main_file_index);
+    check_relations(tu_index.focus_file_index);
     for(auto& [path_id, idx]: tu_index.file_indices) {
         check_relations(idx);
     }
@@ -1203,7 +1203,7 @@ ZEST_CASE(DeclarationAndDefinition) {
             int §(def)⟦§(def)foo⟧() { return 42; }
         )");
 
-    auto& index = tu_index.main_file_index;
+    auto& index = tu_index.focus_file_index;
 
     // Find the declaration occurrence and verify Declaration relation exists.
     auto decl_occs = select("decl");
@@ -1234,7 +1234,7 @@ ZEST_CASE(MacroDefinitionExtent) {
     )");
 
     auto [hash, symbol] = symbol_named("generated");
-    auto& relations = tu_index.main_file_index.relations[hash];
+    auto& relations = tu_index.focus_file_index.relations[hash];
     auto definition = std::ranges::find_if(relations, [](const index::Relation& relation) {
         return relation.kind == RelationKind::Definition;
     });
@@ -1262,7 +1262,7 @@ ZEST_CASE(CrossFileHeaderIndex) {
             #pragma once
             int §(hdr_func)⟦§(hdr_func)helper⟧();
         )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
             #include "header.h"
 
             int main() {
@@ -1272,20 +1272,20 @@ ZEST_CASE(CrossFileHeaderIndex) {
     ZASSERT(compile());
     decode_index(index::build_tu_index(*unit));
 
-    // The header should have its own FileIndex (separate from main).
+    // The header should have its own FileIndex (separate from the focus file).
     ZASSERT(tu_index.file_indices.size() >= 1U);
 
-    // The main file should have a reference to helper.
-    auto& main_index = tu_index.main_file_index;
-    ZASSERT(!main_index.occurrences.empty());
+    // The focus file should have a reference to helper.
+    auto& focus_index = tu_index.focus_file_index;
+    ZASSERT(!focus_index.occurrences.empty());
 
-    // Find 'helper' reference in main file.
+    // Find 'helper' reference in focus file.
     auto use_offset = point("use_helper");
-    auto it = std::ranges::lower_bound(main_index.occurrences,
+    auto it = std::ranges::lower_bound(focus_index.occurrences,
                                        use_offset,
                                        {},
                                        [](const index::Occurrence& o) { return o.range.end; });
-    ZASSERT(it != main_index.occurrences.end());
+    ZASSERT(it != focus_index.occurrences.end());
     ZASSERT(it->range.touches(use_offset));
 
     // The helper symbol should exist in the TU symbol table.
@@ -1315,7 +1315,7 @@ ZEST_CASE(KnownVariantsSkipped) {
             static int internal();
             int shared();
         )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
             #include "header.h"
             int user() { return shared(); }
         )");
@@ -1323,10 +1323,10 @@ ZEST_CASE(KnownVariantsSkipped) {
     auto full = index::build_tu_index(*unit);
     auto full_view = index::TUIndex::from_bytes(full);
     ZASSERT(full_view.loaded());
-    auto main_id = full_view.path_count() - 1;
+    auto focus_id = full_view.path_count() - 1;
     std::uint32_t header = full_view.section_count();
     for(std::uint32_t i = 0; i < full_view.section_count(); i += 1) {
-        if(full_view.section_path(i) != main_id) {
+        if(full_view.section_path(i) != focus_id) {
             header = i;
         }
     }
@@ -1347,13 +1347,13 @@ ZEST_CASE(KnownVariantsSkipped) {
             std::vector<std::string>{"internal", "only_in_header", "shared", "user"});
 
     // The stored header travels as its hash alone, and the external
-    // symbols only it names stay out of the table; the main file's index,
+    // symbols only it names stay out of the table; the focus file's index,
     // every symbol it names and the internal ones still travel.
     decode_index(index::build_tu_index(*unit, {.known_variants = known}));
     auto& view = tu_index.view;
     ZASSERT(view.section_hash(header) == known.front());
     ZASSERT(view.section_blob(header).empty());
-    ZASSERT(!view.section_blob(*view.section_of(main_id)).empty());
+    ZASSERT(!view.section_blob(*view.section_of(focus_id)).empty());
     ZASSERT(table_names(view) == std::vector<std::string>{"internal", "shared", "user"});
 }
 
@@ -1387,7 +1387,7 @@ ZEST_CASE(LookupOccurrence) {
         int §(ref)⟦fo§(ref)o⟧() { return 0; }
     )");
 
-    auto& fi = tu_index.main_file_index;
+    auto& fi = tu_index.focus_file_index;
     ZASSERT(!fi.occurrences.empty());
     const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
     ZASSERT(shard.loaded());
@@ -1597,7 +1597,7 @@ ZEST_CASE(ScopeNoLinkage) {
 }
 
 ZEST_CASE(ScopeCEnumerator) {
-    add_main("main.c", R"c(
+    add_focus("main.c", R"c(
             enum color { red };
             void host(void) { enum { local_value }; }
         )c");
@@ -1765,7 +1765,7 @@ ZEST_CASE(CanonicalFile) {
         int header_only();
         inline int header_defined() { return 1; }
     )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         int declared_twice();
         int declared_twice() { return header_only() + header_defined(); }
@@ -1774,7 +1774,7 @@ ZEST_CASE(CanonicalFile) {
     ZASSERT(compile());
     decode_index(index::build_tu_index(*unit, {.all_files = true}));
 
-    auto main_path = tu_index.view.path_count() - 1;
+    auto focus_path = tu_index.view.path_count() - 1;
     auto header_path = [&] {
         for(std::uint32_t id = 0; id < tu_index.view.path_count(); id += 1) {
             if(tu_index.view.path(id).ends_with("header.h")) {
@@ -1786,7 +1786,7 @@ ZEST_CASE(CanonicalFile) {
 
     auto twice = symbol_named("declared_twice").second;
     ZASSERT(has(twice, index::SymbolFlags::HasDefinition));
-    ZASSERT(twice.file == main_path);
+    ZASSERT(twice.file == focus_path);
 
     auto only = symbol_named("header_only").second;
     ZASSERT(!has(only, index::SymbolFlags::HasDefinition));
@@ -1797,7 +1797,7 @@ ZEST_CASE(CanonicalFile) {
     ZASSERT(defined.file == header_path);
     ZASSERT(has(defined, index::SymbolFlags::Completable));
 
-    // A focus-only build keeps no header entries: a symbol the main file
+    // A focus-only build keeps no header entries: a symbol the focus file
     // merely uses has no declaring entry at all.
     decode_index(index::build_tu_index(*unit));
     auto used = symbol_named("header_only").second;
@@ -1816,7 +1816,7 @@ struct Foo {
     int find(int x = npos) const;
 };
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
 )");
@@ -1835,7 +1835,7 @@ int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
     decode_index(index::build_tu_index(*unit));
 
     // Entries resolving into the preamble are dropped: the preamble's own
-    // index covers them. Only the main file's entries remain.
+    // index covers them. Only the focus file's entries remain.
     ZASSERT(tu_index.file_indices.empty());
     EXPECT_SELECT("1", "def");
 }
@@ -1848,7 +1848,7 @@ ZEST_CASE(PreambleBaseSpecifier) {
 struct Base {};
 struct Derived : Base {};
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "bar.h"
 struct Derived;
 Derived* use();
@@ -1867,17 +1867,17 @@ Derived* use();
     decode_index(index::build_tu_index(*unit));
 
     ZASSERT(tu_index.file_indices.empty());
-    ZASSERT(!tu_index.main_file_index.occurrences.empty());
+    ZASSERT(!tu_index.focus_file_index.occurrences.empty());
 }
 
 ZEST_CASE(HeaderMacroDropped) {
     // Macro occurrences flow through the same gate: a definition in an
     // included header is dropped from a focus-only build, while
-    // the reference in the main file is kept.
+    // the reference in the focus file is kept.
     add_file("baz.h", R"(
 #define BAZ 1
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "baz.h"
 int x = §(1)BAZ;
 )");
@@ -1885,17 +1885,17 @@ int x = §(1)BAZ;
 
     decode_index(index::build_tu_index(*unit));
     ZASSERT(tu_index.file_indices.empty());
-    ZASSERT(!tu_index.main_file_index.occurrences.empty());
+    ZASSERT(!tu_index.focus_file_index.occurrences.empty());
 }
 
 ZEST_CASE(UnknownFidFallback) {
     // A preamble header's loaded FileID is unknown to a graph built
-    // without indexed fids; lookups must degrade to the main file
+    // without indexed fids; lookups must degrade to the focus file
     // instead of crashing.
     add_file("foo.h", R"(
 struct Foo {};
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int x = 1;
 )");
@@ -1915,7 +1915,7 @@ ZEST_CASE(PreambleFidResolved) {
     add_file("foo.h", R"(
 struct Foo {};
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int x = 1;
 )");
@@ -1940,7 +1940,7 @@ ZEST_CASE(DeepExpressionChain) {
     code += "int bomb = A14;\n";
     auto bomb_offset = static_cast<std::uint32_t>(code.find("bomb"));
 
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
 
     // Compile on a generous fixed-size stack: clang's own Sema checkers
     // recurse once per term and need more than a default thread stack in
@@ -1975,7 +1975,7 @@ ZEST_CASE(DeepExpressionChain) {
 
     // The traversal must have actually reached the decl behind the chain,
     // not bailed out early: expect an occurrence exactly at `bomb`.
-    auto& occurrences = tu_index.main_file_index.occurrences;
+    auto& occurrences = tu_index.focus_file_index.occurrences;
     auto bomb = std::ranges::find(occurrences, bomb_offset, [](index::Occurrence& occurrence) {
         return occurrence.range.begin;
     });
@@ -1983,7 +1983,7 @@ ZEST_CASE(DeepExpressionChain) {
 }
 
 ZEST_CASE(SuperQualifierRef) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
             struct Base {
                 void m();
             };
@@ -2147,7 +2147,7 @@ ZEST_CASE(InvalidBindingKeepsFile) {
 }
 
 ZEST_CASE(ClassParametersStayUnbound) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         struct Widget {};
 
         template <typename T>
@@ -2266,7 +2266,7 @@ ZEST_CASE(GlobalAllocationAtKeyword) {
 }
 
 ZEST_CASE(OccurrenceCoverage) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
         struct S {
             int first;
             int field;
@@ -2470,7 +2470,7 @@ ZEST_CASE(ConstrainedParameterOneDefinition) {
 }
 
 ZEST_CASE(SynthesizedCallsKeepRelations) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         namespace std {
         template <class T>
         struct reference_wrapper {
@@ -2525,7 +2525,7 @@ ZEST_CASE(TUIndexSections) {
             #pragma once
             inline int §(hdr)helper() { return 1; }
         )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
             #include "header.h"
             int main() { return §(use)helper(); }
         )");
@@ -2536,13 +2536,13 @@ ZEST_CASE(TUIndexSections) {
     auto& view = tu_index.view;
     ZASSERT(view.built_at() > 0);
 
-    // Sections ascend by path id and the main file's shard is the
+    // Sections ascend by path id and the focus file's shard is the
     // last path id's section.
     for(std::uint32_t i = 1; i < view.section_count(); i += 1) {
         ZASSERT(view.section_path(i - 1) < view.section_path(i));
     }
-    auto main_section = view.section_of(view.path_count() - 1);
-    ZASSERT(main_section);
+    auto focus_section = view.section_of(view.path_count() - 1);
+    ZASSERT(focus_section);
 
     // Every section's hash is the byte identity of its blob, the blob
     // loads as a self-contained single-variant shard under that identity,
@@ -2580,7 +2580,7 @@ ZEST_CASE(CorruptSectionBytesRejected) {
     // particular flips that still form a structurally valid shard (an
     // opaque hash field, say) — only the byte hash catches those, and
     // serving them would navigate by corrupted entries across restarts.
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
             int value = 1;
             int main() { return value; }
         )");
@@ -2766,7 +2766,7 @@ ZEST_CASE(FromRejectsOutOfRangePathIds) {
 }
 
 ZEST_CASE(FromRejectsEmptyPathTable) {
-    // The builder ends every path table with the main file, and
+    // The builder ends every path table with the focus file, and
     // consumers address path_count() - 1 unchecked — a TU index with no
     // paths at all is corrupt.
     TUIndexMirror hostile;

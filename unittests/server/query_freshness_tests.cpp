@@ -44,7 +44,7 @@ index::FreshnessGate gate{project.file_table};
 index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
 index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
 
-Fid main_id;
+Fid focus_id;
 Fid header_id;
 
 /// Build a TU index from the added sources and merge it into the
@@ -59,7 +59,7 @@ void merge_into_workspace() {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
     }
     project.project_index.merge(view, file_ids_map);
-    main_id = file_ids_map[view.path_count() - 1];
+    focus_id = file_ids_map[view.path_count() - 1];
 
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         auto local_id = view.section_path(section);
@@ -112,7 +112,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     add_file("header.h", R"(
         int helper() { return 1; }
     )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         int main() {
             return §(use)helper();
@@ -122,7 +122,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     ZASSERT(compile());
     merge_into_workspace();
 
-    auto hash = symbol_at(main_id, point("use"));
+    auto hash = symbol_at(focus_id, point("use"));
     ZASSERT(hash != 0UL);
 
     // Baseline: the main TU contributes its reference relation, and the
@@ -132,18 +132,18 @@ ZEST_CASE(GateWithholdsStaleShard) {
 
     // Awaiting a reindex for a dependency change only: the disk still
     // holds the text its shard indexed, so the shard keeps serving.
-    indexer.enqueue(main_id, ReindexReason::DepsOnly);
+    indexer.enqueue(focus_id, ReindexReason::DepsOnly);
     ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
 
     // Line-based resolution in the file works while its index is current.
     index::SymbolQuery by_line;
-    by_line.position = {.path = project.file_table.resolve(main_id).str(), .line = 3};
+    by_line.position = {.path = project.file_table.resolve(focus_id).str(), .line = 3};
     ZASSERT(!disk_query.locate(by_line).empty());
 
     // The disk was seen holding other text: the file's contribution is
     // skipped until its shard describes the disk again; other files' shards
     // are unaffected.
-    project.file_table.disk.observe(main_id, DiskObservation{.hash = 1});
+    project.file_table.disk.observe(focus_id, DiskObservation{.hash = 1});
     ZASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
     ZASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
 
@@ -162,19 +162,19 @@ ZEST_CASE(GateWithholdsStaleShard) {
 }
 
 ZEST_CASE(DeletedFileWithdrawsIndex) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         int helper() { return 1; }
         int use() { return §(use)helper(); }
     )");
     kind = CompilationKind::Whole;
     ZASSERT(compile());
     merge_into_workspace();
-    auto hash = symbol_at(main_id, point("use"));
+    auto hash = symbol_at(focus_id, point("use"));
     ZASSERT(hash != 0UL);
     ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
 
     // The index of a file seen gone points at text that is gone with it.
-    project.file_table.disk.saw_missing(main_id);
+    project.file_table.disk.saw_missing(focus_id);
     ZASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
 }
 

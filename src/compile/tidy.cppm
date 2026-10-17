@@ -78,7 +78,7 @@ public:
                      clang::ast_matchers::MatchFinder::MatchFinderOptions options);
 
     /// The editor shape's level for a diagnostic: Ignored when a suppression
-    /// comment in the main file or a system macro hides it, Error for a
+    /// comment in the focus file or a system macro hides it, Error for a
     /// warning WarningsAsErrors names.
     clang::DiagnosticsEngine::Level adjust_level(clang::DiagnosticsEngine::Level level,
                                                  const clang::Diagnostic& diag);
@@ -93,7 +93,7 @@ public:
 /// suppression comments, the header filters and the Checks a compiler
 /// warning needs to be a finding. Otherwise the editor shape, clangd's:
 /// checks classified fast only, minus those unusable on code mid-edit,
-/// over the main file's top-level declarations, suppression comments read
+/// over the focus file's top-level declarations, suppression comments read
 /// there only. `preamble_inactive` holds the inactive regions of the
 /// consumed PCH's preamble share (flat begin/end offset pairs), whose
 /// `#include`s the preamble replay skips.

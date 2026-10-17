@@ -66,7 +66,7 @@ public:
                     const protocol::Range& range,
                     kota::cancellation_token token = {});
 
-    /// The main-file document links from the stateful worker holding the
+    /// The focus file's document links from the stateful worker holding the
     /// AST; the preamble's live in the PCH's TU index (see
     /// PCHState::load_state).
     kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>

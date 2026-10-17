@@ -15,8 +15,8 @@ namespace clice::testing {
 /// Mirror of the indexer's merge over in-memory sources: project symbols,
 /// per-section shard blobs, and the TU manifest with its contributions —
 /// so live-variant masks and staleness gates behave as in production.
-/// `main` receives the unit's own file id.
-inline void merge_unit(Project& project, CompilationUnit& unit, Fid& main) {
+/// `focus` receives the unit's own file id.
+inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
     auto bytes = index::build_tu_index(unit);
     auto view = index::TUIndex::from_bytes(bytes);
     ZASSERT(view.loaded());
@@ -29,7 +29,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& main) {
     llvm::SmallVector<index::SymbolHash> added;
     project_index.merge(view, file_ids_map, &added);
     project_index.search_pending.insert(added.begin(), added.end());
-    main = file_ids_map[view.path_count() - 1];
+    focus = file_ids_map[view.path_count() - 1];
 
     // The consumed-content hash per TU-local path: the section's own
     // record where entries exist, the TU index's hash otherwise — mirroring the
@@ -71,7 +71,8 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& main) {
     ZASSERT(local_fanout);
     manifest.local_fanout = std::move(*local_fanout);
 
-    for(auto path_id: project_index.apply_manifest(project.file_table, main, std::move(manifest))) {
+    for(auto path_id:
+        project_index.apply_manifest(project.file_table, focus, std::move(manifest))) {
         auto it = project_index.shards.find(path_id);
         if(it != project_index.shards.end()) {
             it->second.set_live(project_index.live_variants(path_id));

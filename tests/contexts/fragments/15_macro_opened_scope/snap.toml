@@ -1,0 +1,11 @@
+[test."decls.h"]
+wrong = "the brace a macro opens is not counted, so the preamble ends inside the namespace: its build reports the scope unclosed, and decls.h's declarations land outside it"
+diagnostics = [
+    {
+        at = "⟦⟧int open(Handle handle);",
+        severity = "error",
+        message = "expected '}'",
+        source = "clang",
+        code = "err_expected",
+    },
+]

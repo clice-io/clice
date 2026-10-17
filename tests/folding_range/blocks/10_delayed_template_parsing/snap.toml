@@ -2,7 +2,7 @@
 folding_ranges = [
     {
         kind = "comment",
-        at = "// Clang defers template bodies on MSVC targets by default. The main file is⟦ … // request no longer crashes the worker (clice#693).⟧ (3 lines)",
+        at = "// Clang defers template bodies on MSVC targets by default. The open file is⟦ … // request no longer crashes the worker (clice#693).⟧ (3 lines)",
     },
     { kind = "union", at = "union mini_variant_impl ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "mini_variant_impl() ⟦{ … }⟧ (2 lines)", collapsed = "{...}" },

@@ -75,7 +75,7 @@ std::vector<FoldingRange> nest(std::vector<Candidate> candidates) {
 }
 
 /// Collects folding ranges by walking the unit's cached Semantics node table —
-/// the DFS pre-order record of the main file's written AST — instead of
+/// the DFS pre-order record of the focus file's written AST — instead of
 /// running another RecursiveASTVisitor over the TU, and by pairing the
 /// brackets of a raw lex of the file. Folding needs no nesting state: every
 /// recorded decl and stmt contributes its ranges independently.

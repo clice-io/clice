@@ -16,7 +16,7 @@ namespace clice::testing {
 
 namespace {
 
-/// The function declared at a main-file offset.
+/// The function declared at a focus-file offset.
 struct FunctionAt : clang::RecursiveASTVisitor<FunctionAt> {
     CompilationUnit& unit;
     std::uint32_t offset;
@@ -44,9 +44,9 @@ std::vector<feature::CodeAction> actions;
 std::string original;
 std::string applied;
 
-void run(llvm::StringRef code, llvm::StringRef main = "main.cpp") {
+void run(llvm::StringRef code, llvm::StringRef focus = "main.cpp") {
     clear();
-    add_main(main, code);
+    add_focus(focus, code);
     ZASSERT(compile("-std=c++23"));
 }
 
@@ -100,15 +100,15 @@ void apply(llvm::StringRef marker, llvm::StringRef title) {
     }
 }
 
-/// The edited main file is `expected` and compiles without errors; with
+/// The edited focus file is `expected` and compiles without errors; with
 /// a marker, the function declared there is defined.
 void EXPECT_COMPILES(llvm::StringRef expected, llvm::StringRef marker = "") {
     ZASSERT(applied == expected);
     auto offset = marker.empty() ? 0 : point(marker);
-    auto main = src_path;
+    auto focus = src_path;
     std::vector<std::pair<std::string, std::string>> others;
     for(auto& [file, source]: sources.all_files) {
-        if(file != main) {
+        if(file != focus) {
             others.emplace_back(file.str(), source.content);
         }
     }
@@ -116,7 +116,7 @@ void EXPECT_COMPILES(llvm::StringRef expected, llvm::StringRef marker = "") {
     for(auto& [file, content]: others) {
         add_file(file, content);
     }
-    add_main(main, applied);
+    add_focus(focus, applied);
     ZASSERT(compile("-std=c++23"));
     std::vector<std::string> errors;
     for(auto& diagnostic: unit->diagnostics()) {

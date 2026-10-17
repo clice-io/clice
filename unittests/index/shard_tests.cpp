@@ -20,7 +20,7 @@ index::TUIndex tu_index;
 
 void build_index(llvm::StringRef code,
                  std::source_location location = std::source_location::current()) {
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile());
     tu_index = index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
@@ -34,8 +34,8 @@ std::string write_fresh(const index::FileIndex& file_index, llvm::StringRef cont
     return bytes;
 }
 
-/// The main file's worker-encoded blob, straight from the TU index.
-std::string main_blob() {
+/// The focus file's worker-encoded blob, straight from the TU index.
+std::string focus_blob() {
     auto section = tu_index.section_of(tu_index.path_count() - 1);
     if(!section) {
         return {};
@@ -90,7 +90,7 @@ ZEST_CASE(RoundtripLookups) {
     )");
 
     auto content = sources.all_files.find("main.cpp")->second.content;
-    auto shard = make_shard(main_blob());
+    auto shard = make_shard(focus_blob());
     ZASSERT(shard.loaded());
     ZASSERT(shard.content_size() == static_cast<std::uint32_t>(content.size()));
     ZASSERT(!shard.line_starts().empty());
@@ -452,7 +452,7 @@ ZEST_CASE(LocalSymbolNames) {
         int visible() { return §(use)⟦§(use)helper⟧(); }
     )");
 
-    auto shard = make_shard(main_blob());
+    auto shard = make_shard(focus_blob());
 
     auto local = hash_at(shard, point("use"));
     ZASSERT(local != 0);
@@ -530,7 +530,7 @@ ZEST_CASE(MergedLocalNames) {
         int visible() { return helper(); }
     )");
     auto content = sources.all_files.find("main.cpp")->second.content;
-    auto first = make_shard(main_blob());
+    auto first = make_shard(focus_blob());
 
     auto extra = simple_index({
         {{0, 3}, 424242}
@@ -1210,7 +1210,7 @@ ZEST_CASE(CorruptRoaringMaskRejected) {
 
 ZEST_CASE(RebindSwapsIdenticalBytes) {
     build_index("int rebind_value() { return 1; }\n");
-    auto bytes = main_blob();
+    auto bytes = focus_blob();
     ZASSERT(!bytes.empty());
     auto shard = make_shard(bytes);
     ZASSERT(shard.loaded());

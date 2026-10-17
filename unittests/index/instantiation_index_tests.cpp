@@ -12,7 +12,7 @@ import :unittests.utils.tester;
 namespace clice::testing {
 namespace {
 
-/// One record of what a TU's instantiations resolve in its main file, as
+/// One record of what a TU's instantiations resolve in its focus file, as
 /// text: what it spans, its kind, and the names it relates.
 struct Resolved {
     std::string text;
@@ -37,14 +37,14 @@ void build(llvm::StringRef code,
            const index::TUIndexOptions& options = {},
            CompilationKind compilation = CompilationKind::Whole) {
     kind = compilation;
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile());
     view = index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit, options)));
     ZASSERT(view.loaded());
 }
 
-std::optional<std::uint32_t> main_section() {
+std::optional<std::uint32_t> focus_section() {
     return view.instantiation_section_of(view.path_count() - 1);
 }
 
@@ -58,17 +58,17 @@ std::optional<std::uint32_t> section_of(llvm::StringRef name) {
     return std::nullopt;
 }
 
-const index::InstantiationShard& main_shard() {
+const index::InstantiationShard& focus_shard() {
     const static index::InstantiationShard none;
-    auto section = main_section();
+    auto section = focus_section();
     return section ? view.instantiation_shard(*section) : none;
 }
 
-/// Every record of the main file, in stored order.
+/// Every record of the focus file, in stored order.
 std::vector<Resolved> resolved() {
     llvm::StringRef content = sources.all_files[src_path].content;
     std::vector<Resolved> records;
-    main_shard().for_each_record([&](const index::InstantiationRecord& record) {
+    focus_shard().for_each_record([&](const index::InstantiationRecord& record) {
         records.push_back({
             .text = content.slice(record.range.begin, record.range.end).str(),
             .kind = record.kind,
@@ -83,7 +83,7 @@ std::vector<Resolved> resolved() {
 
 std::vector<index::InstantiationShard::Key> keys() {
     std::vector<index::InstantiationShard::Key> found;
-    main_shard().for_each_key([&](const index::InstantiationShard::Key& key) {
+    focus_shard().for_each_key([&](const index::InstantiationShard::Key& key) {
         found.push_back(key);
         return true;
     });
@@ -214,7 +214,7 @@ ZEST_CASE(EachInstantiationItsResolution) {
             run(B{});
         }
     )");
-    ZEXPECT(main_shard().resolutions().size() == 2u);
+    ZEXPECT(focus_shard().resolutions().size() == 2u);
     ZEXPECT(keys().size() == 2u);
     // Both `go`s are named at the one place, each by its own resolution.
     ZEXPECT(resolved().size() == 4u);
@@ -246,7 +246,7 @@ ZEST_CASE(KnownKeysSkipped) {
 
     std::uint64_t known[] = {key};
     build(code, {.known_instantiations = known});
-    auto section = main_section();
+    auto section = focus_section();
     ZASSERT(section);
     ZEXPECT(view.instantiation_blob(*section).empty());
     ZEXPECT(view.skipped_instantiations(*section) == llvm::ArrayRef<std::uint64_t>{key});
@@ -313,12 +313,12 @@ ZEST_CASE(SymbolsNameTheirFiles) {
         void run(T t) { t.go(); }
         void use() { run(A{}); }
     )");
-    auto main_path = view.path_count() - 1;
+    auto focus_path = view.path_count() - 1;
     bool named = false;
     view.iterate_instantiation_files(
         [&](index::SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
             if(name_of(hash) == "go") {
-                named = files == llvm::ArrayRef<std::uint32_t>{main_path};
+                named = files == llvm::ArrayRef<std::uint32_t>{focus_path};
             }
             return true;
         });

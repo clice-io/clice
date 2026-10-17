@@ -384,7 +384,7 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
                                          SymbolHash hash,
                                          RelationKind kind,
                                          RelationVisitor visitor) const {
-    auto main_id = state.path_count() - 1;
+    auto focus_id = state.path_count() - 1;
     bool stopped = false;
     // What the TU's instantiations resolve in its other files, in the
     // coordinates of the text the TU read: the overlay's own entries of
@@ -392,7 +392,7 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
     for(std::uint32_t i = 0; resolved && i < state.instantiation_count() && !stopped; i += 1) {
         auto local_id = state.instantiation_path(i);
         auto& instantiations = state.instantiation_shard(i);
-        if(local_id == main_id || !instantiations.loaded()) {
+        if(local_id == focus_id || !instantiations.loaded()) {
             continue;
         }
         auto file = files.intern(Spelling::absolute(state.path(local_id)));
@@ -422,7 +422,7 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
     }
     for(std::uint32_t i = 0; i < state.section_count() && !stopped; i += 1) {
         auto local_id = state.section_path(i);
-        if(local_id == main_id) {
+        if(local_id == focus_id) {
             continue;
         }
         auto& shard = state.section_shard(i);
@@ -909,7 +909,7 @@ void IndexQuery::collect_by_target(SymbolHash hash,
                                    Fid anchor,
                                    RelationKind kind,
                                    llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) const {
-    // The main-file preamble entry cannot contribute: the preamble region
+    // The focus-file preamble entry cannot contribute: the preamble region
     // holds only preprocessor directives, never call or type relations.
     for_each_relation(hash,
                       anchor,

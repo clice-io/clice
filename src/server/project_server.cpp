@@ -325,7 +325,6 @@ void ProjectServer::close_session(Fid path_id) {
                                .version = std::nullopt,
                                .source = CommandSource::CDBExact,
                                .diagnostics = {},
-                               .line_limit = std::nullopt,
                            });
     }
     // Route the eviction notification before dropping ownership:

@@ -69,7 +69,7 @@ struct LocalSourceRange {
     }
 };
 
-/// One replacement of the main file's text, in byte offsets of the text
+/// One replacement of the focus file's text, in byte offsets of the text
 /// it was computed against.
 struct TextReplacement {
     LocalSourceRange range;

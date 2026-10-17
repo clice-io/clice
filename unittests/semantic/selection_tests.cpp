@@ -222,7 +222,7 @@ ZEST_SUITE(SelectionTree, Tester) {
 template <typename Callback>
 void select_right(llvm::StringRef code, Callback&& callback) {
     clear();
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile());
     /// ZASSERT(unit->diagnostics().empty());
 
@@ -773,7 +773,7 @@ auto Func(Fo§o auto V) -> Fo§o decltype(auto) {
 }
   )cpp";
 
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile());
 
     for(auto point: nameless_points()) {

@@ -16,7 +16,7 @@ import :project.build;
 import :project.hosting;
 import :semantic.symbol;
 import :syntax.dependency_graph;
-import :syntax.preamble_synthesis;
+import :syntax.header_context;
 import :vfs.cache_store;
 import :vfs.file_table;
 
