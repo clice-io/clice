@@ -19,7 +19,7 @@ namespace clice {
 /// would introduce). Preprocessor payloads are pointers into the unit's
 /// Directive storage, which shares the unit's lifetime, comments into the
 /// unit's comments (CompilationUnit::comments); module declarations
-/// point into the Semantics' own LexicalInfo storage.
+/// point into the Semantics' own copy of them.
 class SemanticNode {
 public:
     enum class Kind : std::uint8_t {

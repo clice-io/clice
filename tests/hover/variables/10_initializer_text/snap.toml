@@ -21,6 +21,18 @@ Value: `"a \"quoted\"\nline"`
 '''
 range = 'const char* ⟦raw⟧ = R"(a "quoted"'
 
+[answers.raw_splice.hover]
+markdown = '''
+**variable** `raw_splice` · namespace `initializer_text`
+
+```cpp
+const char *raw_splice = R"(a\
+b)"
+```
+Value: `"a\\\nb"`
+'''
+range = 'const char* ⟦raw_splice⟧ = R"(a\'
+
 [answers.continued.hover]
 markdown = '''
 **variable** `continued` · namespace `initializer_text`

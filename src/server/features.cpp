@@ -16,6 +16,7 @@ import :server.features;
 import :server.format;
 import :server.lsp_projection;
 import :server.query_commands;
+import :support.text;
 import :syntax.completion;
 import :syntax.include_resolver;
 import :syntax.lexer;
@@ -612,9 +613,11 @@ Features::RawResult Features::hover(Ticket ticket,
     std::optional<LocalSourceRange> argument;
     if(offset) {
         llvm::StringRef text = session->text;
-        argument = find_directive_argument(lexical_scan(text, index_lang_options(*session)),
-                                           text,
-                                           *offset);
+        const auto& dialect = index_lang_options(*session);
+        Lexer line(text.substr(logical_line_begin(text, *offset)), dialect);
+        if(line.advance().is_directive_hash()) {
+            argument = find_directive_argument(lexical_scan(text, dialect), text, *offset);
+        }
     }
     if(argument && argument->begin <= *offset) {
         auto links = co_await directive_links(ticket, token).or_fail();

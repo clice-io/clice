@@ -56,7 +56,7 @@ Wraps the Clang compiler, abstracting Clang APIs into safe, unified compilation 
 
 Syntax-level processing that does not require a full AST. Runs before compilation to quickly obtain structural information and dependency relationships for files.
 
-- `Lexer` and the lexical scan: every tokenization of source text goes through `Lexer`, built on Clang's raw lexer, in the dialect of the compile that reads the text or, without one, of the file's language. The lexical scan lexes a file once into its tokens, comments and directive lines — the conditional blocks around each, the include guard, the module declarations — and the features read it instead of lexing the file again. Neither runs the preprocessor.
+- `Lexer` and the lexical scan: `Lexer` is a token-level utility built on Clang's raw lexer that marks directive lines, their keywords and header names. The lexical scan lexes a file once into its tokens, comments and directive lines (with the conditional blocks around each), its include guard and its module declarations; the features answered from an open file's compiled unit share the one scan the unit caches. Neither runs the preprocessor.
 - `DependencyGraph`: A global include/module dependency graph supporting forward queries, reverse queries, host source file search, include chain lookup, etc.
 - Dependency scanning: Wraps Clang's `DependencyDirectivesScanner` to quickly extract include and module dependencies
 - `IncludeResolver`: Resolves include paths to actual files based on search path configuration

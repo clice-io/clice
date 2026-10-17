@@ -1,0 +1,13 @@
+[[answers.string.code_actions]]
+kind = "quickfix"
+title = "Add #include <string>"
+compiles = true
+
+[answers.string.code_actions.edits]
+"main.cpp" = '''
+ module; /* the fragment's headers
+            go here */
++#include <string>
+
+ export module demo;
+'''

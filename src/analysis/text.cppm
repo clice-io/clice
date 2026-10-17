@@ -116,7 +116,9 @@ struct Text {
             for(auto member: {found->opening, found->definition, found->closing}) {
                 auto line = line_of(lexical.directives[member].range.begin);
                 guard.push_back(line);
-                kinds[line] = Line::Blank;
+                for(auto part = line; part <= ends[line]; part += 1) {
+                    kinds[part] = Line::Blank;
+                }
             }
         }
         std::uint32_t depth = 0;

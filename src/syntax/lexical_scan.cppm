@@ -152,8 +152,6 @@ struct LexicalInfo {
     /// Raw string literal tokens in source order, outside directives.
     std::vector<LocalSourceRange> raw_strings;
 
-    // The vector heap-allocates so that payload pointers into it (the
-    // Semantics node table stores such pointers) survive moving the info.
     std::vector<ModuleDeclaration> modules;
 
     std::optional<IncludeGuard> include_guard;

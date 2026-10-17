@@ -1,0 +1,71 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/alpha"
+        ],
+        "mirrors": []
+      }
+    ],
+    "mirrors": [
+      "mirror/alpha"
+    ],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [],
+    "importers": [],
+    "macros": [],
+    "removed": [],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap".files]
+"wrap/.modularize" = '''
++mirror/alpha/alpha/alpha.h
++alpha.cppm
++alpha.macros.h
++prelude.h
+'''
+"wrap/alpha.cppm" = '''
++module;
++
++
++#include <alpha/alpha.h>
++
++export module alpha;
++
++export namespace alpha {
++using ::alpha::Thing;
++}
+'''
+"wrap/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_H 2
+'''
+"wrap/mirror/alpha/alpha/alpha.h" = "(created empty)"
+"wrap/prelude.h" = '''
++#pragma once
++
++import alpha;
++#include "alpha.macros.h"
+'''

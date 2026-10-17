@@ -326,6 +326,14 @@ ZEST_CASE(HasIncludeQuoted) {
     ZEXPECT(ctx.prefix == "conf");
 }
 
+ZEST_CASE(HasIncludeContinued) {
+    std::string text = R"(#if defined(X) && \
+    __has_include(<vec)";
+    auto ctx = detect_completion_context(text, text.size());
+    ZEXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    ZEXPECT(ctx.prefix == "vec");
+}
+
 ZEST_CASE(HasIncludeUnclosedName) {
     // An editor closes the parenthesis but not the name: it ends at `)`.
     std::string text = "#if __has_include(<ve) && __has_include(<b>)";

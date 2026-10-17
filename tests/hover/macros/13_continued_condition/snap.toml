@@ -1,0 +1,10 @@
+[answers.continued.hover]
+markdown = '''
+**macro** `LATER`
+
+```cpp
+#define LATER 8
+```
+Not defined yet here: defined on line 7
+'''
+range = "⟦LATER⟧ > 0"

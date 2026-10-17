@@ -112,6 +112,12 @@ struct Token {
     bool is_header_name() const {
         return kind == clang::tok::header_name;
     }
+
+    /// Whether it is a raw string literal, whose line splices are part of
+    /// its text.
+    bool is_raw_string(llvm::StringRef content) const {
+        return clang::tok::isStringLiteral(kind) && text(content).split('"').first.ends_with("R");
+    }
 };
 
 }  // namespace clice

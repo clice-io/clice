@@ -180,3 +180,23 @@ void rarely_called()
 ```
 '''
 range = "void ⟦rarely_called⟧();"
+
+[answers.commented_pragma.hover]
+markdown = '''
+**function** `seldom_called` · namespace `written_attributes`
+
+```cpp
+void seldom_called()
+```
+'''
+range = "void ⟦seldom_called⟧();"
+
+[answers.continued_pragma.hover]
+markdown = '''
+**function** `never_called` · namespace `written_attributes`
+
+```cpp
+void never_called()
+```
+'''
+range = "void ⟦never_called⟧();"

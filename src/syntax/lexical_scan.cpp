@@ -108,6 +108,15 @@ std::optional<LexicalInfo::IncludeGuard> find_include_guard(llvm::StringRef cont
     };
 }
 
+TokenKind closer(TokenKind opener) {
+    switch(opener) {
+        case clang::tok::l_paren: return clang::tok::r_paren;
+        case clang::tok::l_square: return clang::tok::r_square;
+        case clang::tok::l_brace: return clang::tok::r_brace;
+        default: return clang::tok::unknown;
+    }
+}
+
 }  // namespace
 
 Directive::Kind directive_kind(llvm::StringRef name, llvm::StringRef argument) {
@@ -276,8 +285,7 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions& dial
             continue;
         }
 
-        if(clang::tok::isStringLiteral(token.kind) &&
-           token.text(content).split('"').first.ends_with("R")) {
+        if(token.is_raw_string(content)) {
             info.raw_strings.push_back(token.range);
             continue;
         }
@@ -448,15 +456,6 @@ std::optional<LocalSourceRange> find_directive_argument(const LexicalInfo& info,
         }
     }
     return std::nullopt;
-}
-
-static TokenKind closer(TokenKind opener) {
-    switch(opener) {
-        case clang::tok::l_paren: return clang::tok::r_paren;
-        case clang::tok::l_square: return clang::tok::r_square;
-        case clang::tok::l_brace: return clang::tok::r_brace;
-        default: return clang::tok::unknown;
-    }
 }
 
 void BracketPairs::enter() {

@@ -1119,7 +1119,7 @@ auto token_text(const clang::ASTContext& context,
         if(!text.empty() && offset != previous_end) {
             text += ' ';
         }
-        text += unspliced(token.text(rest));
+        text += token.is_raw_string(rest) ? token.text(rest).str() : unspliced(token.text(rest));
         previous_end = offset + token.range.length();
     }
     return text;

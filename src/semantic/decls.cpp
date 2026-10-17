@@ -12,6 +12,7 @@ module clice;
 import :semantic.decls;
 import :semantic.unifier;
 import :support.text;
+import :syntax.lexer;
 
 namespace clice::decls {
 
@@ -123,7 +124,8 @@ bool applied_by_pragma(const clang::ASTContext& context, clang::SourceLocation l
     }
     auto [file, offset] = sources.getDecomposedLoc(sources.getExpansionLoc(location));
     auto content = sources.getBufferData(file);
-    return content.slice(logical_line_begin(content, offset), offset).ltrim().starts_with("#");
+    Lexer lexer(content.substr(logical_line_begin(content, offset)), context.getLangOpts());
+    return lexer.advance().is_directive_hash();
 }
 
 const clang::NamespaceDecl* outermost_namespace(const clang::Decl* decl) {

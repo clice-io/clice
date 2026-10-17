@@ -55,9 +55,7 @@ inline bool takes_header_name(llvm::StringRef keyword) {
 /// eod tokens, directive keywords are flagged via Token::is_pp_keyword, and
 /// header-name arguments (after #include/#embed keywords and inside the
 /// parentheses of the __has_include family) are lexed as single
-/// header_name tokens. Every tokenization of source text in clice goes
-/// through it, in the dialect of the compile that reads the text or, with
-/// none, raw_dialect's.
+/// header_name tokens.
 class Lexer {
 public:
     using Options = LexerOptions;

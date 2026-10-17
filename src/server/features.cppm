@@ -335,11 +335,13 @@ private:
     std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
                                                        const protocol::Position& position) const;
 
-    /// The lexing dialect of a session's index projections. An explicit -x
-    /// in the file's own CDB entry decides outright; a header follows its
-    /// active context's host when one exists; otherwise C when the file is
-    /// a C source or every TU contributing its indexed entries is one, C++
-    /// else (mixed inclusion favors the superset).
+    /// The dialect the server lexes a session's text in: for its index
+    /// projections, hover's directive lookup and completion's context
+    /// checks. An explicit -x in the file's own CDB entry decides outright;
+    /// a header follows its active context's host when one exists;
+    /// otherwise C when the file is a C source or every TU contributing its
+    /// indexed entries is one, C++ else (mixed inclusion favors the
+    /// superset).
     const clang::LangOptions& index_lang_options(const Session& session);
 
     /// The read-only hover card for the symbol under the cursor: name and

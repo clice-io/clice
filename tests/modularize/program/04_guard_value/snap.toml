@@ -1,6 +1,6 @@
 [test."$ clice index"]
 stdout = '''
-Indexed 2 translation units in #s: 3 file shards (# KB), 5 symbols.
+Indexed 2 translation units in #s: 4 file shards (# KB), 7 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -21,6 +21,7 @@ stdout = '''
         "name": "app.core",
         "primary": "app/core/module.cppm",
         "interfaces": [
+          "app/core/size.cppm",
           "app/core/text.cppm"
         ],
         "partitions": [],
@@ -33,8 +34,11 @@ stdout = '''
     "importers": [
       "app/main.cpp"
     ],
-    "macros": [],
+    "macros": [
+      "app/core/size.macros.h"
+    ],
     "removed": [
+      "app/core/size.h",
       "app/core/text.h"
     ],
     "moved": [],
@@ -48,7 +52,35 @@ exit = 0
 "app/core/module.cppm" = '''
 +export module app.core;
 +
++export import :size;
 +export import :text;
+'''
+"app/core/size.cppm" = '''
++module;
++
++#include "wrap/prelude.h"
++
++export module app.core:size;
++
++export {
++// A guard's definition continued on a second line goes as a whole, and its
++// macro stays defined for the program that reads it.
++
++namespace core {
++
++inline int unit() {
++    return 1;
++}
++
++}  // namespace core
++
++}
+'''
+"app/core/size.h" = "(removed)"
+"app/core/size.macros.h" = '''
++#pragma once
++
++#define CORE_SIZE_H     1
 '''
 "app/core/text.cpp" = '''
 -#include "core/text.h"
@@ -85,7 +117,9 @@ exit = 0
 "app/core/text.h" = "(removed)"
 "app/main.cpp" = '''
 -#include "core/text.h"
+-#include "core/size.h"
 +#include "wrap/prelude.h"
++#include "core/size.macros.h"
 +import app.core;
 
  int main() {

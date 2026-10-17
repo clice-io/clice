@@ -106,6 +106,10 @@ private:
             sm.getLocForStartOfFile(sm.getMainFileID()).getLocWithOffset(token.range.begin));
         result.setLength(token.range.length());
         result.setRawIdentifierData(text.data() + token.range.begin);
+        if(token.text(text).contains('\\')) {
+            result.setFlag(clang::Token::NeedsCleaning);
+            result.setFlag(clang::Token::HasUCN);
+        }
         pp.LookUpIdentifierInfo(result);
         return result;
     }

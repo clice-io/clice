@@ -46,4 +46,13 @@ FORCE_INLINE int §(macro_with_specifiers)twice(int x) {
 #pragma clang attribute push(__attribute__((cold)), apply_to = function)
 void §(pragma_region)rarely_called();
 #pragma clang attribute pop
+
+/* note */ #pragma clang attribute push(__attribute__((cold)), apply_to = function)
+void §(commented_pragma)seldom_called();
+#pragma clang attribute pop
+
+#pragma clang attribute push( \
+    __attribute__((cold)), apply_to = function)
+void §(continued_pragma)never_called();
+#pragma clang attribute pop
 }

@@ -10,6 +10,9 @@ int §(spread)spread = 1 +
 const char* §(raw)raw = R"(a "quoted"
 line)";
 
+const char* §(raw_splice)raw_splice = R"(a\
+b)";
+
 #define TWICE(x) ((x) * 2)
 int §(continued)continued = TWICE(4) \
     + 1;

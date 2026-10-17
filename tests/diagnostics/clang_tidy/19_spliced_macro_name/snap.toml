@@ -1,0 +1,10 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = '#define ⟦_SPLIT\ … _NAME⟧ (2 lines)',
+        severity = "warning",
+        message = "declaration uses identifier '_SPLIT_NAME', which is a reserved identifier",
+        source = "clang-tidy",
+        code = "bugprone-reserved-identifier",
+    },
+]

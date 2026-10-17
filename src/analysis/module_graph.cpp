@@ -352,8 +352,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // A directive's text, its continuation lines joined.
     auto directive_text = [&](std::uint32_t file, std::uint32_t line) {
         auto& text = text_of(file);
-        return line != 0 && line <= text.lines.size() &&
-                       text.kinds[line - 1] == Text::Line::Directive
+        return line != 0 && line <= text.lines.size() && !text.keywords[line - 1].empty()
                    ? text.directive_text(line - 1)
                    : std::string();
     };

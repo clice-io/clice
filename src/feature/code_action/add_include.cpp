@@ -187,8 +187,8 @@ std::uint32_t after_leading_comments(llvm::StringRef content, const LexicalInfo&
     return offset;
 }
 
-/// Where the `module;` opening the global module fragment ends, the
-/// file's first token when there is one.
+/// Where the line of the `module;` opening the global module fragment
+/// ends, the comments it runs on to included, when the file opens with one.
 std::optional<std::uint32_t> fragment_end(const LexicalInfo& lexical) {
     if(lexical.modules.empty() ||
        lexical.modules.front().kind != LexicalInfo::ModuleDeclaration::Kind::GlobalFragment) {
@@ -196,8 +196,7 @@ std::optional<std::uint32_t> fragment_end(const LexicalInfo& lexical) {
     }
     auto rest = llvm::ArrayRef(lexical.tokens)
                     .drop_front(lexical.token_at(lexical.modules.front().keyword.end));
-    return llvm::find_if(rest, [](const Token& token) { return token.kind == clang::tok::semi; })
-        ->range.end;
+    return llvm::find_if(rest, [](const Token& token) { return token.is_eod(); })->range.begin;
 }
 
 /// Where the code of the file starts: its first token that is neither a

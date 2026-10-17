@@ -371,7 +371,12 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         // Declarations of other modules' entities: in a module unit they
         // would declare a second entity, attached to its module. One whose
         // entity lies outside the scope moves to the global module fragment.
-        llvm::DenseSet<std::uint32_t> dropped(text.guard.begin(), text.guard.end());
+        llvm::DenseSet<std::uint32_t> dropped;
+        for(auto line: text.guard) {
+            for(auto part = line; part <= text.ends[line]; part += 1) {
+                dropped.insert(part);
+            }
+        }
         if(module_unit) {
             auto drop = [&](std::uint32_t line) -> std::optional<std::string> {
                 if(line == 0 || line > text.lines.size()) {
@@ -695,7 +700,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         }
         // The guard's macro stays defined where the header was included.
         if(!text.guard.empty()) {
-            lines.push_back(text.lines[text.guard[1]].str());
+            lines.push_back(text.directive_text(text.guard[1]));
         }
         for(std::uint32_t line = 0; line < text.lines.size(); line += 1) {
             auto keyword = text.keywords[line];
