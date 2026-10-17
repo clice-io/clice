@@ -1070,18 +1070,24 @@ std::optional<Spelling> CompilationDatabase::pch_output(ConfigID id) const {
 }
 
 llvm::SmallVector<Spelling, 2> CompilationDatabase::pch_inputs(ConfigID id) const {
+    auto& args = config(id).args;
     auto directory = Spelling::absolute(config(id).directory);
+    for(auto& arg: args) {
+        if(arg.opt_id == option::OPT_working_directory && arg.values.size() == 1) {
+            directory = Spelling::absolute(arg.values[0]);
+        }
+    }
     llvm::SmallVector<Spelling, 2> inputs;
-    for(auto& arg: config(id).args) {
+    for(auto& arg: args) {
         if(arg.values.size() != 1) {
             continue;
         }
         if(arg.opt_id == option::OPT_include_pch) {
-            inputs.emplace_back(arg.values[0], directory);
+            inputs.push_back(Spelling::absolute(arg.values[0]));
         } else if(arg.opt_id == option::OPT_include) {
             Spelling header(arg.values[0], directory);
-            inputs.emplace_back(header.str() + ".pch", directory);
-            inputs.emplace_back(header.str() + ".gch", directory);
+            inputs.push_back(Spelling::absolute(header.str() + ".pch"));
+            inputs.push_back(Spelling::absolute(header.str() + ".gch"));
         }
     }
     return inputs;

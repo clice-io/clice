@@ -922,7 +922,8 @@ ZEST_CASE(WorkingDirectoryAnchorsIncludes) {
 
 ZEST_CASE(WorkingDirectoryPCHOutput) {
     /// The precompiled header a command writes is spelled where the
-    /// compile runs, as the one a command reads is.
+    /// compile runs, as the one a command reads is, and the one GCC finds
+    /// beside a forced header.
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command(
@@ -938,6 +939,13 @@ ZEST_CASE(WorkingDirectoryPCHOutput) {
     auto pch = file_table.find(inputs.front());
     ZASSERT(pch);
     ZEXPECT(database.pch_writers(*pch).size() == 1U);
+
+    database.add_command("/project",
+                         "/project/tool.cpp",
+                         "clang++ -working-directory build -include app /project/tool.cpp"sv);
+    auto tool = database.candidate_entries("/project/tool.cpp").front().config;
+    ZEXPECT(llvm::any_of(database.pch_inputs(tool),
+                         [&](const Spelling& input) { return file_table.find(input) == pch; }));
 };
 
 ZEST_CASE(BareFileValueAnchored) {
