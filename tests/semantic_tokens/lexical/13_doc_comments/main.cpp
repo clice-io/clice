@@ -26,4 +26,9 @@ int clamp(int value);
 /// @param value what to double
 int twice(int value);
 
+/// An example left open: @code
+
+/// @brief The next comment reads its commands.
+int next(int value);
+
 // @param plain comments have no commands

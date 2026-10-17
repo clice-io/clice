@@ -752,6 +752,12 @@ private:
     /// names `@param` and `@tparam` document as what they name.
     void comment(LocalSourceRange range) {
         auto text = content.slice(range.begin, range.end);
+        // A blank line ends a documentation comment, a raw block left open
+        // in it too.
+        if(content.slice(comment_end, range.begin).count('\n') > 1) {
+            doc_closer = {};
+        }
+        comment_end = range.end;
         if(!is_doc_comment(text)) {
             doc_closer = {};
             emit(range, {{.kind = Kind::Comment}, false});
@@ -910,6 +916,8 @@ private:
     /// documentation comment opened, which may end on a later line of a
     /// `///` block (`endcode`).
     llvm::StringRef doc_closer;
+    /// Where the last comment ended.
+    std::uint32_t comment_end = 0;
 
     std::size_t next_span = 0;
     std::vector<SemanticToken> tokens;

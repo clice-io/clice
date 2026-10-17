@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "/// Scales a value.\n/// \\param value the value to scale\n/// @param factor how much, at least 1\n/// @return the scaled value\nint scale(int value, int factor);\n\n/**\n * @brief A point on the plane.\n * @tparam T the coordinate type\n */\ntemplate <class T>\nstruct Point {\n    T x, y;\n};\n\nint width; ///<@brief How wide.\n\n///@brief Clamps a value.\n/// Kept within @f$ [0, 1] @f$.\nint clamp(int value);\n\n/// Doubles a value.\n/// @code\n/// twice(2); // @param here is example text\n/// \\endcode\n/// @param value what to double\nint twice(int value);\n\n// @param plain comments have no commands\n",
+      "text": "/// Scales a value.\n/// \\param value the value to scale\n/// @param factor how much, at least 1\n/// @return the scaled value\nint scale(int value, int factor);\n\n/**\n * @brief A point on the plane.\n * @tparam T the coordinate type\n */\ntemplate <class T>\nstruct Point {\n    T x, y;\n};\n\nint width; ///<@brief How wide.\n\n///@brief Clamps a value.\n/// Kept within @f$ [0, 1] @f$.\nint clamp(int value);\n\n/// Doubles a value.\n/// @code\n/// twice(2); // @param here is example text\n/// \\endcode\n/// @param value what to double\nint twice(int value);\n\n/// An example left open: @code\n\n/// @brief The next comment reads its commands.\nint next(int value);\n\n// @param plain comments have no commands\n",
       "markers": []
     }
   ],
@@ -1438,7 +1438,7 @@
               },
               {
                 "at": {
-                  "$place": "⟦// @param plain comments have no commands⟧",
+                  "$place": "⟦/// An example left open: ⟧@code",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -1447,6 +1447,182 @@
                     },
                     "end": {
                       "line": 28,
+                      "character": 26
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// An example left open: ⟦@code⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 26
+                    },
+                    "end": {
+                      "line": 28,
+                      "character": 31
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦/// ⟧@brief The next comment reads its commands.",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 30,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 30,
+                      "character": 4
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// ⟦@brief⟧ The next comment reads its commands.",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 30,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 30,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// @brief⟦ The next comment reads its commands.⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 30,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 30,
+                      "character": 47
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ next(int value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 31,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 31,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦next⟧(int value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 31,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 31,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "declaration",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int next(⟦int⟧ value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 31,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 31,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int next(int ⟦value⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 31,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 31,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦// @param plain comments have no commands⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 33,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 33,
                       "character": 41
                     }
                   }
