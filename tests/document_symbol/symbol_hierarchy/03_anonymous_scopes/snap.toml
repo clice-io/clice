@@ -5,12 +5,7 @@ document_symbols = [
         kind = "Namespace",
         at = "namespace ⟦{⟧",
         children = [
-            {
-                name = "hidden_counter",
-                kind = "Variable",
-                at = "int ⟦hidden_counter⟧ = 0;",
-                detail = "int",
-            },
+            { name = "hidden_counter", kind = "Variable", at = "int ⟦hidden_counter⟧ = 0;", detail = "int" },
         ],
     },
     {
@@ -19,18 +14,8 @@ document_symbols = [
         at = "static ⟦union⟧ {",
         detail = "union",
         children = [
-            {
-                name = "global_int",
-                kind = "Field",
-                at = "int ⟦global_int⟧;",
-                detail = "int",
-            },
-            {
-                name = "global_float",
-                kind = "Field",
-                at = "float ⟦global_float⟧;",
-                detail = "float",
-            },
+            { name = "global_int", kind = "Field", at = "int ⟦global_int⟧;", detail = "int" },
+            { name = "global_float", kind = "Field", at = "float ⟦global_float⟧;", detail = "float" },
         ],
     },
     {
@@ -43,12 +28,7 @@ document_symbols = [
                 kind = "Namespace",
                 at = "inline namespace ⟦v1⟧ {",
                 children = [
-                    {
-                        name = "versioned",
-                        kind = "Function",
-                        at = "int ⟦versioned⟧();",
-                        detail = "int ()",
-                    },
+                    { name = "versioned", kind = "Function", at = "int ⟦versioned⟧();", detail = "int ()" },
                 ],
             },
             {
@@ -77,18 +57,8 @@ document_symbols = [
                         at = "⟦union⟧ {",
                         detail = "union",
                         children = [
-                            {
-                                name = "as_int",
-                                kind = "Field",
-                                at = "int ⟦as_int⟧;",
-                                detail = "int",
-                            },
-                            {
-                                name = "as_float",
-                                kind = "Field",
-                                at = "float ⟦as_float⟧;",
-                                detail = "float",
-                            },
+                            { name = "as_int", kind = "Field", at = "int ⟦as_int⟧;", detail = "int" },
+                            { name = "as_float", kind = "Field", at = "float ⟦as_float⟧;", detail = "float" },
                         ],
                     },
                 ],
@@ -119,18 +89,8 @@ document_symbols = [
         at = "static ⟦union⟧ {",
         range = "static ⟦union { … }⟧ (4 lines)",
         children = [
-            {
-                name = "global_int",
-                kind = "Field",
-                at = "int ⟦global_int⟧;",
-                range = "⟦int global_int⟧;",
-            },
-            {
-                name = "global_float",
-                kind = "Field",
-                at = "float ⟦global_float⟧;",
-                range = "⟦float global_float⟧;",
-            },
+            { name = "global_int", kind = "Field", at = "int ⟦global_int⟧;", range = "⟦int global_int⟧;" },
+            { name = "global_float", kind = "Field", at = "float ⟦global_float⟧;", range = "⟦float global_float⟧;" },
         ],
     },
     {
@@ -145,12 +105,7 @@ document_symbols = [
                 at = "inline namespace ⟦v1⟧ {",
                 range = "⟦inline namespace v1 { … }⟧ (5 lines)",
                 children = [
-                    {
-                        name = "versioned",
-                        kind = "Function",
-                        at = "int ⟦versioned⟧();",
-                        range = "⟦int versioned()⟧;",
-                    },
+                    { name = "versioned", kind = "Function", at = "int ⟦versioned⟧();", range = "⟦int versioned()⟧;" },
                 ],
             },
             {
@@ -179,12 +134,7 @@ document_symbols = [
                         at = "⟦union⟧ {",
                         range = "⟦union { … }⟧ (4 lines)",
                         children = [
-                            {
-                                name = "as_int",
-                                kind = "Field",
-                                at = "int ⟦as_int⟧;",
-                                range = "⟦int as_int⟧;",
-                            },
+                            { name = "as_int", kind = "Field", at = "int ⟦as_int⟧;", range = "⟦int as_int⟧;" },
                             {
                                 name = "as_float",
                                 kind = "Field",

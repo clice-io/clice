@@ -107,12 +107,7 @@ call_hierarchy = [
     { name = "global_var", kind = "Variable", at = "int ⟦global_var⟧ = 42;" },
 ]
 incoming_calls = [
-    {
-        name = "use_global",
-        kind = "Function",
-        at = "int ⟦use_global⟧() {",
-        sites = ["return ⟦global_var⟧ + 1;"],
-    },
+    { name = "use_global", kind = "Function", at = "int ⟦use_global⟧() {", sites = ["return ⟦global_var⟧ + 1;"] },
     {
         name = "use_global_again",
         kind = "Function",
@@ -133,12 +128,7 @@ call_hierarchy = [
     { name = "area", kind = "Function", at = "int ⟦area⟧(const Shape& s) {" },
 ]
 incoming_calls = [
-    {
-        name = "shape_area",
-        kind = "Function",
-        at = "int ⟦shape_area⟧() {",
-        sites = ["return ⟦area⟧(global_shape);"],
-    },
+    { name = "shape_area", kind = "Function", at = "int ⟦shape_area⟧() {", sites = ["return ⟦area⟧(global_shape);"] },
 ]
 
 [test.area_decl]
@@ -200,12 +190,7 @@ call_hierarchy = [
     { name = "global_shape", kind = "Variable", at = "Shape ⟦global_shape⟧;" },
 ]
 incoming_calls = [
-    {
-        name = "shape_area",
-        kind = "Function",
-        at = "int ⟦shape_area⟧() {",
-        sites = ["return area(⟦global_shape⟧);"],
-    },
+    { name = "shape_area", kind = "Function", at = "int ⟦shape_area⟧() {", sites = ["return area(⟦global_shape⟧);"] },
 ]
 
 [test.area_scale]
@@ -264,10 +249,5 @@ add = [
 ]
 animal = [
     { name = "Animal", kind = "Struct", at = "main.cpp │ struct ⟦Animal⟧ {" },
-    {
-        name = "~Animal",
-        kind = "Method",
-        at = "main.cpp │ virtual ⟦~Animal⟧() = default;",
-        container = "Animal",
-    },
+    { name = "~Animal", kind = "Method", at = "main.cpp │ virtual ⟦~Animal⟧() = default;", container = "Animal" },
 ]

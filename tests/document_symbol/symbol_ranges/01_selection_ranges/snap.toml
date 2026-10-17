@@ -11,18 +11,8 @@ document_symbols = [
                 at = "struct ⟦Widget⟧ {",
                 detail = "struct",
                 children = [
-                    {
-                        name = "Widget",
-                        kind = "Method",
-                        at = "⟦Widget⟧();",
-                        detail = "()",
-                    },
-                    {
-                        name = "Widget",
-                        kind = "Method",
-                        at = "explicit ⟦Widget⟧(int size);",
-                        detail = "(int size)",
-                    },
+                    { name = "Widget", kind = "Method", at = "⟦Widget⟧();", detail = "()" },
+                    { name = "Widget", kind = "Method", at = "explicit ⟦Widget⟧(int size);", detail = "(int size)" },
                     { name = "~Widget", kind = "Method", at = "⟦~Widget⟧();" },
                     {
                         name = "operator=",
@@ -42,30 +32,10 @@ document_symbols = [
                         at = "⟦operator bool⟧() const;",
                         detail = "bool () const",
                     },
-                    {
-                        name = "instances",
-                        kind = "Method",
-                        at = "static int ⟦instances⟧();",
-                        detail = "static int ()",
-                    },
-                    {
-                        name = "size",
-                        kind = "Field",
-                        at = "int ⟦size⟧;",
-                        detail = "int",
-                    },
-                    {
-                        name = "bits",
-                        kind = "Field",
-                        at = "unsigned ⟦bits⟧ : 3;",
-                        detail = "unsigned int",
-                    },
-                    {
-                        name = "name",
-                        kind = "Field",
-                        at = 'const char* ⟦name⟧ = "widget";',
-                        detail = "const char *",
-                    },
+                    { name = "instances", kind = "Method", at = "static int ⟦instances⟧();", detail = "static int ()" },
+                    { name = "size", kind = "Field", at = "int ⟦size⟧;", detail = "int" },
+                    { name = "bits", kind = "Field", at = "unsigned ⟦bits⟧ : 3;", detail = "unsigned int" },
+                    { name = "name", kind = "Field", at = 'const char* ⟦name⟧ = "widget";', detail = "const char *" },
                 ],
             },
             {
@@ -98,24 +68,14 @@ document_symbols = [
                 at = "struct ⟦Widget⟧ {",
                 range = "⟦struct Widget { … }⟧ (15 lines)",
                 children = [
-                    {
-                        name = "Widget",
-                        kind = "Method",
-                        at = "⟦Widget⟧();",
-                        range = "⟦Widget()⟧;",
-                    },
+                    { name = "Widget", kind = "Method", at = "⟦Widget⟧();", range = "⟦Widget()⟧;" },
                     {
                         name = "Widget",
                         kind = "Method",
                         at = "explicit ⟦Widget⟧(int size);",
                         range = "⟦explicit Widget(int size)⟧;",
                     },
-                    {
-                        name = "~Widget",
-                        kind = "Method",
-                        at = "⟦~Widget⟧();",
-                        range = "⟦~Widget()⟧;",
-                    },
+                    { name = "~Widget", kind = "Method", at = "⟦~Widget⟧();", range = "⟦~Widget()⟧;" },
                     {
                         name = "operator=",
                         kind = "Operator",
@@ -140,18 +100,8 @@ document_symbols = [
                         at = "static int ⟦instances⟧();",
                         range = "⟦static int instances()⟧;",
                     },
-                    {
-                        name = "size",
-                        kind = "Field",
-                        at = "int ⟦size⟧;",
-                        range = "⟦int size⟧;",
-                    },
-                    {
-                        name = "bits",
-                        kind = "Field",
-                        at = "unsigned ⟦bits⟧ : 3;",
-                        range = "⟦unsigned bits : 3⟧;",
-                    },
+                    { name = "size", kind = "Field", at = "int ⟦size⟧;", range = "⟦int size⟧;" },
+                    { name = "bits", kind = "Field", at = "unsigned ⟦bits⟧ : 3;", range = "⟦unsigned bits : 3⟧;" },
                     {
                         name = "name",
                         kind = "Field",

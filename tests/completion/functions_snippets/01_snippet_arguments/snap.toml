@@ -32,13 +32,7 @@ items = [
 items = [
     { label = "for", kind = "Keyword", insert = "for" },
     { label = "Foo", kind = "Class", insert = "Foo" },
-    {
-        label = "foooo(int x, float y)",
-        kind = "Function",
-        detail = "int",
-        insert = "foooo($0)",
-        snippet = true,
-    },
+    { label = "foooo(int x, float y)", kind = "Function", detail = "int", insert = "foooo($0)", snippet = true },
 ]
 
 [delimiters.no_arguments.completion]
@@ -49,13 +43,7 @@ items = [
 
 [delimiters.method.completion]
 items = [
-    {
-        label = "bazzzz(int a, int b)",
-        kind = "Method",
-        detail = "int",
-        insert = "bazzzz($0)",
-        snippet = true,
-    },
+    { label = "bazzzz(int a, int b)", kind = "Method", detail = "int", insert = "bazzzz($0)", snippet = true },
 ]
 
 [none.free_function.completion]

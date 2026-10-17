@@ -1,43 +1,13 @@
 [answers.quoted.completion]
 items = [
-    {
-        label = "hdrorder_tools.h",
-        kind = "File",
-        insert = 'hdrorder_tools.h"',
-        replace = '#include "⟦hdrorder"⟧',
-    },
-    {
-        label = "hdrorder_widgets.h",
-        kind = "File",
-        insert = 'hdrorder_widgets.h"',
-        replace = '#include "⟦hdrorder"⟧',
-    },
-    {
-        label = "hdrorder_shapes.h",
-        kind = "File",
-        insert = 'hdrorder_shapes.h"',
-        replace = '#include "⟦hdrorder"⟧',
-    },
-    {
-        label = "hdrorder_alloc.h",
-        kind = "File",
-        insert = 'hdrorder_alloc.h"',
-        replace = '#include "⟦hdrorder"⟧',
-    },
+    { label = "hdrorder_tools.h", kind = "File", insert = 'hdrorder_tools.h"', replace = '#include "⟦hdrorder"⟧' },
+    { label = "hdrorder_widgets.h", kind = "File", insert = 'hdrorder_widgets.h"', replace = '#include "⟦hdrorder"⟧' },
+    { label = "hdrorder_shapes.h", kind = "File", insert = 'hdrorder_shapes.h"', replace = '#include "⟦hdrorder"⟧' },
+    { label = "hdrorder_alloc.h", kind = "File", insert = 'hdrorder_alloc.h"', replace = '#include "⟦hdrorder"⟧' },
 ]
 
 [answers.angled.completion]
 items = [
-    {
-        label = "hdrorder_shapes.h",
-        kind = "File",
-        insert = "hdrorder_shapes.h>",
-        replace = "#include <⟦hdrorder>⟧",
-    },
-    {
-        label = "hdrorder_alloc.h",
-        kind = "File",
-        insert = "hdrorder_alloc.h>",
-        replace = "#include <⟦hdrorder>⟧",
-    },
+    { label = "hdrorder_shapes.h", kind = "File", insert = "hdrorder_shapes.h>", replace = "#include <⟦hdrorder>⟧" },
+    { label = "hdrorder_alloc.h", kind = "File", insert = "hdrorder_alloc.h>", replace = "#include <⟦hdrorder>⟧" },
 ]

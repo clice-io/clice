@@ -31,12 +31,7 @@ document_symbols = [
                 at = "struct ⟦Bed⟧ {",
                 detail = "struct",
                 children = [
-                    {
-                        name = "width",
-                        kind = "Field",
-                        at = "int ⟦width⟧;",
-                        detail = "int",
-                    },
+                    { name = "width", kind = "Field", at = "int ⟦width⟧;", detail = "int" },
                     {
                         name = "plant",
                         kind = "Method",
@@ -45,12 +40,7 @@ document_symbols = [
                     },
                 ],
             },
-            {
-                name = "water",
-                kind = "Function",
-                at = "void ⟦water⟧(Bed& bed);",
-                detail = "void (Bed &bed)",
-            },
+            { name = "water", kind = "Function", at = "void ⟦water⟧(Bed& bed);", detail = "void (Bed &bed)" },
         ],
     },
 ]
@@ -89,12 +79,7 @@ document_symbols = [
                 at = "struct ⟦Bed⟧ {",
                 range = "⟦struct Bed { … }⟧ (4 lines)",
                 children = [
-                    {
-                        name = "width",
-                        kind = "Field",
-                        at = "int ⟦width⟧;",
-                        range = "⟦int width⟧;",
-                    },
+                    { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
                     {
                         name = "plant",
                         kind = "Method",
@@ -103,12 +88,7 @@ document_symbols = [
                     },
                 ],
             },
-            {
-                name = "water",
-                kind = "Function",
-                at = "void ⟦water⟧(Bed& bed);",
-                range = "⟦void water(Bed& bed)⟧;",
-            },
+            { name = "water", kind = "Function", at = "void ⟦water⟧(Bed& bed);", range = "⟦void water(Bed& bed)⟧;" },
         ],
     },
 ]

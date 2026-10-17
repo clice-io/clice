@@ -7,38 +7,18 @@ document_symbols = [
         kind = "Namespace",
         at = "namespace ⟦lib⟧ {",
         children = [
-            {
-                name = "Thing",
-                kind = "Struct",
-                at = "struct ⟦Thing⟧ {};",
-                detail = "struct",
-            },
+            { name = "Thing", kind = "Struct", at = "struct ⟦Thing⟧ {};", detail = "struct" },
         ],
     },
     { name = "first_value", kind = "Variable", at = "int ⟦first_value⟧, second_value;", detail = "int" },
     { name = "second_value", kind = "Variable", at = "int first_value, ⟦second_value⟧;", detail = "int" },
-    {
-        name = "declared_then_defined",
-        kind = "Function",
-        at = "void ⟦declared_then_defined⟧();",
-        detail = "void ()",
-    },
-    {
-        name = "declared_then_defined",
-        kind = "Function",
-        at = "void ⟦declared_then_defined⟧() {}",
-        detail = "void ()",
-    },
+    { name = "declared_then_defined", kind = "Function", at = "void ⟦declared_then_defined⟧();", detail = "void ()" },
+    { name = "declared_then_defined", kind = "Function", at = "void ⟦declared_then_defined⟧() {}", detail = "void ()" },
 ]
 
 [answers.extents]
 document_symbols = [
-    {
-        name = "c_api",
-        kind = "Function",
-        at = "void ⟦c_api⟧(int handle);",
-        range = "⟦void c_api(int handle)⟧;",
-    },
+    { name = "c_api", kind = "Function", at = "void ⟦c_api⟧(int handle);", range = "⟦void c_api(int handle)⟧;" },
     {
         name = "single_c",
         kind = "Function",
@@ -51,12 +31,7 @@ document_symbols = [
         at = "namespace ⟦lib⟧ {",
         range = "⟦namespace lib { … }⟧ (3 lines)",
         children = [
-            {
-                name = "Thing",
-                kind = "Struct",
-                at = "struct ⟦Thing⟧ {};",
-                range = "⟦struct Thing {}⟧;",
-            },
+            { name = "Thing", kind = "Struct", at = "struct ⟦Thing⟧ {};", range = "⟦struct Thing {}⟧;" },
         ],
     },
     {

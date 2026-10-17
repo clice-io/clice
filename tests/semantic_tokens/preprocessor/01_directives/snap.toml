@@ -33,11 +33,7 @@ semantic_tokens = [
     { at = "⟦const⟧ char* stringized = STRINGIZE(abc);", type = "keyword" },
     { at = "const ⟦char⟧* stringized = STRINGIZE(abc);", type = "primitive" },
     { at = "const char⟦*⟧ stringized = STRINGIZE(abc);", type = "operator", modifiers = ["declarator"] },
-    {
-        at = "const char* ⟦stringized⟧ = STRINGIZE(abc);",
-        type = "variable",
-        modifiers = ["definition", "global"],
-    },
+    { at = "const char* ⟦stringized⟧ = STRINGIZE(abc);", type = "variable", modifiers = ["definition", "global"] },
     { at = "const char* stringized ⟦=⟧ STRINGIZE(abc);", type = "operator" },
     { at = "const char* stringized = ⟦STRINGIZE⟧(abc);", type = "macro", modifiers = ["callable"] },
 ]

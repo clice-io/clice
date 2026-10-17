@@ -10,34 +10,20 @@ semantic_tokens = [
         modifiers = ["declaration", "readonly", "member", "userDefined"],
     },
     { at = "int operator()(⟦int⟧ left, int right) const;", type = "primitive" },
-    {
-        at = "int operator()(int ⟦left⟧, int right) const;",
-        type = "parameter",
-        modifiers = ["definition", "local"],
-    },
+    { at = "int operator()(int ⟦left⟧, int right) const;", type = "parameter", modifiers = ["definition", "local"] },
     { at = "int operator()(int left, ⟦int⟧ right) const;", type = "primitive" },
-    {
-        at = "int operator()(int left, int ⟦right⟧) const;",
-        type = "parameter",
-        modifiers = ["definition", "local"],
-    },
+    { at = "int operator()(int left, int ⟦right⟧) const;", type = "parameter", modifiers = ["definition", "local"] },
     { at = "int operator()(int left, int right) ⟦const⟧;", type = "keyword" },
     { at = "⟦struct⟧ Counter : Adder {};", type = "keyword" },
     { at = "struct ⟦Counter⟧ : Adder {};", type = "struct", modifiers = ["definition", "global"] },
     { at = "struct Counter : ⟦Adder⟧ {};", type = "struct", modifiers = ["global"] },
-    {
-        at = "⟦int⟧ apply(int (*operation)(int, int), Adder adder, Counter counter, int value) {",
-        type = "primitive",
-    },
+    { at = "⟦int⟧ apply(int (*operation)(int, int), Adder adder, Counter counter, int value) {", type = "primitive" },
     {
         at = "int ⟦apply⟧(int (*operation)(int, int), Adder adder, Counter counter, int value) {",
         type = "function",
         modifiers = ["definition", "global"],
     },
-    {
-        at = "int apply(⟦int⟧ (*operation)(int, int), Adder adder, Counter counter, int value) {",
-        type = "primitive",
-    },
+    { at = "int apply(⟦int⟧ (*operation)(int, int), Adder adder, Counter counter, int value) {", type = "primitive" },
     {
         at = "int apply(int (⟦*⟧operation)(int, int), Adder adder, Counter counter, int value) {",
         type = "operator",
@@ -48,14 +34,8 @@ semantic_tokens = [
         type = "parameter",
         modifiers = ["definition", "local", "callable"],
     },
-    {
-        at = "int apply(int (*operation)(⟦int⟧, int), Adder adder, Counter counter, int value) {",
-        type = "primitive",
-    },
-    {
-        at = "int apply(int (*operation)(int, ⟦int⟧), Adder adder, Counter counter, int value) {",
-        type = "primitive",
-    },
+    { at = "int apply(int (*operation)(⟦int⟧, int), Adder adder, Counter counter, int value) {", type = "primitive" },
+    { at = "int apply(int (*operation)(int, ⟦int⟧), Adder adder, Counter counter, int value) {", type = "primitive" },
     {
         at = "int apply(int (*operation)(int, int), ⟦Adder⟧ adder, Counter counter, int value) {",
         type = "struct",
@@ -76,10 +56,7 @@ semantic_tokens = [
         type = "parameter",
         modifiers = ["definition", "local", "callable"],
     },
-    {
-        at = "int apply(int (*operation)(int, int), Adder adder, Counter counter, ⟦int⟧ value) {",
-        type = "primitive",
-    },
+    { at = "int apply(int (*operation)(int, int), Adder adder, Counter counter, ⟦int⟧ value) {", type = "primitive" },
     {
         at = "int apply(int (*operation)(int, int), Adder adder, Counter counter, int ⟦value⟧) {",
         type = "parameter",
@@ -93,11 +70,7 @@ semantic_tokens = [
     },
     { at = "auto twice ⟦=⟧ [](int x) { return x * 2; };", type = "operator" },
     { at = "auto twice = [](⟦int⟧ x) { return x * 2; };", type = "primitive" },
-    {
-        at = "auto twice = [](int ⟦x⟧) { return x * 2; };",
-        type = "parameter",
-        modifiers = ["definition", "local"],
-    },
+    { at = "auto twice = [](int ⟦x⟧) { return x * 2; };", type = "parameter", modifiers = ["definition", "local"] },
     { at = "auto twice = [](int x) { ⟦return⟧ x * 2; };", type = "keyword", modifiers = ["controlFlow"] },
     { at = "auto twice = [](int x) { return ⟦x⟧ * 2; };", type = "parameter", modifiers = ["local"] },
     { at = "auto twice = [](int x) { return x ⟦*⟧ 2; };", type = "operator" },
@@ -105,11 +78,7 @@ semantic_tokens = [
     { at = "⟦void⟧ (Adder::*member)() = nullptr;", type = "primitive" },
     { at = "void (⟦Adder⟧::*member)() = nullptr;", type = "struct", modifiers = ["global"] },
     { at = "void (Adder::⟦*⟧member)() = nullptr;", type = "operator", modifiers = ["declarator"] },
-    {
-        at = "void (Adder::*⟦member⟧)() = nullptr;",
-        type = "variable",
-        modifiers = ["definition", "local", "callable"],
-    },
+    { at = "void (Adder::*⟦member⟧)() = nullptr;", type = "variable", modifiers = ["definition", "local", "callable"] },
     { at = "void (Adder::*member)() ⟦=⟧ nullptr;", type = "operator" },
     { at = "void (Adder::*member)() = ⟦nullptr⟧;", type = "keyword", modifiers = ["literal"] },
     {

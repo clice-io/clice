@@ -1,23 +1,13 @@
 [answers.outline]
 document_symbols = [
-    {
-        name = "convert",
-        kind = "Function",
-        at = "void ⟦convert⟧(T value) {}",
-        detail = "template void (T value)",
-    },
+    { name = "convert", kind = "Function", at = "void ⟦convert⟧(T value) {}", detail = "template void (T value)" },
     {
         name = "convert<char>",
         kind = "Function",
         at = "template void ⟦convert⟧<char>(char);",
         detail = "void (char value)",
     },
-    {
-        name = "convert",
-        kind = "Function",
-        at = "template void ⟦convert⟧(double);",
-        detail = "void (double value)",
-    },
+    { name = "convert", kind = "Function", at = "template void ⟦convert⟧(double);", detail = "void (double value)" },
     {
         name = "convert<long>",
         kind = "Function",

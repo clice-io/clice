@@ -5,12 +5,7 @@ items = [
 
 [answers.shadowed_namespace.completion]
 items = [
-    {
-        label = "::lib::versioned_value",
-        kind = "Variable",
-        detail = "int",
-        insert = "::lib::versioned_value",
-    },
+    { label = "::lib::versioned_value", kind = "Variable", detail = "int", insert = "::lib::versioned_value" },
 ]
 
 [answers.inline_namespace.completion]

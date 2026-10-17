@@ -18,16 +18,8 @@ semantic_tokens = [
     { at = "typedef struct point ⟦point_t⟧;", type = "typeAlias", modifiers = ["definition", "global"] },
     { at = "⟦enum⟧ color { RED, GREEN };", type = "keyword" },
     { at = "enum ⟦color⟧ { RED, GREEN };", type = "enum", modifiers = ["definition", "global"] },
-    {
-        at = "enum color { ⟦RED⟧, GREEN };",
-        type = "enumMember",
-        modifiers = ["definition", "readonly", "global"],
-    },
-    {
-        at = "enum color { RED, ⟦GREEN⟧ };",
-        type = "enumMember",
-        modifiers = ["definition", "readonly", "global"],
-    },
+    { at = "enum color { ⟦RED⟧, GREEN };", type = "enumMember", modifiers = ["definition", "readonly", "global"] },
+    { at = "enum color { RED, ⟦GREEN⟧ };", type = "enumMember", modifiers = ["definition", "readonly", "global"] },
     { at = "⟦static⟧ int count;", type = "keyword" },
     { at = "static ⟦int⟧ count;", type = "primitive" },
     { at = "static int ⟦count⟧;", type = "variable", modifiers = ["definition", "internal"] },
@@ -38,16 +30,8 @@ semantic_tokens = [
         modifiers = ["definition", "global"],
     },
     { at = "bool same(⟦const⟧ point_t* a, const struct point* b) {", type = "keyword" },
-    {
-        at = "bool same(const ⟦point_t⟧* a, const struct point* b) {",
-        type = "typeAlias",
-        modifiers = ["global"],
-    },
-    {
-        at = "bool same(const point_t⟦*⟧ a, const struct point* b) {",
-        type = "operator",
-        modifiers = ["declarator"],
-    },
+    { at = "bool same(const ⟦point_t⟧* a, const struct point* b) {", type = "typeAlias", modifiers = ["global"] },
+    { at = "bool same(const point_t⟦*⟧ a, const struct point* b) {", type = "operator", modifiers = ["declarator"] },
     {
         at = "bool same(const point_t* ⟦a⟧, const struct point* b) {",
         type = "parameter",
@@ -56,11 +40,7 @@ semantic_tokens = [
     { at = "bool same(const point_t* a, ⟦const⟧ struct point* b) {", type = "keyword" },
     { at = "bool same(const point_t* a, const ⟦struct⟧ point* b) {", type = "keyword" },
     { at = "bool same(const point_t* a, const struct ⟦point⟧* b) {", type = "struct", modifiers = ["global"] },
-    {
-        at = "bool same(const point_t* a, const struct point⟦*⟧ b) {",
-        type = "operator",
-        modifiers = ["declarator"],
-    },
+    { at = "bool same(const point_t* a, const struct point⟦*⟧ b) {", type = "operator", modifiers = ["declarator"] },
     {
         at = "bool same(const point_t* a, const struct point* ⟦b⟧) {",
         type = "parameter",
@@ -75,11 +55,7 @@ semantic_tokens = [
     { at = "_Bool ⟦flag⟧ = true;", type = "variable", modifiers = ["definition", "local"] },
     { at = "_Bool flag ⟦=⟧ true;", type = "operator" },
     { at = "_Bool flag = ⟦true⟧;", type = "keyword", modifiers = ["literal"] },
-    {
-        at = "⟦return⟧ a->x == b->x and c == RED && flag && count;",
-        type = "keyword",
-        modifiers = ["controlFlow"],
-    },
+    { at = "⟦return⟧ a->x == b->x and c == RED && flag && count;", type = "keyword", modifiers = ["controlFlow"] },
     { at = "return ⟦a⟧->x == b->x and c == RED && flag && count;", type = "parameter", modifiers = ["local"] },
     { at = "return a->⟦x⟧ == b->x and c == RED && flag && count;", type = "field", modifiers = ["member"] },
     { at = "return a->x ⟦==⟧ b->x and c == RED && flag && count;", type = "operator" },

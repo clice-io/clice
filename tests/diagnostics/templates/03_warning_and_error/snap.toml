@@ -26,10 +26,7 @@ diagnostics = [
         code = "err_no_member",
         related = [
             { at = "use.h │ decltype(T().⟦size⟧()) value;", message = "error occurred here" },
-            {
-                at = "use.h │ Box<T> ⟦box⟧;",
-                message = "in instantiation of template class 'Box<Old>' requested here",
-            },
+            { at = "use.h │ Box<T> ⟦box⟧;", message = "in instantiation of template class 'Box<Old>' requested here" },
             {
                 at = "int x = ⟦use⟧(Old{});",
                 message = "in instantiation of function template specialization 'use<Old>' requested here",

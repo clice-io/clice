@@ -10,11 +10,7 @@ semantic_tokens = [
     { at = "[[noreturn]] void fail(⟦const⟧ char* reason);", type = "keyword" },
     { at = "[[noreturn]] void fail(const ⟦char⟧* reason);", type = "primitive" },
     { at = "[[noreturn]] void fail(const char⟦*⟧ reason);", type = "operator", modifiers = ["declarator"] },
-    {
-        at = "[[noreturn]] void fail(const char* ⟦reason⟧);",
-        type = "parameter",
-        modifiers = ["definition", "local"],
-    },
+    { at = "[[noreturn]] void fail(const char* ⟦reason⟧);", type = "parameter", modifiers = ["definition", "local"] },
     { at = "⟦int⟧ first_positive(const int* values, int count) {", type = "primitive" },
     {
         at = "int ⟦first_positive⟧(const int* values, int count) {",
@@ -23,11 +19,7 @@ semantic_tokens = [
     },
     { at = "int first_positive(⟦const⟧ int* values, int count) {", type = "keyword" },
     { at = "int first_positive(const ⟦int⟧* values, int count) {", type = "primitive" },
-    {
-        at = "int first_positive(const int⟦*⟧ values, int count) {",
-        type = "operator",
-        modifiers = ["declarator"],
-    },
+    { at = "int first_positive(const int⟦*⟧ values, int count) {", type = "operator", modifiers = ["declarator"] },
     {
         at = "int first_positive(const int* ⟦values⟧, int count) {",
         type = "parameter",

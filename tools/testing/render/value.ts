@@ -1,8 +1,7 @@
 /// What an output holds and how snap.toml writes it: text, numbers, flags,
 /// places, lists and tables. Short values stay on a line; text spanning
 /// lines is a raw ''' string, so code, markdown and diffs read as they are,
-/// unescaped. The layout is the one tombi gives TOML 1.1 under the
-/// repository's rules (tombi.toml), so formatting leaves snap.toml as written.
+/// unescaped. A line holds 120 columns, a column a grapheme.
 
 import { parse } from "smol-toml";
 import type { Location } from "./position.ts";
@@ -127,50 +126,15 @@ function scalarLike(value: Value): boolean {
     return isList(value) ? value.length === 0 : !isTable(value) || Object.keys(value).length === 0;
 }
 
-/// Columns as tombi counts them: one a grapheme.
 function columns(text: string): number {
     return [...GRAPHEMES.segment(text)].length;
 }
 
-function oneLine(value: Value): string {
-    if (isList(value)) {
-        return `[${value.map(oneLine).join(", ")}]`;
-    }
-    if (!isTable(value)) {
-        return inline(value, "", 0, false);
-    }
-    const entries = Object.entries(value);
-    return entries.length === 0
-        ? "{}"
-        : `{ ${entries.map(([key, item]) => `${tomlKey(key)} = ${oneLine(item)}`).join(", ")} }`;
-}
-
-/// Whether tombi keeps `value` on one line, `start` columns into it: the
-/// value and each list or table in it fit from `start`, every item counted
-/// `extra` columns wider. Tombi measures a row of a list taking a line per
-/// item from the line's start, and each item in the row as wide again as
-/// the row's indentation. It measures an empty table as `{  }`, so a list
-/// ending in one needs a column more.
-function fits(value: Value, start: number, extra: number): boolean {
-    if (!isList(value) && !isTable(value)) {
-        return true;
-    }
-    const items = isList(value) ? value : Object.values(value);
-    const last = items.at(-1);
-    const tail = isList(value) && last !== undefined && isTable(last) && scalarLike(last) ? 1 : 0;
-    return (
-        start + columns(oneLine(value)) + extra * items.length + tail <= WIDTH &&
-        items.every((item) => fits(item, start, extra))
-    );
-}
-
-/// `value` written inline under `indent`, `start` columns into its line;
-/// a `row` is an item of a list taking a line per item. A list or table
-/// stays on one line while tombi keeps it there; a list of tables or
-/// lists, and anything holding text of several lines, takes a line per
-/// item. An item on a line of its own ends with a comma: tombi keeps such
-/// a list or table as it stands.
-function inline(value: Value, indent: string, start: number, row: boolean): string {
+/// `value` written inline under `indent`, its line holding `used` columns
+/// besides it. A list or table stays on one line while the line fits; a
+/// list of tables or lists, and anything holding text of several lines or
+/// not fitting, takes a line per item, each ending with a comma.
+function inline(value: Value, indent: string, used: number): string {
     if (typeof value === "string") {
         return text(value);
     }
@@ -185,16 +149,15 @@ function inline(value: Value, indent: string, start: number, row: boolean): stri
     }
     const inner = indent + INDENT;
     const items = isList(value)
-        ? value.map((item) => inline(item, inner, 0, true))
+        ? value.map((item) => inline(item, inner, inner.length + 1))
         : Object.entries(value).map(([key, item]) => {
               const head = `${tomlKey(key)} = `;
-              return head + inline(item, inner, columns(inner + head), false);
+              return head + inline(item, inner, columns(inner + head) + 1);
           });
-    const rows =
-        items.some((item) => item.includes("\n")) ||
-        (isList(value) && value.some((item) => !scalarLike(item)));
-    if (!rows && fits(value, start, row ? indent.length : 0)) {
-        return oneLine(value);
+    const flat = isList(value) ? `[${items.join(", ")}]` : `{ ${items.join(", ")} }`;
+    const rows = flat.includes("\n") || (isList(value) && value.some((item) => !scalarLike(item)));
+    if (!rows && used + columns(flat) <= WIDTH) {
+        return flat;
     }
     const [open, close] = isList(value) ? ["[", "]"] : ["{", "}"];
     return `${open}\n${items.map((item) => `${inner}${item},`).join("\n")}\n${indent}${close}`;
@@ -215,34 +178,35 @@ function spans(value: Value): boolean {
 /// entry that is a table follows as a section of its own, `[path.key]`, and
 /// a list of tables holding text of several lines as one section an item,
 /// `[[path.key]]`. A header with nothing under it but sections goes
-/// without saying, but for an item's, which sits right above its first
-/// section, as tombi sets it.
+/// without saying.
 function sections(path: readonly string[], table: Table, item = false): string[][] {
     const keys = path.map(tomlKey).join(".");
-    const header = item ? `[[${keys}]]` : `[${keys}]`;
     const entries = Object.entries(table);
     const nested = entries.filter(([, value]) => isTable(value) && !scalarLike(value));
     const rows = entries.filter(
         ([, value]) =>
             isList(value) && value.every((row) => !scalarLike(row) && isTable(row)) && spans(value),
     );
-    const body = entries
-        .filter((entry) => !nested.includes(entry) && !rows.includes(entry))
-        .map(([key, value]) => {
-            const head = `${tomlKey(key)} = `;
-            return head + inline(value, "", columns(head), false);
-        });
-    const children = [
-        ...nested.flatMap(([key, value]) => sections([...path, key], value as Table)),
-        ...rows.flatMap(([key, value]) =>
-            (value as readonly Table[]).flatMap((row) => sections([...path, key], row, true)),
-        ),
-    ];
-    const [first, ...rest] = children;
-    if (body.length > 0 || first === undefined) {
-        return [[header, ...body], ...children];
+    const flat = entries.filter((entry) => !nested.includes(entry) && !rows.includes(entry));
+    const out: string[][] = [];
+    if (item || flat.length > 0 || nested.length + rows.length === 0) {
+        out.push([
+            item ? `[[${keys}]]` : `[${keys}]`,
+            ...flat.map(([key, value]) => {
+                const head = `${tomlKey(key)} = `;
+                return head + inline(value, "", columns(head));
+            }),
+        ]);
     }
-    return item ? [[header, ...first], ...rest] : children;
+    for (const [key, value] of nested) {
+        out.push(...sections([...path, key], value as Table));
+    }
+    for (const [key, value] of rows) {
+        for (const row of value as readonly Table[]) {
+            out.push(...sections([...path, key], row, true));
+        }
+    }
+    return out;
 }
 
 /// A file of tables, `[path…]` each; empty for none. Read back, it must

@@ -21,13 +21,7 @@ call_hierarchy = [
     { name = "hits", kind = "Field", at = "int ⟦hits⟧ = 0;", detail = "Tally::hits" },
 ]
 incoming_calls = [
-    {
-        name = "bump",
-        kind = "Method",
-        at = "void ⟦bump⟧() {",
-        detail = "Tally::bump",
-        sites = ["⟦hits⟧ += 1;"],
-    },
+    { name = "bump", kind = "Method", at = "void ⟦bump⟧() {", detail = "Tally::bump", sites = ["⟦hits⟧ += 1;"] },
 ]
 outgoing_calls = []
 

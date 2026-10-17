@@ -1,10 +1,6 @@
 [answers.pos.completion]
 items = [
-    {
-        label = "draw(int x, int y) const override",
-        kind = "Method",
-        insert = "int draw(int x, int y) const override;",
-    },
+    { label = "draw(int x, int y) const override", kind = "Method", insert = "int draw(int x, int y) const override;" },
 ]
 
 [answers.inside_override.completion]

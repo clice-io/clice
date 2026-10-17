@@ -41,12 +41,7 @@ call_hierarchy = [
     { name = "target", kind = "Function", at = "int ⟦target⟧(int);", detail = "lib::target" },
 ]
 incoming_calls = [
-    {
-        name = "forward",
-        kind = "Function",
-        at = "int ⟦forward⟧(T value) {",
-        sites = ["return ⟦target⟧(value);"],
-    },
+    { name = "forward", kind = "Function", at = "int ⟦forward⟧(T value) {", sites = ["return ⟦target⟧(value);"] },
 ]
 outgoing_calls = []
 
@@ -55,12 +50,6 @@ call_hierarchy = [
     { name = "hit", kind = "Method", at = "void ⟦hit⟧(int);", detail = "Base::hit" },
 ]
 incoming_calls = [
-    {
-        name = "run",
-        kind = "Method",
-        at = "void ⟦run⟧() {",
-        detail = "Runner::run",
-        sites = ["this->⟦hit⟧(1);"],
-    },
+    { name = "run", kind = "Method", at = "void ⟦run⟧() {", detail = "Runner::run", sites = ["this->⟦hit⟧(1);"] },
 ]
 outgoing_calls = []

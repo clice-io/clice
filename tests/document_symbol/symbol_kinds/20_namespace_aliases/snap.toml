@@ -10,34 +10,19 @@ document_symbols = [
                 kind = "Namespace",
                 at = "namespace ⟦planar⟧ {",
                 children = [
-                    {
-                        name = "Point",
-                        kind = "Struct",
-                        at = "struct ⟦Point⟧ {};",
-                        detail = "struct",
-                    },
+                    { name = "Point", kind = "Struct", at = "struct ⟦Point⟧ {};", detail = "struct" },
                 ],
             },
         ],
     },
-    {
-        name = "geo",
-        kind = "Namespace",
-        at = "namespace ⟦geo⟧ = geometry::planar;",
-        detail = "namespace alias",
-    },
+    { name = "geo", kind = "Namespace", at = "namespace ⟦geo⟧ = geometry::planar;", detail = "namespace alias" },
     {
         name = "draw",
         kind = "Function",
         at = "void ⟦draw⟧() {",
         detail = "void ()",
         children = [
-            {
-                name = "local",
-                kind = "Namespace",
-                at = "namespace ⟦local⟧ = geometry;",
-                detail = "namespace alias",
-            },
+            { name = "local", kind = "Namespace", at = "namespace ⟦local⟧ = geometry;", detail = "namespace alias" },
         ],
     },
 ]
@@ -56,12 +41,7 @@ document_symbols = [
                 at = "namespace ⟦planar⟧ {",
                 range = "⟦namespace planar { … }⟧ (3 lines)",
                 children = [
-                    {
-                        name = "Point",
-                        kind = "Struct",
-                        at = "struct ⟦Point⟧ {};",
-                        range = "⟦struct Point {}⟧;",
-                    },
+                    { name = "Point", kind = "Struct", at = "struct ⟦Point⟧ {};", range = "⟦struct Point {}⟧;" },
                 ],
             },
         ],

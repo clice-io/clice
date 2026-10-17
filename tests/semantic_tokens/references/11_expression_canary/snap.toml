@@ -7,11 +7,7 @@ semantic_tokens = [
     { at = "⟦enum⟧ class Color { Red };", type = "keyword" },
     { at = "enum ⟦class⟧ Color { Red };", type = "keyword" },
     { at = "enum class ⟦Color⟧ { Red };", type = "enum", modifiers = ["definition", "global"] },
-    {
-        at = "enum class Color { ⟦Red⟧ };",
-        type = "enumMember",
-        modifiers = ["definition", "readonly", "global"],
-    },
+    { at = "enum class Color { ⟦Red⟧ };", type = "enumMember", modifiers = ["definition", "readonly", "global"] },
     { at = "⟦struct⟧ Shape {", type = "keyword" },
     { at = "struct ⟦Shape⟧ {", type = "struct", modifiers = ["definition", "global"] },
     { at = "⟦int⟧ sides;", type = "primitive" },
@@ -52,18 +48,10 @@ semantic_tokens = [
     { at = "[[maybe_unused]] int a = area(2 * 2, square.⟦sides⟧);", type = "field", modifiers = ["member"] },
     { at = "[[⟦maybe_unused⟧]] bool red = c == Color::Red;", type = "attribute" },
     { at = "[[maybe_unused]] ⟦bool⟧ red = c == Color::Red;", type = "primitive" },
-    {
-        at = "[[maybe_unused]] bool ⟦red⟧ = c == Color::Red;",
-        type = "variable",
-        modifiers = ["definition", "local"],
-    },
+    { at = "[[maybe_unused]] bool ⟦red⟧ = c == Color::Red;", type = "variable", modifiers = ["definition", "local"] },
     { at = "[[maybe_unused]] bool red ⟦=⟧ c == Color::Red;", type = "operator" },
     { at = "[[maybe_unused]] bool red = ⟦c⟧ == Color::Red;", type = "variable", modifiers = ["local"] },
     { at = "[[maybe_unused]] bool red = c ⟦==⟧ Color::Red;", type = "operator" },
     { at = "[[maybe_unused]] bool red = c == ⟦Color⟧::Red;", type = "enum", modifiers = ["global"] },
-    {
-        at = "[[maybe_unused]] bool red = c == Color::⟦Red⟧;",
-        type = "enumMember",
-        modifiers = ["readonly", "global"],
-    },
+    { at = "[[maybe_unused]] bool red = c == Color::⟦Red⟧;", type = "enumMember", modifiers = ["readonly", "global"] },
 ]

@@ -6,12 +6,7 @@ document_symbols = [
         at = "struct ⟦Flags⟧ {",
         detail = "struct",
         children = [
-            {
-                name = "ready",
-                kind = "Field",
-                at = "int ⟦ready⟧ : 1;",
-                detail = "int",
-            },
+            { name = "ready", kind = "Field", at = "int ⟦ready⟧ : 1;", detail = "int" },
         ],
     },
     {
@@ -20,12 +15,7 @@ document_symbols = [
         at = "void ⟦guarded⟧() {",
         detail = "void ()",
         children = [
-            {
-                name = "code",
-                kind = "Variable",
-                at = "} catch(int ⟦code⟧) {",
-                detail = "int",
-            },
+            { name = "code", kind = "Variable", at = "} catch(int ⟦code⟧) {", detail = "int" },
         ],
     },
 ]
@@ -38,12 +28,7 @@ document_symbols = [
         at = "struct ⟦Flags⟧ {",
         range = "⟦struct Flags { … }⟧ (4 lines)",
         children = [
-            {
-                name = "ready",
-                kind = "Field",
-                at = "int ⟦ready⟧ : 1;",
-                range = "⟦int ready : 1⟧;",
-            },
+            { name = "ready", kind = "Field", at = "int ⟦ready⟧ : 1;", range = "⟦int ready : 1⟧;" },
         ],
     },
     {
@@ -52,12 +37,7 @@ document_symbols = [
         at = "void ⟦guarded⟧() {",
         range = "⟦void guarded() { … }⟧ (6 lines)",
         children = [
-            {
-                name = "code",
-                kind = "Variable",
-                at = "} catch(int ⟦code⟧) {",
-                range = "} catch(⟦int code⟧) {",
-            },
+            { name = "code", kind = "Variable", at = "} catch(int ⟦code⟧) {", range = "} catch(⟦int code⟧) {" },
         ],
     },
 ]

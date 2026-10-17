@@ -16,12 +16,7 @@ document_symbols = [
         detail = "struct",
         children = [
             { name = "CONFIG_VERSION", kind = "Constant", at = "#define ⟦CONFIG_VERSION⟧ 3" },
-            {
-                name = "version",
-                kind = "Field",
-                at = "int ⟦version⟧ = CONFIG_VERSION;",
-                detail = "int",
-            },
+            { name = "version", kind = "Field", at = "int ⟦version⟧ = CONFIG_VERSION;", detail = "int" },
         ],
     },
 ]

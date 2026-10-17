@@ -11,24 +11,9 @@ document_symbols = [
                 at = "struct ⟦Point⟧ {",
                 detail = "struct",
                 children = [
-                    {
-                        name = "x",
-                        kind = "Field",
-                        at = "int ⟦x⟧;",
-                        detail = "int",
-                    },
-                    {
-                        name = "y",
-                        kind = "Field",
-                        at = "int ⟦y⟧;",
-                        detail = "int",
-                    },
-                    {
-                        name = "manhattan",
-                        kind = "Method",
-                        at = "int ⟦manhattan⟧() const;",
-                        detail = "int () const",
-                    },
+                    { name = "x", kind = "Field", at = "int ⟦x⟧;", detail = "int" },
+                    { name = "y", kind = "Field", at = "int ⟦y⟧;", detail = "int" },
+                    { name = "manhattan", kind = "Method", at = "int ⟦manhattan⟧() const;", detail = "int () const" },
                 ],
             },
             {
@@ -43,18 +28,8 @@ document_symbols = [
                 at = "enum class ⟦Axis⟧ { X, Y };",
                 detail = "enum",
                 children = [
-                    {
-                        name = "X",
-                        kind = "EnumMember",
-                        at = "enum class Axis { ⟦X⟧, Y };",
-                        detail = "Axis",
-                    },
-                    {
-                        name = "Y",
-                        kind = "EnumMember",
-                        at = "enum class Axis { X, ⟦Y⟧ };",
-                        detail = "Axis",
-                    },
+                    { name = "X", kind = "EnumMember", at = "enum class Axis { ⟦X⟧, Y };", detail = "Axis" },
+                    { name = "Y", kind = "EnumMember", at = "enum class Axis { X, ⟦Y⟧ };", detail = "Axis" },
                 ],
             },
             {
@@ -68,12 +43,7 @@ document_symbols = [
                 kind = "Namespace",
                 at = "namespace ⟦inner⟧ {",
                 children = [
-                    {
-                        name = "level",
-                        kind = "Variable",
-                        at = "constexpr int ⟦level⟧ = 2;",
-                        detail = "const int",
-                    },
+                    { name = "level", kind = "Variable", at = "constexpr int ⟦level⟧ = 2;", detail = "const int" },
                 ],
             },
         ],
@@ -83,12 +53,7 @@ document_symbols = [
         kind = "Namespace",
         at = "namespace ⟦demo⟧ { @24",
         children = [
-            {
-                name = "reopened",
-                kind = "Function",
-                at = "int ⟦reopened⟧();",
-                detail = "int ()",
-            },
+            { name = "reopened", kind = "Function", at = "int ⟦reopened⟧();", detail = "int ()" },
         ],
     },
     {
@@ -101,12 +66,7 @@ document_symbols = [
                 kind = "Namespace",
                 at = "namespace demo::⟦nested⟧ {",
                 children = [
-                    {
-                        name = "compact",
-                        kind = "Function",
-                        at = "int ⟦compact⟧();",
-                        detail = "int ()",
-                    },
+                    { name = "compact", kind = "Function", at = "int ⟦compact⟧();", detail = "int ()" },
                 ],
             },
         ],
@@ -127,18 +87,8 @@ document_symbols = [
                 at = "struct ⟦Point⟧ {",
                 range = "⟦struct Point { … }⟧ (6 lines)",
                 children = [
-                    {
-                        name = "x",
-                        kind = "Field",
-                        at = "int ⟦x⟧;",
-                        range = "⟦int x⟧;",
-                    },
-                    {
-                        name = "y",
-                        kind = "Field",
-                        at = "int ⟦y⟧;",
-                        range = "⟦int y⟧;",
-                    },
+                    { name = "x", kind = "Field", at = "int ⟦x⟧;", range = "⟦int x⟧;" },
+                    { name = "y", kind = "Field", at = "int ⟦y⟧;", range = "⟦int y⟧;" },
                     {
                         name = "manhattan",
                         kind = "Method",
@@ -201,12 +151,7 @@ document_symbols = [
         at = "namespace ⟦demo⟧ { @24",
         range = "⟦namespace demo { … }⟧ (3 lines)",
         children = [
-            {
-                name = "reopened",
-                kind = "Function",
-                at = "int ⟦reopened⟧();",
-                range = "⟦int reopened()⟧;",
-            },
+            { name = "reopened", kind = "Function", at = "int ⟦reopened⟧();", range = "⟦int reopened()⟧;" },
         ],
     },
     {
@@ -221,12 +166,7 @@ document_symbols = [
                 at = "namespace demo::⟦nested⟧ {",
                 range = "namespace demo⟦::nested { … }⟧ (3 lines)",
                 children = [
-                    {
-                        name = "compact",
-                        kind = "Function",
-                        at = "int ⟦compact⟧();",
-                        range = "⟦int compact()⟧;",
-                    },
+                    { name = "compact", kind = "Function", at = "int ⟦compact⟧();", range = "⟦int compact()⟧;" },
                 ],
             },
         ],

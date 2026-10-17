@@ -10,11 +10,6 @@ call_hierarchy = [
     { name = "draw", kind = "Method", at = "void ⟦draw⟧() override;", detail = "Derived::draw" },
 ]
 incoming_calls = [
-    {
-        name = "call_derived",
-        kind = "Function",
-        at = "void ⟦call_derived⟧(Derived& d) {",
-        sites = ["d.⟦draw⟧();"],
-    },
+    { name = "call_derived", kind = "Function", at = "void ⟦call_derived⟧(Derived& d) {", sites = ["d.⟦draw⟧();"] },
 ]
 outgoing_calls = []

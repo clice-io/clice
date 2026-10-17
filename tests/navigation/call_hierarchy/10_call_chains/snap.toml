@@ -17,12 +17,7 @@ call_hierarchy = [
     { name = "route", kind = "Function", at = "int ⟦route⟧(int value) {" },
 ]
 incoming_calls = [
-    {
-        name = "start",
-        kind = "Function",
-        at = "int ⟦start⟧(int value) {",
-        sites = ["return ⟦route⟧(value);"],
-    },
+    { name = "start", kind = "Function", at = "int ⟦start⟧(int value) {", sites = ["return ⟦route⟧(value);"] },
     {
         name = "restart",
         kind = "Function",
@@ -45,12 +40,7 @@ call_hierarchy = [
 ]
 incoming_calls = []
 outgoing_calls = [
-    {
-        name = "route",
-        kind = "Function",
-        at = "int ⟦route⟧(int value) {",
-        sites = ["return ⟦route⟧(value);"],
-    },
+    { name = "route", kind = "Function", at = "int ⟦route⟧(int value) {", sites = ["return ⟦route⟧(value);"] },
 ]
 
 [answers.recursive]

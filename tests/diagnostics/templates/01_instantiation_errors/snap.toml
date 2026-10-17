@@ -12,10 +12,7 @@ diagnostics = [
                 at = "box.h │ ⟦touch⟧(t);",
                 message = "in instantiation of function template specialization 'touch<int>' requested here",
             },
-            {
-                at = "ints.⟦put⟧(1);",
-                message = "in instantiation of member function 'Box<int>::put' requested here",
-            },
+            { at = "ints.⟦put⟧(1);", message = "in instantiation of member function 'Box<int>::put' requested here" },
         ],
     },
 ]

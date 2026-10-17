@@ -27,16 +27,8 @@ document_symbols = [
                 at = "struct ⟦Circle⟧ {",
                 children = [
                     { name = "radius", kind = "Field", at = "double ⟦radius⟧;" },
-                    {
-                        name = "area",
-                        kind = "Method",
-                        at = "double ⟦area⟧() const;",
-                    },
-                    {
-                        name = "operator==",
-                        kind = "String",
-                        at = "bool ⟦operator==⟧(const Circle& other) const;",
-                    },
+                    { name = "area", kind = "Method", at = "double ⟦area⟧() const;" },
+                    { name = "operator==", kind = "String", at = "bool ⟦operator==⟧(const Circle& other) const;" },
                 ],
             },
             {
@@ -44,11 +36,7 @@ document_symbols = [
                 kind = "Enum",
                 at = "enum class ⟦Kind⟧ { Round };",
                 children = [
-                    {
-                        name = "Round",
-                        kind = "Enum",
-                        at = "enum class Kind { ⟦Round⟧ };",
-                    },
+                    { name = "Round", kind = "Enum", at = "enum class Kind { ⟦Round⟧ };" },
                 ],
             },
         ],

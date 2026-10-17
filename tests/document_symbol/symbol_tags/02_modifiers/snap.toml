@@ -21,13 +21,7 @@ document_symbols = [
                 detail = "static int ()",
                 tags = [],
             },
-            {
-                name = "id",
-                kind = "Field",
-                at = "int ⟦id⟧;",
-                detail = "int",
-                tags = [],
-            },
+            { name = "id", kind = "Field", at = "int ⟦id⟧;", detail = "int", tags = [] },
         ],
     },
 ]

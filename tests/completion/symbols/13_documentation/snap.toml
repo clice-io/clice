@@ -15,12 +15,7 @@ Returns the reading in **millivolts**.
 
 ["markdown client".instantiated_member.completion]
 items = [
-    {
-        label = "last_value",
-        kind = "Field",
-        detail = "int",
-        documentation = "The last value the probe took.",
-    },
+    { label = "last_value", kind = "Field", detail = "int", documentation = "The last value the probe took." },
 ]
 
 [["plain text client".function.completion.items]]

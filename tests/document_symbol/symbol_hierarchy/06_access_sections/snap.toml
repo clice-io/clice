@@ -6,25 +6,10 @@ document_symbols = [
         at = "class ⟦Widget⟧ {",
         detail = "class",
         children = [
-            {
-                name = "draw",
-                kind = "Method",
-                at = "void ⟦draw⟧();",
-                detail = "void ()",
-            },
-            {
-                name = "resize",
-                kind = "Method",
-                at = "void ⟦resize⟧();",
-                detail = "void ()",
-            },
+            { name = "draw", kind = "Method", at = "void ⟦draw⟧();", detail = "void ()" },
+            { name = "resize", kind = "Method", at = "void ⟦resize⟧();", detail = "void ()" },
             { name = "width", kind = "Field", at = "int ⟦width⟧;", detail = "int" },
-            {
-                name = "height",
-                kind = "Field",
-                at = "int ⟦height⟧;",
-                detail = "int",
-            },
+            { name = "height", kind = "Field", at = "int ⟦height⟧;", detail = "int" },
         ],
     },
 ]
@@ -37,30 +22,10 @@ document_symbols = [
         at = "class ⟦Widget⟧ {",
         range = "⟦class Widget { … }⟧ (9 lines)",
         children = [
-            {
-                name = "draw",
-                kind = "Method",
-                at = "void ⟦draw⟧();",
-                range = "⟦void draw()⟧;",
-            },
-            {
-                name = "resize",
-                kind = "Method",
-                at = "void ⟦resize⟧();",
-                range = "⟦void resize()⟧;",
-            },
-            {
-                name = "width",
-                kind = "Field",
-                at = "int ⟦width⟧;",
-                range = "⟦int width⟧;",
-            },
-            {
-                name = "height",
-                kind = "Field",
-                at = "int ⟦height⟧;",
-                range = "⟦int height⟧;",
-            },
+            { name = "draw", kind = "Method", at = "void ⟦draw⟧();", range = "⟦void draw()⟧;" },
+            { name = "resize", kind = "Method", at = "void ⟦resize⟧();", range = "⟦void resize()⟧;" },
+            { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
+            { name = "height", kind = "Field", at = "int ⟦height⟧;", range = "⟦int height⟧;" },
         ],
     },
 ]

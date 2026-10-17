@@ -8,11 +8,14 @@ indent-width = 4
 line-width = 120
 string-quote-style = "preserve"
 
-# Case inputs are test data, some malformed on purpose: like tests/.fdignore,
-# tooling neither lints nor rewrites them. snap.toml is the exception: the case
-# framework writes it as tombi formats it.
+# Case inputs are test data: like tests/.fdignore, tooling never rewrites them.
+# snap.toml, which the case framework writes, is linted; the rest, some
+# malformed on purpose, is not. The first override a file matches applies.
+[[overrides]]
+files.include = ["tests/*/*/*/snap.toml"]
+format.enabled = false
+
 [[overrides]]
 files.include = ["tests/*/*/*/**"]
-files.exclude = ["tests/*/*/*/snap.toml"]
 format.enabled = false
 lint.enabled = false

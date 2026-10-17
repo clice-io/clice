@@ -5,48 +5,18 @@ document_symbols = [
         kind = "Namespace",
         at = "namespace ⟦aliases⟧ {",
         children = [
-            {
-                name = "Widget",
-                kind = "Struct",
-                at = "struct ⟦Widget⟧ {};",
-                detail = "struct",
-            },
-            {
-                name = "LegacyWidget",
-                kind = "Class",
-                at = "typedef Widget ⟦LegacyWidget⟧;",
-                detail = "type alias",
-            },
-            {
-                name = "ModernWidget",
-                kind = "Class",
-                at = "using ⟦ModernWidget⟧ = Widget;",
-                detail = "type alias",
-            },
-            {
-                name = "Box",
-                kind = "Struct",
-                at = "struct ⟦Box⟧ {};",
-                detail = "template struct",
-            },
-            {
-                name = "BoxOf",
-                kind = "Class",
-                at = "using ⟦BoxOf⟧ = Box<T>;",
-                detail = "template type alias",
-            },
+            { name = "Widget", kind = "Struct", at = "struct ⟦Widget⟧ {};", detail = "struct" },
+            { name = "LegacyWidget", kind = "Class", at = "typedef Widget ⟦LegacyWidget⟧;", detail = "type alias" },
+            { name = "ModernWidget", kind = "Class", at = "using ⟦ModernWidget⟧ = Widget;", detail = "type alias" },
+            { name = "Box", kind = "Struct", at = "struct ⟦Box⟧ {};", detail = "template struct" },
+            { name = "BoxOf", kind = "Class", at = "using ⟦BoxOf⟧ = Box<T>;", detail = "template type alias" },
             {
                 name = "Holder",
                 kind = "Struct",
                 at = "struct ⟦Holder⟧ {",
                 detail = "struct",
                 children = [
-                    {
-                        name = "Inner",
-                        kind = "Class",
-                        at = "using ⟦Inner⟧ = Widget;",
-                        detail = "type alias",
-                    },
+                    { name = "Inner", kind = "Class", at = "using ⟦Inner⟧ = Widget;", detail = "type alias" },
                 ],
             },
         ],
@@ -61,12 +31,7 @@ document_symbols = [
         at = "namespace ⟦aliases⟧ {",
         range = "⟦namespace aliases { … }⟧ (19 lines)",
         children = [
-            {
-                name = "Widget",
-                kind = "Struct",
-                at = "struct ⟦Widget⟧ {};",
-                range = "⟦struct Widget {}⟧;",
-            },
+            { name = "Widget", kind = "Struct", at = "struct ⟦Widget⟧ {};", range = "⟦struct Widget {}⟧;" },
             {
                 name = "LegacyWidget",
                 kind = "Class",

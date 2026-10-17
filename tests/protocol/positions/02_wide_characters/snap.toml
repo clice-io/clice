@@ -30,23 +30,11 @@ highlights = [
 [test.tokens]
 semantic_tokens = [
     { at = "⟦int⟧ add(int a, int b) { return a + b; }", type = "primitive" },
-    {
-        at = "int ⟦add⟧(int a, int b) { return a + b; }",
-        type = "function",
-        modifiers = ["definition", "global"],
-    },
+    { at = "int ⟦add⟧(int a, int b) { return a + b; }", type = "function", modifiers = ["definition", "global"] },
     { at = "int add(⟦int⟧ a, int b) { return a + b; }", type = "primitive" },
-    {
-        at = "int add(int ⟦a⟧, int b) { return a + b; }",
-        type = "parameter",
-        modifiers = ["definition", "local"],
-    },
+    { at = "int add(int ⟦a⟧, int b) { return a + b; }", type = "parameter", modifiers = ["definition", "local"] },
     { at = "int add(int a, ⟦int⟧ b) { return a + b; }", type = "primitive" },
-    {
-        at = "int add(int a, int ⟦b⟧) { return a + b; }",
-        type = "parameter",
-        modifiers = ["definition", "local"],
-    },
+    { at = "int add(int a, int ⟦b⟧) { return a + b; }", type = "parameter", modifiers = ["definition", "local"] },
     { at = "int add(int a, int b) { ⟦return⟧ a + b; }", type = "keyword", modifiers = ["controlFlow"] },
     { at = "int add(int a, int b) { return ⟦a⟧ + b; }", type = "parameter", modifiers = ["local"] },
     { at = "int add(int a, int b) { return a ⟦+⟧ b; }", type = "operator" },

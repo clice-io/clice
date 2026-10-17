@@ -11,24 +11,14 @@ document_symbols = [
                 at = "struct ⟦Outer⟧ {",
                 detail = "struct",
                 children = [
-                    {
-                        name = "Inner",
-                        kind = "Struct",
-                        at = "struct ⟦Inner⟧ {};",
-                        detail = "struct",
-                    },
+                    { name = "Inner", kind = "Struct", at = "struct ⟦Inner⟧ {};", detail = "struct" },
                     {
                         name = "Box",
                         kind = "Struct",
                         at = "template <typename T> struct ⟦Box⟧ {};",
                         detail = "template struct",
                     },
-                    {
-                        name = "Alias",
-                        kind = "Class",
-                        at = "using ⟦Alias⟧ = int;",
-                        detail = "type alias",
-                    },
+                    { name = "Alias", kind = "Class", at = "using ⟦Alias⟧ = int;", detail = "type alias" },
                 ],
             },
             {
@@ -37,24 +27,9 @@ document_symbols = [
                 at = "struct ⟦User⟧ {",
                 detail = "struct",
                 children = [
-                    {
-                        name = "plain",
-                        kind = "Field",
-                        at = "Outer::Inner ⟦plain⟧;",
-                        detail = "Outer::Inner",
-                    },
-                    {
-                        name = "boxed",
-                        kind = "Field",
-                        at = "Outer::Box<int> ⟦boxed⟧;",
-                        detail = "Outer::Box<int>",
-                    },
-                    {
-                        name = "aliased",
-                        kind = "Field",
-                        at = "Outer::Alias ⟦aliased⟧;",
-                        detail = "Outer::Alias",
-                    },
+                    { name = "plain", kind = "Field", at = "Outer::Inner ⟦plain⟧;", detail = "Outer::Inner" },
+                    { name = "boxed", kind = "Field", at = "Outer::Box<int> ⟦boxed⟧;", detail = "Outer::Box<int>" },
+                    { name = "aliased", kind = "Field", at = "Outer::Alias ⟦aliased⟧;", detail = "Outer::Alias" },
                     {
                         name = "frozen",
                         kind = "Field",
@@ -75,12 +50,7 @@ document_symbols = [
                 at = "struct ⟦Holder⟧ {",
                 detail = "template struct",
                 children = [
-                    {
-                        name = "value",
-                        kind = "Field",
-                        at = "typename T::type ⟦value⟧;",
-                        detail = "typename T::type",
-                    },
+                    { name = "value", kind = "Field", at = "typename T::type ⟦value⟧;", detail = "typename T::type" },
                     {
                         name = "deep",
                         kind = "Field",
@@ -113,24 +83,14 @@ document_symbols = [
                 at = "struct ⟦Outer⟧ {",
                 range = "⟦struct Outer { … }⟧ (5 lines)",
                 children = [
-                    {
-                        name = "Inner",
-                        kind = "Struct",
-                        at = "struct ⟦Inner⟧ {};",
-                        range = "⟦struct Inner {}⟧;",
-                    },
+                    { name = "Inner", kind = "Struct", at = "struct ⟦Inner⟧ {};", range = "⟦struct Inner {}⟧;" },
                     {
                         name = "Box",
                         kind = "Struct",
                         at = "template <typename T> struct ⟦Box⟧ {};",
                         range = "⟦template <typename T> struct Box {}⟧;",
                     },
-                    {
-                        name = "Alias",
-                        kind = "Class",
-                        at = "using ⟦Alias⟧ = int;",
-                        range = "⟦using Alias = int⟧;",
-                    },
+                    { name = "Alias", kind = "Class", at = "using ⟦Alias⟧ = int;", range = "⟦using Alias = int⟧;" },
                 ],
             },
             {
@@ -139,12 +99,7 @@ document_symbols = [
                 at = "struct ⟦User⟧ {",
                 range = "⟦struct User { … }⟧ (6 lines)",
                 children = [
-                    {
-                        name = "plain",
-                        kind = "Field",
-                        at = "Outer::Inner ⟦plain⟧;",
-                        range = "⟦Outer::Inner plain⟧;",
-                    },
+                    { name = "plain", kind = "Field", at = "Outer::Inner ⟦plain⟧;", range = "⟦Outer::Inner plain⟧;" },
                     {
                         name = "boxed",
                         kind = "Field",

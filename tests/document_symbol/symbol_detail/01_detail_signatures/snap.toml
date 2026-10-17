@@ -5,12 +5,7 @@ document_symbols = [
         kind = "Namespace",
         at = "namespace ⟦detail⟧ {",
         children = [
-            {
-                name = "process",
-                kind = "Function",
-                at = "void ⟦process⟧(int x);",
-                detail = "void (int x)",
-            },
+            { name = "process", kind = "Function", at = "void ⟦process⟧(int x);", detail = "void (int x)" },
             {
                 name = "process",
                 kind = "Function",
@@ -23,18 +18,8 @@ document_symbols = [
                 at = "struct ⟦Task⟧ {",
                 detail = "struct",
                 children = [
-                    {
-                        name = "Task",
-                        kind = "Method",
-                        at = "⟦Task⟧();",
-                        detail = "()",
-                    },
-                    {
-                        name = "Task",
-                        kind = "Method",
-                        at = "⟦Task⟧(int priority);",
-                        detail = "(int priority)",
-                    },
+                    { name = "Task", kind = "Method", at = "⟦Task⟧();", detail = "()" },
+                    { name = "Task", kind = "Method", at = "⟦Task⟧(int priority);", detail = "(int priority)" },
                     {
                         name = "run",
                         kind = "Method",
@@ -55,12 +40,7 @@ document_symbols = [
         at = "namespace ⟦detail⟧ {",
         range = "⟦namespace detail { … }⟧ (13 lines)",
         children = [
-            {
-                name = "process",
-                kind = "Function",
-                at = "void ⟦process⟧(int x);",
-                range = "⟦void process(int x)⟧;",
-            },
+            { name = "process", kind = "Function", at = "void ⟦process⟧(int x);", range = "⟦void process(int x)⟧;" },
             {
                 name = "process",
                 kind = "Function",
@@ -73,18 +53,8 @@ document_symbols = [
                 at = "struct ⟦Task⟧ {",
                 range = "⟦struct Task { … }⟧ (6 lines)",
                 children = [
-                    {
-                        name = "Task",
-                        kind = "Method",
-                        at = "⟦Task⟧();",
-                        range = "⟦Task()⟧;",
-                    },
-                    {
-                        name = "Task",
-                        kind = "Method",
-                        at = "⟦Task⟧(int priority);",
-                        range = "⟦Task(int priority)⟧;",
-                    },
+                    { name = "Task", kind = "Method", at = "⟦Task⟧();", range = "⟦Task()⟧;" },
+                    { name = "Task", kind = "Method", at = "⟦Task⟧(int priority);", range = "⟦Task(int priority)⟧;" },
                     {
                         name = "run",
                         kind = "Method",

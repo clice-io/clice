@@ -57,19 +57,13 @@ inlay_hints = [
             {
                 label = "first:",
                 links = [
-                    {
-                        value = "first",
-                        target = "int spread(auto ⟦first⟧, auto... rest, auto last) {",
-                    },
+                    { value = "first", target = "int spread(auto ⟦first⟧, auto... rest, auto last) {" },
                 ],
             },
             {
                 label = "last:",
                 links = [
-                    {
-                        value = "last",
-                        target = "int spread(auto first, auto... rest, auto ⟦last⟧) {",
-                    },
+                    { value = "last", target = "int spread(auto first, auto... rest, auto ⟦last⟧) {" },
                 ],
             },
         ],

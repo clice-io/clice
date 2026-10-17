@@ -1,19 +1,9 @@
 [answers.angled.completion]
 items = [
-    {
-        label = "snap_header.h",
-        kind = "File",
-        insert = "snap_header.h>",
-        replace = "#if __has_include(<⟦snap>⟧)",
-    },
+    { label = "snap_header.h", kind = "File", insert = "snap_header.h>", replace = "#if __has_include(<⟦snap>⟧)" },
 ]
 
 [answers.quoted.completion]
 items = [
-    {
-        label = "snap_header.h",
-        kind = "File",
-        insert = 'snap_header.h"',
-        replace = '#if __has_include("⟦snap"⟧)',
-    },
+    { label = "snap_header.h", kind = "File", insert = 'snap_header.h"', replace = '#if __has_include("⟦snap"⟧)' },
 ]

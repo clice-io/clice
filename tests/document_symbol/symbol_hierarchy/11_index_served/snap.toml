@@ -19,42 +19,17 @@ document_symbols = [
                 at = "struct ⟦Box⟧ {",
                 range = "⟦template <typename T> … }⟧ (10 lines)",
                 children = [
-                    {
-                        name = "value",
-                        kind = "Field",
-                        at = "T ⟦value⟧;",
-                        range = "⟦T value⟧;",
-                    },
-                    {
-                        name = "first",
-                        kind = "Field",
-                        at = "int ⟦first⟧, second;",
-                        range = "⟦int first⟧, second;",
-                    },
-                    {
-                        name = "second",
-                        kind = "Field",
-                        at = "int first, ⟦second⟧;",
-                        range = "⟦int first, second⟧;",
-                    },
+                    { name = "value", kind = "Field", at = "T ⟦value⟧;", range = "⟦T value⟧;" },
+                    { name = "first", kind = "Field", at = "int ⟦first⟧, second;", range = "⟦int first⟧, second;" },
+                    { name = "second", kind = "Field", at = "int first, ⟦second⟧;", range = "⟦int first, second⟧;" },
                     {
                         name = "FIELDS",
                         kind = "Constant",
                         at = "⟦FIELDS⟧",
                         range = "⟦FIELDS⟧",
                         children = [
-                            {
-                                name = "generated_a",
-                                kind = "Field",
-                                at = "⟦FIELDS⟧",
-                                range = "⟦FIELDS⟧",
-                            },
-                            {
-                                name = "generated_b",
-                                kind = "Field",
-                                at = "⟦FIELDS⟧",
-                                range = "⟦FIELDS⟧",
-                            },
+                            { name = "generated_a", kind = "Field", at = "⟦FIELDS⟧", range = "⟦FIELDS⟧" },
+                            { name = "generated_b", kind = "Field", at = "⟦FIELDS⟧", range = "⟦FIELDS⟧" },
                         ],
                     },
                     {
@@ -83,20 +58,10 @@ document_symbols = [
                 at = "} ⟦Size⟧;",
                 range = "⟦typedef struct { … } Size⟧ (3 lines)",
                 children = [
-                    {
-                        name = "width",
-                        kind = "Field",
-                        at = "int ⟦width⟧;",
-                        range = "⟦int width⟧;",
-                    },
+                    { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
                 ],
             },
-            {
-                name = "alias",
-                kind = "Namespace",
-                at = "namespace ⟦alias⟧ = app;",
-                range = "⟦namespace alias = app⟧;",
-            },
+            { name = "alias", kind = "Namespace", at = "namespace ⟦alias⟧ = app;", range = "⟦namespace alias = app⟧;" },
             {
                 name = "scale",
                 kind = "Function",
@@ -136,42 +101,17 @@ document_symbols = [
                 at = "struct ⟦Box⟧ {",
                 range = "⟦template <typename T> … }⟧ (10 lines)",
                 children = [
-                    {
-                        name = "value",
-                        kind = "Field",
-                        at = "T ⟦value⟧;",
-                        range = "⟦T value⟧;",
-                    },
-                    {
-                        name = "first",
-                        kind = "Field",
-                        at = "int ⟦first⟧, second;",
-                        range = "⟦int first⟧, second;",
-                    },
-                    {
-                        name = "second",
-                        kind = "Field",
-                        at = "int first, ⟦second⟧;",
-                        range = "⟦int first, second⟧;",
-                    },
+                    { name = "value", kind = "Field", at = "T ⟦value⟧;", range = "⟦T value⟧;" },
+                    { name = "first", kind = "Field", at = "int ⟦first⟧, second;", range = "⟦int first⟧, second;" },
+                    { name = "second", kind = "Field", at = "int first, ⟦second⟧;", range = "⟦int first, second⟧;" },
                     {
                         name = "FIELDS",
                         kind = "Constant",
                         at = "⟦FIELDS⟧",
                         range = "⟦FIELDS⟧",
                         children = [
-                            {
-                                name = "generated_a",
-                                kind = "Field",
-                                at = "⟦FIELDS⟧",
-                                range = "⟦FIELDS⟧",
-                            },
-                            {
-                                name = "generated_b",
-                                kind = "Field",
-                                at = "⟦FIELDS⟧",
-                                range = "⟦FIELDS⟧",
-                            },
+                            { name = "generated_a", kind = "Field", at = "⟦FIELDS⟧", range = "⟦FIELDS⟧" },
+                            { name = "generated_b", kind = "Field", at = "⟦FIELDS⟧", range = "⟦FIELDS⟧" },
                         ],
                     },
                     {
@@ -200,20 +140,10 @@ document_symbols = [
                 at = "} ⟦Size⟧;",
                 range = "⟦typedef struct { … } Size⟧ (3 lines)",
                 children = [
-                    {
-                        name = "width",
-                        kind = "Field",
-                        at = "int ⟦width⟧;",
-                        range = "⟦int width⟧;",
-                    },
+                    { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
                 ],
             },
-            {
-                name = "alias",
-                kind = "Namespace",
-                at = "namespace ⟦alias⟧ = app;",
-                range = "⟦namespace alias = app⟧;",
-            },
+            { name = "alias", kind = "Namespace", at = "namespace ⟦alias⟧ = app;", range = "⟦namespace alias = app⟧;" },
             {
                 name = "scale",
                 kind = "Function",
@@ -245,38 +175,18 @@ document_symbols = [
                 at = "struct ⟦Box⟧ {",
                 children = [
                     { name = "value", kind = "Field", at = "T ⟦value⟧;" },
-                    {
-                        name = "first",
-                        kind = "Field",
-                        at = "int ⟦first⟧, second;",
-                    },
-                    {
-                        name = "second",
-                        kind = "Field",
-                        at = "int first, ⟦second⟧;",
-                    },
+                    { name = "first", kind = "Field", at = "int ⟦first⟧, second;" },
+                    { name = "second", kind = "Field", at = "int first, ⟦second⟧;" },
                     {
                         name = "FIELDS",
                         kind = "Constant",
                         at = "⟦FIELDS⟧",
                         children = [
-                            {
-                                name = "generated_a",
-                                kind = "Field",
-                                at = "⟦FIELDS⟧",
-                            },
-                            {
-                                name = "generated_b",
-                                kind = "Field",
-                                at = "⟦FIELDS⟧",
-                            },
+                            { name = "generated_a", kind = "Field", at = "⟦FIELDS⟧" },
+                            { name = "generated_b", kind = "Field", at = "⟦FIELDS⟧" },
                         ],
                     },
-                    {
-                        name = "convert",
-                        kind = "Method",
-                        at = "U ⟦convert⟧() const;",
-                    },
+                    { name = "convert", kind = "Method", at = "U ⟦convert⟧() const;" },
                 ],
             },
             { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {" },

@@ -15,12 +15,7 @@ document_symbols = [
         at = "DECLARE_CLASS(⟦Generated⟧) {",
         detail = "class",
         children = [
-            {
-                name = "member",
-                kind = "Field",
-                at = "int ⟦member⟧;",
-                detail = "int",
-            },
+            { name = "member", kind = "Field", at = "int ⟦member⟧;", detail = "int" },
         ],
     },
 ]
@@ -33,18 +28,8 @@ document_symbols = [
         at = "#define ⟦DEFINE_HANDLER⟧(name) void name()",
         range = "#define ⟦DEFINE_HANDLER(name) void name()⟧",
     },
-    {
-        name = "on_ready",
-        kind = "Function",
-        at = "DEFINE_HANDLER(⟦on_ready⟧);",
-        range = "⟦DEFINE_HANDLER(on_ready)⟧;",
-    },
-    {
-        name = "on_close",
-        kind = "Function",
-        at = "DEFINE_HANDLER(⟦on_close⟧);",
-        range = "⟦DEFINE_HANDLER(on_close)⟧;",
-    },
+    { name = "on_ready", kind = "Function", at = "DEFINE_HANDLER(⟦on_ready⟧);", range = "⟦DEFINE_HANDLER(on_ready)⟧;" },
+    { name = "on_close", kind = "Function", at = "DEFINE_HANDLER(⟦on_close⟧);", range = "⟦DEFINE_HANDLER(on_close)⟧;" },
     {
         name = "DECLARE_CLASS",
         kind = "Constant",
@@ -57,12 +42,7 @@ document_symbols = [
         at = "DECLARE_CLASS(⟦Generated⟧) {",
         range = "⟦DECLARE_CLASS(Generated) { … }⟧ (3 lines)",
         children = [
-            {
-                name = "member",
-                kind = "Field",
-                at = "int ⟦member⟧;",
-                range = "⟦int member⟧;",
-            },
+            { name = "member", kind = "Field", at = "int ⟦member⟧;", range = "⟦int member⟧;" },
         ],
     },
 ]

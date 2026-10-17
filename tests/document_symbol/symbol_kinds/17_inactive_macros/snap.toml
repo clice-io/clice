@@ -19,10 +19,5 @@ document_symbols = [
         at = "int ⟦after⟧ = PREAMBLE_TAKEN;",
         range = "⟦int after = PREAMBLE_TAKEN⟧;",
     },
-    {
-        name = "BODY_TAKEN",
-        kind = "Constant",
-        at = "#define ⟦BODY_TAKEN⟧ 4",
-        range = "#define ⟦BODY_TAKEN 4⟧",
-    },
+    { name = "BODY_TAKEN", kind = "Constant", at = "#define ⟦BODY_TAKEN⟧ 4", range = "#define ⟦BODY_TAKEN 4⟧" },
 ]

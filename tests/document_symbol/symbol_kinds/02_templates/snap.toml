@@ -11,44 +11,14 @@ document_symbols = [
                 at = "struct ⟦Box⟧ {",
                 detail = "template struct",
                 children = [
-                    {
-                        name = "value",
-                        kind = "Field",
-                        at = "T ⟦value⟧;",
-                        detail = "T",
-                    },
-                    {
-                        name = "reset",
-                        kind = "Method",
-                        at = "void ⟦reset⟧();",
-                        detail = "void ()",
-                    },
+                    { name = "value", kind = "Field", at = "T ⟦value⟧;", detail = "T" },
+                    { name = "reset", kind = "Method", at = "void ⟦reset⟧();", detail = "void ()" },
                 ],
             },
-            {
-                name = "Box<T>::reset",
-                kind = "Method",
-                at = "void Box<T>::⟦reset⟧() {}",
-                detail = "void ()",
-            },
-            {
-                name = "zero",
-                kind = "Function",
-                at = "T ⟦zero⟧() {",
-                detail = "template T ()",
-            },
-            {
-                name = "pi",
-                kind = "Variable",
-                at = "constexpr T ⟦pi⟧ = T(3.14159);",
-                detail = "template const T",
-            },
-            {
-                name = "Small",
-                kind = "TypeParameter",
-                at = "concept ⟦Small⟧ = sizeof(T) <= 4;",
-                detail = "concept",
-            },
+            { name = "Box<T>::reset", kind = "Method", at = "void Box<T>::⟦reset⟧() {}", detail = "void ()" },
+            { name = "zero", kind = "Function", at = "T ⟦zero⟧() {", detail = "template T ()" },
+            { name = "pi", kind = "Variable", at = "constexpr T ⟦pi⟧ = T(3.14159);", detail = "template const T" },
+            { name = "Small", kind = "TypeParameter", at = "concept ⟦Small⟧ = sizeof(T) <= 4;", detail = "concept" },
             {
                 name = "takes_concept",
                 kind = "Function",
@@ -73,18 +43,8 @@ document_symbols = [
                 at = "struct ⟦Box⟧ {",
                 range = "⟦template <typename T> … }⟧ (6 lines) @-1",
                 children = [
-                    {
-                        name = "value",
-                        kind = "Field",
-                        at = "T ⟦value⟧;",
-                        range = "⟦T value⟧;",
-                    },
-                    {
-                        name = "reset",
-                        kind = "Method",
-                        at = "void ⟦reset⟧();",
-                        range = "⟦void reset()⟧;",
-                    },
+                    { name = "value", kind = "Field", at = "T ⟦value⟧;", range = "⟦T value⟧;" },
+                    { name = "reset", kind = "Method", at = "void ⟦reset⟧();", range = "⟦void reset()⟧;" },
                 ],
             },
             {
@@ -93,12 +53,7 @@ document_symbols = [
                 at = "void Box<T>::⟦reset⟧() {}",
                 range = "⟦template <typename T> … void Box<T>::reset() {}⟧ (2 lines)",
             },
-            {
-                name = "zero",
-                kind = "Function",
-                at = "T ⟦zero⟧() {",
-                range = "⟦template <typename T> … }⟧ (4 lines)",
-            },
+            { name = "zero", kind = "Function", at = "T ⟦zero⟧() {", range = "⟦template <typename T> … }⟧ (4 lines)" },
             {
                 name = "pi",
                 kind = "Variable",

@@ -5,18 +5,8 @@ document_symbols = [
         kind = "Namespace",
         at = "namespace ⟦lib⟧ {",
         children = [
-            {
-                name = "basic_string",
-                kind = "Struct",
-                at = "struct ⟦basic_string⟧ {};",
-                detail = "struct",
-            },
-            {
-                name = "string",
-                kind = "Class",
-                at = "using ⟦string⟧ = basic_string;",
-                detail = "type alias",
-            },
+            { name = "basic_string", kind = "Struct", at = "struct ⟦basic_string⟧ {};", detail = "struct" },
+            { name = "string", kind = "Class", at = "using ⟦string⟧ = basic_string;", detail = "type alias" },
         ],
     },
     { name = "Handle", kind = "Class", at = "using ⟦Handle⟧ = int*;", detail = "type alias" },
@@ -26,30 +16,15 @@ document_symbols = [
         at = "struct ⟦Box⟧ {",
         detail = "template struct",
         children = [
-            {
-                name = "operator T &",
-                kind = "Method",
-                at = "⟦operator T&⟧();",
-                detail = "T &()",
-            },
-            {
-                name = "operator Handle",
-                kind = "Method",
-                at = "⟦operator Handle⟧();",
-                detail = "Handle ()",
-            },
+            { name = "operator T &", kind = "Method", at = "⟦operator T&⟧();", detail = "T &()" },
+            { name = "operator Handle", kind = "Method", at = "⟦operator Handle⟧();", detail = "Handle ()" },
             {
                 name = "operator lib::string",
                 kind = "Method",
                 at = "⟦operator lib::string⟧();",
                 detail = "lib::string ()",
             },
-            {
-                name = "operator bool",
-                kind = "Method",
-                at = "explicit ⟦operator bool⟧();",
-                detail = "bool ()",
-            },
+            { name = "operator bool", kind = "Method", at = "explicit ⟦operator bool⟧();", detail = "bool ()" },
         ],
     },
 ]
@@ -83,18 +58,8 @@ document_symbols = [
         at = "struct ⟦Box⟧ {",
         range = "⟦template <class T> … }⟧ (7 lines)",
         children = [
-            {
-                name = "operator T &",
-                kind = "Method",
-                at = "⟦operator T&⟧();",
-                range = "⟦operator T&()⟧;",
-            },
-            {
-                name = "operator Handle",
-                kind = "Method",
-                at = "⟦operator Handle⟧();",
-                range = "⟦operator Handle()⟧;",
-            },
+            { name = "operator T &", kind = "Method", at = "⟦operator T&⟧();", range = "⟦operator T&()⟧;" },
+            { name = "operator Handle", kind = "Method", at = "⟦operator Handle⟧();", range = "⟦operator Handle()⟧;" },
             {
                 name = "operator lib::string",
                 kind = "Method",

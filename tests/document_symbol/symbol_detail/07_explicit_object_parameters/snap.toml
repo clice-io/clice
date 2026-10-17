@@ -18,12 +18,7 @@ document_symbols = [
                 at = "void ⟦visit⟧(this Widget&& self);",
                 detail = "void (this Widget &&self)",
             },
-            {
-                name = "size",
-                kind = "Method",
-                at = "int ⟦size⟧() const;",
-                detail = "int () const",
-            },
+            { name = "size", kind = "Method", at = "int ⟦size⟧() const;", detail = "int () const" },
         ],
     },
 ]
@@ -48,12 +43,7 @@ document_symbols = [
                 at = "void ⟦visit⟧(this Widget&& self);",
                 range = "⟦void visit(this Widget&& self)⟧;",
             },
-            {
-                name = "size",
-                kind = "Method",
-                at = "int ⟦size⟧() const;",
-                range = "⟦int size() const⟧;",
-            },
+            { name = "size", kind = "Method", at = "int ⟦size⟧() const;", range = "⟦int size() const⟧;" },
         ],
     },
 ]

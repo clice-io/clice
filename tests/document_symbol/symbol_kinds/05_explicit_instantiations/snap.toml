@@ -11,12 +11,7 @@ document_symbols = [
     },
     { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", detail = "struct" },
     { name = "Box<char>", kind = "Struct", at = "extern template struct ⟦Box⟧<char>;", detail = "struct" },
-    {
-        name = "convert",
-        kind = "Function",
-        at = "void ⟦convert⟧(T value) {}",
-        detail = "template void (T value)",
-    },
+    { name = "convert", kind = "Function", at = "void ⟦convert⟧(T value) {}", detail = "template void (T value)" },
     {
         name = "convert<int>",
         kind = "Function",
@@ -35,20 +30,10 @@ document_symbols = [
         at = "struct ⟦Box⟧ {",
         range = "⟦template <typename T> … }⟧ (4 lines)",
         children = [
-            {
-                name = "value",
-                kind = "Field",
-                at = "T ⟦value⟧;",
-                range = "⟦T value⟧;",
-            },
+            { name = "value", kind = "Field", at = "T ⟦value⟧;", range = "⟦T value⟧;" },
         ],
     },
-    {
-        name = "Box<int>",
-        kind = "Struct",
-        at = "template struct ⟦Box⟧<int>;",
-        range = "⟦template struct Box<int>⟧;",
-    },
+    { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", range = "⟦template struct Box<int>⟧;" },
     {
         name = "Box<char>",
         kind = "Struct",
@@ -73,10 +58,5 @@ document_symbols = [
         at = "T ⟦zero⟧ = T();",
         range = "⟦template <typename T> … T zero = T()⟧ (2 lines)",
     },
-    {
-        name = "zero<int>",
-        kind = "Variable",
-        at = "template int ⟦zero⟧<int>;",
-        range = "⟦template int zero<int>⟧;",
-    },
+    { name = "zero<int>", kind = "Variable", at = "template int ⟦zero⟧<int>;", range = "⟦template int zero<int>⟧;" },
 ]

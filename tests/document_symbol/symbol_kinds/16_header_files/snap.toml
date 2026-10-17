@@ -15,30 +15,15 @@ document_symbols = [
 
 [answers.extents]
 document_symbols = [
-    {
-        name = "WIDGET_LIMIT",
-        kind = "Constant",
-        at = "#define ⟦WIDGET_LIMIT⟧ 8",
-        range = "#define ⟦WIDGET_LIMIT 8⟧",
-    },
+    { name = "WIDGET_LIMIT", kind = "Constant", at = "#define ⟦WIDGET_LIMIT⟧ 8", range = "#define ⟦WIDGET_LIMIT 8⟧" },
     {
         name = "Widget",
         kind = "Struct",
         at = "struct ⟦Widget⟧ {",
         range = "⟦struct Widget { … }⟧ (3 lines)",
         children = [
-            {
-                name = "size",
-                kind = "Field",
-                at = "int ⟦size⟧;",
-                range = "⟦int size⟧;",
-            },
+            { name = "size", kind = "Field", at = "int ⟦size⟧;", range = "⟦int size⟧;" },
         ],
     },
-    {
-        name = "widget_count",
-        kind = "Function",
-        at = "int ⟦widget_count⟧();",
-        range = "⟦int widget_count()⟧;",
-    },
+    { name = "widget_count", kind = "Function", at = "int ⟦widget_count⟧();", range = "⟦int widget_count()⟧;" },
 ]

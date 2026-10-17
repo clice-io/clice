@@ -1,11 +1,6 @@
 [test.Size]
 workspace_symbols = [
-    {
-        name = "Size",
-        kind = "TypeParameter",
-        at = "types.h │ typedef unsigned long ⟦Size⟧;",
-        container = "net",
-    },
+    { name = "Size", kind = "TypeParameter", at = "types.h │ typedef unsigned long ⟦Size⟧;", container = "net" },
 ]
 
 [test.Handle]
@@ -20,12 +15,7 @@ workspace_symbols = [
 
 [test.id_type]
 workspace_symbols = [
-    {
-        name = "id_type",
-        kind = "TypeParameter",
-        at = "types.h │ using ⟦id_type⟧ = int;",
-        container = "net::Widget",
-    },
+    { name = "id_type", kind = "TypeParameter", at = "types.h │ using ⟦id_type⟧ = int;", container = "net::Widget" },
 ]
 
 [test.di]

@@ -6,11 +6,7 @@ semantic_tokens = [
     { at = "⟦#define⟧ UNUSED", type = "directive" },
     { at = "#define ⟦UNUSED⟧", type = "macro", modifiers = ["definition", "empty"] },
     { at = '⟦#define⟧ RETURN_IF(condition) \', type = "directive" },
-    {
-        at = '#define ⟦RETURN_IF⟧(condition) \',
-        type = "macro",
-        modifiers = ["definition", "callable", "controlFlow"],
-    },
+    { at = '#define ⟦RETURN_IF⟧(condition) \', type = "macro", modifiers = ["definition", "callable", "controlFlow"] },
     { at = '#define RETURN_IF(⟦condition⟧) \', type = "macroParameter" },
     { at = '⟦if⟧(condition)            \', type = "keyword", modifiers = ["controlFlow"] },
     { at = 'if(⟦condition⟧)            \', type = "macroParameter" },

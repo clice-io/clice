@@ -25,11 +25,7 @@ semantic_tokens = [
     { at = '⟦const⟧ char* raw = R"(no "escapes" in here)";', type = "keyword" },
     { at = 'const ⟦char⟧* raw = R"(no "escapes" in here)";', type = "primitive" },
     { at = 'const char⟦*⟧ raw = R"(no "escapes" in here)";', type = "operator", modifiers = ["declarator"] },
-    {
-        at = 'const char* ⟦raw⟧ = R"(no "escapes" in here)";',
-        type = "variable",
-        modifiers = ["definition", "global"],
-    },
+    { at = 'const char* ⟦raw⟧ = R"(no "escapes" in here)";', type = "variable", modifiers = ["definition", "global"] },
     { at = 'const char* raw ⟦=⟧ R"(no "escapes" in here)";', type = "operator" },
     { at = 'const char* raw = ⟦R⟧"(no "escapes" in here)";', type = "string", modifiers = ["affix"] },
     { at = 'const char* raw = R⟦"(no "escapes" in here)"⟧;', type = "string" },

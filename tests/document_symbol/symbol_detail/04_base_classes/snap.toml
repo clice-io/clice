@@ -8,12 +8,7 @@ document_symbols = [
         at = "struct ⟦Circle⟧ : Shape {",
         detail = "struct : Shape",
         children = [
-            {
-                name = "radius",
-                kind = "Field",
-                at = "double ⟦radius⟧;",
-                detail = "double",
-            },
+            { name = "radius", kind = "Field", at = "double ⟦radius⟧;", detail = "double" },
         ],
     },
     {
@@ -22,12 +17,7 @@ document_symbols = [
         at = "class ⟦Square⟧ : public Shape, private Tagged {};",
         detail = "class : public Shape, private Tagged",
     },
-    {
-        name = "Shared",
-        kind = "Struct",
-        at = "struct ⟦Shared⟧ : virtual Shape {};",
-        detail = "struct : virtual Shape",
-    },
+    { name = "Shared", kind = "Struct", at = "struct ⟦Shared⟧ : virtual Shape {};", detail = "struct : virtual Shape" },
 ]
 
 [answers.extents]
@@ -40,12 +30,7 @@ document_symbols = [
         at = "struct ⟦Circle⟧ : Shape {",
         range = "⟦struct Circle : Shape { … }⟧ (3 lines)",
         children = [
-            {
-                name = "radius",
-                kind = "Field",
-                at = "double ⟦radius⟧;",
-                range = "⟦double radius⟧;",
-            },
+            { name = "radius", kind = "Field", at = "double ⟦radius⟧;", range = "⟦double radius⟧;" },
         ],
     },
     {
