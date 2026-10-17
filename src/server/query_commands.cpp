@@ -584,10 +584,11 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
     };
     // A symbol nothing defines answers with its declaration, as the
     // editor's go-to-definition does.
-    auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file);
-    if(!definition) {
-        definition = ctx.query.declaration_text(resolved->symbol.hash, resolved->site.file);
-    }
+    auto hash = resolved->symbol.hash;
+    auto anchor = resolved->site.file;
+    auto definition = ctx.query.first_site(hash, anchor, RelationKind::Definition)
+                          ? ctx.query.definition_text(hash, anchor)
+                          : ctx.query.declaration_text(hash, anchor);
     if(definition) {
         auto lines = lines_of(definition->extent);
         result.definition = LocationEntry{
