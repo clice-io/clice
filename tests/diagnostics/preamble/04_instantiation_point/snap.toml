@@ -1,0 +1,11 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "⟦}⟧ @13",
+        severity = "warning",
+        message = "non-void function does not return a value in all control paths",
+        source = "clang",
+        code = "-Wreturn-type",
+        related = [],
+    },
+]

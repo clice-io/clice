@@ -1,0 +1,3 @@
+[test."main.cpp"]
+wrong = "clang instantiates the definition at the end of the file and reports the error in its initializer; the precompiled preamble instantiates Counter<int>::value before main.cpp defines it, and drops it"
+diagnostics = []
