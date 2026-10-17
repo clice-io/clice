@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { cliceExecutable } from "../client/session.ts";
 import { watchMemory, type PeakMemory } from "./memory.ts";
 
 /// `clice index --json`'s report, as far as the run reads it. A run handed
@@ -82,10 +83,10 @@ function sessionLog(checkout: string): string {
     return log !== "" && fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
 }
 
-export function runIndex(clice: string, checkout: string): Promise<IndexRun> {
+export function runIndex(checkout: string): Promise<IndexRun> {
     const started = Date.now();
     const child = spawn(
-        clice,
+        cliceExecutable(),
         ["index", "--json", "--workspace", checkout, "--jobs", String(os.availableParallelism())],
         { stdio: ["ignore", "pipe", "pipe"] },
     );

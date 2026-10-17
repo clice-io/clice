@@ -33,6 +33,10 @@ const COMPLETIONS = 3;
 /// Files asked at once: inspect compiles each alone beside the server.
 const CONCURRENCY = 3;
 
+/// No file is begun after this long, so that the job ends within the
+/// runner's time: the projects' sweeps take well under an hour.
+const SWEEP_MS = 2 * 60 * 60_000;
+
 /// A request that answers in no time on a test case may compile a large
 /// unit here: the bound only a hang reaches.
 const REQUEST_MS = 10 * 60_000;
@@ -299,6 +303,8 @@ export interface SweepRun {
     serverExit: string[];
     /// The files the server opened with errors, the first few of each.
     serverErrors: { file: string; errors: string[] }[];
+    /// The files left unasked when the sweep ran out of time.
+    unasked: string[];
 }
 
 export interface SweepOptions {
@@ -463,6 +469,7 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
         failures: [],
         serverExit: [],
         serverErrors: [],
+        unasked: [],
     };
     const places = options.files.map(
         (file) =>
@@ -478,11 +485,16 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
         { capabilities: CAPABILITIES, config: { project: { enable_indexing: false } } },
         { marks, steps, disk: new Disk(options.root, {}, steps) },
     );
-    await server.start();
     try {
+        await server.start();
         const queue = [...places];
+        const deadline = Date.now() + SWEEP_MS;
         const worker = async () => {
             for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+                if (Date.now() > deadline) {
+                    run.unasked.push(next[0]);
+                    continue;
+                }
                 const [file, filePlaces] = next;
                 process.stderr.write(`sweep ${file}\n`);
                 await sweepFile(options, server, file, filePlaces, run);

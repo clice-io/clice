@@ -78,6 +78,8 @@ export interface NightlyOptions {
     job: Job;
     /// Where projects are checked out.
     dir: string;
+    /// The clice under test, as reproduction commands name it; the job runs
+    /// it through CLICE_EXECUTABLE.
     clice: string;
     steps: ReadonlySet<Step>;
     seed: string;
@@ -192,7 +194,7 @@ async function indexStep(
             `${checkout}/.clice exists: the index starts warm, its numbers are no cold start`,
         );
     }
-    const run = await runIndex(options.clice, checkout);
+    const run = await runIndex(checkout);
     const report = run.report;
     const again = rerun(options, "--steps index");
     if (run.hung !== undefined) {
@@ -272,6 +274,13 @@ async function sweepStep(
         inspectSeconds: run.inspectSeconds,
         serverSeconds: run.serverSeconds,
     };
+    if (run.unasked.length > 0) {
+        results.failures.push({
+            kind: "hang",
+            detail: `the sweep ran out of its two hours with ${String(run.unasked.length)} of ${String(run.files.length)} files unasked:\n${run.unasked.join("\n")}`,
+            repro: rerun(options, "--steps sweep"),
+        });
+    }
     for (const exit of run.serverExit) {
         results.failures.push({
             kind: exit.includes("did not exit within") ? "hang" : "crash",
