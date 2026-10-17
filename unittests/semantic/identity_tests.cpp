@@ -980,6 +980,7 @@ struct §(ctx)ctx { int x; };
                        .runs = {{.offset = static_cast<std::uint32_t>(marker.size()),
                                  .source_offset = 1,
                                  .length = static_cast<std::uint32_t>(copied.size())}}},
+         .entry = SynthesizedFile::Entry::Prefix,
          },
         {
          .path = TestVFS::path(".clice-open.h"),

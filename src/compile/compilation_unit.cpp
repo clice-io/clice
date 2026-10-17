@@ -315,31 +315,7 @@ bool CompilationUnit::host_source(clang::FileID fid) {
     if(!synthesized(fid)) {
         return false;
     }
-    // The host's first fragment is the one the command -includes, from
-    // the predefines buffer, ahead of the fragment the compile enters
-    // after the command's -includes (SynthesizedFile::Entry::Forced).
-    if(!host) {
-        host.emplace();
-        auto& SM = this->SM();
-        auto predefines = instance->getPreprocessor().getPredefinesFileID();
-        std::optional<std::uint32_t> first;
-        for(auto& entry: params.input.synthesized) {
-            auto file = SM.getFileManager().getOptionalFileRef(entry.first());
-            if(!file) {
-                continue;
-            }
-            auto root = SM.translateFile(*file);
-            if(!root.isValid()) {
-                continue;
-            }
-            auto [includer, offset] = SM.getDecomposedLoc(SM.getIncludeLoc(root));
-            if(includer == predefines && (!first || offset < *first)) {
-                first = offset;
-                *host = source_path(root);
-            }
-        }
-    }
-    return source_path(fid) == *host;
+    return source_path(fid) == params.input.host;
 }
 
 bool CompilationUnit::from_context(clang::FileID fid) {

@@ -132,6 +132,10 @@ struct CompilationInput {
     /// compile but a preamble's (SynthesizedFile::Entry::Forced).
     std::vector<std::string> forced_includes;
 
+    /// The file a header context's prefix was cut from, the host (see
+    /// add_synthesized and CompilationUnit::host_source).
+    std::string host;
+
     /// Where the focus file's text as the editor has it ends, when its
     /// buffer goes on with the include of a header context's suffix (see
     /// add_synthesized).
@@ -154,7 +158,9 @@ struct CompilationInput {
             add_remapped_file(file.path, file.content);
             // Named the way CompilationUnit::file_path names it.
             synthesized[CanonicalPath(Spelling::absolute(file.path)).str()] = file.origin;
-            if(file.entry == SynthesizedFile::Entry::Forced) {
+            if(file.entry == SynthesizedFile::Entry::Prefix) {
+                host = file.origin.source;
+            } else if(file.entry == SynthesizedFile::Entry::Forced) {
                 forced_includes.push_back(file.path);
             } else if(file.entry == SynthesizedFile::Entry::Appended && !focus.empty()) {
                 auto text = buffers.find(focus);
@@ -561,10 +567,6 @@ private:
 
     /// Memo of CompilationUnit::from_context.
     llvm::DenseMap<clang::FileID, bool> context_files;
-
-    /// Memo of the host path CompilationUnit::host_source compares
-    /// against.
-    std::optional<std::string> host;
 
     /// The buffers clang reads params.input.buffers through; clang leaves
     /// them to their owner (RetainRemappedFileBuffers).

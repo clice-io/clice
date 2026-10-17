@@ -276,7 +276,7 @@ private:
     bool past_text(std::uint32_t offset) {
         auto focus = unit.focus_file();
         auto end = unit.text_end(focus.file());
-        return end < focus.content().size() && offset >= end;
+        return end < focus.content().size() && offset > end;
     }
 
     /// The filename of the #include in the focus file that `fid` was

@@ -510,7 +510,11 @@ std::optional<SynthesizedContext>
                                     std::move(*open),
                                     SynthesizedFile::Entry::Forced);
         }
-        context.prefix = add_file(context, chain[i - 1].path, std::move(head));
+        context.prefix =
+            add_file(context,
+                     chain[i - 1].path,
+                     std::move(head),
+                     i == 1 ? SynthesizedFile::Entry::Prefix : SynthesizedFile::Entry::Included);
     }
     std::string suffix;
     for(auto& [i, tail]: after) {

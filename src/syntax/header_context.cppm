@@ -54,8 +54,10 @@ struct SynthesizedOrigin {
 struct SynthesizedFile {
     /// How a compile enters the file.
     enum class Entry : std::uint8_t {
-        /// Through an include in another synthesized file or on the command
-        /// line.
+        /// Through the command's -include: SynthesizedContext::prefix, the
+        /// fragment cut from the host.
+        Prefix,
+        /// Through an include in another synthesized file.
         Included,
         /// Ahead of the focus file, after the command's own -includes, by
         /// every compile but the preamble's build: SynthesizedContext::open.

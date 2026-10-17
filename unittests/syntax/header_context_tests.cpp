@@ -420,6 +420,30 @@ ZEST_CASE(EmptyChain) {
     ZEXPECT(*result == "");
 }
 
+ZEST_CASE(PrefixNamesHost) {
+    // The command -includes the host's fragment, which includes the next
+    // chain file's.
+    llvm::StringMap<std::string> mapping = {
+        {"mid.h",    "/proj/mid.h"   },
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", "#include \"mid.h\"\n"};
+    ChainEntry mid{"/proj/mid.h", "#include \"target.h\"\n"};
+
+    auto result = synthesize_context({host, mid}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    for(auto& file: result->files) {
+        if(file.path == result->prefix) {
+            ZEXPECT(file.entry == SynthesizedFile::Entry::Prefix);
+            ZEXPECT(file.origin.source == "/proj/main.cpp");
+        } else if(file.origin.source == "/proj/mid.h" &&
+                  file.entry != SynthesizedFile::Entry::Appended) {
+            ZEXPECT(file.entry == SynthesizedFile::Entry::Included);
+        }
+    }
+}
+
 ZEST_CASE(SuffixEndsAtClose) {
     // Function-body X-macro: the suffix restores the closing brace and the
     // directives before it, entered from the focus file only, and stops
