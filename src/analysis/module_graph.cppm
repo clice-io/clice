@@ -19,7 +19,7 @@ struct File {
     /// workspace, as a third-party header a scope glob takes in.
     std::string path;
 
-    /// A translation unit's main file; every other scoped file is a header.
+    /// A translation unit's source file; every other scoped file is a header.
     bool source = false;
 
     /// A textual fragment (`.inc`, `.def`, ...) pasted into its includer:

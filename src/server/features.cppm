@@ -78,7 +78,7 @@ public:
     /// ahead of the messages read with it: an edit among those arrives before
     /// the task starts and supersedes the ticket.
 
-    /// Full document-link result for a session: the worker's main-file links
+    /// Full document-link result for a session: the worker's focus-file links
     /// merged behind the PCH's cached preamble links.
     kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         document_links(Ticket ticket, kota::cancellation_token token = {});

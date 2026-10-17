@@ -11,8 +11,8 @@ import :command.search_config;
 import :project.command_resolver;
 import :project.hosting;
 import :support.logging;
+import :syntax.header_context;
 import :syntax.include_resolver;
-import :syntax.preamble_synthesis;
 import :vfs.file_system;
 import :vfs.path;
 

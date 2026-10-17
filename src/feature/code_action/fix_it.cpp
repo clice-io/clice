@@ -44,7 +44,7 @@ std::string fix_title(llvm::StringRef content, const Diagnostic& diagnostic) {
     return title;
 }
 
-/// A fix's edits as the main file takes them. clang-tidy inserts an
+/// A fix's edits as the focus file takes them. clang-tidy inserts an
 /// include into a file without one at its first byte, which in a module
 /// unit is before its declaration, where no directive may go: there it
 /// goes where an added include goes. And a check whose fix removes code

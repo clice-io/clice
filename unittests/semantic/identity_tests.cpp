@@ -90,7 +90,7 @@ std::uint64_t entity(llvm::StringRef marker) {
 }
 
 ZEST_CASE(RequiresClauseEquivalence) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template <typename T> struct A;
 
 template <typename T> requires (__is_same(T, float))
@@ -115,7 +115,7 @@ struct §(13)A<T>;
 }
 
 ZEST_CASE(ConceptConstraintPosition) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T>
 concept C = requires(T t) { true; };
 template<typename T, typename U>
@@ -133,14 +133,14 @@ struct §(2)A<T, U>;
 }
 
 ZEST_CASE(ConstrainedPackDiffers) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename... Ts>
 struct §(1)A;
 )cpp");
     ZASSERT(compile());
 
     Tester other;
-    other.add_main("main.cpp", R"cpp(
+    other.add_focus("main.cpp", R"cpp(
 template<typename T>
 concept C = requires(T t) { true; };
 template<C... Ts>
@@ -152,7 +152,7 @@ struct §(2)A;
 }
 
 ZEST_CASE(TemplateArgumentExpression) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template <typename T, int N> struct C;
 
 template <int N> struct §(1)C<float, N>;
@@ -166,7 +166,7 @@ template <char c> struct §(3)C<float, c>;
 }
 
 ZEST_CASE(FunctionRequiresClause) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T>
 void §(1)func(T t) requires (sizeof(T) == 4) {};
 
@@ -179,14 +179,14 @@ void §(2)func(T t) requires (sizeof(T) == 8) {};
 }
 
 ZEST_CASE(VariableTemplateConstraint) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template <typename T>
 constexpr T §(1)pi = 3.14;
 )cpp");
     ZASSERT(compile());
 
     Tester other;
-    other.add_main("main.cpp", R"cpp(
+    other.add_focus("main.cpp", R"cpp(
 template <typename T>
 concept integral = requires (T t) { t + 1; };
 template <integral T>
@@ -198,7 +198,7 @@ constexpr T §(2)pi = 3;
 }
 
 ZEST_CASE(DeducedParameterType) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T>
 struct array {};
 template<typename U, array arr>
@@ -207,7 +207,7 @@ struct §(1)L;
     ZASSERT(compile());
 
     Tester other;
-    other.add_main("main.cpp", R"cpp(
+    other.add_focus("main.cpp", R"cpp(
 template<typename U, int arr>
 struct §(2)L;
 )cpp");
@@ -217,7 +217,7 @@ struct §(2)L;
 }
 
 ZEST_CASE(TemplateParamObject) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T> struct array {
   constexpr array(T x_) : x(x_) {}
   int x;
@@ -232,13 +232,13 @@ template<> struct §(2)L<{2}>;
 }
 
 ZEST_CASE(PlaceholderConstraint) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<auto N> struct §(1)M;
 )cpp");
     ZASSERT(compile());
 
     Tester other;
-    other.add_main("main.cpp", R"cpp(
+    other.add_focus("main.cpp", R"cpp(
 template<typename T> concept C = requires {requires true;};
 template<C auto N> struct §(2)M;
 )cpp");
@@ -261,13 +261,13 @@ struct X {
     class §(2)Y<MetaFun::template apply2>;
 };
 )cpp";
-    add_main("main.cpp", content);
+    add_focus("main.cpp", content);
     ZASSERT(compile());
 
     ZEXPECT(entity("1") != entity("2"));
 
     Tester again;
-    again.add_main("main.cpp", content);
+    again.add_focus("main.cpp", content);
     ZASSERT(again.compile());
 
     ZEXPECT(entity("1") == entity_at(again, "main.cpp", "1"));
@@ -275,7 +275,7 @@ struct X {
 }
 
 ZEST_CASE(DeducingThis) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 class A {
 public:
     template <typename Self>
@@ -297,7 +297,7 @@ ZEST_CASE(MacroPathDistinct) {
     add_file("b/x.h", R"cpp(
 #define FOO 2
 )cpp");
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #include "a/x.h"
 #undef FOO
 #include "b/x.h"
@@ -308,7 +308,7 @@ ZEST_CASE(MacroPathDistinct) {
 }
 
 ZEST_CASE(NamespaceLambdasDistinct) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 auto §(l1)l1 = [](int) {};
 auto §(l2)l2 = [](int) {};
 void §(a1)accept(decltype(l1));
@@ -320,7 +320,7 @@ void §(a2)accept(decltype(l2));
 }
 
 ZEST_CASE(MemberRequiresDistinct) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T> concept C = requires(T t) { t + 1; };
 template<typename T> concept D = requires(T t) { t - 1; };
 template<typename T> struct A {
@@ -334,7 +334,7 @@ template<typename T> struct A {
 }
 
 ZEST_CASE(SpecializationReturnType) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 struct X { using A = int; using B = long; };
 template<typename T> typename T::A g();
 template<typename T> typename T::B g();
@@ -347,7 +347,7 @@ template<> X::B §(2)g<X>();
 }
 
 ZEST_CASE(TemplateFriendDefinition) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T> struct X {
     friend void §(1)f(int);
 };
@@ -359,7 +359,7 @@ void §(2)f(int) {}
 }
 
 ZEST_CASE(MemberVariableTemplate) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 struct S {
     template<typename T> static constexpr bool §(1)value = true;
 };
@@ -374,7 +374,7 @@ struct S {
 }
 
 ZEST_CASE(MemberPointerOverloads) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 struct S { int m; int mf(); };
 void §(1)p(int S::*);
 void §(2)p(int (S::*)());
@@ -385,7 +385,7 @@ void §(2)p(int (S::*)());
 }
 
 ZEST_CASE(ConversionRenamedParameter) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T> struct A {
     §(1)operator T*();
 };
@@ -397,7 +397,7 @@ template<typename U> A<U>::§(2)operator U*() { return nullptr; }
 }
 
 ZEST_CASE(NoexceptPointerOverloads) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 void §(1)q(void (*)());
 void §(2)q(void (*)() noexcept);
 )cpp");
@@ -411,11 +411,11 @@ ZEST_CASE(AnonymousNamespaceFiles) {
 namespace { struct §(s)S {}; }
 namespace { typedef enum { A } §(e)E; }
 )cpp";
-    add_main("a/x.cpp", content);
+    add_focus("a/x.cpp", content);
     ZASSERT(compile());
 
     Tester other;
-    other.add_main("b/x.cpp", content);
+    other.add_focus("b/x.cpp", content);
     ZASSERT(other.compile());
 
     ZEXPECT(entity_at(*this, "a/x.cpp", "s") != entity_at(other, "b/x.cpp", "s"));
@@ -423,7 +423,7 @@ namespace { typedef enum { A } §(e)E; }
 }
 
 ZEST_CASE(TopLevelConstParameter) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 void §(1)c(const int);
 void §(2)c(int) {}
 )cpp");
@@ -433,7 +433,7 @@ void §(2)c(int) {}
 }
 
 ZEST_CASE(DeclarationArgumentType) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 inline int a[1];
 template<auto> struct X;
 template<> struct §(1)X<a> {};
@@ -445,7 +445,7 @@ template<> struct §(2)X<&a> {};
 }
 
 ZEST_CASE(StructuralValuePath) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 union U { int a; int b; };
 inline U u;
 template<int*> struct X;
@@ -458,7 +458,7 @@ template<> struct §(2)X<&u.b> {};
 }
 
 ZEST_CASE(ConstrainedFriendLexical) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T> struct A {
     friend void §(1)h(A) requires (sizeof(T) > 1) {}
 };
@@ -472,7 +472,7 @@ template<typename T> struct B {
 }
 
 ZEST_CASE(ExternCAcrossNamespaces) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 namespace A { extern "C" void §(1)f(); }
 namespace B { extern "C" void §(2)f(); }
 )cpp");
@@ -484,7 +484,7 @@ namespace B { extern "C" void §(2)f(); }
 ZEST_CASE(IncludedLocals) {
     add_file("a.inc", "int §(x)x;");
     add_file("b.inc", "int §(x)x;");
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 void f() {
     {
 #include "a.inc"
@@ -500,7 +500,7 @@ void f() {
 }
 
 ZEST_CASE(SpecializationMemberConstraint) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T> struct S { static constexpr int n = 0; };
 template<typename U> void §(1)f(U) requires (sizeof(U) == S<int>::n);
 template<typename U> void §(2)f(U) requires (sizeof(U) == S<double>::n);
@@ -511,7 +511,7 @@ template<typename U> void §(2)f(U) requires (sizeof(U) == S<double>::n);
 }
 
 ZEST_CASE(OffsetofMembers) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T> void §(1)f(T) requires (__builtin_offsetof(T, x) == 0);
 template<typename T> void §(2)f(T) requires (__builtin_offsetof(T, y) == 0);
 )cpp");
@@ -521,7 +521,7 @@ template<typename T> void §(2)f(T) requires (__builtin_offsetof(T, y) == 0);
 }
 
 ZEST_CASE(ParenthesesDistinct) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<int N> void §(1)f() requires (N > 0);
 template<int N> void §(2)f() requires ((N) > 0);
 )cpp");
@@ -531,7 +531,7 @@ template<int N> void §(2)f() requires ((N) > 0);
 }
 
 ZEST_CASE(DecltypeSizeofDistinct) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T> auto §(1)f() -> decltype(sizeof(T));
 template<typename T> auto §(2)f() -> __SIZE_TYPE__;
 )cpp");
@@ -548,7 +548,7 @@ namespace B { template<typename T> concept C = sizeof(T) == 2; }
     add_file("h.h", R"cpp(
 template<typename T> requires C<T> void §(f)f();
 )cpp");
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #include "common.h"
 using A::C;
 #include "h.h"
@@ -563,7 +563,7 @@ namespace B { template<typename T> concept C = sizeof(T) == 2; }
     other.add_file("h.h", R"cpp(
 template<typename T> requires C<T> void §(f)f();
 )cpp");
-    other.add_main("main.cpp", R"cpp(
+    other.add_focus("main.cpp", R"cpp(
 #include "common.h"
 using B::C;
 #include "h.h"
@@ -577,7 +577,7 @@ ZEST_CASE(EarlierDecltypeNoEffect) {
     llvm::StringRef header = R"cpp(
 template<typename T> requires C<T> void §(f)f();
 )cpp";
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<typename T> concept C = true;
 #include "h.h"
 )cpp");
@@ -586,7 +586,7 @@ template<typename T> concept C = true;
 
     Tester other;
     other.add_file("h.h", header);
-    other.add_main("main.cpp", R"cpp(
+    other.add_focus("main.cpp", R"cpp(
 template<typename T> concept C = true;
 template<typename T> using Noise = decltype(::C<T>);
 #include "h.h"
@@ -597,7 +597,7 @@ template<typename T> using Noise = decltype(::C<T>);
 }
 
 ZEST_CASE(MacroRedefinition) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define FOO 1
 #undef FOO
 #define FOO 2
@@ -628,7 +628,7 @@ Box<char> make();
 )cpp";
 
     add_file("box.h", header);
-    add_main("a.cpp", R"cpp(
+    add_focus("a.cpp", R"cpp(
 #include "box.h"
 Box deduced = make();
 )cpp");
@@ -636,7 +636,7 @@ Box deduced = make();
 
     Tester other;
     other.add_file("box.h", header);
-    other.add_main("b.cpp", R"cpp(
+    other.add_focus("b.cpp", R"cpp(
 #include "box.h"
 Box<char> spelled = make();
 )cpp");
@@ -655,7 +655,7 @@ Box<char> make();
 )cpp";
 
     add_file("box.h", header);
-    add_main("a.cpp", R"cpp(
+    add_focus("a.cpp", R"cpp(
 #include "box.h"
 Box deduced = make();
 )cpp");
@@ -663,7 +663,7 @@ Box deduced = make();
 
     Tester other;
     other.add_file("box.h", header);
-    other.add_main("b.cpp", R"cpp(
+    other.add_focus("b.cpp", R"cpp(
 #include "box.h"
 )cpp");
     ZASSERT(other.compile());
@@ -672,7 +672,7 @@ Box deduced = make();
 }
 
 ZEST_CASE(ComplexSubobjectArgument) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 inline _Complex int z;
 template<int*> struct X;
 template<> struct §(real)X<&__real__ z> {};
@@ -699,7 +699,7 @@ struct §(s)S { int x; };
     };
 
     add_file("s.h", header);
-    add_main("a.cpp", R"cpp(
+    add_focus("a.cpp", R"cpp(
 #include "s.h"
 inline S a;
 inline S b(a);
@@ -708,7 +708,7 @@ inline S b(a);
 
     Tester other;
     other.add_file("s.h", header);
-    other.add_main("b.cpp", R"cpp(
+    other.add_focus("b.cpp", R"cpp(
 #include "s.h"
 struct T : S { using S::S; };
 )cpp");
@@ -718,7 +718,7 @@ struct T : S { using S::S; };
 }
 
 ZEST_CASE(NestedMacroLambdas) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define L []{}
 #define BOTH auto a = L; auto b = L;
 BOTH
@@ -743,7 +743,7 @@ template<class T> auto §(f)f() -> decltype(v<T, A>);
 )cpp";
 
     add_file("h.h", header);
-    add_main("a.cpp", R"cpp(
+    add_focus("a.cpp", R"cpp(
 #define WARM
 #include "h.h"
 )cpp");
@@ -751,7 +751,7 @@ template<class T> auto §(f)f() -> decltype(v<T, A>);
 
     Tester other;
     other.add_file("h.h", header);
-    other.add_main("b.cpp", R"cpp(
+    other.add_focus("b.cpp", R"cpp(
 #include "h.h"
 )cpp");
     ZASSERT(other.compile());
@@ -772,7 +772,7 @@ void §(f)f(X<S{{0}}>);
 )cpp";
 
     add_file("h.h", header);
-    add_main("a.cpp", R"cpp(
+    add_focus("a.cpp", R"cpp(
 #define WARM
 #include "h.h"
 )cpp");
@@ -780,7 +780,7 @@ void §(f)f(X<S{{0}}>);
 
     Tester other;
     other.add_file("h.h", header);
-    other.add_main("b.cpp", R"cpp(
+    other.add_focus("b.cpp", R"cpp(
 #include "h.h"
 )cpp");
     ZASSERT(other.compile());
@@ -790,7 +790,7 @@ void §(f)f(X<S{{0}}>);
 }
 
 ZEST_CASE(InstantiatedLambdas) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<class T> inline auto v = []{};
 void §(f1)f(decltype(v<int>));
 void §(f2)f(decltype(v<double>));
@@ -801,7 +801,7 @@ void §(f2)f(decltype(v<double>));
 }
 
 ZEST_CASE(LocalClassConstructors) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 void f() {
     struct §(s)S {};
     S a;
@@ -820,7 +820,7 @@ void f() {
 }
 
 ZEST_CASE(MacroArgumentTwice) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define BOTH(X) auto a = X; auto b = X;
 BOTH([]{})
 void §(f1)f(decltype(a));
@@ -832,7 +832,7 @@ void §(f2)f(decltype(b));
 }
 
 ZEST_CASE(MacroArgumentPreExpanded) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define F void f(decltype([]{})) {}
 #define TWO F F
 #define ID(...) __VA_ARGS__
@@ -852,7 +852,7 @@ ID(TWO)
 
 ZEST_CASE(CpuSpecificVersions) {
     triple = "x86_64-unknown-linux-gnu";
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 __attribute__((cpu_specific(generic))) void §(generic)f() {}
 __attribute__((cpu_specific(pentium_4))) void §(pentium)f() {}
 )cpp");
@@ -873,7 +873,7 @@ __attribute__((noreturn)) void §(f)f();
 
     add_file("plain.h", plain);
     add_file("attributed.h", attributed);
-    add_main("a.cpp", R"cpp(
+    add_focus("a.cpp", R"cpp(
 #include "plain.h"
 #include "attributed.h"
 )cpp");
@@ -882,7 +882,7 @@ __attribute__((noreturn)) void §(f)f();
     Tester other;
     other.add_file("plain.h", plain);
     other.add_file("attributed.h", attributed);
-    other.add_main("b.cpp", R"cpp(
+    other.add_focus("b.cpp", R"cpp(
 #include "attributed.h"
 #include "plain.h"
 )cpp");
@@ -893,7 +893,7 @@ __attribute__((noreturn)) void §(f)f();
 }
 
 ZEST_CASE(PastedTemplateParameters) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define PARAMS class T##1, class T##2
 template<PARAMS> struct §(x)X { T1 a; T2 b; };
 )cpp");
@@ -907,14 +907,14 @@ template<PARAMS> struct §(x)X { T1 a; T2 b; };
 }
 
 ZEST_CASE(FileScopeTypedefs) {
-    add_main("a.cpp", R"cpp(
+    add_focus("a.cpp", R"cpp(
 typedef struct { int §(field)x; } §(state)State;
 using §(alias)Result = int;
 )cpp");
     ZASSERT(compile());
 
     Tester other;
-    other.add_main("b.cpp", R"cpp(
+    other.add_focus("b.cpp", R"cpp(
 typedef struct { int §(field)x; } §(state)State;
 using §(alias)Result = int;
 )cpp");
@@ -932,7 +932,7 @@ struct §(opaque)opaque;
 )c";
     add_file("forward.h", "struct opaque;\n");
     add_file("common.h", header);
-    add_main("a.c", R"c(
+    add_focus("a.c", R"c(
 #include "forward.h"
 #include "common.h"
 struct §(state)state { int x; };
@@ -941,7 +941,7 @@ struct §(state)state { int x; };
 
     Tester other;
     other.add_file("common.h", header);
-    other.add_main("b.c", R"c(
+    other.add_focus("b.c", R"c(
 #include "common.h"
 struct §(state)state { int x; };
 )c");
@@ -954,7 +954,7 @@ struct §(state)state { int x; };
 
 ZEST_CASE(CTagsInContext) {
     add_file("part.h", "struct ctx;\nstruct §(part)part { int x; };\n");
-    add_main("host.c", R"c(
+    add_focus("host.c", R"c(
 struct §(ctx)ctx { int x; };
 #include "part.h"
 )c");
@@ -963,12 +963,13 @@ struct §(ctx)ctx { int x; };
     /// The header compiled as its host sees it: the host's text before the
     /// include arrives as a fragment the compile -includes, named after
     /// the host and the offsets it was cut at — not by a #line the host's
-    /// own text carries.
+    /// own text carries. A fragment entered after it, cut from another
+    /// file, does not stand for the host.
     std::string marker = "#line 2 \"host.c\"\n";
     std::string copied = "struct ctx { int x; };\n";
 
     Tester context;
-    context.add_main("part.h", "struct §(ctx)ctx;\nstruct §(part)part { int x; };\n");
+    context.add_focus("part.h", "struct §(ctx)ctx;\nstruct §(part)part { int x; };\n");
     context.prepare("-std=c17");
     auto prefix = TestVFS::path(".clice-prefix.h");
     context.params.input.add_synthesized({
@@ -979,7 +980,14 @@ struct §(ctx)ctx { int x; };
                        .runs = {{.offset = static_cast<std::uint32_t>(marker.size()),
                                  .source_offset = 1,
                                  .length = static_cast<std::uint32_t>(copied.size())}}},
-         }
+         .entry = SynthesizedFile::Entry::Prefix,
+         },
+        {
+         .path = TestVFS::path(".clice-open.h"),
+         .content = "\n",
+         .origin = {.source = TestVFS::path("mid.h")},
+         .entry = SynthesizedFile::Entry::Forced,
+         },
     });
     context.params.input.arguments.insert(context.params.input.arguments.end() - 1,
                                           {"-include", prefix});
@@ -990,7 +998,7 @@ struct §(ctx)ctx { int x; };
 }
 
 ZEST_CASE(CLinkageIgnoresTypes) {
-    add_main("a.c", R"c(
+    add_focus("a.c", R"c(
 typedef int wchar_t;
 int §(f)f();
 void §(g)g(wchar_t c);
@@ -998,7 +1006,7 @@ void §(g)g(wchar_t c);
     ZASSERT(compile("-std=c17"));
 
     Tester other;
-    other.add_main("b.cpp", R"cpp(
+    other.add_focus("b.cpp", R"cpp(
 extern "C" int §(f)f(void);
 extern "C" void §(g)g(wchar_t c);
 )cpp");
@@ -1009,7 +1017,7 @@ extern "C" void §(g)g(wchar_t c);
 }
 
 ZEST_CASE(OverloadableCFunctions) {
-    add_main("a.c", R"c(
+    add_focus("a.c", R"c(
 __attribute__((overloadable)) void §(i)f(int);
 __attribute__((overloadable)) void §(d)f(double);
 )c");
@@ -1044,7 +1052,7 @@ struct §(other)Other {};
 
     add_file("first.h", first);
     add_file("second.h", second);
-    add_main("a.cpp", R"cpp(
+    add_focus("a.cpp", R"cpp(
 #include "first.h"
 #include "second.h"
 )cpp");
@@ -1053,7 +1061,7 @@ struct §(other)Other {};
     Tester other;
     other.add_file("first.h", first);
     other.add_file("second.h", second);
-    other.add_main("b.cpp", R"cpp(
+    other.add_focus("b.cpp", R"cpp(
 #include "second.h"
 #include "first.h"
 )cpp");
@@ -1108,14 +1116,14 @@ public:
     void §(run)run();
 };
 )cpp";
-    add_main("def.cppm", definition);
+    add_focus("def.cppm", definition);
     ZASSERT(compile_with_modules());
 
     Tester other;
     other.add_file("fwd.cppm", "export module m:fwd;\nexport class Widget;\n");
     other.add_file("def.cppm", definition);
     other.add_file("m.cppm", "export module m;\nexport import :fwd;\nexport import :def;\n");
-    other.add_main("impl.cpp", "module m;\nvoid Widget::§(run)run() {}\n");
+    other.add_focus("impl.cpp", "module m;\nvoid Widget::§(run)run() {}\n");
     ZASSERT(other.compile_with_modules());
 
     ZEXPECT(entity_at(*this, "def.cppm", "run") == entity_at(other, "impl.cpp", "run"));
@@ -1147,7 +1155,7 @@ void §(use)use(Widget&);
 }
 
 ZEST_CASE(ParentChain) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 namespace §(ns)ns {
 extern "C" { void §(c)c_linkage(); }
 template <typename T> struct §(box)Box { void §(method)method(); };
@@ -1174,10 +1182,10 @@ void §(global)global();
 }
 
 ZEST_CASE(ModuleEntity) {
-    add_main("main.cpp", "int x;");
+    add_focus("main.cpp", "int x;");
     ZASSERT(compile());
     Tester other;
-    other.add_main("main.cpp", "int y;");
+    other.add_focus("main.cpp", "int y;");
     ZASSERT(other.compile());
 
     ZEXPECT(unit->get<EntityTable>().module_entity("foo") ==

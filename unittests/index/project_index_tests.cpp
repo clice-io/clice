@@ -62,7 +62,7 @@ ZEST_CASE(MergeCollectsExternalSymbols) {
     add_file("header.h", R"(
         int external_fn();
     )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         static int local_fn() { return 1; }
         int use() { return external_fn() + local_fn(); }
@@ -78,7 +78,7 @@ ZEST_CASE(MergeCollectsExternalSymbols) {
 
     auto external = find_symbol(project, "external_fn");
     ZASSERT(external != 0);
-    // Referenced from both the header (declaration) and the main file.
+    // Referenced from both the header (declaration) and the focus file.
     ZASSERT(project.reference_count(external) >= 2);
 
     // Non-External symbols never reach the project table.
@@ -89,7 +89,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     add_file("shared.h", R"(
         namespace lib { int shared_fn(); }
     )");
-    add_main("user.cpp", R"(
+    add_focus("user.cpp", R"(
         #include "shared.h"
         int use() { return lib::shared_fn(); }
     )");
@@ -120,7 +120,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     definer.add_file("shared.h", R"(
         namespace lib { int shared_fn(); }
     )");
-    definer.add_main("lib.cpp", R"(
+    definer.add_focus("lib.cpp", R"(
         #include "shared.h"
         [[deprecated]] int lib::shared_fn() { return 1; }
     )");
@@ -147,7 +147,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     mover.add_file("shared.h", R"(
         namespace lib { int shared_fn(); }
     )");
-    mover.add_main("moved.cpp", R"(
+    mover.add_focus("moved.cpp", R"(
         #include "shared.h"
         int lib::shared_fn() { return 2; }
     )");
@@ -367,7 +367,7 @@ ZEST_CASE(TwoImportedVersions) {
 }
 
 ZEST_CASE(GlobalRoundTripWithRealMerge) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         int global_value = 42;
         int reader() { return global_value; }
     )");
@@ -381,12 +381,12 @@ ZEST_CASE(GlobalRoundTripWithRealMerge) {
     auto file_ids_map = intern_paths(view, pool);
     project.merge(view, file_ids_map);
 
-    // A manifest referencing the main file keeps its FileVersion alive
+    // A manifest referencing the focus file keeps its FileVersion alive
     // through the write's garbage collection.
-    auto main_fv = pool.intern_version(file_ids_map[view.path_count() - 1],
-                                       view.path_hash(view.path_count() - 1));
+    auto focus_fv = pool.intern_version(file_ids_map[view.path_count() - 1],
+                                        view.path_hash(view.path_count() - 1));
     index::TUManifest manifest;
-    manifest.tu_fv = main_fv;
+    manifest.tu_fv = focus_fv;
     project.apply_manifest(pool, file_ids_map[view.path_count() - 1], std::move(manifest));
 
     llvm::SmallString<4096> buf;
@@ -400,8 +400,8 @@ ZEST_CASE(GlobalRoundTripWithRealMerge) {
 
     auto symbol = find_symbol(loaded, "global_value");
     ZASSERT(symbol != 0);
-    auto main_path = pool.resolve(file_ids_map[view.path_count() - 1]);
-    auto fresh_id = fresh.find(Spelling::absolute(main_path));
+    auto focus_path = pool.resolve(file_ids_map[view.path_count() - 1]);
+    auto fresh_id = fresh.find(Spelling::absolute(focus_path));
     ZASSERT(fresh_id);
     ZASSERT(llvm::is_contained(reference_files(loaded, symbol), fresh_id->raw));
 }

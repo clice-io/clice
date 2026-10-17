@@ -50,7 +50,7 @@ public:
 
     /// Re-validate on-disk PCM blobs and build the module dependencies of
     /// a request that compiles under `arguments` with `content` as the
-    /// main file and the resolution's synthesized context served from
+    /// focus file and the resolution's synthesized context served from
     /// memory (the forwarder's per-request builds — the scan must see the
     /// buffer's imports under the request's command). Building a
     /// dependency can itself evict another clean module's PCM under budget

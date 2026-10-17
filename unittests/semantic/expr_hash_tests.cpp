@@ -257,7 +257,7 @@ void expect_kinds(const Fidelity& fidelity, llvm::ArrayRef<Stmt::StmtClass> kind
 ZEST_SUITE(expr_hash, Tester) {
 
 ZEST_CASE(StandardLibraryConstraints) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #include <vector>
 #include <string>
 #include <ranges>
@@ -284,7 +284,7 @@ template<class T> struct Partial<T, sizeof(T)> {};
 };
 
 ZEST_CASE(HandwrittenExpressions) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 namespace std {
 class type_info;
 template<class T> class initializer_list {
@@ -630,7 +630,7 @@ void statements() {
 };
 
 ZEST_CASE(MicrosoftExpressions) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 struct _GUID { unsigned long a; unsigned short b, c; unsigned char d[8]; };
 struct __declspec(uuid("12345678-1234-1234-1234-123456789abc")) Identified {};
 using mark_uuid_type = decltype(__uuidof(Identified));
@@ -699,7 +699,7 @@ template<class T> void dependent() {
 };
 
 ZEST_CASE(CoroutineExpressions) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #include <coroutine>
 struct Task {
     struct promise_type {
@@ -736,7 +736,7 @@ using mark_coroutine = decltype([]() -> Task {
 ZEST_CASE(LanguageExtensions) {
     Tester opencl;
     opencl.triple = "x86_64-unknown-linux-gnu";
-    opencl.add_main("main.cpp", R"cpp(
+    opencl.add_focus("main.cpp", R"cpp(
 using mark_as_type = decltype(__builtin_astype(1, float));
 using mark_addrspace = decltype(addrspace_cast<__global int*>((__generic int*)nullptr));
 )cpp");
@@ -749,7 +749,7 @@ using mark_addrspace = decltype(addrspace_cast<__global int*>((__generic int*)nu
 
     {
         Tester fixture;
-        fixture.add_main("main.cpp", R"cpp(
+        fixture.add_focus("main.cpp", R"cpp(
 struct dim3 { dim3(unsigned); };
 int cudaConfigureCall(dim3, dim3, unsigned = 0, void* = nullptr);
 __attribute__((global)) void kernel();
@@ -764,7 +764,7 @@ using mark_cuda_call = decltype(kernel<<<1, 1>>>());
     }
     {
         Tester fixture;
-        fixture.add_main("main.cpp", R"cpp(
+        fixture.add_focus("main.cpp", R"cpp(
 class Kernel;
 template <typename KernelName, typename... Ts>
 void sycl_kernel_launch(const char*, Ts...) {}
@@ -789,7 +789,7 @@ using mark_sycl_name = decltype(__builtin_sycl_unique_stable_name(int));
     {
         Tester fixture;
         fixture.add_file("data.bin", std::string(400, 'a'));
-        fixture.add_main("main.cpp", R"cpp(
+        fixture.add_focus("main.cpp", R"cpp(
 using mark_embed = decltype((int[]){
 #embed "data.bin"
 });
@@ -801,7 +801,7 @@ using mark_embed = decltype((int[]){
     }
     {
         Tester fixture;
-        fixture.add_main("main.cpp", R"cpp(
+        fixture.add_focus("main.cpp", R"cpp(
 int ordinary(int);
 using mark_recovery = decltype([] { ordinary(1, 2); });
 )cpp");
@@ -815,7 +815,7 @@ using mark_recovery = decltype([] { ordinary(1, 2); });
 };
 
 ZEST_CASE(PartialPackSubstitution) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 void consume(...);
 template<int... N> struct Values {
     template<class... T> using mark_value_pack = decltype(consume((T{} + N)...));
@@ -842,7 +842,7 @@ void instantiate_index() { indexing(1, 2); }
 };
 
 ZEST_CASE(EquivalencePairs) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template<int N> void mark_nttp_a() requires (N > 0);
 template<int Renamed> void mark_nttp_b() requires (Renamed > 0);
 template<int N> void mark_parens_a() requires ((N) > 0);

@@ -68,8 +68,8 @@ struct Diagnostic {
     /// The error message of this diagnostic.
     std::string message;
 
-    /// The fix its fix-it hints spell, replacements of the main file's
-    /// text applied together; empty when it has none, or one the main
+    /// The fix its fix-it hints spell, replacements of the focus file's
+    /// text applied together; empty when it has none, or one the focus
     /// file's text cannot express.
     std::vector<TextReplacement> fix;
 

@@ -74,7 +74,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
 }
 
 /// Walk a symbol's relations in every header section (all but the
-/// main file's), the way the query layer's overlay lookup serves them.
+/// focus file's), the way the query layer's overlay lookup serves them.
 void lookup_headers(index::SymbolHash hash,
                     RelationKind kind,
                     llvm::function_ref<bool(llvm::StringRef, const index::Relation&)> callback) {
@@ -96,7 +96,7 @@ void lookup_headers(index::SymbolHash hash,
 
 ZEST_CASE(ForcedIncludeServed) {
     add_file("forced.h", R"(int §(def)⟦forced_value⟧ = 1;)");
-    add_main("main.cpp", R"(int x = forced_value;)");
+    add_focus("main.cpp", R"(int x = forced_value;)");
 
     // A compile-command forced include: clang records its include edge in
     // the predefines buffer, which is a valid location — so unlike the
@@ -129,7 +129,7 @@ ZEST_CASE(HeaderRelationLookup) {
 inline void §(def)⟦foo⟧() {}
 inline void bar() { §(href)⟦foo⟧(); }
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int main() { §(ref)⟦foo⟧(); return 0; }
 )");
@@ -175,7 +175,7 @@ ZEST_CASE(PreambleLookup) {
     add_file("foo.h", R"(
 inline void §(def)⟦foo⟧() {}
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 )");
@@ -209,7 +209,7 @@ ZEST_CASE(SymbolTableLookup) {
     add_file("foo.h", R"(
 inline void §(def)⟦foo⟧() {}
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int main() { §(ref)⟦foo⟧(); return 0; }
 )");
@@ -226,7 +226,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 }
 
 ZEST_CASE(FeatureStateRoundtrip) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 int main() { return 0; }
 )");
     build_state();
@@ -277,7 +277,7 @@ ZEST_CASE(AcceptCurrentVersionBlob) {
 }
 
 ZEST_CASE(RejectCorruptBlob) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 int main() { return 0; }
 )");
     build_state();
@@ -301,7 +301,7 @@ int main() { return 0; }
 }
 
 ZEST_CASE(RejectCorruptSectionBlob) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 int main() { return 0; }
 )");
     build_state();
@@ -328,7 +328,7 @@ int main() { return 0; }
 }
 
 ZEST_CASE(SourcePathAndPrefix) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 int value = 42;
 int other = 1;
 )");

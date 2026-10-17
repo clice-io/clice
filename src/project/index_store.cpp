@@ -397,8 +397,8 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         LOG_WARN("Ignoring TUIndex that failed verification");
         return std::unexpected(MergeError::Invalid);
     }
-    auto main_local_id = view.path_count() - 1;
-    llvm::StringRef main_tu_path = view.path(main_local_id);
+    auto focus_local_id = view.path_count() - 1;
+    llvm::StringRef tu_path = view.path(focus_local_id);
 
     // Interning paths only names them — pool ids left behind by a rejected
     // result are inert. Everything that is index STATE (symbols,
@@ -410,7 +410,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         file_ids_map[i] = project.file_table.intern(Spelling::absolute(view.path(i)));
     }
-    auto tu_path_id = file_ids_map[main_local_id];
+    auto tu_path_id = file_ids_map[focus_local_id];
 
     index::TUManifest manifest;
     manifest.built_at = static_cast<std::uint64_t>(view.built_at());
@@ -437,7 +437,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         auto path_hash = view.path_hash(local_id);
         if(path_hash != 0 && path_hash != content_hash) {
             LOG_WARN("Reject merge for {}: rows for {} consumed other content than the compiler",
-                     main_tu_path,
+                     tu_path,
                      project.file_table.resolve(file_ids_map[local_id]));
             return false;
         }
@@ -467,7 +467,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         auto bytes = view.section_blob(section);
         if(bytes.empty()) {
             LOG_INFO("Rerun {}: {} stores no variant of the hash it names",
-                     main_tu_path,
+                     tu_path,
                      project.file_table.resolve(global_id));
             return std::unexpected(MergeError::Outdated);
         }
@@ -482,14 +482,14 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         // result; nothing is committed yet.
         if(llvm::xxh3_64bits(bytes) != blob_hash) {
             LOG_WARN("Reject merge for {}: rows section for {} failed verification",
-                     main_tu_path,
+                     tu_path,
                      project.file_table.resolve(global_id));
             return std::unexpected(MergeError::Invalid);
         }
         auto fresh = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(!fresh.loaded()) {
             LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
-                     main_tu_path,
+                     tu_path,
                      project.file_table.resolve(global_id));
             return std::unexpected(MergeError::Invalid);
         }
@@ -526,7 +526,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         view.local_fanout(llvm::to_vector(llvm::make_first_range(section_contributions)));
     if(!local_fanout) {
         LOG_WARN("Reject merge for {}: an internal symbol's reference files carry no rows",
-                 main_tu_path);
+                 tu_path);
         return std::unexpected(MergeError::Invalid);
     }
 
@@ -572,7 +572,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         fv_of[i] = project.file_table.intern_version(file_ids_map[i], hash);
     }
 
-    manifest.tu_fv = fv_of[main_local_id];
+    manifest.tu_fv = fv_of[focus_local_id];
     manifest.nodes.reserve(view.node_count());
     for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
         auto node = view.node(i);

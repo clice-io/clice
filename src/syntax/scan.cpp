@@ -173,7 +173,7 @@ public:
 
     std::optional<llvm::ArrayRef<clang::dependency_directives_scan::Directive>>
         operator()(clang::FileEntryRef file) override {
-        if(file == main_file) {
+        if(file == scanned) {
             return std::nullopt;
         }
 
@@ -193,12 +193,12 @@ public:
         return llvm::ArrayRef(entry.directives);
     }
 
-    /// Lexed by clang's ordinary lexer, not from its directives: the main
+    /// Lexed by clang's ordinary lexer, not from its directives: the scanned
     /// file is the text being typed, and the directives lexer breaks on
     /// half-typed directives (an `#if(` cut off at the end of the buffer,
     /// `import <header>;`) where the ordinary lexer reports an error — the
     /// scan runs in the master process, where a crash ends the server.
-    clang::OptionalFileEntryRef main_file;
+    clang::OptionalFileEntryRef scanned;
 
 private:
     struct Entry {
@@ -213,7 +213,7 @@ private:
 };
 
 /// Collects the imports the preprocessor reaches, each with its offset in
-/// the main file.
+/// the scanned file.
 class ImportCollector : public clang::PPCallbacks {
 public:
     ImportCollector(ScanResult& result, const clang::SourceManager& sources) :
@@ -249,7 +249,7 @@ private:
 
 /// The setup every preprocessor-driven scan shares: the instance from the
 /// command (diagnostics ignored), the directives getter, the target, and
-/// the main file entered through a preprocess-only action. `body` runs on
+/// the scanned file entered through a preprocess-only action. `body` runs on
 /// the entered preprocessor; the module declaration it reached is read
 /// into `result` before the source file is ended.
 void scan_with_preprocessor(
@@ -273,17 +273,15 @@ void scan_with_preprocessor(
         return;
     }
 
-    // An engaged content remaps the main file to it, even when empty,
+    // An engaged content remaps the scanned file to it, even when empty,
     // through an overlay VFS.
     if(content.has_value()) {
         auto& inputs = invocation->getFrontendOpts().Inputs;
         if(!inputs.empty()) {
-            auto main_file = inputs[0].getFile();
+            auto input = inputs[0].getFile();
             auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(vfs);
             auto mem_fs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-            mem_fs->addFile(main_file,
-                            0,
-                            llvm::MemoryBuffer::getMemBufferCopy(*content, main_file));
+            mem_fs->addFile(input, 0, llvm::MemoryBuffer::getMemBufferCopy(*content, input));
             overlay->pushOverlay(std::move(mem_fs));
             vfs = std::move(overlay);
         }
@@ -308,7 +306,7 @@ void scan_with_preprocessor(
         return;
     }
     auto& sources = instance->getSourceManager();
-    directives.main_file = sources.getFileEntryRefForID(sources.getMainFileID());
+    directives.scanned = sources.getFileEntryRefForID(sources.getMainFileID());
 
     body(*instance, *action);
 

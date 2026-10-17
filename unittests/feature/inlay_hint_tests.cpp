@@ -35,7 +35,7 @@ const feature::InlayHintsOptions block_ends = {
 void run(llvm::StringRef code,
          const feature::InlayHintsOptions& options = {},
          std::source_location location = std::source_location::current()) {
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile_with_pch("-std=c++23"));
 
     LocalSourceRange range = LocalSourceRange(0, unit->focus_file().content().size());
@@ -665,7 +665,7 @@ ZEST_CASE(HintsPerLine) {
 };
 
 ZEST_CASE(RangeEndExcluded) {
-    add_main("main.cpp", R"c(
+    add_focus("main.cpp", R"c(
         void sink(int value);
         void use() {
             sink(§(arg)1);

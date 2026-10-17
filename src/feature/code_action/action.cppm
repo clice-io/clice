@@ -20,9 +20,9 @@ struct Context {
     CompilationUnit& unit;
     /// The node the action anchored on.
     const SelectionTree::Node& node;
-    /// Whether the main file is a header: a definition then belongs in the
+    /// Whether the focus file is a header: a definition then belongs in the
     /// host source (the DefineInHostRequest) as much as in the header.
-    bool main_is_header;
+    bool focus_is_header;
 };
 
 using Run = void (*)(const Context& ctx, std::vector<CodeAction>& out);
@@ -143,14 +143,14 @@ std::optional<TextReplacement> insert_members(CompilationUnit& unit,
                                               const clang::CXXRecordDecl* record,
                                               llvm::ArrayRef<Member> members);
 
-/// Visit the main file's declarations at file scope — the translation
+/// Visit the focus file's declarations at file scope — the translation
 /// unit's and, descending, those of namespaces, linkage specifications and
 /// export blocks — in source order.
 void for_each_file_scope_decl(CompilationUnit& unit,
                               llvm::function_ref<void(const clang::Decl*)> visit);
 
 /// The definitions of `record`'s member functions written out of line at
-/// file scope in the main file, in file order.
+/// file scope in the focus file, in file order.
 std::vector<const clang::FunctionDecl*> out_of_line_definitions(CompilationUnit& unit,
                                                                 const clang::CXXRecordDecl* record);
 

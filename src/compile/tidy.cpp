@@ -20,7 +20,7 @@ using namespace clang::tidy;
 
 namespace {
 
-bool is_inside_main_file(clang::SourceLocation loc, const clang::SourceManager& sm) {
+bool in_focus_file(clang::SourceLocation loc, const clang::SourceManager& sm) {
     if(!loc.isValid()) {
         return false;
     }
@@ -28,7 +28,7 @@ bool is_inside_main_file(clang::SourceLocation loc, const clang::SourceManager& 
     return fid == sm.getMainFileID() || fid == sm.getPreambleFileID();
 }
 
-/// The #include and #define directives of the main file's preamble,
+/// The #include and #define directives of the focus file's preamble,
 /// replayed to the tidy checks' callbacks: a compile against a PCH never
 /// preprocesses them. Include-aware checks look for them, and a fix
 /// inserting an include places it among them, or leaves out one the file
@@ -46,8 +46,8 @@ public:
         pp(pp), delegate(delegate), bound(bound), inactive(inactive) {}
 
     /// The preamble's includes follow the predefines buffer, the last
-    /// thing the compile enters before the main file's rest; replayed once
-    /// every callback has left it, so they arrive in the main file's scope.
+    /// thing the compile enters before the focus file's rest; replayed once
+    /// every callback has left it, so they arrive in the focus file's scope.
     void LexedFileChanged(clang::FileID,
                           LexedFileChangeReason reason,
                           clang::SrcMgr::CharacteristicKind,
@@ -63,8 +63,8 @@ private:
     void replay() {
         using Kind = LexicalInfo::Directive::Kind;
         auto& sm = pp.getSourceManager();
-        auto main = sm.getMainFileID();
-        auto text = sm.getBufferData(main);
+        auto focus = sm.getMainFileID();
+        auto text = sm.getBufferData(focus);
         // A prefix is lexed off a copy: the lexer reads up to a NUL
         // terminator, which a prefix lacks.
         auto lexical = lexical_scan(text.take_front(bound).str(), pp.getLangOpts());
@@ -94,7 +94,7 @@ private:
         return false;
     }
 
-    /// The main file's raw identifier `token` as the preprocessor sees it,
+    /// The focus file's raw identifier `token` as the preprocessor sees it,
     /// its identifier looked up.
     clang::Token token_of(const Token& token, llvm::StringRef text) {
         auto& sm = pp.getSourceManager();
@@ -166,7 +166,7 @@ private:
     }
 
     /// The macro is the one the PCH recorded at the name; the name is
-    /// where the main file spells it, as an include's is.
+    /// where the focus file spells it, as an include's is.
     void replay_define(const clang::Token& name) {
         auto& sm = pp.getSourceManager();
         auto offset = sm.getFileOffset(name.getLocation());
@@ -593,14 +593,13 @@ clang::DiagnosticsEngine::Level
         return level;
     }
     // Check for suppression comment. Skip checking diagnostics outside the
-    // main file and forbid I/O: that function would otherwise read the
+    // focus file and forbid I/O: that function would otherwise read the
     // source buffers of preamble files. A NOLINT comment that pairs with
     // none is an error of clang-tidy's own, which the editor leaves out,
     // as clangd does. We let suppression comments take precedence over
     // warning-as-error to match clang-tidy's behaviour.
     llvm::SmallVector<clang::tooling::Diagnostic, 1> tidy_suppressed_errors;
-    if(diag.hasSourceManager() &&
-       is_inside_main_file(diag.getLocation(), diag.getSourceManager()) &&
+    if(diag.hasSourceManager() && in_focus_file(diag.getLocation(), diag.getSourceManager()) &&
        context.shouldSuppressDiagnostic(level,
                                         diag,
                                         tidy_suppressed_errors,

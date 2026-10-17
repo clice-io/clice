@@ -43,7 +43,7 @@ std::string build_tu_index(CompilationUnit& unit, const TUIndexOptions& options 
 /// bound, and its index is the same TU index blob — persisted verbatim as
 /// the PCH's `.pch.idx` pair — plus the preamble-specific fields ordinary
 /// TU index blobs leave empty: the identity of the exact preamble text, and
-/// the PCH-derived feature state spliced into main-file results
+/// the PCH-derived feature state spliced into focus-file results
 /// (document links, inactive regions, the open conditional stack at the
 /// bound, the diagnostics as published).
 std::string build_preamble_index(CompilationUnit& unit,
@@ -89,7 +89,7 @@ public:
 
     std::int64_t built_at() const;
 
-    /// The main file's path is always the last id, by IncludeTree
+    /// The focus file's path is always the last id, by IncludeTree
     /// convention.
     std::uint32_t path_count() const;
 

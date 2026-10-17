@@ -76,7 +76,7 @@ struct ScanResult {
     /// Dependent module names.
     std::vector<std::string> modules;
 
-    /// Where each of `modules` is imported, as an offset in the main file:
+    /// Where each of `modules` is imported, as an offset in the scanned file:
     /// an import in an included file sits at its #include's file name, one
     /// in a file the command line includes at 0.
     std::vector<std::uint32_t> import_offsets;
@@ -153,7 +153,7 @@ struct QuickScanCache {
 /// ImportMacroExpandedName in module_import_tests) — and it resolves a
 /// partition import (`import :part;`) against the enclosing module's
 /// name. Fills the module name and the imports with their offsets.
-/// An engaged `content` remaps the main file to it — even when empty:
+/// An engaged `content` remaps the scanned file to it — even when empty:
 /// an emptied buffer must scan as empty, not fall back to the disk.
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,

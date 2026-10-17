@@ -672,7 +672,7 @@ private:
                            RelationVisitor visitor) const;
 
     /// The `kind` relations of `hash` in the entries of a live TU index's
-    /// other files than its main file (an overlay's headers, a buffer's
+    /// other files than its focus file (an overlay's headers, a buffer's
     /// imported declarations) that may contribute results: files that are
     /// themselves open serve a buffer-true index through their sessions,
     /// and entries of text the disk no longer holds point nowhere (clause

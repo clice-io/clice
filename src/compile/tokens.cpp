@@ -8,8 +8,8 @@ import :compile.tokens;
 
 namespace clice {
 
-// The main-file range covering the expanded tokens `first`..`last`, which
-// lie within one macro argument of an expansion in the main file; invalid
+// The focus-file range covering the expanded tokens `first`..`last`, which
+// lie within one macro argument of an expansion in the focus file; invalid
 // when that range would also cover `prev` or `next`, the expanded tokens
 // around them. Ported from clang's syntax::TokenBuffer.
 //
@@ -24,8 +24,8 @@ static clang::SourceRange spelled_within_argument(clang::SourceLocation first,
                                                   const clang::SourceManager& SM) {
     auto target = SM.getMainFileID();
     // When `first` and `last` are part of the same macro arg of a macro
-    // written in the main file, the result is that slice of the arg, i.e.
-    // their spelling range. Unwrap such macro calls: if the main file has
+    // written in the focus file, the result is that slice of the arg, i.e.
+    // their spelling range. Unwrap such macro calls: if the focus file has
     // A(B(C)), the location stack of a token inside C shows the expansion of
     // A first, then B, then any macros inside C's body, then C itself.
     while(first.isMacroID() && last.isMacroID()) {
@@ -116,14 +116,14 @@ struct TokenMap::Hooks : clang::PPCallbacks {
                           clang::SrcMgr::CharacteristicKind,
                           clang::FileID,
                           clang::SourceLocation) override {
-        map.lexing_main = fid == map.main_fid;
+        map.lexing_focus = fid == map.focus_fid;
     }
 };
 
 TokenMap::TokenMap(clang::Preprocessor& pp) : pp(pp), SM(pp.getSourceManager()) {
-    main_fid = SM.getMainFileID();
-    main_begin = SM.getLocForStartOfFile(main_fid);
-    main_end = SM.getLocForEndOfFile(main_fid);
+    focus_fid = SM.getMainFileID();
+    focus_begin = SM.getLocForStartOfFile(focus_fid);
+    focus_end = SM.getLocForEndOfFile(focus_fid);
     pp.setTokenWatcher([this](const clang::Token& token) { record(token); });
     pp.addPPCallbacks(std::make_unique<Hooks>(*this));
 }
@@ -136,11 +136,11 @@ void TokenMap::record(const clang::Token& token) {
         return;
     }
     auto index = static_cast<std::uint32_t>(expanded_tokens.size());
-    if(lexing_main) {
-        if(main_segments.empty() || main_segments.back().second != index) {
-            main_segments.emplace_back(index, index);
+    if(lexing_focus) {
+        if(focus_segments.empty() || focus_segments.back().second != index) {
+            focus_segments.emplace_back(index, index);
         }
-        main_segments.back().second += 1;
+        focus_segments.back().second += 1;
     }
     if(token.is(clang::tok::annot_module_name)) {
         auto range = clang::CharSourceRange::getTokenRange(token.getAnnotationRange());
@@ -175,7 +175,7 @@ void TokenMap::record_invocation(clang::SourceRange range) {
     // A top-level invocation ends in the file; one ending within the last
     // one sits in its arguments.
     auto end = range.getEnd();
-    if(!in_main_file(end) || (!invocations.empty() && end <= invocations.back().getEnd())) {
+    if(!in_focus_file(end) || (!invocations.empty() && end <= invocations.back().getEnd())) {
         return;
     }
     auto begin = range.getBegin();
@@ -196,19 +196,19 @@ void TokenMap::finish() {
     // The stream is complete: a clang-tidy check re-lexing through the
     // preprocessor would grow it past the slices taken below.
     pp.setTokenWatcher(nullptr);
-    spelled_tokens = clang::syntax::tokenize(main_fid, SM, pp.getLangOpts());
+    spelled_tokens = clang::syntax::tokenize(focus_fid, SM, pp.getLangOpts());
     llvm::ArrayRef<clang::syntax::Token> spelled = spelled_tokens;
 
-    // Every token, a header's included: the main file's nodes have ranges
+    // Every token, a header's included: the focus file's nodes have ranges
     // in headers too, and a miss costs a search by isBeforeInTranslationUnit.
     expanded_index.reserve(expanded_tokens.size());
     for(auto [index, token]: llvm::enumerate(expanded_tokens)) {
         expanded_index[token.location()] = static_cast<std::uint32_t>(index);
     }
 
-    if(!main_segments.empty()) {
-        origins_begin = main_segments.front().first;
-        origins.assign(main_segments.back().second - origins_begin, none);
+    if(!focus_segments.empty()) {
+        origins_begin = focus_segments.front().first;
+        origins.assign(focus_segments.back().second - origins_begin, none);
     }
 
     // A spelled token survives preprocessing when the parser saw it or it
@@ -230,14 +230,14 @@ void TokenMap::finish() {
     clang::SourceLocation last_expansion;
     std::uint32_t invocation = none;
     std::uint32_t name = none;
-    for(auto [segment_begin, segment_end]: main_segments) {
+    for(auto [segment_begin, segment_end]: focus_segments) {
         for(auto index = segment_begin; index < segment_end;) {
             auto location = stream[index].location();
             if(location.isFileID()) {
-                // The main file's own tokens come in order; one that does not
+                // The focus file's own tokens come in order; one that does not
                 // is searched for afresh.
                 if(cursor == spelled.size() || location < spelled[cursor].location()) {
-                    cursor = spelled_at_or_after(main_offset(location));
+                    cursor = spelled_at_or_after(focus_offset(location));
                 }
                 while(cursor < spelled.size() && spelled[cursor].location() < location) {
                     cursor += 1;
@@ -291,8 +291,8 @@ void TokenMap::finish() {
 
     expansions.reserve(invocations.size());
     for(auto [invocation, run]: llvm::zip_equal(invocations, runs)) {
-        auto first = spelled_at_or_after(main_offset(invocation.getBegin()));
-        auto last = spelled_at_or_after(main_offset(invocation.getEnd()) + 1);
+        auto first = spelled_at_or_after(focus_offset(invocation.getBegin()));
+        auto last = spelled_at_or_after(focus_offset(invocation.getEnd()) + 1);
         expansions.push_back({
             .spelled = spelled.slice(first, last - first),
             .expanded = stream.slice(run.first, run.second - run.first),
@@ -331,10 +331,10 @@ void TokenMap::set_macro_origins(clang::FileID fid,
     auto first = expanded_tokens[begin].location();
     auto caller = SM.getTopMacroCallerLoc(
         entry.getSpellingLoc().getLocWithOffset(first.getRawEncoding() - start.getRawEncoding()));
-    if(!in_main_file(caller)) {
+    if(!in_focus_file(caller)) {
         return;
     }
-    auto written = spelled_at_or_after(main_offset(caller));
+    auto written = spelled_at_or_after(focus_offset(caller));
     for(auto index = begin; index < end; index += 1) {
         auto at = caller.getLocWithOffset(expanded_tokens[index].location().getRawEncoding() -
                                           first.getRawEncoding());
@@ -363,16 +363,16 @@ void TokenMap::set_macro_origins(clang::FileID fid,
 
 std::uint32_t TokenMap::spelled_at_or_after(std::uint32_t offset) const {
     auto it = llvm::partition_point(spelled_tokens, [&](const clang::syntax::Token& token) {
-        return main_offset(token.location()) < offset;
+        return focus_offset(token.location()) < offset;
     });
     return static_cast<std::uint32_t>(it - spelled_tokens.begin());
 }
 
 const clang::syntax::Token* TokenMap::spelled_at(clang::SourceLocation location) const {
-    if(!in_main_file(location)) {
+    if(!in_focus_file(location)) {
         return nullptr;
     }
-    auto index = spelled_at_or_after(main_offset(location));
+    auto index = spelled_at_or_after(focus_offset(location));
     if(index == spelled_tokens.size() || spelled_tokens[index].location() != location) {
         return nullptr;
     }
@@ -393,7 +393,7 @@ const MacroExpansion* TokenMap::expansion_of(const clang::syntax::Token& token) 
 llvm::ArrayRef<clang::syntax::Token>
     TokenMap::spelled_touching(clang::SourceLocation location) const {
     // The end of the file still touches its last token.
-    if(!location.isFileID() || location < main_begin || main_end < location) {
+    if(!location.isFileID() || location < focus_begin || focus_end < location) {
         return {};
     }
     return clang::syntax::spelledTokensTouching(location, spelled_tokens);
@@ -424,12 +424,12 @@ llvm::ArrayRef<clang::syntax::Token> TokenMap::spelled_for(clang::SourceRange ra
         if(covering.isInvalid()) {
             return {};
         }
-        auto begin = spelled_at_or_after(main_offset(covering.getBegin()));
-        auto end = spelled_at_or_after(main_offset(covering.getEnd()) + 1);
+        auto begin = spelled_at_or_after(focus_offset(covering.getBegin()));
+        auto end = spelled_at_or_after(focus_offset(covering.getEnd()) + 1);
         return spelled.slice(begin, end - begin);
     }
 
-    // Anything else maps whole expansions, or file tokens of the main file.
+    // Anything else maps whole expansions, or file tokens of the focus file.
     const clang::syntax::Token* begin = nullptr;
     if(first_expansion) {
         if(&first != first_expansion->expanded.begin()) {

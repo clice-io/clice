@@ -39,7 +39,7 @@ struct IncludeNode {
 };
 
 /// The include tree of one compilation as the TU index carries it. Path
-/// ids are TU-local; the main file is always the last path, a convention
+/// ids are TU-local; the focus file is always the last path, a convention
 /// serialization and the indexer rely on.
 struct IncludeTree {
     /// If a header file doesn't have a #pragma once or guard macro, each
@@ -74,16 +74,16 @@ struct IncludeTree {
     static IncludeTree from(CompilationUnit& unit, llvm::ArrayRef<clang::FileID> indexed_fids = {});
 
     /// The node that entered `fid`, or no_node for a file entered without an
-    /// include directive (the main file, synthetic buffers) — and,
+    /// include directive (the focus file, synthetic buffers) — and,
     /// defensively, for a fid missing from the table: the indexer must
     /// never crash on unexpected input.
     std::uint32_t node_of(clang::FileID fid) const;
 
     /// The path of the file `fid` refers to. A fid without a node resolves
-    /// to the main file's path.
+    /// to the focus file's path.
     ///
     /// FIXME: Synthetic buffers (<built-in>, <command line>) also resolve
-    /// to the main file here. Once macro definitions from those buffers
+    /// to the focus file here. Once macro definitions from those buffers
     /// are indexed (see add_macro in directive.cpp), give them named path
     /// entries so consumers can route them to a preview document instead
     /// of misattributing them.

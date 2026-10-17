@@ -60,7 +60,7 @@ clice 是一个全新的 C++ 语言服务器，从架构层面重新设计，旨
 - `DependencyGraph`：全局 include/模块依赖图，支持正向查询、反向查询、宿主源文件搜索、include 链查找等。
 - 依赖扫描：封装 Clang 的 `DependencyDirectivesScanner`，快速提取 include 和模块依赖
 - `IncludeResolver`：根据搜索路径配置将 include 路径解析为实际文件
-- Preamble 合成：构建前缀/后缀文件，使头文件能够在其宿主文件的预处理器状态下编译
+- 头文件上下文：构建前缀/后缀文件，使头文件能够在其宿主文件的预处理器状态下编译
 - 文档注释：在文件文本中找出为声明撰写的注释，编译单元和索引的找法相同；再按 Doxygen 和 Markdown 的规则读取其中的命令、参数、返回值和 `@copydoc`，得到统一的结构化形式，供悬停和 `clice query` 渲染
 
 详见 [依赖扫描](dependency-scanning.md)。

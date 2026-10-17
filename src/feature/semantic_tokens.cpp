@@ -130,7 +130,7 @@ bool is_format_string(clang::QualType type) {
     return name == "basic_format_string" || name == "basic_fstring" || name == "fstring";
 }
 
-/// Collects what the AST says of the main file's tokens, for the token
+/// Collects what the AST says of the focus file's tokens, for the token
 /// stream: the classification of every written name, the format strings
 /// and the arguments macros drop.
 ///

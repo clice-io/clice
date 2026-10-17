@@ -1,0 +1,10 @@
+[test."m.inc"]
+diagnostics = [
+    {
+        at = "Handle h⟦⟧",
+        severity = "error",
+        message = "expected ';' at end of declaration list",
+        source = "clang",
+        code = "err_expected_semi_decl_list",
+    },
+]

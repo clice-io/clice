@@ -134,7 +134,7 @@ public:
     }
 
 private:
-    // Creates a selection tree for the given range in the main file.
+    // Creates a selection tree for the given range in the focus file.
     // The range includes bytes [Start, End).
     SelectionTree(CompilationUnit& unit, LocalSourceRange range);
 

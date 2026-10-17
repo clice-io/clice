@@ -281,7 +281,7 @@ struct HoverInfo {
     /// title shows; empty otherwise.
     std::string access;
 
-    /// The range of the hovered token in the main file, which the editor
+    /// The range of the hovered token in the focus file, which the editor
     /// highlights.
     std::optional<LocalSourceRange> symbol_range;
 
@@ -581,7 +581,7 @@ std::string legend_name(SemanticTokenModifier modifier);
 
 auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticTokenLegend;
 
-/// A fold in byte offsets of the main file; it becomes an LSP FoldingRange
+/// A fold in byte offsets of the focus file; it becomes an LSP FoldingRange
 /// only at the reply edge, which knows how the client folds.
 struct FoldingRange {
     LocalSourceRange range;
@@ -611,7 +611,7 @@ struct FoldingClient {
 /// Result of scanning a unit for preprocessor-inactive regions.
 struct InactiveScan {
     /// Byte-offset ranges [begin0, end0, begin1, end1, ...] of inactive
-    /// branch bodies in the main file; directive lines excluded.
+    /// branch bodies in the focus file; directive lines excluded.
     /// Sorted by begin and disjoint — nested inactive conditionals merge
     /// into the enclosing region.
     std::vector<std::uint32_t> regions;
@@ -659,7 +659,7 @@ struct InlayHintPart {
     /// every unit names.
     std::string anchor;
 
-    /// The main-file offset a piece naming no symbol navigates to: where the
+    /// The focus-file offset a piece naming no symbol navigates to: where the
     /// block a block end hint closes starts.
     std::optional<std::uint32_t> target;
 
@@ -674,7 +674,7 @@ struct InlayHint {
     bool padding_right = false;
 };
 
-/// Semantic tokens of the main file; `inactive_regions` are the unit's,
+/// Semantic tokens of the focus file; `inactive_regions` are the unit's,
 /// the preamble's under a PCH included, as the worker assembles them at
 /// compile time. The overload without them scans the unit itself — correct
 /// only for a unit compiled without a PCH.
@@ -735,7 +735,7 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
                                 const FoldingClient& client) -> std::vector<protocol::FoldingRange>;
 
 /// The ranges an expanding selection steps through from each offset of the
-/// main file, innermost first, each strictly containing the one before:
+/// focus file, innermost first, each strictly containing the one before:
 /// the AST nodes around the offset merged with the ranges only the text
 /// shows — a literal's text, a comment, the inside of a bracket pair, a
 /// statement with its `;`, a directive line. An offset nothing covers gets
@@ -802,7 +802,7 @@ auto outline(std::vector<OutlineEntry> entries,
              const clang::LangOptions& lang_opts,
              const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
-/// The outline of the main file, a `#define` in it only outside the
+/// The outline of the focus file, a `#define` in it only outside the
 /// inactive regions. The overload without a regions argument scans the
 /// unit itself — correct only for units compiled without a PCH, as with
 /// semantic_tokens.
@@ -851,11 +851,11 @@ auto inlay_hints_to_protocol(
     llvm::function_ref<std::optional<protocol::Location>(const InlayHintPart&)> locate = nullptr)
     -> std::vector<protocol::InlayHint>;
 
-/// Include-directive links of the main file, in byte offsets; the
+/// Include-directive links of the focus file, in byte offsets; the
 /// reply edge converts them with the session's line map.
 auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink>;
 
-/// Scan the main file's condition directives. `open_stack` seeds the
+/// Scan the focus file's condition directives. `open_stack` seeds the
 /// nesting state (from a preceding preamble scan) and `resume_offset` is
 /// where the scanned content starts — pending inactive levels from the
 /// seed begin there. A scan that ends with open levels closes their
@@ -914,7 +914,7 @@ struct FileDiagnostic {
     std::vector<DiagnosticNote> notes;
 };
 
-/// The diagnostics a compile shows on its main file.
+/// The diagnostics a compile shows on its focus file.
 auto diagnostics(CompilationUnit& unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<FileDiagnostic>;
 
@@ -988,7 +988,7 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
     -> protocol::CompletionList;
 
 /// Get the hover information for the symbol at the given offset in the
-/// main file of the unit.
+/// focus file of the unit.
 auto hover_info(CompilationUnit& unit,
                 std::uint32_t offset,
                 const HoverOptions& options = {},
@@ -1070,7 +1070,7 @@ struct DefinitionPiece {
     std::string text;
 };
 
-/// Definitions to insert into the main file once the index vetted them:
+/// Definitions to insert into the focus file once the index vetted them:
 /// the surviving pieces joined by blank lines replace `range`, wrapped in
 /// `before` and `after`, formatted by whoever assembles them.
 struct DefineRequest {
@@ -1090,7 +1090,7 @@ struct DefineInHostRequest {
     std::vector<DefinitionPiece> pieces;
 };
 
-/// Where a new `#include` line goes in the main file. A module unit
+/// Where a new `#include` line goes in the focus file. A module unit
 /// without a global module fragment gets one opened there.
 struct IncludeInsertion {
     std::uint32_t offset = 0;
@@ -1105,7 +1105,7 @@ struct IncludeInsertion {
 
 /// One action per header declaring `name` under `scope` ("std::" style,
 /// empty for an unqualified name), each inserting its include directive
-/// at `insertion` of the main file.
+/// at `insertion` of the focus file.
 struct IncludeRequest {
     std::string scope;
     std::string name;
@@ -1123,7 +1123,7 @@ struct CodeAction {
     std::optional<IndexRequest> index;
 };
 
-/// The code actions available on a selection of the main file. Every
+/// The code actions available on a selection of the focus file. Every
 /// action is computed to completion against this AST: single-TU actions
 /// carry their edits, the ones needing the index carry their request.
 auto code_actions(CompilationUnit& unit, LocalSourceRange selection) -> std::vector<CodeAction>;

@@ -82,7 +82,7 @@ export interface WorkerFault {
     /// holds `#pragma clang __debug crash` (CLICE_TEST_PRAGMA_CRASH), and a
     /// text without it is served.
     pragma?: true;
-    /// A crash of the clang-tidy pass, over a main file whose text holds
+    /// A crash of the clang-tidy pass, over a focus file whose text holds
     /// this string (CLICE_TEST_TIDY_CRASH); the compile running it is the
     /// request.
     tidy?: string;

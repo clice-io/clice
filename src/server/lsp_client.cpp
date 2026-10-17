@@ -21,7 +21,7 @@ import :server.query_commands;
 import :server.uri;
 import :support.anomaly;
 import :support.logging;
-import :syntax.preamble_synthesis;
+import :syntax.header_context;
 import :vfs.path;
 import :worker.probe;
 import :worker.serialize;

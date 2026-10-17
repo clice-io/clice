@@ -6,7 +6,7 @@
 -- the test hooks on: the script waits for the server through
 -- clice/internal/sync. Every vim.wait bound only fails a hang.
 -- Starts clice through the shipped LSP config (../lsp/clice.lua), opens
--- the fixture's main file, waits for diagnostics, then checks that
+-- the fixture's main.cpp, waits for diagnostics, then checks that
 -- hover, definition and completion respond with well-formed results, and
 -- on a header that the compilation context commands work.
 

@@ -7,9 +7,9 @@ module clice:compile.compilation;
 import :compile.diagnostic;
 import :compile.directive;
 import :compile.tokens;
+import :syntax.header_context;
 import :syntax.lexical_scan;
 import :syntax.position;
-import :syntax.preamble_synthesis;
 import :syntax.token;
 import :vfs.file_system;
 import :vfs.path;
@@ -33,7 +33,7 @@ struct TidyParams {
     std::string warnings_as_errors;
 
     /// Also report findings in headers matching this regex (clang-tidy's
-    /// HeaderFilterRegex; empty = main file only).
+    /// HeaderFilterRegex; empty = focus file only).
     std::string header_filter;
 
     /// Headers excluded from reporting even when header_filter matches
@@ -93,7 +93,7 @@ enum class CompilationKind : std::uint8_t {
     /// Build the PCM of a unit providing a module into output_file.
     ModuleInterface,
 
-    /// Parse an open file, over a preamble PCH when one is given: the main
+    /// Parse an open file, over a preamble PCH when one is given: the focus
     /// file's tokens and top-level declarations are collected for the
     /// features, and clang-tidy runs in the editor shape.
     Content,
@@ -133,8 +133,17 @@ struct CompilationInput {
     llvm::StringMap<SynthesizedOrigin> synthesized;
 
     /// Synthesized files entered after the command's -includes by every
-    /// compile but a preamble's (SynthesizedFile::forced).
+    /// compile but a preamble's (SynthesizedFile::Entry::Forced).
     std::vector<std::string> forced_includes;
+
+    /// The file a header context's prefix was cut from, the host (see
+    /// add_synthesized and CompilationUnit::host_source).
+    std::string host;
+
+    /// Where the focus file's text as the editor has it ends, when its
+    /// buffer goes on with the include of a header context's suffix (see
+    /// add_synthesized).
+    std::optional<std::uint32_t> text_end;
 
     /// The PCH to load, and how many bytes of the focus file it stands for:
     /// a preamble's, or with no bytes a precompiled header the build
@@ -144,16 +153,27 @@ struct CompilationInput {
     /// The PCMs to load, by module name.
     llvm::StringMap<std::string> pcms;
 
-    /// Serve files the command names from memory: a header context's
-    /// synthesized fragments.
-    void add_synthesized(const SynthesizedFiles& files) {
+    /// Serve a header context's synthesized files from memory. `focus` is
+    /// the path the focus file's text is already served by, when the
+    /// compile reads all of it: the text then goes on with the include of
+    /// the context's suffix. A preamble's build and a compile of the file on
+    /// disk pass none.
+    void add_synthesized(const SynthesizedFiles& files, llvm::StringRef focus = {}) {
         for(auto& file: files) {
             add_remapped_file(file.path, file.content);
             // Named the way CompilationUnit::file_path names it.
             synthesized[CanonicalPath(Spelling::absolute(file.path)).str()] = file.origin;
-            if(file.origin.forced) {
+            if(file.entry == SynthesizedFile::Entry::Prefix) {
+                host = file.origin.source;
+            } else if(file.entry == SynthesizedFile::Entry::Forced) {
                 forced_includes.push_back(file.path);
             }
+        }
+        if(auto suffix = suffix_path(files); !suffix.empty() && !focus.empty()) {
+            auto text = buffers.find(focus);
+            assert(text != buffers.end() && "the focus file is served before its context");
+            text_end = static_cast<std::uint32_t>(text->second.size());
+            append_include(text->second, suffix);
         }
     }
 
@@ -180,7 +200,7 @@ struct CompilationParams {
     std::string output_file;
 
     struct Completion {
-        /// Where in the main file.
+        /// Where in the focus file.
         std::uint32_t offset = 0;
 
         /// What clang hands the results to; the compile owns it.
@@ -211,7 +231,7 @@ enum class CompilationStatus : std::uint8_t {
     Cancelled,
 
     /// Clang never started parsing: an invalid command, an unknown target,
-    /// an unreadable main file, or a PCH or PCM rejected while loading.
+    /// an unreadable focus file, or a PCH or PCM rejected while loading.
     /// Diagnostics exist, mostly without a location; the AST does not.
     SetupFail,
 };
@@ -352,13 +372,13 @@ public:
     /// carries its bytes, so nothing may depend on it.
     bool synthesized(clang::FileID fid);
 
-    /// Whether the compile borrows an includer context: its main file is
+    /// Whether the compile borrows an includer context: its focus file is
     /// a header, compiled as its host sees it.
     bool borrows_context();
 
-    /// Where the text of `fid` ends: in a compile that borrows an includer
-    /// context, the main file's ends at the line break before the include
-    /// of the includer's remainder appended past the editor's text.
+    /// Where the text of `fid` ends: the focus file's, where the editor's
+    /// ends, before the include of a header context's suffix
+    /// (CompilationInput::text_end).
     auto text_end(clang::FileID fid) -> std::uint32_t;
 
     /// The path of the file `fid` stands for: its own, or for a synthesized
@@ -370,7 +390,7 @@ public:
     /// offsets.
     std::uint32_t source_offset(clang::FileID fid, std::uint32_t offset);
 
-    /// Whether the file is the compile's own source: the main file, or
+    /// Whether the file is the compile's own source: the focus file, or
     /// under a borrowed includer context a fragment cut from the host.
     bool host_source(clang::FileID fid);
 
@@ -379,10 +399,10 @@ public:
     /// host's to index, not this unit's.
     bool from_context(clang::FileID fid);
 
-    /// Whether the declaration opens before the main file and closes past
+    /// Whether the declaration opens before the focus file and closes past
     /// its start: the class, enumeration, namespace or function a fragment
     /// compiled in its includer's context sits inside.
-    bool encloses_main_file(const clang::Decl* decl);
+    bool encloses_focus_file(const clang::Decl* decl);
 
     /// Get the include location of the file id, i.e. where the file
     /// was introduced by `#include`.
@@ -555,10 +575,6 @@ private:
 
     /// Memo of CompilationUnit::from_context.
     llvm::DenseMap<clang::FileID, bool> context_files;
-
-    /// Memo of the host path CompilationUnit::host_source compares
-    /// against.
-    std::optional<std::string> host;
 
     /// The buffers clang reads params.input.buffers through; clang leaves
     /// them to their owner (RetainRemappedFileBuffers).

@@ -486,7 +486,7 @@ struct RawLocation {
 struct RawInlayHintPart {
     std::string value;
     /// Where the piece links, for one naming a symbol the index places or
-    /// a target in the main file.
+    /// a target in the focus file.
     std::optional<RawLocation> location;
 };
 
@@ -500,7 +500,7 @@ struct RawInlayHint {
 
 /// Range payload for inlay hints: each label piece naming a symbol placed
 /// as the server places it, from the unit's own TU index standing in for
-/// the server's — a declaration, else the definition, the main file's shard
+/// the server's — a declaration, else the definition, the focus file's shard
 /// first as an open buffer's is.
 std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnit& unit,
                                                      LocalSourceRange range,
@@ -514,10 +514,10 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnit& unit,
             bytes = index::build_tu_index(unit, {.all_files = true});
             tu = index::TUIndex::from_bytes(bytes);
         }
-        auto main = tu.path_count() - 1;
+        auto focus = tu.path_count() - 1;
         for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
             for(std::uint32_t i = 0; i < tu.path_count(); i += 1) {
-                auto path_id = i == 0 ? main : i - 1;
+                auto path_id = i == 0 ? focus : i - 1;
                 const auto& shard = tu.shard_of(path_id);
                 std::optional<LocalSourceRange> found;
                 shard.lookup(symbol, kind, [&](const index::Relation& relation) {
@@ -578,7 +578,7 @@ struct RawCodeAction {
 };
 
 /// The index requests resolved as an empty index would: definitions into
-/// the main file are all kept, no header declares any name.
+/// the focus file are all kept, no header declares any name.
 std::optional<kota::codec::RawValue> run_code_action(CompilationUnit& unit,
                                                      LocalSourceRange selection,
                                                      [[maybe_unused]] const Config& config) {
@@ -1841,9 +1841,9 @@ auto line_of(CompilationUnit& unit, clang::SourceLocation location) -> std::stri
 /// and the two declarations are compared — their types, specifiers,
 /// attributes, initializers and, for a class or an enum, the members the
 /// card lists. A card of an implicit instantiation is compiled at the end
-/// of the main file.
+/// of the focus file.
 auto check_hover_definitions(const CompilationInput& input,
-                             llvm::StringRef main_path,
+                             llvm::StringRef focus_path,
                              const feature::HoverOptions& options) -> HoverCheckReport {
     HoverCheckReport report;
     // Warnings in system headers too: a twin's in one is checked as any.
@@ -1894,10 +1894,10 @@ auto check_hover_definitions(const CompilationInput& input,
             if(llvm::StringRef(info.definition).contains("(lambda)")) {
                 return;
             }
-            auto main = unit->context().getSourceManager().getMainFileID();
+            auto focus = unit->context().getSourceManager().getMainFileID();
             twin.insertions.push_back({
-                .at = {unit->file_path(main).str(),
-                       static_cast<std::uint32_t>(unit->file_content(main).size())},
+                .at = {unit->file_path(focus).str(),
+                       static_cast<std::uint32_t>(unit->file_content(focus).size())},
                 .text = std::format("\n{}{}\n{}\n",
                                     scopes->first,
                                     twin_text(info.definition, twin, false),
@@ -2084,9 +2084,9 @@ auto check_hover_definitions(const CompilationInput& input,
         }
 
         CompilationInput probe_input = input;
-        auto main_spelling = unit->file_path(unit->context().getSourceManager().getMainFileID());
+        auto focus_spelling = unit->file_path(unit->context().getSourceManager().getMainFileID());
         for(auto& [path, content]: contents) {
-            probe_input.buffers[path == main_spelling ? main_path : path] = content;
+            probe_input.buffers[path == focus_spelling ? focus_path : path] = content;
         }
         probe_input.arguments = first_input.arguments;
         auto probe = compile({.kind = CompilationKind::Content, .input = probe_input});
@@ -2471,12 +2471,10 @@ void run_feature(FileEntry& entry,
         .directory = command.directory,
         .workspace = command.workspace,
     };
-    std::string text = file.content;
+    input.add_remapped_file(file.path, file.content);
     if(command.synthesized) {
-        input.add_synthesized(command.synthesized->files);
-        command.synthesized->append_suffix_include(text);
+        input.add_synthesized(command.synthesized->files, file.path);
     }
-    input.add_remapped_file(file.path, text);
 
     CompilationParams params{.kind = CompilationKind::Content, .input = input};
     if(config.diagnostics.clang_tidy) {

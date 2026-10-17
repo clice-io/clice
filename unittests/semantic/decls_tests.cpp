@@ -41,7 +41,7 @@ auto specialization(llvm::StringRef name, llvm::StringRef arg)
 }
 
 ZEST_CASE(UndeclaredPartialMatch) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template <typename T> struct A { };
 template <typename T> struct A<T*> { };
 
@@ -69,7 +69,7 @@ A<char*> instantiated_partial;
 };
 
 ZEST_CASE(AmbiguousPartialsPrimary) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template <typename T, typename U> struct B { };
 template <typename T> struct B<T, int> { };
 template <typename U> struct B<int, U> { };
@@ -89,7 +89,7 @@ B<int, int>* ambiguous_use;
 };
 
 ZEST_CASE(MemberSpecIdentity) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 template <typename T> struct Outer {
     struct Inner { };
 };

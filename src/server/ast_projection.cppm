@@ -28,10 +28,6 @@ struct CompileOutput {
     /// before parsing, why it failed.
     std::vector<feature::FileDiagnostic> diagnostics;
 
-    /// First phantom line introduced by suffix include injection —
-    /// diagnostics at or past it describe text the user cannot see.
-    std::optional<std::uint32_t> line_limit;
-
     /// The host whose includer context the compile needed but could not
     /// rebuild (Resolution::unmatched_host), as shown; empty otherwise.
     std::string unmatched_host;
@@ -69,7 +65,7 @@ struct ASTProjection {
     /// transports (see CompileOutput).
     std::optional<CompileOutput> output;
 
-    /// The main file's entries within `index` (an empty shard when the
+    /// The focus file's entries within `index` (an empty shard when the
     /// compile produced none). Callers gate on index_current, which
     /// implies a loaded TU index.
     const index::Shard& file_shard() const {

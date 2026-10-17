@@ -256,7 +256,7 @@ ZEST_CASE(ValidateDropsStaleChoice) {
 
     auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
-    auto main_file = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
 
     // A host pin whose CDB entry disappeared while the server was down.
     // The drop must dirty the contexts blob, or the stale choice
@@ -267,9 +267,9 @@ ZEST_CASE(ValidateDropsStaleChoice) {
     ZASSERT(blob.dirty);
 
     // A command pin whose hash matches no current CDB entry.
-    resolver.selections[main_file] = Selection{Fid{}, std::nullopt, "deadbeef"};
-    resolver.validate_saved_context(main_file);
-    ZASSERT(!resolver.selections.contains(main_file));
+    resolver.selections[main] = Selection{Fid{}, std::nullopt, "deadbeef"};
+    resolver.validate_saved_context(main);
+    ZASSERT(!resolver.selections.contains(main));
 }
 
 };  // ZEST_SUITE(EditorContext)

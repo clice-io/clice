@@ -192,7 +192,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     auto uri = feature::to_uri(path);
     auto map = session->positions();
 
-    /// The action rendered over main-file replacements, all of them or
+    /// The action rendered over focus-file replacements, all of them or
     /// none: half an edit set would corrupt the buffer.
     auto emit = [&](std::string title,
                     protocol::CodeActionKind kind,

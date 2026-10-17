@@ -459,7 +459,7 @@ extern "C++" int main(int argc, const char** argv) {
         files.push_back(path);
     }
 
-    // --limit keeps the N largest TUs by main-file size — a coarse but
+    // --limit keeps the N largest TUs by source size — a coarse but
     // stable proxy for TU weight — rather than an arbitrary CDB prefix.
     if(*opts.limit > 0 && files.size() > static_cast<std::size_t>(*opts.limit)) {
         std::vector<std::pair<std::uint64_t, llvm::StringRef>> sized;

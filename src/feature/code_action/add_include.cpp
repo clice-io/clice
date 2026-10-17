@@ -42,7 +42,7 @@ bool unresolved_name(std::uint32_t id) {
 struct QualifiedName {
     std::string scope;
     std::string name;
-    /// The chain's span in the main file.
+    /// The chain's span in the focus file.
     LocalSourceRange range;
     /// The number of arguments of the call the name is the callee of.
     std::optional<std::size_t> arguments;

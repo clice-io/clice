@@ -754,7 +754,7 @@ private:
 
         // A fragment's members outline at its top level.
         return add(*named, name_range, decls::written_range(named), definition) ||
-               unit.encloses_main_file(decl);
+               unit.encloses_focus_file(decl);
     }
 
     /// Appends the entry; false when a range falls outside the focus file.

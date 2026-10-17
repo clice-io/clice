@@ -67,7 +67,7 @@ std::vector<feature::SemanticToken> tokens;
 feature::SemanticTokenLegend legend = feature::semantic_token_legend({});
 
 void run(llvm::StringRef code) {
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile_with_pch());
     tokens = feature::semantic_tokens(*unit, {});
 }
