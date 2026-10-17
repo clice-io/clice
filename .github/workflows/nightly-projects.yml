@@ -108,10 +108,16 @@ jobs:
               -D "$RUNNER_TEMP/previous" && break
           done
 
+      # In a scope holding all but 3 GB of the machine: a clice that
+      # exhausts it is killed there (first, run.ts sees to that) and the job
+      # reports the crash, while the runner's agent keeps memory enough to
+      # stay up; on the whole machine the agent dies and nothing is reported.
       - name: Run
         env:
           CLICE_EXECUTABLE: ${{ github.workspace }}/build/RelWithDebInfo/bin/bin/clice
         run: >-
+          sudo -E env "PATH=$PATH" systemd-run --scope --quiet --uid="$(id -u)" --gid="$(id -g)"
+          -p MemoryMax=13G -p MemorySwapMax=0 -p OOMPolicy=continue --
           pixi run node tools/nightly/run.ts "${{ matrix.name }}"
           --dir "$RUNNER_TEMP/projects"
           --out "$RUNNER_TEMP/out"
