@@ -143,7 +143,7 @@ end
 -- Definition is index-based.
 step 'wait for index'
 sync()
-local symbols = request('workspace/symbol', { query = scenario.index_symbol:match('^[^(]+') })
+local symbols = request('workspace/symbol', { query = scenario.index_symbol:match '^[^(]+' })
 if not vim.iter(symbols or {}):any(function(symbol)
     return symbol.name == scenario.index_symbol
 end) then

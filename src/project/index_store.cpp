@@ -612,10 +612,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         project.project_index.shards[global_id] = std::move(replacement);
         dirty_shards.insert(global_id);
         report.add_index_changed(global_id);
-        project.project_index.search_pending_files.insert(global_id);
-        if(changed_during_search_build) {
-            changed_during_search_build->files.insert(global_id);
-        }
+        search_file_changed(global_id);
     }
 
     // Replace this TU's manifest wholesale: files it no longer touches lose
@@ -625,11 +622,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         project_index.apply_manifest(project.file_table, tu_path_id, std::move(manifest));
     for(auto path_id: affected) {
         report.add_index_changed(path_id);
-        auto it = project.project_index.shards.find(path_id);
-        if(it == project.project_index.shards.end()) {
-            continue;
-        }
-        it->second.set_live(project_index.live_variants(path_id));
+        refresh_live(path_id);
     }
 
     // A rebuild started its file's blob over, discarding the variants other
@@ -688,6 +681,22 @@ IndexStore::Report IndexStore::drop_index(Fid tu_path_id) {
     return report;
 }
 
+void IndexStore::search_file_changed(Fid path_id) {
+    project.project_index.search_pending_files.insert(path_id);
+    if(changed_during_search_build) {
+        changed_during_search_build->files.insert(path_id);
+    }
+}
+
+void IndexStore::refresh_live(Fid path_id) {
+    auto it = project.project_index.shards.find(path_id);
+    if(it == project.project_index.shards.end()) {
+        return;
+    }
+    it->second.set_live(project.project_index.live_variants(path_id));
+    search_file_changed(path_id);
+}
+
 void IndexStore::drop_index_into(Fid tu_path_id, Report& report) {
     auto& project_index = project.project_index;
     if(!project_index.manifests.contains(tu_path_id)) {
@@ -697,10 +706,7 @@ void IndexStore::drop_index_into(Fid tu_path_id, Report& report) {
     // entries do; without the refresh the client keeps them forever, since no
     // later merge or compile is owed.
     for(auto path_id: project_index.remove_manifest(project.file_table, tu_path_id)) {
-        auto it = project.project_index.shards.find(path_id);
-        if(it != project.project_index.shards.end()) {
-            it->second.set_live(project_index.live_variants(path_id));
-        }
+        refresh_live(path_id);
         report.add_index_changed(path_id);
     }
     dirty_manifests.insert(tu_path_id);
@@ -1578,10 +1584,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         }
     }
     for(auto path_id: mask_refresh) {
-        auto it = project.project_index.shards.find(path_id);
-        if(it != project.project_index.shards.end()) {
-            it->second.set_live(project_index.live_variants(path_id));
-        }
+        refresh_live(path_id);
     }
 
     // Remove shard blobs nothing references any more.

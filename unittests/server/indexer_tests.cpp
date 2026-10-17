@@ -689,6 +689,26 @@ ZEST_CASE(RebuildKeepsMidBuildChanges) {
     }
 }
 
+ZEST_CASE(DroppedUnitPendsItsNames) {
+    TempDir tmp;
+    tmp.touch("main.cpp",
+              "static int lonely_helper() { return 1; }\n"
+              "int main() { return lonely_helper(); }\n");
+    open_store(tmp, project);
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ZASSERT(!indexed.data.empty());
+    merge(indexed.data.data(), indexed.data.size());
+    fx.save(IndexStore::SearchRebuild::Idle);
+    ZASSERT(project.project_index.search_index.loaded());
+    auto file = project.file_table.intern(Spelling::absolute(indexed.tu_path));
+    ZASSERT(!project.project_index.search_pending_files.contains(file));
+
+    // The built index still lists the static of the variant the drop
+    // retires: searches must read the shard instead.
+    drop_index(file);
+    ZEXPECT(project.project_index.search_pending_files.contains(file));
+}
+
 ZEST_CASE(MergeHitWritesNothing) {
     TempDir tmp;
     tmp.touch("main.cpp", "int steady() { return 1; }\n");
