@@ -1,5 +1,9 @@
 [answers.process]
 workspace_symbols = [
     { name = "process(int value)", kind = "Function", at = "main.cpp │ void ⟦process⟧(int value) {}" },
-    { name = "process(bool flag, int level)", kind = "Function", at = "main.cpp │ void ⟦process⟧(bool flag, int level) {}" },
+    {
+        name = "process(bool flag, int level)",
+        kind = "Function",
+        at = "main.cpp │ void ⟦process⟧(bool flag, int level) {}",
+    },
 ]

@@ -4,7 +4,7 @@ call_hierarchy = [
         name = "operator delete",
         kind = "Operator",
         at = "void ⟦operator delete⟧(void* memory);",
-        detail = "Node::operator delete",
+        detail = "Node::operator delete(void *memory)",
     },
 ]
 incoming_calls = [
@@ -12,6 +12,7 @@ incoming_calls = [
         name = "destroy",
         kind = "Function",
         at = "void ⟦destroy⟧(Node* node, Plain* plain) {",
+        detail = "destroy(Node *node, Plain *plain)",
         sites = ["⟦delete⟧ node;"],
     },
 ]
@@ -19,13 +20,14 @@ outgoing_calls = []
 
 [answers.dtor]
 call_hierarchy = [
-    { name = "~Node", kind = "Method", at = "⟦~Node⟧();", detail = "Node::~Node" },
+    { name = "~Node", kind = "Method", at = "⟦~Node⟧();", detail = "Node::~Node()" },
 ]
 incoming_calls = [
     {
         name = "destroy",
         kind = "Function",
         at = "void ⟦destroy⟧(Node* node, Plain* plain) {",
+        detail = "destroy(Node *node, Plain *plain)",
         sites = ["⟦delete⟧ node;"],
     },
 ]
@@ -38,18 +40,24 @@ outgoing_calls = []
 
 [answers.imported]
 call_hierarchy = [
-    { name = "target", kind = "Function", at = "int ⟦target⟧(int);", detail = "lib::target" },
+    { name = "target", kind = "Function", at = "int ⟦target⟧(int);", detail = "lib::target(int)" },
 ]
 incoming_calls = [
-    { name = "forward", kind = "Function", at = "int ⟦forward⟧(T value) {", sites = ["return ⟦target⟧(value);"] },
+    {
+        name = "forward",
+        kind = "Function",
+        at = "int ⟦forward⟧(T value) {",
+        detail = "forward(T value)",
+        sites = ["return ⟦target⟧(value);"],
+    },
 ]
 outgoing_calls = []
 
 [answers.hit]
 call_hierarchy = [
-    { name = "hit", kind = "Method", at = "void ⟦hit⟧(int);", detail = "Base::hit" },
+    { name = "hit", kind = "Method", at = "void ⟦hit⟧(int);", detail = "Base::hit(int)" },
 ]
 incoming_calls = [
-    { name = "run", kind = "Method", at = "void ⟦run⟧() {", detail = "Runner::run", sites = ["this->⟦hit⟧(1);"] },
+    { name = "run", kind = "Method", at = "void ⟦run⟧() {", detail = "Runner::run()", sites = ["this->⟦hit⟧(1);"] },
 ]
 outgoing_calls = []

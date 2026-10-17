@@ -18,5 +18,10 @@ workspace_symbols = [
 
 [test."closed area"]
 workspace_symbols = [
-    { name = "area(const Shape &shape)", kind = "Function", at = "widget.h │ int ⟦area⟧(const Shape& shape);", container = "geo" },
+    {
+        name = "area(const Shape &shape)",
+        kind = "Function",
+        at = "widget.h │ int ⟦area⟧(const Shape& shape);",
+        container = "geo",
+    },
 ]

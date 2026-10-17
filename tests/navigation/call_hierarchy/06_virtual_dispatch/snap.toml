@@ -1,15 +1,36 @@
 [answers.base]
 call_hierarchy = [
-    { name = "draw", kind = "Method", at = "virtual void ⟦draw⟧();", detail = "Base::draw" },
+    { name = "draw", kind = "Method", at = "virtual void ⟦draw⟧();", detail = "Base::draw()" },
 ]
-incoming_calls = []
+incoming_calls = [
+    {
+        name = "call_base",
+        kind = "Function",
+        at = "void ⟦call_base⟧(Base& b) {",
+        detail = "call_base(Base &b)",
+        sites = ["b.⟦draw⟧();"],
+    },
+]
 outgoing_calls = []
 
 [answers.override]
 call_hierarchy = [
-    { name = "draw", kind = "Method", at = "void ⟦draw⟧() override;", detail = "Derived::draw" },
+    { name = "draw", kind = "Method", at = "void ⟦draw⟧() override;", detail = "Derived::draw()" },
 ]
 incoming_calls = [
-    { name = "call_derived", kind = "Function", at = "void ⟦call_derived⟧(Derived& d) {", sites = ["d.⟦draw⟧();"] },
+    {
+        name = "call_base",
+        kind = "Function",
+        at = "void ⟦call_base⟧(Base& b) {",
+        detail = "call_base(Base &b)",
+        sites = ["b.⟦draw⟧();"],
+    },
+    {
+        name = "call_derived",
+        kind = "Function",
+        at = "void ⟦call_derived⟧(Derived& d) {",
+        detail = "call_derived(Derived &d)",
+        sites = ["d.⟦draw⟧();"],
+    },
 ]
 outgoing_calls = []

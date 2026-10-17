@@ -3,7 +3,7 @@ call_hierarchy = [
     { name = "counter", kind = "Variable", at = "int ⟦counter⟧ = 0;" },
 ]
 incoming_calls = [
-    { name = "next", kind = "Function", at = "int ⟦next⟧() {", sites = ["return ⟦counter⟧++;"] },
+    { name = "next", kind = "Function", at = "int ⟦next⟧() {", detail = "next()", sites = ["return ⟦counter⟧++;"] },
 ]
 outgoing_calls = []
 
@@ -12,7 +12,7 @@ call_hierarchy = [
     { name = "Fast", kind = "EnumMember", at = "⟦Fast⟧,", detail = "Mode::Fast" },
 ]
 incoming_calls = [
-    { name = "pick", kind = "Function", at = "Mode ⟦pick⟧() {", sites = ["return ⟦Fast⟧;"] },
+    { name = "pick", kind = "Function", at = "Mode ⟦pick⟧() {", detail = "pick()", sites = ["return ⟦Fast⟧;"] },
 ]
 outgoing_calls = []
 
@@ -21,7 +21,7 @@ call_hierarchy = [
     { name = "hits", kind = "Field", at = "int ⟦hits⟧ = 0;", detail = "Tally::hits" },
 ]
 incoming_calls = [
-    { name = "bump", kind = "Method", at = "void ⟦bump⟧() {", detail = "Tally::bump", sites = ["⟦hits⟧ += 1;"] },
+    { name = "bump", kind = "Method", at = "void ⟦bump⟧() {", detail = "Tally::bump()", sites = ["⟦hits⟧ += 1;"] },
 ]
 outgoing_calls = []
 
@@ -34,7 +34,7 @@ incoming_calls = [
         name = "read",
         kind = "Method",
         at = "T ⟦read⟧() {",
-        detail = "Reader::read",
+        detail = "Reader::read()",
         sites = ["return this->⟦stored⟧;"],
     },
 ]

@@ -3,13 +3,7 @@ call_hierarchy = [
     { name = "helper", kind = "Function", at = "int ⟦helper⟧(int v) {", detail = "helper(int v)" },
 ]
 incoming_calls = [
-    {
-        name = "alpha",
-        kind = "Function",
-        at = "int ⟦alpha⟧() {",
-        detail = "alpha()",
-        sites = ["return ⟦helper⟧(1);"],
-    },
+    { name = "alpha", kind = "Function", at = "int ⟦alpha⟧() {", detail = "alpha()", sites = ["return ⟦helper⟧(1);"] },
     {
         name = "beta",
         kind = "Function",

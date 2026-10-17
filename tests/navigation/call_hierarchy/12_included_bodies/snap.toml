@@ -1,15 +1,21 @@
 [answers.leaf]
 call_hierarchy = [
-    { name = "leaf", kind = "Function", at = "int ⟦leaf⟧(int value) {" },
+    { name = "leaf", kind = "Function", at = "int ⟦leaf⟧(int value) {", detail = "leaf(int value)" },
 ]
 incoming_calls = [
-    { name = "big", kind = "Function", at = "int ⟦big⟧() {", sites = ['#include ⟦"body.inc"⟧', "total += ⟦leaf⟧(3);"] },
+    {
+        name = "big",
+        kind = "Function",
+        at = "int ⟦big⟧() {",
+        detail = "big()",
+        sites = ['#include ⟦"body.inc"⟧', "total += ⟦leaf⟧(3);"],
+    },
 ]
 outgoing_calls = []
 
 [answers.big]
 call_hierarchy = [
-    { name = "big", kind = "Function", at = "int ⟦big⟧() {" },
+    { name = "big", kind = "Function", at = "int ⟦big⟧() {", detail = "big()" },
 ]
 incoming_calls = []
 outgoing_calls = [
@@ -17,6 +23,7 @@ outgoing_calls = [
         name = "leaf",
         kind = "Function",
         at = "int ⟦leaf⟧(int value) {",
+        detail = "leaf(int value)",
         sites = ['#include ⟦"body.inc"⟧', "total += ⟦leaf⟧(3);"],
     },
 ]

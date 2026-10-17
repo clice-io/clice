@@ -1,10 +1,28 @@
 [answers.caller]
 call_hierarchy = [
-    { name = "dispatch", kind = "Function", at = "int ⟦dispatch⟧() {" },
+    { name = "dispatch", kind = "Function", at = "int ⟦dispatch⟧() {", detail = "dispatch()" },
 ]
 incoming_calls = []
 outgoing_calls = [
-    { name = "one", kind = "Function", at = "int ⟦one⟧() {", sites = ["return ⟦one⟧() + two() + three();"] },
-    { name = "two", kind = "Function", at = "int ⟦two⟧() {", sites = ["return one() + ⟦two⟧() + three();"] },
-    { name = "three", kind = "Function", at = "int ⟦three⟧() {", sites = ["return one() + two() + ⟦three⟧();"] },
+    {
+        name = "one",
+        kind = "Function",
+        at = "int ⟦one⟧() {",
+        detail = "one()",
+        sites = ["return ⟦one⟧() + two() + three();"],
+    },
+    {
+        name = "two",
+        kind = "Function",
+        at = "int ⟦two⟧() {",
+        detail = "two()",
+        sites = ["return one() + ⟦two⟧() + three();"],
+    },
+    {
+        name = "three",
+        kind = "Function",
+        at = "int ⟦three⟧() {",
+        detail = "three()",
+        sites = ["return one() + two() + ⟦three⟧();"],
+    },
 ]

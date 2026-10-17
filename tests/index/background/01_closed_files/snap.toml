@@ -1,6 +1,7 @@
 [test.animal]
 definition = ["struct ⟦Animal⟧ {"]
 declaration = ["struct ⟦Animal⟧ {"]
+type_definition = ["struct ⟦Animal⟧ {"]
 implementation = ["struct ⟦Dog⟧ : public Animal {", "struct ⟦Cat⟧ : public Animal {"]
 references = [
     "struct ⟦Animal⟧ {",
@@ -23,12 +24,13 @@ declaration = ["virtual void ⟦speak⟧() {}"]
 implementation = ["void ⟦speak⟧() override {} @+6", "void ⟦speak⟧() override {} @+10"]
 references = ["virtual void ⟦speak⟧() {}"]
 call_hierarchy = [
-    { name = "speak", kind = "Method", at = "virtual void ⟦speak⟧() {}", detail = "Animal::speak" },
+    { name = "speak", kind = "Method", at = "virtual void ⟦speak⟧() {}", detail = "Animal::speak()" },
 ]
 
 [test.dog]
 definition = ["struct ⟦Dog⟧ : public Animal {"]
 declaration = ["struct ⟦Dog⟧ : public Animal {"]
+type_definition = ["struct ⟦Dog⟧ : public Animal {"]
 references = ["struct ⟦Dog⟧ : public Animal {", "⟦Dog⟧ d;"]
 uses = ["⟦Dog⟧ d;"]
 type_hierarchy = [
@@ -44,13 +46,14 @@ declaration = ["int ⟦add⟧(int a, int b) {"]
 references = ["int ⟦add⟧(int a, int b) {", "int x = ⟦add⟧(1, 2);", "int y = ⟦add⟧(3, 4);"]
 uses = ["int x = ⟦add⟧(1, 2);", "int y = ⟦add⟧(3, 4);"]
 call_hierarchy = [
-    { name = "add", kind = "Function", at = "int ⟦add⟧(int a, int b) {" },
+    { name = "add", kind = "Function", at = "int ⟦add⟧(int a, int b) {", detail = "add(int a, int b)" },
 ]
 incoming_calls = [
     {
         name = "compute",
         kind = "Function",
         at = "int ⟦compute⟧() {",
+        detail = "compute()",
         sites = ["int x = ⟦add⟧(1, 2);", "int y = ⟦add⟧(3, 4);"],
     },
 ]
@@ -61,13 +64,14 @@ declaration = ["int ⟦compute⟧() {"]
 references = ["int ⟦compute⟧() {", "return ⟦compute⟧() + use_global() + use_global_again();"]
 uses = ["return ⟦compute⟧() + use_global() + use_global_again();"]
 call_hierarchy = [
-    { name = "compute", kind = "Function", at = "int ⟦compute⟧() {" },
+    { name = "compute", kind = "Function", at = "int ⟦compute⟧() {", detail = "compute()" },
 ]
 incoming_calls = [
     {
         name = "main",
         kind = "Function",
         at = "int ⟦main⟧() {",
+        detail = "main()",
         sites = ["return ⟦compute⟧() + use_global() + use_global_again();"],
     },
 ]
@@ -76,6 +80,7 @@ outgoing_calls = [
         name = "add",
         kind = "Function",
         at = "int ⟦add⟧(int a, int b) {",
+        detail = "add(int a, int b)",
         sites = ["int x = ⟦add⟧(1, 2);", "int y = ⟦add⟧(3, 4);"],
     },
 ]
@@ -87,13 +92,14 @@ implementation = ["int ⟦add⟧(int a, int b) {"]
 references = ["int ⟦add⟧(int a, int b) {", "int x = ⟦add⟧(1, 2);", "int y = ⟦add⟧(3, 4);"]
 uses = ["int x = ⟦add⟧(1, 2);", "int y = ⟦add⟧(3, 4);"]
 call_hierarchy = [
-    { name = "add", kind = "Function", at = "int ⟦add⟧(int a, int b) {" },
+    { name = "add", kind = "Function", at = "int ⟦add⟧(int a, int b) {", detail = "add(int a, int b)" },
 ]
 incoming_calls = [
     {
         name = "compute",
         kind = "Function",
         at = "int ⟦compute⟧() {",
+        detail = "compute()",
         sites = ["int x = ⟦add⟧(1, 2);", "int y = ⟦add⟧(3, 4);"],
     },
 ]
@@ -107,11 +113,18 @@ call_hierarchy = [
     { name = "global_var", kind = "Variable", at = "int ⟦global_var⟧ = 42;" },
 ]
 incoming_calls = [
-    { name = "use_global", kind = "Function", at = "int ⟦use_global⟧() {", sites = ["return ⟦global_var⟧ + 1;"] },
+    {
+        name = "use_global",
+        kind = "Function",
+        at = "int ⟦use_global⟧() {",
+        detail = "use_global()",
+        sites = ["return ⟦global_var⟧ + 1;"],
+    },
     {
         name = "use_global_again",
         kind = "Function",
         at = "int ⟦use_global_again⟧() {",
+        detail = "use_global_again()",
         sites = ["return ⟦global_var⟧ * 2;"],
     },
 ]
@@ -125,10 +138,16 @@ declaration = ["nav.h │ int ⟦area⟧(const Shape& s);"]
 references = ["int ⟦area⟧(const Shape& s) {", "return ⟦area⟧(global_shape);", "nav.h │ int ⟦area⟧(const Shape& s);"]
 uses = ["return ⟦area⟧(global_shape);"]
 call_hierarchy = [
-    { name = "area", kind = "Function", at = "int ⟦area⟧(const Shape& s) {" },
+    { name = "area", kind = "Function", at = "int ⟦area⟧(const Shape& s) {", detail = "area(const Shape &s)" },
 ]
 incoming_calls = [
-    { name = "shape_area", kind = "Function", at = "int ⟦shape_area⟧() {", sites = ["return ⟦area⟧(global_shape);"] },
+    {
+        name = "shape_area",
+        kind = "Function",
+        at = "int ⟦shape_area⟧() {",
+        detail = "shape_area()",
+        sites = ["return ⟦area⟧(global_shape);"],
+    },
 ]
 
 [test.area_decl]
@@ -142,13 +161,19 @@ references = [
 ]
 uses = ["nav.cpp │ return ⟦area⟧(global_shape);"]
 call_hierarchy = [
-    { name = "area", kind = "Function", at = "nav.cpp │ int ⟦area⟧(const Shape& s) {" },
+    {
+        name = "area",
+        kind = "Function",
+        at = "nav.cpp │ int ⟦area⟧(const Shape& s) {",
+        detail = "area(const Shape &s)",
+    },
 ]
 incoming_calls = [
     {
         name = "shape_area",
         kind = "Function",
         at = "nav.cpp │ int ⟦shape_area⟧() {",
+        detail = "shape_area()",
         sites = ["nav.cpp │ return ⟦area⟧(global_shape);"],
     },
 ]
@@ -156,6 +181,7 @@ incoming_calls = [
 [test.shape_type]
 definition = ["nav.h │ struct ⟦Shape⟧ {"]
 declaration = ["nav.h │ struct ⟦Shape⟧;", "nav.h │ struct ⟦Shape⟧ {"]
+type_definition = ["nav.h │ struct ⟦Shape⟧ {"]
 references = [
     "int area(const ⟦Shape⟧& s) {",
     "⟦Shape⟧ global_shape;",
@@ -190,7 +216,13 @@ call_hierarchy = [
     { name = "global_shape", kind = "Variable", at = "Shape ⟦global_shape⟧;" },
 ]
 incoming_calls = [
-    { name = "shape_area", kind = "Function", at = "int ⟦shape_area⟧() {", sites = ["return area(⟦global_shape⟧);"] },
+    {
+        name = "shape_area",
+        kind = "Function",
+        at = "int ⟦shape_area⟧() {",
+        detail = "shape_area()",
+        sites = ["return area(⟦global_shape⟧);"],
+    },
 ]
 
 [test.area_scale]
@@ -199,24 +231,30 @@ declaration = ["nav.h │ int ⟦area_scale⟧(const Shape& s);"]
 references = ["return ⟦area_scale⟧(s);", "nav.h │ int ⟦area_scale⟧(const Shape& s);"]
 uses = ["return ⟦area_scale⟧(s);"]
 call_hierarchy = [
-    { name = "area_scale", kind = "Function", at = "nav.h │ int ⟦area_scale⟧(const Shape& s);" },
+    {
+        name = "area_scale",
+        kind = "Function",
+        at = "nav.h │ int ⟦area_scale⟧(const Shape& s);",
+        detail = "area_scale(const Shape &s)",
+    },
 ]
 incoming_calls = [
     {
         name = "use_area_scale",
         kind = "Function",
         at = "int ⟦use_area_scale⟧(const Shape& s) {",
+        detail = "use_area_scale(const Shape &s)",
         sites = ["return ⟦area_scale⟧(s);"],
     },
 ]
 
 [test.render_pure]
-definition = ["virtual void ⟦render⟧() = 0;"]
+definition = ["nav.cpp │ void GLRenderer::⟦render⟧() {}", "nav.cpp │ void DebugGLRenderer::⟦render⟧() {}"]
 declaration = ["virtual void ⟦render⟧() = 0;"]
-implementation = ["nav.cpp │ void GLRenderer::⟦render⟧() {}"]
+implementation = ["nav.cpp │ void GLRenderer::⟦render⟧() {}", "nav.cpp │ void DebugGLRenderer::⟦render⟧() {}"]
 references = ["virtual void ⟦render⟧() = 0;"]
 call_hierarchy = [
-    { name = "render", kind = "Method", at = "virtual void ⟦render⟧() = 0;", detail = "Renderer::render" },
+    { name = "render", kind = "Method", at = "virtual void ⟦render⟧() = 0;", detail = "Renderer::render()" },
 ]
 
 [test.render_middle]
@@ -229,7 +267,7 @@ call_hierarchy = [
         name = "render",
         kind = "Method",
         at = "nav.cpp │ void GLRenderer::⟦render⟧() {}",
-        detail = "GLRenderer::render",
+        detail = "GLRenderer::render()",
     },
 ]
 
@@ -240,14 +278,19 @@ type_definition = ["struct ⟦Shape⟧ {"]
 implementation = ["nav.cpp │ Shape ⟦make_unit_shape⟧() {"]
 references = ["nav.cpp │ Shape ⟦make_unit_shape⟧() {", "Shape ⟦make_unit_shape⟧();"]
 call_hierarchy = [
-    { name = "make_unit_shape", kind = "Function", at = "nav.cpp │ Shape ⟦make_unit_shape⟧() {" },
+    {
+        name = "make_unit_shape",
+        kind = "Function",
+        at = "nav.cpp │ Shape ⟦make_unit_shape⟧() {",
+        detail = "make_unit_shape()",
+    },
 ]
 
 [test.symbols]
 add = [
-    { name = "add", kind = "Function", at = "main.cpp │ int ⟦add⟧(int a, int b) {" },
+    { name = "add(int a, int b)", kind = "Function", at = "main.cpp │ int ⟦add⟧(int a, int b) {" },
 ]
 animal = [
     { name = "Animal", kind = "Struct", at = "main.cpp │ struct ⟦Animal⟧ {" },
-    { name = "~Animal", kind = "Method", at = "main.cpp │ virtual ⟦~Animal⟧() = default;", container = "Animal" },
+    { name = "~Animal()", kind = "Method", at = "main.cpp │ virtual ⟦~Animal⟧() = default;", container = "Animal" },
 ]
