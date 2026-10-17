@@ -24,12 +24,14 @@ test("units share the target's pch", async (t) => {
     await s.indexed();
     // One build of the target's PCH serves the open files and the index:
     // area.cpp's preamble PCH is built over it, main.cpp's parse loads it.
+    // Both built, nothing else.
     const { files } = await s.counts();
     expect({
         builder: files[builder]?.pch,
         main: files["src/main.cpp"]?.pch,
         area: files["src/area.cpp"]?.pch,
-    }).toEqual({ builder: 1, main: 0, area: 1 });
+        built: (await s.stats()).pchCacheEntries,
+    }).toEqual({ builder: 1, main: 0, area: 1, built: 2 });
     await t.show("area", s.references(t.at("include/shapes.h", "inline double |area(")));
 });
 
