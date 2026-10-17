@@ -16,5 +16,17 @@
     "command": "clang++ -I${WS}/include -std=c++20 -Winvalid-pch -Xclang -include-pch -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.pch -Xclang -include -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx -o CMakeFiles/app.dir/src/area.cpp.o -c ${WS}/src/area.cpp",
     "file": "${WS}/src/area.cpp",
     "output": "CMakeFiles/app.dir/src/area.cpp.o"
+  },
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ -I${WS}/include -std=c++20 -x c++-header -include ${WS}/build/CMakeFiles/tool.dir/cmake_pch.hxx -o CMakeFiles/tool.dir/cmake_pch.hxx.gch -c ${WS}/build/CMakeFiles/tool.dir/cmake_pch.hxx.cxx",
+    "file": "${WS}/build/CMakeFiles/tool.dir/cmake_pch.hxx.cxx",
+    "output": "CMakeFiles/tool.dir/cmake_pch.hxx.gch"
+  },
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ -I${WS}/include -std=c++20 -Winvalid-pch -include ${WS}/build/CMakeFiles/tool.dir/cmake_pch.hxx -o CMakeFiles/tool.dir/src/tool.cpp.o -c ${WS}/src/tool.cpp",
+    "file": "${WS}/src/tool.cpp",
+    "output": "CMakeFiles/tool.dir/src/tool.cpp.o"
   }
 ]

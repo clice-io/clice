@@ -8,5 +8,5 @@ target_include_directories(compat PRIVATE include)
 target_compile_definitions(compat PRIVATE COMPAT_DEFINE=1)
 
 if(COMPAT_PCH)
-  target_precompile_headers(compat PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<string>;<vector>>")
+  target_precompile_headers(compat PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<string$<ANGLE-R>;<vector$<ANGLE-R>>")
 endif()
