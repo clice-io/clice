@@ -184,9 +184,15 @@ public:
         return failed_ids;
     }
 
+    /// Have every index attempt bring back the errors its compile reported,
+    /// for compiled_with_errors(). The one-shot `clice index` lists them; a
+    /// server reports none and never asks.
+    void collect_errors() {
+        errors_wanted = true;
+    }
+
     /// Files whose latest index attempt completed although the compile
     /// reported errors, with the errors: their index holds what parsed.
-    /// The one-shot `clice index` lists them.
     const llvm::DenseMap<Fid, std::vector<worker::LocatedMessage>>& compiled_with_errors() const {
         return errors;
     }
@@ -269,6 +275,7 @@ private:
 
     llvm::DenseSet<Fid> failed_ids;
     llvm::DenseMap<Fid, std::vector<worker::LocatedMessage>> errors;
+    bool errors_wanted = false;
     std::size_t indexed_total = 0;
 
     struct AttemptWait {

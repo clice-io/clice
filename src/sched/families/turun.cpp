@@ -62,6 +62,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     params.file = file_path;
     params.workspace = project.config.workspace_root.str();
     params.index = plan.index;
+    params.errors = plan.errors;
     params.tidy = std::move(plan.tidy);
     // Whole-TU runs stick to the build's commands; a synthesized one, or
     // one borrowed for a file outside the build, would fill the index (and

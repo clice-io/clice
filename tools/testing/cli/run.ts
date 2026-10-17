@@ -149,7 +149,7 @@ function mapStrings(value: unknown, map: (text: string) => string): unknown {
 
 /// A key whose number is a duration or a size, which every run reads
 /// differently: `seconds`, `mergeMs`, `shardBytes`.
-const MEASURE = /^(seconds|ms|bytes)$|(Seconds|Ms|Bytes)$/;
+const MEASURE = /^seconds$|(Ms|Bytes)$/;
 
 /// The numbers of a JSON value under a duration's or a size's key elided
 /// to `#`, as the text's are.

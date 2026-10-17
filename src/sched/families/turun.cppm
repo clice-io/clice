@@ -12,6 +12,7 @@ import :sched.families.pcm;
 import :sched.graph;
 import :sched.index.pending_table;
 import :worker.pool;
+import :worker.protocol;
 
 namespace clice {
 
@@ -44,6 +45,9 @@ public:
     /// The frozen product plan of one run.
     struct Plan {
         bool index = false;
+
+        /// The errors the compile reports, in the outcome.
+        bool errors = false;
 
         /// A tidy pass under this frozen configuration.
         std::optional<tidy::TidyParams> tidy;
@@ -88,7 +92,8 @@ public:
         /// Failure detail for the requester's logs.
         std::string error;
 
-        /// The errors a completed run compiled with.
+        /// The errors a completed run compiled with (plan product
+        /// `errors`).
         std::vector<worker::LocatedMessage> errors;
 
         struct Perf {

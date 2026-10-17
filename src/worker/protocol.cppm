@@ -256,9 +256,10 @@ struct TURunParams {
     /// PCM dependencies for TUs that import modules.
     std::unordered_map<std::string, std::string> pcms;
 
-    /// Products of the run: the index, and a clang-tidy pass under this
-    /// frozen configuration.
+    /// Products of the run: the index, the errors the compile reports, and
+    /// a clang-tidy pass under this frozen configuration.
     bool index = false;
+    bool errors = false;
     std::optional<tidy::TidyParams> tidy;
 
     /// Variant identities the master stores for the files this TU is
@@ -401,8 +402,7 @@ struct TURunResult {
     bool success = true;
     std::string error;
 
-    /// The errors a completed run compiled with: its index holds what
-    /// parsed.
+    /// The errors a completed run compiled with (plan product `errors`).
     std::vector<LocatedMessage> errors;
 
     /// Serialized TUIndex, merged by the master (plan product `index`).

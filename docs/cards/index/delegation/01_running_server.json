@@ -31,6 +31,13 @@
           }
         },
         {
+          "label": "$ clice index --json",
+          "value": {
+            "stdout": "{\n  \"failed\": []\n}",
+            "exit": 0
+          }
+        },
+        {
           "label": "$ clice query symbol-search extra --fresh",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"extra\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 5,\n        \"container\": null,\n        \"symbol\": \"#c9be3d07e9d6b64f\"\n      }\n    ]\n  },\n  \"stale\": []\n}",

@@ -14,8 +14,23 @@
       "markers": []
     },
     {
+      "path": "flagged.cpp",
+      "text": "int flagged() {\n    return 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "forced_include.cpp",
+      "text": "int forced() {\n    return 1;\n}\n",
+      "markers": []
+    },
+    {
       "path": "include/oops.h",
       "text": "inline int value() {\n    return undefined_name;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "many_errors.cpp",
+      "text": "int first() {\n    return one;\n}\n\nint second() {\n    return two;\n}\n",
       "markers": []
     },
     {
@@ -36,7 +51,7 @@
         {
           "label": "$ clice index",
           "value": {
-            "stdout": "Indexed 3 translation units in #s: 4 file shards (# KB), 4 symbols.\n2 translation units compiled with errors; the index holds what parsed:\n  ${WS}/broken.cpp\n    ${WS}/broken.cpp:2:12: use of undeclared identifier 'missing'\n  ${WS}/uses_header.cpp\n    ${WS}/include/oops.h:2:12: use of undeclared identifier 'undefined_name'\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "stdout": "Indexed 6 translation units in #s: 7 file shards (# KB), 8 symbols.\n5 translation units compiled with errors; the index holds what parsed:\n  ${WS}/broken.cpp\n    ${WS}/broken.cpp:2:12: use of undeclared identifier 'missing'\n  ${WS}/flagged.cpp\n    unknown warning option '-Wlogical-op'; did you mean '-Wlong-long'?\n  ${WS}/forced_include.cpp\n    'missing.h' file not found\n  ${WS}/many_errors.cpp\n    ${WS}/many_errors.cpp:2:12: use of undeclared identifier 'one'\n    and 1 more error\n  ${WS}/uses_header.cpp\n    ${WS}/include/oops.h:2:12: use of undeclared identifier 'undefined_name'\nSession log: ${WS}/.clice/logs/${SESSION}",
             "exit": 0
           }
         }
@@ -48,7 +63,7 @@
         {
           "label": "$ clice index --json",
           "value": {
-            "stdout": "{\n  \"exitCode\": 0,\n  \"interrupted\": false,\n  \"completed\": true,\n  \"indexedTus\": 3,\n  \"standaloneHeaders\": 0,\n  \"shardCount\": 4,\n  \"shardBytes\": \"#\",\n  \"symbolCount\": 4,\n  \"failed\": [],\n  \"compiledWithErrors\": [\n    {\n      \"unit\": \"${WS}/broken.cpp\",\n      \"errors\": [\n        {\n          \"file\": \"${WS}/broken.cpp\",\n          \"line\": 2,\n          \"column\": 12,\n          \"message\": \"use of undeclared identifier 'missing'\"\n        }\n      ]\n    },\n    {\n      \"unit\": \"${WS}/uses_header.cpp\",\n      \"errors\": [\n        {\n          \"file\": \"${WS}/include/oops.h\",\n          \"line\": 2,\n          \"column\": 12,\n          \"message\": \"use of undeclared identifier 'undefined_name'\"\n        }\n      ]\n    }\n  ],\n  \"logDir\": \"${WS}/.clice/logs/${SESSION}\",\n  \"unsaved\": false,\n  \"seconds\": \"#\"\n}",
+            "stdout": "{\n  \"exitCode\": 0,\n  \"interrupted\": false,\n  \"completed\": true,\n  \"indexedTus\": 6,\n  \"standaloneHeaders\": 0,\n  \"shardCount\": 7,\n  \"shardBytes\": \"#\",\n  \"symbolCount\": 8,\n  \"failed\": [],\n  \"compiledWithErrors\": [\n    {\n      \"unit\": \"${WS}/broken.cpp\",\n      \"errors\": [\n        {\n          \"file\": \"${WS}/broken.cpp\",\n          \"line\": 2,\n          \"column\": 12,\n          \"message\": \"use of undeclared identifier 'missing'\"\n        }\n      ]\n    },\n    {\n      \"unit\": \"${WS}/flagged.cpp\",\n      \"errors\": [\n        {\n          \"file\": \"\",\n          \"line\": 0,\n          \"column\": 0,\n          \"message\": \"unknown warning option '-Wlogical-op'; did you mean '-Wlong-long'?\"\n        }\n      ]\n    },\n    {\n      \"unit\": \"${WS}/forced_include.cpp\",\n      \"errors\": [\n        {\n          \"file\": \"\",\n          \"line\": 0,\n          \"column\": 0,\n          \"message\": \"'missing.h' file not found\"\n        }\n      ]\n    },\n    {\n      \"unit\": \"${WS}/many_errors.cpp\",\n      \"errors\": [\n        {\n          \"file\": \"${WS}/many_errors.cpp\",\n          \"line\": 2,\n          \"column\": 12,\n          \"message\": \"use of undeclared identifier 'one'\"\n        },\n        {\n          \"file\": \"${WS}/many_errors.cpp\",\n          \"line\": 6,\n          \"column\": 12,\n          \"message\": \"use of undeclared identifier 'two'\"\n        }\n      ]\n    },\n    {\n      \"unit\": \"${WS}/uses_header.cpp\",\n      \"errors\": [\n        {\n          \"file\": \"${WS}/include/oops.h\",\n          \"line\": 2,\n          \"column\": 12,\n          \"message\": \"use of undeclared identifier 'undefined_name'\"\n        }\n      ]\n    }\n  ],\n  \"logDir\": \"${WS}/.clice/logs/${SESSION}\",\n  \"unsaved\": false,\n  \"seconds\": \"#\"\n}",
             "exit": 0
           }
         }

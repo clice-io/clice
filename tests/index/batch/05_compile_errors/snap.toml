@@ -1,9 +1,16 @@
 [text."$ clice index"]
 stdout = '''
-Indexed 3 translation units in #s: 4 file shards (# KB), 4 symbols.
-2 translation units compiled with errors; the index holds what parsed:
+Indexed 6 translation units in #s: 7 file shards (# KB), 8 symbols.
+5 translation units compiled with errors; the index holds what parsed:
   ${WS}/broken.cpp
     ${WS}/broken.cpp:2:12: use of undeclared identifier 'missing'
+  ${WS}/flagged.cpp
+    unknown warning option '-Wlogical-op'; did you mean '-Wlong-long'?
+  ${WS}/forced_include.cpp
+    'missing.h' file not found
+  ${WS}/many_errors.cpp
+    ${WS}/many_errors.cpp:2:12: use of undeclared identifier 'one'
+    and 1 more error
   ${WS}/uses_header.cpp
     ${WS}/include/oops.h:2:12: use of undeclared identifier 'undefined_name'
 Session log: ${WS}/.clice/logs/${SESSION}
@@ -16,11 +23,11 @@ stdout = '''
   "exitCode": 0,
   "interrupted": false,
   "completed": true,
-  "indexedTus": 3,
+  "indexedTus": 6,
   "standaloneHeaders": 0,
-  "shardCount": 4,
+  "shardCount": 7,
   "shardBytes": "#",
-  "symbolCount": 4,
+  "symbolCount": 8,
   "failed": [],
   "compiledWithErrors": [
     {
@@ -31,6 +38,45 @@ stdout = '''
           "line": 2,
           "column": 12,
           "message": "use of undeclared identifier 'missing'"
+        }
+      ]
+    },
+    {
+      "unit": "${WS}/flagged.cpp",
+      "errors": [
+        {
+          "file": "",
+          "line": 0,
+          "column": 0,
+          "message": "unknown warning option '-Wlogical-op'; did you mean '-Wlong-long'?"
+        }
+      ]
+    },
+    {
+      "unit": "${WS}/forced_include.cpp",
+      "errors": [
+        {
+          "file": "",
+          "line": 0,
+          "column": 0,
+          "message": "'missing.h' file not found"
+        }
+      ]
+    },
+    {
+      "unit": "${WS}/many_errors.cpp",
+      "errors": [
+        {
+          "file": "${WS}/many_errors.cpp",
+          "line": 2,
+          "column": 12,
+          "message": "use of undeclared identifier 'one'"
+        },
+        {
+          "file": "${WS}/many_errors.cpp",
+          "line": 6,
+          "column": 12,
+          "message": "use of undeclared identifier 'two'"
         }
       ]
     },

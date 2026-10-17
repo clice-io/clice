@@ -27,12 +27,20 @@ import :support.signal;
 import :support.timer;
 import :vfs.cache_store;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 import :worker.pool;
 
 namespace clice {
 
 namespace {
+
+/// A path a worker reported, as the user knows the file; empty for none.
+void show_path(FileTable& files, std::string& path) {
+    if(!path.empty()) {
+        path = files.display(files.intern(Spelling::absolute(path)));
+    }
+}
 
 /// The lean batch assembly: the scheduling stack the server also runs on,
 /// minus everything serving-side.
@@ -223,6 +231,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_return;
     }
     project.config.project.enable_indexing.value = true;
+    stack.sched.pump.collect_errors();
 
     auto report = bootstrap_project(project,
                                     stack.sched.store,
@@ -297,14 +306,11 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         result.failed.emplace_back(project.file_table.display(file));
     }
     std::ranges::sort(result.failed);
-    auto& files = project.file_table;
     for(auto& [unit, errors]: stack.sched.pump.compiled_with_errors()) {
         auto& shown = result.compiled_with_errors.emplace_back(
-            BatchResult::UnitErrors{.unit = files.display(unit), .errors = errors});
+            BatchResult::UnitErrors{.unit = project.file_table.display(unit), .errors = errors});
         for(auto& error: shown.errors) {
-            if(!error.file.empty()) {
-                error.file = files.display(files.intern(Spelling::absolute(error.file)));
-            }
+            show_path(project.file_table, error.file);
         }
     }
     std::ranges::sort(result.compiled_with_errors, {}, &BatchResult::UnitErrors::unit);
@@ -528,15 +534,10 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     LintPass pass;
     co_await kota::with_token(run_lint_pass(stack, options, tus, pass), lifetime.token());
     // What arrived is the report, whole or cut short by an interruption.
-    auto shown = [&files = project.file_table](std::string& file) {
-        if(!file.empty()) {
-            file = files.display(files.intern(Spelling::absolute(file)));
-        }
-    };
     for(auto& finding: pass.findings) {
-        shown(finding.file);
+        show_path(project.file_table, finding.file);
         for(auto& note: finding.notes) {
-            shown(note.file);
+            show_path(project.file_table, note.file);
         }
     }
     merge_findings(pass.findings);

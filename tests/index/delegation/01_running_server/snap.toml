@@ -2,6 +2,14 @@
 stdout = "Indexed through the running clice server (pid #)."
 exit = 0
 
+["asks the running server to index"."$ clice index --json"]
+stdout = '''
+{
+  "failed": []
+}
+'''
+exit = 0
+
 ["asks the running server to index"."$ clice query symbol-search extra --fresh"]
 stdout = '''
 {

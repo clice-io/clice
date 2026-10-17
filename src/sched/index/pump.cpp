@@ -14,6 +14,7 @@ import :support.logging;
 import :support.process;
 import :support.timer;
 import :worker.pool;
+import :worker.protocol;
 
 namespace clice {
 
@@ -326,10 +327,10 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     bool served = !content_changed && compiled_by_session && compiled_by_session(server_path_id);
     if(!served && (content_changed || store.need_update(server_path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
-        auto outcome =
-            co_await turun.run(server_path_id, {.index = true}, {.superseded = [this, taken] {
-                                   return pending_table.superseded(taken);
-                               }});
+        auto outcome = co_await turun.run(
+            server_path_id,
+            {.index = true, .errors = errors_wanted},
+            {.superseded = [this, taken] { return pending_table.superseded(taken); }});
         if(outcome.result == TURunFamily::Result::Shutdown) {
             // The graph refused the round: nothing ran, so the debt
             // stays booked for the final snapshot and the next
