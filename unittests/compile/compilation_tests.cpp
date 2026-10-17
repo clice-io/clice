@@ -761,7 +761,7 @@ ZEST_CASE(RefusedPCHFallsBack) {
 #pragma once
 inline int scale() { return SCALE; }
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "shapes.h"
 
 int main() { return scale(); }
