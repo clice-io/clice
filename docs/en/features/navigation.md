@@ -210,9 +210,11 @@ When a parameter changes on one side only, the definition and the header
 declaration become two functions, and the definition has no declaration of
 its own. Go-to-declaration on it falls back to the functions of its name and
 linkage in its scope that nothing defines: the declaration that wants the
-same edit. An overload with a definition of its own is no candidate, nor is a
-function of external linkage for a `static` one, and a method defined in
-its class never had a declaration apart.
+same edit, a `static` one's in its own file. An overload with a definition
+of its own is no candidate, nor is a function of another linkage or of an
+anonymous namespace it is not in. A method defined in its class never had a
+declaration apart, and a template or a system header's function is left
+alone: those are declared where they are defined.
 
 ```case
 tests/navigation/declaration/07_changed_signatures
@@ -538,7 +540,8 @@ Find references on an override includes the calls made through the methods it ov
 references of the override. A call through `Circle` never runs
 `Shape::area`, so it is not among the references of the method overridden;
 nor is `Shape::area()` in the override's own body, which names the method
-overridden.
+overridden, or `circle.Shape::scale(factor)` in a template, which names one
+of the overloads overridden before any instantiation picks it.
 
 ```case
 tests/navigation/references/13_override_calls
@@ -1329,6 +1332,7 @@ list it among their incoming calls. `d.draw()` on a `Derived&` runs
 `Derived::draw` or an override below it, never `Base::draw`, so only the
 override lists it. `Base::draw()`, in an override's body or anywhere else,
 runs `Base::draw` alone, while `Group`'s `child->draw()` may reach either.
+So does `Base::draw()` spelled by a macro, in `Logged`'s override.
 
 ```case
 tests/navigation/call_hierarchy/06_virtual_dispatch

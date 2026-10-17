@@ -194,7 +194,7 @@ tests/navigation/declaration/06_signature_spelling
 
 在与声明不再匹配的定义上执行“跳转到声明”，会跳转到与它分离的那个声明
 
-只在一侧改动参数时，定义和头文件中的声明就成了两个函数，定义也就没有了自己的声明。在这样的定义上执行“跳转到声明”，会退而列出同一作用域中名称和链接都与它相同、却没有定义的函数：也就是需要做同样修改的那个声明。自身已有定义的重载不在候选之列；对 `static` 函数而言，具有外部链接的函数也不在其列；而在类中定义的方法，从来就没有与之分离的声明。
+只在一侧改动参数时，定义和头文件中的声明就成了两个函数，定义也就没有了自己的声明。在这样的定义上执行“跳转到声明”，会退而列出同一作用域中名称和链接都与它相同、却没有定义的函数：也就是需要做同样修改的那个声明，对 `static` 函数而言则是它自己文件中的那个。自身已有定义的重载不在候选之列；链接不同的函数，以及位于定义所不在的匿名命名空间中的函数，也都不在其列。在类中定义的方法，从来就没有与之分离的声明；模板和系统头文件中的函数则不做这种回退：它们都在定义处声明。
 
 ```case
 tests/navigation/declaration/07_changed_signatures
@@ -504,7 +504,7 @@ tests/navigation/references/08_labels
 
 在重写方法上执行“查找引用”，结果包含通过它所重写的方法发起的调用，因为这些调用可能分派到它
 
-`shape.area()` 在 `Shape&` 上调用时可能执行 `Circle::area`，因此它属于该重写方法的引用。通过 `Circle` 发起的调用绝不会执行 `Shape::area`，因此它不属于被重写方法的引用；重写方法自身函数体中的 `Shape::area()` 也不属于该重写方法的引用，因为它指名的是被重写的方法。
+`shape.area()` 在 `Shape&` 上调用时可能执行 `Circle::area`，因此它属于该重写方法的引用。通过 `Circle` 发起的调用绝不会执行 `Shape::area`，因此它不属于被重写方法的引用；重写方法自身函数体中的 `Shape::area()` 也不属于该重写方法的引用，因为它指名的是被重写的方法；模板中的 `circle.Shape::scale(factor)` 同样不属于，因为在任何实例化选定具体重载之前，它指名的就已是被重写的重载之一。
 
 ```case
 tests/navigation/references/13_override_calls
@@ -1230,7 +1230,7 @@ tests/navigation/call_hierarchy/05_qualified_names
 
 通过虚方法发起的调用会到达它可能分派到的每个重写方法，带限定的调用只到达它指名的那个方法
 
-`b.draw()` 在 `Base&` 上调用时，可能执行 `Base::draw` 或 `Derived::draw`，因此两者都会把这次调用列为传入调用。`d.draw()` 在 `Derived&` 上调用时，执行的是 `Derived::draw` 或更下层派生类中的重写方法，绝不会是 `Base::draw`，因此只有该重写方法会列出这次调用。`Base::draw()` 无论出现在重写方法的函数体中还是别处，都只执行 `Base::draw`；而 `Group` 中的 `child->draw()` 两者都可能到达。
+`b.draw()` 在 `Base&` 上调用时，可能执行 `Base::draw` 或 `Derived::draw`，因此两者都会把这次调用列为传入调用。`d.draw()` 在 `Derived&` 上调用时，执行的是 `Derived::draw` 或更下层派生类中的重写方法，绝不会是 `Base::draw`，因此只有该重写方法会列出这次调用。`Base::draw()` 无论出现在重写方法的函数体中还是别处，都只执行 `Base::draw`；而 `Group` 中的 `child->draw()` 两者都可能到达。由宏写出的 `Base::draw()` 也只执行 `Base::draw`，`Logged` 的重写方法中就有这样一处。
 
 ```case
 tests/navigation/call_hierarchy/06_virtual_dispatch
