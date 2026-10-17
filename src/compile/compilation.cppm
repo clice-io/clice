@@ -162,12 +162,13 @@ struct CompilationInput {
                 host = file.origin.source;
             } else if(file.entry == SynthesizedFile::Entry::Forced) {
                 forced_includes.push_back(file.path);
-            } else if(file.entry == SynthesizedFile::Entry::Appended && !focus.empty()) {
-                auto text = buffers.find(focus);
-                assert(text != buffers.end() && "the focus file is served before its context");
-                text_end = static_cast<std::uint32_t>(text->second.size());
-                append_include(text->second, file.path);
             }
+        }
+        if(auto suffix = suffix_path(files); !suffix.empty() && !focus.empty()) {
+            auto text = buffers.find(focus);
+            assert(text != buffers.end() && "the focus file is served before its context");
+            text_end = static_cast<std::uint32_t>(text->second.size());
+            append_include(text->second, suffix);
         }
     }
 

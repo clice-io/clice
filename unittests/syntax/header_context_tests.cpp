@@ -52,16 +52,6 @@ std::string flatten(const SynthesizedContext& context, llvm::StringRef entry) {
     return out;
 }
 
-/// The fragment the focus file appends the include of; empty for none.
-std::string suffix_of(const SynthesizedContext& context) {
-    for(auto& file: context.files) {
-        if(file.entry == SynthesizedFile::Entry::Appended) {
-            return file.path;
-        }
-    }
-    return {};
-}
-
 /// The part before the header's include, flattened; nullopt when the
 /// synthesis failed.
 std::optional<std::string> prefix_of(llvm::ArrayRef<ChainEntry> chain,
@@ -469,7 +459,7 @@ int after() { return 0; }
 void register_all() {
 #define X(name) handle(name);
 )");
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 4 "/proj/main.cpp"
 #undef X
 }
@@ -494,7 +484,7 @@ int main() { return HOST; }
     ZASSERT(result);
     ZEXPECT(result->open.empty());
     ZEXPECT(result->files.size() == 2U);
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 3 "/proj/main.cpp"
 #endif
 )");
@@ -514,7 +504,7 @@ int use = 0;
 
     auto result = synthesize_context({entry}, "/proj/ops.def", map_resolver(mapping));
     ZASSERT(result);
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 3 "/proj/main.cpp"
 };
 #endif
@@ -538,11 +528,39 @@ int after;
 
     auto result = synthesize_context({entry}, "/proj/body.inc", map_resolver(mapping));
     ZASSERT(result);
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 3 "/proj/main.cpp"
 int later;
 void inline_member() { later = 1; }
 } s;
+#endif
+)");
+}
+
+ZEST_CASE(SuffixTakesInitializedDeclarators) {
+    // The declarators after a class's `}` run to their `;`, braced
+    // initializers included, over as many lines as they take.
+    llvm::StringMap<std::string> mapping = {
+        {"fields.inc", "/proj/fields.inc"},
+    };
+
+    ChainEntry entry{"/proj/main.cpp", R"(struct Point {
+#include "fields.inc"
+} origin{}, corners[] = {
+    {0, 0},
+    {1, 1},
+};
+int after;
+)"};
+
+    auto result = synthesize_context({entry}, "/proj/fields.inc", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 3 "/proj/main.cpp"
+} origin{}, corners[] = {
+    {0, 0},
+    {1, 1},
+};
 #endif
 )");
 }
@@ -563,7 +581,7 @@ int after;
 
     auto result = synthesize_context({entry}, "/proj/body.inc", map_resolver(mapping));
     ZASSERT(result);
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 4 "/proj/main.cpp"
 END
 int after;
@@ -591,7 +609,7 @@ int after;
 
     auto result = synthesize_context({entry}, "/proj/body.inc", map_resolver(mapping));
     ZASSERT(result);
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 3 "/proj/main.cpp"
 #if A
 };
@@ -631,7 +649,7 @@ void tail();
 struct A {
 #endif
 )");
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #if 1
 #line 5 "/proj/a.h"
 };
@@ -663,7 +681,7 @@ void tail();
 
     auto result = synthesize_context({host, a}, "/proj/target.h", map_resolver(mapping));
     ZASSERT(result);
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #if 1
 #line 4 "/proj/a.h"
 void tail();
@@ -694,7 +712,7 @@ void mid_tail();
 
     auto result = synthesize_context({host, mid}, "/proj/target.h", map_resolver(mapping));
     ZASSERT(result);
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 2 "/proj/mid.h"
 void mid_tail();
 #line 3 "/proj/main.cpp"
@@ -722,7 +740,7 @@ void mid_tail();
 
     auto result = synthesize_context({host, mid}, "/proj/ops.def", map_resolver(mapping));
     ZASSERT(result);
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 3 "/proj/mid.h"
 };
 #endif
@@ -753,12 +771,12 @@ ZEST_CASE(FragmentsBesideFiles) {
                                      llvm::StringRef("int t;\n"));
     ZASSERT(result);
     ZEXPECT(llvm::sys::path::parent_path(result->prefix) == "/proj");
-    ZEXPECT(llvm::sys::path::parent_path(suffix_of(*result)) == "/proj/lib");
+    ZEXPECT(llvm::sys::path::parent_path(suffix_path(result->files)) == "/proj/lib");
     ZASSERT(result->files.size() == 5u);
     auto& snapshot = result->files.front();
     ZEXPECT(llvm::sys::path::parent_path(snapshot.path) == "/proj/lib");
     ZEXPECT(snapshot.content == "int t;\n");
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 3 "/proj/lib/mid.h"
 int t;
 };
@@ -831,7 +849,7 @@ int main() {}
                                      llvm::StringRef("#pragma once\nint t;\n"));
     ZASSERT(result);
     ZEXPECT(!result->snapshot);
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #line 3 "/proj/main.cpp"
 
 };
@@ -870,7 +888,7 @@ struct S {
     auto open = llvm::find_if(result->files, [&](auto& file) { return file.path == result->open; });
     ZASSERT(open != result->files.end());
     ZEXPECT(open->entry == SynthesizedFile::Entry::Forced);
-    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
 #if 1
 #line 5 "/proj/main.cpp"
 };
@@ -928,7 +946,7 @@ int tail;
                                      std::uint32_t(0),
                                      llvm::StringRef("int t;\n"));
     ZASSERT(result);
-    auto path = suffix_of(*result);
+    auto path = suffix_path(result->files);
     auto suffix = llvm::find_if(result->files, [&](auto& file) { return file.path == path; });
     ZASSERT(suffix != result->files.end());
     ZASSERT(suffix->origin.runs.size() == 2u);

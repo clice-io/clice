@@ -181,10 +181,37 @@ Cut place_cut(const LexicalInfo& lexical, llvm::StringRef content, std::uint32_t
     return cut;
 }
 
+/// Where the declaration `close` ends: past the declarators its line goes
+/// on with and the `;` ending them (`} object;`, `} table[] = {1, 2};`),
+/// else past `close` itself.
+std::uint32_t declaration_end(const LexicalInfo& lexical, const Token& close) {
+    std::int32_t nested = 0;
+    bool first = true;
+    for(const auto& next: lexical.code_from(close.range.end)) {
+        if(next.is_directive_hash() ||
+           (first && next.is_at_start_of_line && next.kind != clang::tok::semi)) {
+            break;
+        }
+        first = false;
+        if(next.kind == clang::tok::semi && nested == 0) {
+            return next.range.end;
+        }
+        if(next.kind == clang::tok::l_brace) {
+            nested += 1;
+        } else if(next.kind == clang::tok::r_brace) {
+            if(nested == 0) {
+                break;
+            }
+            nested -= 1;
+        }
+    }
+    return close.range.end;
+}
+
 /// Where the braces open at `cut` close, reading on from `resume`, with no
-/// conditional block opened past the cut still open: past the `}` closing
-/// them and the declarators up to a `;` after it, or past the `#endif`
-/// ending the block they close in; the content's end when they never do.
+/// conditional block opened past the cut still open: where the declaration
+/// the `}` closing them ends, or past the `#endif` ending the block they
+/// close in; the content's end when they never do.
 std::uint32_t braces_close(const LexicalInfo& lexical,
                            llvm::StringRef content,
                            const Cut& cut,
@@ -214,16 +241,7 @@ std::uint32_t braces_close(const LexicalInfo& lexical,
         } else if(tokens[index].kind == clang::tok::r_brace) {
             depth -= 1;
             if(depth <= 0 && conditionals <= 0) {
-                for(const auto& next: lexical.code_from(tokens[index].range.end)) {
-                    if(next.kind == clang::tok::semi) {
-                        return next.range.end;
-                    }
-                    if(next.kind == clang::tok::l_brace || next.kind == clang::tok::r_brace ||
-                       next.is_directive_hash()) {
-                        break;
-                    }
-                }
-                return tokens[index].range.end;
+                return declaration_end(lexical, tokens[index]);
             }
         }
     }
@@ -353,6 +371,15 @@ std::string add_file(SynthesizedContext& context,
 }
 
 }  // namespace
+
+llvm::StringRef suffix_path(const SynthesizedFiles& files) {
+    for(const auto& file: files) {
+        if(file.entry == SynthesizedFile::Entry::Appended) {
+            return file.path;
+        }
+    }
+    return {};
+}
 
 void append_include(std::string& text, llvm::StringRef path) {
     if(!text.empty() && !text.ends_with('\n')) {

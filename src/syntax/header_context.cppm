@@ -154,6 +154,10 @@ std::optional<SynthesizedContext>
                        std::optional<std::uint32_t> occurrence = {},
                        std::optional<llvm::StringRef> target_content = {});
 
+/// The suffix among `files`, the file the focus file's text goes on to
+/// include; empty for none.
+llvm::StringRef suffix_path(const SynthesizedFiles& files);
+
 /// Append an include of `path` to `text` on a line of its own.
 void append_include(std::string& text, llvm::StringRef path);
 
