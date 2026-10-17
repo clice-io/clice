@@ -1,7 +1,7 @@
 /// The features on real files: each sampled file asked the same requests,
 /// at the same places, of `clice inspect` and of a server over the indexed
-/// project, the two answers compared; a module importer, which inspect
-/// cannot compile alone, is asked of the server only. The server is also
+/// project, the two answers compared; a file inspect cannot compile alone
+/// (a module importer) is asked of the server only. The server is also
 /// asked to navigate from every place, which only it answers. A request
 /// that fails, hangs or crashes a worker is a failure, as is a place
 /// where the two answers differ.
@@ -16,6 +16,7 @@ import { withTimeout } from "../promise.ts";
 import type { MarkerAnchor } from "../testing/cases/anchors.ts";
 import { Disk } from "../testing/cases/disk.ts";
 import { importsModule, Inspect } from "../testing/inspect/inspect.ts";
+import type { Diagnostic } from "../testing/render/answers.ts";
 import type { Client } from "../testing/render/client.ts";
 import { withoutBom } from "../testing/render/position.ts";
 import { block, type Shown } from "../testing/render/shown.ts";
@@ -28,6 +29,9 @@ import { StepRecord } from "../testing/server/steps.ts";
 /// inspect compiles once.
 const POINTS = 20;
 const COMPLETIONS = 3;
+
+/// Files asked at once: inspect compiles each alone beside the server.
+const CONCURRENCY = 3;
 
 /// A request that answers in no time on a test case may compile a large
 /// unit here: the bound only a hang reaches.
@@ -71,7 +75,7 @@ export const REQUESTS = [
 /// The requests only the server answers: navigation over the index.
 export const NAVIGATION = ["definition", "references", "callHierarchy", "typeHierarchy"] as const;
 
-export type Request = (typeof REQUESTS)[number] | (typeof NAVIGATION)[number] | "diagnostics";
+export type Request = (typeof REQUESTS)[number] | (typeof NAVIGATION)[number] | "errors";
 
 const SOURCE = /\.(c|cc|cpp|cxx|c\+\+|cppm|ixx|cu)$/;
 
@@ -236,6 +240,7 @@ function asksOf(
 /// was none.
 interface Answer {
     reply?: Shown;
+    raw?: unknown;
     value?: string;
     error?: string;
     /// A request that never answered, or an inspect that died.
@@ -246,7 +251,7 @@ async function answer(client: Client, ask: Ask): Promise<Answer> {
     const reply = ask.ask(client);
     try {
         const value: unknown = await withTimeout(reply as Promise<unknown>, REQUEST_MS, ask.label);
-        return { reply, value: JSON.stringify(value) };
+        return { reply, raw: value, value: JSON.stringify(value) };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const stopped = message.includes("timed out after")
@@ -283,19 +288,23 @@ export interface SweepFailure {
 
 export interface SweepRun {
     files: string[];
-    importers: string[];
+    /// The files asked of the server only, each with the first error inspect
+    /// compiled it with.
+    serverOnly: { file: string; why: string }[];
     requests: number;
     inspectSeconds: number;
     serverSeconds: number;
     failures: SweepFailure[];
+    /// Why the server failed its clean exit: a crash, or no exit at all.
+    serverExit: string[];
+    /// The files the server opened with errors, the first few of each.
+    serverErrors: { file: string; errors: string[] }[];
 }
 
 export interface SweepOptions {
     root: string;
     files: readonly string[];
     only?: ReadonlySet<Request>;
-    /// Files whose inspect runs go at once beside the server's.
-    concurrency: number;
 }
 
 async function sweepFile(
@@ -307,17 +316,16 @@ async function sweepFile(
 ): Promise<void> {
     const text = withoutBom(fs.readFileSync(path.join(options.root, file), "utf8"));
     const { compared, navigation } = asksOf(file, places, options.only);
-    const importer = importsModule(text);
-    if (importer) {
-        run.importers.push(file);
-    }
     const fail = (kind: SweepFailure["kind"], ask: Ask, detail: string) =>
         run.failures.push({ kind, file, request: ask.request, label: ask.label, detail });
 
     const inspected = (async () => {
         const answers = new Map<string, Answer>();
-        if (importer) {
-            return answers;
+        if (importsModule(text)) {
+            return { answers, errors: ["imports a module"] };
+        }
+        if (compared.length === 0) {
+            return { answers, errors: [] };
         }
         const started = Date.now();
         // Inspect asks a request at every place of its client in one run, a
@@ -334,49 +342,91 @@ async function sweepFile(
                 : ask.request === "signatureHelp"
                   ? atCalls
                   : atPoints;
+        let errors: string[];
         try {
             for (const ask of compared) {
                 answers.set(ask.label, await answer(clientOf(ask), ask));
             }
+            // A file importing a module through a header compiles with
+            // errors alone, which every answer of it shows.
+            errors = await atPoints.compileErrors().catch((error: unknown) => [String(error)]);
         } finally {
             for (const client of [atPoints, atMembers, atCalls]) {
                 client.close();
             }
             run.inspectSeconds += (Date.now() - started) / 1000;
         }
-        return answers;
+        return { answers, errors };
     })();
     // The file opens as in an editor, its first compile done before the
     // requests.
     const opened: Ask = {
-        request: "diagnostics",
-        label: "diagnostics",
-        ask: () => server.diagnostics(file),
+        request: "errors",
+        label: "errors",
+        ask: () => server.errors(file),
     };
     const served = (async () => {
         const answers = new Map<string, Answer>();
         const started = Date.now();
+        const child = server.client.child;
+        const alive = () => child.exitCode === null && child.signalCode === null;
         for (const ask of [opened, ...compared, ...navigation]) {
+            // A hung request holds the document in its worker, and a dead
+            // server answers nothing: the file's other requests would only
+            // wait their bound out, or fail for the same reason.
+            if (!alive() || [...answers.values()].some((each) => each.stopped === "hang")) {
+                break;
+            }
             answers.set(ask.label, await answer(server, ask));
         }
-        server.close(file);
+        try {
+            server.close(file);
+        } catch (error) {
+            // The server's exit reports its death.
+            if (alive()) {
+                throw error;
+            }
+        }
         run.serverSeconds += (Date.now() - started) / 1000;
         return answers;
     })();
-    const [fromInspect, fromServer] = await Promise.all([inspected, served]);
+    const [{ answers: fromInspect, errors }, fromServer] = await Promise.all([inspected, served]);
+    const [why] = errors;
+    if (why !== undefined) {
+        run.serverOnly.push({ file, why });
+    }
+    const opening = fromServer.get(opened.label)?.raw as Diagnostic[] | undefined;
+    if (opening !== undefined && opening.length > 0) {
+        run.serverErrors.push({
+            file,
+            errors: opening
+                .slice(0, 5)
+                .map(
+                    ({ location, message }) =>
+                        `${location.path}:${String(location.range.start.line + 1)}:${String(location.range.start.character + 1)}: ${message}`,
+                ),
+        });
+    }
 
+    run.requests += fromServer.size + fromInspect.size;
     for (const ask of [opened, ...compared, ...navigation]) {
-        run.requests += 1;
         const right = fromServer.get(ask.label) ?? {};
         if (right.error !== undefined) {
             fail(right.stopped ?? "server", ask, right.error);
         }
-        if (importer || !compared.includes(ask)) {
+        if (!compared.includes(ask)) {
             continue;
         }
         const left = fromInspect.get(ask.label) ?? {};
+        if (left.stopped !== undefined) {
+            fail(left.stopped, ask, left.error ?? "");
+            continue;
+        }
+        if (why !== undefined) {
+            continue;
+        }
         if (left.error !== undefined) {
-            fail(left.stopped ?? "inspect", ask, left.error);
+            fail("inspect", ask, left.error);
             continue;
         }
         if (
@@ -406,23 +456,22 @@ async function sweepFile(
 export async function sweep(options: SweepOptions): Promise<SweepRun> {
     const run: SweepRun = {
         files: [...options.files],
-        importers: [],
+        serverOnly: [],
         requests: 0,
         inspectSeconds: 0,
         serverSeconds: 0,
         failures: [],
+        serverExit: [],
+        serverErrors: [],
     };
-    const places = new Map(
-        options.files.map((file) => [
-            file,
-            placesOf(file, withoutBom(fs.readFileSync(path.join(options.root, file), "utf8"))),
-        ]),
+    const places = options.files.map(
+        (file) =>
+            [
+                file,
+                placesOf(file, withoutBom(fs.readFileSync(path.join(options.root, file), "utf8"))),
+            ] as const,
     );
-    const marks = [...places.values()].flatMap((each) => [
-        ...each.points,
-        ...each.members,
-        ...each.calls,
-    ]);
+    const marks = places.flatMap(([, each]) => [...each.points, ...each.members, ...each.calls]);
     const steps = new StepRecord();
     const server = new Serve(
         new Workspace(options.root),
@@ -431,19 +480,19 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
     );
     await server.start();
     try {
-        const queue = [...options.files];
+        const queue = [...places];
         const worker = async () => {
-            for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
-                const filePlaces = places.get(file);
-                if (filePlaces !== undefined) {
-                    process.stderr.write(`sweep ${file}\n`);
-                    await sweepFile(options, server, file, filePlaces, run);
-                }
+            for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+                const [file, filePlaces] = next;
+                process.stderr.write(`sweep ${file}\n`);
+                await sweepFile(options, server, file, filePlaces, run);
             }
         };
-        await Promise.all(Array.from({ length: options.concurrency }, worker));
+        await Promise.all(Array.from({ length: CONCURRENCY }, worker));
     } finally {
-        await server.finish(false);
+        run.serverExit = (await server.finish(false)).map((error) =>
+            error instanceof Error ? error.message : String(error),
+        );
     }
     return run;
 }

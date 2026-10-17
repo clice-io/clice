@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "../repo.ts";
 
-export const PROJECTS_FILE = path.join(REPO_ROOT, "tests", "nightly", "projects.json");
+const PROJECTS_FILE = path.join(REPO_ROOT, "tests", "nightly", "projects.json");
 
 /// A command run in the checkout, an argv in which `${JOBS}` reads the
 /// machine's core count and `${CHECKOUT}` the checkout's path; or the
@@ -44,8 +44,10 @@ function fail(message: string): never {
     throw new Error(`${PROJECTS_FILE}: ${message}`);
 }
 
-export function loadProjects(file = PROJECTS_FILE): Project[] {
-    const { projects } = JSON.parse(fs.readFileSync(file, "utf8")) as { projects: Project[] };
+export function loadProjects(): Project[] {
+    const { projects } = JSON.parse(fs.readFileSync(PROJECTS_FILE, "utf8")) as {
+        projects: Project[];
+    };
     const names = new Set<string>();
     for (const project of projects) {
         if (names.has(project.name)) {

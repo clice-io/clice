@@ -444,19 +444,22 @@ an exemption naming nothing uncovered fails too.
   (`tools/testing/cases/copy.ts`), each harness naming the file and symbol
   in a scenario table of its own: changing one of these cases changes those
   tests.
-- **`nightly/projects.json`**: real projects, each pinned to a commit with how
-  its compilation database is made, a project too large for one runner split
-  into parts. Every night a free runner per project or part
-  (`nightly-projects.yml`) prepares it, indexes it from a cold cache and asks
-  the features on sampled files: inspect and a server the same requests at
-  the same places, the server also navigation. A crash, a hang, a unit clice
-  fails or reports errors on that the compiler compiles, or a place where
-  inspect and the server answer differently fails the job; a unit the
-  compiler rejects too is listed. Counts, sizes, memory and time are recorded
-  beside the previous night's, never gated. Every failure names the command
-  that reproduces it: `node tools/nightly/run.ts <job> --dir <dir>` prepares
-  the project in `<dir>` and runs the job, `--steps`, `--file` and `--only`
-  narrow it.
+- **`nightly/projects.json`**: real projects, each pinned to a commit (clice
+  itself at the commit under test) with how its compilation database is made,
+  a project too large for one runner split into parts. Every night a free
+  runner per project or part (`nightly-projects.yml`) prepares it, indexes it
+  from a cold cache and asks the features on sampled files: inspect and a
+  server the same requests at the same places, the server also navigation.
+  The job fails on a preparation that fails, a crash, a hang, an index run
+  that does not finish, an anomaly in clice's logs, a request either answers
+  with an error, a unit clice fails or reports errors on that the compiler
+  compiles (or that the compiler cannot check), and a place where inspect and
+  the server answer differently; a unit the compiler rejects too is listed.
+  Counts, sizes, memory and time are recorded beside the previous night's,
+  never gated. Every failure names the command that reproduces it:
+  `node tools/nightly/run.ts <job> --dir <dir>` prepares the project in
+  `<dir>` (clice in the repository itself) and runs the job, `--steps`,
+  `--file` and `--only` narrow it.
 - **`compat/`**: real build systems and compilers build a small project; clice
   must read their databases and agree with the compiler.
 

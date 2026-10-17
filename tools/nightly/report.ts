@@ -7,12 +7,14 @@ const KINDS: Record<Failure["kind"], string> = {
     setup: "The project could not be prepared",
     crash: "Crashes",
     hang: "Hangs",
+    unfinished: "Runs of clice index that did not finish",
     index: "Units that failed to index, which the compiler compiles",
     compile: "Units clice reports errors on, which the compiler compiles",
     disagree: "Places where inspect and the server answer differently",
     inspect: "Requests clice inspect failed",
     server: "Requests the server failed",
     anomaly: "Anomalies",
+    runner: "Errors of the nightly runner itself",
 };
 
 function megabytes(bytes: number): string {
@@ -63,10 +65,10 @@ function rows(now: Results, before: Results | undefined): string[][] {
         out.push(
             [
                 "sampled files (server only)",
-                `${String(sweep.files)} (${String(sweep.importers)})`,
+                `${String(sweep.files)} (${String(sweep.serverOnly.length)})`,
                 before?.sweep === undefined
                     ? ""
-                    : `${String(before.sweep.files)} (${String(before.sweep.importers)})`,
+                    : `${String(before.sweep.files)} (${String(before.sweep.serverOnly.length)})`,
             ],
             ["requests", String(sweep.requests), String(before?.sweep?.requests ?? "")],
             [
@@ -81,8 +83,12 @@ function rows(now: Results, before: Results | undefined): string[][] {
     return out;
 }
 
+/// A code block of the text's first lines, its fence longer than any run
+/// of backticks inside (a hover's code blocks).
 function fence(text: string): string {
-    return ["```", text.split("\n").slice(0, 60).join("\n"), "```"].join("\n");
+    const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+    const ticks = "`".repeat(Math.max(3, longest + 1));
+    return [ticks, text.split("\n").slice(0, 60).join("\n"), ticks].join("\n");
 }
 
 export function report(now: Results, before?: Results): string {
