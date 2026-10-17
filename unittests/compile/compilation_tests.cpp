@@ -33,6 +33,16 @@ std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
     return std::vector<std::string>(argv.begin(), argv.end());
 }
 
+/// Whether the unit defines the one specialization of the function
+/// template `name` its code uses.
+bool defines_specialization(CompilationUnit& unit, llvm::StringRef name) {
+    auto found = unit.tu()->lookup(&unit.context().Idents.get(name));
+    auto* pattern = llvm::dyn_cast<clang::FunctionTemplateDecl>(found.front());
+    ZASSERT(pattern);
+    ZASSERT(llvm::range_size(pattern->specializations()) == 1U);
+    return (*pattern->specializations().begin())->isDefined();
+}
+
 ZEST_SUITE(Compiler, Tester) {
 
 ZEST_CASE(TopLevelDecls) {
@@ -585,6 +595,18 @@ int bar() { return 3; }
     ZASSERT(unit->top_level_decls().size() >= 1U);
 }
 
+/// The preamble build of `content` as main.cpp, writing its PCH to `pch`.
+std::unique_ptr<CompilationUnit> build_preamble(llvm::StringRef content, llvm::StringRef pch) {
+    add_main("main.cpp", content);
+    prepare();
+    params.kind = CompilationKind::Preamble;
+    params.output_file = pch.str();
+    params.input.add_remapped_file(TestVFS::path("main.cpp"),
+                                   content,
+                                   compute_preamble_bound(content));
+    return clice::compile(std::move(params));
+}
+
 ZEST_CASE(PCHInstantiatesTemplates) {
     add_file("twice.h", R"(
 #pragma once
@@ -598,33 +620,56 @@ inline int four() {
 }
 )");
 
-    llvm::StringRef content = R"(
+    auto pch = vfs::temp_file("clice-test", "pch");
+    ZASSERT(pch.operator bool());
+    {
+        auto preamble = build_preamble(R"(
 #include "twice.h"
 
 int main() { return four(); }
-)";
+)",
+                                       *pch);
+        ZASSERT(preamble->has_output());
+        ZEXPECT(defines_specialization(*preamble, "twice"));
+    }
+    llvm::sys::fs::remove(*pch);
+}
 
-    add_main("main.cpp", content);
-    prepare();
-    params.kind = CompilationKind::Preamble;
-    auto pch_path = vfs::temp_file("clice-test", "pch");
-    ZASSERT(pch_path.operator bool());
-    params.output_file = *pch_path;
-    params.input.add_remapped_file(TestVFS::path("main.cpp"),
-                                   content,
-                                   compute_preamble_bound(content));
+ZEST_CASE(PCHInstantiationFallsBack) {
+    add_file("show.h", R"(
+#pragma once
+template <typename T>
+void show(T value) {
+    describe(value);
+}
 
-    auto preamble_unit = clice::compile(std::move(params));
-    ZASSERT(preamble_unit->has_output());
+namespace app {
+struct Point {};
+}  // namespace app
 
-    auto& name = preamble_unit->context().Idents.get("twice");
-    auto* pattern =
-        llvm::dyn_cast<clang::FunctionTemplateDecl>(preamble_unit->tu()->lookup(&name).front());
-    ZASSERT(pattern);
-    ZASSERT(llvm::range_size(pattern->specializations()) == 1U);
-    ZEXPECT((*pattern->specializations().begin())->isDefined());
+inline void demo() {
+    show(app::Point{});
+}
+)");
 
-    llvm::sys::fs::remove(*pch_path);
+    auto pch = vfs::temp_file("clice-test", "pch");
+    ZASSERT(pch.operator bool());
+    {
+        // Where the preamble ends, show<app::Point> finds no describe: the
+        // PCH leaves it to the parse loading it, which sees main.cpp's.
+        auto preamble = build_preamble(R"(
+#include "show.h"
+
+namespace app {
+void describe(Point) {}
+}  // namespace app
+)",
+                                       *pch);
+        ZASSERT(preamble->has_output());
+        ZEXPECT(collect_errors(*preamble).empty());
+        ZEXPECT(!defines_specialization(*preamble, "show"));
+    }
+    llvm::sys::fs::remove(*pch);
 }
 
 };  // ZEST_SUITE(Compiler)

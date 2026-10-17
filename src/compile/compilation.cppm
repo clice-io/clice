@@ -531,6 +531,14 @@ private:
     /// See has_output.
     bool output_ready = false;
 
+    /// Preamble: whether the PCH instantiates the templates the preamble
+    /// uses; compile() clears it to build again when that raised an error.
+    bool instantiate = true;
+
+    /// Preamble: how many errors clang had raised when the parse reached
+    /// the end of the main file.
+    std::optional<unsigned> errors_at_end;
+
     /// When the compile started.
     std::chrono::milliseconds build_time;
 
@@ -627,8 +635,8 @@ private:
 
 /// How compile() builds a PCH: its inputs are checked by size alone when
 /// it is loaded, and the templates its preamble uses are instantiated in
-/// it. Keys of cached PCHs include it, so a blob built under another rule
-/// is never reused.
+/// it unless that raises an error. Keys of cached PCHs include it, so a
+/// blob built under another rule is never reused.
 constexpr inline llvm::StringRef pch_build_rule = "size,instantiated";
 
 /// The messages of a finished compilation's error-level diagnostics, in

@@ -187,10 +187,8 @@ std::unique_ptr<clang::CompilerInvocation>
             front_opts.IncludeTimestamps = false;
             lang_opts.CompilingPCH = true;
             // The function templates the preamble uses are instantiated once,
-            // here, instead of at the end of every parse loading the PCH. An
-            // instantiation then sees only what the preamble declares: an
-            // overload the main file declares later is not found by ADL.
-            lang_opts.PCHInstantiateTemplates = true;
+            // here, instead of at the end of every parse loading the PCH.
+            lang_opts.PCHInstantiateTemplates = instantiate;
             break;
         }
 
@@ -463,6 +461,16 @@ CompilationStatus CompilationUnit::run() {
     /// Add PPCallbacks to collect preprocessing information.
     instance->getPreprocessor().addPPCallbacks(directive_collector());
 
+    // What clang raises past the end of the main file, it raises
+    // instantiating the templates the preamble uses.
+    if(params.kind == CompilationKind::Preamble && instantiate) {
+        instance->getPreprocessor().setTokenWatcher([this](const clang::Token& token) {
+            if(token.is(clang::tok::eof) && !errors_at_end) {
+                errors_at_end = instance->getDiagnostics().getNumErrors();
+            }
+        });
+    }
+
     if(params.kind == CompilationKind::Content) {
         collected_tokens.emplace(instance->getPreprocessor());
     }
@@ -505,6 +513,27 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
 
     std::unique_ptr<CompilationUnit> unit(new CompilationUnit(std::move(params)));
     unit->outcome = unit->run();
+
+    // Instantiated where the preamble ends, a template misses what the main
+    // file declares later, which clang compiling the whole file sees: an
+    // overload argument-dependent lookup would find, a type completed
+    // there. When instantiating raised an error, the PCH is built again
+    // without it.
+    if(unit->completed() && unit->errors_at_end &&
+       unit->instance->getDiagnostics().getNumErrors() > *unit->errors_at_end) {
+        auto& built = unit->params;
+        CompilationParams again{
+            .kind = built.kind,
+            .input = built.input,
+            .output_file = built.output_file,
+            .tidy = built.tidy,
+            .stop = built.stop,
+        };
+        unit.reset();
+        unit.reset(new CompilationUnit(std::move(again)));
+        unit->instantiate = false;
+        unit->outcome = unit->run();
+    }
     return unit;
 }
 
