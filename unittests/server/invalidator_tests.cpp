@@ -44,7 +44,7 @@ struct Harness {
     IndexStore index;
 
     Harness(Project& project, EditorContext& resolver, SessionStore& store) :
-        pcm(graph, project, resolver.commands, pool), pch(graph, project, resolver.commands, pool),
+        pcm(graph, project, resolver.commands, pool), pch(graph, project, pool),
         ast(project, resolver, graph, pcm, pch, pool, store),
         index(loop, project, resolver.commands) {}
 };

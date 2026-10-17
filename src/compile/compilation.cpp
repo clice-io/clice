@@ -419,11 +419,6 @@ CompilationStatus CompilationUnit::run() {
         return CompilationStatus::SetupFail;
     }
 
-    if(params.kind == CompilationKind::Completion) {
-        assert(params.completion.consumer && "a completion needs its consumer");
-        instance->setCodeCompletionConsumer(params.completion.consumer.release());
-    }
-
     action = std::make_unique<ParseAction>(
         frontend_action(params.kind, instance->getFrontendOpts().GenReducedBMI),
         *this);
@@ -436,7 +431,11 @@ CompilationStatus CompilationUnit::run() {
         return CompilationStatus::SetupFail;
     }
 
+    // Handed over only now: a compile that could not start keeps it for
+    // another try (see compile()).
     if(params.kind == CompilationKind::Completion) {
+        assert(params.completion.consumer && "a completion needs its consumer");
+        instance->setCodeCompletionConsumer(params.completion.consumer.release());
         complete_at(*instance, params.completion.offset);
     }
 
@@ -524,6 +523,28 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
 
     std::unique_ptr<CompilationUnit> unit(new CompilationUnit(std::move(params)));
     unit->outcome = unit->run();
+
+    // A precompiled header the build declares that clang refuses for this
+    // parse — the unit's own flags conflict with the ones it was built
+    // under, where GCC takes the .gch for unusable and ignores it — leaves
+    // the header the command forces in to parse what it holds.
+    if(auto& [pch, bound] = unit->params.input.pch;
+       unit->setup_fail() && !pch.empty() && bound == 0) {
+        LOG_WARN("Compiling without the precompiled header {}, which clang refused", pch);
+        auto& built = unit->params;
+        CompilationParams again{
+            .kind = built.kind,
+            .input = built.input,
+            .output_file = built.output_file,
+            .completion = std::move(built.completion),
+            .tidy = built.tidy,
+            .stop = built.stop,
+        };
+        again.input.pch = {};
+        unit.reset();
+        unit.reset(new CompilationUnit(std::move(again)));
+        unit->outcome = unit->run();
+    }
 
     // Instantiated where the preamble ends, a template misses what the main
     // file declares later, which clang compiling the whole file sees: an
