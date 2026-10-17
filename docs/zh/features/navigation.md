@@ -752,18 +752,6 @@ tests/navigation/macros/10_header_variants
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
-
-**经由 preamble 的宏体**
-
-preamble 读入的头文件展开某个宏时，即使没有后台索引可读，“查找引用”也会包含该宏的宏体中写出的名字
-
-```case
-tests/navigation/macros/11_preamble_expansions
-```
-
-<!-- END CAPABILITY -->
-
 <!-- END GENERATED ITEMS -->
 
 ## 隐式目标

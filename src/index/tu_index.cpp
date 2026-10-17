@@ -1777,7 +1777,11 @@ public:
                 project_bases(record);
             }
         }
-        project_expansions();
+        // What a preamble instantiates and expands is the background
+        // index's to resolve: the preamble's own index carries none of it.
+        if(!extras) {
+            project_expansions();
+        }
         auto instantiations_ms = instantiations_timer.ms_f();
 
         ScopedTimer finish_timer;
