@@ -1,7 +1,7 @@
 [test."vec.tpp"]
 diagnostics = [
     {
-        at = "template <class T> T helper() { return T{}; }⟦⟧",
+        at = "namespace detail ⟦{⟧",
         severity = "error",
         message = "expected '}'",
         source = "clang",
@@ -15,7 +15,7 @@ document_symbols = [
         name = "detail",
         kind = "Namespace",
         at = "namespace ⟦detail⟧ {",
-        range = "⟦namespace detail { … ⟧ (3 lines)",
+        range = "⟦namespace detail { … template <class T> T helper() { return T{}; }⟧ (2 lines)",
         children = [
             {
                 name = "helper",

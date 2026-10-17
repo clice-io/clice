@@ -28,7 +28,7 @@ struct Tester {
     /// platforms, e.g. for snapshot tests.
     std::string triple;
 
-    /// What compile() builds the main file as: an open file's compile, or
+    /// What compile() builds the focus file as: an open file's compile, or
     /// the background index's, whose index covers every file.
     CompilationKind kind = CompilationKind::Content;
 
@@ -54,7 +54,7 @@ struct Tester {
         return artifacts.path(std::format("{}.{}", artifact_count, extension));
     }
 
-    void add_main(llvm::StringRef file, llvm::StringRef content) {
+    void add_focus(llvm::StringRef file, llvm::StringRef content) {
         src_path = file.str();
         sources.add_source(file, content);
     }
@@ -63,8 +63,8 @@ struct Tester {
         sources.add_source(name, content);
     }
 
-    void add_files(llvm::StringRef main_file, llvm::StringRef content) {
-        src_path = main_file.str();
+    void add_files(llvm::StringRef focus, llvm::StringRef content) {
+        src_path = focus.str();
         sources.add_sources(content);
     }
 

@@ -599,7 +599,7 @@ ZEST_CASE(ResolveAttachesUserContent, skip = Windows) {
     bool has_cc1 = false;
     bool has_include = false;
     bool has_define = false;
-    bool has_main_file = false;
+    bool has_main_file_name = false;
     for(std::size_t i = 0; i < argv.size(); i += 1) {
         if(argv[i] == "-cc1"sv)
             has_cc1 = true;
@@ -608,12 +608,12 @@ ZEST_CASE(ResolveAttachesUserContent, skip = Windows) {
         if(argv[i] == "-D"sv && i + 1 < argv.size() && argv[i + 1] == "FOO=1"sv)
             has_define = true;
         if(argv[i] == "-main-file-name"sv)
-            has_main_file = true;
+            has_main_file_name = true;
     }
     ZEXPECT(has_cc1);
     ZEXPECT(has_include);
     ZEXPECT(has_define);
-    ZEXPECT(has_main_file);
+    ZEXPECT(has_main_file_name);
 }
 
 ZEST_CASE(ResolvePrecompileFullBMI, skip = Windows) {

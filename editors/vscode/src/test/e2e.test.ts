@@ -349,7 +349,7 @@ suite("clice E2E", function () {
 
     test("hover", async function () {
         this.timeout(60 * 1000);
-        assert.ok(document, "main file was not opened (earlier test failed)");
+        assert.ok(document, "the scenario's file was not opened (earlier test failed)");
 
         const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
             "vscode.executeHoverProvider",
@@ -362,7 +362,7 @@ suite("clice E2E", function () {
 
     test("semantic tokens through middleware", async function () {
         this.timeout(60 * 1000);
-        assert.ok(document, "main file was not opened (earlier test failed)");
+        assert.ok(document, "the scenario's file was not opened (earlier test failed)");
 
         // The provider path runs through the inactive-regions middleware,
         // so a decode failure or a swallowed response surfaces here as
@@ -379,7 +379,7 @@ suite("clice E2E", function () {
         if (!scenario.definitionFile) {
             this.skip();
         }
-        assert.ok(document, "main file was not opened (earlier test failed)");
+        assert.ok(document, "the scenario's file was not opened (earlier test failed)");
 
         const locations = await vscode.commands.executeCommand<
             (vscode.Location | vscode.LocationLink)[]
@@ -397,7 +397,7 @@ suite("clice E2E", function () {
         if (context === undefined) {
             this.skip();
         }
-        assert.ok(document, "main file was not opened (earlier test failed)");
+        assert.ok(document, "the scenario's file was not opened (earlier test failed)");
 
         const extension = vscode.extensions.getExtension("clice-io.clice");
         assert.ok(extension?.isActive, "extension not active");
@@ -447,7 +447,7 @@ suite("clice E2E", function () {
         if (scenario.context === undefined) {
             this.skip();
         }
-        assert.ok(document, "main file was not opened (earlier test failed)");
+        assert.ok(document, "the scenario's file was not opened (earlier test failed)");
 
         // No source shares shared.h's name or defines what it declares: the
         // command reports that and leaves the editor where it was.
@@ -475,7 +475,7 @@ suite("clice E2E", function () {
 
     test("completion", async function () {
         this.timeout(60 * 1000);
-        assert.ok(document, "main file was not opened (earlier test failed)");
+        assert.ok(document, "the scenario's file was not opened (earlier test failed)");
 
         const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
             "vscode.executeCompletionItemProvider",
@@ -487,7 +487,7 @@ suite("clice E2E", function () {
 
     test("space trigger gated outside imports", async function () {
         this.timeout(60 * 1000);
-        assert.ok(document, "main file was not opened (earlier test failed)");
+        assert.ok(document, "the scenario's file was not opened (earlier test failed)");
 
         // The middleware swallows space-triggered requests on non-import
         // lines; the cursor sits inside ordinary code here. VS Code still

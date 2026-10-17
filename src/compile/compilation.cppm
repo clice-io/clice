@@ -33,7 +33,7 @@ struct TidyParams {
     std::string warnings_as_errors;
 
     /// Also report findings in headers matching this regex (clang-tidy's
-    /// HeaderFilterRegex; empty = main file only).
+    /// HeaderFilterRegex; empty = focus file only).
     std::string header_filter;
 
     /// Headers excluded from reporting even when header_filter matches
@@ -89,7 +89,7 @@ enum class CompilationKind : std::uint8_t {
     /// Build the PCM of a unit providing a module into output_file.
     ModuleInterface,
 
-    /// Parse an open file, over a preamble PCH when one is given: the main
+    /// Parse an open file, over a preamble PCH when one is given: the focus
     /// file's tokens and top-level declarations are collected for the
     /// features, and clang-tidy runs in the editor shape.
     Content,
@@ -187,7 +187,7 @@ struct CompilationParams {
     std::string output_file;
 
     struct Completion {
-        /// Where in the main file.
+        /// Where in the focus file.
         std::uint32_t offset = 0;
 
         /// What clang hands the results to; the compile owns it.
@@ -218,7 +218,7 @@ enum class CompilationStatus : std::uint8_t {
     Cancelled,
 
     /// Clang never started parsing: an invalid command, an unknown target,
-    /// an unreadable main file, or a PCH or PCM rejected while loading.
+    /// an unreadable focus file, or a PCH or PCM rejected while loading.
     /// Diagnostics exist, mostly without a location; the AST does not.
     SetupFail,
 };
@@ -377,7 +377,7 @@ public:
     /// offsets.
     std::uint32_t source_offset(clang::FileID fid, std::uint32_t offset);
 
-    /// Whether the file is the compile's own source: the main file, or
+    /// Whether the file is the compile's own source: the focus file, or
     /// under a borrowed includer context a fragment cut from the host.
     bool host_source(clang::FileID fid);
 
@@ -386,10 +386,10 @@ public:
     /// host's to index, not this unit's.
     bool from_context(clang::FileID fid);
 
-    /// Whether the declaration opens before the main file and closes past
+    /// Whether the declaration opens before the focus file and closes past
     /// its start: the class, enumeration, namespace or function a fragment
     /// compiled in its includer's context sits inside.
-    bool encloses_main_file(const clang::Decl* decl);
+    bool encloses_focus_file(const clang::Decl* decl);
 
     /// Get the include location of the file id, i.e. where the file
     /// was introduced by `#include`.
@@ -549,7 +549,7 @@ private:
     bool instantiate = true;
 
     /// Preamble: how many errors clang had raised when the parse reached
-    /// the end of the main file.
+    /// the end of the focus file.
     std::optional<unsigned> errors_at_end;
 
     /// When the compile started.

@@ -110,7 +110,7 @@ static bool kept_errors(const std::shared_ptr<index::TUIndex>& preamble) {
 /// The compile's diagnostics behind the ones its PCH's build raised in the
 /// preamble, which the parse consuming the PCH never raises again — those
 /// of the command line it does, and they appear once. Files with one
-/// preamble share the PCH: notes the build placed in its own main file
+/// preamble share the PCH: notes the build placed in its own focus file
 /// move to `path`.
 static std::vector<feature::FileDiagnostic> with_preamble(std::vector<feature::FileDiagnostic> own,
                                                           const index::TUIndex& preamble,

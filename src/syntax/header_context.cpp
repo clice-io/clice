@@ -102,9 +102,9 @@ std::optional<std::size_t> find_match(llvm::StringRef content,
     return candidates.front();
 }
 
-/// Where a chain file is cut among its braces. Braces count lexically,
-/// inactive branches' and a macro's too: a miscount only moves where the
-/// prefix splits and where the suffix ends.
+/// Where a chain file is cut among its braces. Braces count lexically, in
+/// both branches of a conditional and none a macro writes: a miscount
+/// moves where the prefix splits and where the suffix ends.
 struct Cut {
     /// The `#` of the directive entering the next file.
     std::uint32_t offset = 0;
@@ -181,20 +181,30 @@ Cut place_cut(const LexicalInfo& lexical, llvm::StringRef content, std::uint32_t
     return cut;
 }
 
-/// Where the braces open at `cut` close, reading on from `resume`: past
-/// the `}` closing them and a `;` right after it; the content's end when
-/// they never do.
+/// Where the braces open at `cut` close, reading on from `resume`, with no
+/// conditional block opened past the cut still open: past the `}` closing
+/// them and the declarators up to a `;` after it, or past the `#endif`
+/// ending the block they close in; the content's end when they never do.
 std::uint32_t braces_close(const LexicalInfo& lexical,
                            llvm::StringRef content,
                            const Cut& cut,
                            std::uint32_t resume) {
     auto depth = cut.braces;
+    std::int32_t conditionals = 0;
     auto& tokens = lexical.tokens;
     auto first = lexical.token_at(resume);
     auto directive = llvm::partition_point(lexical.directives,
                                            [&](const auto& each) { return each.first < first; });
     for(auto index = first; index < tokens.size(); index += 1) {
         if(directive != lexical.directives.end() && index == directive->first) {
+            if(directive->kind == LexicalInfo::Directive::Kind::If) {
+                conditionals += 1;
+            } else if(directive->kind == LexicalInfo::Directive::Kind::EndIf) {
+                conditionals -= 1;
+                if(depth <= 0 && conditionals <= 0) {
+                    return line_end(content, tokens[directive->last].range.begin);
+                }
+            }
             index = directive->last;
             ++directive;
             continue;
@@ -203,10 +213,15 @@ std::uint32_t braces_close(const LexicalInfo& lexical,
             depth += 1;
         } else if(tokens[index].kind == clang::tok::r_brace) {
             depth -= 1;
-            if(depth == 0) {
-                auto next = lexical.code_from(tokens[index].range.end);
-                if(!next.empty() && next.begin()->kind == clang::tok::semi) {
-                    return next.begin()->range.end;
+            if(depth <= 0 && conditionals <= 0) {
+                for(const auto& next: lexical.code_from(tokens[index].range.end)) {
+                    if(next.kind == clang::tok::semi) {
+                        return next.range.end;
+                    }
+                    if(next.kind == clang::tok::l_brace || next.kind == clang::tok::r_brace ||
+                       next.is_directive_hash()) {
+                        break;
+                    }
                 }
                 return tokens[index].range.end;
             }
@@ -445,21 +460,24 @@ std::optional<SynthesizedContext>
             closing.text += "#endif\n";
         }
 
-        // After the cut, inside braces: past the matched directive's line,
-        // up to where the braces this file opened close, or the whole rest
-        // inside an earlier file's. The text before closed `depth`
-        // conditionals early, so reopen them with `#if 1`, and close those
-        // still open where the text ends. The focus file appends the
-        // innermost fragment's include, and a file the context did not cut
-        // can enter the header again before the cut — an earlier
-        // occurrence: there the header is its text alone, the includer's
-        // remainder belonging to the focus file.
-        if(!open) {
+        // After the cut: past the matched directive's line, up to where the
+        // braces this file opened close, the whole rest inside an earlier
+        // file's, and nothing outside every brace. The focus file's text
+        // always goes on with the include of the innermost fragment, even
+        // an empty one: an error a scope still open raises at the end then
+        // lies past the editor's text, a scope a macro opened included. The
+        // text before closed `depth` conditionals early, so reopen them with
+        // `#if 1`, and close those still open where the text ends. A file
+        // the context did not cut can enter the header again before the
+        // cut — an earlier occurrence: there the header is its text alone,
+        // the includer's remainder belonging to the focus file.
+        if(!open && !is_last) {
             continue;
         }
         auto resume = line_end(entry.content, cut.offset);
         auto end = splits ? braces_close(lexical, entry.content, cut, resume)
-                          : static_cast<std::uint32_t>(entry.content.size());
+                   : open ? static_cast<std::uint32_t>(entry.content.size())
+                          : resume;
         auto& tail = after.emplace_back(i, Fragment{}).second;
         if(is_last) {
             tail.text += "#if __INCLUDE_LEVEL__ == 1\n";

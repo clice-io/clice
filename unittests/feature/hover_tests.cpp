@@ -60,7 +60,7 @@ std::optional<HoverInfo> info;
 llvm::StringRef current_code;
 
 void run(llvm::StringRef code) {
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile());
 
     auto points = nameless_points();
@@ -75,7 +75,7 @@ void run(llvm::StringRef code) {
 }
 
 void compile_only(llvm::StringRef code) {
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile());
 }
 
@@ -88,7 +88,7 @@ void run_info(llvm::StringRef code,
     info.reset();
     current_code = code;
 
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile(standard));
 
     auto points = nameless_points();
@@ -575,7 +575,7 @@ ZEST_CASE(setter_heuristic_no_crash) {
 }
 
 ZEST_CASE(plaintext_content) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 int §foo = 1;
 )cpp");
     ZASSERT(compile());
@@ -611,7 +611,7 @@ int §foo = 1;
 
 ZEST_CASE(include_header) {
     add_file("test.h", "#pragma once\n");
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #include §(arg)⟦"test.h"§⟧
 §(outside)
 int x = 0;
@@ -651,7 +651,7 @@ int x = 0;
 
 ZEST_CASE(has_include_header) {
     add_file("test.h", "#pragma once\n");
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #if __has_include(§(arg)⟦"test.h"§⟧)
 #endif
 )cpp");
@@ -669,7 +669,7 @@ ZEST_CASE(has_include_header) {
 
 ZEST_CASE(embed_file) {
     add_file("data.bin", "0123456789");
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 const unsigned char data[] = {
 #embed §(arg)⟦"data.bin"§⟧
 };
@@ -688,7 +688,7 @@ const unsigned char data[] = {
 
 ZEST_CASE(has_embed_file) {
     add_file("data.bin", "0123456789");
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #if __has_embed(§(arg)⟦"data.bin"§⟧)
 #endif
 )cpp");
@@ -706,7 +706,7 @@ ZEST_CASE(has_embed_file) {
 
 ZEST_CASE(macro_include_header) {
     add_file("test.h", "#pragma once\n");
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define HEADER "test.h"
 #include §(arg)⟦HEADER§⟧
 )cpp");
@@ -723,7 +723,7 @@ ZEST_CASE(macro_include_header) {
 }
 
 ZEST_CASE(missing_include_header) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 /* error-ok */
 #include §(arg)⟦"missing.h"§⟧
 )cpp");
@@ -745,7 +745,7 @@ ZEST_CASE(scoped_attribute) {
 }
 
 ZEST_CASE(whitespace_no_hover) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 int x = 1;
 §(p)
 int y = 2;

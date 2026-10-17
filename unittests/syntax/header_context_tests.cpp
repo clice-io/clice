@@ -420,7 +420,7 @@ ZEST_CASE(EmptyChain) {
     ZEXPECT(*result == "");
 }
 
-ZEST_CASE(SuffixEndsWhereBracesClose) {
+ZEST_CASE(SuffixEndsAtClose) {
     // Function-body X-macro: the suffix restores the closing brace and the
     // directives before it, entered from the focus file only, and stops
     // there; the function's head, inside its braces, is entered after the
@@ -453,9 +453,10 @@ void register_all() {
 )");
 }
 
-ZEST_CASE(TopLevelCutHasNoSuffix) {
+ZEST_CASE(TopLevelSuffixEmpty) {
     // Outside every brace nothing after the cut bears on the header: the
-    // includer's remainder is left out, not parsed with it.
+    // includer's remainder is left out, not parsed with it, and the suffix
+    // the focus file includes is empty.
     llvm::StringMap<std::string> mapping = {
         {"target.h", "/proj/target.h"},
     };
@@ -467,9 +468,12 @@ int main() { return HOST; }
 
     auto result = synthesize_context({entry}, "/proj/target.h", map_resolver(mapping));
     ZASSERT(result);
-    ZEXPECT(suffix_of(*result).empty());
     ZEXPECT(result->open.empty());
-    ZEXPECT(result->files.size() == 1U);
+    ZEXPECT(result->files.size() == 2U);
+    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 3 "/proj/main.cpp"
+#endif
+)");
 }
 
 ZEST_CASE(SuffixTakesSemicolon) {
@@ -493,9 +497,9 @@ int use = 0;
 )");
 }
 
-ZEST_CASE(SuffixKeepsRestOfClass) {
-    // A class body runs to its end: the header's member functions read
-    // members declared after it.
+ZEST_CASE(SuffixKeepsClassRest) {
+    // A class body runs to its end, its declarators included: the header's
+    // member functions read members declared after it.
     llvm::StringMap<std::string> mapping = {
         {"body.inc", "/proj/body.inc"},
     };
@@ -514,7 +518,7 @@ int after;
 #line 3 "/proj/main.cpp"
 int later;
 void inline_member() { later = 1; }
-}
+} s;
 #endif
 )");
 }
@@ -543,9 +547,9 @@ int after;
 )");
 }
 
-ZEST_CASE(SuffixClosesItsConditionals) {
-    // Braces closed in a conditional branch: the suffix ends there and
-    // closes the block it ends inside.
+ZEST_CASE(SuffixTakesWholeConditional) {
+    // Braces closed in both branches of a conditional: the suffix ends
+    // with the block, whichever branch the compile takes.
     llvm::StringMap<std::string> mapping = {
         {"body.inc", "/proj/body.inc"},
     };
@@ -555,8 +559,10 @@ ZEST_CASE(SuffixClosesItsConditionals) {
 #if A
 };
 #else
+int later;
 } s;
 #endif
+int after;
 )"};
 
     auto result = synthesize_context({entry}, "/proj/body.inc", map_resolver(mapping));
@@ -565,6 +571,9 @@ ZEST_CASE(SuffixClosesItsConditionals) {
 #line 3 "/proj/main.cpp"
 #if A
 };
+#else
+int later;
+} s;
 #endif
 #endif
 )");
@@ -603,6 +612,40 @@ struct A {
 #line 5 "/proj/a.h"
 };
 #endif
+#endif
+)");
+}
+
+ZEST_CASE(SuffixKeepsIncluderGuard) {
+    // A guarded header cut inside its host's braces: the whole rest of it,
+    // its own #endif closing the `#if 1` reopening the guard, then the
+    // host's closing brace.
+    llvm::StringMap<std::string> mapping = {
+        {"a.h",      "/proj/a.h"     },
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", R"(namespace n {
+#include "a.h"
+}
+int main() {}
+)"};
+    ChainEntry a{"/proj/a.h", R"(#ifndef A_H
+#define A_H
+#include "target.h"
+void tail();
+#endif
+)"};
+
+    auto result = synthesize_context({host, a}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, suffix_of(*result)) == R"(#if __INCLUDE_LEVEL__ == 1
+#if 1
+#line 4 "/proj/a.h"
+void tail();
+#endif
+#line 3 "/proj/main.cpp"
+}
 #endif
 )");
 }
@@ -716,7 +759,7 @@ ZEST_CASE(SnapshotOnlyWhenNamed) {
                                      llvm::StringRef("int t;\n"));
     ZASSERT(result);
     ZEXPECT(!result->snapshot);
-    ZEXPECT(result->files.size() == 1u);
+    ZEXPECT(result->files.size() == 2u);
 }
 
 ZEST_CASE(LineNamesTheCut) {

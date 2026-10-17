@@ -64,7 +64,7 @@ struct ASTProjection {
     /// transports (see CompileOutput).
     std::optional<CompileOutput> output;
 
-    /// The main file's entries within `index` (an empty shard when the
+    /// The focus file's entries within `index` (an empty shard when the
     /// compile produced none). Callers gate on index_current, which
     /// implies a loaded TU index.
     const index::Shard& file_shard() const {

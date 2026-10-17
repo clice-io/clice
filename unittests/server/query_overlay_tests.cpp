@@ -51,7 +51,7 @@ index::IndexQuery disk_query{project.project_index, project.file_table, &gate, n
 TempDir dir;
 index::TUIndex full_index;
 std::shared_ptr<Session> session;
-std::string main_path;
+std::string focus_path;
 
 /// Compile the added sources, persist the preamble index (exactly what
 /// the PCH build produces), and open a session whose pch_key points at
@@ -76,11 +76,11 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     st.index_path = blob_path;
     st.state = nullptr;
 
-    main_path = std::string(full_index.path(full_index.path_count() - 1));
-    auto path_id = project.file_table.intern(Spelling::absolute(main_path));
+    focus_path = std::string(full_index.path(full_index.path_count() - 1));
+    auto path_id = project.file_table.intern(Spelling::absolute(focus_path));
     session = session_store.open(path_id);
 
-    auto it = sources.all_files.find(llvm::sys::path::filename(main_path));
+    auto it = sources.all_files.find(llvm::sys::path::filename(focus_path));
     ZASSERT(it != sources.all_files.end());
     session->text = it->second.content;
     session->sync_text();
@@ -141,7 +141,7 @@ void merge_disk_index() {
 index::TUIndex empty_session_index() {
     TUIndexMirror mirror;
     mirror.built_at = 1;
-    mirror.paths = {main_path};
+    mirror.paths = {focus_path};
     return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(mirror.bytes()));
 }
 
@@ -179,7 +179,7 @@ ZEST_CASE(DefinitionFromOverlayOnly) {
     add_file("foo.h", R"(
 inline void §(def)⟦foo⟧() {}
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 )");
@@ -197,7 +197,7 @@ ZEST_CASE(ReferencesUnionWithDedup) {
 inline void §(def)⟦foo⟧() {}
 inline void bar() { §(href)⟦§(href)foo⟧(); }
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 )");
@@ -222,14 +222,14 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 }
 
 ZEST_CASE(PreambleMacroCursor) {
-    add_main("main.cpp", R"(#define §(macro)⟦§(macro)FOO⟧ 1
+    add_focus("main.cpp", R"(#define §(macro)⟦§(macro)FOO⟧ 1
 int main() { return 0; }
 )");
     open_with_overlay();
 
     // Production per-edit indexes never see the preamble region (the PCH
     // swallows it); emulate that by emptying the session's own index so
-    // the cursor can only resolve through the overlay's main-file entry.
+    // the cursor can only resolve through the overlay's focus-file entry.
     install_empty_index();
 
     auto cursor = cursor_of("macro");
@@ -249,7 +249,7 @@ ZEST_CASE(OverlaySymbolInfo) {
 inline void §(def)⟦foo⟧() {}
 inline void §(bardef)⟦bar⟧() { foo(); }
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int main() { §(ref)⟦foo⟧(); return 0; }
 )");
@@ -274,7 +274,7 @@ ZEST_CASE(OpenHeaderExcluded) {
 inline void §(def)⟦foo⟧() {}
 inline void bar() { §(href)⟦foo⟧(); }
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 )");
@@ -295,7 +295,7 @@ ZEST_CASE(IncomingCallsDedup) {
 inline void §(def)⟦callee⟧() {}
 inline void caller() { §(call)⟦callee⟧(); }
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
 )");
@@ -319,7 +319,7 @@ struct §(b)⟦Base⟧ {};
 #include "base.h"
 struct §(d)⟦Derived⟧ : Base {};
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "derived.h"
 Derived instance;
 )");
@@ -341,7 +341,7 @@ ZEST_CASE(StaleHeaderSuppressed) {
     add_file("foo.h", R"(
 inline void §(def)⟦foo⟧() {}
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int main() { §(ref)⟦foo⟧(); return 0; }
 )");
@@ -361,7 +361,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 ZEST_CASE(MacroDefinitionText) {
     // The π comment keeps the file non-ASCII, so its content is stored in
     // the blob and the text path serves without touching the disk.
-    add_main("main.cpp", R"(// π
+    add_focus("main.cpp", R"(// π
 #define §(macro)⟦FOO⟧ 1
 int main() { return 0; }
 )");
@@ -383,7 +383,7 @@ ZEST_CASE(AsciiPreviewDegrades) {
     // exists in the test VFS, so the read fails like a moved-on file:
     // definition text degrades to nothing while references keep serving
     // their positions, only without context lines.
-    add_main("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
+    add_focus("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
 int use = FOO;
 int main() { return 0; }
 )");
@@ -457,7 +457,7 @@ ZEST_CASE(AsciiPreviewFromDisk) {
 }
 
 ZEST_CASE(SharedPreambleScoped) {
-    add_main("main.cpp", R"(#define §(macro)⟦§(macro)FOO⟧ 1
+    add_focus("main.cpp", R"(#define §(macro)⟦§(macro)FOO⟧ 1
 #if FOO
 #endif
 int main() { return 0; }
@@ -469,7 +469,7 @@ int main() { return 0; }
     // key excludes the source path), but the preamble entry carries
     // file-local macro identities — its entries must stay scoped to the
     // file that built the blob.
-    auto other_path = std::string(llvm::sys::path::parent_path(main_path)) + "/other.cpp";
+    auto other_path = std::string(llvm::sys::path::parent_path(focus_path)) + "/other.cpp";
     auto other = session_store.open(project.file_table.intern(Spelling::absolute(other_path)));
     other->text = session->text;
     other->line_starts = session->line_starts;
@@ -485,7 +485,7 @@ int main() { return 0; }
 }
 
 ZEST_CASE(DirtyPreambleServed) {
-    add_main("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
+    add_focus("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
 int main() { return 0; }
 )");
     open_with_overlay();
@@ -501,7 +501,7 @@ int main() { return 0; }
 }
 
 ZEST_CASE(PreambleDriftSkipped) {
-    add_main("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
+    add_focus("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
 int main() { return 0; }
 )");
     open_with_overlay();
@@ -519,7 +519,7 @@ ZEST_CASE(OverlayOutranksDisk) {
     add_file("foo.h", R"(
 inline void §(def)⟦foo⟧() {}
 )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "foo.h"
 int main() { §(ref)⟦foo⟧(); return 0; }
 )");
@@ -552,12 +552,12 @@ ZEST_CASE(SynthesizedContextSkipped) {
     // A header context's synthesized files name nothing on disk, and what
     // they declare is the host's to index: no entries, no dependency.
     auto synthesized = TestVFS::path(".clice-context.h");
-    add_main("main.cpp",
-             std::format(R"(
+    add_focus("main.cpp",
+              std::format(R"(
 #include "{}"
 int main() {{ gen(); return 0; }}
 )",
-                         synthesized));
+                          synthesized));
     prepare();
     params.input.add_synthesized({
         {synthesized, "inline void gen() {}\n"}

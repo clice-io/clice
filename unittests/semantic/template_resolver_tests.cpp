@@ -47,7 +47,7 @@ struct InputFinder : clang::RecursiveASTVisitor<InputFinder> {
 ZEST_SUITE(TemplateResolver, Tester) {
 
 void run(llvm::StringRef code) {
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile());
     expect_resolved();
 }
@@ -55,7 +55,7 @@ void run(llvm::StringRef code) {
 /// Against the host's standard library, which only the driver's search
 /// paths find.
 void run_standard(llvm::StringRef code) {
-    add_main("main.cpp", code);
+    add_focus("main.cpp", code);
     ZASSERT(compile_driver());
     expect_resolved();
 }
@@ -1960,7 +1960,7 @@ ZEST_CASE(RecursiveDetectorProbe) {
 }
 
 ZEST_CASE(CallArityFilter) {
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct S {
             int foo(int);
@@ -2041,7 +2041,7 @@ ZEST_CASE(InheritedDefaultArgument) {
 ZEST_CASE(VoidReference) {
     /// `A<void, X>::type` would be `void&` — ill-formed; the resolver must
     /// degrade rather than fabricate the reference.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T, typename X>
         struct A {
             using type = T&;
@@ -2185,7 +2185,7 @@ ZEST_CASE(ReferenceCollapse) {
 ZEST_CASE(PointerToReference) {
     /// `P<X&>::type` would be `X& *` — ill-formed. The resolver must leave
     /// the name unresolved rather than fabricate a malformed pointer node.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct P {
             using type = T*;
@@ -2591,7 +2591,7 @@ ZEST_CASE(RedeclSplitDefinition) {
 }
 
 ZEST_CASE(QualifiedCallArity) {
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct base {
             static int foo(int);
@@ -2631,7 +2631,7 @@ ZEST_CASE(QualifiedCallArity) {
 ZEST_CASE(PackArgumentCall) {
     /// `foo(us...)` may expand to any arity; the filter must keep every
     /// overload.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct S {
             int foo(int);
@@ -2665,7 +2665,7 @@ ZEST_CASE(PackArgumentCall) {
 
 ZEST_CASE(AtomicReference) {
     /// `_Atomic(int&)` does not exist; the resolver must degrade.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T, typename U>
         struct A {
             using type = _Atomic(T);
@@ -2794,7 +2794,7 @@ ZEST_CASE(TemplateMemberProbe) {
 ZEST_CASE(ArrowWithoutPointer) {
     /// `p->value` on a class with no `operator->` is ill-formed; the lookup
     /// must produce no candidates instead of pretending it was a dot access.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct P {
             int value;
@@ -2828,7 +2828,7 @@ ZEST_CASE(ArrowThroughSmartPointer) {
     /// `operator->` returns `T*` in the class's own parameter; the lookup's
     /// deduction frame must substitute the specialization's argument for
     /// the pointee's members to resolve.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Node {
             int val;
@@ -2868,7 +2868,7 @@ ZEST_CASE(ArrowThroughSmartPointer) {
 ZEST_CASE(RecordOfMemberAlias) {
     /// The alias resolves with the written arguments substituted, so the
     /// record is the class the alias stands for, not the bare parameter.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Vec {
             using value_type = T;
@@ -2894,7 +2894,7 @@ ZEST_CASE(RecordOfMemberAlias) {
 ZEST_CASE(RecordOfPartialPattern) {
     /// A dependent specialization matching a partial specialization yields
     /// that partial's pattern, as real instantiation would.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Traits {};
 
@@ -2918,7 +2918,7 @@ ZEST_CASE(RecordOfPartialPattern) {
 
 ZEST_CASE(RecordOfParameter) {
     /// A bare template parameter names no class.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename X>
         struct test {
             using input = X;
@@ -3003,7 +3003,7 @@ ZEST_CASE(DependentBaseProbe) {
 ZEST_CASE(NegativeArrayBound) {
     /// `U[-1]` is ill-formed; the resolver must degrade rather than
     /// fabricate an array from the wrapped-around extent.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <int N, typename U>
         struct A {
             using type = U[N];
@@ -3067,7 +3067,7 @@ ZEST_CASE(CompoundValueDegrade) {
     /// TODO(nttp-expr): compound NTTP expressions are not substituted; this
     /// pins that they degrade cleanly (assertion-enabled clang would abort
     /// on a fabricated node) rather than crash.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <int N>
         struct value {};
 
@@ -3196,7 +3196,7 @@ ZEST_CASE(EmptyPackConflict) {
 ZEST_CASE(AmbiguousPartials) {
     /// `trait<X*, Y*>` matches both partials and neither dominates: real
     /// instantiation is ambiguous, so the member must stay unresolved.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename A, typename B>
         struct trait {
             using type = void;
@@ -3465,7 +3465,7 @@ ZEST_CASE(TemplateArityMismatch) {
 ZEST_CASE(VoidFunctionParam) {
     /// `A<void, X>::type` would be a function taking a void parameter; the
     /// resolver must degrade rather than fabricate it.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T, typename U>
         struct A {
             using type = void(T);
@@ -3493,7 +3493,7 @@ ZEST_CASE(VoidFunctionParam) {
 
 ZEST_CASE(VoidMemberPointee) {
     /// `void C::*` is not a valid member pointer; degrade.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         struct C {};
 
         template <typename T, typename U>
@@ -3564,7 +3564,7 @@ ZEST_CASE(SurplusArguments) {
     /// A variadic template template parameter bound to a one-parameter
     /// template, applied with two arguments: rebuilding `target<X, int>`
     /// would fabricate an invalid specialization — it must degrade.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct target {};
 
@@ -3639,7 +3639,7 @@ ZEST_CASE(NonTrailingPack) {
 ZEST_CASE(FunctionReturnArray) {
     /// `A<int[2], X>::type` would be an array-returning function type; the
     /// resolver must degrade rather than fabricate it.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T, typename U>
         struct A {
             using type = T();
@@ -3779,7 +3779,7 @@ ZEST_CASE(DependentValueDefault) {
 }
 
 ZEST_CASE(ExplicitObjectArity) {
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct S {
             int foo(this S&, int);
@@ -3815,7 +3815,7 @@ ZEST_CASE(ExplicitObjectArity) {
 ZEST_CASE(CallArityOccurrences) {
     /// The production occurrence path must apply the arity filter: the
     /// two-argument overload never appears for a one-argument call.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct S {
             int foo(int);
@@ -4050,7 +4050,7 @@ ZEST_CASE(DependentTemplateHead) {
     /// binds `_Alloc::template rebind` this way): the rebuilt head must be a
     /// dependent specialization, never a TemplateSpecializationType —
     /// assertion-enabled clang aborts on the latter.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <template <typename> class TT>
         struct apply {
             using type = TT<int>;
@@ -4095,7 +4095,7 @@ ZEST_CASE(CompoundValueMatch) {
 ZEST_CASE(CompoundValueUnverified) {
     /// `X + 2` is not provably `X + 1`; neither the partial nor the
     /// primary may be chosen.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <int A, int B>
         struct trait {
             using type = void;
@@ -4195,7 +4195,7 @@ ZEST_CASE(ConstrainedValuePartial) {
 
 ZEST_CASE(ConstrainedUnknownDegrades) {
     /// A concept on a dependent argument cannot be decided without Sema.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         concept small = sizeof(T) < 4;
 
@@ -4284,7 +4284,7 @@ ZEST_CASE(ConstraintDisjunction) {
 ZEST_CASE(AtomicConstraintUnverified) {
     /// Inside one atomic constraint an operand that does not fold may be a
     /// substitution failure, so `|| true` proves nothing.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T, typename U>
         struct P {
             using type = char;
@@ -4339,7 +4339,7 @@ ZEST_CASE(PromotedDependentValue) {
 ZEST_CASE(DependentConditionalValue) {
     /// The branches of a dependent `?:` meet in their common type: `-1`
     /// becomes unsigned, so the value is not `-1`.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Config {
             static constexpr bool flag = true;
@@ -4373,7 +4373,7 @@ ZEST_CASE(DependentConditionalValue) {
 ZEST_CASE(SignedOverflowValue) {
     /// An overflowing default is no constant; the partial it would select
     /// must not be chosen.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Config {
             static constexpr int top = 2147483647;
@@ -4405,7 +4405,7 @@ ZEST_CASE(SignedOverflowValue) {
 }
 
 ZEST_CASE(AmbiguousBaseMember) {
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Left {
             using type = int;
@@ -4543,7 +4543,7 @@ ZEST_CASE(DecltypeCallScope) {
 }
 
 ZEST_CASE(MemberChainLookup) {
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Leaf {
             int leaf;
@@ -4584,7 +4584,7 @@ ZEST_CASE(MemberChainLookup) {
 }
 
 ZEST_CASE(PackParameterMember) {
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Box {
             T value;
@@ -4618,7 +4618,7 @@ ZEST_CASE(PackParameterMember) {
 }
 
 ZEST_CASE(ReferenceParameterMember) {
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Gauge {
             T level;
@@ -4699,7 +4699,7 @@ ZEST_CASE(DecltypeExplicitTemplateCall) {
 ZEST_CASE(DecltypeDeducedTemplateCall) {
     /// `U` is deduced from the argument, which is not modeled; the call
     /// stays untyped rather than reading `Result<U>` as the primary.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename U>
         struct Result {
             using type = char;
@@ -4762,7 +4762,7 @@ ZEST_CASE(DependentTypedMemberValue) {
 ZEST_CASE(DecltypeCallNeedsADL) {
     /// Argument-dependent lookup finds `N::make` at instantiation; the one
     /// ordinary candidate is not the callee.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         struct Wrong {
             using type = int;
         };
@@ -4799,7 +4799,7 @@ ZEST_CASE(DecltypeCallNeedsADL) {
 ZEST_CASE(MutableValueDefault) {
     /// A non-const static member is no constant expression; the default
     /// stays unknown instead of reading its initializer.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Config {
             static inline int stages = 2;
@@ -4833,7 +4833,7 @@ ZEST_CASE(MutableValueDefault) {
 ZEST_CASE(OpenDefaultSharedBase) {
     /// A default that does not fold leaves both patterns possible; a member
     /// they reach through one base resolves.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Probe {
             static inline bool value = true;
@@ -4863,7 +4863,7 @@ ZEST_CASE(OpenDefaultSharedBase) {
 ZEST_CASE(OpenDefaultDifferentBases) {
     /// One declaration reached through different specializations of a base
     /// is no common answer.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Probe {
             static inline bool value = true;
@@ -4903,7 +4903,7 @@ ZEST_CASE(OpenDefaultDifferentBases) {
 
 ZEST_CASE(ResolvedCallee) {
     /// Only value-dependent: clang resolved the callee itself.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         void take(int first, int second);
 
         template <int N>
@@ -4933,7 +4933,7 @@ ZEST_CASE(ResolvedCallee) {
 ZEST_CASE(BrokenCodeScan) {
     /// Error-recovery ASTs are the resolver's everyday hostile input in an
     /// LSP; resolving anything in a broken TU must degrade, never crash.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct A {
             using type = typename T::missing;
@@ -5001,7 +5001,7 @@ ZEST_CASE(StandardScan) {
     /// expression in a libstdc++-heavy TU through the resolver. Results are
     /// irrelevant — under the assertion-enabled ASan Debug build, surviving
     /// the scan is the assertion.
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         #include <functional>
         #include <map>
         #include <memory>
@@ -5042,7 +5042,7 @@ ZEST_CASE(StandardScan) {
 }
 
 ZEST_CASE(ScopedBindingStaysLocal) {
-    add_main("main.cpp", R"code(
+    add_focus("main.cpp", R"code(
         template <typename T>
         struct Holder {
             template <typename U>

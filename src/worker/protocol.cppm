@@ -441,7 +441,7 @@ struct IncludeTreeResult {
     std::vector<std::string> absent;
 };
 
-/// Request the document links of an open file's AST. Only the main-file
+/// Request the document links of an open file's AST. Only the focus file's
 /// region is covered: the preamble is compiled into the PCH, and its links
 /// live in the PCH's pch.idx index (spliced in by the master).
 struct DocumentLinkParams {

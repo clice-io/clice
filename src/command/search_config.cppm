@@ -32,7 +32,7 @@ struct SearchConfig {
     /// start; the After dirs (-idirafter, -iwithprefix) follow them.
     unsigned system_start_idx = 0;
 
-    /// The files the command includes ahead of the main file (`-include`),
+    /// The files the command includes ahead of the file it compiles (`-include`),
     /// in order and as written: clang looks a relative one up in the
     /// compile's working directory first, then as a quoted include.
     std::vector<std::string> forced_includes;

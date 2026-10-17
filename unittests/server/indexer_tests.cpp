@@ -1031,25 +1031,25 @@ ZEST_CASE(RejectsCorruptSection) {
     auto indexed = index_file(tmp, tmp.path("cor_main.cpp"));
     ZASSERT(!indexed.data.empty());
 
-    // Corrupt the main file's blob bytes in place: the outer container still
+    // Corrupt the focus file's blob bytes in place: the outer container still
     // verifies (sections are opaque bytes to it), only the blob's byte
     // identity check against the recorded section hash fails.
     std::string corrupt = indexed.data;
     auto tampered = index::TUIndex::from_bytes(corrupt);
     ZASSERT(tampered.loaded());
-    auto main_section = tampered.section_of(tampered.path_count() - 1);
-    ZASSERT(main_section);
-    auto blob = tampered.section_blob(*main_section);
+    auto focus_section = tampered.section_of(tampered.path_count() - 1);
+    ZASSERT(focus_section);
+    auto blob = tampered.section_blob(*focus_section);
     auto pos = llvm::StringRef(corrupt).find(blob);
     ZASSERT(pos != llvm::StringRef::npos);
     for(std::size_t i = 0; i < blob.size(); i += 1) {
         corrupt[pos + i] = 'X';
     }
 
-    // The header section verifies fine and is staged before the main
+    // The header section verifies fine and is staged before the focus
     // section's identity check fails; the reject must discard the whole
     // result — a manifest whose recorded versions all match the disk would
-    // otherwise be judged fresh forever with the main file's shard missing.
+    // otherwise be judged fresh forever with the focus file's shard missing.
     merge(corrupt.data(), corrupt.size());
     auto tu_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("cor.h")));

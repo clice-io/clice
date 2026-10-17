@@ -18,7 +18,7 @@ namespace {
 
 ZEST_SUITE(index_projection, Tester) {
 
-/// The compiled unit's TU index and the main file's entries, extracted the
+/// The compiled unit's TU index and the focus file's entries, extracted the
 /// way the router's index slice does it in production.
 index::TUIndex tu;
 std::string bytes;
@@ -28,16 +28,16 @@ void extract_entries() {
     bytes = index::build_tu_index(*unit);
     tu = index::TUIndex::from_bytes(bytes);
 
-    auto main_id = tu.path_count() - 1;
-    entries = feature::extract_index_entries(tu.shard_of(main_id));
+    auto focus_id = tu.path_count() - 1;
+    entries = feature::extract_index_entries(tu.shard_of(focus_id));
 }
 
 std::optional<index::SymbolRef> resolve(index::SymbolHash hash) {
     if(auto identity = tu.find_symbol(hash)) {
         return index::SymbolRef::from(hash, *identity);
     }
-    auto main_id = tu.path_count() - 1;
-    if(auto identity = tu.shard_of(main_id).find_symbol(hash)) {
+    auto focus_id = tu.path_count() - 1;
+    if(auto identity = tu.shard_of(focus_id).find_symbol(hash)) {
         return index::SymbolRef::from(hash, *identity);
     }
     return std::nullopt;
@@ -103,7 +103,7 @@ auto project(llvm::StringRef content,
 }
 
 ZEST_CASE(TokensMatchAst) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 // a line comment
 #define VALUE 1
 
@@ -138,7 +138,7 @@ int total(Point point, int base) {
 ZEST_CASE(OverrideTokensMatchAst) {
     // `override` and `final` lead to the methods they override without
     // spelling them; a class's `final` leads nowhere.
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 struct Base {
     virtual void draw();
     virtual void paint();
@@ -155,7 +155,7 @@ struct Derived final : Base {
 }
 
 ZEST_CASE(ModuleTokensMatchAst) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 export module demo.core;
 
 export int exported_value = 1;
@@ -194,7 +194,7 @@ module :private;
 }
 
 ZEST_CASE(ModuleOutlineMatchesAst) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 export module demo.core;
 
 export int entry();
@@ -216,7 +216,7 @@ export int entry();
 }
 
 ZEST_CASE(OutlineMatchesAst) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 #define LIMIT 10
 #define FIELDS int generated_a; int generated_b;
 
@@ -281,7 +281,7 @@ enum class Color {
 }
 
 ZEST_CASE(FoldsSubsetOfAst) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 namespace app {
 
 struct Point { int x; };
@@ -330,7 +330,7 @@ ZEST_CASE(FoldsMatchAstShape) {
     // A brace below its declaration's head folds from the head, a block
     // folds as its declaration's kind, and braces several decls share (the
     // struct's and the alias's) fold once — as the AST folds them.
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 struct Allman
 {
     int x;
@@ -372,7 +372,7 @@ typedef struct {
 }
 
 ZEST_CASE(InitializerFoldsAtBrace) {
-    add_main("main.cpp", R"cpp(
+    add_focus("main.cpp", R"cpp(
 int values[] =
 {
     1,

@@ -44,6 +44,25 @@ bool defines_specialization(CompilationUnit& unit, llvm::StringRef name) {
     return (*pattern->specializations().begin())->isDefined();
 }
 
+/// A completion consumer that drops what clang offers.
+class IgnoreCompletions final : public clang::CodeCompleteConsumer {
+public:
+    IgnoreCompletions() :
+        clang::CodeCompleteConsumer({}),
+        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
+
+    clang::CodeCompletionAllocator& getAllocator() final {
+        return info.getAllocator();
+    }
+
+    clang::CodeCompletionTUInfo& getCodeCompletionTUInfo() final {
+        return info;
+    }
+
+private:
+    clang::CodeCompletionTUInfo info;
+};
+
 ZEST_SUITE(Compiler, Tester) {
 
 ZEST_CASE(TopLevelDecls) {
@@ -70,7 +89,7 @@ struct Bar {
 };
 )";
 
-    add_main("main.cpp", content);
+    add_focus("main.cpp", content);
     ZASSERT(compile_with_pch());
     ZASSERT(unit->top_level_decls().size() == 4U);
 }
@@ -135,7 +154,7 @@ ZEST_CASE(StopCompilation) {
     llvm::StringRef content = R"(
 int main() { return 0; }
 )";
-    add_main("main.cpp", content);
+    add_focus("main.cpp", content);
 
     prepare();
     params.stop = stop;
@@ -157,7 +176,7 @@ ZEST_CASE(SuffixFollowsText) {
     // class the text sits in closes, and its member functions read the
     // members declared after the text.
     llvm::StringRef text = "int sum() { return a + later; }\nint a;";
-    add_main("body.h", text);
+    add_focus("body.h", text);
     prepare();
     auto focus = TestVFS::path("body.h");
     params.input.add_remapped_file(focus, text);
@@ -179,11 +198,40 @@ ZEST_CASE(SuffixFollowsText) {
     ZEXPECT(file.content().drop_front(text.size()).starts_with("\n#include "));
 }
 
+ZEST_CASE(SuffixInCompletion) {
+    // Clang's copy of a completion's buffer carries a NUL at the point, so
+    // the editor's text ends a byte later in it.
+    llvm::StringRef text = "int sum() { return a + lat; }\nint a;";
+    add_focus("body.h", text);
+    prepare();
+    params.kind = CompilationKind::Completion;
+    params.completion = {
+        .offset = static_cast<std::uint32_t>(text.find("lat") + 3),
+        .consumer = std::make_unique<IgnoreCompletions>(),
+    };
+    auto focus = TestVFS::path("body.h");
+    params.input.add_remapped_file(focus, text);
+    params.input.add_synthesized(
+        {
+            {.path = TestVFS::path(".clice-open.h"),
+             .content = "struct S {\n",
+             .entry = SynthesizedFile::Entry::Forced  },
+            {.path = TestVFS::path(".clice-suffix.h"),
+             .content = "int later;\n};\n",
+             .entry = SynthesizedFile::Entry::Appended},
+    },
+        focus);
+    ZASSERT(try_compile());
+    auto file = unit->focus_file();
+    ZEXPECT(unit->text_end(file.file()) == text.size() + 1);
+    ZEXPECT(file.content().drop_front(text.size() + 1).starts_with("\n#include "));
+}
+
 ZEST_CASE(SuffixNeedsFocus) {
     // A compile given no focus file path — a preamble's build, a compile
     // of the file on disk — takes no suffix.
     llvm::StringRef text = "int a;\n";
-    add_main("body.h", text);
+    add_focus("body.h", text);
     prepare();
     params.input.add_synthesized({
         {.path = TestVFS::path(".clice-suffix.h"),
@@ -201,7 +249,7 @@ ZEST_CASE(NoErrorLimit) {
     for(int i = 0; i < 25; i += 1) {
         content += std::format("int f{0}() {{ return undefined_{0}; }}\n", i);
     }
-    add_main("main.cpp", content);
+    add_focus("main.cpp", content);
     prepare();
     // The driver puts its default limit on every command.
     params.input.arguments.insert(params.input.arguments.end() - 1, {"-ferror-limit", "19"});
@@ -212,7 +260,7 @@ ZEST_CASE(NoErrorLimit) {
 }
 
 ZEST_CASE(FatalError) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 import missing;
 int x = 1;
 )");
@@ -220,7 +268,7 @@ int x = 1;
     ZEXPECT(unit->fatal_error());
 
     clear();
-    add_main("main.cpp", "int x = 1;\n");
+    add_focus("main.cpp", "int x = 1;\n");
     ZASSERT(compile());
     ZEXPECT(!unit->fatal_error());
 }
@@ -238,7 +286,7 @@ struct PreambleStruct { int x; };
 int main() { return 0; }
 )";
 
-    add_main("main.cpp", content);
+    add_focus("main.cpp", content);
     prepare();
 
     // Switch to Preamble kind for PCH building.
@@ -247,7 +295,7 @@ int main() { return 0; }
     auto pch_path = artifact("pch");
     params.output_file = pch_path;
 
-    // Add truncated main file buffer for preamble build.
+    // Add truncated focus file buffer for preamble build.
     auto& source = sources.all_files["main.cpp"];
     auto bound = compute_preamble_bound(source.content);
     auto main_vfs_path = TestVFS::path("main.cpp");
@@ -281,7 +329,7 @@ int preamble_func();
 
 int main() { return preamble_func(); }
 )";
-    add_main("main.cpp", content);
+    add_focus("main.cpp", content);
     prepare();
 
     // Consuming the PCH reads it from real disk; overlay like compile_with_pch.
@@ -348,7 +396,7 @@ ZEST_CASE(PCHIgnoresInputMtime) {
     auto header = tmp.path("preamble.h");
     auto content =
         std::format("#include \"{}\"\n\nint main() {{ return preamble_func(); }}\n", header);
-    add_main("main.cpp", content);
+    add_focus("main.cpp", content);
     prepare();
 
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
@@ -409,7 +457,7 @@ int main() {
 }
 )";
 
-    add_main("main.cpp", content);
+    add_focus("main.cpp", content);
 
     // compile_with_pch does the full PCH build + content compile cycle.
     ZASSERT(compile_with_pch());
@@ -433,7 +481,7 @@ int after();
 )");
 
     // A missing include is fatal, and the preamble goes on past it.
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
 #include "broken.h"
 #include "missing.h"
 #include "after.h"
@@ -611,7 +659,7 @@ int bar() { return 3; }
     ZASSERT(bound_v1 == bound_v2);
 
     // Build PCH with v1.
-    add_main("main.cpp", content_v1);
+    add_focus("main.cpp", content_v1);
     ZASSERT(compile_with_pch());
     ZASSERT(unit);
     ZASSERT(unit->top_level_decls().size() >= 1U);
@@ -619,7 +667,7 @@ int bar() { return 3; }
 
 /// The preamble build of `content` as main.cpp.
 std::unique_ptr<CompilationUnit> build_preamble(llvm::StringRef content) {
-    add_main("main.cpp", content);
+    add_focus("main.cpp", content);
     prepare();
     params.kind = CompilationKind::Preamble;
     params.output_file = artifact("pch");

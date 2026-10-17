@@ -142,9 +142,9 @@ public:
         unit(unit), encoding(encoding), map(unit.focus_file().positions()) {}
 
     /// A diagnostic and the notes clang attached to it, as shown on the
-    /// main file; nullopt when it does not concern the main file.
+    /// focus file; nullopt when it does not concern the focus file.
     std::optional<FileDiagnostic> present(const Diagnostic& main) {
-        // The header itself is the main file here; its own pragma is
+        // The header itself is the focus file here; its own pragma is
         // exactly what makes it a system header for every includer.
         if(main.id.value == clang::diag::pp_pragma_sysheader_in_main_file &&
            unit.lang_options().IsHeaderFile) {
@@ -170,18 +170,18 @@ public:
     }
 
 private:
-    /// Locate the diagnostic in the main file. One from another file moves
-    /// there: to the instantiation the main file requested, else an error
+    /// Locate the diagnostic in the focus file. One from another file moves
+    /// there: to the instantiation the focus file requested, else an error
     /// to the #include that brought its file in, else to the top of the
     /// file — saying where it happened and pointing back at it; any other
-    /// to its first note in the main file. A borrowed includer context is the host's
-    /// code: an error raised there moves to where the main file takes part
+    /// to its first note in the focus file. A borrowed includer context is the host's
+    /// code: an error raised there moves to where the focus file takes part
     /// in it, a note, and to the top a fatal one, which silences
     /// everything after it, or a missing header, the likely cause of what
-    /// goes wrong after it. Nothing else concerns the main file.
+    /// goes wrong after it. Nothing else concerns the focus file.
     bool place(const Diagnostic& main, FileDiagnostic& diagnostic) {
         auto focus = unit.focus_file();
-        auto in_main = [&](const Diagnostic& note) {
+        auto in_focus = [&](const Diagnostic& note) {
             return focus.contains(note.fid);
         };
         if(focus.contains(main.fid)) {
@@ -190,7 +190,7 @@ private:
             // shows where the scope opened.
             auto anchor = main.range;
             if(past_text(anchor.begin)) {
-                auto note = llvm::find_if(main.notes, in_main);
+                auto note = llvm::find_if(main.notes, in_focus);
                 if(note == main.notes.end()) {
                     return false;
                 }
@@ -205,7 +205,7 @@ private:
         }
 
         auto request = llvm::find_if(main.notes, [&](const Diagnostic& note) {
-            return in_main(note) && instantiation_note(note.id.value);
+            return in_focus(note) && instantiation_note(note.id.value);
         });
         if(request != main.notes.end()) {
             return relocate(main, diagnostic, request->range, DiagnosticOrigin::Template);
@@ -213,7 +213,7 @@ private:
         bool in_context = unit.from_context(main.fid);
         if(main.error_by_default) {
             if(in_context) {
-                if(auto note = llvm::find_if(main.notes, in_main); note != main.notes.end()) {
+                if(auto note = llvm::find_if(main.notes, in_focus); note != main.notes.end()) {
                     return relocate(main,
                                     diagnostic,
                                     note->range,
@@ -240,7 +240,7 @@ private:
             return false;
         }
 
-        auto note = llvm::find_if(main.notes, in_main);
+        auto note = llvm::find_if(main.notes, in_focus);
         if(note == main.notes.end()) {
             return false;
         }
@@ -252,7 +252,7 @@ private:
         return true;
     }
 
-    /// Show a diagnostic of another file at `anchor` in the main file.
+    /// Show a diagnostic of another file at `anchor` in the focus file.
     bool relocate(const Diagnostic& main,
                   FileDiagnostic& diagnostic,
                   LocalSourceRange anchor,
@@ -279,7 +279,7 @@ private:
         return end < focus.content().size() && offset >= end;
     }
 
-    /// The filename of the #include in the main file that `fid` was
+    /// The filename of the #include in the focus file that `fid` was
     /// entered through, directly or not.
     std::optional<LocalSourceRange> include_range(clang::FileID fid) {
         for(auto location = unit.include_location(fid); location.isValid();

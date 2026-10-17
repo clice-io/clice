@@ -514,7 +514,7 @@ private:
 };
 
 /// Collects hints by walking the unit's cached Semantics node table — the
-/// DFS pre-order record of the main file's written AST — instead of
+/// DFS pre-order record of the focus file's written AST — instead of
 /// running another RecursiveASTVisitor over the TU. The table stores only
 /// structure; everything a hint needs is derived from the recorded node.
 class Collector {

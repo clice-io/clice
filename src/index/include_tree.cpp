@@ -44,7 +44,7 @@ static std::uint32_t add_include_chain(CompilationUnit& unit,
         // consumers pair `line` with. Recursing on the directive's own fid
         // (not the presumed include loc, which names the containing
         // file's includer and sat one level off) bottoms out at no_node
-        // for directives written in the main file.
+        // for directives written in the focus file.
         auto parent = add_include_chain(unit, unit.file_id(include_loc), tree, path_table);
         tree.nodes[index].parent = parent;
     }
@@ -148,7 +148,7 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
 std::uint32_t IncludeTree::node_of(clang::FileID fid) const {
     auto it = file_nodes.find(fid);
     if(it == file_nodes.end()) [[unlikely]] {
-        LOG_WARN("IncludeTree: fid {} missing from file table, attributing to main file",
+        LOG_WARN("IncludeTree: fid {} missing from file table, attributing to focus file",
                  fid.getHashValue());
         return no_node;
     }

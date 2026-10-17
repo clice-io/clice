@@ -94,7 +94,7 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
         };
     }
 
-    auto main = SM.getMainFileID();
+    auto focus = SM.getMainFileID();
     if(range.getBegin().isFileID() && range.getEnd().isFileID()) {
         auto begin = decompose(SM, range.getBegin());
         auto end = decompose(SM, range.getEnd());
@@ -115,13 +115,13 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
 
     // Macros are mapped through the tokens the parse saw: only those of
     // the focus file are collected.
-    if(collected_tokens && SM.getFileID(SM.getExpansionLoc(range.getBegin())) == main) {
+    if(collected_tokens && SM.getFileID(SM.getExpansionLoc(range.getBegin())) == focus) {
         auto spelled = collected_tokens->spelled_for(range);
         if(spelled.empty()) {
             return std::nullopt;
         }
         return FileRange{
-            main,
+            focus,
             {SM.getFileOffset(spelled.front().location()),
               SM.getFileOffset(spelled.back().endLocation())}
         };
@@ -360,7 +360,7 @@ bool CompilationUnit::from_context(clang::FileID fid) {
     return result;
 }
 
-bool CompilationUnit::encloses_main_file(const clang::Decl* decl) {
+bool CompilationUnit::encloses_focus_file(const clang::Decl* decl) {
     auto& SM = this->SM();
     auto start = SM.getLocForStartOfFile(SM.getMainFileID());
     // A scope left open at the end of the unit has no end.

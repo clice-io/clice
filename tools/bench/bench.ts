@@ -406,7 +406,7 @@ async function shutdownServer(client: CliceClient, opts: Options): Promise<void>
     }
 }
 
-/// Server start → initialize response → first diagnostics of the main file.
+/// Server start → initialize response → first diagnostics of the opened file.
 ///
 /// The hover poke that triggers compilation on clice stays off the timed
 /// path: diagnostics publish when compilation finishes and the hover is
@@ -456,7 +456,7 @@ async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult>
     const client = await startServer(opts);
     const [uri, content] = await client.openAndWait(file, 300_000);
 
-    // Append at the end of the TU: every edit invalidates the main file
+    // Append at the end of the TU: every edit invalidates the opened file
     // but not the preamble — the interactive path the server optimizes.
     // Sent as a ranged insertion like a real editor; a full-document
     // replacement would add whole-file serialization to every sample.

@@ -292,11 +292,11 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
                                          SymbolHash hash,
                                          RelationKind kind,
                                          RelationVisitor visitor) const {
-    auto main_id = state.path_count() - 1;
+    auto focus_id = state.path_count() - 1;
     bool stopped = false;
     for(std::uint32_t i = 0; i < state.section_count() && !stopped; i += 1) {
         auto local_id = state.section_path(i);
-        if(local_id == main_id) {
+        if(local_id == focus_id) {
             continue;
         }
         auto& shard = state.section_shard(i);
@@ -733,7 +733,7 @@ void IndexQuery::collect_by_target(SymbolHash hash,
                                    Fid anchor,
                                    RelationKind kind,
                                    llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) const {
-    // The main-file preamble entry cannot contribute: the preamble region
+    // The focus-file preamble entry cannot contribute: the preamble region
     // holds only preprocessor directives, never call or type relations.
     for_each_relation(hash,
                       anchor,

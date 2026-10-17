@@ -166,7 +166,7 @@ clang::SourceRange taken_source_range(const SemanticNode& node) {
 
 }  // namespace
 
-// Builds the Semantics of the main file: one full traversal of its AST,
+// Builds the Semantics of the focus file: one full traversal of its AST,
 // taking expanded tokens innermost-first; a node owns the spelled tokens
 // its taken tokens stand for (TokenMap::origin). Finally the preprocessor
 // directives (macros, includes, imports) are appended as nodes of their own,
@@ -453,12 +453,12 @@ private:
 
     SemanticsBuilder(Semantics& semantics, CompilationUnit& unit, SemanticsOptions options) :
         semantics(semantics), unit(unit), options(options), SM(unit.context().getSourceManager()) {
-        main_fid = unit.focus_file().file();
-        main_file_range =
-            clang::SourceRange(SM.getLocForStartOfFile(main_fid), SM.getLocForEndOfFile(main_fid));
-        semantics.file_begin = main_file_range.getBegin();
+        focus_fid = unit.focus_file().file();
+        focus_file_range = clang::SourceRange(SM.getLocForStartOfFile(focus_fid),
+                                              SM.getLocForEndOfFile(focus_fid));
+        semantics.file_begin = focus_file_range.getBegin();
 
-        // Token ownership serves the main file's features; the whole-TU
+        // Token ownership serves the focus file's features; the whole-TU
         // shape reads no tokens.
         if(!options.all_files) {
             auto& tokens = unit.focus_file().tokens();
@@ -695,16 +695,16 @@ private:
         }
     }
 
-    // Decomposes Loc and returns the offset if the file ID is the main file.
-    std::optional<unsigned> offset_in_main_file(clang::SourceLocation location) const {
+    // Decomposes Loc and returns the offset if the file ID is the focus file.
+    std::optional<unsigned> offset_in_focus_file(clang::SourceLocation location) const {
         // Decoding Loc with SM.getDecomposedLoc is relatively expensive.
         // But SourceLocations for a file are numerically contiguous, so we
         // can use cheap integer operations instead.
-        if(location < main_file_range.getBegin() || location >= main_file_range.getEnd()) {
+        if(location < focus_file_range.getBegin() || location >= focus_file_range.getEnd()) {
             return std::nullopt;
         }
 
-        return location.getRawEncoding() - main_file_range.getBegin().getRawEncoding();
+        return location.getRawEncoding() - focus_file_range.getBegin().getRawEncoding();
     }
 
     // Cross-check the lexically scanned module declarations against the
@@ -725,11 +725,11 @@ private:
         // always written) and kills duplicates in disabled branches.
         std::optional<unsigned> definition_offset;
         if(auto def_loc = mod->DefinitionLoc; def_loc.isValid()) {
-            definition_offset = offset_in_main_file(SM.getSpellingLoc(def_loc));
+            definition_offset = offset_in_focus_file(SM.getSpellingLoc(def_loc));
         }
         std::optional<unsigned> private_offset;
         if(auto* fragment = mod->getPrivateModuleFragment()) {
-            private_offset = offset_in_main_file(SM.getSpellingLoc(fragment->DefinitionLoc));
+            private_offset = offset_in_focus_file(SM.getSpellingLoc(fragment->DefinitionLoc));
         }
 
         std::erase_if(modules, [&](const LexicalInfo::ModuleDeclaration& module) {
@@ -752,14 +752,14 @@ private:
         });
     }
 
-    // Append the main file's preprocessor directives and lexically
+    // Append the focus file's preprocessor directives and lexically
     // scanned entities as nodes owning their name tokens. These live outside
     // the AST segment: parent chains do not include them (yet), and selection
     // ignores them, but hover and document links see macros, includes and
     // imports as first-class nodes.
     void append_directives() {
         semantics.modules = unit.focus_file().lexical().modules;
-        semantics.main_comments = unit.comments(main_fid);
+        semantics.focus_comments = unit.comments(focus_fid);
         filter_module_declarations();
 
         struct Entry {
@@ -770,17 +770,17 @@ private:
 
         std::vector<Entry> directives;
 
-        if(auto it = unit.directives().find(main_fid); it != unit.directives().end()) {
+        if(auto it = unit.directives().find(focus_fid); it != unit.directives().end()) {
             auto& directive = it->second;
 
             for(auto& macro: directive.macros) {
-                if(auto offset = offset_in_main_file(macro.loc)) {
+                if(auto offset = offset_in_focus_file(macro.loc)) {
                     directives.push_back({*offset, SemanticNode(&macro), {}});
                 }
             }
 
             for(auto& include: directive.includes) {
-                if(auto offset = offset_in_main_file(include.location)) {
+                if(auto offset = offset_in_focus_file(include.location)) {
                     directives.push_back({*offset, SemanticNode(&include), {}});
                 }
             }
@@ -788,10 +788,10 @@ private:
             for(auto& import: directive.imports) {
                 /// An import spelled through a macro carries macro locations;
                 /// name tokens written as macro arguments still resolve to
-                /// spelled main-file tokens.
+                /// spelled focus-file tokens.
                 Entry entry{0, SemanticNode(&import), {}};
                 std::optional<unsigned> anchor;
-                if(auto offset = offset_in_main_file(import.location)) {
+                if(auto offset = offset_in_focus_file(import.location)) {
                     anchor = *offset;
                     entry.extra_offsets.push_back(*offset);
                 }
@@ -799,7 +799,7 @@ private:
                     if(loc.isMacroID()) {
                         loc = SM.getSpellingLoc(loc);
                     }
-                    if(auto name_offset = offset_in_main_file(loc)) {
+                    if(auto name_offset = offset_in_focus_file(loc)) {
                         if(!anchor) {
                             anchor = *name_offset;
                         }
@@ -815,7 +815,7 @@ private:
 
         // A comment node owns no spelled tokens (the stream drops them); it
         // participates by its payload range only.
-        for(auto& comment: semantics.main_comments) {
+        for(auto& comment: semantics.focus_comments) {
             directives.push_back({comment.range.begin, SemanticNode(&comment), {}});
         }
 
@@ -893,8 +893,8 @@ private:
     CompilationUnit& unit;
     SemanticsOptions options;
     clang::SourceManager& SM;
-    clang::FileID main_fid;
-    clang::SourceRange main_file_range;
+    clang::FileID focus_fid;
+    clang::SourceRange focus_file_range;
 
     /// Per expanded token, whether a node took it.
     llvm::BitVector taken;

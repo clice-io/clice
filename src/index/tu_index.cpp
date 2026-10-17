@@ -141,7 +141,7 @@ struct TUIndexBlob {
 
     /// Preamble ride-alongs, empty on ordinary TU indexes: identity of the
     /// exact preamble text the PCH was built from (matches_prefix), and
-    /// the PCH-derived feature state spliced into main-file results. The
+    /// the PCH-derived feature state spliced into focus-file results. The
     /// refs borrow the builder's inputs — encode-only, like the section
     /// blobs are for readers.
     std::uint64_t preamble_hash = 0;
@@ -1229,9 +1229,9 @@ public:
         return name;
     }
 
-    /// A header the main file names something from has its entries in the
+    /// A header the focus file names something from has its entries in the
     /// preamble's index; a module unit has them only once its own unit is
-    /// indexed. Until then, its declarations of what the main file names
+    /// indexed. Until then, its declarations of what the focus file names
     /// come from the AST the import deserialized, as that unit's index
     /// records them.
     void project_imported() {
@@ -1358,7 +1358,7 @@ public:
         // path to attribute entries to, and path_id() would misfile them
         // under the source file. Real files forced in via -include are not
         // affected — clang records their include edge in the predefines
-        // buffer, which is a valid location. The main file legitimately
+        // buffer, which is a valid location. The focus file legitimately
         // has no edge.
         llvm::DenseMap<std::uint32_t, FileIndex> by_path;
         llvm::DenseMap<std::uint32_t, clang::FileID> path_fids;
@@ -1675,7 +1675,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // Structural verification does not constrain field values; every path
     // id the merge dereferences against the path table is bounded here so
     // the accessors stay check-free. The builder ends every path table
-    // with the main file, so consumers address path_count() - 1
+    // with the focus file, so consumers address path_count() - 1
     // unchecked — an empty table marks a corrupt TU index.
     auto count = root[&TUIndexBlob::paths].size();
     if(count == 0) {

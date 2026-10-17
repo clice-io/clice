@@ -213,7 +213,7 @@ void CompilationUnit::run_tidy() {
     if(!checker) {
         return;
     }
-    // The editor matches the main file's declarations alone: the
+    // The editor matches the focus file's declarations alone: the
     // preamble's would cost a walk over every header. The unit's later
     // readers see the whole TU again, and the parent map built over the
     // restricted scope goes with it.
@@ -226,7 +226,7 @@ void CompilationUnit::run_tidy() {
     // of the file.
     auto collected = std::move(collected_directives);
 
-    // Tests crash the pass over a main file holding CLICE_TEST_TIDY_CRASH.
+    // Tests crash the pass over a focus file holding CLICE_TEST_TIDY_CRASH.
     const static auto crash = llvm::sys::Process::GetEnv("CLICE_TEST_TIDY_CRASH");
     if(crash && SM().getBufferData(SM().getMainFileID()).contains(*crash)) {
         LLVM_BUILTIN_TRAP;
@@ -263,7 +263,7 @@ public:
 
     void collect_decl(clang::Decl* decl) {
         if(!unit.focus_file().contains(unit.produced_at(decl->getLocation()).file) &&
-           !unit.encloses_main_file(decl)) {
+           !unit.encloses_focus_file(decl)) {
             return;
         }
 
@@ -375,11 +375,11 @@ static std::unique_ptr<clang::FrontendAction> frontend_action(CompilationKind ki
     std::unreachable();
 }
 
-/// Point clang's code completion at `offset` in the main file.
+/// Point clang's code completion at `offset` in the focus file.
 static void complete_at(clang::CompilerInstance& instance, std::uint32_t offset) {
     auto& SM = instance.getSourceManager();
-    auto main = SM.getMainFileID();
-    auto content = SM.getBufferData(main);
+    auto focus = SM.getMainFileID();
+    auto content = SM.getBufferData(focus);
     auto clamped = static_cast<std::uint32_t>(std::min<std::size_t>(offset, content.size()));
     auto lines = kota::ipc::lsp::line_starts({content.data(), content.size()});
     auto position = PositionMap(content, lines).position(clamped, PositionEncoding::UTF8);
@@ -387,7 +387,7 @@ static void complete_at(clang::CompilerInstance& instance, std::uint32_t offset)
 
     /// Clang completion locations are 1-based.
     auto& at = instance.getFrontendOpts().CodeCompletionAt;
-    at.FileName = SM.getFileEntryRefForID(main)->getName().str();
+    at.FileName = SM.getFileEntryRefForID(focus)->getName().str();
     at.Line = position->line + 1;
     at.Column = position->character + 1;
 }
@@ -433,17 +433,17 @@ CompilationStatus CompilationUnit::run() {
         complete_at(*instance, params.completion.offset);
     }
 
-    // The PCH files what its build learned of the main file under the
+    // The PCH files what its build learned of the focus file under the
     // preamble's size, which the whole file does not have: a header's
     // `#pragma once` in its preamble is lost with it, and an include of the
     // header past the preamble, through another header, enters it again.
     if(auto& [pch, bound] = params.input.pch;
        !pch.empty() && instance->getLangOpts().IsHeaderFile) {
         auto& SM = instance->getSourceManager();
-        auto main = SM.getMainFileID();
-        if(pragma_once(SM.getBufferData(main), bound)) {
+        auto focus = SM.getMainFileID();
+        if(pragma_once(SM.getBufferData(focus), bound)) {
             instance->getPreprocessor().getHeaderSearchInfo().MarkFileIncludeOnce(
-                *SM.getFileEntryRefForID(main));
+                *SM.getFileEntryRefForID(focus));
         }
     }
 
@@ -461,7 +461,7 @@ CompilationStatus CompilationUnit::run() {
     /// Add PPCallbacks to collect preprocessing information.
     instance->getPreprocessor().addPPCallbacks(directive_collector());
 
-    // Past the end of the main file clang instantiates the templates the
+    // Past the end of the focus file clang instantiates the templates the
     // preamble uses, and checks little else: the end of the last
     // declaration's body, an unclosed `#pragma clang attribute`. Their
     // errors cost a needless rebuild (see compile()).
@@ -516,7 +516,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
     std::unique_ptr<CompilationUnit> unit(new CompilationUnit(std::move(params)));
     unit->outcome = unit->run();
 
-    // Instantiated where the preamble ends, a template misses what the main
+    // Instantiated where the preamble ends, a template misses what the focus
     // file declares later, which clang compiling the whole file sees: an
     // overload argument-dependent lookup would find, a type completed
     // there. When instantiating raised an error, the PCH is built again

@@ -78,7 +78,7 @@ ServerLiveSources live{project, pch, store, projections};
 index::FreshnessGate gate{project.file_table};
 index::IndexQuery query{project.project_index, project.file_table, &gate, &live};
 
-Fid main_id;
+Fid focus_id;
 Fid header_id;
 
 std::vector<index::IndexQuery::Located> search(llvm::StringRef text, std::size_t limit = 10) {
@@ -94,7 +94,7 @@ std::vector<index::IndexQuery::Located> locate(llvm::StringRef text) {
 void index_workspace() {
     kind = CompilationKind::Whole;
     ZASSERT(compile());
-    merge_unit(project, *unit, main_id);
+    merge_unit(project, *unit, focus_id);
     if(auto header = project.file_table.find(Spelling::absolute(TestVFS::path("header.h")))) {
         header_id = *header;
     }
@@ -104,7 +104,7 @@ ZEST_CASE(DefinitionAcrossFiles) {
     add_file("header.h", R"(
         struct §(def)⟦§(def)Widget⟧ { int value; };
     )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         §(use)⟦§(use)Widget⟧ instance;
     )");
@@ -112,7 +112,7 @@ ZEST_CASE(DefinitionAcrossFiles) {
 
     auto hit_offset = point("use");
     index::SymbolHash symbol = 0;
-    project.project_index.shards[main_id].lookup(hit_offset, [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].lookup(hit_offset, [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -127,14 +127,14 @@ ZEST_CASE(ReferencesAcrossFiles) {
     add_file("header.h", R"(
         int shared_fn();
     )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         int call() { return §(use)⟦§(use)shared_fn⟧(); }
     )");
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].lookup(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -145,7 +145,7 @@ ZEST_CASE(ReferencesAcrossFiles) {
 }
 
 ZEST_CASE(LocalReferencesClosed) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         int compute(int §(param)p) {
             int §(local)q = p;
             return §(use)q + p;
@@ -157,14 +157,14 @@ ZEST_CASE(LocalReferencesClosed) {
             std::pair{"use",   2U},
             std::pair{"param", 3U}
     }) {
-        auto cursor = query.symbol_at(main_id, point(marker));
+        auto cursor = query.symbol_at(focus_id, point(marker));
         ZASSERT(cursor);
         ZEXPECT(query.references(*cursor, true).size() == expected);
     }
 }
 
 ZEST_CASE(HighlightsClosedFile) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         int tally() {
             int §(decl)⟦count⟧ = 0;
             §(write)⟦count⟧ += 1;
@@ -173,7 +173,7 @@ ZEST_CASE(HighlightsClosedFile) {
     )");
     index_workspace();
 
-    auto cursor = query.symbol_at(main_id, point("read"));
+    auto cursor = query.symbol_at(focus_id, point("read"));
     ZASSERT(cursor);
     auto highlights = query.document_highlights(*cursor);
     ZASSERT(highlights.size() == 3U);
@@ -190,13 +190,13 @@ ZEST_CASE(InternalAcrossFiles) {
         static int §(def)helper() { return 1; }
         inline int via_header() { return §(header_use)helper(); }
     )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         int call() { return §(main_use)helper(); }
     )");
     index_workspace();
 
-    auto from_main = query.symbol_at(main_id, point("main_use"));
+    auto from_main = query.symbol_at(focus_id, point("main_use"));
     auto from_header = query.symbol_at(header_id, point("def", "header.h"));
     ZASSERT(from_main);
     ZASSERT(from_header);
@@ -216,13 +216,13 @@ ZEST_CASE(InternalTypeTarget) {
         Pair make() { return {}; }
         }
     )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         int read() { auto [§(var)point, count] = make(); return point.x + count; }
     )");
     index_workspace();
 
-    auto cursor = query.symbol_at(main_id, point("var"));
+    auto cursor = query.symbol_at(focus_id, point("var"));
     ZASSERT(cursor);
     auto sites = query.type_definition(*cursor, cursor->symbols.front());
     ZASSERT(sites.size() == 1U);
@@ -232,17 +232,17 @@ ZEST_CASE(InternalTypeTarget) {
 ZEST_CASE(InternalAcrossUnits) {
     llvm::StringRef header = "static int helper() { return 1; }\n";
     add_file("header.h", header);
-    add_main("a.cpp", R"(
+    add_focus("a.cpp", R"(
         #include "header.h"
         int a() { return §(use)helper(); }
     )");
     index_workspace();
-    auto a_id = main_id;
+    auto a_id = focus_id;
     auto a_use = point("use");
 
     clear();
     add_file("header.h", header);
-    add_main("b.cpp", R"(
+    add_focus("b.cpp", R"(
         #include "header.h"
         int b() { return helper(); }
     )");
@@ -254,14 +254,14 @@ ZEST_CASE(InternalAcrossUnits) {
 }
 
 ZEST_CASE(OverloadSetCursor) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         void §(int)take(int);
         void §(double)take(double);
         template <class T> void call(T t) { §(use)take(t); }
     )");
     index_workspace();
 
-    auto cursor = query.symbol_at(main_id, point("use"));
+    auto cursor = query.symbol_at(focus_id, point("use"));
     ZASSERT(cursor);
     ZASSERT(cursor->symbols.size() == 2U);
     auto sites = query.definition(*cursor);
@@ -272,7 +272,7 @@ ZEST_CASE(OverloadSetCursor) {
 }
 
 ZEST_CASE(SearchSymbols) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         struct Searchable { int field; };
         Searchable instance;
     )");
@@ -287,7 +287,7 @@ ZEST_CASE(InternalNamesSearched) {
     // A file merged since the search index was built is read for its
     // names of internal linkage, in no table; a function's locals stay
     // out.
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         static int cached_total(int cached_count) {
             int cached_sum = cached_count;
             return cached_sum;
@@ -307,7 +307,7 @@ ZEST_CASE(InternalNamesSearched) {
 ZEST_CASE(UnnamedScopes) {
     // An unnamed enum's enumerators and an anonymous union's members are
     // named through the enclosing scope, as lookup names them.
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         namespace outer {
             enum { §(size)⟦§(size)kSize⟧ = 4 };
             struct Holder { union { int §(member)⟦§(member)member⟧; }; };
@@ -318,7 +318,7 @@ ZEST_CASE(UnnamedScopes) {
 
     auto at = [&](llvm::StringRef name) {
         index::SymbolHash found = 0;
-        project.project_index.shards[main_id].lookup(point(name), [&](const index::Occurrence& o) {
+        project.project_index.shards[focus_id].lookup(point(name), [&](const index::Occurrence& o) {
             found = o.target;
             return false;
         });
@@ -334,7 +334,7 @@ ZEST_CASE(UnnamedScopes) {
 }
 
 ZEST_CASE(QualifiedNames) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         namespace outer { inline namespace v2 { namespace inner {
             template <typename T> struct Widget { void §(method)⟦§(method)paint⟧(); };
             template <> struct Widget<int> { void paint() {} };
@@ -347,7 +347,7 @@ ZEST_CASE(QualifiedNames) {
     index_workspace();
 
     index::SymbolHash method = 0;
-    project.project_index.shards[main_id].lookup(point("method"), [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].lookup(point("method"), [&](const index::Occurrence& o) {
         method = o.target;
         return false;
     });
@@ -382,7 +382,7 @@ ZEST_CASE(QualifiedNames) {
     ZASSERT(query.container_name(versioned.front().symbol.hash) == "outer");
     ZASSERT(query.qualified_name(versioned.front().symbol.hash) == "outer::versioned");
     index::SymbolHash hidden = 0;
-    project.project_index.shards[main_id].lookup(point("hidden"), [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].lookup(point("hidden"), [&](const index::Occurrence& o) {
         hidden = o.target;
         return false;
     });
@@ -407,7 +407,7 @@ ZEST_CASE(QualifiedNames) {
 }
 
 ZEST_CASE(LocalsAndCursors) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         struct S { int operator()() { int hidden = 0; return hidden; } };
         static void helper() {}
         void use() { helper(); }
@@ -421,7 +421,7 @@ ZEST_CASE(LocalsAndCursors) {
     // A cursor on the file's own static function resolves through the
     // serving source, which the global table knows nothing about.
     index::SymbolQuery at;
-    at.position = {.path = project.file_table.resolve(main_id).str(), .line = 3, .column = 21};
+    at.position = {.path = project.file_table.resolve(focus_id).str(), .line = 3, .column = 21};
     auto located = query.locate(at);
     ZASSERT(located.size() == std::size_t(1));
     ZASSERT(located.front().symbol.name == "helper");
@@ -434,14 +434,14 @@ ZEST_CASE(LocalsAndCursors) {
 }
 
 ZEST_CASE(LocalSymbolName) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         static int §(local)⟦§(local)hidden⟧() { return 1; }
         int use() { return hidden(); }
     )");
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.project_index.shards[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].lookup(point("local"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -455,7 +455,7 @@ ZEST_CASE(LocalSymbolName) {
 }
 
 ZEST_CASE(LocalsByPath) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         struct S { int operator()() { int hidden = 0; return hidden; } };
         static void helper(int hidden) {}
         void use() { helper(1); }
@@ -477,7 +477,7 @@ ZEST_CASE(LocateEveryExactMatch) {
     for(int i = 0; i < 70; i += 1) {
         source += std::format("namespace n{} {{ int value; }}\n", i);
     }
-    add_main("main.cpp", source);
+    add_focus("main.cpp", source);
     index_workspace();
 
     ZEXPECT(locate("value").size() == 70U);
@@ -487,7 +487,7 @@ ZEST_CASE(OpenSessionServedByShard) {
     add_file("header.h", R"(
         struct §(def)⟦§(def)Widget⟧ { int value; };
     )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         §(use)⟦§(use)Widget⟧ instance;
     )");
@@ -495,11 +495,11 @@ ZEST_CASE(OpenSessionServedByShard) {
 
     // Open the document with exactly the indexed content and never
     // compile it: freshness clause 4 serves it from its shard.
-    auto session = store.open(main_id);
+    auto session = store.open(focus_id);
     store.apply_open(*session, unit->focus_file().content().str(), 1);
     ZASSERT(!projections.index_current(session->path_id));
 
-    auto cursor = query.symbol_at(main_id, point("use"));
+    auto cursor = query.symbol_at(focus_id, point("use"));
     ZASSERT(cursor);
     auto sites = query.definition(*cursor);
     ZASSERT(!sites.empty());
@@ -507,20 +507,20 @@ ZEST_CASE(OpenSessionServedByShard) {
 }
 
 ZEST_CASE(DivergedBufferWithdrawsShard) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         int stale_fn() { return 1; }
         int use() { return §(use)⟦§(use)stale_fn⟧(); }
     )");
     index_workspace();
 
-    auto session = store.open(main_id);
+    auto session = store.open(focus_id);
     auto edited = unit->focus_file().content().str() + "// edited\n";
     store.apply_open(*session, edited, 1);
 
     // The buffer no longer matches the shard's content: the shard withdraws
     // and the un-compiled session resolves nothing.
-    ZASSERT(!query.serving(main_id).has_value());
-    ZASSERT(!query.symbol_at(main_id, point("use")).has_value());
+    ZASSERT(!query.serving(focus_id).has_value());
+    ZASSERT(!query.symbol_at(focus_id, point("use")).has_value());
 }
 
 ZEST_CASE(HeaderEdgesFromHostManifest) {
@@ -531,7 +531,7 @@ ZEST_CASE(HeaderEdgesFromHostManifest) {
         #include "inner.h"
         struct Widget { int value; };
     )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         Widget instance;
     )");
@@ -546,22 +546,22 @@ ZEST_CASE(HeaderEdgesFromHostManifest) {
     ZASSERT(llvm::StringRef(edges[0].target).ends_with("inner.h"));
 
     // The TU's own manifest still answers for the TU itself.
-    auto main_session = store.open(main_id);
-    store.apply_open(*main_session, unit->focus_file().content().str(), 1);
-    auto main_edges = query.include_edges(main_session->path_id);
-    ZASSERT(main_edges.size() == std::size_t(1));
-    ZASSERT(llvm::StringRef(main_edges[0].target).ends_with("header.h"));
+    auto focus_session = store.open(focus_id);
+    store.apply_open(*focus_session, unit->focus_file().content().str(), 1);
+    auto focus_edges = query.include_edges(focus_session->path_id);
+    ZASSERT(focus_edges.size() == std::size_t(1));
+    ZASSERT(llvm::StringRef(focus_edges[0].target).ends_with("header.h"));
 }
 
 ZEST_CASE(StaleContributionSuppressed) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         int stale_fn() { return 1; }
         int use() { return §(use)⟦§(use)stale_fn⟧(); }
     )");
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].lookup(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -570,12 +570,12 @@ ZEST_CASE(StaleContributionSuppressed) {
     // Entries of text the disk no longer holds point nowhere: the file's
     // contribution disappears from cross-file results until its index
     // describes the disk again.
-    project.file_table.disk.observe(main_id, DiskObservation{.hash = 1});
+    project.file_table.disk.observe(focus_id, DiskObservation{.hash = 1});
     ZASSERT(query.sites(symbol, Fid{}, RelationKind::Reference).empty());
 }
 
 ZEST_CASE(ClassNameOverConstructor) {
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         namespace outer {
         struct Widget {
             Widget();
@@ -597,7 +597,7 @@ ZEST_CASE(UndefinedBesideStaleUse) {
     add_file("header.h", R"(
         int external();
     )");
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         int use() { return external(); }
     )");
@@ -605,7 +605,7 @@ ZEST_CASE(UndefinedBesideStaleUse) {
 
     // A file using the symbol moved on; nothing defines the symbol, so the
     // declaration still places it.
-    project.file_table.disk.observe(main_id, DiskObservation{.hash = 1});
+    project.file_table.disk.observe(focus_id, DiskObservation{.hash = 1});
     auto results = search("external");
     ZASSERT(results.size() == 1U);
     ZASSERT(results.front().site.path.ends_with("header.h"));
@@ -616,7 +616,7 @@ ZEST_CASE(DeletedDefinitionFallsBack) {
         int removed();
     )";
     add_file("header.h", header);
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         int removed() { return 0; }
     )");
@@ -624,19 +624,19 @@ ZEST_CASE(DeletedDefinitionFallsBack) {
 
     clear();
     add_file("header.h", header);
-    add_main("use.cpp", R"(
+    add_focus("use.cpp", R"(
         #include "header.h"
         int use() { return removed(); }
     )");
     index_workspace();
-    auto use_id = main_id;
+    auto use_id = focus_id;
 
     // The table keeps the definition the first unit reported; the shards
     // no longer hold it, so the declaration places the symbol — a file
     // that only used it moving on changes nothing.
     clear();
     add_file("header.h", header);
-    add_main("main.cpp", R"(
+    add_focus("main.cpp", R"(
         #include "header.h"
         int kept() { return removed(); }
     )");
@@ -658,7 +658,7 @@ void open_buffers(CountingSessions& sessions, int buffers) {
             text += std::format("int fn{}_{}();\n", buffer, i);
         }
         text += "} }\n";
-        add_main(std::format("main{}.cpp", buffer), text);
+        add_focus(std::format("main{}.cpp", buffer), text);
         ZASSERT(compile());
         sessions.tables.push_back(index::TUIndex::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit))));

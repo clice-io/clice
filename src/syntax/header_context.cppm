@@ -83,16 +83,20 @@ using SynthesizedFiles = std::vector<SynthesizedFile>;
 /// The part after the cut, the suffix, closes the braces the header sits
 /// in (an X-macro list in an enum or a function body, members in a class
 /// body): of the first chain file cut inside braces, the rest up to the
-/// `}` closing them and a `;` right after it; of every later one, which
-/// those braces enclose, the whole rest; of a chain file cut outside every
+/// `}` closing them, with the declarators up to a `;` after it, or up to
+/// the `#endif` of a block they close in; of every later one, which those
+/// braces enclose, the whole rest; of a chain file cut outside every
 /// brace, nothing. A class body thus goes on to its end, as its member
-/// functions read members declared after them. Braces count lexically, a
-/// macro's and an inactive branch's too: a count that never closes takes
-/// the rest of the file. Each fragment starts with a #line marker; a cut
-/// inside #if blocks opens matching `#if 1`s, and a suffix fragment ending
-/// inside #if blocks closes them. Only the focus file's include enters the
-/// suffix: where another file enters the header (an earlier occurrence),
-/// the header is its text alone.
+/// functions read members declared after them. Braces count lexically,
+/// both branches of a conditional: a brace a macro writes is not counted,
+/// so a closing one never closes and the suffix takes the rest of the
+/// file, while a class a macro opens ends at the header's text. The focus
+/// file always includes the suffix, if only an empty one. Each fragment
+/// starts with a #line marker; a cut inside #if blocks opens matching
+/// `#if 1`s, and a suffix fragment ending inside #if blocks closes them.
+/// Only the focus file's include enters the suffix: where another file
+/// enters the header (an earlier occurrence), the header is its text
+/// alone.
 struct SynthesizedContext {
     /// The fragment of the host before its cut, entering every later one:
     /// injected via -include. Restores the preprocessor state the header

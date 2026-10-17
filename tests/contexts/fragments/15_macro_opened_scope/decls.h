@@ -1,0 +1,1 @@
+int open(Handle handle);

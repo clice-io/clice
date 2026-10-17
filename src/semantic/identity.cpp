@@ -94,7 +94,7 @@ bool has_c_linkage(const clang::Decl* decl) {
 /// either, though clang reports one: `struct state` defined in two
 /// source files is two types. One first declared in a header stays one
 /// entity per name, whichever header forward-declares it first; the
-/// main file of a header compiled in its host's context is no source
+/// focus file of a header compiled in its host's context is no source
 /// file.
 bool needs_path(const clang::NamedDecl* decl, CompilationUnit& unit) {
     if(!decl->getDeclContext()->getRedeclContext()->isFileContext()) {

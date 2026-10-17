@@ -32,7 +32,7 @@ ZEST_CASE(BuildPCHThenCompile) {
 
     std::string main_text = "#include \"common.h\"\nPoint p{1,2};\n";
     tmp.touch("main.cpp", main_text);
-    auto main_file = tmp.path("main.cpp");
+    auto main_path = tmp.path("main.cpp");
 
     auto dir = std::string(tmp.root);
 
@@ -44,7 +44,7 @@ ZEST_CASE(BuildPCHThenCompile) {
 
     sl.run([&]() -> kota::task<> {
         worker::BuildPCHParams params;
-        params.file = main_file;
+        params.file = main_path;
         params.directory = dir;
         params.arguments = {"clang++",
                             "-resource-dir",
@@ -53,7 +53,7 @@ ZEST_CASE(BuildPCHThenCompile) {
                             "c++-header",
                             "-I",
                             dir,
-                            main_file};
+                            main_path};
         params.content = main_text;
         params.preamble_bound = compute_preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
@@ -93,7 +93,7 @@ ZEST_CASE(BuildPCHThenCompile) {
 
     sf.run([&]() -> kota::task<> {
         worker::CompileParams params;
-        params.path = main_file;
+        params.path = main_path;
         params.version = 1;
         params.text = main_text;
         params.directory = dir;
@@ -103,7 +103,7 @@ ZEST_CASE(BuildPCHThenCompile) {
                             "-fsyntax-only",
                             "-I",
                             dir,
-                            main_file};
+                            main_path};
         params.pch = {pch_path, preamble_bound};
 
         auto result = co_await sf.peer->send_request(params);
@@ -122,7 +122,7 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
     tmp.touch("common.h", "struct Point { int x, y; };\n");
     std::string main_text = "#include \"common.h\"\nPoint p{1, 2};\nimport missing;\n";
     tmp.touch("main.cpp", main_text);
-    auto main_file = tmp.path("main.cpp");
+    auto main_path = tmp.path("main.cpp");
     auto dir = std::string(tmp.root);
     auto preamble_bound = compute_preamble_bound(main_text);
     std::vector<std::string> arguments = {"clang++",
@@ -131,14 +131,14 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
                                           "-std=c++20",
                                           "-I",
                                           dir,
-                                          main_file};
+                                          main_path};
 
     WorkerHandle sl;
     ZASSERT(sl.spawn());
     std::string pch_path;
     sl.run([&]() -> kota::task<> {
         worker::BuildPCHParams params;
-        params.file = main_file;
+        params.file = main_path;
         params.directory = dir;
         params.arguments = arguments;
         params.content = main_text;
@@ -161,7 +161,7 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
     bool done = false;
     sf.run([&]() -> kota::task<> {
         worker::CompileParams params;
-        params.path = main_file;
+        params.path = main_path;
         params.version = 1;
         params.text = main_text;
         params.directory = dir;
@@ -189,7 +189,7 @@ ZEST_CASE(BlobWriteFailure) {
               "\n");
     std::string main_text = "#include \"common.h\"\nPoint p{1,2};\n";
     tmp.touch("main.cpp", main_text);
-    auto main_file = tmp.path("main.cpp");
+    auto main_path = tmp.path("main.cpp");
     auto dir = std::string(tmp.root);
 
     WorkerHandle sl;
@@ -198,7 +198,7 @@ ZEST_CASE(BlobWriteFailure) {
     bool done = false;
     sl.run([&]() -> kota::task<> {
         worker::BuildPCHParams params;
-        params.file = main_file;
+        params.file = main_path;
         params.directory = dir;
         params.arguments = {"clang++",
                             "-resource-dir",
@@ -207,7 +207,7 @@ ZEST_CASE(BlobWriteFailure) {
                             "c++-header",
                             "-I",
                             dir,
-                            main_file};
+                            main_path};
         params.content = main_text;
         params.preamble_bound = compute_preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
@@ -235,7 +235,7 @@ ZEST_CASE(CompileWithoutPCHStillWorks) {
               "\n");
     std::string main_text = "#include \"common.h\"\nPoint p{1,2};\n";
     tmp.touch("main.cpp", main_text);
-    auto main_file = tmp.path("main.cpp");
+    auto main_path = tmp.path("main.cpp");
 
     auto dir = std::string(tmp.root);
 
@@ -246,7 +246,7 @@ ZEST_CASE(CompileWithoutPCHStillWorks) {
 
     sf.run([&]() -> kota::task<> {
         worker::CompileParams params;
-        params.path = main_file;
+        params.path = main_path;
         params.version = 1;
         params.text = main_text;
         params.directory = dir;
@@ -256,7 +256,7 @@ ZEST_CASE(CompileWithoutPCHStillWorks) {
                             "-fsyntax-only",
                             "-I",
                             dir,
-                            main_file};
+                            main_path};
         // pch left as default (empty path, 0 bound).
 
         auto result = co_await sf.peer->send_request(params);

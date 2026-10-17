@@ -17,7 +17,7 @@ ZEST_SUITE(inactive_regions, Tester) {
 feature::InactiveScan scan;
 
 void run(llvm::StringRef source) {
-    add_main("main.cpp", source);
+    add_focus("main.cpp", source);
     ZASSERT(compile("-std=c++17"));
     scan = feature::inactive_regions(*unit);
 }

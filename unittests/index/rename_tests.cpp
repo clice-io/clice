@@ -26,7 +26,7 @@ Project project{files};
 index::FreshnessGate gate{project.file_table};
 index::IndexQuery query{project.project_index, project.file_table, &gate, nullptr};
 
-Fid main_id;
+Fid focus_id;
 
 /// The files the scan looks at, and those the rename may not edit.
 std::vector<std::string> scope;
@@ -48,7 +48,7 @@ std::string file(llvm::StringRef name) {
 void merge() {
     kind = CompilationKind::Whole;
     ZASSERT(compile());
-    merge_unit(project, *unit, main_id);
+    merge_unit(project, *unit, focus_id);
     for(auto& entry: sources.all_files) {
         auto path = entry.getKey().str();
         ZASSERT(!static_cast<bool>(vfs::write(path, entry.second.content)));
@@ -150,14 +150,14 @@ std::expected<RenamePlan, std::string> rename(llvm::StringRef name, llvm::String
 }
 
 std::expected<index::CursorRename, std::string> cursor(llvm::StringRef at) {
-    auto found = query.symbol_at(main_id, point(at));
+    auto found = query.symbol_at(focus_id, point(at));
     if(!found) {
         return std::unexpected("no symbol at the mark");
     }
     return index::rename_at(query, *found);
 }
 
-/// Rename the symbol under the main file's mark `at`.
+/// Rename the symbol under the focus file's mark `at`.
 std::expected<RenamePlan, std::string> rename_at(llvm::StringRef at, llvm::StringRef new_name) {
     auto renamed = cursor(at);
     if(!renamed) {
@@ -199,7 +199,7 @@ ZEST_CASE(FunctionAcrossUnits) {
         int §compute(int x);
     )";
     add_file(file("util.h"), header);
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         #include "util.h"
         int §compute(int x) { return x; }
         // compute in a comment
@@ -208,7 +208,7 @@ ZEST_CASE(FunctionAcrossUnits) {
     merge();
     clear();
     add_file(file("util.h"), header);
-    add_main(file("b.cpp"), R"(
+    add_focus(file("b.cpp"), R"(
         #include "util.h"
         int use() { return §compute(1) + §compute(2); }
     )");
@@ -221,7 +221,7 @@ ZEST_CASE(FunctionAcrossUnits) {
 }
 
 ZEST_CASE(ParameterOfOneFunction) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int twice(int §value) { int sum = §value + §(cursor)§value; return sum; }
         int once(int value) { return value; }
     )");
@@ -241,7 +241,7 @@ ZEST_CASE(ConstructorNamesClass) {
             ~§Widget();
         };
     )");
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         #include "widget.h"
         §Widget::§(cursor)§Widget() {}
         §Widget::§(dtor)~§Widget() {}
@@ -262,7 +262,7 @@ ZEST_CASE(ConstructorNamesClass) {
 }
 
 ZEST_CASE(ClassTemplateFamily) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         template <typename T>
         struct §(cursor)§Box {
             §Box(T);
@@ -294,7 +294,7 @@ ZEST_CASE(ClassTemplateFamily) {
 }
 
 ZEST_CASE(FunctionTemplateSpecialization) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         template <typename T>
         T §(cursor)§pick(T value) { return value; }
 
@@ -312,7 +312,7 @@ ZEST_CASE(FunctionTemplateSpecialization) {
 }
 
 ZEST_CASE(VirtualOverrideChain) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         struct Base { virtual void §run(); };
         struct Derived : Base { void §run() override; };
         struct Other { void run(); };
@@ -337,14 +337,14 @@ ZEST_CASE(InternalAcrossUnits) {
         static int §helper() { return 1; }
     )";
     add_file(file("util.h"), header);
-    add_main(file("b.cpp"), R"(
+    add_focus(file("b.cpp"), R"(
         #include "util.h"
         int b() { return §helper(); }
     )");
     merge();
     clear();
     add_file(file("util.h"), header);
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         #include "util.h"
         int a() { return §(cursor)§helper(); }
     )");
@@ -357,7 +357,7 @@ ZEST_CASE(InternalAcrossUnits) {
 }
 
 ZEST_CASE(NamespaceAndQualifiers) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         namespace §(cursor)§math { int one(); }
         namespace §math { int two(); }
         int §math::one() { return 1; }
@@ -374,7 +374,7 @@ ZEST_CASE(NamespaceAndQualifiers) {
 }
 
 ZEST_CASE(EnumAndEnumerator) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         enum class Color { §(cursor)§red, green };
         Color pick() { return Color::§red; }
         int red = 0;
@@ -388,7 +388,7 @@ ZEST_CASE(EnumAndEnumerator) {
 
     clear();
     marked.clear();
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         enum class §(cursor)§Color { red, green };
         §Color pick() { return §Color::red; }
     )");
@@ -399,7 +399,7 @@ ZEST_CASE(EnumAndEnumerator) {
 }
 
 ZEST_CASE(FieldAndAlias) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         struct Point {
             int §(cursor)§x;
             Point() : §x(0) {}
@@ -416,7 +416,7 @@ ZEST_CASE(FieldAndAlias) {
 
     clear();
     marked.clear();
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         using §(cursor)§Size = unsigned;
         §Size count;
         typedef §Size Count;
@@ -428,7 +428,7 @@ ZEST_CASE(FieldAndAlias) {
 }
 
 ZEST_CASE(ConceptAndLabel) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         template <typename T>
         concept §(cursor)§Small = sizeof(T) < 4;
 
@@ -447,7 +447,7 @@ ZEST_CASE(ConceptAndLabel) {
 
     clear();
     marked.clear();
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         void spin() {
         §(cursor)§again:
             goto §again;
@@ -460,7 +460,7 @@ ZEST_CASE(ConceptAndLabel) {
 }
 
 ZEST_CASE(RefusedSymbols) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         #define §(macro)LIMIT 10
         struct Number {
             Number §(plus)operator+(const Number&) const;
@@ -484,7 +484,7 @@ ZEST_CASE(RefusedSymbols) {
 }
 
 ZEST_CASE(InvalidNewNames) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int §(cursor)counter = 0;
     )");
     merge();
@@ -514,7 +514,7 @@ ZEST_CASE(InvalidNewNames) {
 }
 
 ZEST_CASE(SameScopeCollisions) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         namespace math {
             int §(value)value;
             int total;
@@ -544,7 +544,7 @@ ZEST_CASE(SameScopeCollisions) {
 }
 
 ZEST_CASE(ParametersAndLabels) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int sum(int §(declared)first, int second);
         int sum(int §(param)first, int second) { return first + second; }
         int scale(int factor, int amount);
@@ -579,7 +579,7 @@ ZEST_CASE(ParametersAndLabels) {
 }
 
 ZEST_CASE(MemberHidesInherited) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         struct Base { int inherited; int §(base)own; };
         struct Derived : Base { int §(derived)extra; int added; };
         struct Sibling : Base { int §(sibling)apart; };
@@ -603,7 +603,7 @@ ZEST_CASE(MemberHidesInherited) {
 }
 
 ZEST_CASE(EnumeratorLookupScope) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         enum Color { §(red)red };
         enum Mood { blue };
         enum class Tone { §(low)low };
@@ -622,7 +622,7 @@ ZEST_CASE(EnumeratorLookupScope) {
 }
 
 ZEST_CASE(MemberTakesClassName) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         struct Shape { void §(method)draw(); };
         struct §(grid)Grid { int cells; };
     )");
@@ -645,7 +645,7 @@ ZEST_CASE(ManySameNamedSymbols) {
         source += std::format("namespace n{} {{ int target; }}\n", i);
     }
     source += "int target;\n";
-    add_main(file("a.cpp"), source);
+    add_focus(file("a.cpp"), source);
     merge();
 
     auto renamed = rename_at("cursor", "target");
@@ -655,7 +655,7 @@ ZEST_CASE(ManySameNamedSymbols) {
 }
 
 ZEST_CASE(MacroNameConflict) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         #define SHADOW 1
         int §(cursor)value = SHADOW;
     )");
@@ -668,7 +668,7 @@ ZEST_CASE(MacroNameConflict) {
 }
 
 ZEST_CASE(MacroSpellingsUnconfirmed) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int §compute(int x) { return x; }
         #define CALL compute(1)
         int use() { return CALL + §compute(2); }
@@ -686,7 +686,7 @@ ZEST_CASE(MacroSpellingsUnconfirmed) {
 }
 
 ZEST_CASE(DependentCallHeuristic) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int §compute(int x) { return x; }
 
         template <typename T>
@@ -703,7 +703,7 @@ ZEST_CASE(DependentCallHeuristic) {
 }
 
 ZEST_CASE(DependentCallOverloads) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int §(cursor)§compute(int x) { return x; }
         double compute(double x) { return x; }
 
@@ -720,7 +720,7 @@ ZEST_CASE(DependentCallOverloads) {
 }
 
 ZEST_CASE(ChangedFileBlocks) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int compute(int x) { return x; }
         int use() { return compute(1); }
     )");
@@ -738,7 +738,7 @@ int later() { return 2; }
 
 ZEST_CASE(EditedFileMovedOn) {
     // Non-ASCII text is kept with the index, so no disk read confirms it.
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         // café
         int compute(int x) { return x; }
     )");
@@ -755,12 +755,12 @@ int renamed(int x) { return x; }
 }
 
 ZEST_CASE(NewNameInChangedFile) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int compute(int x) { return x; }
     )");
     merge();
     clear();
-    add_main(file("b.cpp"), R"(
+    add_focus(file("b.cpp"), R"(
         int other() { return 0; }
     )");
     merge();
@@ -780,7 +780,7 @@ ZEST_CASE(ExtensionlessHeaderEdited) {
     add_file(file("config"), R"(
         int §compute(int x);
     )");
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         #include "config"
         int use() { return §compute(1); }
     )");
@@ -794,7 +794,7 @@ ZEST_CASE(ExtensionlessHeaderEdited) {
 }
 
 ZEST_CASE(FilesOutsideTheIndex) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int §compute(int x) { return x; }
     )");
     merge();
@@ -823,7 +823,7 @@ ZEST_CASE(LocalsStayHome) {
         int stale = rows;
         #endif
     )");
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         #include "b.h"
         int count(int §(cursor)§rows) { return §rows; }
     )");
@@ -854,7 +854,7 @@ ZEST_CASE(EditOutsideWorkspace) {
     add_file(file("vendor/lib.h"), R"(
         int compute(int x);
     )");
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         #include "vendor/lib.h"
         int use() { return compute(1); }
     )");
@@ -869,7 +869,7 @@ ZEST_CASE(EditOutsideWorkspace) {
 }
 
 ZEST_CASE(ApplyRewritesTokens) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int compute(int x) { return x > 0 ? compute(x - 1) : 0; }
     )");
     merge();
@@ -882,14 +882,14 @@ ZEST_CASE(ApplyRewritesTokens) {
     )");
 
     // The text moved on: a token no longer spells the old name.
-    ZEXPECT(!index::apply_renames("int x;", renamed, main_id).has_value());
+    ZEXPECT(!index::apply_renames("int x;", renamed, focus_id).has_value());
     auto longer = sources.all_files[file("a.cpp")].content;
     longer.insert(renamed.edits.front().edit.site.range.end, "d");
-    ZEXPECT(!index::apply_renames(longer, renamed, main_id).has_value());
+    ZEXPECT(!index::apply_renames(longer, renamed, focus_id).has_value());
 }
 
 ZEST_CASE(DollarNames) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int §my$count = 0;
         int use() { return §my$count; }
     )");
@@ -901,7 +901,7 @@ ZEST_CASE(DollarNames) {
 }
 
 ZEST_CASE(BatchSwapsNames) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int alpha;
         int beta;
         int gamma() { return alpha + beta; }
@@ -925,7 +925,7 @@ ZEST_CASE(BatchSwapsNames) {
 }
 
 ZEST_CASE(BatchJudgesFinalNames) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int first;
         int second;
         int taken;
@@ -975,7 +975,7 @@ ZEST_CASE(BatchJudgesFinalNames) {
 }
 
 ZEST_CASE(BatchRenamesOnce) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         struct Base { virtual void run(); };
         struct Derived : Base { void run() override; };
     )");
@@ -997,7 +997,7 @@ ZEST_CASE(BatchRenamesOnce) {
 }
 
 ZEST_CASE(BatchSharedTokens) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int §(int)scale(int x) { return x; }
         double §(double)scale(double x) { return x; }
         template <typename T> T twice(T v) { return scale(v) * 2; }
@@ -1031,7 +1031,7 @@ ZEST_CASE(BatchSharedTokens) {
 }
 
 ZEST_CASE(NonAsciiColumns) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         int compute(int x) { return x; }
         #define NOTE "é" compute
     )");
@@ -1045,7 +1045,7 @@ ZEST_CASE(NonAsciiColumns) {
 }
 
 ZEST_CASE(CursorOffTheName) {
-    add_main(file("a.cpp"), R"(
+    add_focus(file("a.cpp"), R"(
         struct Widget { Widget(int); };
         int compute(int x) { return x; }
         #define CALL compute(1)

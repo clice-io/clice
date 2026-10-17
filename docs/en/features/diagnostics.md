@@ -117,7 +117,7 @@ tests/diagnostics/guidance/01_no_database
 - [x] Push diagnostics on compilation completion
 - [x] Clear diagnostics on file close
 - [x] A saved header, or an edited `.clang-tidy`, asks the client to request the open files including it again, which recompiles them — through a diagnostic refresh for a client that pulls diagnostics, a semantic token refresh for one that does not, when the client takes it; diagnostics follow headers as saved, not their unsaved buffers, as in clangd
-- [x] Per-file diagnostic grouping (main file + headers)
+- [x] Per-file diagnostic grouping (the open file + headers)
 - [x] Diagnostic `code` field: a warning's option (`-Wunused-variable`), clang's name for any other diagnostic, the clang-tidy check
 - [x] `codeDescription` linking a clang-tidy finding to its check's documentation
 - [ ] `codeDescription` with links to Clang documentation

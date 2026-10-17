@@ -8,7 +8,7 @@ import :syntax.token;
 
 namespace clice {
 
-/// A top-level macro invocation written in the main file: its spelled
+/// A top-level macro invocation written in the focus file: its spelled
 /// tokens, the name through the closing parenthesis, and the tokens it
 /// expanded to — none for one that expanded to nothing, a macro named in
 /// a conditional directive's expression included.
@@ -19,35 +19,35 @@ struct MacroExpansion {
 };
 
 /// The tokens the features of an open file read, collected during its
-/// compile: the main file's spelled tokens, the expanded token stream the
-/// parser consumed, and the main file's top-level macro expansions.
+/// compile: the focus file's spelled tokens, the expanded token stream the
+/// parser consumed, and the focus file's top-level macro expansions.
 ///
-/// Only the main file is mapped between spelled and expanded tokens: the
-/// features read the file they serve, and a header is served as the main
+/// Only the focus file is mapped between spelled and expanded tokens: the
+/// features read the file they serve, and a header is served as the focus
 /// file of its own compile. An expanded token with no spelling of its own,
 /// the end-of-directive token an assembler-with-cpp `#` comment leaves
 /// behind, is never recorded.
 class TokenMap {
 public:
-    /// Starts collecting from `pp` before it enters the main file. The map
+    /// Starts collecting from `pp` before it enters the focus file. The map
     /// stays where it is built: the preprocessor holds on to it.
     explicit TokenMap(clang::Preprocessor& pp);
 
     TokenMap(const TokenMap&) = delete;
     TokenMap& operator=(const TokenMap&) = delete;
 
-    /// Ends the collection after the parse and builds the main file's side.
+    /// Ends the collection after the parse and builds the focus file's side.
     void finish();
 
-    /// The main file's spelled tokens, the whole file under a preamble PCH
+    /// The focus file's spelled tokens, the whole file under a preamble PCH
     /// too.
     llvm::ArrayRef<clang::syntax::Token> spelled() const {
         return spelled_tokens;
     }
 
-    /// Where `token`, one of spelled(), starts in the main file.
+    /// Where `token`, one of spelled(), starts in the focus file.
     std::uint32_t offset(const clang::syntax::Token& token) const {
-        return main_offset(token.location());
+        return focus_offset(token.location());
     }
 
     /// Per spelled token, whether it was preprocessed away to nothing: a
@@ -57,7 +57,7 @@ public:
         return away;
     }
 
-    /// Per raw token of the main file, the comments and directive ends of
+    /// Per raw token of the focus file, the comments and directive ends of
     /// its lexical scan among them, whether the preprocessor skipped it; a
     /// token no spelled token starts at shares the flag of the one before.
     llvm::SmallVector<bool, 0> skipped(llvm::ArrayRef<Token> tokens) const;
@@ -87,17 +87,17 @@ public:
         return search_count;
     }
 
-    /// The main file's top-level macro expansions whose invocation shares a
+    /// The focus file's top-level macro expansions whose invocation shares a
     /// token with `spelled`, a range of spelled().
     llvm::ArrayRef<MacroExpansion>
         expansions_overlapping(llvm::ArrayRef<clang::syntax::Token> spelled) const;
 
     /// The index into spelled() of the token expanded()[index] stands for,
     /// the one a selection of it lands on:
-    ///  - a token written in the main file: itself;
-    ///  - a macro argument written in the main file: the argument token, at
+    ///  - a token written in the focus file: itself;
+    ///  - a macro argument written in the focus file: the argument token, at
     ///    one expansion only when the macro expands it more than once;
-    ///  - any other token of an expansion in the main file: the name of the
+    ///  - any other token of an expansion in the focus file: the name of the
     ///    outermost invocation.
     /// None for the rest: a header's tokens, its macros' expansions included.
     std::optional<std::uint32_t> origin(std::uint32_t index) const {
@@ -126,22 +126,22 @@ private:
     };
 
     /// Sets the origins of expanded tokens [begin, end), a run of macro
-    /// FileID `fid` lexed from the main file; `name` is their invocation's.
+    /// FileID `fid` lexed from the focus file; `name` is their invocation's.
     void set_macro_origins(clang::FileID fid,
                            std::uint32_t begin,
                            std::uint32_t end,
                            std::uint32_t name,
                            ArgumentCopies& arguments);
 
-    bool in_main_file(clang::SourceLocation location) const {
-        return location.isFileID() && main_begin <= location && location < main_end;
+    bool in_focus_file(clang::SourceLocation location) const {
+        return location.isFileID() && focus_begin <= location && location < focus_end;
     }
 
-    std::uint32_t main_offset(clang::SourceLocation location) const {
-        return location.getRawEncoding() - main_begin.getRawEncoding();
+    std::uint32_t focus_offset(clang::SourceLocation location) const {
+        return location.getRawEncoding() - focus_begin.getRawEncoding();
     }
 
-    /// The index of the first spelled token at or after main-file offset
+    /// The index of the first spelled token at or after focus-file offset
     /// `offset`.
     std::uint32_t spelled_at_or_after(std::uint32_t offset) const;
 
@@ -149,26 +149,26 @@ private:
     const clang::syntax::Token* spelled_at(clang::SourceLocation location) const;
 
     /// The expansion that produced expanded token `token`, if one in the
-    /// main file did.
+    /// focus file did.
     const MacroExpansion* expansion_of(const clang::syntax::Token& token) const;
 
     clang::Preprocessor& pp;
     const clang::SourceManager& SM;
-    clang::FileID main_fid;
-    clang::SourceLocation main_begin;
-    clang::SourceLocation main_end;
+    clang::FileID focus_fid;
+    clang::SourceLocation focus_begin;
+    clang::SourceLocation focus_end;
 
     std::vector<clang::syntax::Token> spelled_tokens;
     std::vector<bool> away;
     std::vector<clang::syntax::Token> expanded_tokens;
 
-    /// Whether the preprocessor reads the main file, not a header it
+    /// Whether the preprocessor reads the focus file, not a header it
     /// includes.
-    bool lexing_main = false;
+    bool lexing_focus = false;
 
-    /// The runs of expanded tokens lexed while the main file was the file
+    /// The runs of expanded tokens lexed while the focus file was the file
     /// being read: its own tokens, its macro expansions, never a header's.
-    std::vector<std::pair<std::uint32_t, std::uint32_t>> main_segments;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> focus_segments;
 
     /// Expanded tokens by location, for the AST's token ranges.
     llvm::DenseMap<clang::SourceLocation, std::uint32_t> expanded_index;
@@ -185,7 +185,7 @@ private:
     /// The expansions that produced tokens, in stream order.
     std::vector<std::uint32_t> producing;
 
-    /// The origins of the expanded tokens from the main file's first through
+    /// The origins of the expanded tokens from the focus file's first through
     /// its last: origins[i] is that of expanded token origins_begin + i.
     std::uint32_t origins_begin = 0;
     std::vector<std::uint32_t> origins;
