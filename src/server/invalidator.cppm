@@ -266,6 +266,10 @@ private:
     /// ContentChanged reindexes.
     void provider_appeared(llvm::StringRef module_name, DirtySet& dirty);
 
+    /// The providers of `module_name` but `except` changed: the importers
+    /// of every other one choose among them again.
+    void cascade_providers(llvm::StringRef module_name, Fid except, DirtySet& dirty);
+
     /// See the definition: the open/closed/index-only split of a
     /// dependency invalidation.
     void mark_dependent(Fid path_id, DirtySet& dirty);

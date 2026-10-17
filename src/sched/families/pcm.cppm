@@ -202,6 +202,10 @@ private:
     /// Move the build's PCM to `superseded`, removing the one it replaced.
     void retire_blob(PCMBuild& build);
 
+    /// The build's PCM left the store: forget it and mark the module dirty,
+    /// so its next round builds again. Returns whether it had.
+    bool drop_evicted(Fid module, PCMBuild& build);
+
     static NodeId node(Fid path_id) {
         return {Family::PCM, path_id.raw};
     }

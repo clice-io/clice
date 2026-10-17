@@ -74,3 +74,25 @@ diagnostics = [
         code = "ambiguous-module",
     },
 ]
+
+["undeclared on disk".before]
+diagnostics = [
+    {
+        at = "⟦import util;⟧",
+        severity = "warning",
+        message = "module 'util' is declared by more than one file; this file imports ${WS}/p1/util.cppm, the nearest, not ${WS}/p2/util.cppm",
+        source = "clice",
+        code = "ambiguous-module",
+    },
+]
+
+["removed from disk".before]
+diagnostics = [
+    {
+        at = "⟦import util;⟧",
+        severity = "warning",
+        message = "module 'util' is declared by more than one file; this file imports ${WS}/p1/util.cppm, the nearest, not ${WS}/p2/util.cppm",
+        source = "clice",
+        code = "ambiguous-module",
+    },
+]

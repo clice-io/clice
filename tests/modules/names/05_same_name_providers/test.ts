@@ -36,3 +36,21 @@ test("added to the database", async (t) => {
     expect(await s.poll("cdb")).toBe(1);
     await t.show("after", s.diagnostics("p2/main.cpp"));
 });
+
+// A tool renames p2's module: p1/main.cpp no longer has two to choose from.
+test("undeclared on disk", async (t) => {
+    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    await t.show("before", s.diagnostics("p1/main.cpp"));
+    t.disk.edit("p2/util.cppm", { replace: "export module util;", with: "export module other;" });
+    expect(await s.poll("workspace")).toBe(1);
+    expect(await s.diagnostics("p1/main.cpp")).toEqual([]);
+});
+
+// A tool deletes p2's util.
+test("removed from disk", async (t) => {
+    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    await t.show("before", s.diagnostics("p1/main.cpp"));
+    t.disk.rm("p2/util.cppm");
+    expect(await s.poll("workspace")).toBe(1);
+    expect(await s.diagnostics("p1/main.cpp")).toEqual([]);
+});

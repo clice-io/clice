@@ -205,8 +205,8 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     }
     // The last round's failed import stands while this one waits: an
     // importer explains its diagnostics from it meanwhile. An import ready
-    // early can have lost its PCM by the time the last one is, and be
-    // rebuilding it: the key and the build read what each import built.
+    // early can have lost its PCM by the time the last one is, evicted or
+    // being rebuilt: the key and the build read what each import built.
     for(bool built = false; !built;) {
         for(auto dep: deps.resolved) {
             switch(co_await ctx.depend(node(dep))) {
@@ -223,9 +223,13 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
                 case DependResult::Cancelled: co_return RoundOutcome::Stale;
             }
         }
-        built = llvm::all_of(deps.resolved, [&](Fid dep) {
-            return !project.pcm_builds.find(dep)->second.path.empty();
-        });
+        built = true;
+        for(auto dep: deps.resolved) {
+            auto& build = project.pcm_builds.find(dep)->second;
+            if(build.path.empty() || drop_evicted(dep, build)) {
+                built = false;
+            }
+        }
     }
 
     // Copied before any suspension below: while a PCM build is awaited, a
@@ -465,21 +469,27 @@ const kota::ipc::Error* PCMFamily::crashed(Fid module) {
     return &it->second.error;
 }
 
+bool PCMFamily::drop_evicted(Fid module, PCMBuild& build) {
+    if(build.path.empty() || vfs::exists(build.path)) {
+        return false;
+    }
+    // Artifact tier only: the blob vanished, its content did not, so
+    // importers' committed results stay valid. A full invalidate() here
+    // would void the very consumer round that is revalidating before
+    // rebuilding its imports — under a cache budget smaller than the
+    // working set, that voids and respawns the waiter forever.
+    build.path.clear();
+    build.blob.clear();
+    graph.mark_dirty(node(module));
+    return true;
+}
+
 bool PCMFamily::revalidate_blobs() {
     bool evicted = false;
     for(auto& [pid, build]: project.pcm_builds) {
-        if(build.path.empty() || vfs::exists(build.path)) {
-            continue;
+        if(drop_evicted(pid, build)) {
+            evicted = true;
         }
-        // Artifact tier only: the blob vanished, its content did not, so
-        // importers' committed results stay valid. A full invalidate() here
-        // would void the very consumer round that is revalidating before
-        // rebuilding its imports — under a cache budget smaller than the
-        // working set, that voids and respawns the waiter forever.
-        build.path.clear();
-        build.blob.clear();
-        graph.mark_dirty(node(pid));
-        evicted = true;
     }
     if(!evicted) {
         return false;

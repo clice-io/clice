@@ -1010,18 +1010,21 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             // interface lies nearest the file: the fewest directories up
             // from it to one holding the interface.
             auto directory = path::parent_path(path);
-            auto distance = [&](llvm::StringRef name) {
+            auto up_to = [&](Fid provider) {
                 std::uint32_t up = 0;
-                if(name.starts_with(":")) {
-                    return up;
-                }
-                auto interface = llvm::StringRef(
-                    project.file_table.resolve(project.dep_graph.lookup_module(name).front()));
+                auto interface = llvm::StringRef(project.file_table.resolve(provider));
                 path::walk_ancestors(directory, "", [&](llvm::StringRef dir) {
                     up += 1;
                     return !path::under(interface, dir);
                 });
                 return up;
+            };
+            auto distance = [&](llvm::StringRef name) {
+                if(name.starts_with(":")) {
+                    return std::uint32_t(0);
+                }
+                return std::ranges::min(project.dep_graph.lookup_module(name) |
+                                        std::views::transform(up_to));
             };
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());

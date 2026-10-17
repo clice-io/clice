@@ -143,18 +143,12 @@ void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
     // A rescan that introduced a module declaration may have given the
     // name its first provider: consumers that scanned it unresolved hold
     // edges to its sentinel, not to any real node a module-graph cascade
-    // could reach. A name provided already gained one more: the importers
-    // of the others take the nearest again.
+    // could reach.
     if(!new_module.empty()) {
-        auto providers = project.dep_graph.lookup_module(new_module);
-        if(providers.size() == 1) {
+        if(project.dep_graph.lookup_module(new_module).size() == 1) {
             provider_appeared(new_module, dirty);
         }
-        for(auto other: llvm::to_vector(providers)) {
-            if(other != path_id) {
-                cascade_compile_graph(other, dirty);
-            }
-        }
+        cascade_providers(new_module, path_id, dirty);
     }
 
     // The dropped name's consumers hold edges to this provider's real
@@ -163,6 +157,15 @@ void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
     // no cache entry for its staleness check to see.
     if(!old_module.empty()) {
         cascade_compile_graph(path_id, dirty);
+        cascade_providers(old_module, path_id, dirty);
+    }
+}
+
+void Invalidator::cascade_providers(llvm::StringRef module_name, Fid except, DirtySet& dirty) {
+    for(auto provider: llvm::to_vector(project.dep_graph.lookup_module(module_name))) {
+        if(provider != except) {
+            cascade_compile_graph(provider, dirty);
+        }
     }
 }
 
@@ -264,6 +267,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // A removed module unit takes its PCM with it: importers'
                 // build products went stale.
                 cascade_compile_graph(path_id, dirty);
+                cascade_providers(std::string(project.dep_graph.module_of(path_id)),
+                                  path_id,
+                                  dirty);
                 // Any reindex reason recorded before the removal — e.g. a
                 // DiskChanged observed moments earlier — is dropped: there
                 // is nothing to reindex any more, and the file's shard stays
