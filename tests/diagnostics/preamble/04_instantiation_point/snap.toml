@@ -1,0 +1,18 @@
+[test."main.cpp"]
+wrong = "clang instantiates the template at the end of the file, where argument-dependent lookup finds main.cpp's describe; the precompiled preamble instantiates it where the preamble ends"
+diagnostics = [
+    {
+        at = '#include ⟦"lib.h"⟧',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'describe'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+        related = [
+            { at = "lib.h │ ⟦describe⟧(value);", message = "error occurred here" },
+            {
+                at = "lib.h │ lib::⟦show⟧(app::Point{});",
+                message = "in instantiation of function template specialization 'lib::show<app::Point>' requested here",
+            },
+        ],
+    },
+]
