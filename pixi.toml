@@ -299,7 +299,7 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 [feature.format.dependencies]
 ruff = "*"
-tombi = "*"
+tombi = "==1.8.5"
 stylua = "*"
 fd-find = "*"
 prettier = "*"
@@ -317,16 +317,18 @@ format-yaml = """
 fd -H -e yaml -e yml -E '*.snap.yml' -X prettier --write && \
 fd -H "^\\.clang-(format|tidy)$" -X prettier --write --parser yaml
 """
-format = { depends-on = [
-    "format-cpp",
-    "format-python",
-    "format-lua",
-    "format-web",
-    "format-markdown",
-    "format-json",
-    "format-toml",
-    "format-yaml"
-] }
+format = {
+    depends-on = [
+        "format-cpp",
+        "format-python",
+        "format-lua",
+        "format-web",
+        "format-markdown",
+        "format-json",
+        "format-toml",
+        "format-yaml"
+    ]
+}
 
 # ============================================================================== #
 #                                     LINT                                       #

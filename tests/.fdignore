@@ -1,6 +1,8 @@
 # Case inputs are test data: repository formatting never rewrites them.
-# A case's test.ts, README.md and project.jsonc are code and docs, formatted as such.
+# A case's test.ts, README.md and project.jsonc are code and docs, formatted as
+# such, and its snap.toml is written as tombi formats it.
 /*/*/*/*
 !/*/*/*/test.ts
 !/*/*/*/README.md
 !/*/*/*/project.jsonc
+!/*/*/*/snap.toml

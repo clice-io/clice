@@ -1,12 +1,18 @@
 # tombi.toml
 
-# Case inputs are test data the case framework writes in TOML 1.1 (multi-line
-# inline tables); like tests/.fdignore, tooling neither lints nor rewrites them.
-[files]
-exclude = ["tests/*/*/*/**"]
+toml-version = "v1.1.0"
 
 [format.rules]
 indent-style = "space"
 indent-width = 4
 line-width = 120
 string-quote-style = "preserve"
+
+# Case inputs are test data, some malformed on purpose: like tests/.fdignore,
+# tooling neither lints nor rewrites them. snap.toml is the exception: the case
+# framework writes it as tombi formats it.
+[[overrides]]
+files.include = ["tests/*/*/*/**"]
+files.exclude = ["tests/*/*/*/snap.toml"]
+format.enabled = false
+lint.enabled = false

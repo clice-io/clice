@@ -33,7 +33,7 @@ jobs:
         with:
           filters: |
             format:
-              - '**/*.{h,c,cc,cpp,cppm,hpp,ts,js,lua,md,yml,yaml,jsonc}'
+              - '**/*.{h,c,cc,cpp,cppm,hpp,ts,js,lua,md,yml,yaml,jsonc,toml}'
             docs:
               - 'docs/**'
             vscode:
