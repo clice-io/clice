@@ -351,6 +351,11 @@ async function sweepFile(
         let errors: string[];
         try {
             for (const ask of compared) {
+                // A run that crashed or hung once on the file does again at
+                // its other places, and each costs up to its bound.
+                if ([...answers.values()].some((each) => each.stopped !== undefined)) {
+                    break;
+                }
                 answers.set(ask.label, await answer(clientOf(ask), ask));
             }
             // A file importing a module through a header compiles with
@@ -500,7 +505,8 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
                     continue;
                 }
                 const [file, filePlaces] = next;
-                process.stderr.write(`sweep ${file}\n`);
+                const heap = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+                process.stderr.write(`sweep ${file} (runner heap ${String(heap)} MB)\n`);
                 await sweepFile(options, server, file, filePlaces, run);
             }
         };

@@ -105,26 +105,40 @@ export function report(now: Results, before?: Results): string {
         "| --- | --- | --- |",
         ...rows(now, before).map((row) => `| ${row.join(" | ")} |`),
     ];
+    const where = (failure: Failure) =>
+        [failure.file, failure.request]
+            .filter((part) => part !== undefined && part !== "")
+            .join(", ") || failure.kind;
     for (const kind of Object.keys(KINDS) as Failure["kind"][]) {
         const failures = now.failures.filter((failure) => failure.kind === kind);
         if (failures.length === 0) {
             continue;
         }
         lines.push("", `## ${KINDS[kind]} (${String(failures.length)})`);
+        // One cause failing at many places (a clice that dies on every
+        // request) is shown once, with the places it failed at.
+        const byDetail = new Map<string, { first: Failure; others: Failure[] }>();
         for (const failure of failures) {
-            const where = [failure.file, failure.request]
-                .filter((part) => part !== undefined && part !== "")
-                .join(", ");
+            const group = byDetail.get(failure.detail);
+            if (group === undefined) {
+                byDetail.set(failure.detail, { first: failure, others: [] });
+            } else {
+                group.others.push(failure);
+            }
+        }
+        for (const [detail, { first, others }] of byDetail) {
             lines.push(
                 "",
-                `### ${where === "" ? kind : where}`,
-                "",
-                fence(failure.detail),
-                "",
-                "Reproduce:",
-                "",
-                fence(failure.repro),
+                `### ${where(first)}${others.length === 0 ? "" : ` and ${String(others.length)} more`}`,
             );
+            if (others.length > 0) {
+                lines.push(
+                    "",
+                    ...others.slice(0, 50).map((failure) => `- ${where(failure)}`),
+                    ...(others.length > 50 ? [`- ...`] : []),
+                );
+            }
+            lines.push("", fence(detail), "", "Reproduce:", "", fence(first.repro));
         }
     }
     if (now.compilerRejects.length > 0) {

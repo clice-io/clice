@@ -176,6 +176,31 @@ describe("report", () => {
         expect(text).toContain("run it");
     });
 
+    test("one cause at many places is shown once", () => {
+        const crash = (file: string) => ({
+            kind: "crash" as const,
+            file,
+            request: "hover p0",
+            detail: "clice inspect exited SIGKILL",
+            repro: `run ${file}`,
+        });
+        const text = report({
+            job: "p",
+            about: "v1",
+            commit: "c",
+            clice: "k",
+            seed: "s",
+            compilerRejects: [],
+            logErrors: [],
+            failures: [crash("a.c"), crash("b.c"), crash("c.c")],
+        });
+        expect(text).toContain("## Crashes (3)");
+        expect(text).toContain("### a.c, hover p0 and 2 more\n\n- b.c, hover p0\n- c.c, hover p0");
+        expect(text.match(/exited SIGKILL/g)).toHaveLength(1);
+        expect(text).toContain("run a.c");
+        expect(text).not.toContain("run b.c");
+    });
+
     test("a detail holding a code block keeps its fence", () => {
         const results: Results = {
             job: "p",
