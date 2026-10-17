@@ -1449,8 +1449,12 @@ void collect_locals(BlobView root, llvm::DenseMap<SymbolHash, LocalSymbol>& loca
         auto identity = table.at(k);
         auto [it, inserted] = locals.try_emplace(table.hash_of(k), own(identity));
         // Variants may see different facts of one symbol (a definition
-        // behind `#ifdef`); like the project table, the union is kept.
+        // behind `#ifdef`); like the project table, the union is kept, and
+        // the token kind a defining variant gives.
         if(!inserted) {
+            if(has_flag(identity.flags, SymbolFlags::HasDefinition)) {
+                it->second.token_class.kind = identity.token_class.kind;
+            }
             it->second.flags |= identity.flags;
             it->second.token_class.modifiers |= identity.token_class.modifiers;
         }
