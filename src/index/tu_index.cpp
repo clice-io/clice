@@ -1777,11 +1777,7 @@ public:
                 project_bases(record);
             }
         }
-        // A preamble's expansions are its unit's to index, and its index
-        // serves no instantiations.
-        if(!extras) {
-            project_expansions();
-        }
+        project_expansions();
         auto instantiations_ms = instantiations_timer.ms_f();
 
         ScopedTimer finish_timer;
