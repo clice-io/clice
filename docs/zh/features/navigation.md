@@ -194,7 +194,7 @@ tests/navigation/declaration/06_signature_spelling
 
 在与声明不再匹配的定义上执行“跳转到声明”，会跳转到与它分离的那个声明
 
-只在一侧改动参数时，定义和头文件中的声明就成了两个函数，定义也就没有了自己的声明。在这样的定义上执行“跳转到声明”，会退而列出同一作用域中同名且没有定义的函数：也就是需要做同样修改的那个声明。自身已有定义的重载不在候选之列。
+只在一侧改动参数时，定义和头文件中的声明就成了两个函数，定义也就没有了自己的声明。在这样的定义上执行“跳转到声明”，会退而列出同一作用域中名称和链接都与它相同、却没有定义的函数：也就是需要做同样修改的那个声明。自身已有定义的重载不在候选之列；对 `static` 函数而言，具有外部链接的函数也不在其列；而在类中定义的方法，从来就没有与之分离的声明。
 
 ```case
 tests/navigation/declaration/07_changed_signatures
@@ -364,7 +364,7 @@ tests/navigation/implementation/03_non_virtual
 
 从基类跳转到所有派生类
 
-在基类名称上执行“跳转到实现”，会列出从该类派生的类。
+在基类名称上执行“跳转到实现”，会列出直接或经由其他派生类从该类派生的类。
 
 ```case
 tests/navigation/implementation/04_derived_classes
@@ -504,7 +504,7 @@ tests/navigation/references/08_labels
 
 在重写方法上执行“查找引用”，结果包含通过它所重写的方法发起的调用，因为这些调用可能分派到它
 
-`shape.area()` 在 `Shape&` 上调用时可能执行 `Circle::area`，因此它属于该重写方法的引用。通过 `Circle` 发起的调用绝不会执行 `Shape::area`，因此它不属于被重写方法的引用。
+`shape.area()` 在 `Shape&` 上调用时可能执行 `Circle::area`，因此它属于该重写方法的引用。通过 `Circle` 发起的调用绝不会执行 `Shape::area`，因此它不属于被重写方法的引用；重写方法自身函数体中的 `Shape::area()` 也不属于该重写方法的引用，因为它指名的是被重写的方法。
 
 ```case
 tests/navigation/references/13_override_calls
@@ -1228,9 +1228,9 @@ tests/navigation/call_hierarchy/05_qualified_names
 
 **经由重写方法的调用**
 
-通过虚方法发起的调用，是它可能分派到的每个重写方法的传入调用；通过重写方法发起的调用，则不是它所重写方法的传入调用
+通过虚方法发起的调用会到达它可能分派到的每个重写方法，带限定的调用只到达它指名的那个方法
 
-`b.draw()` 在 `Base&` 上调用时，可能执行 `Base::draw` 或 `Derived::draw`，因此两者都会把这次调用列为传入调用。`d.draw()` 在 `Derived&` 上调用时，执行的是 `Derived::draw` 或更下层派生类中的重写方法，绝不会是 `Base::draw`，因此只有该重写方法会列出这次调用。
+`b.draw()` 在 `Base&` 上调用时，可能执行 `Base::draw` 或 `Derived::draw`，因此两者都会把这次调用列为传入调用。`d.draw()` 在 `Derived&` 上调用时，执行的是 `Derived::draw` 或更下层派生类中的重写方法，绝不会是 `Base::draw`，因此只有该重写方法会列出这次调用。`Base::draw()` 无论出现在重写方法的函数体中还是别处，都只执行 `Base::draw`；而 `Group` 中的 `child->draw()` 两者都可能到达。
 
 ```case
 tests/navigation/call_hierarchy/06_virtual_dispatch
@@ -1282,7 +1282,7 @@ tests/navigation/call_hierarchy/09_forwarding_factories
 
 函数的局部变量和参数没有调用层次结构条目
 
-能使用它们的只有声明它们的那个函数，因此为它们提供条目，也只会得到一个事先就已知道的调用方。
+能使用它们的只有声明它们的那个函数，因此为它们提供条目，也只会得到一个事先就已知道的调用方。在函数内声明的类，其字段仍保有自己的条目：类的方法会使用这些字段。
 
 ```case
 tests/navigation/call_hierarchy/15_function_locals
@@ -1648,7 +1648,7 @@ tests/workspace_symbol/projects/01_closed_files
 
 并排打开同一份代码的两个检出时，每个符号只列出一次，取自正在编辑的那个文件夹
 
-把同一仓库的两个 worktree 作为工作区文件夹打开时，它们在各自文件夹中的相同位置含有相同的符号。搜索只列出每个符号一次，取自有已打开文档的那个文件夹中的副本：也就是编辑器正在工作的那一个。
+把同一仓库的两个 worktree 作为工作区文件夹打开时，它们的文件文本相同，相同的符号也位于相同的位置。搜索只列出每个符号一次，取自有已打开文档的那个文件夹中的副本：也就是编辑器正在工作的那一个。某个文件夹中的文件内容若有不同，其中的符号就是这个文件夹自己的，同样会列出。
 
 ```case
 tests/workspace_symbol/projects/03_worktree_copies

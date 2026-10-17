@@ -208,9 +208,11 @@ Go-to-declaration on a definition that no longer matches its declaration reaches
 
 When a parameter changes on one side only, the definition and the header
 declaration become two functions, and the definition has no declaration of
-its own. Go-to-declaration on it falls back to the functions of its name in
-its scope that nothing defines: the declaration that wants the same edit. An
-overload with a definition of its own is no candidate.
+its own. Go-to-declaration on it falls back to the functions of its name and
+linkage in its scope that nothing defines: the declaration that wants the
+same edit. An overload with a definition of its own is no candidate, nor is a
+function of external linkage for a `static` one, and a method defined in
+its class never had a declaration apart.
 
 ```case
 tests/navigation/declaration/07_changed_signatures
@@ -385,7 +387,7 @@ tests/navigation/implementation/03_non_virtual
 Base classes navigate to every derived class
 
 Go-to-implementation on a base class name lists the classes that derive
-from it.
+from it, directly or through another derived class.
 
 ```case
 tests/navigation/implementation/04_derived_classes
@@ -534,7 +536,9 @@ Find references on an override includes the calls made through the methods it ov
 
 `shape.area()` on a `Shape&` may run `Circle::area`, so it is among the
 references of the override. A call through `Circle` never runs
-`Shape::area`, so it is not among the references of the method overridden.
+`Shape::area`, so it is not among the references of the method overridden;
+nor is `Shape::area()` in the override's own body, which names the method
+overridden.
 
 ```case
 tests/navigation/references/13_override_calls
@@ -1318,12 +1322,13 @@ tests/navigation/call_hierarchy/05_qualified_names
 
 **Calls through an override**
 
-A call through a virtual method is an incoming call of every override it may dispatch to; a call through an override is not one of the method it overrides
+A call through a virtual method reaches every override it may dispatch to, a qualified call only the method it names
 
 `b.draw()` on a `Base&` may run `Base::draw` or `Derived::draw`, so both
 list it among their incoming calls. `d.draw()` on a `Derived&` runs
 `Derived::draw` or an override below it, never `Base::draw`, so only the
-override lists it.
+override lists it. `Base::draw()`, in an override's body or anywhere else,
+runs `Base::draw` alone, while `Group`'s `child->draw()` may reach either.
 
 ```case
 tests/navigation/call_hierarchy/06_virtual_dispatch
@@ -1377,7 +1382,8 @@ tests/navigation/call_hierarchy/09_forwarding_factories
 A function's local variables and parameters get no call hierarchy item
 
 The only function that can use them is the one declaring them, so an item
-for them would have one caller, known in advance.
+for them would have one caller, known in advance. A field of a class
+declared in a function keeps its item: the class's methods use it.
 
 ```case
 tests/navigation/call_hierarchy/15_function_locals
@@ -1757,8 +1763,9 @@ tests/workspace_symbol/projects/01_closed_files
 Two checkouts of the same code opened side by side list each symbol once, from the folder being edited
 
 Two worktrees of one repository opened as workspace folders hold the same
-symbols at the same places in their folders. Search lists each once, the copy
-of the folder with an open document: the one the editor works in.
+symbols at the same places in the same text. Search lists each once, the
+copy of the folder with an open document: the one the editor works in. A
+folder whose file reads otherwise holds a symbol of its own, listed too.
 
 ```case
 tests/workspace_symbol/projects/03_worktree_copies

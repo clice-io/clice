@@ -60,7 +60,7 @@ Each question names a symbol or a file and answers with what the index knows abo
 
 **References of a symbol**
 
-Every place naming a method, its declarations included, each with the function it lies in
+Every place naming a method, its declarations and the calls through the method it overrides included, each with the function it lies in
 
 ```case
 tests/query/basics/01_references
@@ -84,7 +84,7 @@ tests/query/basics/02_symbol_search
 
 **Questions about symbols**
 
-Look a symbol up by name, by its id or by a line, and ask where it is defined and used, who calls it, what it derives from, what derives from it and what a file declares
+Look a symbol up by name, by its id or by a line, and ask where it is defined and used, who calls it, what it derives from, what implements it and what a file declares
 
 ```case
 tests/query/basics/03_symbol_questions
