@@ -679,8 +679,14 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
             case ArgClass::Diagnostics: render_portable(arg); break;
             case ArgClass::Unknown: append(arg.spelling); break;
             case ArgClass::Input: append("\x01input"); break;
-            case ArgClass::Codegen:
-            case ArgClass::Discarded: break;
+            case ArgClass::Codegen: break;
+            // The precompiled header a command reads decides what it
+            // compiles, though no render passes it on.
+            case ArgClass::Discarded:
+                if(arg.opt_id == option::OPT_include_pch) {
+                    render_portable(arg);
+                }
+                break;
         }
     }
 }
@@ -717,10 +723,7 @@ void CompilationDatabase::rebuild_entry_list() {
     writers.clear();
     for(auto& entry: entry_list) {
         if(auto output = pch_output(entry.config)) {
-            auto& files = writers[file_table.intern(*output)];
-            if(!llvm::is_contained(files, entry.file)) {
-                files.push_back(entry.file);
-            }
+            writers[file_table.intern(*output)].push_back(entry);
         }
     }
 }
@@ -1084,9 +1087,10 @@ llvm::SmallVector<Spelling, 2> CompilationDatabase::pch_inputs(ConfigID id) cons
     return inputs;
 }
 
-llvm::ArrayRef<Fid> CompilationDatabase::pch_writers(Fid pch) const {
+llvm::ArrayRef<CompilationEntry> CompilationDatabase::pch_writers(Fid pch) const {
     auto it = writers.find(pch);
-    return it != writers.end() ? llvm::ArrayRef<Fid>(it->second) : llvm::ArrayRef<Fid>();
+    return it != writers.end() ? llvm::ArrayRef<CompilationEntry>(it->second)
+                               : llvm::ArrayRef<CompilationEntry>();
 }
 
 bool CompilationDatabase::forces_c_family(ConfigID id) const {

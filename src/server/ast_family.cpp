@@ -968,10 +968,15 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // forces in to parse what it holds.
         std::optional<std::string> base_pch;
         if(readonly != ReadonlyMode::On) {
-            if(auto request = pch.command_pch(resolution.ref.config)) {
-                auto key = request->pch_key;
-                switch(co_await ctx.depend(pch.prepare(std::move(*request)))) {
-                    case DependResult::Ready: base_pch = key; break;
+            if(auto unit = contexts.commands.pch_unit(path_id, resolution)) {
+                auto request = pch.precompiled_header(*unit);
+                auto key = request.pch_key;
+                switch(co_await ctx.depend(pch.prepare(std::move(request)))) {
+                    case DependResult::Ready:
+                        if(!pch.reads(key, path_id)) {
+                            base_pch = key;
+                        }
+                        break;
                     case DependResult::Failed: break;
                     case DependResult::Cancelled: co_return RoundOutcome::Stale;
                 }
@@ -1417,9 +1422,11 @@ kota::task<std::optional<std::string>>
     // The precompiled header the build declares for the command, as a
     // compile round takes it (see run()).
     std::optional<std::string> base;
-    if(auto request = pch.command_pch(resolution.ref.config)) {
-        auto key = request->pch_key;
-        if(co_await pch.acquire(std::move(*request)) == PCHFamily::Outcome::Ready) {
+    if(auto unit = contexts.commands.pch_unit(path_id, resolution)) {
+        auto request = pch.precompiled_header(*unit);
+        auto key = request.pch_key;
+        if(co_await pch.acquire(std::move(request)) == PCHFamily::Outcome::Ready &&
+           !pch.reads(key, path_id)) {
             base = key;
         }
     }

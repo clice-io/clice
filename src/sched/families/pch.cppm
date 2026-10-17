@@ -4,7 +4,6 @@ module;
 
 module clice:sched.families.pch;
 
-import :project.command_resolver;
 import :project.project;
 import :sched.blame_budget;
 import :sched.graph;
@@ -28,7 +27,7 @@ namespace clice {
 /// failed acquisition's crash from crashed() and books it for itself.
 class PCHFamily {
 public:
-    PCHFamily(TaskGraph& graph, Project& project, CommandResolver& commands, WorkerPool& pool);
+    PCHFamily(TaskGraph& graph, Project& project, WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic build register their own runner under
@@ -54,8 +53,8 @@ public:
         /// depends on.
         llvm::SmallVector<Fid> modules;
         /// The key of the precompiled header the build declares for the
-        /// command (command_pch), built already: the preamble's PCH is
-        /// built over it, and what it read is the preamble's input too.
+        /// command (precompiled_header), built already: the preamble's PCH
+        /// is built over it, and what it read is the preamble's input too.
         std::string base;
         /// See worker::BuildPCHParams::whole_file.
         bool whole_file = false;
@@ -78,11 +77,16 @@ public:
     /// caller.
     kota::task<Outcome> acquire(Request request);
 
-    /// The precompiled header `config`'s command reads that the build
-    /// writes (Build::pch_unit), as the request for clice's own build of
-    /// it: the whole file of the unit writing it, under the unit's
-    /// command. Nullopt when the command reads none.
-    std::optional<Request> command_pch(ConfigID config);
+    /// The request for clice's own build of the precompiled header the
+    /// command of `unit` writes (Build::pch_unit): the unit's whole file,
+    /// under that command.
+    Request precompiled_header(const CommandRef& unit);
+
+    /// Whether the PCH registered under `key` read `file`: a parse of that
+    /// very file cannot load it — clang refuses a PCH whose input the parse
+    /// serves from a buffer, and the guard the PCH defines would skip the
+    /// file's text.
+    bool reads(llvm::StringRef key, Fid file) const;
 
     /// The stash-only half of acquire, for waits that must be recorded as
     /// graph edges: intern the key, re-dirty a stale clean node, and
@@ -153,10 +157,10 @@ public:
     /// loaded-state budget (see enforce_loaded_budget).
     std::shared_ptr<index::TUIndex> preamble_state(llvm::StringRef pch_key);
 
-    /// Unload pch.idx indexes beyond the budget (open documents + 2),
-    /// least recently used first. Without this every preamble key ever
-    /// touched keeps its blob mapped for the server's lifetime — tens of
-    /// MB per key on real projects, released by neither didClose nor
+    /// Unload pch.idx indexes beyond the budget (two per open document,
+    /// plus 2), least recently used first. Without this every preamble key
+    /// ever touched keeps its blob mapped for the server's lifetime — tens
+    /// of MB per key on real projects, released by neither didClose nor
     /// store eviction. Unloading only drops the entry's reference:
     /// consumers holding the shared_ptr finish safely, and the next use
     /// reopens the blob from disk.
@@ -204,7 +208,6 @@ private:
 
     TaskGraph& graph;
     Project& project;
-    CommandResolver& commands;
     WorkerPool& pool;
 
     /// Move a pch key to the front of the loaded-state LRU. Called

@@ -139,6 +139,13 @@ public:
                                std::vector<std::string>& arguments,
                                const CommandRequest& request = {});
 
+    /// Build::pch_unit for the command `resolution` and `request` gave
+    /// `path_id`: edited by the rules of the files it was resolved for (a
+    /// borrowing header's and its host's) and the request's extras.
+    std::optional<CommandRef> pch_unit(Fid path_id,
+                                       const Resolution& resolution,
+                                       const CommandRequest& request = {});
+
 private:
     /// A header's self-containment result. NeedsContext carries the
     /// content hash it was scored on — persisted so a stale result is

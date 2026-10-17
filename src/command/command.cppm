@@ -455,8 +455,8 @@ public:
     /// and the `.gch` that clang and GCC load in the header's place.
     llvm::SmallVector<Spelling, 2> pch_inputs(ConfigID id) const;
 
-    /// The files whose entries write `pch` (pch_output).
-    llvm::ArrayRef<Fid> pch_writers(Fid pch) const;
+    /// The entries writing `pch` (pch_output), in storage order.
+    llvm::ArrayRef<CompilationEntry> pch_writers(Fid pch) const;
 
     /// Identity hash of a config (Frontend view + slot position + directory
     /// + schema salt), with the directory and the option values under the
@@ -589,9 +589,9 @@ private:
     /// Every source's entries, sorted by (file, source, ordinal).
     std::vector<CompilationEntry> entry_list;
 
-    /// The files writing each precompiled header (see pch_writers), rebuilt
-    /// with entry_list.
-    llvm::DenseMap<Fid, llvm::SmallVector<Fid, 1>> writers;
+    /// The entries writing each precompiled header (see pch_writers),
+    /// rebuilt with entry_list.
+    llvm::DenseMap<Fid, llvm::SmallVector<CompilationEntry, 1>> writers;
 
     /// The path a command gives its input file as: a database's spelling
     /// of it (CompilationEntry::spelling), else its identity.

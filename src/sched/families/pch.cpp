@@ -15,11 +15,8 @@ import :worker.protocol;
 
 namespace clice {
 
-PCHFamily::PCHFamily(TaskGraph& graph,
-                     Project& project,
-                     CommandResolver& commands,
-                     WorkerPool& pool) :
-    graph(graph), project(project), commands(commands), pool(pool) {}
+PCHFamily::PCHFamily(TaskGraph& graph, Project& project, WorkerPool& pool) :
+    graph(graph), project(project), pool(pool) {}
 
 void PCHFamily::register_runner() {
     graph.register_family(Family::PCH,
@@ -34,15 +31,14 @@ std::uint64_t PCHFamily::intern(llvm::StringRef pch_key) {
     return it->second;
 }
 
-std::optional<PCHFamily::Request> PCHFamily::command_pch(ConfigID config) {
-    auto unit = project.build.pch_unit(config);
-    if(!unit) {
-        return std::nullopt;
-    }
+PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit) {
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
-    Request request{.file = std::string(project.file_table.resolve(*unit)), .whole_file = true};
-    commands.resolve_command(*unit, request.directory, request.arguments);
+    Request request{.file = std::string(project.file_table.resolve(unit.file)),
+                    .directory = project.cdb.config(unit.config).directory,
+                    .whole_file = true};
+    auto argv = project.cdb.render(unit);
+    request.arguments.assign(argv.begin(), argv.end());
     request.pch_key = cache_key({clang::getClangFullVersion(),
                                  pch_build_rule,
                                  project.build.active_configuration(),
@@ -50,6 +46,12 @@ std::optional<PCHFamily::Request> PCHFamily::command_pch(ConfigID config) {
                                  request.file,
                                  canonicalize(request.arguments)});
     return request;
+}
+
+bool PCHFamily::reads(llvm::StringRef key, Fid file) const {
+    auto it = project.pch_cache.find(key);
+    return it != project.pch_cache.end() &&
+           llvm::any_of(it->second.deps, [&](const DepState& dep) { return dep.path_id == file; });
 }
 
 NodeId PCHFamily::prepare(Request request) {
@@ -423,16 +425,18 @@ void PCHFamily::touch_loaded_state(llvm::StringRef pch_key) {
 }
 
 void PCHFamily::enforce_loaded_budget() {
-    // Two extra slots over the open-document count: a closed file's
-    // recently used state survives a quick close/reopen, and a shared key
-    // serving several documents stays warm while its consumers churn.
+    // Two keys per open document — its preamble's and the build's
+    // precompiled header that preamble is built over — and two extra
+    // slots: a closed file's recently used state survives a quick
+    // close/reopen, and a shared key serving several documents stays warm
+    // while its consumers churn.
     // Open documents' keys always fit the budget, so an unload can only
     // hit keys past the working set; the reload an unlucky consumer then
     // pays (mmap + verification, on the event loop) is the accepted cost
     // of bounding tens of MB per key.
     // Unconnected (tests, tools) assumes a small editor-like working set.
     constexpr std::size_t default_open_documents = 6;
-    std::size_t budget = 2 + (open_documents ? open_documents() : default_open_documents);
+    std::size_t budget = 2 + 2 * (open_documents ? open_documents() : default_open_documents);
 
     std::size_t kept = 0;
     std::size_t i = 0;

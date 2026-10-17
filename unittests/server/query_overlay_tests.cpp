@@ -40,7 +40,7 @@ TaskGraph graph;
 PCMFamily pcm{graph, project, resolver, pool};
 ASTProjectionTable projections;
 IndexStore index_store{loop, project, resolver};
-PCHFamily pch{graph, project, resolver, pool};
+PCHFamily pch{graph, project, pool};
 TURunFamily turun{graph, project, resolver, pcm, pch, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 ServerLiveSources live{project, pch, session_store, projections};

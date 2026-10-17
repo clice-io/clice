@@ -358,6 +358,19 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     return finish(CommandSource::Fallback);
 }
 
+std::optional<CommandRef> CommandResolver::pch_unit(Fid path_id,
+                                                    const Resolution& resolution,
+                                                    const CommandRequest& request) {
+    llvm::SmallVector<CanonicalRef, 2> paths{project.file_table.resolve(path_id)};
+    if(resolution.host.valid()) {
+        paths.push_back(project.file_table.resolve(resolution.host));
+    }
+    return project.build.pch_unit(resolution.ref.config,
+                                  paths,
+                                  request.extra_prepend,
+                                  request.extra_append);
+}
+
 std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid header_path_id,
                                                                           const Selection* choice,
                                                                           bool synthesize) {
