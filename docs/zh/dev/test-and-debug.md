@@ -2,7 +2,7 @@
 
 ## 运行测试
 
-clice 有两个在每次改动时运行的测试套件：单元测试和用例。兼容性测试需要真实的构建系统和编译器，与编辑器测试一样单独运行。
+clice 有两个在每次改动时运行的测试套件：单元测试和用例。兼容性测试（需要真实的构建系统和编译器）、编辑器测试和每晚运行的真实项目测试都单独运行。
 
 全部测试依赖（用例和工具所需的 node/npm，以及 scripts/ 所需的 python）均由 pixi 管理，无需另行安装。
 
@@ -68,6 +68,18 @@ pixi run compat-test          # default RelWithDebInfo
 ```
 
 每个场景都按 CI 运行器镜像中的样子指定某一平台的编译器：Linux 上是发行版带版本号的 GCC 与 Clang，以及 bear、ccache、meson、ninja、xmake、bazel、zig、Emscripten、MinGW、RISC-V 和 Arm 交叉编译器，还有 pixi `cuda` 环境中的 nvcc（`pixi install -e cuda`）；Windows 上是 Visual Studio、LLVM 和 MinGW；macOS 上是 Apple clang 以及 Homebrew 的 GCC 和 LLVM。缺少工具的场景在本地跳过，在 CI 中则判为失败。clice 尚不支持的场景在 `unsupported` 中写明原因：它的检查被跳过，构建照常运行。CI 每次构建都会运行它，并每周针对最新的发布版本运行一次。
+
+## 真实项目
+
+每天夜里，main 分支上的 clice 会处理 `tests/nightly/projects.json` 中锁定版本的真实项目：分成四部分的 LLVM、Linux 内核、abseil、以 C++20 模块构建的 mp-units，以及 clice 自身，每一部分各用一个 CI 运行器（`nightly-projects.yml`）。每个作业先按项目自己的构建方式把它准备好（配置、生成头文件，或者完整构建一遍内核，由这次构建写出编译数据库），在缓存为空的情况下索引它，用编译器检查 clice 报告有错误的每个翻译单元，然后在抽样文件的相同位置向 `clice inspect` 和一个服务器发出相同的请求，比较两边的回答。崩溃、卡死、没有跑完的索引、失败的请求、编译器能编译而 clice 处理失败或报告有错误的翻译单元，以及两边回答不一致的位置，都会让作业失败；`tests/README.md` 列出了全部失败原因。作业摘要列出每个失败和复现它的命令，并附上前一晚的耗时、内存和索引大小作对照。
+
+```bash
+pixi run node tools/nightly/run.ts --jobs                    # the jobs
+CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice \
+  pixi run node tools/nightly/run.ts abseil --dir ~/nightly  # one job
+```
+
+`--steps index` 或 `--steps sweep` 只运行其中一半，`--file` 只扫描指定的文件，`--only` 只发送指定的请求。准备 LLVM 或内核需要很长的构建时间和数 GB 的磁盘空间。
 
 ## 调试
 
