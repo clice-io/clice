@@ -9,20 +9,36 @@ import type { DatabaseEntry } from "../compat/database.ts";
 import { runProcess } from "../client/process.ts";
 import { syntaxOnly } from "./database.ts";
 
-export interface Verdict {
-    unit: string;
-    accepted: boolean;
-    /// The compiler's first lines, when it rejects the unit.
+export interface CompilerCheck {
+    /// `unchecked`: the compiler could not be asked, `output` says why.
+    outcome: "accepted" | "rejected" | "unchecked";
+    /// The compiler's first lines, when it does not accept the unit.
     output: string;
 }
 
 /// Hang detection: a compile of one unit, the slowest a few minutes.
 const COMPILE_MS = 20 * 60_000;
 
-export async function confirm(
+/// The inputs a command reads that only the project's build writes, and
+/// that are missing: a response file (CMake's and Bazel's module maps) or a
+/// module file.
+export function missingInputs(args: readonly string[], directory: string): string[] {
+    return args
+        .flatMap((arg) => {
+            if (arg.startsWith("@")) {
+                return [arg.slice(1)];
+            }
+            const module = /^-fmodule-file=(?:[^=]+=)?(.+)$/.exec(arg)?.[1];
+            return module === undefined ? [] : [module];
+        })
+        .filter((file) => !fs.existsSync(path.resolve(directory, file)));
+}
+
+/// Each unit (`item.unit`) with what the compiler says of it.
+export async function confirm<T extends { unit: string }>(
     entries: readonly DatabaseEntry[],
-    units: readonly string[],
-): Promise<Verdict[]> {
+    items: readonly T[],
+): Promise<(T & CompilerCheck)[]> {
     // By the file's real path: Bazel names a source through its execution
     // root, whose entries link back into the workspace clice names it by.
     const real = (file: string) => (fs.existsSync(file) ? fs.realpathSync(file) : file);
@@ -33,33 +49,38 @@ export async function confirm(
             byUnit.set(source, entry);
         }
     }
-    const queue = [...units];
-    const verdicts: Verdict[] = [];
+    const queue = [...items];
+    const checks: (T & CompilerCheck)[] = [];
+    const check = async (unit: string): Promise<CompilerCheck> => {
+        const entry = byUnit.get(real(unit));
+        if (entry === undefined) {
+            return { outcome: "unchecked", output: "no entry of the database names it" };
+        }
+        const [compiler, ...args] = syntaxOnly(entry);
+        const missing = missingInputs(args, entry.directory);
+        if (missing.length > 0) {
+            return {
+                outcome: "unchecked",
+                output: `its command reads what only the build writes: ${missing.join(", ")}`,
+            };
+        }
+        const result = await runProcess(compiler ?? "", args, {
+            cwd: entry.directory,
+            timeout: COMPILE_MS,
+        });
+        if (result.error !== undefined) {
+            return { outcome: "unchecked", output: result.error.message };
+        }
+        return {
+            outcome: result.status === 0 ? "accepted" : "rejected",
+            output: result.stderr.split("\n").slice(0, 12).join("\n"),
+        };
+    };
     const worker = async () => {
-        for (let unit = queue.shift(); unit !== undefined; unit = queue.shift()) {
-            const entry = byUnit.get(real(unit));
-            if (entry === undefined) {
-                verdicts.push({ unit, accepted: false, output: "no database entry names it" });
-                continue;
-            }
-            const [compiler, ...args] = syntaxOnly(entry);
-            const result = await runProcess(compiler ?? "", args, {
-                cwd: entry.directory,
-                timeout: COMPILE_MS,
-            });
-            verdicts.push({
-                unit,
-                accepted: result.status === 0,
-                output:
-                    result.status === 0
-                        ? ""
-                        : (result.error?.message ?? result.stderr)
-                              .split("\n")
-                              .slice(0, 12)
-                              .join("\n"),
-            });
+        for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
+            checks.push({ ...item, ...(await check(item.unit)) });
         }
     };
     await Promise.all(Array.from({ length: os.availableParallelism() }, worker));
-    return verdicts.sort((a, b) => (a.unit < b.unit ? -1 : 1));
+    return checks.sort((a, b) => (a.unit < b.unit ? -1 : 1));
 }

@@ -44,6 +44,13 @@ const { values, positionals } = parseArgs({
     allowPositionals: true,
 });
 
+// Memory is read from /proc, the kernel builds on Linux only, and the
+// runners are Linux.
+if (process.platform !== "linux") {
+    console.error("the nightly jobs run on Linux");
+    process.exit(2);
+}
+
 const projects = loadProjects();
 if (values.jobs) {
     console.log(
@@ -64,14 +71,7 @@ if (name === undefined || values.dir === undefined) {
     process.exit(2);
 }
 
-function list<T extends string>(
-    text: string | undefined,
-    known: readonly T[],
-    what: string,
-): Set<T> | undefined {
-    if (text === undefined) {
-        return undefined;
-    }
+function list<T extends string>(text: string, known: readonly T[], what: string): Set<T> {
     const items = text.split(",");
     const unknown = items.filter((item) => !(known as readonly string[]).includes(item));
     if (unknown.length > 0) {
@@ -81,10 +81,14 @@ function list<T extends string>(
     return new Set(items as T[]);
 }
 
-const steps = list<Step>(values.steps, ["index", "sweep"], "steps") ?? new Set<Step>();
-const only = list<Request>(values.only, [...REQUESTS, ...NAVIGATION, "diagnostics"], "requests");
-const dir = path.resolve(values.dir);
-fs.mkdirSync(dir, { recursive: true });
+const steps = list<Step>(values.steps, ["index", "sweep"], "steps");
+const only =
+    values.only === undefined
+        ? undefined
+        : list<Request>(values.only, [...REQUESTS, ...NAVIGATION, "errors"], "requests");
+fs.mkdirSync(values.dir, { recursive: true });
+// Build systems write the physical paths into their databases.
+const dir = fs.realpathSync(values.dir);
 
 const results = await runNightly({
     job: findJob(projects, name),

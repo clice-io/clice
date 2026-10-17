@@ -6,9 +6,10 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { entrySource } from "../compat/database.ts";
+import { entrySource, type DatabaseEntry } from "../compat/database.ts";
 import { REPO_ROOT } from "../repo.ts";
-import { levelOf, readLogs } from "../testing/logs/logs.ts";
+import { logFiles } from "../process_gate.ts";
+import { levelOf } from "../testing/logs/logs.ts";
 import { CRASHED_IN } from "../testing/server/serve.ts";
 import { confirm } from "./confirm.ts";
 import { jobDatabase } from "./database.ts";
@@ -25,12 +26,14 @@ export interface Failure {
         | "setup"
         | "crash"
         | "hang"
+        | "unfinished"
         | "index"
         | "compile"
         | "disagree"
         | "inspect"
         | "server"
-        | "anomaly";
+        | "anomaly"
+        | "runner";
     file?: string;
     request?: string;
     detail: string;
@@ -59,7 +62,7 @@ export interface Results {
     };
     sweep?: {
         files: number;
-        importers: number;
+        serverOnly: { file: string; why: string }[];
         requests: number;
         inspectSeconds: number;
         serverSeconds: number;
@@ -96,16 +99,30 @@ function cliceCommit(): string {
 /// outside it.
 function inside(checkout: string, file: string): string | null {
     const real = fs.existsSync(file) ? fs.realpathSync(file) : file;
-    const relative = path.relative(checkout, real);
+    const relative = path.relative(fs.realpathSync(checkout), real);
     return relative.startsWith("..") || path.isAbsolute(relative)
         ? null
         : relative.split(path.sep).join("/");
 }
 
 /// Crashes and anomalies in the logs of every clice process the job ran
-/// fail it; the other error-level lines are recorded.
-function scanLogs(checkout: string, results: Results, options: NightlyOptions): void {
-    for (const line of readLogs(checkout)) {
+/// fail it; the other error-level lines are recorded. The logs of earlier
+/// runs (`earlier`) are not this job's.
+function scanLogs(
+    checkout: string,
+    earlier: ReadonlySet<string>,
+    results: Results,
+    options: NightlyOptions,
+): void {
+    const lines = logFiles(checkout)
+        .filter((file) => !earlier.has(file))
+        .flatMap((file) =>
+            fs
+                .readFileSync(file, "utf8")
+                .split(/\r?\n/)
+                .map((text) => ({ file: path.basename(file), text })),
+        );
+    for (const line of lines) {
         const crashed = CRASHED_IN.exec(line.text);
         if (crashed !== null) {
             results.failures.push({
@@ -132,6 +149,167 @@ function scanLogs(checkout: string, results: Results, options: NightlyOptions): 
     }
 }
 
+/// A failure for each unit clice failed or reported errors on that the
+/// compiler compiles or cannot check; the others are the compiler's too.
+async function judgeUnits(
+    units: { unit: string; errors?: string[]; request?: string; repro: string }[],
+    entries: readonly DatabaseEntry[],
+    checkout: string,
+    results: Results,
+): Promise<void> {
+    for (const unit of await confirm(entries, units)) {
+        if (unit.outcome === "rejected") {
+            results.compilerRejects.push({ unit: unit.unit, output: unit.output });
+            continue;
+        }
+        const unchecked =
+            unit.outcome === "unchecked" ? [`the compiler could not check it: ${unit.output}`] : [];
+        results.failures.push({
+            kind: unit.errors === undefined ? "index" : "compile",
+            file: inside(checkout, unit.unit) ?? unit.unit,
+            ...(unit.request === undefined ? {} : { request: unit.request }),
+            detail: [
+                ...(unit.errors ?? ["the unit failed to index; the session log says why"]),
+                ...unchecked,
+            ].join("\n"),
+            repro: unit.repro,
+        });
+    }
+}
+
+function located(error: { file: string; line: number; column: number; message: string }): string {
+    return `${error.file === "" ? "" : `${error.file}:${String(error.line)}:${String(error.column)}: `}${error.message}`;
+}
+
+async function indexStep(
+    options: NightlyOptions,
+    checkout: string,
+    entries: readonly DatabaseEntry[],
+    results: Results,
+): Promise<void> {
+    if (fs.existsSync(path.join(checkout, ".clice"))) {
+        console.warn(
+            `${checkout}/.clice exists: the index starts warm, its numbers are no cold start`,
+        );
+    }
+    const run = await runIndex(options.clice, checkout);
+    const report = run.report;
+    const again = rerun(options, "--steps index");
+    if (run.hung !== undefined) {
+        results.failures.push({
+            kind: "hang",
+            detail: `no unit finished for half an hour; in flight:\n${run.hung.join("\n")}`,
+            repro: again,
+        });
+    } else if (report === undefined || (run.status !== 0 && run.status !== 1)) {
+        results.failures.push({
+            kind: "crash",
+            detail: `clice index ended with ${run.signal ?? `exit ${String(run.status)}`}:\n${run.stderr}`,
+            repro: again,
+        });
+    } else if (report.completed === undefined) {
+        results.failures.push({
+            kind: "unfinished",
+            detail: `a clice server already serves ${checkout}, and clice index handed the run to it: stop that server`,
+            repro: again,
+        });
+        return;
+    } else if (!report.completed || report.unsaved) {
+        results.failures.push({
+            kind: "unfinished",
+            detail: `clice index ${report.completed ? "could not save the index" : "ended before its run finished"} (exit ${String(run.status)}):\n${run.stderr}`,
+            repro: again,
+        });
+    }
+    if (report === undefined) {
+        return;
+    }
+    results.index = {
+        seconds: run.seconds,
+        units: report.indexedTus,
+        shards: report.shardCount,
+        shardBytes: report.shardBytes,
+        symbols: report.symbolCount,
+        cacheBytes: run.cacheBytes,
+        memory: run.memory,
+        compiledWithErrors: report.compiledWithErrors.length,
+        failed: report.failed.length,
+    };
+    await judgeUnits(
+        [
+            ...report.failed.map((unit) => ({ unit, repro: again })),
+            ...report.compiledWithErrors.map(({ unit, errors }) => ({
+                unit,
+                errors: errors.slice(0, 5).map(located),
+                repro: `cd ${checkout} && ${options.clice} inspect folding-range ${unit}`,
+            })),
+        ],
+        entries,
+        checkout,
+        results,
+    );
+}
+
+async function sweepStep(
+    options: NightlyOptions,
+    checkout: string,
+    entries: readonly DatabaseEntry[],
+    results: Results,
+): Promise<void> {
+    const { job } = options;
+    const units = entries.flatMap((entry) => inside(checkout, entrySource(entry)) ?? []);
+    const files =
+        options.files ?? sampleFiles(units, job.project.sample, `${options.seed} ${job.name}`);
+    const run = await sweep({
+        root: checkout,
+        files,
+        ...(options.only === undefined ? {} : { only: options.only }),
+    });
+    results.sweep = {
+        files: run.files.length,
+        serverOnly: run.serverOnly,
+        requests: run.requests,
+        inspectSeconds: run.inspectSeconds,
+        serverSeconds: run.serverSeconds,
+    };
+    for (const exit of run.serverExit) {
+        results.failures.push({
+            kind: exit.includes("did not exit within") ? "hang" : "crash",
+            detail: `the server's exit: ${exit}`,
+            repro: rerun(options, "--steps sweep"),
+        });
+    }
+    for (const failure of run.failures) {
+        results.failures.push({
+            kind: failure.kind,
+            file: failure.file,
+            request: failure.label,
+            detail: failure.detail,
+            repro: rerun(options, `--steps sweep --file ${failure.file} --only ${failure.request}`),
+        });
+    }
+    // A file the index step judged already is reported once.
+    const judged = new Set(
+        results.failures.flatMap((failure) => (failure.kind === "compile" ? [failure.file] : [])),
+    );
+    for (const reject of results.compilerRejects) {
+        judged.add(inside(checkout, reject.unit) ?? reject.unit);
+    }
+    await judgeUnits(
+        run.serverErrors
+            .filter(({ file }) => !judged.has(file))
+            .map(({ file, errors }) => ({
+                unit: path.join(checkout, file),
+                errors,
+                request: "errors",
+                repro: rerun(options, `--steps sweep --file ${file} --only errors`),
+            })),
+        entries,
+        checkout,
+        results,
+    );
+}
+
 export async function runNightly(options: NightlyOptions): Promise<Results> {
     const { job } = options;
     const results: Results = {
@@ -145,115 +323,38 @@ export async function runNightly(options: NightlyOptions): Promise<Results> {
         failures: [],
     };
 
-    let started = Date.now();
+    const started = Date.now();
     let checkout: string;
+    let entries: DatabaseEntry[];
     try {
         checkout = await prepare(job.project, options.dir);
+        entries = jobDatabase(job, checkout);
     } catch (error) {
-        results.failures.push({
-            kind: "setup",
-            detail: String(error),
-            repro: rerun(options, ""),
-        });
+        results.failures.push({ kind: "setup", detail: String(error), repro: rerun(options, "") });
         return results;
     }
     results.prepareSeconds = (Date.now() - started) / 1000;
-    const entries = jobDatabase(job, checkout);
+    const earlier = new Set(logFiles(checkout));
 
-    if (options.steps.has("index")) {
-        if (fs.existsSync(path.join(checkout, ".clice"))) {
-            console.warn(
-                `${checkout}/.clice exists: the index starts warm, its numbers are no cold start`,
-            );
+    const steps = [
+        ["index", indexStep],
+        ["sweep", sweepStep],
+    ] as const;
+    for (const [step, run] of steps) {
+        if (!options.steps.has(step)) {
+            continue;
         }
-        const run = await runIndex(options.clice, checkout);
-        const report = run.report;
-        if (run.hung !== undefined) {
+        try {
+            await run(options, checkout, entries, results);
+        } catch (error) {
             results.failures.push({
-                kind: "hang",
-                detail: `no unit finished for half an hour; in flight:\n${run.hung.join("\n")}`,
-                repro: rerun(options, "--steps index"),
-            });
-        } else if (report === undefined || (run.status !== 0 && run.status !== 1)) {
-            results.failures.push({
-                kind: "crash",
-                detail: `clice index ended with ${run.signal ?? `exit ${String(run.status)}`}:\n${run.stderr}`,
-                repro: rerun(options, "--steps index"),
-            });
-        }
-        if (report !== undefined) {
-            results.index = {
-                seconds: run.seconds,
-                units: report.indexedTus,
-                shards: report.shardCount,
-                shardBytes: report.shardBytes,
-                symbols: report.symbolCount,
-                cacheBytes: run.cacheBytes,
-                memory: run.memory,
-                compiledWithErrors: report.compiledWithErrors.length,
-                failed: report.failed.length,
-            };
-            const errors = new Map(
-                report.compiledWithErrors.map((unit) => [unit.unit, unit.errors]),
-            );
-            const verdicts = await confirm(entries, [...report.failed, ...errors.keys()]);
-            for (const verdict of verdicts) {
-                if (!verdict.accepted) {
-                    results.compilerRejects.push({ unit: verdict.unit, output: verdict.output });
-                    continue;
-                }
-                const unitErrors = errors.get(verdict.unit);
-                results.failures.push({
-                    kind: unitErrors === undefined ? "index" : "compile",
-                    file: inside(checkout, verdict.unit) ?? verdict.unit,
-                    detail:
-                        unitErrors === undefined
-                            ? "the unit failed to index; the session log says why"
-                            : unitErrors
-                                  .slice(0, 5)
-                                  .map(
-                                      (error) =>
-                                          `${error.file === "" ? "" : `${error.file}:${String(error.line)}:${String(error.column)}: `}${error.message}`,
-                                  )
-                                  .join("\n"),
-                    repro: `cd ${checkout} && ${options.clice} inspect folding-range ${verdict.unit}`,
-                });
-            }
-        }
-    }
-
-    if (options.steps.has("sweep")) {
-        const units = entries.flatMap((entry) => inside(checkout, entrySource(entry)) ?? []);
-        const files =
-            options.files ?? sampleFiles(units, job.project.sample, `${options.seed} ${job.name}`);
-        started = Date.now();
-        const run = await sweep({
-            root: checkout,
-            files,
-            ...(options.only === undefined ? {} : { only: options.only }),
-            concurrency: 3,
-        });
-        results.sweep = {
-            files: run.files.length,
-            importers: run.importers.length,
-            requests: run.requests,
-            inspectSeconds: run.inspectSeconds,
-            serverSeconds: run.serverSeconds,
-        };
-        for (const failure of run.failures) {
-            results.failures.push({
-                kind: failure.kind,
-                file: failure.file,
-                request: failure.label,
-                detail: failure.detail,
-                repro: rerun(
-                    options,
-                    `--steps sweep --file ${failure.file} --only ${failure.request}`,
-                ),
+                kind: "runner",
+                detail: error instanceof Error ? (error.stack ?? error.message) : String(error),
+                repro: rerun(options, `--steps ${step}`),
             });
         }
     }
 
-    scanLogs(checkout, results, options);
+    scanLogs(checkout, earlier, results, options);
     return results;
 }

@@ -8,11 +8,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { watchMemory, type PeakMemory } from "./memory.ts";
 
-/// `clice index --json`'s report, as far as the run reads it.
+/// `clice index --json`'s report, as far as the run reads it. A run handed
+/// to a running server reports only `failed`.
 export interface IndexReport {
-    exitCode: number;
-    interrupted: boolean;
-    completed: boolean;
+    completed?: boolean;
+    unsaved: boolean;
     indexedTus: number;
     shardCount: number;
     shardBytes: number;
@@ -22,8 +22,6 @@ export interface IndexReport {
         unit: string;
         errors: { file: string; line: number; column: number; message: string }[];
     }[];
-    logDir: string;
-    seconds: number;
 }
 
 export interface IndexRun {
@@ -58,13 +56,16 @@ export function directoryBytes(dir: string): number {
         .reduce((sum, stat) => sum + stat.size, 0);
 }
 
-/// The units the session log shows begun and neither indexed nor failed.
+/// How the session log ends a unit's attempt (src/sched/index/pump.cpp).
+const ENDED =
+    /\] (?:Index failed for|Index dropped for removed file|Index failure for superseded content of|Index giving up on|Worker died while indexing|Index requeued for) (\S+?)[:;]?(?:\s|$)/;
+
+/// The units the session log shows begun and whose attempt has not ended.
 export function unitsInFlight(log: string): string[] {
     const started = new Set<string>();
     for (const line of log.split("\n")) {
         const begun = /\] Indexing (\S+)$/.exec(line);
-        const done =
-            /progress=\d+\/\d+ file=(\S+)/.exec(line) ?? /Index failed for (\S+):/.exec(line);
+        const done = /progress=\d+\/\d+ file=(\S+)/.exec(line) ?? ENDED.exec(line);
         if (begun?.[1] !== undefined) {
             started.add(begun[1]);
         } else if (done?.[1] !== undefined) {

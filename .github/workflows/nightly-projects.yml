@@ -3,10 +3,9 @@ name: nightly-projects
 # Every night, main's clice over real projects (tests/nightly/projects.json,
 # tests/README.md "Outside the topics"): each project, or each part of one
 # too large for a runner, prepared, indexed from a cold cache and asked the
-# features on sampled files. A crash, a hang, a unit clice fails that the
-# compiler compiles, or a place where inspect and the server answer
-# differently fails its job; the job summary lists each with the command
-# that reproduces it, beside the previous night's numbers.
+# features on sampled files. What fails a job is in tests/README.md; the
+# job summary lists each failure with the command that reproduces it,
+# beside the previous night's numbers.
 on:
   schedule:
     - cron: "37 4 * * *"
@@ -96,18 +95,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
 
-      # The last finished run of this workflow on main: its results are
-      # what tonight's numbers stand beside. None on the first night.
+      # The newest finished run of this workflow on main that holds this
+      # job's results: what tonight's numbers stand beside. None on the
+      # first night.
       - name: Fetch the previous night's results
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow nightly-projects.yml --branch main \
-            --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-          if [ -n "$run" ]; then
+          for run in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow nightly-projects.yml \
+            --branch main --status completed --limit 7 --json databaseId --jq '.[].databaseId'); do
             gh run download "$run" --repo "$GITHUB_REPOSITORY" -n "nightly-${{ matrix.artifact }}" \
-              -D "$RUNNER_TEMP/previous" || echo "no results of ${{ matrix.name }} in run $run"
-          fi
+              -D "$RUNNER_TEMP/previous" && break
+          done
 
       - name: Run
         env:
@@ -120,7 +119,8 @@ jobs:
 
       - name: Summary
         if: ${{ !cancelled() }}
-        run: cat "$RUNNER_TEMP/out/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+        # GitHub takes a summary up to 1 MiB; the artifact holds the whole.
+        run: head -c 1000000 "$RUNNER_TEMP/out/report.md" >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Upload the results
         if: ${{ !cancelled() }}
