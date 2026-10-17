@@ -2,7 +2,7 @@
 
 ## Run Tests
 
-clice has two test suites that run on every change: the unit tests and the cases. Compatibility tests, which need real build systems and compilers, and the editor tests run separately.
+clice has two test suites that run on every change: the unit tests and the cases. Compatibility tests, which need real build systems and compilers, the editor tests and the nightly real projects run separately.
 
 All test dependencies (node/npm for the cases and tools, python for scripts/) are managed by pixi — no separate installation needed.
 
@@ -68,6 +68,18 @@ pixi run compat-test          # default RelWithDebInfo
 ```
 
 Each scenario names the compilers of one platform as its CI runner image has them: on Linux the distribution's versioned GCC and Clang plus bear, ccache, meson, ninja, xmake, bazel, zig, Emscripten, the MinGW, RISC-V and Arm cross compilers, and nvcc from the pixi `cuda` environment (`pixi install -e cuda`); on Windows Visual Studio, LLVM and MinGW; on macOS Apple clang and Homebrew's GCC and LLVM. A scenario whose tools are missing is skipped locally and fails in CI. A scenario clice does not support yet names why in `unsupported`: its checks are skipped while its build still runs. CI runs the suite with every build, and weekly against the newest release.
+
+## Real Projects
+
+Every night main's clice runs over the real projects pinned in `tests/nightly/projects.json`: LLVM in four parts, the Linux kernel, abseil, mp-units built as C++20 modules, and clice itself, each part on a CI runner of its own (`nightly-projects.yml`). A job prepares its project as its build would (configure, generated headers, or the whole kernel build that writes the database), indexes it from a cold cache, checks with the compiler every unit clice reports errors on, then asks `clice inspect` and a server the same requests at the same places of sampled files and compares the answers. A crash, a hang, a unit clice reports errors on that the compiler compiles, or a place where the two answers differ fails the job. The job summary lists each failure with the command that reproduces it, beside the previous night's time, memory and index size.
+
+```bash
+pixi run node tools/nightly/run.ts --jobs                    # the jobs
+CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice \
+  pixi run node tools/nightly/run.ts abseil --dir ~/nightly  # one job
+```
+
+`--steps index` or `--steps sweep` runs one half, `--file` sweeps the named files and `--only` the named requests. Preparing LLVM or the kernel takes a runner's disk and a long build: run those on a box, not a workstation.
 
 ## Debug
 

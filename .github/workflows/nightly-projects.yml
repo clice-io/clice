@@ -1,0 +1,136 @@
+name: nightly-projects
+
+# Every night, main's clice over real projects (tests/nightly/projects.json,
+# tests/README.md "Outside the topics"): each project, or each part of one
+# too large for a runner, prepared, indexed from a cold cache and asked the
+# features on sampled files. A crash, a hang, a unit clice fails that the
+# compiler compiles, or a place where inspect and the server answer
+# differently fails its job; the job summary lists each with the command
+# that reproduces it, beside the previous night's numbers.
+on:
+  schedule:
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  jobs:
+    runs-on: ubuntu-24.04
+    outputs:
+      jobs: ${{ steps.list.outputs.jobs }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+          activate-environment: node
+
+      - name: List the jobs
+        id: list
+        run: |
+          pixi run -e node install-tests
+          echo "jobs=$(pixi run -e node node tools/nightly/run.ts --jobs)" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: jobs
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.jobs.outputs.jobs) }}
+    runs-on: ubuntu-24.04
+    # A job's own hang detection stops it well before; this is the runner's
+    # six hours.
+    timeout-minutes: 350
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+
+      # Only restored: the cache is main's CI's (test-leg.yml saves it).
+      - name: Restore Bazel caches
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
+            /var/tmp/xclang-thinlto
+          key: bazel-x86_64-unknown-linux-gnu-RelWithDebInfo-${{ github.sha }}
+          restore-keys: |
+            bazel-x86_64-unknown-linux-gnu-RelWithDebInfo-
+
+      - name: Build clice
+        run: |
+          {
+            echo "common --disk_cache=$RUNNER_TEMP/bazel-disk"
+            echo "common --repository_cache=$RUNNER_TEMP/bazel-repo"
+          } > user.bazelrc
+          pixi run build RelWithDebInfo
+          pixi run install-tests
+
+      - name: Install the project's packages
+        if: matrix.packages != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
+
+      # The last finished run of this workflow on main: its results are
+      # what tonight's numbers stand beside. None on the first night.
+      - name: Fetch the previous night's results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow nightly-projects.yml --branch main \
+            --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$run" ]; then
+            gh run download "$run" --repo "$GITHUB_REPOSITORY" -n "nightly-${{ matrix.artifact }}" \
+              -D "$RUNNER_TEMP/previous" || echo "no results of ${{ matrix.name }} in run $run"
+          fi
+
+      - name: Run
+        env:
+          CLICE_EXECUTABLE: ${{ github.workspace }}/build/RelWithDebInfo/bin/bin/clice
+        run: >-
+          pixi run node tools/nightly/run.ts "${{ matrix.name }}"
+          --dir "$RUNNER_TEMP/projects"
+          --out "$RUNNER_TEMP/out"
+          --previous "$RUNNER_TEMP/previous/results.json"
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: cat "$RUNNER_TEMP/out/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload the results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Upload clice's logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-${{ matrix.artifact }}-logs
+          path: |
+            ${{ runner.temp }}/projects/*/.clice/logs/
+            ${{ github.workspace }}/.clice/logs/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 30

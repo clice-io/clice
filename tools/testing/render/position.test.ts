@@ -132,6 +132,24 @@ describe("positions", () => {
         );
     });
 
+    test("a line holding the marks itself", () => {
+        const marked = new SourceText(
+            "m.cpp",
+            'auto open = "⟦"; auto close = "⟧";\nint x =\n    1;\n',
+        );
+        const scope: RenderScope = { file: () => marked, query: { path: "m.cpp", line: 0 } };
+        const ranges: Range[] = [
+            { start: { line: 0, character: 5 }, end: { line: 0, character: 9 } },
+            { start: { line: 0, character: 22 }, end: { line: 0, character: 27 } },
+            { start: { line: 0, character: 12 }, end: { line: 0, character: 15 } },
+            { start: { line: 0, character: 22 }, end: { line: 2, character: 6 } },
+        ];
+        for (const range of ranges) {
+            const location = { path: "m.cpp", range };
+            expect(resolveLocation(renderLocation(location, scope), scope)).toEqual(location);
+        }
+    });
+
     test("ambiguous text is refused", () => {
         const twice = new SourceText("t.cpp", "void f();\nvoid f();\n");
         expect(() =>

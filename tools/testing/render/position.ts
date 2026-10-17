@@ -244,14 +244,28 @@ function tryResolve(rendered: string, scope: RenderScope): Location | undefined 
     return found && { path, range: found };
 }
 
-function markers(text: string): { plain: string; open: number; close: number } | undefined {
-    const open = text.indexOf(OPEN);
-    const close = text.indexOf(CLOSE);
-    if (open < 0 || close < open || text.includes(OPEN, open + 1)) {
-        return undefined;
+function indicesOf(text: string, mark: string): number[] {
+    const out: number[] = [];
+    for (let at = text.indexOf(mark); at >= 0; at = text.indexOf(mark, at + 1)) {
+        out.push(at);
     }
-    const plain = text.slice(0, open) + text.slice(open + 1, close) + text.slice(close + 1);
-    return { plain, open, close: close - 1 };
+    return out;
+}
+
+/// Every way a rendered line sets off a range: a source line may hold the
+/// marks itself, so each ⟦ before a ⟧ is a candidate, and the rendering of
+/// the range a candidate names decides.
+function markers(text: string): { plain: string; open: number; close: number }[] {
+    const closes = indicesOf(text, CLOSE);
+    return indicesOf(text, OPEN).flatMap((open) =>
+        closes
+            .filter((close) => close > open)
+            .map((close) => ({
+                plain: text.slice(0, open) + text.slice(open + 1, close) + text.slice(close + 1),
+                open,
+                close: close - 1,
+            })),
+    );
 }
 
 /// Every way a line can be shown, with the index its shown text begins at.
@@ -281,25 +295,23 @@ function resolveLine(
     text: string,
     line: number | undefined,
 ): Range | undefined {
-    const marked = markers(text);
-    if (!marked) {
-        return undefined;
-    }
     const matches: Range[] = [];
-    source.lines.forEach((candidate, index) => {
-        for (const view of views(candidate)) {
-            if (view.text === marked.plain) {
-                const range = {
-                    start: { line: index, character: view.from + marked.open },
-                    end: { line: index, character: view.from + marked.close },
-                };
-                if (body(source, range) === text) {
-                    matches.push(range);
-                    return;
+    for (const marked of markers(text)) {
+        source.lines.forEach((candidate, index) => {
+            for (const view of views(candidate)) {
+                if (view.text === marked.plain) {
+                    const range = {
+                        start: { line: index, character: view.from + marked.open },
+                        end: { line: index, character: view.from + marked.close },
+                    };
+                    if (body(source, range) === text) {
+                        matches.push(range);
+                        return;
+                    }
                 }
             }
-        }
-    });
+        });
+    }
     return unique(matches, (range) => range.start.line, line);
 }
 
@@ -315,37 +327,38 @@ function resolveSpanned(
         return undefined;
     }
     const headText = text.slice(0, split);
-    const open = headText.indexOf(OPEN);
-    if (open < 0) {
-        return undefined;
-    }
-    const firstPlain = headText.slice(0, open) + headText.slice(open + 1);
     const lastShown = text.slice(split + SPAN.length, close);
     const matches: Range[] = [];
-    source.lines.forEach((candidate, index) => {
-        const endLine = index + count - 1;
-        const last = source.lines[endLine];
-        if (last === undefined) {
-            return;
-        }
-        const endCharacter = blank(lastShown)
-            ? lastShown.length
-            : indentOf(last) + lastShown.length;
-        for (const view of views(candidate)) {
-            if (view.text.trimEnd() === firstPlain.trimEnd() && view.text.startsWith(firstPlain)) {
-                const range = {
-                    start: { line: index, character: view.from + open },
-                    end: { line: endLine, character: endCharacter },
-                };
+    for (const open of indicesOf(headText, OPEN)) {
+        const firstPlain = headText.slice(0, open) + headText.slice(open + 1);
+        source.lines.forEach((candidate, index) => {
+            const endLine = index + count - 1;
+            const last = source.lines[endLine];
+            if (last === undefined) {
+                return;
+            }
+            const endCharacter = blank(lastShown)
+                ? lastShown.length
+                : indentOf(last) + lastShown.length;
+            for (const view of views(candidate)) {
                 if (
-                    endCharacter <= last.length &&
-                    body(source, range) === `${text} (${count} lines)`
+                    view.text.trimEnd() === firstPlain.trimEnd() &&
+                    view.text.startsWith(firstPlain)
                 ) {
-                    matches.push(range);
-                    return;
+                    const range = {
+                        start: { line: index, character: view.from + open },
+                        end: { line: endLine, character: endCharacter },
+                    };
+                    if (
+                        endCharacter <= last.length &&
+                        body(source, range) === `${text} (${count} lines)`
+                    ) {
+                        matches.push(range);
+                        return;
+                    }
                 }
             }
-        }
-    });
+        });
+    }
     return unique(matches, (range) => range.start.line, line);
 }

@@ -202,6 +202,11 @@ function byteOf(text: string, offset: number): number {
 /// inactive branch counts too.
 const MODULE_IMPORT = /^[ \t]*(?:export[ \t]+)?import(?:[ \t]+\w|[ \t]*(?:[<"]|:(?!:)))/m;
 
+/// Whether a source imports a module: inspect has no answer for it.
+export function importsModule(text: string): boolean {
+    return MODULE_IMPORT.test(text);
+}
+
 function rangeKey({ begin, end }: RawRange): string {
     return `${String(begin)}-${String(end)}`;
 }
@@ -227,9 +232,7 @@ export class Inspect extends Client {
     ) {
         super(marks);
         this.root = root;
-        this.importers = new Set(
-            options.sources.filter((file) => MODULE_IMPORT.test(this.text(file))),
-        );
+        this.importers = new Set(options.sources.filter((file) => importsModule(this.text(file))));
         this.sources = options.sources.filter((file) => !this.importers.has(file));
         this.config = options.config;
         if (options.config !== undefined) {
@@ -646,7 +649,8 @@ export class Inspect extends Client {
             timeout: 300_000,
         });
         if (result.status !== 0) {
-            throw new Error(`clice inspect exited ${String(result.status)}:\n${result.stderr}`);
+            const how = result.error?.message ?? `exited ${String(result.status ?? result.signal)}`;
+            throw new Error(`clice inspect ${how}:\n${result.stderr}`);
         }
         const entry = Object.values((JSON.parse(result.stdout) as Output).files)[0];
         if (entry === undefined) {

@@ -1387,7 +1387,7 @@ export interface Declared {
     commands?: readonly Faults[];
 }
 
-const CRASHED_IN = /\] clice worker crashed in: clice\/worker\/(\S+) (.*)$/;
+export const CRASHED_IN = /\] clice worker crashed in: clice\/worker\/(\S+) (.*)$/;
 
 /// The logs a worker's crash is told in: a server's, and a batch command's
 /// that runs workers of its own.
