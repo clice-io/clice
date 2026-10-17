@@ -1,13 +1,13 @@
 [answers.macro_def]
 highlights = [
     { at = "#define ⟦RETRIES⟧ 3", kind = "text" },
-    { at = "return ⟦RETRIES⟧ + configured() * RETRIES;", kind = "read" },
-    { at = "return RETRIES + configured() * ⟦RETRIES⟧;", kind = "read" },
+    { at = "return ⟦RETRIES⟧ + configured() * RETRIES;", kind = "text" },
+    { at = "return RETRIES + configured() * ⟦RETRIES⟧;", kind = "text" },
 ]
 
 [answers.macro_use]
 highlights = [
     { at = "#define ⟦RETRIES⟧ 3", kind = "text" },
-    { at = "return ⟦RETRIES⟧ + configured() * RETRIES;", kind = "read" },
-    { at = "return RETRIES + configured() * ⟦RETRIES⟧;", kind = "read" },
+    { at = "return ⟦RETRIES⟧ + configured() * RETRIES;", kind = "text" },
+    { at = "return RETRIES + configured() * ⟦RETRIES⟧;", kind = "text" },
 ]

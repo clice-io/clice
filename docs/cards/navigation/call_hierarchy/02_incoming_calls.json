@@ -46,7 +46,8 @@
                       "character": 10
                     }
                   }
-                }
+                },
+                "detail": "helper(int v)"
               }
             ],
             "incoming_calls": [
@@ -67,6 +68,7 @@
                     }
                   }
                 },
+                "detail": "alpha()",
                 "sites": [
                   {
                     "$place": "return ⟦helper⟧(1);",
@@ -101,6 +103,7 @@
                     }
                   }
                 },
+                "detail": "beta()",
                 "sites": [
                   {
                     "$place": "return ⟦helper⟧(2) + helper(3);",

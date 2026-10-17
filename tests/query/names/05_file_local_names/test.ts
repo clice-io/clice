@@ -1,8 +1,8 @@
 import { test } from "@clice/tools/testing";
 
-// Symbols no other file can name (internal linkage, locals, parameters)
-// are searched by name only within a file, `path:`; two of one name there
-// are told apart by their candidates' locators.
+// A static at namespace scope is searched by name anywhere; locals and
+// parameters only within a file, `path:`; two of one name there are told
+// apart by their candidates' locators.
 test(async (t) => {
     await t.cli("index");
     for (const text of [

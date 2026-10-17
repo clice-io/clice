@@ -28,7 +28,7 @@
           "value": {
             "workspace_symbols": [
               {
-                "name": "helper_elsewhere",
+                "name": "helper_elsewhere()",
                 "kind": "Function",
                 "at": {
                   "$place": "other.cpp │ void ⟦helper_elsewhere⟧() {}",

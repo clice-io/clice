@@ -33,3 +33,18 @@ void both(A a, C c) {
     twice(a);
     twice(c);
 }
+
+template <typename T>
+int convert(T& value) {
+    return value.§(conversion_call)operator int();
+}
+
+struct D {
+    operator int() {
+        return 4;
+    }
+};
+
+int use_convert(D d) {
+    return convert(d);
+}

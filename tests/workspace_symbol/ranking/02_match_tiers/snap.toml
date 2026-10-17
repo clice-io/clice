@@ -1,9 +1,9 @@
 [test.foo]
 workspace_symbols = [
-    { name = "xfoo", kind = "Function", at = "main.cpp │ int ⟦xfoo⟧() {" },
-    { name = "foobar", kind = "Function", at = "main.cpp │ int ⟦foobar⟧() {" },
-    { name = "foo", kind = "Function", at = "main.cpp │ int ⟦foo⟧() {" },
+    { name = "xfoo()", kind = "Function", at = "main.cpp │ int ⟦xfoo⟧() {" },
+    { name = "foobar()", kind = "Function", at = "main.cpp │ int ⟦foobar⟧() {" },
+    { name = "foo()", kind = "Function", at = "main.cpp │ int ⟦foo⟧() {" },
 ]
 
 [test.order]
-value = ["foo", "foobar", "xfoo"]
+value = ["foo()", "foobar()", "xfoo()"]

@@ -1,0 +1,86 @@
+{
+  "id": "navigation/declaration/07_changed_signatures",
+  "topic": "navigation",
+  "subtopic": "declaration",
+  "title": "A definition whose declaration changed",
+  "summary": "Go-to-declaration on a definition that no longer matches its declaration reaches the declaration it parted from",
+  "prose": "When a parameter changes on one side only, the definition and the header\ndeclaration become two functions, and the definition has no declaration of\nits own. Go-to-declaration on it falls back to the functions of its name in\nits scope that nothing defines: the declaration that wants the same edit. An\noverload with a definition of its own is no candidate.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "geometry.h",
+      "text": "int scale(int factor);\nint scale(double factor);\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"geometry.h\"\n\nint scale(long factor) {\n    return static_cast<int>(factor * 2);\n}\n\nint scale(double factor) {\n    return static_cast<int>(factor * 2);\n}\n",
+      "markers": [
+        {
+          "name": "changed",
+          "begin": 27,
+          "end": 27,
+          "range": false
+        },
+        {
+          "name": "overload",
+          "begin": 96,
+          "end": 96,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "changed",
+          "marker": "changed",
+          "value": {
+            "declaration": [
+              {
+                "$place": "geometry.h │ int ⟦scale⟧(int factor);",
+                "path": "geometry.h",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "overload",
+          "marker": "overload",
+          "value": {
+            "declaration": [
+              {
+                "$place": "geometry.h │ int ⟦scale⟧(double factor);",
+                "path": "geometry.h",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

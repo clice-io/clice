@@ -31,7 +31,7 @@
           "label": "variable",
           "marker": "variable",
           "value": {
-            "wrong": "each reference should say whether it reads or writes x (clangd#2139)",
+            "wrong": "each reference should say whether it reads or writes x; the protocol has no field for it (clangd#2139)",
             "references": [
               {
                 "$place": "int ⟦x⟧ = 0;",

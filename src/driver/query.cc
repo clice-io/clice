@@ -355,6 +355,14 @@ CommandHandler build(const char* self_path) {
             }),
     });
     operations.push_back({
+        .name = "implementation",
+        .description = "The classes deriving from a class, the overrides of a function",
+        .run = symbol("clice query implementation <LOCATOR> [OPTIONS]",
+                      [](query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
+                          return query::implementation(ctx, std::move(locator));
+                      }),
+    });
+    operations.push_back({
         .name = "type-hierarchy",
         .description = "A type's supertypes and subtypes",
         .run = symbol_question<TypeHierarchyQuestion>(

@@ -1,5 +1,5 @@
 [answers.type]
-type_definition = []
+type_definition = ["struct ⟦Widget⟧ {};"]
 
 [answers.ptr]
 type_definition = ["struct ⟦Ptr⟧ {", "struct ⟦Widget⟧ {};"]

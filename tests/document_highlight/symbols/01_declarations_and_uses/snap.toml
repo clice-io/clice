@@ -10,8 +10,8 @@ highlights = [
 highlights = [
     { at = "int ⟦accumulate⟧(int amount);", kind = "text" },
     { at = "int ⟦accumulate⟧(int amount) {", kind = "text" },
-    { at = "return ⟦accumulate⟧(1) + accumulate(2);", kind = "read" },
-    { at = "return accumulate(1) + ⟦accumulate⟧(2);", kind = "read" },
+    { at = "return ⟦accumulate⟧(1) + accumulate(2);", kind = "text" },
+    { at = "return accumulate(1) + ⟦accumulate⟧(2);", kind = "text" },
 ]
 
 [answers.param_decl]
@@ -40,6 +40,6 @@ highlights = [
 highlights = [
     { at = "int ⟦accumulate⟧(int amount);", kind = "text" },
     { at = "int ⟦accumulate⟧(int amount) {", kind = "text" },
-    { at = "return ⟦accumulate⟧(1) + accumulate(2);", kind = "read" },
-    { at = "return accumulate(1) + ⟦accumulate⟧(2);", kind = "read" },
+    { at = "return ⟦accumulate⟧(1) + accumulate(2);", kind = "text" },
+    { at = "return accumulate(1) + ⟦accumulate⟧(2);", kind = "text" },
 ]

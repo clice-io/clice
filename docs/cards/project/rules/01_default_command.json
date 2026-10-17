@@ -45,7 +45,7 @@
           "value": {
             "workspace_symbols": [
               {
-                "name": "later_entry",
+                "name": "later_entry()",
                 "kind": "Function",
                 "at": {
                   "$place": "src/later.cpp │ int ⟦later_entry⟧() { return 1; }",

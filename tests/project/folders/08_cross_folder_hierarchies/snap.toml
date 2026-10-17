@@ -4,6 +4,7 @@ incoming_calls = [
         name = "main",
         kind = "Function",
         at = "app/main.cpp │ int ⟦main⟧() { return lib_fn(); }",
+        detail = "main()",
         sites = ["app/main.cpp │ int main() { return ⟦lib_fn⟧(); }"],
     },
 ]

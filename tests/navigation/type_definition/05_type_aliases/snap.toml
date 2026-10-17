@@ -1,5 +1,5 @@
 [answers.underlying]
-type_definition = []
+type_definition = ["struct ⟦Impl⟧ {};"]
 
 [answers.alias]
 type_definition = ["struct ⟦Impl⟧ {};"]
@@ -8,13 +8,10 @@ type_definition = ["struct ⟦Impl⟧ {};"]
 type_definition = ["struct ⟦Box⟧ {};"]
 
 [answers.var]
-wrong = "should reach Impl, the type the alias names"
-type_definition = ["using ⟦Handle⟧ = Impl;"]
+type_definition = ["struct ⟦Impl⟧ {};", "using ⟦Handle⟧ = Impl;"]
 
 [answers.legacy]
-wrong = "should reach Impl, the type the typedef names"
-type_definition = ["typedef Impl ⟦LegacyHandle⟧;"]
+type_definition = ["struct ⟦Impl⟧ {};", "typedef Impl ⟦LegacyHandle⟧;"]
 
 [answers.boxed]
-wrong = "should reach Box, the template the alias names"
-type_definition = ["using ⟦Boxed⟧ = Box<int>;"]
+type_definition = ["struct ⟦Box⟧ {};", "using ⟦Boxed⟧ = Box<int>;"]

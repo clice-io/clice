@@ -1,0 +1,4 @@
+[test.widget_area]
+workspace_symbols = [
+    { name = "widget_area(int width, int height)", kind = "Function", at = "main/widget.cpp │ int ⟦widget_area⟧(int width, int height) {" },
+]

@@ -1,8 +1,8 @@
 [answers.type]
-type_definition = []
+type_definition = ["struct ⟦Logger⟧ {};"]
 
 [answers.class_type]
-type_definition = []
+type_definition = ["class ⟦Store⟧ {};"]
 
 [answers.field]
 type_definition = ["struct ⟦Logger⟧ {};"]

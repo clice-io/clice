@@ -1,0 +1,77 @@
+{
+  "id": "navigation/macros/10_header_variants",
+  "topic": "navigation",
+  "subtopic": "macros",
+  "title": "Header macros defined per unit",
+  "summary": "Go-to-definition on a macro a shared header uses reaches every definition the units including it expand",
+  "prose": "Two units include `config.h`, one with `FAST` defined: the header's `MODE`\nexpands to a different definition in each, and from a closed header\ngo-to-definition lists both.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "config.h",
+      "text": "#pragma once\n\n#ifdef FAST\n#define MODE 1\n#else\n#define MODE 2\n#endif\n\ninline int mode() {\n    return MODE;\n}\n",
+      "markers": [
+        {
+          "name": "use",
+          "begin": 101,
+          "end": 101,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "fast.cpp",
+      "text": "#define FAST\n#include \"config.h\"\n\nint fast_mode() {\n    return mode();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"config.h\"\n\nint slow_mode() {\n    return mode();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "definition": [
+              {
+                "$place": "#define ⟦MODE⟧ 1",
+                "path": "config.h",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "#define ⟦MODE⟧ 2",
+                "path": "config.h",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

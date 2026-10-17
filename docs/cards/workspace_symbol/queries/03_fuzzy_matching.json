@@ -50,7 +50,7 @@
           "value": {
             "workspace_symbols": [
               {
-                "name": "parse_config",
+                "name": "parse_config()",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦parse_config⟧();",

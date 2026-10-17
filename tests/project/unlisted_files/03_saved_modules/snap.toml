@@ -1,6 +1,6 @@
 ["saved module survives restart"."restored member"]
 workspace_symbols = [
-    { name = "b_local", kind = "Function", at = "b.cppm │ int ⟦b_local⟧() { return 3; }" },
+    { name = "b_local()", kind = "Function", at = "b.cppm │ int ⟦b_local⟧() { return 3; }" },
 ]
 
 ["deleted member comes back".deleted]

@@ -32,6 +32,8 @@ struct TUIndexMirror {
     std::vector<std::uint32_t> sym_name_ends;
     std::string sym_args;
     std::vector<std::uint32_t> sym_args_ends;
+    std::string sym_signatures;
+    std::vector<std::uint32_t> sym_signature_ends;
     std::vector<std::uint64_t> sym_parents;
     std::vector<std::uint8_t> sym_kinds;
     std::vector<std::uint8_t> sym_scopes;
@@ -52,6 +54,8 @@ struct TUIndexMirror {
         sym_name_ends.push_back(static_cast<std::uint32_t>(sym_names.size()));
         sym_args += identity.args;
         sym_args_ends.push_back(static_cast<std::uint32_t>(sym_args.size()));
+        sym_signatures += identity.signature;
+        sym_signature_ends.push_back(static_cast<std::uint32_t>(sym_signatures.size()));
         sym_parents.push_back(identity.parent);
         sym_kinds.push_back(identity.kind.value());
         sym_scopes.push_back(static_cast<std::uint8_t>(identity.scope));

@@ -52,6 +52,8 @@ struct GlobalBlob {
     std::vector<std::uint32_t> sym_name_ends;
     std::string sym_args;
     std::vector<std::uint32_t> sym_args_ends;
+    std::string sym_signatures;
+    std::vector<std::uint32_t> sym_signature_ends;
     std::vector<std::uint64_t> sym_parents;
     std::vector<std::uint8_t> sym_kinds;
     std::vector<std::uint16_t> sym_flags;
@@ -105,6 +107,8 @@ struct ProjectIndex::Base {
     llvm::ArrayRef<std::uint32_t> name_ends;
     llvm::StringRef args;
     llvm::ArrayRef<std::uint32_t> args_ends;
+    llvm::StringRef signatures;
+    llvm::ArrayRef<std::uint32_t> signature_ends;
     llvm::ArrayRef<std::uint64_t> parents;
     llvm::ArrayRef<std::uint8_t> kinds;
     llvm::ArrayRef<std::uint16_t> flags;
@@ -151,6 +155,10 @@ struct ProjectIndex::Base {
         return back_to_back(args, args_ends, doc);
     }
 
+    llvm::StringRef signature(std::uint32_t doc) const {
+        return back_to_back(signatures, signature_ends, doc);
+    }
+
     llvm::ArrayRef<std::uint8_t> image(std::uint32_t doc) const {
         return back_to_back(bitmaps, bitmap_ends, doc);
     }
@@ -190,6 +198,7 @@ struct ProjectIndex::Base {
         return {
             .name = name(doc),
             .args = arguments(doc),
+            .signature = signature(doc),
             .parent = parents[doc],
             .kind = SymbolKind(kinds[doc]),
             .scope = SymbolScope::External,
@@ -219,6 +228,8 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     name_ends = to_array_ref(root[&GlobalBlob::sym_name_ends]);
     args = to_ref(root[&GlobalBlob::sym_args]);
     args_ends = to_array_ref(root[&GlobalBlob::sym_args_ends]);
+    signatures = to_ref(root[&GlobalBlob::sym_signatures]);
+    signature_ends = to_array_ref(root[&GlobalBlob::sym_signature_ends]);
     parents = to_array_ref(root[&GlobalBlob::sym_parents]);
     kinds = to_array_ref(root[&GlobalBlob::sym_kinds]);
     flags = to_array_ref(root[&GlobalBlob::sym_flags]);
@@ -257,9 +268,9 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
         return std::unexpected("manifest pin columns do not line up");
     }
     auto count = hashes.size();
-    if(name_ends.size() != count || args_ends.size() != count || parents.size() != count ||
-       kinds.size() != count || flags.size() != count || token_kinds.size() != count ||
-       token_modifiers.size() != count || files.size() != count ||
+    if(name_ends.size() != count || args_ends.size() != count || signature_ends.size() != count ||
+       parents.size() != count || kinds.size() != count || flags.size() != count ||
+       token_kinds.size() != count || token_modifiers.size() != count || files.size() != count ||
        reference_counts.size() != count || bitmap_ends.size() != count) {
         return std::unexpected("symbol columns do not line up");
     }
@@ -267,6 +278,7 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
         return std::unexpected("a symbol's token kind is out of range");
     }
     if(!monotone_ends(name_ends, names.size()) || !monotone_ends(args_ends, args.size()) ||
+       !monotone_ends(signature_ends, signatures.size()) ||
        !monotone_ends(bitmap_ends, bitmaps.size())) {
         return std::unexpected("symbol arenas do not line up");
     }
@@ -585,6 +597,7 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
     auto identity = base->identity(*doc);
     symbol.name = identity.name.str();
     symbol.args = identity.args.str();
+    symbol.signature = identity.signature.str();
     symbol.parent = identity.parent;
     symbol.kind = identity.kind;
     symbol.flags = identity.flags;
@@ -648,6 +661,7 @@ void ProjectIndex::merge(const TUIndex& index,
         }
         symbol_changed = prefer(target.name, identity.name) || symbol_changed;
         symbol_changed = prefer(target.args, identity.args) || symbol_changed;
+        symbol_changed = prefer(target.signature, identity.signature) || symbol_changed;
         // A unit that defines the symbol always places it: the table never
         // retracts a unit's earlier report, so an old definition bit must
         // not pin the file after the definition moved. Declarations only
@@ -747,6 +761,7 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     blob.sym_hashes.reserve(count);
     blob.sym_name_ends.reserve(count);
     blob.sym_args_ends.reserve(count);
+    blob.sym_signature_ends.reserve(count);
     blob.sym_parents.reserve(count);
     blob.sym_kinds.reserve(count);
     blob.sym_flags.reserve(count);
@@ -759,6 +774,8 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
         blob.sym_args += base->arguments(doc);
         blob.sym_args_ends.push_back(static_cast<std::uint32_t>(blob.sym_args.size()));
+        blob.sym_signatures += base->signature(doc);
+        blob.sym_signature_ends.push_back(static_cast<std::uint32_t>(blob.sym_signatures.size()));
         blob.sym_parents.push_back(base->parents[doc]);
         blob.sym_kinds.push_back(base->kinds[doc]);
         blob.sym_flags.push_back(base->flags[doc]);
@@ -776,6 +793,8 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
         blob.sym_args += symbol.args;
         blob.sym_args_ends.push_back(static_cast<std::uint32_t>(blob.sym_args.size()));
+        blob.sym_signatures += symbol.signature;
+        blob.sym_signature_ends.push_back(static_cast<std::uint32_t>(blob.sym_signatures.size()));
         blob.sym_parents.push_back(symbol.parent);
         blob.sym_kinds.push_back(symbol.kind.value());
         blob.sym_flags.push_back(static_cast<std::uint16_t>(symbol.flags));
@@ -1146,6 +1165,7 @@ ProjectIndex::GlobalColumns ProjectIndex::global_columns() const {
     return {
         .names = base->names.size(),
         .args = base->args.size(),
+        .signatures = base->signatures.size(),
         .bitmaps = base->bitmaps.size(),
         .fixed = base->count() * (8 + 8 + 1 + 2 + 4 + 4),
         .contributors = base->contributors.size() + base->contributed_files.size() * (4 + 4),

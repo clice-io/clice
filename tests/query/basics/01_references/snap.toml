@@ -14,22 +14,31 @@ stdout = '''
     "symbol": "#c9fbbb30710c2348",
     "references": [
       {
+        "file": "${WS}/app/main.cpp",
+        "line": 6,
+        "context": "    return static_cast<int>(shape.measure() + circle.circumference());",
+        "function": "main"
+      },
+      {
         "file": "${WS}/include/shapes/circle.h",
         "line": 11,
-        "context": "    double measure() const override;"
+        "context": "    double measure() const override;",
+        "function": null
       },
       {
         "file": "${WS}/src/circle.cpp",
         "line": 5,
-        "context": "double Circle::measure() const {"
+        "context": "double Circle::measure() const {",
+        "function": null
       },
       {
         "file": "${WS}/test/circle_test.cpp",
         "line": 4,
-        "context": "    return shapes::Circle(1.0).measure() > 3 ? 0 : 1;"
+        "context": "    return shapes::Circle(1.0).measure() > 3 ? 0 : 1;",
+        "function": "main"
       }
     ],
-    "total": 3
+    "total": 4
   },
   "stale": []
 }

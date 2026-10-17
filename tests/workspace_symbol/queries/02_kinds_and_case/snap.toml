@@ -5,13 +5,13 @@ workspace_symbols = [
 
 [answers.parse_config]
 workspace_symbols = [
-    { name = "parse_config", kind = "Function", at = "main.cpp │ void ⟦parse_config⟧() {}" },
+    { name = "parse_config()", kind = "Function", at = "main.cpp │ void ⟦parse_config⟧() {}" },
 ]
 
 [answers.MODE]
 workspace_symbols = [
     { name = "Mode", kind = "Enum", at = "main.cpp │ enum class ⟦Mode⟧ { Fast, Safe };" },
-    { name = "MODE_DEFAULT", kind = "Function", at = "main.cpp │ #define ⟦MODE_DEFAULT⟧ 1" },
+    { name = "MODE_DEFAULT", kind = "Constant", at = "main.cpp │ #define ⟦MODE_DEFAULT⟧ 1" },
 ]
 
 [answers.fast]

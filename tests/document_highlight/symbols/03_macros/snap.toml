@@ -1,9 +1,9 @@
 [answers.macro_def]
 highlights = [
     { at = "#define ⟦LIMIT⟧ 10", kind = "text" },
-    { at = "#ifdef ⟦LIMIT⟧", kind = "read" },
-    { at = "return ⟦LIMIT⟧;", kind = "read" },
-    { at = "#undef ⟦LIMIT⟧", kind = "read" },
+    { at = "#ifdef ⟦LIMIT⟧", kind = "text" },
+    { at = "return ⟦LIMIT⟧;", kind = "text" },
+    { at = "#undef ⟦LIMIT⟧", kind = "text" },
 ]
 
 [answers.total]
@@ -25,7 +25,7 @@ highlights = [
 [answers.macro_use]
 highlights = [
     { at = "#define ⟦LIMIT⟧ 10", kind = "text" },
-    { at = "#ifdef ⟦LIMIT⟧", kind = "read" },
-    { at = "return ⟦LIMIT⟧;", kind = "read" },
-    { at = "#undef ⟦LIMIT⟧", kind = "read" },
+    { at = "#ifdef ⟦LIMIT⟧", kind = "text" },
+    { at = "return ⟦LIMIT⟧;", kind = "text" },
+    { at = "#undef ⟦LIMIT⟧", kind = "text" },
 ]

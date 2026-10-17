@@ -6,7 +6,7 @@ subtypes = [
 ]
 
 [answers.run_decl]
-definition = ["virtual void ⟦run⟧() = 0;"]
+definition = ["⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {"]
 references = ["virtual void ⟦run⟧() = 0;"]
 subtypes = []
 

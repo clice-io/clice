@@ -2,4 +2,4 @@
 implementation = ["void ⟦f⟧() override = 0;", "void ⟦f⟧() override {}"]
 
 [answers.concrete_root]
-implementation = ["void ⟦g⟧() override {} @+4"]
+implementation = ["void ⟦g⟧() override {} @+4", "void ⟦g⟧() override {} @+8"]

@@ -1,12 +1,12 @@
 ["index skips excluded units".indexed]
 main_sym = [
-    { name = "main_sym", kind = "Function", at = "main.cpp │ int ⟦main_sym⟧() { return 0; }" },
+    { name = "main_sym()", kind = "Function", at = "main.cpp │ int ⟦main_sym⟧() { return 0; }" },
 ]
 tp_sym = []
 
 ["index skips excluded units".reloaded]
 main_sym = [
-    { name = "main_sym", kind = "Function", at = "main.cpp │ int ⟦main_sym⟧() { return 0; }" },
+    { name = "main_sym()", kind = "Function", at = "main.cpp │ int ⟦main_sym⟧() { return 0; }" },
 ]
 tp_sym = []
 

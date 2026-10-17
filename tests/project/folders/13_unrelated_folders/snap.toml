@@ -1,7 +1,7 @@
 ["unrelated folders keep references apart".users]
 workspace_symbols = [
-    { name = "use_alpha", kind = "Function", at = "alpha/main.cpp │ int ⟦use_alpha⟧() { return helper(); }" },
-    { name = "use_beta", kind = "Function", at = "beta/main.cpp │ int ⟦use_beta⟧() { return helper(); }" },
+    { name = "use_alpha()", kind = "Function", at = "alpha/main.cpp │ int ⟦use_alpha⟧() { return helper(); }" },
+    { name = "use_beta()", kind = "Function", at = "beta/main.cpp │ int ⟦use_beta⟧() { return helper(); }" },
 ]
 
 ["unrelated folders keep references apart".helper]

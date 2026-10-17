@@ -116,13 +116,15 @@ struct TUIndexBlob {
     /// The symbols the entries name, sorted by hash, except the file-local
     /// ones (a function's locals, a template's parameters) — only their
     /// own file can mention one, and that file's section names it — and
-    /// the external symbols only sections left empty name. Names and arguments are back to back
-    /// with one end offset per entry; so are the reference files, as path ids.
+    /// the external symbols only sections left empty name. Names, arguments and signatures are
+    /// back to back with one end offset per entry; so are the reference files, as path ids.
     std::vector<std::uint64_t> sym_hashes;
     std::string sym_names;
     std::vector<std::uint32_t> sym_name_ends;
     std::string sym_args;
     std::vector<std::uint32_t> sym_args_ends;
+    std::string sym_signatures;
+    std::vector<std::uint32_t> sym_signature_ends;
     std::vector<std::uint64_t> sym_parents;
     std::vector<std::uint8_t> sym_kinds;
     std::vector<std::uint8_t> sym_scopes;
@@ -343,7 +345,8 @@ public:
     Projector(CompilationUnit& unit, const TUIndexOptions& options) :
         unit(unit), focus_only(unit.kind() == CompilationKind::Content && !options.all_files),
         known_variants(options.known_variants),
-        resolver(unit.context(), {.only_instantiation = unit.kind() == CompilationKind::Content}) {}
+        resolver(unit.context(), {.only_instantiation = unit.kind() == CompilationKind::Content}),
+        readable(unit.context(), {}) {}
 
     /// The only gate through which entries enter `file_indices`. With
     /// focus_only, the index covers just the focus file and the
@@ -400,6 +403,16 @@ public:
             flags |= SymbolFlags::Unnamed;
         }
         symbol.args = display::template_args(*decl);
+        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            symbol.signature = display::call_signature(*function,
+                                                       {
+                                                           .suppress_unwritten_scope = true,
+                                                           .polish_for_declaration = true,
+                                                           .clean_uglified = true,
+                                                           .readable = &readable,
+                                                           .scope = function->getDeclContext(),
+                                                       });
+        }
         symbol.parent = unit.get<EntityTable>().parent(decl);
         symbol.kind = SymbolKind::from(decl);
         symbol.scope = classify_scope(decl);
@@ -1079,10 +1092,12 @@ public:
 
     /// A keyword standing for a type it does not spell — `auto`,
     /// `decltype(auto)`, `decltype(expr)`, an abbreviated template's
-    /// `auto` — is an occurrence of the declarations that type names once
-    /// its pointers, references and arrays are stripped, as if the type
-    /// were written there, with a Deduced relation: navigation from the keyword
-    /// reaches the type, references to the type never list the keyword.
+    /// `auto`, `this` — is an occurrence of the declarations that type names once
+    /// its pointers, references and arrays are stripped and a library's
+    /// internal aliases seen through (`std::__detail::__unique_ptr_t`), as if
+    /// the type were written there, with a Deduced relation: navigation from
+    /// the keyword reaches the type, references to the type never list the
+    /// keyword.
     void project_placeholder(const Semantics& semantics, std::uint32_t index) {
         const auto& entry = semantics.node(index);
         clang::SourceRange keyword;
@@ -1102,6 +1117,8 @@ public:
                proto && proto->hasTrailingReturn()) {
                 keyword = function->getTypeSpecStartLoc();
             }
+        } else if(const auto* self = entry.node.get<clang::CXXThisExpr>()) {
+            keyword = self->getLocation();
         }
         if(keyword.isInvalid() || entry.flags.in_instantiation) {
             return;
@@ -1113,7 +1130,7 @@ public:
         }
         // An init-capture's `auto` is implicit, at the captured name.
         auto spelling = unit.token_spelling(location);
-        if(spelling != "auto" && spelling != "decltype") {
+        if(spelling != "auto" && spelling != "decltype" && spelling != "this") {
             return;
         }
 
@@ -1122,7 +1139,8 @@ public:
             owner = semantics.node(owner).parent;
         }
         const auto* decl = semantics.node(owner).node.get<clang::Decl>();
-        auto type = types::deduced_type(entry.node.dyn_typed(), decl);
+        const auto* self = entry.node.get<clang::CXXThisExpr>();
+        auto type = self ? self->getType() : types::deduced_type(entry.node.dyn_typed(), decl);
         if(type.isNull()) {
             return;
         }
@@ -1134,10 +1152,14 @@ public:
                 return;
             }
             type = resolver.deduce(var);
+            if(type.isNull()) {
+                return;
+            }
         }
 
         clang::SourceRange name(location, SM.getFileLoc(keyword.getEnd()));
-        for(const auto* target: types::decls_of(types::unwrap(type), &resolver)) {
+        for(const auto* target:
+            types::decls_of(types::unwrap(readable.readable(type)), &resolver)) {
             // A closure type is declared by no name to reach.
             if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(target);
                record && record->isLambda()) {
@@ -1444,6 +1466,9 @@ public:
             blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
             blob.sym_args += symbol.args;
             blob.sym_args_ends.push_back(static_cast<std::uint32_t>(blob.sym_args.size()));
+            blob.sym_signatures += symbol.signature;
+            blob.sym_signature_ends.push_back(
+                static_cast<std::uint32_t>(blob.sym_signatures.size()));
             blob.sym_parents.push_back(symbol.parent);
             blob.sym_kinds.push_back(symbol.kind.value());
             blob.sym_scopes.push_back(static_cast<std::uint8_t>(symbol.scope));
@@ -1489,6 +1514,8 @@ private:
     bool focus_only;
     llvm::ArrayRef<std::uint64_t> known_variants;
     types::TemplateResolver resolver;
+    /// The types function signatures print as readers know them.
+    display::ReadableTypes readable;
     IncludeTree tree;
     SymbolTable symbols;
     /// Build-time working state keyed by FileID — clang::FileID means
@@ -1549,6 +1576,8 @@ struct SymbolColumns {
     llvm::ArrayRef<std::uint32_t> name_ends;
     llvm::StringRef args;
     llvm::ArrayRef<std::uint32_t> args_ends;
+    llvm::StringRef signatures;
+    llvm::ArrayRef<std::uint32_t> signature_ends;
     llvm::ArrayRef<std::uint64_t> parents;
     llvm::ArrayRef<std::uint8_t> kinds;
     llvm::ArrayRef<std::uint8_t> scopes;
@@ -1566,6 +1595,8 @@ struct SymbolColumns {
             .name_ends = to_array_ref(root[&TUIndexBlob::sym_name_ends]),
             .args = to_ref(root[&TUIndexBlob::sym_args]),
             .args_ends = to_array_ref(root[&TUIndexBlob::sym_args_ends]),
+            .signatures = to_ref(root[&TUIndexBlob::sym_signatures]),
+            .signature_ends = to_array_ref(root[&TUIndexBlob::sym_signature_ends]),
             .parents = to_array_ref(root[&TUIndexBlob::sym_parents]),
             .kinds = to_array_ref(root[&TUIndexBlob::sym_kinds]),
             .scopes = to_array_ref(root[&TUIndexBlob::sym_scopes]),
@@ -1590,6 +1621,7 @@ struct SymbolColumns {
         return {
             .name = back_to_back(names, name_ends, entry),
             .args = back_to_back(args, args_ends, entry),
+            .signature = back_to_back(signatures, signature_ends, entry),
             .parent = parents[entry],
             .kind = SymbolKind(kinds[entry]),
             .scope = static_cast<SymbolScope>(scopes[entry]),
@@ -1643,13 +1675,14 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     auto symbols = SymbolColumns::of(root);
     auto symbol_count = symbols.hashes.size();
     if(symbols.name_ends.size() != symbol_count || symbols.args_ends.size() != symbol_count ||
-       symbols.parents.size() != symbol_count || symbols.kinds.size() != symbol_count ||
-       symbols.scopes.size() != symbol_count || symbols.flags.size() != symbol_count ||
-       symbols.token_kinds.size() != symbol_count ||
+       symbols.signature_ends.size() != symbol_count || symbols.parents.size() != symbol_count ||
+       symbols.kinds.size() != symbol_count || symbols.scopes.size() != symbol_count ||
+       symbols.flags.size() != symbol_count || symbols.token_kinds.size() != symbol_count ||
        symbols.token_modifiers.size() != symbol_count || !all_token_kinds(symbols.token_kinds) ||
        symbols.files.size() != symbol_count || symbols.reference_ends.size() != symbol_count ||
        !monotone_ends(symbols.name_ends, symbols.names.size()) ||
        !monotone_ends(symbols.args_ends, symbols.args.size()) ||
+       !monotone_ends(symbols.signature_ends, symbols.signatures.size()) ||
        !monotone_ends(symbols.reference_ends, symbols.references.size())) {
         LOG_DEBUG("Rejecting TU index: malformed symbol columns");
         return {};

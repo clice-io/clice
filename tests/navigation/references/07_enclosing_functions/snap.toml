@@ -1,5 +1,5 @@
 [answers.variable]
-wrong = "each reference should name the function it lies in (clangd#177)"
+wrong = "each reference should name the function it lies in, as clice query references does (clangd#177)"
 references = [
     "int ⟦shared_value⟧ = 0;",
     "return ⟦shared_value⟧; @+3",

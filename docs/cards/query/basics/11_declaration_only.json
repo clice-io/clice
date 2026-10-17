@@ -1,0 +1,43 @@
+{
+  "id": "query/basics/11_declaration_only",
+  "topic": "query",
+  "subtopic": "basics",
+  "title": "A symbol nothing defines",
+  "summary": "The definition of a symbol nothing defines is its declaration, as go-to-definition answers in the editor",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "lib.h",
+      "text": "int checksum(const char* data, int size);\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"lib.h\"\n\nint run() {\n    return checksum(\"x\", 1);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query definition checksum",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"name\": \"checksum\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#c55e89483b081e6f\",\n    \"documentation\": null,\n    \"definition\": {\n      \"file\": \"${WS}/lib.h\",\n      \"startLine\": 1,\n      \"endLine\": 1,\n      \"text\": \"int checksum(const char* data, int size)\"\n    }\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

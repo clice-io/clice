@@ -29,7 +29,7 @@
           "label": "use",
           "marker": "use",
           "value": {
-            "wrong": "should reach the declaration of handle, whose type alone fails to resolve",
+            "wrong": "should reach the declaration of handle: where a variable whose type fails to resolve is used, clang keeps nothing that names it",
             "definition": []
           }
         }

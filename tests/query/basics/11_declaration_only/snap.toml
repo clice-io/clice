@@ -1,0 +1,26 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query definition checksum"]
+stdout = '''
+{
+  "result": {
+    "name": "checksum",
+    "kind": "Function",
+    "symbol": "#c55e89483b081e6f",
+    "documentation": null,
+    "definition": {
+      "file": "${WS}/lib.h",
+      "startLine": 1,
+      "endLine": 1,
+      "text": "int checksum(const char* data, int size)"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0

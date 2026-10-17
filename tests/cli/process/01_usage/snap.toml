@@ -67,6 +67,7 @@ Subcommands:
   definition        Where a symbol is defined, with its documentation
   references        Every place naming a symbol
   call-graph        A function's callers and callees
+  implementation    The classes deriving from a class, the overrides of a function
   type-hierarchy    A type's supertypes and subtypes
 '''
 exit = 0

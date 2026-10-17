@@ -53,7 +53,7 @@
                     }
                   }
                 },
-                "detail": "Service::start"
+                "detail": "Service::start()"
               }
             ],
             "incoming_calls": [
@@ -74,6 +74,7 @@
                     }
                   }
                 },
+                "detail": "launch(Service &s)",
                 "sites": [
                   {
                     "$place": "s.⟦start⟧();",
@@ -116,7 +117,8 @@
                       "character": 11
                     }
                   }
-                }
+                },
+                "detail": "launch(Service &s)"
               }
             ],
             "incoming_calls": [],
@@ -138,7 +140,7 @@
                     }
                   }
                 },
-                "detail": "Service::start",
+                "detail": "Service::start()",
                 "sites": [
                   {
                     "$place": "s.⟦start⟧();",

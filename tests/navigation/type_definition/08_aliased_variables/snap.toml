@@ -1,5 +1,5 @@
 [answers.type]
-type_definition = []
+type_definition = ["struct ⟦Point⟧ {"]
 
 [answers.alias]
 type_definition = ["struct ⟦Point⟧ {"]
@@ -8,8 +8,7 @@ type_definition = ["struct ⟦Point⟧ {"]
 type_definition = ["struct ⟦Point⟧ {"]
 
 [answers.alias_var]
-wrong = "should reach Point, the type the alias names"
-type_definition = ["using ⟦Alias⟧ = Point;"]
+type_definition = ["struct ⟦Point⟧ {", "using ⟦Alias⟧ = Point;"]
 
 [answers.auto_var]
 type_definition = ["struct ⟦Point⟧ {"]

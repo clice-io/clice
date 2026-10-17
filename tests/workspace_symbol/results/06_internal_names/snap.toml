@@ -1,0 +1,7 @@
+[answers.cache]
+workspace_symbols = [
+    { name = "Cache", kind = "Struct", at = "main.cpp │ struct ⟦Cache⟧ {};" },
+    { name = "cache_size()", kind = "Function", at = "main.cpp │ int ⟦cache_size⟧() {" },
+    { name = "cache_hits", kind = "Variable", at = "main.cpp │ static int ⟦cache_hits⟧ = 0;" },
+    { name = "cache_hits", kind = "Variable", at = "other.cpp │ static int ⟦cache_hits⟧ = 1;" },
+]

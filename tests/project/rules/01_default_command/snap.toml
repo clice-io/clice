@@ -6,5 +6,5 @@ diagnostics = []
 
 ["new files join the index".symbols]
 workspace_symbols = [
-    { name = "later_entry", kind = "Function", at = "src/later.cpp │ int ⟦later_entry⟧() { return 1; }" },
+    { name = "later_entry()", kind = "Function", at = "src/later.cpp │ int ⟦later_entry⟧() { return 1; }" },
 ]

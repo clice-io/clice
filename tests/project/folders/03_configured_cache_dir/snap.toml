@@ -1,8 +1,8 @@
 ["configured cache directory serves once".symbols]
 workspace_symbols = [
-    { name = "alpha_fn", kind = "Function", at = "alpha/main.cpp │ int ⟦alpha_fn⟧() { return 0; }" },
-    { name = "beta_fn", kind = "Function", at = "beta/main.cpp │ int ⟦beta_fn⟧() { return 0; }" },
-    { name = "gamma_fn", kind = "Function", at = "gamma/main.cpp │ int ⟦gamma_fn⟧() { return 0; }" },
+    { name = "alpha_fn()", kind = "Function", at = "alpha/main.cpp │ int ⟦alpha_fn⟧() { return 0; }" },
+    { name = "beta_fn()", kind = "Function", at = "beta/main.cpp │ int ⟦beta_fn⟧() { return 0; }" },
+    { name = "gamma_fn()", kind = "Function", at = "gamma/main.cpp │ int ⟦gamma_fn⟧() { return 0; }" },
 ]
 
 ["configured cache directory serves once".guidance]

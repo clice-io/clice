@@ -21,7 +21,7 @@ exit = 0
 
 ["closed header edit reaches its includers".symbols]
 workspace_symbols = [
-    { name = "registry_size", kind = "Function", at = "include/registry.h │ int ⟦registry_size⟧();" },
+    { name = "registry_size()", kind = "Function", at = "include/registry.h │ int ⟦registry_size⟧();" },
 ]
 
 ["closed header edit reaches its includers".errors]

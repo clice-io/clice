@@ -1,6 +1,6 @@
 # Override chain
 
-Implementation navigation follows an override chain one level at a time
+Implementation navigation lists the overrides at every level below
 
-Along a three-level override chain, go-to-implementation from each method
-reaches the override one level down — base to middle, middle to leaf.
+Along a three-level override chain, go-to-implementation from the base
+reaches the middle and the leaf override, and from the middle the leaf.

@@ -3,7 +3,7 @@ failed = ["poison.cpp"]
 
 [test.symbols]
 workspace_symbols = [
-    { name = "healthy_fn", kind = "Function", at = "healthy.cpp │ int ⟦healthy_fn⟧() { return 2; }" },
+    { name = "healthy_fn()", kind = "Function", at = "healthy.cpp │ int ⟦healthy_fn⟧() { return 2; }" },
 ]
 
 [test.crashes]
@@ -14,7 +14,7 @@ failed = ["poison.cpp"]
 
 [test."symbols after a change"]
 workspace_symbols = [
-    { name = "healthy_fn", kind = "Function", at = "healthy.cpp │ int ⟦healthy_fn⟧() { return 2; }" },
+    { name = "healthy_fn()", kind = "Function", at = "healthy.cpp │ int ⟦healthy_fn⟧() { return 2; }" },
 ]
 
 [test."crashes after a change"]

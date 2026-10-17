@@ -100,7 +100,7 @@
           "value": {
             "workspace_symbols": [
               {
-                "name": "other",
+                "name": "other()",
                 "kind": "Function",
                 "at": {
                   "$place": "other.cpp │ int ⟦other⟧() {",

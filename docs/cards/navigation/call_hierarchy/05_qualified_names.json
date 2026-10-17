@@ -47,7 +47,7 @@
                     }
                   }
                 },
-                "detail": "Circle::draw"
+                "detail": "Circle::draw()"
               }
             ],
             "incoming_calls": [],

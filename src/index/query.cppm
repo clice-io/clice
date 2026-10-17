@@ -131,6 +131,9 @@ private:
     mutable llvm::DenseSet<Fid> withheld_files;
 };
 
+/// Whether the shard declares or defines the symbol, not only names it.
+bool declares(const Shard& shard, SymbolHash hash);
+
 /// Cross-source dedup: an entry present in both a disk shard and a PCH
 /// overlay (or in two overlays sharing a preamble, or in two projects'
 /// indexes) comes out identical.
@@ -170,11 +173,15 @@ struct Highlight {
 };
 
 /// The relations of `symbols` in the shards of one text, one highlight per
-/// range in range order: a Write relation makes it Write, a reference Read,
-/// a declaration or definition Text — the strongest of them where several
-/// relations share a range.
-std::vector<Highlight> highlights(llvm::ArrayRef<const Shard*> shards,
-                                  llvm::ArrayRef<SymbolHash> symbols);
+/// range in range order: a declaration or definition Text; a reference of a
+/// variable, field or parameter Read, a Write relation Write; a reference of
+/// any other symbol Text — the strongest of them where several relations
+/// share a range. A class's name also highlights where its constructors
+/// are declared. `kind_of` is a symbol's kind, when known.
+std::vector<Highlight>
+    highlights(llvm::ArrayRef<const Shard*> shards,
+               llvm::ArrayRef<SymbolHash> symbols,
+               llvm::function_ref<std::optional<SymbolKind>(SymbolHash)> kind_of);
 
 /// Read-only queries over every index source: disk shards, open sessions'
 /// file indexes, PCH overlays and the buffers' own preamble indexes. Holds no
@@ -282,17 +289,19 @@ public:
     /// The containers of a symbol, outermost first: the parent chain up
     /// to the translation unit or to a parent no table knows, transparent
     /// scopes skipped (anonymous namespaces never are parents). Empty at
-    /// the translation unit and for an unknown hash.
-    llvm::SmallVector<SymbolRef, 4> container_chain(SymbolHash hash) const;
+    /// the translation unit and for an unknown hash. `anchor` as for
+    /// symbol_info: a symbol of internal linkage and its containers are
+    /// known to the files holding its entries.
+    llvm::SmallVector<SymbolRef, 4> container_chain(SymbolHash hash, Fid anchor = {}) const;
 
     /// The chain spelled as a qualified name ("ns::Outer" for
     /// `ns::Outer::name`).
-    std::string container_name(SymbolHash hash) const;
+    std::string container_name(SymbolHash hash, Fid anchor = {}) const;
 
     /// The symbol's name qualified by its container, a specialization's
     /// arguments included ("ns::Outer::name<int>"). Empty for an unknown
     /// hash.
-    std::string qualified_name(SymbolHash hash) const;
+    std::string qualified_name(SymbolHash hash, Fid anchor = {}) const;
 
     /// Every site carrying a relation of `kind` for the symbol, across all
     /// serving sources, deduplicated — a relation present in both a disk shard
@@ -328,24 +337,48 @@ public:
     /// every file uses.
     Fid definition_file(SymbolHash hash) const;
 
-    /// Go-to-definition from a cursor: the definition sites, or — standing
-    /// on the definition itself, or when nothing defines the symbol — the
-    /// declarations (and sibling definitions) and, at a specialization, the
-    /// template it specializes, so definition and declaration sites
-    /// alternate. The cursor's own site drops out unless it is the only site
-    /// the symbol has.
+    /// The definitions go-to-definition lists for a symbol: all of them,
+    /// but of a namespace, which each of its blocks defines, the canonical
+    /// one.
+    std::vector<Site> definition_sites(SymbolHash hash, Fid anchor) const;
+
+    /// Go-to-definition from a cursor: the definition sites (at its own
+    /// declaration, a virtual function nothing defines is defined by its
+    /// overrides), or —
+    /// standing on the definition itself, or when nothing defines the
+    /// symbol — the declarations (and sibling definitions) and, at a
+    /// specialization, the template it specializes, so definition and
+    /// declaration sites alternate; a namespace's blocks never do. The
+    /// cursor's own site drops out unless it is the only site the symbol
+    /// has.
     std::vector<Site> definition(const Cursor& cursor) const;
 
     /// The mirror half of definition's alternation: declarations plus the
-    /// definition, minus the site the cursor stands on.
+    /// definition, minus the site the cursor stands on. At a function
+    /// defined with no declaration of its own, the declarations an edit to
+    /// one side may have parted from it (mismatched_declarations).
     std::vector<Site> declaration(const Cursor& cursor) const;
 
     /// The references of the symbol under the cursor, weak ones included (a
     /// template's call through an overload set or a dependent name, which
     /// names its candidates only heuristically), optionally folding in its
     /// declarations and definitions, deduplicated across the kinds — relations
-    /// of different kinds can share one anchor.
+    /// of different kinds can share one anchor. A method's include the
+    /// references of the methods it overrides, a call through which may
+    /// dispatch to it; a class's the names of its constructors.
     std::vector<Site> references(const Cursor& cursor, bool include_declaration) const;
+
+    /// The qualified name of the function whose definition holds each site,
+    /// the innermost; empty where none does. A function's own name lies in
+    /// none.
+    std::vector<std::string> enclosing_functions(llvm::ArrayRef<Site> sites) const;
+
+    /// A function some source defines: its definition's extent and its name.
+    struct DefinedFunction {
+        SymbolHash hash;
+        LocalSourceRange extent;
+        LocalSourceRange name;
+    };
 
     struct PlacedHighlight {
         Site site;
@@ -360,22 +393,17 @@ public:
     /// Go-to-type-definition of a cursor's symbol: the declarations its
     /// type names — at a name of a member of a template's specialization,
     /// the type the specialization gives it (TypeDefinition relations
-    /// spanning the cursor in the index serving its file), elsewhere the
-    /// type it is declared with (the relations without a range).
+    /// spanning the cursor in the index serving its file); at a type, the
+    /// type itself; elsewhere the type it is declared with (the relations
+    /// without a range). An alias leads on to the type it names. The
+    /// cursor's own site drops out unless it is the only one.
     std::vector<Site> type_definition(const Cursor& cursor, SymbolHash symbol) const;
 
-    /// Whether the index serving the cursor's file relates `symbol` to the
-    /// cursor by `kind`: Deduced, the cursor is a keyword standing for it
-    /// (an `auto` or `decltype` the type names), not a name of it;
-    /// WeakReference, a name that may mean it (a dependent name, an
-    /// overload set, a using-declaration).
-    bool relates(const Cursor& cursor, SymbolHash symbol, RelationKind kind) const;
-
-    /// Sites implementing the symbol: derived types for a class-like
-    /// symbol, overrides otherwise — through every override that only
-    /// declares to the ones below it; for a function nothing overrides, its
-    /// definitions.
-    std::vector<Site> implementation(SymbolHash hash, Fid anchor) const;
+    /// Whether the name at the cursor may mean `symbol` without naming it
+    /// for certain — a dependent name, an overload set's candidate, a
+    /// using-declaration's target: a WeakReference relation at the
+    /// cursor's name in the index serving its file.
+    bool names_weakly(const Cursor& cursor, SymbolHash symbol) const;
 
     /// A symbol's definition as text: the extent's site and the text it
     /// spans, sliced from the first source that holds the definition in
@@ -400,9 +428,10 @@ public:
     /// method overriding another without one takes that method's.
     std::string doc_comment(SymbolHash hash, Fid anchor, bool inherit) const;
 
-    /// The source line a site lies on, for previews; empty when the text
-    /// is unavailable (see definition_text on the disk re-read).
-    std::string context_line(const Site& site) const;
+    /// The source line each site lies on, for previews, each file read
+    /// once; empty when the text is unavailable (see definition_text on the
+    /// disk re-read).
+    std::vector<std::string> context_lines(llvm::ArrayRef<Site> sites) const;
 
     /// The text the index serving `file` was built from — the offsets of
     /// every site in it index this text; nullopt when no source serves the
@@ -433,6 +462,11 @@ public:
     /// source places is left out.
     std::vector<Located> resolve_at(const Cursor& cursor) const;
 
+    /// What implements the symbol, each at its canonical site: the types
+    /// deriving from a class-like symbol, the overrides of a function, at
+    /// any depth; for a function nothing overrides, its definitions.
+    std::vector<Located> implementation(SymbolHash hash, Fid anchor) const;
+
     /// The distinct targets of the symbol's relations of `kind` (bases,
     /// overrides, constructors, specializations), each at its canonical
     /// site; a target no source places is left out.
@@ -446,9 +480,10 @@ public:
     };
 
     /// The functions calling `root` and the ones it calls, with the call
-    /// sites; only the sides asked for are walked. A variable, a field or
-    /// an enumerator has as callers the functions using it. A neighbour no
-    /// source places is left out.
+    /// sites; only the sides asked for are walked. A method's callers
+    /// include those of the methods it overrides, whose calls may dispatch
+    /// to it. A variable, a field or an enumerator has as callers the
+    /// functions using it. A neighbour no source places is left out.
     struct CallGraphOptions {
         bool callers = true;
         bool callees = true;
@@ -560,9 +595,25 @@ private:
     /// sites spelling it, the targets resolved to their canonical sites.
     std::vector<Edge> edges(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
+    /// The sites of the symbol's relations of `kind`, added to `by_target`
+    /// under their targets.
+    void collect_by_target(SymbolHash hash,
+                           Fid anchor,
+                           RelationKind kind,
+                           llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) const;
+
     /// The functions whose bodies reference `hash`, each with its
     /// references, weak ones included.
     std::vector<Edge> referencing_functions(SymbolHash hash, Fid anchor) const;
+
+    /// The declarations of the functions of `hash`'s name in its scope that
+    /// nothing defines, when `hash` is a function defined with no other
+    /// declaration: the one it parted from when a parameter changed on one
+    /// side, which wants the same edit.
+    std::vector<Site> mismatched_declarations(SymbolHash hash, Fid anchor) const;
+
+    /// The functions `source` defines.
+    std::vector<DefinedFunction> defined_functions(const IndexSource& source) const;
 
     /// The edges of the sites grouped by neighbour, each neighbour at its
     /// canonical site.
@@ -578,6 +629,12 @@ private:
     /// The distinct target symbols of the symbol's relations of `kind`
     /// (bases, derived types, overrides), in first-seen order.
     llvm::SmallVector<Target> targets(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// The same followed from each target on: every derived type, every
+    /// override, every overridden method at any depth, each once.
+    llvm::SmallVector<Target> transitive_targets(SymbolHash hash,
+                                                 Fid anchor,
+                                                 RelationKind kind) const;
 
     /// Whether some unit reported a definition of the symbol: an open
     /// session's table knows only its own unit, the project table all.

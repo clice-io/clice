@@ -8,6 +8,7 @@ module clice;
 
 import :index.database;
 import :index.manifest;
+import :index.query;
 import :index.serialization;
 import :index.shard;
 import :index.tu_index;
@@ -527,6 +528,9 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     llvm::SmallVector<index::SymbolHash> added;
     project_index.merge(view, file_ids_map, &added);
     project.project_index.search_pending.insert(added.begin(), added.end());
+    if(changed_during_search_build) {
+        changed_during_search_build->insert(added.begin(), added.end());
+    }
     merges_since_search_build += 1;
 
     // Intern a FileVersion per file of the parse: the consumed-content hash
@@ -1099,17 +1103,44 @@ kota::task<> IndexStore::rebuild_search_index() {
             });
             return true;
         });
+    // The symbols of internal linkage are in no table but the shards of
+    // the files declaring them.
+    for(auto& [file, shard]: project_index.shards) {
+        if(!shard.loaded()) {
+            continue;
+        }
+        shard.for_each_local_symbol([&](index::SymbolHash hash,
+                                        const index::SymbolIdentity& symbol) {
+            if(symbol.scope != index::SymbolScope::TULocal ||
+               !index::is_searchable_kind(symbol.kind) || symbol.name.empty() ||
+               !index::declares(shard, hash)) {
+                return true;
+            }
+            auto [path, inserted] =
+                path_index.try_emplace(file.raw, static_cast<std::uint32_t>(snapshot.paths.size()));
+            if(inserted) {
+                snapshot.paths.push_back(project_index.portable(project.file_table.resolve(file)));
+            }
+            snapshot.entries.push_back({
+                .hash = hash,
+                .name = symbol.name.str(),
+                .args = symbol.args.str(),
+                .parent = symbol.parent,
+                .kind = symbol.kind,
+                .flags = symbol.flags,
+                .file = path->second,
+                .local = true,
+            });
+            return true;
+        });
+    }
     auto merges_in_snapshot = merges_since_search_build;
-    // Entries that change across the build stay pending: only the ones the
-    // snapshot saw are cleared by the index built from it.
-    auto pending_in_snapshot = std::move(project.project_index.search_pending);
-    project.project_index.search_pending.clear();
-    // Until the rebuilt index is adopted the old one still needs them:
-    // a cancelled or failed build gives them back.
-    auto restore = llvm::make_scope_exit([&] {
-        project.project_index.search_pending.insert(pending_in_snapshot.begin(),
-                                                    pending_in_snapshot.end());
-    });
+    // The entries pending now are in the snapshot; the ones a merge changes
+    // during the build stay pending once it is adopted.
+    llvm::SmallVector<index::SymbolHash> pending_in_snapshot(project_index.search_pending.begin(),
+                                                             project_index.search_pending.end());
+    changed_during_search_build.emplace();
+    auto finished = llvm::make_scope_exit([&] { changed_during_search_build.reset(); });
 
     std::string bytes;
     co_await kota::queue([&] { bytes = index::build_search_blob(snapshot); });
@@ -1123,11 +1154,11 @@ kota::task<> IndexStore::rebuild_search_index() {
     // persisted search index only under this generation.
     project.project_index.search_generation = snapshot.generation;
     global_dirty = true;
-    restore.release();
     merges_since_search_build -= merges_in_snapshot;
     for(auto hash: pending_in_snapshot) {
-        if(!project.project_index.search_index.contains(hash)) {
-            project.project_index.search_pending.insert(hash);
+        if(project_index.search_index.contains(hash) &&
+           !changed_during_search_build->contains(hash)) {
+            project_index.search_pending.erase(hash);
         }
     }
     search_bytes = std::move(bytes);

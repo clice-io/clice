@@ -634,6 +634,7 @@ ZEST_CASE(ReservedLocalParentRejected) {
     blob.local_kinds = {0};
     blob.local_scopes = {1};
     blob.local_args = {""};
+    blob.local_signatures = {""};
     blob.local_parents = {0};
     blob.local_flags = {0};
     blob.local_token_kinds = {0};

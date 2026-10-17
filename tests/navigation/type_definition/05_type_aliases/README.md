@@ -1,5 +1,5 @@
 # Type aliases
 
-Go-to-type-definition on a variable of an aliased type reaches the `using`
-or `typedef` declaration; it does not yet unwrap the alias to the underlying
-type's definition
+Go-to-type-definition on a variable of an aliased type reaches both the `using` or `typedef` declaration and the type it names
+
+An alias template's alias reaches the template its target specializes.

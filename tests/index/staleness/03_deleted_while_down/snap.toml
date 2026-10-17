@@ -8,5 +8,5 @@ exit = 0
 [test.symbols]
 removed = []
 kept = [
-    { name = "main", kind = "Function", at = "main.cpp │ int ⟦main⟧() { return 0; }" },
+    { name = "main()", kind = "Function", at = "main.cpp │ int ⟦main⟧() { return 0; }" },
 ]

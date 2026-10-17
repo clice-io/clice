@@ -16,12 +16,14 @@ stdout = '''
       {
         "file": "${WS}/main.cpp",
         "line": 2,
-        "context": "value() { return 1; }"
+        "context": "value() { return 1; }",
+        "function": null
       },
       {
         "file": "${WS}/main.cpp",
         "line": 3,
-        "context": "int use() { return value(); }"
+        "context": "int use() { return value(); }",
+        "function": "use"
       }
     ],
     "total": 2

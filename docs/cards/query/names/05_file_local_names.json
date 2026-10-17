@@ -3,7 +3,7 @@
   "topic": "query",
   "subtopic": "names",
   "title": "File-local symbols",
-  "summary": "Symbols only one file can name, such as statics, locals and parameters, are found by name within that file with `path:`",
+  "summary": "A static found by name anywhere; locals and parameters, which only their function names, found by name within their file with `path:`",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -33,7 +33,7 @@
         {
           "label": "$ clice query symbol-search \"\\\"rows\\\"\"",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"symbols\": []\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/b.cpp\",\n        \"line\": 1,\n        \"container\": null,\n        \"symbol\": \"#91b81847324836ae path:${WS}/b.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },

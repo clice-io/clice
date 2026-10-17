@@ -1,0 +1,3 @@
+{
+  "databases": { "main": ["main/widget.cpp"], "copy": ["copy/widget.cpp"] }
+}

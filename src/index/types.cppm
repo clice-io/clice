@@ -178,6 +178,7 @@ constexpr inline std::uint32_t no_file = ~0u;
 struct SymbolIdentity {
     llvm::StringRef name;
     llvm::StringRef args;
+    llvm::StringRef signature;
     SymbolHash parent = 0;
     SymbolKind kind;
     SymbolScope scope = SymbolScope::External;
@@ -196,6 +197,11 @@ struct Symbol {
     /// A specialization's template arguments ("<int, 4>"), shown after the
     /// name; empty otherwise.
     std::string args;
+
+    /// A function's parameters and qualifiers as every feature shows them
+    /// (display::call_signature), which tell its overloads apart; empty
+    /// for any other symbol.
+    std::string signature;
 
     /// The entity of the enclosing namespace, class, enum or function;
     /// 0 at the translation unit.
@@ -227,6 +233,7 @@ struct Symbol {
         return {
             .name = name,
             .args = args,
+            .signature = signature,
             .parent = parent,
             .kind = kind,
             .scope = scope,
@@ -247,6 +254,7 @@ struct SymbolRef {
     SymbolHash hash = 0;
     std::string name;
     std::string args;
+    std::string signature;
     SymbolHash parent = 0;
     SymbolKind kind;
     SymbolScope scope = SymbolScope::External;
@@ -258,6 +266,7 @@ struct SymbolRef {
             .hash = hash,
             .name = identity.name.str(),
             .args = identity.args.str(),
+            .signature = identity.signature.str(),
             .parent = identity.parent,
             .kind = identity.kind,
             .scope = identity.scope,

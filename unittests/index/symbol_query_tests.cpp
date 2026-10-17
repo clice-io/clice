@@ -195,6 +195,8 @@ ZEST_CASE(Filters) {
     ZEXPECT(error_of("foo bar") == "one name per query; 'bar' is a second");
     ZEXPECT(error_of(R"("foo)") == "unterminated quote");
     ZEXPECT(error_of("Foo<int") == "unbalanced '<'");
+    // Parsed in time linear in its length, as any query.
+    ZEXPECT(error_of(std::string(200'000, '<')) == "unbalanced '<'");
     ZEXPECT(error_of("*::foo") == "a scope names a container: '*'");
     auto spaced = parsed(R"(Box<int, 4> kind:struct)");
     ZEXPECT(spaced.pattern == "Box");

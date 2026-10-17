@@ -87,6 +87,7 @@
                     }
                   }
                 },
+                "detail": "next()",
                 "sites": [
                   {
                     "$place": "return ⟦counter⟧++;",
@@ -151,6 +152,7 @@
                     }
                   }
                 },
+                "detail": "pick()",
                 "sites": [
                   {
                     "$place": "return ⟦Fast⟧;",
@@ -215,7 +217,7 @@
                     }
                   }
                 },
-                "detail": "Tally::bump",
+                "detail": "Tally::bump()",
                 "sites": [
                   {
                     "$place": "⟦hits⟧ += 1;",
@@ -280,7 +282,7 @@
                     }
                   }
                 },
-                "detail": "Reader::read",
+                "detail": "Reader::read()",
                 "sites": [
                   {
                     "$place": "return this->⟦stored⟧;",

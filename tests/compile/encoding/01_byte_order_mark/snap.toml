@@ -13,7 +13,7 @@ definition = ["a.h │ int ⟦shared_fn⟧();"]
 
 [navigation.user3]
 workspace_symbols = [
-    { name = "user3", kind = "Function", at = "c.cpp │ int ⟦user3⟧() {" },
+    { name = "user3()", kind = "Function", at = "c.cpp │ int ⟦user3⟧() {" },
 ]
 
 ["marked host keeps the context"."utils.h"]

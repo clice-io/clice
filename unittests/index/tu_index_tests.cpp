@@ -81,6 +81,7 @@ void decode_index(const std::string& bytes) {
         auto& symbol = tu_index.symbols[hash];
         symbol.name = identity.name.str();
         symbol.args = identity.args.str();
+        symbol.signature = identity.signature.str();
         symbol.parent = identity.parent;
         symbol.kind = identity.kind;
         symbol.scope = identity.scope;
@@ -1734,6 +1735,30 @@ ZEST_CASE(SymbolFacts) {
     ZASSERT(symbol_named("~Scoped").second.parent == scoped);
 }
 
+ZEST_CASE(FunctionSignatures) {
+    build_index(R"(
+        namespace geometry { struct Point {}; }
+        int scale(int factor, double ratio = 1.0);
+        int scale(geometry::Point point);
+        struct Holder {
+            void resize(int width, int height) const;
+        };
+        int counter;
+    )");
+
+    llvm::SmallVector<std::string> overloads;
+    for(auto& symbol: llvm::make_second_range(tu_index.symbols)) {
+        if(symbol.name == "scale") {
+            overloads.push_back(symbol.signature);
+        }
+    }
+    llvm::sort(overloads);
+    ZEXPECT(overloads == (llvm::SmallVector<std::string>{"(geometry::Point point)",
+                                                         "(int factor, double ratio = 1.0)"}));
+    ZEXPECT(symbol_named("resize").second.signature == "(int width, int height) const");
+    ZEXPECT(symbol_named("counter").second.signature.empty());
+}
+
 ZEST_CASE(CanonicalFile) {
     add_file("header.h", R"(
         int declared_twice();
@@ -2155,6 +2180,57 @@ ZEST_CASE(ClassParametersStayUnbound) {
     });
 }
 
+ZEST_CASE(DeducedKeywords) {
+    build_index(R"(
+        namespace std {
+        template <class T>
+        struct unique_ptr {};
+
+        namespace __detail {
+        template <class T>
+        using __unique_ptr_t = unique_ptr<T>;
+        }
+
+        template <class T>
+        __detail::__unique_ptr_t<T> make_unique() {
+            return {};
+        }
+        }  // namespace std
+
+        struct Widget {
+            int size;
+
+            int area() {
+                return §(self)⟦this->size⟧;
+            }
+        };
+
+        void once(§(parameter)⟦auto value⟧) {}
+
+        void use() {
+            once(Widget{});
+            §(made)⟦auto made⟧ = std::make_unique<Widget>();
+        }
+    )");
+
+    ZEXPECT(spelled_in("self") == std::vector<Spelled>{
+                                      {"this", SymbolKind::Struct, {RelationKind::Deduced}  },
+                                      {"size", SymbolKind::Field,  {RelationKind::Reference}},
+    });
+    // The keyword stands for the type the only call passes; it names no
+    // template parameter of its own.
+    ZEXPECT(spelled_in("parameter") ==
+            std::vector<Spelled>{
+                {"auto",  SymbolKind::Struct,    {RelationKind::Deduced}   },
+                {"value", SymbolKind::Parameter, {RelationKind::Definition}},
+    });
+    // A library's internal alias gives way to the type it names.
+    ZEXPECT(spelled_in("made") == std::vector<Spelled>{
+                                      {"auto", SymbolKind::Struct,   {RelationKind::Deduced}   },
+                                      {"made", SymbolKind::Variable, {RelationKind::Definition}},
+    });
+}
+
 ZEST_CASE(MacroNameFirstToken) {
     build_index(R"(
         #define §(macro)⟦NAME⟧ Widget
@@ -2397,7 +2473,6 @@ ZEST_CASE(ConstrainedParameterOneDefinition) {
             std::vector<Spelled>{
                 {"abbreviated", SymbolKind::Function,  {RelationKind::Declaration}},
                 {"Concept",     SymbolKind::Concept,   {RelationKind::Reference}  },
-                {"auto",        SymbolKind::Type,      {RelationKind::Reference}  },
                 {"value",       SymbolKind::Parameter, {RelationKind::Definition} },
     });
 }

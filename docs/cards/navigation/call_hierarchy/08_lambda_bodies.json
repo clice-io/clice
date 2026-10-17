@@ -46,7 +46,8 @@
                       "character": 8
                     }
                   }
-                }
+                },
+                "detail": "foo()"
               }
             ],
             "incoming_calls": [
@@ -67,6 +68,7 @@
                     }
                   }
                 },
+                "detail": "use()",
                 "sites": [
                   {
                     "$place": "⟦foo⟧();",

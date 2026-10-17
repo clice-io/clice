@@ -1281,8 +1281,11 @@ void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateReso
 
     /// template <typename T> void foo(T t)
     ///                                ^~~~ reference
+    /// An abbreviated template's `auto` names no parameter the code declares.
     if(auto TTPL = TL.getAs<clang::TemplateTypeParmTypeLoc>()) {
-        refer(out, TTPL.getDecl(), RelationKind::Reference, TTPL.getNameLoc());
+        if(auto* param = TTPL.getDecl(); param && !param->isImplicit()) {
+            refer(out, param, RelationKind::Reference, TTPL.getNameLoc());
+        }
         return;
     }
 

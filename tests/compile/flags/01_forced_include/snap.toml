@@ -17,7 +17,7 @@ definition = ["force.h │ #define ⟦FORCED⟧ 1"]
 
 ["edits pay no import scan".other]
 workspace_symbols = [
-    { name = "other", kind = "Function", at = "other.cpp │ int ⟦other⟧() {" },
+    { name = "other()", kind = "Function", at = "other.cpp │ int ⟦other⟧() {" },
 ]
 
 ["forced header edit".renamed]

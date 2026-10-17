@@ -1,7 +1,7 @@
 [answers.constructor]
 wrong = "build reaches the constructor through make<Widget>, so it should be among the incoming calls (clangd#2242)"
 call_hierarchy = [
-    { name = "Widget", kind = "Method", at = "⟦Widget⟧(int w, int h);", detail = "Widget::Widget" },
+    { name = "Widget", kind = "Method", at = "⟦Widget⟧(int w, int h);", detail = "Widget::Widget(int w, int h)" },
 ]
 incoming_calls = []
 outgoing_calls = []

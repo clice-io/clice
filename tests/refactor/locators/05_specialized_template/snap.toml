@@ -15,16 +15,24 @@ stdout = '''
     "references": [
       {
         "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    Holder(T value) : value(value) {}",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
         "line": 23,
-        "context": "Holder number{1};"
+        "context": "Holder number{1};",
+        "function": null
       },
       {
         "file": "${WS}/main.cpp",
         "line": 27,
-        "context": "Holder text{\"text\"};"
+        "context": "Holder text{\"text\"};",
+        "function": null
       }
     ],
-    "total": 2
+    "total": 3
   },
   "stale": []
 }

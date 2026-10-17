@@ -2283,7 +2283,14 @@ std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnit& uni
     if(!named) {
         return to_raw_json(std::vector<index::Highlight>{});
     }
-    return to_raw_json(index::highlights({&shard}, named->symbols));
+    return to_raw_json(index::highlights({&shard},
+                                         named->symbols,
+                                         [&](index::SymbolHash hash) -> std::optional<SymbolKind> {
+                                             if(auto symbol = tu.find_symbol(hash)) {
+                                                 return symbol->kind;
+                                             }
+                                             return std::nullopt;
+                                         }));
 }
 
 /// A feature runs in exactly one shape: whole-document (`run`), once per

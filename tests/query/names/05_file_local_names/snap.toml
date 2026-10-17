@@ -9,7 +9,16 @@ exit = 0
 stdout = '''
 {
   "result": {
-    "symbols": []
+    "symbols": [
+      {
+        "name": "rows",
+        "kind": "Variable",
+        "file": "${WS}/b.cpp",
+        "line": 1,
+        "container": null,
+        "symbol": "#91b81847324836ae path:${WS}/b.cpp"
+      }
+    ]
   },
   "stale": []
 }

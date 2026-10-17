@@ -1,0 +1,108 @@
+{
+  "id": "workspace_symbol/results/06_internal_names",
+  "topic": "workspace_symbol",
+  "subtopic": "results",
+  "title": "Names of internal linkage",
+  "summary": "Search finds the names of internal linkage at namespace scope, in every file declaring one, but never a function's locals",
+  "prose": "A `static` variable or a member of an anonymous namespace is known only to\nits own file, yet it is a name the project declares: search lists it, once\nper file that declares one. A local variable is not.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace {\n\nstruct Cache {};\n\nint cache_size() {\n    return 0;\n}\n\n}  // namespace\n\nstatic int cache_hits = 0;\n\nint use() {\n    int cache_local = cache_hits;\n    return cache_local + cache_size();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "other.cpp",
+      "text": "static int cache_hits = 1;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "cache",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "Cache",
+                "kind": "Struct",
+                "at": {
+                  "$place": "main.cpp │ struct ⟦Cache⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 12
+                    }
+                  }
+                }
+              },
+              {
+                "name": "cache_size()",
+                "kind": "Function",
+                "at": {
+                  "$place": "main.cpp │ int ⟦cache_size⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 14
+                    }
+                  }
+                }
+              },
+              {
+                "name": "cache_hits",
+                "kind": "Variable",
+                "at": {
+                  "$place": "main.cpp │ static int ⟦cache_hits⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 21
+                    }
+                  }
+                }
+              },
+              {
+                "name": "cache_hits",
+                "kind": "Variable",
+                "at": {
+                  "$place": "other.cpp │ static int ⟦cache_hits⟧ = 1;",
+                  "path": "other.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 21
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

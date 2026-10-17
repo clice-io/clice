@@ -405,6 +405,27 @@ ZEST_CASE(PortablePathsFiltered) {
     ZEXPECT(found("side path:/opt/") == Names{"outside"});
 }
 
+ZEST_CASE(LocalSymbolsNameTheirFile) {
+    // A symbol of internal linkage is in no project table: a hit on it
+    // names the file whose shard holds it.
+    Corpus corpus;
+    corpus.add("helper", SymbolKind::Function);
+    corpus.add("helper", SymbolKind::Function, SymbolFlags::HasDefinition, 1, "/w/src/b.cpp");
+    corpus.add("helper_too", SymbolKind::Function);
+    corpus.snapshot.entries[1].local = true;
+    auto built = corpus.build();
+    std::vector<std::pair<std::string, std::string>> hits;
+    for(auto& hit: built.search(*SymbolQuery::parse("helper"), 10, {}).hits) {
+        hits.emplace_back(corpus.name_of(hit.hash), hit.file.str());
+    }
+    llvm::sort(hits);
+    ZEXPECT(hits == (std::vector<std::pair<std::string, std::string>>{
+                        {"helper",     ""            },
+                        {"helper",     "/w/src/b.cpp"},
+                        {"helper_too", ""            },
+    }));
+}
+
 };  // ZEST_SUITE(SearchIndex)
 
 }  // namespace

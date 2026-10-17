@@ -1,11 +1,11 @@
 [test.symbols]
 workspace_symbols = [
-    { name = "alpha", kind = "Function", at = "a.h │ inline int ⟦alpha⟧() { return 1; }" },
+    { name = "alpha()", kind = "Function", at = "a.h │ inline int ⟦alpha⟧() { return 1; }" },
 ]
 
 [test."symbols after the header changed"]
 workspace_symbols = [
-    { name = "beta", kind = "Function", at = "a.h │ inline int ⟦beta⟧() { return 2; }" },
+    { name = "beta()", kind = "Function", at = "a.h │ inline int ⟦beta⟧() { return 2; }" },
 ]
 
 [test."$ clice index --jobs 2"]

@@ -56,21 +56,12 @@ std::vector<protocol::DocumentHighlight>
     return result;
 }
 
-protocol::SymbolKind symbol_kind(SymbolKind kind) {
-    switch(kind) {
-        case SymbolKind::Type: return protocol::SymbolKind::TypeParameter;
-        case SymbolKind::Concept: return protocol::SymbolKind::Interface;
-        case SymbolKind::Macro: return protocol::SymbolKind::Function;
-        default: return feature::to_protocol_symbol_kind(kind);
-    }
-}
-
 protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
                                                const index::Site& site,
                                                llvm::StringRef container) {
     protocol::SymbolInformation info;
-    info.name = symbol.display_name();
-    info.kind = symbol_kind(symbol.kind);
+    info.name = symbol.display_name() + symbol.signature;
+    info.kind = feature::to_protocol_symbol_kind(symbol.kind);
     if(!container.empty()) {
         info.container_name = container.str();
     }
@@ -85,10 +76,10 @@ static Item hierarchy_item(const index::SymbolRef& symbol,
                            llvm::StringRef qualified) {
     Item item;
     item.name = symbol.display_name();
-    if(qualified != item.name) {
-        item.detail = qualified.str();
+    if(auto detail = qualified.str() + symbol.signature; detail != item.name) {
+        item.detail = std::move(detail);
     }
-    item.kind = symbol_kind(symbol.kind);
+    item.kind = feature::to_protocol_symbol_kind(symbol.kind);
     item.uri = feature::to_uri(site.path);
     item.range = range(extent);
     item.selection_range = range(site);

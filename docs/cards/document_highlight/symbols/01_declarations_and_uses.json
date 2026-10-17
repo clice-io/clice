@@ -185,7 +185,7 @@
                     }
                   }
                 },
-                "kind": "read"
+                "kind": "text"
               },
               {
                 "at": {
@@ -202,7 +202,7 @@
                     }
                   }
                 },
-                "kind": "read"
+                "kind": "text"
               }
             ]
           }
@@ -455,7 +455,7 @@
                     }
                   }
                 },
-                "kind": "read"
+                "kind": "text"
               },
               {
                 "at": {
@@ -472,7 +472,7 @@
                     }
                   }
                 },
-                "kind": "read"
+                "kind": "text"
               }
             ]
           }

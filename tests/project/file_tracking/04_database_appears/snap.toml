@@ -11,5 +11,5 @@ errors = [
 
 ["cdb appears after startup".indexed]
 workspace_symbols = [
-    { name = "lib_entry", kind = "Function", at = "lib.cpp │ int ⟦lib_entry⟧() { return 1; }" },
+    { name = "lib_entry()", kind = "Function", at = "lib.cpp │ int ⟦lib_entry⟧() { return 1; }" },
 ]

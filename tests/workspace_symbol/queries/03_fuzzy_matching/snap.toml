@@ -5,7 +5,7 @@ workspace_symbols = [
 
 [answers.pconf]
 workspace_symbols = [
-    { name = "parse_config", kind = "Function", at = "main.cpp │ void ⟦parse_config⟧();" },
+    { name = "parse_config()", kind = "Function", at = "main.cpp │ void ⟦parse_config⟧();" },
 ]
 
 [answers.pcfg]

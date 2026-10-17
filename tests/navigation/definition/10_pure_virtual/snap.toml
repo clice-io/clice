@@ -1,0 +1,5 @@
+[answers.pure]
+definition = ["double ⟦area⟧() const override { @+4", "double ⟦area⟧() const override { @+10"]
+
+[answers.call]
+definition = ["virtual double ⟦area⟧() const = 0;"]

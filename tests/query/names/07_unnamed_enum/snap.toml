@@ -16,17 +16,20 @@ stdout = '''
       {
         "file": "${WS}/a.cpp",
         "line": 2,
-        "context": "int a() { return flag; }"
+        "context": "int a() { return flag; }",
+        "function": "a"
       },
       {
         "file": "${WS}/b.cpp",
         "line": 2,
-        "context": "int b() { return flag * 2; }"
+        "context": "int b() { return flag * 2; }",
+        "function": "b"
       },
       {
         "file": "${WS}/flags.h",
         "line": 2,
-        "context": "enum { flag = 1 };"
+        "context": "enum { flag = 1 };",
+        "function": null
       }
     ],
     "total": 3

@@ -44,7 +44,7 @@
               },
               {
                 "name": "Connection",
-                "kind": "TypeParameter",
+                "kind": "Class",
                 "at": {
                   "$place": "main.cpp │ using ⟦Connection⟧ = ConnectionImpl;",
                   "path": "main.cpp",

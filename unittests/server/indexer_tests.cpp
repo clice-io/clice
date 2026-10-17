@@ -603,6 +603,51 @@ ZEST_CASE(MidSaveMergeKept) {
     ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int second_value() { return 2; }\n"));
 }
 
+ZEST_CASE(SearchRebuildKeepsPendingFindable) {
+    TempDir tmp;
+    tmp.touch("a.cpp", "int first_value() { return 1; }\n");
+    tmp.touch("b.cpp", "int second_value() { return 2; }\n");
+    open_store(tmp, project);
+    auto first = index_file(tmp, tmp.path("a.cpp"));
+    ZASSERT(!first.data.empty());
+    merge(first.data.data(), first.data.size());
+    fx.save(IndexStore::SearchRebuild::Idle);
+    ZASSERT(project.project_index.search_index.loaded());
+
+    auto second = index_file(tmp, tmp.path("b.cpp"));
+    ZASSERT(!second.data.empty());
+    merge(second.data.data(), second.data.size());
+    llvm::SmallVector<index::SymbolHash> merged(project.project_index.search_pending.begin(),
+                                                project.project_index.search_pending.end());
+    ZASSERT(!merged.empty());
+
+    // The probe runs while the save awaits the search build on the thread
+    // pool: what was merged since the last build is in neither index yet,
+    // so it must still be pending, where a search scans it.
+    auto save_body = [&]() -> kota::task<> {
+        co_await fx.async_save(IndexStore::SearchRebuild::Idle);
+    };
+    bool findable = true;
+    auto probe_body = [&]() -> kota::task<> {
+        auto& table = project.project_index;
+        for(auto hash: merged) {
+            findable &= table.search_index.contains(hash) || table.search_pending.contains(hash);
+        }
+        co_return;
+    };
+    auto save_task = save_body();
+    auto probe_task = probe_body();
+    loop.schedule(save_task);
+    loop.schedule(probe_task);
+    loop.run();
+
+    ZASSERT(findable);
+    for(auto hash: merged) {
+        ZASSERT(project.project_index.search_index.contains(hash));
+        ZASSERT(!project.project_index.search_pending.contains(hash));
+    }
+}
+
 ZEST_CASE(MergeHitWritesNothing) {
     TempDir tmp;
     tmp.touch("main.cpp", "int steady() { return 1; }\n");

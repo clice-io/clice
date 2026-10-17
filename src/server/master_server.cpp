@@ -838,12 +838,24 @@ void MasterServer::serve_again(ProjectServer& project, std::shared_ptr<Session> 
 
 std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::StringRef query) {
     constexpr std::size_t limit = Features::workspace_symbol_limit;
-    llvm::SmallVector<std::vector<protocol::SymbolInformation>> ranked;
-    for(auto& project: projects) {
+    // Another checkout of the same code opened beside it (a worktree) holds
+    // a copy of each symbol at the same place in its folder: the copy of a
+    // folder with open documents, the one being edited, stands for them.
+    auto ordered = projects;
+    std::ranges::stable_partition(ordered, [](const std::shared_ptr<ProjectServer>& project) {
+        bool open = false;
+        project->sessions.for_each([&](Fid, const Session&) {
+            open = true;
+            return false;
+        });
+        return open;
+    });
+    llvm::SmallVector<std::vector<Features::WorkspaceSymbol>> ranked;
+    for(auto& project: ordered) {
         ranked.push_back(project->features.workspace_symbol(query));
     }
     std::vector<protocol::SymbolInformation> merged;
-    std::set<std::tuple<std::string, std::uint32_t, std::uint32_t, std::string>> seen;
+    std::set<std::tuple<std::string, std::uint32_t, std::uint32_t, std::string, std::string>> seen;
     for(std::size_t rank = 0; merged.size() < limit; rank += 1) {
         bool any = false;
         for(auto& list: ranked) {
@@ -851,9 +863,14 @@ std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::St
                 continue;
             }
             any = true;
-            auto& info = list[rank];
+            auto& [info, file] = list[rank];
             auto& start = info.location.range.start;
-            if(seen.emplace(info.location.uri, start.line, start.character, info.name).second) {
+            if(seen.emplace(std::move(file),
+                            start.line,
+                            start.character,
+                            info.name,
+                            info.container_name.value_or(""))
+                   .second) {
                 merged.push_back(std::move(info));
             }
         }

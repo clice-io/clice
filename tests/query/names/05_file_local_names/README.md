@@ -1,3 +1,3 @@
 # File-local symbols
 
-Symbols only one file can name, such as statics, locals and parameters, are found by name within that file with `path:`
+A static found by name anywhere; locals and parameters, which only their function names, found by name within their file with `path:`

@@ -4,8 +4,7 @@ issues: [clangd#1344]
 
 # Overload disambiguation
 
-Workspace symbol results omit parameter types, leaving overloads ambiguous
+Workspace symbol results show each function's parameters, telling overloads apart
 
-Querying an overloaded name finds every overload, but each entry
-carries only the bare name — nothing tells the two `process` results
-apart short of opening both locations.
+Querying an overloaded name finds every overload, each named with its
+parameters: the two `process` results differ at a glance.

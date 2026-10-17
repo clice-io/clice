@@ -4,13 +4,13 @@
   "subtopic": "implementation",
   "title": "Template duck-type navigation",
   "summary": "Go to implementation on a dependent call reaches the method it resolves to in the template's only instantiation",
-  "prose": "This applies to function templates and generic lambdas alike.",
+  "prose": "This applies to function templates and generic lambdas alike, and to a\nconversion operator called by name.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nvoid process(T& obj) {\n    obj.foo();\n}\n\nstruct A {\n    void foo() {}\n};\n\nvoid run(A a) {\n    process(a);\n}\n\nstruct B {\n    void bar() {}\n};\n\nvoid generic(B b) {\n    auto call = [](auto& x) { x.bar(); };\n    call(b);\n}\n\ntemplate <typename T>\nvoid twice(T& obj) {\n    obj.foo();\n}\n\nstruct C {\n    void foo() {}\n};\n\nvoid both(A a, C c) {\n    twice(a);\n    twice(c);\n}\n",
+      "text": "template <typename T>\nvoid process(T& obj) {\n    obj.foo();\n}\n\nstruct A {\n    void foo() {}\n};\n\nvoid run(A a) {\n    process(a);\n}\n\nstruct B {\n    void bar() {}\n};\n\nvoid generic(B b) {\n    auto call = [](auto& x) { x.bar(); };\n    call(b);\n}\n\ntemplate <typename T>\nvoid twice(T& obj) {\n    obj.foo();\n}\n\nstruct C {\n    void foo() {}\n};\n\nvoid both(A a, C c) {\n    twice(a);\n    twice(c);\n}\n\ntemplate <typename T>\nint convert(T& value) {\n    return value.operator int();\n}\n\nstruct D {\n    operator int() {\n        return 4;\n    }\n};\n\nint use_convert(D d) {\n    return convert(d);\n}\n",
       "markers": [
         {
           "name": "template_call",
@@ -28,6 +28,12 @@
           "name": "several_calls",
           "begin": 293,
           "end": 293,
+          "range": false
+        },
+        {
+          "name": "conversion_call",
+          "begin": 452,
+          "end": 452,
           "range": false
         }
       ]
@@ -86,6 +92,28 @@
           "marker": "several_calls",
           "value": {
             "implementation": []
+          }
+        },
+        {
+          "label": "conversion_call",
+          "marker": "conversion_call",
+          "value": {
+            "implementation": [
+              {
+                "$place": "⟦operator int⟧() {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 42,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 42,
+                    "character": 16
+                  }
+                }
+              }
+            ]
           }
         }
       ]

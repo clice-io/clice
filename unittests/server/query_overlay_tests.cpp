@@ -398,8 +398,8 @@ int main() { return 0; }
 
     auto references = disk_query.sites(foo, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
-    for(auto& reference: references) {
-        ZEXPECT(disk_query.context_line(reference).empty());
+    for(auto& line: disk_query.context_lines(references)) {
+        ZEXPECT(line.empty());
     }
 }
 
@@ -447,13 +447,13 @@ ZEST_CASE(AsciiPreviewFromDisk) {
 
     auto references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
-    ZEXPECT(disk_query.context_line(references.front()) == "int other = value;");
+    ZEXPECT(disk_query.context_lines(references) == std::vector<std::string>{"int other = value;"});
 
     dir.touch("preview.cpp", "int moved = 0;\n");
     ZEXPECT(!disk_query.definition_text(sym, Fid{}).has_value());
     references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
-    ZEXPECT(disk_query.context_line(references.front()).empty());
+    ZEXPECT(disk_query.context_lines(references) == std::vector<std::string>{""});
 }
 
 ZEST_CASE(SharedPreambleScoped) {

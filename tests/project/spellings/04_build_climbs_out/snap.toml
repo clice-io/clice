@@ -9,5 +9,5 @@ definition = ["include/lib.h │ int ⟦lib_fn⟧(int);"]
 
 ["build that climbs out of its directory".common_fn]
 workspace_symbols = [
-    { name = "common_fn", kind = "Function", at = "common/c.h │ inline int ⟦common_fn⟧() { return 1; }" },
+    { name = "common_fn()", kind = "Function", at = "common/c.h │ inline int ⟦common_fn⟧() { return 1; }" },
 ]

@@ -1,0 +1,125 @@
+{
+  "id": "navigation/references/13_override_calls",
+  "topic": "navigation",
+  "subtopic": "references",
+  "title": "Calls through overridden methods",
+  "summary": "Find references on an override includes the calls made through the methods it overrides, which may dispatch to it",
+  "prose": "`shape.area()` on a `Shape&` may run `Circle::area`, so it is among the\nreferences of the override. A call through `Circle` never runs\n`Shape::area`, so it is not among the references of the method overridden.",
+  "status": "supported",
+  "issues": [
+    "clangd#1558"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Shape {\n    virtual double area() const = 0;\n};\n\nstruct Circle : Shape {\n    double area() const override {\n        return 3.0;\n    }\n};\n\ndouble through_base(const Shape& shape) {\n    return shape.area();\n}\n\ndouble through_circle(const Circle& circle) {\n    return circle.area();\n}\n",
+      "markers": [
+        {
+          "name": "base",
+          "begin": 34,
+          "end": 34,
+          "range": false
+        },
+        {
+          "name": "override",
+          "begin": 91,
+          "end": 91,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "base",
+          "marker": "base",
+          "value": {
+            "references": [
+              {
+                "$place": "virtual double ⟦area⟧() const = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 23
+                  }
+                }
+              },
+              {
+                "$place": "return shape.⟦area⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 21
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "override",
+          "marker": "override",
+          "value": {
+            "references": [
+              {
+                "$place": "double ⟦area⟧() const override {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 15
+                  }
+                }
+              },
+              {
+                "$place": "return shape.⟦area⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 21
+                  }
+                }
+              },
+              {
+                "$place": "return circle.⟦area⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 22
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

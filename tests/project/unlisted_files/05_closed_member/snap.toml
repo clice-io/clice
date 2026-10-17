@@ -1,6 +1,6 @@
 ["closed member stays indexed".indexed]
 symbols = [
-    { name = "fresh_fn", kind = "Function", at = "src/new.cpp │ int ⟦fresh_fn⟧() { return shared_fn(); }" },
+    { name = "fresh_fn()", kind = "Function", at = "src/new.cpp │ int ⟦fresh_fn⟧() { return shared_fn(); }" },
 ]
 references = [
     "int ⟦shared_fn⟧() { return 0; }",

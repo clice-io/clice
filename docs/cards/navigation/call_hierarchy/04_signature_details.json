@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "call_hierarchy",
   "title": "Call hierarchy item details",
-  "summary": "A call hierarchy item carries only its name; the function signature is not attached in a detail field, so overloads are indistinguishable in the hierarchy",
+  "summary": "A call hierarchy item shows the function's parameters beside its name, telling overloads apart",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -29,7 +29,6 @@
           "label": "function",
           "marker": "function",
           "value": {
-            "wrong": "the item should show the signature beside the name, to tell overloads apart",
             "call_hierarchy": [
               {
                 "name": "compute",
@@ -47,7 +46,8 @@
                       "character": 11
                     }
                   }
-                }
+                },
+                "detail": "compute(int a, int b)"
               }
             ],
             "incoming_calls": [
@@ -68,6 +68,7 @@
                     }
                   }
                 },
+                "detail": "caller()",
                 "sites": [
                   {
                     "$place": "return ⟦compute⟧(1, 2);",

@@ -6,3 +6,6 @@ implementation = ["void ⟦bar⟧() {}"]
 
 [answers.several_calls]
 implementation = []
+
+[answers.conversion_call]
+implementation = ["⟦operator int⟧() {"]

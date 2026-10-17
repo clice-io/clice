@@ -16,7 +16,7 @@ namespace {
 
 /// Layout and scoring version of the search blob, apart from the index
 /// format it is derived from: a bump rebuilds the search index alone.
-constexpr std::uint32_t search_format_version = 1;
+constexpr std::uint32_t search_format_version = 2;
 
 constexpr std::uint32_t no_doc = ~0u;
 
@@ -79,6 +79,11 @@ struct SearchBlob {
     std::vector<std::string> paths;
     std::vector<std::uint32_t> file_ends;
     std::vector<std::uint8_t> file_postings;
+
+    /// The docs of internal linkage, sorted, and the path each one's
+    /// entries live in.
+    std::vector<std::uint32_t> local_docs;
+    std::vector<std::uint32_t> local_paths;
 };
 
 using BlobView = kota::codec::fbs::table_view<SearchBlob>;
@@ -315,6 +320,10 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     lower_names.reserve(count);
     for(std::uint32_t doc = 0; doc < count; doc += 1) {
         auto& entry = entry_of(doc);
+        if(entry.local && entry.file != no_file) {
+            blob.local_docs.push_back(doc);
+            blob.local_paths.push_back(entry.file);
+        }
         blob.hashes.push_back(entry.hash);
         blob.names += entry.name;
         blob.name_ends.push_back(static_cast<std::uint32_t>(blob.names.size()));
@@ -564,6 +573,8 @@ struct SearchIndex::View {
     kota::codec::fbs::array_view<std::string> paths;
     llvm::ArrayRef<std::uint32_t> file_ends;
     llvm::ArrayRef<std::uint8_t> file_postings;
+    llvm::ArrayRef<std::uint32_t> local_docs;
+    llvm::ArrayRef<std::uint32_t> local_paths;
 
     mutable llvm::DenseMap<std::uint32_t, Bitmap> token_cache;
     mutable llvm::DenseMap<std::uint32_t, Bitmap> children_cache;
@@ -590,6 +601,16 @@ struct SearchIndex::View {
 
     llvm::StringRef arguments(std::uint32_t doc) const {
         return back_to_back(args, args_ends, doc);
+    }
+
+    /// The portable name of the file a doc of internal linkage lives in;
+    /// empty for any other doc.
+    llvm::StringRef local_file(std::uint32_t doc) const {
+        auto it = std::ranges::lower_bound(local_docs, doc);
+        if(it == local_docs.end() || *it != doc) {
+            return {};
+        }
+        return to_ref(paths[local_paths[it - local_docs.begin()]]);
     }
 
     /// A posting image viewed in place; a malformed one reads as empty
@@ -783,6 +804,8 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     view.paths = root[&SearchBlob::paths];
     view.file_ends = to_array_ref(root[&SearchBlob::file_ends]);
     view.file_postings = to_array_ref(root[&SearchBlob::file_postings]);
+    view.local_docs = to_array_ref(root[&SearchBlob::local_docs]);
+    view.local_paths = to_array_ref(root[&SearchBlob::local_paths]);
 
     auto count = view.hashes.size();
     if(view.name_ends.size() != count || view.args_ends.size() != count ||
@@ -839,6 +862,12 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     if(view.paths.size() != view.file_ends.size() ||
        !monotone_ends(view.file_ends, view.file_postings.size())) {
         return std::unexpected("file columns do not line up");
+    }
+    if(view.local_docs.size() != view.local_paths.size() ||
+       !strictly_ascending_docs(view.local_docs, count) ||
+       llvm::any_of(view.local_paths,
+                    [&](std::uint32_t path) { return path >= view.paths.size(); })) {
+        return std::unexpected("local columns do not line up");
     }
     return {};
 }
@@ -1080,7 +1109,9 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
 
     SearchOutcome outcome{.exhausted = !top.overflowed};
     for(auto& ranked: std::move(top).sorted()) {
-        outcome.hits.push_back({.hash = index.hashes[ranked.doc], .rank = ranked.rank});
+        outcome.hits.push_back({.hash = index.hashes[ranked.doc],
+                                .rank = ranked.rank,
+                                .file = index.local_file(ranked.doc)});
     }
     return outcome;
 }

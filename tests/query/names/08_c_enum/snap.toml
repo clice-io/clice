@@ -16,17 +16,20 @@ stdout = '''
       {
         "file": "${WS}/a.c",
         "line": 2,
-        "context": "int a(void) { return red; }"
+        "context": "int a(void) { return red; }",
+        "function": "a"
       },
       {
         "file": "${WS}/b.c",
         "line": 2,
-        "context": "int b(void) { return red + 1; }"
+        "context": "int b(void) { return red + 1; }",
+        "function": "b"
       },
       {
         "file": "${WS}/color.h",
         "line": 2,
-        "context": "enum color { red };"
+        "context": "enum color { red };",
+        "function": null
       }
     ],
     "total": 3

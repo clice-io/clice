@@ -101,7 +101,7 @@
           "value": {
             "workspace_symbols": [
               {
-                "name": "user3",
+                "name": "user3()",
                 "kind": "Function",
                 "at": {
                   "$place": "c.cpp │ int ⟦user3⟧() {",

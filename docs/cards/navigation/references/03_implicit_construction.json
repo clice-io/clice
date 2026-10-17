@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "references",
   "title": "Implicit constructor and destructor calls",
-  "summary": "Find references on a constructor reports only its explicit sites; an object definition that implicitly invokes the constructor or its destructor is not included",
-  "prose": "",
-  "status": "unsupported",
+  "summary": "Find references on a constructor or a destructor lists the places that name it, not the objects that run it implicitly",
+  "prose": "`Blob b;` runs the constructor, and the end of its scope the destructor, but\nnames neither: listing every object that does would bury the references of\nany class with local variables.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -35,7 +35,6 @@
           "label": "constructor",
           "marker": "constructor",
           "value": {
-            "wrong": "Blob b; runs the constructor, so it should be among the references",
             "references": [
               {
                 "$place": "⟦Blob⟧();",
@@ -58,7 +57,6 @@
           "label": "destructor",
           "marker": "destructor",
           "value": {
-            "wrong": "Blob b; runs the destructor at the end of its scope, so it should be among the references",
             "references": [
               {
                 "$place": "⟦~Blob⟧();",

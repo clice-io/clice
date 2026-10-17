@@ -46,7 +46,8 @@
                       "character": 12
                     }
                   }
-                }
+                },
+                "detail": "dispatch()"
               }
             ],
             "incoming_calls": [],
@@ -68,6 +69,7 @@
                     }
                   }
                 },
+                "detail": "one()",
                 "sites": [
                   {
                     "$place": "return ⟦one⟧() + two() + three();",
@@ -102,6 +104,7 @@
                     }
                   }
                 },
+                "detail": "two()",
                 "sites": [
                   {
                     "$place": "return one() + ⟦two⟧() + three();",
@@ -136,6 +139,7 @@
                     }
                   }
                 },
+                "detail": "three()",
                 "sites": [
                   {
                     "$place": "return one() + two() + ⟦three⟧();",

@@ -1,0 +1,81 @@
+{
+  "id": "navigation/deduced_types/08_library_aliases",
+  "topic": "navigation",
+  "subtopic": "deduced_types",
+  "title": "Library-internal aliases",
+  "summary": "An `auto` deduced through a library's internal alias reaches the type the alias names; one deduced through a public alias reaches the alias",
+  "prose": "A name a library reserves for itself, `std::__detail::__unique_ptr_t`, is\nnot one the code would write, so `auto` sees through it to `unique_ptr`. A\npublic alias such as `iterator` is the name the library gives its users.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace std {\n\ntemplate <class T>\nstruct unique_ptr {};\n\nnamespace __detail {\ntemplate <class T>\nusing __unique_ptr_t = unique_ptr<T>;\n}\n\ntemplate <class T>\n__detail::__unique_ptr_t<T> make_unique() {\n    return {};\n}\n\ntemplate <class T>\nstruct vector {\n    using iterator = T*;\n    iterator begin();\n};\n\n}  // namespace std\n\nstruct Widget {};\n\nvoid use(std::vector<Widget>& widgets) {\n    auto made = std::make_unique<Widget>();\n    auto first = widgets.begin();\n}\n",
+      "markers": [
+        {
+          "name": "internal",
+          "begin": 394,
+          "end": 394,
+          "range": false
+        },
+        {
+          "name": "public",
+          "begin": 438,
+          "end": 438,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "internal",
+          "marker": "internal",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦unique_ptr⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "public",
+          "marker": "public",
+          "value": {
+            "definition": [
+              {
+                "$place": "using ⟦iterator⟧ = T*;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 17,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 17,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

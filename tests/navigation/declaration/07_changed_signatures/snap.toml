@@ -1,0 +1,5 @@
+[answers.changed]
+declaration = ["geometry.h │ int ⟦scale⟧(int factor);"]
+
+[answers.overload]
+declaration = ["geometry.h │ int ⟦scale⟧(double factor);"]

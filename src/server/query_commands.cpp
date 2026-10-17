@@ -111,7 +111,8 @@ Entry graph_entry(const index::IndexQuery::Located& located) {
 
 SymbolEntry symbol_entry(Context& ctx, const index::IndexQuery::Located& located) {
     auto entry = graph_entry<SymbolEntry>(located);
-    if(auto container = ctx.query.container_name(located.symbol.hash); !container.empty()) {
+    if(auto container = ctx.query.container_name(located.symbol.hash, located.site.file);
+       !container.empty()) {
         entry.container = std::move(container);
     }
     return entry;
@@ -577,7 +578,13 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
         .symbol = symbol_of(*resolved),
         .documentation = documentation_of(ctx, *resolved),
     };
-    if(auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file)) {
+    // A symbol nothing defines answers with its declaration, as the
+    // editor's go-to-definition does.
+    auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file);
+    if(!definition) {
+        definition = ctx.query.declaration_text(resolved->symbol.hash, resolved->site.file);
+    }
+    if(definition) {
         auto lines = lines_of(definition->extent);
         result.definition = LocationEntry{
             .file = std::string(definition->extent.path),
@@ -602,12 +609,19 @@ Outcome<ReferencesResult> references(Context& ctx,
         .symbol = symbol_of(*resolved),
     };
     index::IndexQuery::Cursor cursor{.symbols = {resolved->symbol.hash}, .site = resolved->site};
-    for(auto& site: ctx.query.references(cursor, include_declaration)) {
-        result.references.push_back({
+    auto sites = ctx.query.references(cursor, include_declaration);
+    auto contexts = ctx.query.context_lines(sites);
+    auto functions = ctx.query.enclosing_functions(sites);
+    for(auto [site, context, function]: llvm::zip_equal(sites, contexts, functions)) {
+        ReferenceEntry entry{
             .file = std::string(site.path),
             .line = lines_of(site).start,
-            .context = ctx.query.context_line(site),
-        });
+            .context = std::move(context),
+        };
+        if(!function.empty()) {
+            entry.function = std::move(function);
+        }
+        result.references.push_back(std::move(entry));
     }
     result.total = static_cast<int>(result.references.size());
     return result;
@@ -800,6 +814,18 @@ Outcome<std::vector<index::SymbolHash>> named_symbols(Context& ctx, index::Symbo
         hashes.push_back(candidate.symbol.hash);
     }
     return hashes;
+}
+
+Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator) {
+    auto resolved = resolve_unique(ctx, std::move(locator));
+    if(!resolved) {
+        return std::unexpected(resolved.error());
+    }
+    return ImplementationResult{
+        .root = graph_entry<GraphEntry>(*resolved),
+        .implementations =
+            graph_entries(ctx.query.implementation(resolved->symbol.hash, resolved->site.file)),
+    };
 }
 
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,

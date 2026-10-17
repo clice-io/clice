@@ -93,7 +93,7 @@ tests/navigation/definition/07_error_recovery
 
 Navigate from a symbol usage or definition to its declaration. In C++, many entities have separate declarations and definitions.
 
-clice returns the declaration locations plus the definition — symbols defined inline have no separate declaration — minus the site the cursor already stands on, so declaration and definition sites alternate just like go-to-definition.
+clice returns the declaration locations plus the definition — symbols defined inline have no separate declaration — minus the site the cursor already stands on, so declaration and definition sites alternate just like go-to-definition. On a function defined with no declaration of its own, it falls back to the functions of its name in its scope that nothing defines: the declaration a changed parameter parted it from.
 
 <!-- BEGIN GENERATED ITEMS: navigation/declaration -->
 
@@ -188,7 +188,7 @@ tests/navigation/declaration/06_signature_spelling
 
 ## Go to Type Definition
 
-Navigate to the type definition of a symbol. Applicable to variables, parameters, fields, and any other named entity that has a type. When the type is a type alias or a pointer-like wrapper, navigation should unwrap to the underlying/pointee type.
+Navigate to the type definition of a symbol. Applicable to variables, parameters, fields, and any other named entity that has a type. A type alias reaches both the alias and the type it names, a pointer-like wrapper both the wrapper and the type it points to; a type's own name, and `this`, reach the type itself.
 
 <!-- BEGIN GENERATED ITEMS: navigation/type_definition -->
 
@@ -280,7 +280,7 @@ tests/navigation/type_definition/07_pointers_and_references
 
 ## Go to Implementation
 
-From a virtual method, go to implementation lists its overrides; from a class, the classes deriving from it.
+From a virtual method, go to implementation lists its overrides at every level below it; from a class, every class deriving from it, directly or not. Go to definition on the declaration of a pure virtual function, which nothing defines, lists the overrides too.
 
 <!-- BEGIN GENERATED ITEMS: navigation/implementation -->
 
@@ -363,7 +363,7 @@ tests/navigation/implementation/05_dependent_calls
 
 ## Find References
 
-Find references lists every place that names the symbol, its declarations included.
+Find references lists every place that names the symbol, its declarations included. A method's references include the calls made through the methods it overrides, which may dispatch to it; a class's the names of its constructors.
 
 <!-- BEGIN GENERATED ITEMS: navigation/references -->
 
@@ -1144,7 +1144,7 @@ tests/navigation/projects/03_uses_across_sources
 
 ## Call Hierarchy
 
-A call hierarchy lists the callers of a function and the functions it calls.
+A call hierarchy lists the callers of a function and the functions it calls; a call made through a method a function overrides counts among its callers. Each item shows the function's parameters, which tell overloads apart. A function's local variables and parameters get no item: their only caller is the function itself.
 
 <!-- BEGIN GENERATED ITEMS: navigation/call_hierarchy -->
 
@@ -1324,7 +1324,7 @@ tests/navigation/type_hierarchy/04_template_bases
 
 ## Document Highlight
 
-Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`). Highlights come from the same index as Find References, so they cover the same names and work in read-only mode too; each one tells whether the code there writes the symbol, reads it, or declares it.
+Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`). Highlights come from the same index as Find References, so they cover the same names and work in read-only mode too; a variable, a field or a parameter is marked written or read where the code writes or reads it; every other highlight is plain.
 
 ### Declarations and Uses
 
@@ -1440,7 +1440,7 @@ tests/document_highlight/modules/01_module_units
 
 ## Workspace Symbol
 
-Search the whole project for a symbol by name (`workspace/symbol`).
+Search the whole project for a symbol by name (`workspace/symbol`), the names of internal linkage at namespace scope (`static`, an anonymous namespace) included. Each result has the kind the outline gives it, and a function its parameters.
 
 ### Queries
 

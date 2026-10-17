@@ -16,7 +16,8 @@ stdout = '''
       {
         "file": "${WS}/main.cpp",
         "line": 11,
-        "context": "Holder<int> numbers;"
+        "context": "Holder<int> numbers;",
+        "function": null
       }
     ],
     "total": 1
@@ -37,7 +38,8 @@ stdout = '''
       {
         "file": "${WS}/main.cpp",
         "line": 12,
-        "context": "Holder<bool> flags;"
+        "context": "Holder<bool> flags;",
+        "function": null
       }
     ],
     "total": 1

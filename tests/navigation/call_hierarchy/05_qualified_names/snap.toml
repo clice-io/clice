@@ -1,6 +1,6 @@
 [answers.method]
 call_hierarchy = [
-    { name = "draw", kind = "Method", at = "void Circle::⟦draw⟧() {}", detail = "Circle::draw" },
+    { name = "draw", kind = "Method", at = "void Circle::⟦draw⟧() {}", detail = "Circle::draw()" },
 ]
 incoming_calls = []
 outgoing_calls = []

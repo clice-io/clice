@@ -13,6 +13,7 @@ test(async (t) => {
     await t.cli("query references add --include-declaration");
     await t.cli("query call-graph add --direction callers");
     await t.cli("query type-hierarchy Dog --direction supertypes");
+    await t.cli("query implementation Animal");
     await t.cli("query document-symbols main.cpp");
     await t.cli("query symbol-search kind:Struct,Function --limit 10");
 });

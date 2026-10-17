@@ -28,19 +28,16 @@ std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites);
 std::vector<protocol::DocumentHighlight>
     document_highlights(llvm::ArrayRef<index::IndexQuery::PlacedHighlight> highlights);
 
-/// The navigation surfaces' SymbolKind policy: the outline's exhaustive
-/// table, with the kinds these surfaces display differently overridden.
-protocol::SymbolKind symbol_kind(SymbolKind kind);
-
 /// `container` is the qualified name of the symbol's parent, empty at the
-/// translation unit.
+/// translation unit. A function is named with its signature, which tells
+/// its overloads apart.
 protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
                                                const index::Site& site,
                                                llvm::StringRef container);
 
 /// Hierarchy items span the whole declaration (`extent`) and select its
-/// name (`site`); a symbol inside a namespace or a class shows its
-/// `qualified` name as the detail. They carry their symbol handle
+/// name (`site`); the detail shows a symbol's `qualified` name inside a
+/// namespace or a class, and a function's signature. They carry their symbol handle
 /// in `data` as a decimal string: a raw 64-bit integer would be parsed into
 /// a double by a JavaScript client and come back rounded.
 protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolRef& symbol,

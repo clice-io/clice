@@ -347,6 +347,7 @@ struct LocalTable {
         return {
             .name = to_ref(root[&ShardBlob::local_names].at(k)),
             .args = to_ref(root[&ShardBlob::local_args].at(k)),
+            .signature = to_ref(root[&ShardBlob::local_signatures].at(k)),
             .parent = parents[k],
             .kind = SymbolKind(kinds[k]),
             .scope = static_cast<SymbolScope>(scopes[k]),
@@ -681,7 +682,8 @@ CheckResult locals_ok(BlobView root) {
        table.flags.size() != table.size() || table.token_kinds.size() != table.size() ||
        table.token_modifiers.size() != table.size() || !all_token_kinds(table.token_kinds) ||
        root[&ShardBlob::local_names].size() != table.size() ||
-       root[&ShardBlob::local_args].size() != table.size()) {
+       root[&ShardBlob::local_args].size() != table.size() ||
+       root[&ShardBlob::local_signatures].size() != table.size()) {
         return std::unexpected("local symbol columns do not line up");
     }
     // A local symbol's parent becomes a DenseSet key in a query's container
@@ -1422,6 +1424,7 @@ ContentInfo content_info_of(llvm::StringRef content) {
 struct LocalSymbol {
     std::string name;
     std::string args;
+    std::string signature;
     SymbolHash parent;
     SymbolKind kind;
     SymbolScope scope;
@@ -1433,6 +1436,7 @@ LocalSymbol own(const SymbolIdentity& identity) {
     return {
         .name = identity.name.str(),
         .args = identity.args.str(),
+        .signature = identity.signature.str(),
         .parent = identity.parent,
         .kind = identity.kind,
         .scope = identity.scope,
@@ -1609,6 +1613,7 @@ void emit_blob(const MergedEntries<MaskT>& merged,
         blob.local_kinds.push_back(info->kind.value());
         blob.local_scopes.push_back(static_cast<std::uint8_t>(info->scope));
         blob.local_args.push_back(info->args);
+        blob.local_signatures.push_back(info->signature);
         blob.local_parents.push_back(info->parent);
         blob.local_flags.push_back(static_cast<std::uint16_t>(info->flags));
         blob.local_token_kinds.push_back(static_cast<std::uint8_t>(info->token_class.kind));

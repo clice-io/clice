@@ -1,8 +1,8 @@
 ["waits for the index".symbols]
 workspace_symbols = [
-    { name = "fn_a", kind = "Function", at = "a.cpp │ int ⟦fn_a⟧() { return 1; }" },
-    { name = "fn_b", kind = "Function", at = "b.cpp │ int ⟦fn_b⟧() { return 1; }" },
-    { name = "fn_c", kind = "Function", at = "c.cpp │ int ⟦fn_c⟧() { return 1; }" },
+    { name = "fn_a()", kind = "Function", at = "a.cpp │ int ⟦fn_a⟧() { return 1; }" },
+    { name = "fn_b()", kind = "Function", at = "b.cpp │ int ⟦fn_b⟧() { return 1; }" },
+    { name = "fn_c()", kind = "Function", at = "c.cpp │ int ⟦fn_c⟧() { return 1; }" },
 ]
 
 ["waits for the index"."index builds"]
@@ -12,7 +12,7 @@ workspace_symbols = [
 
 ["looks at the disk first".symbols]
 workspace_symbols = [
-    { name = "fn_renamed", kind = "Function", at = "a.cpp │ int ⟦fn_renamed⟧() { return 1; }" },
+    { name = "fn_renamed()", kind = "Function", at = "a.cpp │ int ⟦fn_renamed⟧() { return 1; }" },
 ]
 
 ["names held work".pending]
@@ -20,5 +20,5 @@ value = ["index ${WS}/d.cpp: reply parked by hold 1", "index ${WS}/d.cpp", "inde
 
 ["names held work".symbols]
 workspace_symbols = [
-    { name = "fn_d", kind = "Function", at = "d.cpp │ int ⟦fn_d⟧() { return 2; }" },
+    { name = "fn_d()", kind = "Function", at = "d.cpp │ int ⟦fn_d⟧() { return 2; }" },
 ]

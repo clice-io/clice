@@ -1,0 +1,2 @@
+[test.use]
+definition = ["#define ⟦MODE⟧ 1", "#define ⟦MODE⟧ 2"]

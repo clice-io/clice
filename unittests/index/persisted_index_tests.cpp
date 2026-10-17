@@ -302,6 +302,8 @@ struct GlobalBlobMirror {
     std::vector<std::uint32_t> sym_name_ends;
     std::string sym_args;
     std::vector<std::uint32_t> sym_args_ends;
+    std::string sym_signatures;
+    std::vector<std::uint32_t> sym_signature_ends;
     std::vector<std::uint64_t> sym_parents;
     std::vector<std::uint8_t> sym_kinds;
     std::vector<std::uint16_t> sym_flags;
@@ -326,6 +328,7 @@ struct GlobalBlobMirror {
         sym_names += name;
         sym_name_ends.push_back(static_cast<std::uint32_t>(sym_names.size()));
         sym_args_ends.push_back(static_cast<std::uint32_t>(sym_args.size()));
+        sym_signature_ends.push_back(static_cast<std::uint32_t>(sym_signatures.size()));
         sym_parents.push_back(parent);
         sym_kinds.push_back(0);
         sym_flags.push_back(0);

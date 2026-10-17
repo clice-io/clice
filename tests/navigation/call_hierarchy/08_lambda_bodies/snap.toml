@@ -1,8 +1,14 @@
 [answers.foo]
 call_hierarchy = [
-    { name = "foo", kind = "Function", at = "void ⟦foo⟧() {}" },
+    { name = "foo", kind = "Function", at = "void ⟦foo⟧() {}", detail = "foo()" },
 ]
 incoming_calls = [
-    { name = "use", kind = "Function", at = "void ⟦use⟧() {", sites = ["⟦foo⟧();"] },
+    {
+        name = "use",
+        kind = "Function",
+        at = "void ⟦use⟧() {",
+        detail = "use()",
+        sites = ["⟦foo⟧();"],
+    },
 ]
 outgoing_calls = []

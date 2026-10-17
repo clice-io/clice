@@ -133,6 +133,7 @@ struct DefinitionResult {
     std::string symbol;
     /// What its documentation comment says, as markdown; null without one.
     std::optional<std::string> documentation;
+    /// Its definition, or its declaration when nothing defines it.
     std::optional<LocationEntry> definition;
 };
 
@@ -140,6 +141,8 @@ struct ReferenceEntry {
     std::string file;
     int line = 0;
     std::string context;
+    /// The qualified name of the function it lies in; null outside any.
+    std::optional<std::string> function;
 };
 
 struct ReferencesResult {
@@ -168,6 +171,11 @@ struct TypeHierarchyResult {
     GraphEntry root;
     std::vector<GraphEntry> supertypes;
     std::vector<GraphEntry> subtypes;
+};
+
+struct ImplementationResult {
+    GraphEntry root;
+    std::vector<GraphEntry> implementations;
 };
 
 /// One rename asked for: the symbol, by a locator, and its new name.
@@ -330,6 +338,11 @@ Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQ
 /// Every symbol a locator names, a bare name taken as the whole name;
 /// none is "symbol not found".
 Outcome<std::vector<index::SymbolHash>> named_symbols(Context& ctx, index::SymbolQuery locator);
+
+/// What implements the symbol (index::IndexQuery::implementation): the
+/// classes deriving from a class, the overrides of a function, at any
+/// depth; a function nothing overrides, its definitions.
+Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator);
 
 /// `direction` one of supertypes, subtypes, both.
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,

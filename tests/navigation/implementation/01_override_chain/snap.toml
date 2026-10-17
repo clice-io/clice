@@ -1,5 +1,5 @@
 [answers.base]
-implementation = ["void ⟦run⟧() override {} @+4"]
+implementation = ["void ⟦run⟧() override {} @+4", "void ⟦run⟧() override {} @+8"]
 
 [answers.middle]
 implementation = ["void ⟦run⟧() override {} @+4"]

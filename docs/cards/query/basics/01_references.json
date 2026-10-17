@@ -3,7 +3,7 @@
   "topic": "query",
   "subtopic": "basics",
   "title": "References of a symbol",
-  "summary": "Every place naming a method, its declarations included",
+  "summary": "Every place naming a method, its declarations included, each with the function it lies in",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -48,7 +48,7 @@
         {
           "label": "$ clice query references shapes::Circle::measure --include-declaration",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"name\": \"measure\",\n    \"kind\": \"Method\",\n    \"symbol\": \"#c9fbbb30710c2348\",\n    \"references\": [\n      {\n        \"file\": \"${WS}/include/shapes/circle.h\",\n        \"line\": 11,\n        \"context\": \"    double measure() const override;\"\n      },\n      {\n        \"file\": \"${WS}/src/circle.cpp\",\n        \"line\": 5,\n        \"context\": \"double Circle::measure() const {\"\n      },\n      {\n        \"file\": \"${WS}/test/circle_test.cpp\",\n        \"line\": 4,\n        \"context\": \"    return shapes::Circle(1.0).measure() > 3 ? 0 : 1;\"\n      }\n    ],\n    \"total\": 3\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"name\": \"measure\",\n    \"kind\": \"Method\",\n    \"symbol\": \"#c9fbbb30710c2348\",\n    \"references\": [\n      {\n        \"file\": \"${WS}/app/main.cpp\",\n        \"line\": 6,\n        \"context\": \"    return static_cast<int>(shape.measure() + circle.circumference());\",\n        \"function\": \"main\"\n      },\n      {\n        \"file\": \"${WS}/include/shapes/circle.h\",\n        \"line\": 11,\n        \"context\": \"    double measure() const override;\",\n        \"function\": null\n      },\n      {\n        \"file\": \"${WS}/src/circle.cpp\",\n        \"line\": 5,\n        \"context\": \"double Circle::measure() const {\",\n        \"function\": null\n      },\n      {\n        \"file\": \"${WS}/test/circle_test.cpp\",\n        \"line\": 4,\n        \"context\": \"    return shapes::Circle(1.0).measure() > 3 ? 0 : 1;\",\n        \"function\": \"main\"\n      }\n    ],\n    \"total\": 4\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         }

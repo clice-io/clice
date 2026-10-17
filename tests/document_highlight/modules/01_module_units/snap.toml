@@ -17,11 +17,11 @@ highlights = [
 
 [importer.module_import]
 highlights = [
-    { at = "import ⟦shapes⟧;", kind = "read" },
+    { at = "import ⟦shapes⟧;", kind = "text" },
 ]
 
 [importer.area_use]
 highlights = [
-    { at = "return ⟦area⟧(1, 2) + area(3, 4);", kind = "read" },
-    { at = "return area(1, 2) + ⟦area⟧(3, 4);", kind = "read" },
+    { at = "return ⟦area⟧(1, 2) + area(3, 4);", kind = "text" },
+    { at = "return area(1, 2) + ⟦area⟧(3, 4);", kind = "text" },
 ]

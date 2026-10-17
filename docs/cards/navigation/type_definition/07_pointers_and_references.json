@@ -101,7 +101,22 @@
           "label": "type",
           "marker": "type",
           "value": {
-            "type_definition": []
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
           }
         },
         {

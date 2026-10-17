@@ -94,8 +94,11 @@ inline std::string symbol_id(SymbolHash hash) {
 /// Instantiation relation with the directive's extent, a declaration's
 /// extent its leading attributes, and a symbol first reached through its
 /// template or a using-declaration is described by its own declaration;
-/// v35: symbols carry their semantic token class.
-constexpr inline std::uint32_t index_format_version = 35;
+/// v35: symbols carry their semantic token class; v36: functions carry
+/// their signature, `this` carries an occurrence of its class with a
+/// Deduced relation, a deduced type sees through a library's internal
+/// aliases, and an abbreviated template's `auto` names no parameter.
+constexpr inline std::uint32_t index_format_version = 36;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
@@ -220,6 +223,7 @@ struct ShardBlob {
     std::vector<std::uint8_t> local_kinds;
     std::vector<std::uint8_t> local_scopes;
     std::vector<std::string> local_args;
+    std::vector<std::string> local_signatures;
     std::vector<std::uint64_t> local_parents;
     std::vector<std::uint16_t> local_flags;
     std::vector<std::uint8_t> local_token_kinds;

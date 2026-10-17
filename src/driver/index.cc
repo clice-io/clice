@@ -435,12 +435,13 @@ void print_stats(const Project& project,
     column("variant tables", stats.columns.variants, payload);
 
     auto& global = stats.global;
-    auto column_bytes =
-        global.names + global.args + global.bitmaps + global.fixed + global.contributors;
+    auto column_bytes = global.names + global.args + global.signatures + global.bitmaps +
+                        global.fixed + global.contributors;
     driver::println();
     driver::println("Global blob ({}):", format_bytes(stats.global_bytes));
     column("symbol names", global.names, stats.global_bytes);
     column("specialization args", global.args, stats.global_bytes);
+    column("function signatures", global.signatures, stats.global_bytes);
     column("reference bitmaps", global.bitmaps, stats.global_bytes);
     column("symbol fixed columns", global.fixed, stats.global_bytes);
     column("reverse include graph", global.contributors, stats.global_bytes);

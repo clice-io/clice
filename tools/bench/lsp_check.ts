@@ -358,6 +358,16 @@ export interface ServerOptions {
     readonly?: boolean | undefined;
     /// More of clice's configuration, as initializationOptions.
     config?: Record<string, unknown> | undefined;
+    /// More of clice's `[project]` settings.
+    project?: Record<string, unknown> | undefined;
+    /// The directory holding the compile_commands.json, the workspace by
+    /// default.
+    cdb?: string | undefined;
+    /// The server indexes the workspace in the background: clice's
+    /// `enable_indexing`, clangd's `--background-index`.
+    indexing?: boolean | undefined;
+    /// More of clangd's command line.
+    args?: string[] | undefined;
 }
 
 /// A server on the workspace `workspace`, whose compile_commands.json both
@@ -369,11 +379,17 @@ export async function start(
     workspace: string,
     options: ServerOptions = {},
 ): Promise<Server> {
+    const cdb = options.cdb ?? workspace;
+    const indexing = options.indexing === true;
     const client = CliceClient.start(binary, {
         args:
             kind === "clice"
                 ? ["serve"]
-                : [`--compile-commands-dir=${workspace}`, "--background-index=false"],
+                : [
+                      `--compile-commands-dir=${cdb}`,
+                      `--background-index=${String(indexing)}`,
+                      ...(options.args ?? []),
+                  ],
         cwd: workspace,
     });
     await client.initialize(new Workspace(workspace), {
@@ -382,11 +398,12 @@ export async function start(
         initializationOptions:
             kind === "clice"
                 ? {
-                      rules: [{ compile_commands: [workspace] }],
+                      rules: [{ compile_commands: [cdb] }],
                       project: {
-                          enable_indexing: false,
+                          enable_indexing: indexing,
                           stateful_worker_count: 1,
                           readonly: options.readonly === true ? "on" : "off",
+                          ...options.project,
                       },
                       ...options.config,
                   }

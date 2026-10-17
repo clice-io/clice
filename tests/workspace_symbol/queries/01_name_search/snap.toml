@@ -5,13 +5,13 @@ workspace_symbols = [
 
 [answers.boil]
 workspace_symbols = [
-    { name = "boil", kind = "Function", at = "main.cpp │ void ⟦boil⟧(Kettle& kettle);" },
-    { name = "boiling_point", kind = "Function", at = "main.cpp │ int ⟦boiling_point⟧();" },
+    { name = "boil(Kettle &kettle)", kind = "Function", at = "main.cpp │ void ⟦boil⟧(Kettle& kettle);" },
+    { name = "boiling_point()", kind = "Function", at = "main.cpp │ int ⟦boiling_point⟧();" },
 ]
 
 [answers.refill]
 workspace_symbols = [
-    { name = "refill", kind = "Method", at = "main.cpp │ void ⟦refill⟧();", container = "Kettle" },
+    { name = "refill()", kind = "Method", at = "main.cpp │ void ⟦refill⟧();", container = "Kettle" },
 ]
 
 [answers.steam]

@@ -227,9 +227,16 @@ public:
                                                                 const protocol::Position& position,
                                                                 std::string new_name);
 
+    struct WorkspaceSymbol {
+        protocol::SymbolInformation info;
+        /// Its file's name relative to the project (path::portable), which
+        /// another checkout of the same code shares.
+        std::string file;
+    };
+
     /// The project's symbols matching `query`, best first; the master
     /// merges every project's list.
-    std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);
+    std::vector<WorkspaceSymbol> workspace_symbol(llvm::StringRef query);
 
 private:
     /// The most names of other namespaces one completion offers from the
@@ -397,7 +404,8 @@ private:
 
     /// A symbol's qualified name, from this project or else the first peer
     /// that knows it: a neighbour only a peer indexes carries its id.
-    std::string qualified_name(index::SymbolHash symbol);
+    /// `anchor` as for IndexQuery::symbol_info.
+    std::string qualified_name(index::SymbolHash symbol, Fid anchor);
 
     /// Whether `from`'s shard for `file` stands among the answers of `asked`:
     /// any project's for a closed file; for an open one only the project

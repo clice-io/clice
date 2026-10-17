@@ -251,6 +251,7 @@ struct ProjectIndex {
     struct GlobalColumns {
         std::size_t names = 0;
         std::size_t args = 0;
+        std::size_t signatures = 0;
         std::size_t bitmaps = 0;
         /// Hash, parent, kind, flags and file per symbol.
         std::size_t fixed = 0;

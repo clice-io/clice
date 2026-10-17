@@ -1,0 +1,5 @@
+[answers.internal]
+definition = ["struct ⟦unique_ptr⟧ {};"]
+
+[answers.public]
+definition = ["using ⟦iterator⟧ = T*;"]

@@ -25,7 +25,10 @@ bool is_digits(llvm::StringRef text) {
 /// Whether `text` ends in an operator's name, possibly with some of its
 /// symbol characters: a bracket there spells the operator, not arguments.
 bool ends_in_operator(llvm::StringRef text) {
-    auto name = text.rtrim("<>=-*");
+    // No operator spells more than three of them (`<<=`, `->*`); trimming a
+    // whole run would make a query of brackets quadratic.
+    auto symbols = text.take_back(3);
+    auto name = text.drop_back(symbols.size() - symbols.rtrim("<>=-*").size());
     if(!name.consume_back("operator")) {
         return false;
     }

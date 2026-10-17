@@ -7,8 +7,8 @@ contexts = [
 
 ["nested projects load on open".indexed]
 workspace_symbols = [
-    { name = "p1_main", kind = "Function", at = "group-a/p1/main.cpp │ int ⟦p1_main⟧() {" },
-    { name = "p2_main", kind = "Function", at = "group-a/p2/main.cpp │ int ⟦p2_main⟧() {" },
+    { name = "p1_main()", kind = "Function", at = "group-a/p1/main.cpp │ int ⟦p1_main⟧() {" },
+    { name = "p2_main()", kind = "Function", at = "group-a/p2/main.cpp │ int ⟦p2_main⟧() {" },
 ]
 
 ["inspect loads the databases above its inputs"."$ clice inspect hover group-a/p1/main.cpp"]

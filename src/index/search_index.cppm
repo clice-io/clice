@@ -47,6 +47,9 @@ struct SearchEntry {
     /// Index into SearchSnapshot::paths, or no_file.
     std::uint32_t file = no_file;
     std::uint32_t reference_files = 0;
+    /// Of internal linkage: the project table does not know the symbol,
+    /// whose entries live in `file`'s shard.
+    bool local = false;
 };
 
 /// The symbol table as the builder sees it: entries plus the path table
@@ -116,6 +119,10 @@ private:
 struct SearchHit {
     SymbolHash hash = 0;
     NameRank rank;
+    /// The portable name of the file holding a symbol of internal linkage
+    /// (SearchEntry::local), which a lookup of the symbol starts from;
+    /// empty for a project symbol.
+    llvm::StringRef file;
 };
 
 /// A search's answer: its best hits, and whether they are all of them —

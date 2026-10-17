@@ -3,7 +3,7 @@
   "topic": "query",
   "subtopic": "basics",
   "title": "Questions about symbols",
-  "summary": "Look a symbol up by name, by its id or by a line, and ask where it is defined and used, who calls it, what it derives from and what a file declares",
+  "summary": "Look a symbol up by name, by its id or by a line, and ask where it is defined and used, who calls it, what it derives from, what derives from it and what a file declares",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -61,7 +61,7 @@
         {
           "label": "$ clice query references add --include-declaration",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"name\": \"add\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#5c1bf8ca24c752f7\",\n    \"references\": [\n      {\n        \"file\": \"${WS}/a.h\",\n        \"line\": 2,\n        \"context\": \"int add(int a, int b);\"\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 2,\n        \"context\": \"int add(int a, int b) { return a + b; }\"\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 4,\n        \"context\": \"int compute() { return add(1, 2); }\"\n      }\n    ],\n    \"total\": 3\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"name\": \"add\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#5c1bf8ca24c752f7\",\n    \"references\": [\n      {\n        \"file\": \"${WS}/a.h\",\n        \"line\": 2,\n        \"context\": \"int add(int a, int b);\",\n        \"function\": null\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 2,\n        \"context\": \"int add(int a, int b) { return a + b; }\",\n        \"function\": null\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 4,\n        \"context\": \"int compute() { return add(1, 2); }\",\n        \"function\": \"compute\"\n      }\n    ],\n    \"total\": 3\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
@@ -76,6 +76,13 @@
           "label": "$ clice query type-hierarchy Dog --direction supertypes",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"root\": {\n      \"name\": \"Dog\",\n      \"kind\": \"Struct\",\n      \"file\": \"${WS}/main.cpp\",\n      \"line\": 3,\n      \"symbol\": \"#7316a0a19122a8ae\"\n    },\n    \"supertypes\": [\n      {\n        \"name\": \"Animal\",\n        \"kind\": \"Struct\",\n        \"file\": \"${WS}/a.h\",\n        \"line\": 3,\n        \"symbol\": \"#a1654fc0dd5efb6c\"\n      }\n    ],\n    \"subtypes\": []\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query implementation Animal",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"root\": {\n      \"name\": \"Animal\",\n      \"kind\": \"Struct\",\n      \"file\": \"${WS}/a.h\",\n      \"line\": 3,\n      \"symbol\": \"#a1654fc0dd5efb6c\"\n    },\n    \"implementations\": [\n      {\n        \"name\": \"Dog\",\n        \"kind\": \"Struct\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 3,\n        \"symbol\": \"#7316a0a19122a8ae\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },

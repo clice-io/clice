@@ -3,9 +3,9 @@
   "topic": "workspace_symbol",
   "subtopic": "results",
   "title": "Overload disambiguation",
-  "summary": "Workspace symbol results omit parameter types, leaving overloads ambiguous",
-  "prose": "Querying an overloaded name finds every overload, but each entry\ncarries only the bare name — nothing tells the two `process` results\napart short of opening both locations.",
-  "status": "unsupported",
+  "summary": "Workspace symbol results show each function's parameters, telling overloads apart",
+  "prose": "Querying an overloaded name finds every overload, each named with its\nparameters: the two `process` results differ at a glance.",
+  "status": "supported",
   "issues": [
     "clangd#1344"
   ],
@@ -23,10 +23,9 @@
         {
           "label": "process",
           "value": {
-            "wrong": "each overload should show its parameters, to tell the two process apart (clangd#1344)",
             "workspace_symbols": [
               {
-                "name": "process",
+                "name": "process(int value)",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process⟧(int value) {}",
@@ -44,7 +43,7 @@
                 }
               },
               {
-                "name": "process",
+                "name": "process(bool flag, int level)",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process⟧(bool flag, int level) {}",

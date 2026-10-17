@@ -16,17 +16,20 @@ stdout = '''
       {
         "file": "${WS}/a.cpp",
         "line": 2,
-        "context": "int a() { return helper(1); }"
+        "context": "int a() { return helper(1); }",
+        "function": "a"
       },
       {
         "file": "${WS}/b.cpp",
         "line": 2,
-        "context": "int b() { int local = 2; return helper(local) + local; }"
+        "context": "int b() { int local = 2; return helper(local) + local; }",
+        "function": "b"
       },
       {
         "file": "${WS}/util.h",
         "line": 2,
-        "context": "static int helper(int x) { return x; }"
+        "context": "static int helper(int x) { return x; }",
+        "function": null
       }
     ],
     "total": 3
@@ -47,17 +50,20 @@ stdout = '''
       {
         "file": "${WS}/a.cpp",
         "line": 2,
-        "context": "int a() { return helper(1); }"
+        "context": "int a() { return helper(1); }",
+        "function": "a"
       },
       {
         "file": "${WS}/b.cpp",
         "line": 2,
-        "context": "int b() { int local = 2; return helper(local) + local; }"
+        "context": "int b() { int local = 2; return helper(local) + local; }",
+        "function": "b"
       },
       {
         "file": "${WS}/util.h",
         "line": 2,
-        "context": "static int helper(int x) { return x; }"
+        "context": "static int helper(int x) { return x; }",
+        "function": null
       }
     ],
     "total": 3
@@ -78,17 +84,20 @@ stdout = '''
       {
         "file": "${WS}/b.cpp",
         "line": 2,
-        "context": "int b() { int local = 2; return helper(local) + local; }"
+        "context": "int b() { int local = 2; return helper(local) + local; }",
+        "function": "b"
       },
       {
         "file": "${WS}/b.cpp",
         "line": 2,
-        "context": "int b() { int local = 2; return helper(local) + local; }"
+        "context": "int b() { int local = 2; return helper(local) + local; }",
+        "function": "b"
       },
       {
         "file": "${WS}/b.cpp",
         "line": 2,
-        "context": "int b() { int local = 2; return helper(local) + local; }"
+        "context": "int b() { int local = 2; return helper(local) + local; }",
+        "function": "b"
       }
     ],
     "total": 3

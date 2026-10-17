@@ -1,5 +1,5 @@
 [answers.shown]
 highlights = [
     { at = "int ⟦shown⟧() {", kind = "text" },
-    { at = "int visible = ⟦shown⟧();", kind = "read" },
+    { at = "int visible = ⟦shown⟧();", kind = "text" },
 ]

@@ -1,13 +1,20 @@
 [answers.target]
 call_hierarchy = [
-    { name = "helper", kind = "Function", at = "int ⟦helper⟧(int v) {" },
+    { name = "helper", kind = "Function", at = "int ⟦helper⟧(int v) {", detail = "helper(int v)" },
 ]
 incoming_calls = [
-    { name = "alpha", kind = "Function", at = "int ⟦alpha⟧() {", sites = ["return ⟦helper⟧(1);"] },
+    {
+        name = "alpha",
+        kind = "Function",
+        at = "int ⟦alpha⟧() {",
+        detail = "alpha()",
+        sites = ["return ⟦helper⟧(1);"],
+    },
     {
         name = "beta",
         kind = "Function",
         at = "int ⟦beta⟧() {",
+        detail = "beta()",
         sites = ["return ⟦helper⟧(2) + helper(3);", "return helper(2) + ⟦helper⟧(3);"],
     },
 ]

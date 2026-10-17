@@ -1,0 +1,95 @@
+{
+  "id": "navigation/definition/10_pure_virtual",
+  "topic": "navigation",
+  "subtopic": "definition",
+  "title": "Pure virtual functions",
+  "summary": "Go-to-definition on the declaration of a pure virtual function lists its overrides",
+  "prose": "Nothing defines a pure virtual function: standing on its declaration,\ngo-to-definition reaches the overrides that do. A call through it reaches\nthe declaration, as for any function nothing defines.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Shape {\n    virtual double area() const = 0;\n};\n\nstruct Circle : Shape {\n    double area() const override {\n        return 3.0;\n    }\n};\n\nstruct Square : Shape {\n    double area() const override {\n        return 4.0;\n    }\n};\n\ndouble measure(const Shape& shape) {\n    return shape.area();\n}\n",
+      "markers": [
+        {
+          "name": "pure",
+          "begin": 34,
+          "end": 34,
+          "range": false
+        },
+        {
+          "name": "call",
+          "begin": 288,
+          "end": 288,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pure",
+          "marker": "pure",
+          "value": {
+            "definition": [
+              {
+                "$place": "double ⟦area⟧() const override { @+4",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 15
+                  }
+                }
+              },
+              {
+                "$place": "double ⟦area⟧() const override { @+10",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 15
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "call",
+          "marker": "call",
+          "value": {
+            "definition": [
+              {
+                "$place": "virtual double ⟦area⟧() const = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 23
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

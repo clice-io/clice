@@ -41,5 +41,5 @@ hover = {}
 ["requests after shutdown".symbols]
 wrong = "a request after shutdown is served; LSP asks for an InvalidRequest (-32600) error"
 workspace_symbols = [
-    { name = "add", kind = "Function", at = "main.cpp │ int ⟦add⟧(int a, int b) {" },
+    { name = "add(int a, int b)", kind = "Function", at = "main.cpp │ int ⟦add⟧(int a, int b) {" },
 ]

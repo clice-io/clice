@@ -50,7 +50,7 @@
                     }
                   }
                 },
-                "detail": "Widget::Widget"
+                "detail": "Widget::Widget(int w, int h)"
               }
             ],
             "incoming_calls": [],

@@ -8,5 +8,5 @@ exit = 0
 
 [test.symbols]
 workspace_symbols = [
-    { name = "compute", kind = "Function", at = "main.cpp │ int ⟦compute⟧() { return add(1, 2); }" },
+    { name = "compute()", kind = "Function", at = "main.cpp │ int ⟦compute⟧() { return add(1, 2); }" },
 ]

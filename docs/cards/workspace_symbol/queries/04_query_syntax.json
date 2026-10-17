@@ -23,7 +23,7 @@
           "value": {
             "workspace_symbols": [
               {
-                "name": "process",
+                "name": "process(Stream &stream)",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process⟧(Stream& stream);",
@@ -49,7 +49,7 @@
           "value": {
             "workspace_symbols": [
               {
-                "name": "process",
+                "name": "process(Stream &stream)",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process⟧(Stream& stream);",
@@ -68,7 +68,7 @@
                 "container": "io"
               },
               {
-                "name": "process_all",
+                "name": "process_all()",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process_all⟧();",
@@ -87,7 +87,7 @@
                 "container": "io"
               },
               {
-                "name": "processor",
+                "name": "processor()",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦processor⟧();",
@@ -150,7 +150,7 @@
                 "container": "io"
               },
               {
-                "name": "io::process",
+                "name": "io::process(Stream &stream)",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process⟧(Stream& stream);",
@@ -169,7 +169,7 @@
                 "container": "io"
               },
               {
-                "name": "io::process_all",
+                "name": "io::process_all()",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process_all⟧();",
@@ -233,7 +233,7 @@
                 "container": "io"
               },
               {
-                "name": "io::process",
+                "name": "io::process(Stream &stream)",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process⟧(Stream& stream);",
@@ -252,7 +252,7 @@
                 "container": "io"
               },
               {
-                "name": "io::process_all",
+                "name": "io::process_all()",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process_all⟧();",
@@ -290,7 +290,7 @@
                 "container": "io"
               },
               {
-                "name": "io::detail::processor",
+                "name": "io::detail::processor()",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦processor⟧();",
@@ -316,7 +316,7 @@
           "value": {
             "workspace_symbols": [
               {
-                "name": "process",
+                "name": "process(Stream &stream)",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process⟧(Stream& stream);",
@@ -335,7 +335,7 @@
                 "container": "io"
               },
               {
-                "name": "process_all",
+                "name": "process_all()",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦process_all⟧();",
@@ -354,7 +354,7 @@
                 "container": "io"
               },
               {
-                "name": "processor",
+                "name": "processor()",
                 "kind": "Function",
                 "at": {
                   "$place": "main.cpp │ void ⟦processor⟧();",

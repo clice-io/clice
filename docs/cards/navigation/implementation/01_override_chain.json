@@ -3,8 +3,8 @@
   "topic": "navigation",
   "subtopic": "implementation",
   "title": "Override chain",
-  "summary": "Implementation navigation follows an override chain one level at a time",
-  "prose": "Along a three-level override chain, go-to-implementation from each method\nreaches the override one level down — base to middle, middle to leaf.",
+  "summary": "Implementation navigation lists the overrides at every level below",
+  "prose": "Along a three-level override chain, go-to-implementation from the base\nreaches the middle and the leaf override, and from the middle the leaf.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -46,6 +46,20 @@
                   },
                   "end": {
                     "line": 5,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "void ⟦run⟧() override {} @+8",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 9,
                     "character": 12
                   }
                 }

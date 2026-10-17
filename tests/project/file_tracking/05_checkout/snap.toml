@@ -15,5 +15,5 @@ references = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inl
 ["checkout updates workspace".v2]
 beta = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦beta⟧() { return 2; }"]
 added = [
-    { name = "checkout_added", kind = "Function", at = "closed.cpp │ int ⟦checkout_added⟧() { return 3; }" },
+    { name = "checkout_added()", kind = "Function", at = "closed.cpp │ int ⟦checkout_added⟧() { return 3; }" },
 ]

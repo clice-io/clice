@@ -94,17 +94,20 @@ stdout = '''
       {
         "file": "${WS}/a.h",
         "line": 2,
-        "context": "int add(int a, int b);"
+        "context": "int add(int a, int b);",
+        "function": null
       },
       {
         "file": "${WS}/main.cpp",
         "line": 2,
-        "context": "int add(int a, int b) { return a + b; }"
+        "context": "int add(int a, int b) { return a + b; }",
+        "function": null
       },
       {
         "file": "${WS}/main.cpp",
         "line": 4,
-        "context": "int compute() { return add(1, 2); }"
+        "context": "int compute() { return add(1, 2); }",
+        "function": "compute"
       }
     ],
     "total": 3
@@ -162,6 +165,32 @@ stdout = '''
       }
     ],
     "subtypes": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query implementation Animal"]
+stdout = '''
+{
+  "result": {
+    "root": {
+      "name": "Animal",
+      "kind": "Struct",
+      "file": "${WS}/a.h",
+      "line": 3,
+      "symbol": "#a1654fc0dd5efb6c"
+    },
+    "implementations": [
+      {
+        "name": "Dog",
+        "kind": "Struct",
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "symbol": "#7316a0a19122a8ae"
+      }
+    ]
   },
   "stale": []
 }

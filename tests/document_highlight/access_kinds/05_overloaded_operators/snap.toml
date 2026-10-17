@@ -1,8 +1,8 @@
 [answers.plus_decl]
 highlights = [
     { at = "Meter ⟦operator+⟧(int value) const;", kind = "text" },
-    { at = "Meter total = meter ⟦+⟧ 2;", kind = "read" },
-    { at = "Meter more = meter.⟦operator+⟧(3);", kind = "read" },
+    { at = "Meter total = meter ⟦+⟧ 2;", kind = "text" },
+    { at = "Meter more = meter.⟦operator+⟧(3);", kind = "text" },
 ]
 
 [answers.stream]
@@ -37,6 +37,6 @@ highlights = [
 [answers.plus_use]
 highlights = [
     { at = "Meter ⟦operator+⟧(int value) const;", kind = "text" },
-    { at = "Meter total = meter ⟦+⟧ 2;", kind = "read" },
-    { at = "Meter more = meter.⟦operator+⟧(3);", kind = "read" },
+    { at = "Meter total = meter ⟦+⟧ 2;", kind = "text" },
+    { at = "Meter more = meter.⟦operator+⟧(3);", kind = "text" },
 ]

@@ -59,7 +59,7 @@ host = "main.cpp"
 
 ["names in the includer's context".type]
 highlights = [
-    { at = "inline int calc(⟦Point⟧ p) {", kind = "read" },
+    { at = "inline int calc(⟦Point⟧ p) {", kind = "text" },
 ]
 
 ["names in the includer's context".param]

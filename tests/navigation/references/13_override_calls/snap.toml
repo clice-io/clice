@@ -1,0 +1,9 @@
+[answers.base]
+references = ["virtual double ⟦area⟧() const = 0;", "return shape.⟦area⟧();"]
+
+[answers.override]
+references = [
+    "double ⟦area⟧() const override {",
+    "return shape.⟦area⟧();",
+    "return circle.⟦area⟧();",
+]

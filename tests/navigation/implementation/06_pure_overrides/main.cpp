@@ -1,6 +1,5 @@
-// An override that is itself pure implements nothing: implementation on the
-// root goes through it to the concrete override below. A concrete
-// intermediate stops the walk, its own overriders belong to it.
+// Implementation on a virtual function lists the overrides at every level
+// below it, a pure one in between included.
 
 struct A {
     virtual void §(pure_root)f() = 0;

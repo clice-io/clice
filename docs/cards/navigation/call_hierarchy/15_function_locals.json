@@ -1,0 +1,55 @@
+{
+  "id": "navigation/call_hierarchy/15_function_locals",
+  "topic": "navigation",
+  "subtopic": "call_hierarchy",
+  "title": "Function locals",
+  "summary": "A function's local variables and parameters get no call hierarchy item",
+  "prose": "The only function that can use them is the one declaring them, so an item\nfor them would have one caller, known in advance.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int total(int count) {\n    int sum = 0;\n    for(int i = 0; i < count; i += 1) {\n        sum += i;\n    }\n    return sum;\n}\n",
+      "markers": [
+        {
+          "name": "parameter",
+          "begin": 14,
+          "end": 14,
+          "range": false
+        },
+        {
+          "name": "local",
+          "begin": 31,
+          "end": 31,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "parameter",
+          "marker": "parameter",
+          "value": {
+            "call_hierarchy": [],
+            "incoming_calls": [],
+            "outgoing_calls": []
+          }
+        },
+        {
+          "label": "local",
+          "marker": "local",
+          "value": {
+            "call_hierarchy": [],
+            "incoming_calls": [],
+            "outgoing_calls": []
+          }
+        }
+      ]
+    }
+  ]
+}
