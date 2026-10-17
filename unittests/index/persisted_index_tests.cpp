@@ -69,6 +69,9 @@ struct ManifestBlobMirror {
     std::vector<std::uint64_t> local_symbols;
     std::vector<std::uint32_t> local_file_ends;
     std::vector<std::uint32_t> local_files;
+    std::vector<std::uint32_t> instantiation_files;
+    std::vector<std::uint32_t> instantiation_ends;
+    std::vector<std::uint64_t> instantiation_resolutions;
 };
 
 ZEST_CASE(ManifestFanoutRejected) {
@@ -102,6 +105,25 @@ ZEST_CASE(ManifestFanoutRejected) {
     mirror = valid;
     mirror.local_file_ends = {1, 1};
     ZASSERT(!decodes(mirror));
+}
+
+ZEST_CASE(ManifestReservedResolutionRejected) {
+    // A resolution the manifest uses keys a DenseMap at load: a sentinel
+    // value must not decode.
+    ManifestBlobMirror mirror;
+    mirror.format_version = index::index_format_version;
+    mirror.instantiation_files = {1};
+    mirror.instantiation_ends = {1};
+    mirror.instantiation_resolutions = {42};
+    auto decodes = [&] {
+        auto blob = kota::codec::fbs::to_bytes(mirror);
+        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
+    };
+    ZASSERT(decodes());
+    mirror.instantiation_resolutions = {~0ull};
+    ZEXPECT(!decodes());
+    mirror.instantiation_resolutions = {~0ull - 1};
+    ZEXPECT(!decodes());
 }
 
 ZEST_CASE(ManifestCountMismatchRejected) {
