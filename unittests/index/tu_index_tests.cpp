@@ -2209,11 +2209,11 @@ ZEST_CASE(DeducedKeywords) {
     ZEXPECT(spelled_in("self") == std::vector<Spelled>{
                                       {"size", SymbolKind::Field, {RelationKind::Reference}},
     });
-    // The keyword stands for the type the only call passes; it names no
-    // template parameter of its own.
+    // The keyword names no template parameter of its own, and the type a
+    // call passes is that instantiation's, recorded apart from the written
+    // code (InstantiationIndex.AbbreviatedParameterDeduced).
     ZEXPECT(spelled_in("parameter") ==
             std::vector<Spelled>{
-                {"auto",  SymbolKind::Struct,    {RelationKind::Deduced}   },
                 {"value", SymbolKind::Parameter, {RelationKind::Definition}},
     });
     // A library's internal alias gives way to the type it names.

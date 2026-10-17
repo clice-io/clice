@@ -340,7 +340,9 @@ RequestResult<worker::CompileParams>
 
                 index_error = hand_over_index(
                     index::build_tu_index(*unit,
-                                          {.known_instantiations = params.known_instantiations}),
+                                          {.known_instantiations = params.known_instantiations,
+                                           .standard_library_instantiations =
+                                               params.standard_library_instantiations}),
                     params.index_output_path,
                     result);
             }

@@ -5,6 +5,7 @@ incoming_calls = [
         name = "measure",
         kind = "Function",
         at = "measure.h │ void ⟦measure⟧(T& item) {",
+        detail = "measure(T &item)",
         sites = ["measure.h │ item.⟦open⟧();"],
     },
 ]
@@ -17,7 +18,13 @@ references = [
     "use.cpp │ ⟦RESET_ALL⟧;",
 ]
 incoming_calls = [
-    { name = "use", kind = "Function", at = "use.cpp │ void ⟦use⟧(Box& box) {", sites = ["use.cpp │ ⟦RESET_ALL⟧;"] },
+    {
+        name = "use",
+        kind = "Function",
+        at = "use.cpp │ void ⟦use⟧(Box& box) {",
+        detail = "use(Box &box)",
+        sites = ["use.cpp │ ⟦RESET_ALL⟧;"],
+    },
 ]
 
 ["closed source".measure]
@@ -26,7 +33,7 @@ outgoing_calls = [
         name = "open",
         kind = "Method",
         at = "main.cpp │ void Box::⟦open⟧() {}",
-        detail = "Box::open",
+        detail = "Box::open()",
         sites = ["item.⟦open⟧();"],
     },
 ]

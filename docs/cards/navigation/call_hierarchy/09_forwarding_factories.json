@@ -71,6 +71,7 @@
                     }
                   }
                 },
+                "detail": "make(Args &&...args)",
                 "sites": [
                   {
                     "$place": "return T⟦(⟧static_cast<Args&&>(args)...);",

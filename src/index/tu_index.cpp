@@ -381,9 +381,9 @@ public:
     Projector(CompilationUnit& unit, const TUIndexOptions& options) :
         unit(unit), focus_only(unit.kind() == CompilationKind::Content && !options.all_files),
         known_variants(options.known_variants),
-        resolver(unit.context(), {.only_instantiation = false}),
-        readable(unit.context(), {}),
-        known_instantiations(options.known_instantiations) {}
+        resolver(unit.context(), {.only_instantiation = false}), readable(unit.context(), {}),
+        known_instantiations(options.known_instantiations),
+        standard_library(options.standard_library_instantiations) {}
 
     /// The only gate through which entries enter `file_indices`. With
     /// focus_only, the index covers just the focus file and the
@@ -1448,7 +1448,8 @@ public:
     std::vector<const clang::Decl*> walked_instantiations() {
         std::vector<const clang::Decl*> walked;
         for(const auto* decl: unit.instantiations()) {
-            if(llvm::isa<clang::CXXRecordDecl>(decl)) {
+            if(llvm::isa<clang::CXXRecordDecl>(decl) ||
+               (!standard_library && decls::in_standard_library(decl))) {
                 continue;
             }
             auto home = home_of(decl);
@@ -1599,6 +1600,7 @@ public:
     void project_bases(const clang::CXXRecordDecl* record) {
         const auto* pattern = record->getTemplateInstantiationPattern();
         if(!pattern || !record->hasDefinition() ||
+           (!standard_library && decls::in_standard_library(record)) ||
            llvm::none_of(pattern->bases(), [](const clang::CXXBaseSpecifier& base) {
                return base.getType()->isDependentType();
            })) {
@@ -1645,6 +1647,17 @@ public:
         auto& SM = unit.context().getSourceManager();
         auto& entities = unit.get<EntityTable>();
 
+        // The standard library's own macros: a system header's, by a name
+        // reserved for the implementation (`__glibcxx_assert`).
+        auto library_macro = [&](clang::SourceLocation expansion, clang::SourceLocation body) {
+            if(!SM.isInSystemHeader(body)) {
+                return false;
+            }
+            auto name = clang::Lexer::getImmediateMacroName(expansion, SM, unit.lang_options());
+            return clang::isReservedInAllContexts(
+                unit.context().Idents.get(name).isReserved(unit.lang_options()));
+        };
+
         // By the expansion the body token came out of; an argument or a
         // pasted token is spelled in no body.
         llvm::MapVector<clang::FileID, std::pair<clang::FileID, std::vector<InstantiationRecord>>>
@@ -1656,7 +1669,8 @@ public:
                 location = SM.getImmediateSpellingLoc(location);
             }
             auto& info = SM.getSLocEntry(SM.getFileID(expansion)).getExpansion();
-            if(info.isMacroArgExpansion() || SM.isWrittenInScratchSpace(location)) {
+            if(info.isMacroArgExpansion() || SM.isWrittenInScratchSpace(location) ||
+               (!standard_library && library_macro(expansion, location))) {
                 return;
             }
             auto [fid, offset] = SM.getDecomposedLoc(location);
@@ -2072,6 +2086,10 @@ private:
     /// The keys of the instantiations the receiver already holds
     /// (TUIndexOptions::known_instantiations).
     llvm::ArrayRef<std::uint64_t> known_instantiations;
+
+    /// Whether the standard library's own instantiations and expansions are
+    /// walked (TUIndexOptions::standard_library_instantiations).
+    bool standard_library;
 
     /// What this run's instantiations and macro expansions resolve in each
     /// file, and the known keys whose definition the file holds.

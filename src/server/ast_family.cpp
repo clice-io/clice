@@ -872,6 +872,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     for(int attempt = 0; attempt < 2; attempt += 1) {
         worker::CompileParams params;
         params.known_instantiations = known_instantiations;
+        params.standard_library_instantiations =
+            project.config.project.standard_library_instantiations;
         params.path = file_path;
         params.version = session->version;
         params.text = session->text;

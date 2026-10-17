@@ -119,6 +119,7 @@
                     }
                   }
                 },
+                "detail": "measure(T &item)",
                 "sites": [
                   {
                     "$place": "measure.h │ item.⟦open⟧();",
@@ -219,6 +220,7 @@
                     }
                   }
                 },
+                "detail": "use(Box &box)",
                 "sites": [
                   {
                     "$place": "use.cpp │ ⟦RESET_ALL⟧;",
@@ -261,7 +263,7 @@
                     }
                   }
                 },
-                "detail": "Box::open",
+                "detail": "Box::open()",
                 "sites": [
                   {
                     "$place": "item.⟦open⟧();",

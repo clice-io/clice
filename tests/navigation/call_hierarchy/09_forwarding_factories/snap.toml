@@ -8,6 +8,7 @@ incoming_calls = [
         name = "make",
         kind = "Function",
         at = "T ⟦make⟧(Args&&... args) {",
+        detail = "make(Args &&...args)",
         sites = ["return T⟦(⟧static_cast<Args&&>(args)...);"],
     },
 ]

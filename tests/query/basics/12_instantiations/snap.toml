@@ -17,17 +17,20 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 9,
         "context": "    item.open();",
+        "function": "twice",
         "via": "instantiation"
       },
       {
         "file": "${WS}/main.cpp",
         "line": 10,
-        "context": "    box.open();"
+        "context": "    box.open();",
+        "function": "twice"
       },
       {
         "file": "${WS}/measure.h",
         "line": 5,
         "context": "    item.open();",
+        "function": "measure",
         "via": "instantiation"
       }
     ],
@@ -44,6 +47,7 @@ stdout = '''
   "result": {
     "root": {
       "name": "open",
+      "signature": "()",
       "kind": "Method",
       "file": "${WS}/main.cpp",
       "line": 3,
@@ -52,6 +56,7 @@ stdout = '''
     "callers": [
       {
         "name": "measure",
+        "signature": "(T &item)",
         "kind": "Function",
         "file": "${WS}/measure.h",
         "line": 4,
@@ -60,6 +65,7 @@ stdout = '''
       },
       {
         "name": "twice",
+        "signature": "(T &item, Box &box)",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 8,
@@ -85,12 +91,14 @@ stdout = '''
         "file": "${WS}/box.h",
         "line": 9,
         "context": "#define RESET_ALL reset()",
+        "function": null,
         "via": "expansion"
       },
       {
         "file": "${WS}/use.cpp",
         "line": 6,
-        "context": "    RESET_ALL;"
+        "context": "    RESET_ALL;",
+        "function": "use"
       }
     ],
     "total": 2

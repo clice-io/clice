@@ -522,8 +522,7 @@ void print_stats(const Project& project,
 
     auto& global = stats.global;
     auto column_bytes = global.names + global.args + global.signatures + global.bitmaps +
-                        global.instantiation_bitmaps +
-                        global.fixed + global.contributors;
+                        global.instantiation_bitmaps + global.fixed + global.contributors;
     driver::println();
     driver::println("Global blob ({}):", format_bytes(stats.global_bytes));
     column("symbol names", global.names, stats.global_bytes);

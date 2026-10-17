@@ -44,6 +44,11 @@ bool is_implicit_instantiation(const clang::NamedDecl* decl);
 /// (ExplicitInstantiationDecl).
 bool is_instantiation(const clang::Decl* decl);
 
+/// Whether the declaration is the standard library's own: written in a
+/// system header, inside namespace `std` or a namespace whose name the
+/// standard reserves for the implementation (libstdc++'s `__gnu_cxx`).
+bool in_standard_library(const clang::Decl* decl);
+
 /// Return the decl where it is instantiated from. It could be a template
 /// decl or a member of a class template. If the decl is a full
 /// specialization, return itself.

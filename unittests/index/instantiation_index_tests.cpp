@@ -34,13 +34,13 @@ std::string name_of(index::SymbolHash hash) {
 }
 
 void build(llvm::StringRef code,
-           llvm::ArrayRef<std::uint64_t> known = {},
+           const index::TUIndexOptions& options = {},
            CompilationKind compilation = CompilationKind::Whole) {
     kind = compilation;
     add_main("main.cpp", code);
     ZASSERT(compile());
-    view = index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
-        index::build_tu_index(*unit, {.known_instantiations = known})));
+    view = index::TUIndex::from_buffer(
+        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit, options)));
     ZASSERT(view.loaded());
 }
 
@@ -169,6 +169,40 @@ ZEST_CASE(HomeIsTheDefinition) {
     ZEXPECT(view.instantiation_shard(*definition).keys().size() == 1u);
 }
 
+ZEST_CASE(StandardLibraryUnwalked) {
+    add_file("algo", R"(
+        #pragma GCC system_header
+        namespace std {
+        template <typename T>
+        void call(T t) { t.go(); }
+        }
+        #define __library_go(t) (t).go()
+        #define LIBRARY_GO(t) (t).go()
+    )");
+    llvm::StringRef code = R"(
+        #include "algo"
+        struct A { void go(); };
+        void use() {
+            std::call(A{});
+            __library_go(A{});
+            LIBRARY_GO(A{});
+        }
+    )";
+    // The template and the macro of a reserved name are the library's own;
+    // `LIBRARY_GO`, a name a user may spell too, resolves as before.
+    build(code);
+    auto library = section_of("algo");
+    ZASSERT(library);
+    ZEXPECT(view.instantiation_shard(*library).keys().empty());
+    ZEXPECT(view.instantiation_shard(*library).resolutions().size() == 1u);
+
+    build(code, {.standard_library_instantiations = true});
+    library = section_of("algo");
+    ZASSERT(library);
+    ZEXPECT(view.instantiation_shard(*library).keys().size() == 1u);
+    ZEXPECT(view.instantiation_shard(*library).resolutions().size() == 3u);
+}
+
 ZEST_CASE(EachInstantiationItsResolution) {
     build(R"(
         struct A { void go(); };
@@ -210,7 +244,8 @@ ZEST_CASE(KnownKeysSkipped) {
     ZASSERT(found.size() == 1u);
     auto key = found.front().key;
 
-    build(code, {key});
+    std::uint64_t known[] = {key};
+    build(code, {.known_instantiations = known});
     auto section = main_section();
     ZASSERT(section);
     ZEXPECT(view.instantiation_blob(*section).empty());

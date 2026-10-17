@@ -182,6 +182,17 @@ struct ProjectConfig {
     <bool> enable_indexing = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Index what the standard library's own template "
+                         "instantiations and macros resolve inside the library — "
+                         "the comparator `std::sort` calls, the destructor "
+                         "`std::vector` runs — so references and the call "
+                         "hierarchy reach those places. Off by default: they are "
+                         "library internals, and walking them costs indexing time "
+                         "and space. Applies to the units indexed after a change.")
+    <bool> standard_library_instantiations = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
                      choices = {"off", "on", "auto"},
                      description =
                          "Read-only serving for open files: \"off\" targets a "

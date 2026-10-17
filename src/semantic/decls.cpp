@@ -179,6 +179,24 @@ bool is_implicit_instantiation(const clang::NamedDecl* decl) {
     return is_template_specialization_kind(decl, clang::TSK_ImplicitInstantiation);
 }
 
+bool in_standard_library(const clang::Decl* decl) {
+    auto& context = decl->getASTContext();
+    if(!context.getSourceManager().isInSystemHeader(decl->getLocation())) {
+        return false;
+    }
+    for(const auto* scope = decl->getDeclContext(); scope; scope = scope->getParent()) {
+        if(scope->isStdNamespace()) {
+            return true;
+        }
+        if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(scope);
+           ns && ns->getIdentifier() &&
+           clang::isReservedInAllContexts(ns->getIdentifier()->isReserved(context.getLangOpts()))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool is_instantiation(const clang::Decl* decl) {
     if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
        named && is_implicit_instantiation(named)) {
