@@ -9,6 +9,7 @@ import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.display;
 import :semantic.semantics;
+import :syntax.lexer;
 
 namespace clice::feature {
 
@@ -650,59 +651,22 @@ std::optional<std::string> respell(clang::ASTContext& context,
         return std::nullopt;
     };
 
-    // A byte outside ASCII belongs to an identifier: one such name is
-    // respelled like any other, never copied past the shadowing check.
-    auto identifier_start = [](char c) {
-        return clang::isAsciiIdentifierStart(c) || !clang::isASCII(c);
-    };
-    auto identifier_char = [](char c) {
-        return clang::isAsciiIdentifierContinue(c) || !clang::isASCII(c);
-    };
+    // A name after `::`, `.` or `->` continues a name or an expression
+    // already respelled.
     std::string result;
-    llvm::StringRef rest = printed;
-    while(!rest.empty()) {
-        // A literal's text names nothing; the printer escapes its quotes.
-        if(rest.front() == '"' || rest.front() == '\'') {
-            std::size_t end = 1;
-            while(end < rest.size() && rest[end] != rest.front()) {
-                end += rest[end] == '\\' ? 2 : 1;
-            }
-            auto literal = rest.take_front(end + 1);
-            result += literal;
-            rest = rest.drop_front(literal.size());
-            continue;
-        }
-        if(!identifier_start(rest.front())) {
-            auto token =
-                llvm::isDigit(rest.front()) ? rest.take_while(identifier_char) : rest.take_front();
-            result += token;
-            rest = rest.drop_front(token.size());
-            continue;
-        }
-        // A component after `::`, `.` or `->` continues a name or an
-        // expression already respelled.
-        llvm::StringRef done = result;
-        if(done.ends_with("::") || done.ends_with(".") || done.ends_with("->")) {
-            auto component = rest.take_while(identifier_char);
-            result += component;
-            rest = rest.drop_front(component.size());
-            continue;
-        }
-        llvm::SmallVector<llvm::StringRef, 4> components;
-        while(true) {
-            components.push_back(rest.take_while(identifier_char));
-            rest = rest.drop_front(components.back().size());
-            if(!rest.starts_with("::") || rest.size() < 3 || !identifier_start(rest[2])) {
-                break;
-            }
-            rest = rest.drop_front(2);
-        }
-        auto spelled = spell(components);
-        if(!spelled) {
+    std::uint32_t copied = 0;
+    for(const auto& name: printed_names(printed, context.getLangOpts())) {
+        result += printed.slice(copied, name.range.begin);
+        if(name.continues) {
+            result += printed.slice(name.range.begin, name.range.end);
+        } else if(auto spelled = spell(name.components)) {
+            result += *spelled;
+        } else {
             return std::nullopt;
         }
-        result += *spelled;
+        copied = name.range.end;
     }
+    result += printed.drop_front(copied);
     return result;
 }
 
@@ -825,6 +789,38 @@ clang::AccessSpecifier trailing_access(const clang::CXXRecordDecl* record) {
 }
 
 }  // namespace
+
+std::vector<PrintedName> printed_names(llvm::StringRef text, const clang::LangOptions& dialect) {
+    // A copy: the lexer reads up to a NUL terminator, which a slice lacks.
+    auto copy = text.str();
+    std::vector<PrintedName> names;
+    std::optional<TokenKind> previous;
+    Lexer lexer(copy, dialect);
+    for(auto token = lexer.advance(); !token.is_eof();) {
+        if(!token.is_identifier()) {
+            previous = token.kind;
+            token = lexer.advance();
+            continue;
+        }
+        PrintedName name{
+            .range = token.range,
+            .continues = previous == clang::tok::coloncolon || previous == clang::tok::period ||
+                         previous == clang::tok::arrow,
+        };
+        name.components.push_back(token.text(text));
+        token = lexer.advance();
+        while(token.kind == clang::tok::coloncolon && token.range.begin == name.range.end &&
+              lexer.next().is_identifier() && lexer.next().range.begin == token.range.end) {
+            auto component = lexer.advance();
+            name.components.push_back(component.text(text));
+            name.range.end = component.range.end;
+            token = lexer.advance();
+        }
+        previous = clang::tok::identifier;
+        names.push_back(std::move(name));
+    }
+    return names;
+}
 
 std::optional<LocalSourceRange> editable_range(CompilationUnit& unit, clang::SourceRange range) {
     if(range.getBegin().isMacroID() || range.getEnd().isMacroID()) {

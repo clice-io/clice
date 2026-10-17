@@ -92,6 +92,21 @@ bool at_file_scope(const clang::DeclContext* context);
 /// templates spell their parameters as arguments ("S<T>::").
 std::string qualifier_at(const clang::DeclContext* target, const clang::DeclContext* from);
 
+/// A name written in C++ text clang printed, a type's: its components as
+/// `::` joins them.
+struct PrintedName {
+    LocalSourceRange range;
+    llvm::SmallVector<llvm::StringRef, 4> components;
+
+    /// It comes after `::`, `.` or `->`: a component of a name or an
+    /// expression already begun.
+    bool continues = false;
+};
+
+/// The names `text` writes, lexed in `dialect`; a literal's text names
+/// nothing.
+std::vector<PrintedName> printed_names(llvm::StringRef text, const clang::LangOptions& dialect);
+
 /// A type spelled for `from`, declaring `name` when one is given
 /// ("int (*name)(int)"): each name drops the namespaces enclosing `from`
 /// as far as it still finds its entity there, and the compiler's internal

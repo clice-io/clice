@@ -712,7 +712,7 @@ private:
     // these token patterns with another meaning, but invalid or disabled
     // code can, and a node must never outrank the compiler.
     void filter_module_declarations() {
-        auto& modules = semantics.lexical.modules;
+        auto& modules = semantics.modules;
         auto* mod = unit.context().getCurrentNamedModule();
         if(!mod) {
             modules.clear();
@@ -758,7 +758,7 @@ private:
     // ignores them, but hover and document links see macros, includes and
     // imports as first-class nodes.
     void append_directives() {
-        semantics.lexical = lexical_scan(unit.focus_file().content(), &unit.lang_options());
+        semantics.modules = unit.focus_file().lexical().modules;
         semantics.main_comments = unit.comments(main_fid);
         filter_module_declarations();
 
@@ -822,7 +822,7 @@ private:
         // A module declaration owns its written tokens: the keywords, the
         // name parts and the partition colon; the separators stay unowned,
         // matching imports.
-        for(auto& module: semantics.lexical.modules) {
+        for(auto& module: semantics.modules) {
             Entry entry{module.keyword.begin, SemanticNode(&module), {}};
             if(module.export_keyword.valid()) {
                 entry.offset = module.export_keyword.begin;

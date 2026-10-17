@@ -40,13 +40,17 @@ struct PreambleCompletionContext {
 /// Detect whether the cursor is in the header name of an #include or a
 /// `__has_include`, or in the name of an import or a module declaration.
 /// Pure text parsing — no compiler state needed.
-PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset);
+PreambleCompletionContext detect_completion_context(llvm::StringRef text,
+                                                    std::uint32_t offset,
+                                                    const clang::LangOptions& dialect);
 
-/// Whether the text before `offset` ends in a member or scope access
+/// Whether the code before `offset` ends in a member or scope access
 /// operator (`.`, `->`, `::`) — outside a directive, the only trigger
 /// characters worth a candidate build. A pack ellipsis is not a member
 /// access.
-bool follows_access_operator(llvm::StringRef text, std::uint32_t offset);
+bool follows_access_operator(llvm::StringRef text,
+                             std::uint32_t offset,
+                             const clang::LangOptions& dialect);
 
 /// A designator written in a braced initializer, by the field it starts
 /// with.
@@ -61,7 +65,9 @@ struct WrittenDesignator {
 /// where the text before `offset` ends in a `.` starting a designator of
 /// its own (`{ .width = 800, .`), in order. Empty anywhere else, after a
 /// `.` continuing a designator (`.inner.`) too.
-std::vector<WrittenDesignator> written_designators(llvm::StringRef text, std::uint32_t offset);
+std::vector<WrittenDesignator> written_designators(llvm::StringRef text,
+                                                   std::uint32_t offset,
+                                                   const clang::LangOptions& dialect);
 
 /// The names an implementation unit's module declaration can take that
 /// start with `prefix`: the modules the graph's interfaces provide.

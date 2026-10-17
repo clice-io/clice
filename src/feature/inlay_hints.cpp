@@ -15,7 +15,7 @@ import :semantic.identity;
 import :semantic.resolver;
 import :semantic.semantics;
 import :semantic.types;
-import :syntax.lexer;
+import :syntax.lexical_scan;
 
 namespace clice::feature {
 
@@ -908,37 +908,33 @@ private:
     /// closes, matched lexically: a preamble compile reports no directive
     /// it consumed, nor those in a skipped branch.
     void add_endif_hints() {
-        llvm::SmallVector<LocalSourceRange> opened;
-        for(const auto& directive: unit.get<Semantics>().block_directives()) {
-            if(directive.kind == LexicalInfo::BlockDirective::Kind::If) {
-                opened.push_back(directive.range);
-            } else if(directive.kind == LexicalInfo::BlockDirective::Kind::EndIf &&
-                      !opened.empty()) {
-                add_endif_hint(opened.pop_back_val(), directive.range);
+        const auto& lexical = unit.focus_file().lexical();
+        for(const auto& directive: lexical.directives) {
+            if(directive.kind == LexicalInfo::Directive::Kind::EndIf &&
+               directive.opening != LexicalInfo::none) {
+                add_endif_hint(lexical, lexical.directives[directive.opening], directive);
             }
         }
     }
 
-    void add_endif_hint(LocalSourceRange opening, LocalSourceRange closing) {
+    void add_endif_hint(const LexicalInfo& lexical,
+                        const LexicalInfo::Directive& opening,
+                        const LexicalInfo::Directive& closing) {
         auto content = unit.focus_file().content();
-        if(content.slice(opening.begin, closing.begin).count('\n') + 1 < options.min_block_lines) {
+        if(content.slice(opening.range.begin, closing.range.begin).count('\n') + 1 <
+           options.min_block_lines) {
             return;
         }
 
         // Nothing may follow the `endif`, a comment included.
-        auto endif = Lexer::from_line(content, closing.begin, {.keep_comments = true});
-        endif.advance();
-        endif.advance();
-        if(!endif.advance().is_eod()) {
+        if(closing.last != closing.first + 2) {
             return;
         }
 
-        auto lexer = Lexer::from_line(content, opening.begin);
-        lexer.advance();
-        std::string condition = lexer.advance().text(content) == "ifndef" ? "!" : "";
+        auto words = lexical.words(opening);
+        std::string condition = words.front().text(content) == "ifndef" ? "!" : "";
         std::optional<std::uint32_t> previous;
-        for(auto token = lexer.advance(); !token.is_eod() && !token.is_eof();
-            token = lexer.advance()) {
+        for(const auto& token: llvm::drop_begin(words)) {
             if(previous && *previous < token.range.begin) {
                 condition += ' ';
             }
@@ -946,10 +942,10 @@ private:
             previous = token.range.end;
         }
         if(previous) {
-            add_end_hint(endif.last().range.end,
+            add_end_hint(lexical.tokens[closing.first + 1].range.end,
                          condition,
                          options.max_length.endif,
-                         opening.begin);
+                         opening.range.begin);
         }
     }
 

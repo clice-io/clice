@@ -232,9 +232,12 @@ auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
 }
 
 auto CompilationUnit::comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment> {
+    if(fid == SM().getMainFileID()) {
+        return focus_file().lexical().comments;
+    }
     auto [it, inserted] = comment_cache.try_emplace(fid);
     if(inserted) {
-        it->second = scan_comments(file_content(fid), &lang_options());
+        it->second = scan_comments(file_content(fid), lang_options());
     }
     return it->second;
 }
@@ -397,6 +400,19 @@ auto FocusFile::positions() -> PositionMap {
 auto FocusFile::tokens() -> const TokenMap& {
     assert(unit.collected_tokens && "only a Content compile collects tokens");
     return *unit.collected_tokens;
+}
+
+auto FocusFile::lexical() -> const LexicalInfo& {
+    if(!unit.focus_lexical) {
+        auto text = content();
+        auto end = unit.text_end(file());
+        // A prefix is lexed off a copy: the lexer reads up to a NUL
+        // terminator, which a prefix lacks.
+        unit.focus_lexical = end == text.size()
+                                 ? lexical_scan(text, unit.lang_options())
+                                 : lexical_scan(text.take_front(end).str(), unit.lang_options());
+    }
+    return *unit.focus_lexical;
 }
 
 auto FocusFile::location(std::uint32_t offset) -> clang::SourceLocation {

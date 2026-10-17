@@ -6,6 +6,7 @@ module clice;
 
 import :command.invocation;
 import :syntax.lexer;
+import :syntax.lexical_scan;
 import :syntax.scan;
 import :vfs.file_system;
 
@@ -13,7 +14,7 @@ namespace clice {
 
 /// Whether a line of the text starts with `module` or `export module`.
 static bool declares_module(llvm::StringRef content) {
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     while(true) {
         auto token = lexer.advance();
         if(token.is_eof()) {
@@ -379,7 +380,7 @@ ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
 
 std::uint32_t compute_preamble_bound(llvm::StringRef content) {
     std::uint32_t bound = 0;
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     while(true) {
         auto token = lexer.advance();
         if(token.is_eof()) {
@@ -409,7 +410,7 @@ std::uint32_t compute_preamble_bound(llvm::StringRef content) {
 std::uint32_t complete_preamble_bound(llvm::StringRef content, std::uint32_t bound) {
     // The full (NUL-terminated) content is lexed; `bound` applies as a
     // logical end — tokens starting at or past it belong to the body.
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
 
     // Tokens of the current logical line; eod tokens only act as line ends.
     llvm::SmallVector<Token, 8> line;
@@ -476,7 +477,7 @@ std::uint32_t complete_preamble_bound(llvm::StringRef content, std::uint32_t bou
 }
 
 bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound) {
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     while(true) {
         auto token = lexer.advance();
         if(token.is_eof() || token.range.begin >= bound) {
@@ -496,18 +497,19 @@ bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound) {
 }
 
 bool pragma_once(llvm::StringRef content, std::uint32_t bound) {
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     for(auto token = lexer.advance(); !token.is_eof() && token.range.begin < bound;
         token = lexer.advance()) {
         if(!token.is_directive_hash()) {
             continue;
         }
         auto keyword = lexer.advance();
-        if(keyword.is_eod() || keyword.text(content) != "pragma") {
+        if(keyword.is_eod()) {
             continue;
         }
-        auto name = lexer.advance();
-        if(!name.is_eod() && name.text(content) == "once") {
+        auto argument = lexer.advance();
+        if(directive_kind(keyword.text(content), argument.is_eod() ? "" : argument.text(content)) ==
+           LexicalInfo::Directive::Kind::PragmaOnce) {
             return true;
         }
     }

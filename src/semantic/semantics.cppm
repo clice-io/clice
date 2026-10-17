@@ -370,36 +370,7 @@ public:
     /// against the compiled module (bogus lexical matches are dropped at
     /// build time). The same objects back the Module nodes.
     llvm::ArrayRef<LexicalInfo::ModuleDeclaration> module_declarations() const {
-        return lexical.modules;
-    }
-
-    /// The main file's conditional and region directives in source order,
-    /// the preamble's and skipped blocks' included.
-    llvm::ArrayRef<LexicalInfo::BlockDirective> block_directives() const {
-        return lexical.block_directives;
-    }
-
-    /// The main file's include directives in source order, the preamble's
-    /// and skipped blocks' included.
-    llvm::ArrayRef<LocalSourceRange> include_directives() const {
-        return lexical.include_directives;
-    }
-
-    /// The main file's macro definitions in source order, the preamble's
-    /// and skipped blocks' included.
-    llvm::ArrayRef<LocalSourceRange> macro_definitions() const {
-        return lexical.macro_definitions;
-    }
-
-    /// The main file's `#pragma mark` directives in source order, the
-    /// preamble's and skipped blocks' included.
-    llvm::ArrayRef<LexicalInfo::PragmaMark> pragma_marks() const {
-        return lexical.pragma_marks;
-    }
-
-    /// The main file's raw string literal tokens in source order.
-    llvm::ArrayRef<LocalSourceRange> raw_strings() const {
-        return lexical.raw_strings;
+        return modules;
     }
 
 private:
@@ -421,9 +392,9 @@ private:
     std::vector<std::uint32_t> owner_begin;
     std::vector<std::uint32_t> owner_nodes;
 
-    /// The lexically scanned entities; Module nodes point into this
-    /// storage.
-    LexicalInfo lexical;
+    /// The main file's module declarations the compile confirms; Module
+    /// nodes point into this storage.
+    std::vector<LexicalInfo::ModuleDeclaration> modules;
 
     /// The unit's comments of the main file (CompilationUnit::comments);
     /// Comment nodes point into them.

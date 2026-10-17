@@ -8,6 +8,7 @@ import :feature.feature;
 import :feature.semantic_token_stream;
 import :index.tu_index;
 import :semantic.token_class;
+import :syntax.lexer;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -62,16 +63,16 @@ auto projected_outline() -> std::vector<feature::DocumentSymbol> {
 /// Tester's C++20.
 void expect_tokens_match_ast() {
     auto content = unit->focus_file().content();
-    auto ast = feature::semantic_token_stream(content,
+    auto ast = feature::semantic_token_stream(unit->focus_file().lexical().tokens,
+                                              content,
                                               unit->lang_options(),
                                               feature::semantic_token_facts(*unit, {}, true),
                                               {});
-    auto projected =
-        feature::index_semantic_tokens(content,
-                                       feature::index_lang_options("main.cpp", false, "c++20"),
-                                       entries,
-                                       resolver(),
-                                       {});
+    auto projected = feature::index_semantic_tokens(content,
+                                                    dialect_of("main.cpp", false, "c++20"),
+                                                    entries,
+                                                    resolver(),
+                                                    {});
 
     ZASSERT(projected.size() == ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {
@@ -304,7 +305,7 @@ int compute() {
 
     auto ast = feature::folding_ranges(*unit);
     auto projected = feature::index_folding_ranges(unit->focus_file().content(),
-                                                   feature::index_lang_options("main.cpp", false),
+                                                   dialect_of("main.cpp", false),
                                                    entries.decls,
                                                    resolver());
 
@@ -352,7 +353,7 @@ typedef struct {
 
     auto ast = feature::folding_ranges(*unit);
     auto projected = feature::index_folding_ranges(unit->focus_file().content(),
-                                                   feature::index_lang_options("main.cpp", false),
+                                                   dialect_of("main.cpp", false),
                                                    entries.decls,
                                                    resolver());
 
@@ -382,7 +383,7 @@ int values[] =
     extract_entries();
 
     auto projected = feature::index_folding_ranges(unit->focus_file().content(),
-                                                   feature::index_lang_options("main.cpp", false),
+                                                   dialect_of("main.cpp", false),
                                                    entries.decls,
                                                    resolver());
     ZASSERT(projected.size() == std::size_t(1));
@@ -423,7 +424,7 @@ void g() {
     };
 
     auto folds = feature::index_folding_ranges(content,
-                                               feature::index_lang_options("main.cpp", false),
+                                               dialect_of("main.cpp", false),
                                                entries,
                                                resolve_synthetic);
     ZASSERT(folds.size() == std::size_t(1));
@@ -435,7 +436,7 @@ ZEST_CASE(MergedKindsConflict) {
     llvm::StringRef content = "value;\n";
     auto tokens = project(
         content,
-        feature::index_lang_options("main.cpp", false),
+        dialect_of("main.cpp", false),
         {
             .occurrences = {{.range = {0, 5}, .target = 1}, {.range = {0, 5}, .target = 2}}
     },
@@ -451,7 +452,7 @@ ZEST_CASE(ModuleNameComponents) {
     llvm::StringRef content = "export module demo.core;\nimport foo:part;\n";
     auto tokens = project(
         content,
-        feature::index_lang_options("main.cppm", false),
+        dialect_of("main.cppm", false),
         {
             .occurrences = {{.range = {14, 23}, .target = 1}, {.range = {32, 40}, .target = 1}}
     },
@@ -487,16 +488,12 @@ ZEST_CASE(CDialectKeywords) {
     feature::IndexEntries entries{
         .decls = {{.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true}},
     };
-    auto c_tokens = project(content,
-                            feature::index_lang_options("header.h", true),
-                            entries,
-                            {SemanticTokenKind::Variable});
+    auto c_tokens =
+        project(content, dialect_of("header.h", true), entries, {SemanticTokenKind::Variable});
     ZASSERT(kind_at(c_tokens, 4) == SemanticTokenKind::Variable);
 
-    auto cpp_tokens = project(content,
-                              feature::index_lang_options("header.h", false),
-                              entries,
-                              {SemanticTokenKind::Variable});
+    auto cpp_tokens =
+        project(content, dialect_of("header.h", false), entries, {SemanticTokenKind::Variable});
     ZASSERT(kind_at(cpp_tokens, 4) == SemanticTokenKind::Keyword);
 }
 
@@ -504,8 +501,7 @@ ZEST_CASE(DriverDefaultKeywords) {
     // The driver turns on `char8_t` from C++20 and the GNU keywords in GNU
     // modes; the language defaults alone leave both off.
     llvm::StringRef content = "char8_t c;\ntypeof(c) d;\n";
-    auto tokens =
-        project(content, feature::index_lang_options("main.cpp", false, "gnu++20"), {}, {});
+    auto tokens = project(content, dialect_of("main.cpp", false, "gnu++20"), {}, {});
     ZASSERT(kind_at(tokens, 0) == SemanticTokenKind::Primitive);
     ZASSERT(kind_at(tokens, 11) == SemanticTokenKind::Keyword);
 }
@@ -513,7 +509,7 @@ ZEST_CASE(DriverDefaultKeywords) {
 ZEST_CASE(ModuleKeywordsNeedModules) {
     // Before C++20 a line-leading `module` is a plain name.
     llvm::StringRef content = "module m;\n";
-    auto tokens = project(content, feature::index_lang_options("main.cpp", false, "c++17"), {}, {});
+    auto tokens = project(content, dialect_of("main.cpp", false, "c++17"), {}, {});
     ZASSERT(std::ranges::none_of(tokens, [](const feature::SemanticToken& token) {
         return token.kind == SemanticTokenKind::Keyword;
     }));
@@ -529,18 +525,15 @@ ZEST_CASE(StandardFromCommand) {
     };
     auto kinds = {SemanticTokenKind::Variable};
 
-    auto cxx17 =
-        project(content, feature::index_lang_options("main.cpp", false, "c++17"), entries, kinds);
+    auto cxx17 = project(content, dialect_of("main.cpp", false, "c++17"), entries, kinds);
     ZASSERT(kind_at(cxx17, 4) == SemanticTokenKind::Variable);
 
-    auto cxx20 =
-        project(content, feature::index_lang_options("main.cpp", false, "c++20"), entries, kinds);
+    auto cxx20 = project(content, dialect_of("main.cpp", false, "c++20"), entries, kinds);
     ZASSERT(kind_at(cxx20, 4) == SemanticTokenKind::Keyword);
 
     // No -std in the command means the entries were indexed under the
     // driver's default dialect (C++17 today); the fallback matches it.
-    auto fallback =
-        project(content, feature::index_lang_options("main.cpp", false), entries, kinds);
+    auto fallback = project(content, dialect_of("main.cpp", false), entries, kinds);
     ZASSERT(kind_at(fallback, 4) == SemanticTokenKind::Variable);
 }
 
@@ -554,9 +547,7 @@ ZEST_CASE(LinksFromEdges) {
         {.line = 3, .target = "/usr/include/second"},
     };
 
-    auto links = feature::index_document_links(content,
-                                               feature::index_lang_options("main.cpp", false),
-                                               edges);
+    auto links = feature::index_document_links(content, dialect_of("main.cpp", false), edges);
     ZASSERT(links.size() == std::size_t(2));
     ZASSERT(content.substr(links[0].range.begin, links[0].range.length()) == "\"first.h\"");
     ZASSERT(links[0].target == "/tmp/first.h");

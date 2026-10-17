@@ -576,8 +576,11 @@ private:
     /// Each file's line tables, built together on first use.
     llvm::DenseMap<clang::FileID, LineTables> line_tables;
 
-    /// Each file's comments, lexed on first use.
+    /// Each file's comments but the focus file's, lexed on first use.
     llvm::DenseMap<clang::FileID, std::vector<LexicalInfo::Comment>> comment_cache;
+
+    /// The focus file's lexical scan, run on first use.
+    std::optional<LexicalInfo> focus_lexical;
 
     llvm::BumpPtrAllocator path_storage;
 
@@ -608,6 +611,11 @@ public:
     /// The tokens a Content compile collects, the only kind that collects
     /// them.
     auto tokens() -> const TokenMap&;
+
+    /// The lexical scan of the editor's text (CompilationUnit::text_end),
+    /// run on first use: the one every feature reads its raw tokens,
+    /// comments and directive lines from.
+    auto lexical() -> const LexicalInfo&;
 
     /// The location at `offset`.
     auto location(std::uint32_t offset) -> clang::SourceLocation;

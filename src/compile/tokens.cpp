@@ -153,6 +153,24 @@ void TokenMap::record(const clang::Token& token) {
     }
 }
 
+llvm::SmallVector<bool, 0> TokenMap::skipped(llvm::ArrayRef<Token> tokens) const {
+    llvm::SmallVector<bool, 0> skipped(tokens.size());
+    auto count = static_cast<std::uint32_t>(spelled_tokens.size());
+    std::uint32_t spelled = 0;
+    bool current = false;
+    for(std::size_t i = 0; i < tokens.size(); i += 1) {
+        auto begin = tokens[i].range.begin;
+        while(spelled < count && offset(spelled_tokens[spelled]) < begin) {
+            spelled += 1;
+        }
+        if(spelled < count && offset(spelled_tokens[spelled]) == begin) {
+            current = away[spelled];
+        }
+        skipped[i] = current;
+    }
+    return skipped;
+}
+
 void TokenMap::record_invocation(clang::SourceRange range) {
     // A top-level invocation ends in the file; one ending within the last
     // one sits in its arguments.

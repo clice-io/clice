@@ -14,12 +14,6 @@ namespace clice {
 
 namespace {
 
-/// Bytes of multi-byte UTF-8 sequences count too: clang accepts extended
-/// characters in identifiers.
-bool is_identifier_char(char c) {
-    return clang::isAsciiIdentifierContinue(c) || static_cast<unsigned char>(c) >= 0x80;
-}
-
 bool is_module_name_char(char c) {
     return is_identifier_char(c) || c == '.' || c == ':';
 }
@@ -60,28 +54,33 @@ bool looks_like_header(llvm::StringRef name,
 
 }  // namespace
 
-bool follows_access_operator(llvm::StringRef text, std::uint32_t offset) {
-    auto before = text.take_front(offset);
-    if(before.ends_with("::")) {
-        return true;
+bool follows_access_operator(llvm::StringRef text,
+                             std::uint32_t offset,
+                             const clang::LangOptions& dialect) {
+    Token before;
+    Token last;
+    Lexer lexer(text, dialect);
+    for(auto token = lexer.advance(); !token.is_eof() && token.range.end <= offset;
+        token = lexer.advance()) {
+        if(!token.is_eod()) {
+            before = last;
+            last = token;
+        }
     }
-    /// `x-->y` is a postfix decrement followed by `>`.
-    if(before.ends_with("->")) {
-        return !before.ends_with("-->");
-    }
-    if(!before.ends_with(".") || before.ends_with("..")) {
+    if(!last.valid() || last.range.end != offset) {
         return false;
     }
-    /// A dot right after a numeric literal continues the literal (`3.`).
-    auto operand = before.drop_back(1);
-    auto start = operand.size();
-    while(start > 0 && is_identifier_char(operand[start - 1])) {
-        start -= 1;
+    if(last.kind == clang::tok::coloncolon || last.kind == clang::tok::arrow) {
+        return true;
     }
-    return start == operand.size() || !clang::isDigit(operand[start]);
+    /// A pack ellipsis being typed lexes as periods.
+    return last.kind == clang::tok::period &&
+           !(before.kind == clang::tok::period && before.range.end == last.range.begin);
 }
 
-std::vector<WrittenDesignator> written_designators(llvm::StringRef text, std::uint32_t offset) {
+std::vector<WrittenDesignator> written_designators(llvm::StringRef text,
+                                                   std::uint32_t offset,
+                                                   const clang::LangOptions& dialect) {
     struct Group {
         bool braces = false;
         std::vector<WrittenDesignator> designators;
@@ -92,7 +91,7 @@ std::vector<WrittenDesignator> written_designators(llvm::StringRef text, std::ui
     bool directive = false;
     bool designator = false;
     bool after_field = false;
-    Lexer lexer(text);
+    Lexer lexer(text, dialect);
     for(auto token = lexer.advance(); !token.is_eof() && token.range.end <= offset;
         token = lexer.advance()) {
         if(token.is_directive_hash()) {
@@ -133,19 +132,37 @@ std::vector<WrittenDesignator> written_designators(llvm::StringRef text, std::ui
     return std::move(groups.back().designators);
 }
 
-PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset) {
-    // TODO: cache newline offsets from incremental text updates to avoid
-    // the linear line-boundary scans on every completion trigger.
-    //
-    // The full (NUL-terminated) text is lexed and the cursor applies as a
-    // logical bound: a keyword must end at or before it to count as typed.
-    auto lexer = Lexer::from_line(text, offset);
+PreambleCompletionContext detect_completion_context(llvm::StringRef text,
+                                                    std::uint32_t offset,
+                                                    const clang::LangOptions& dialect) {
+    // The tokens of the logical line the cursor is on, through its end. The
+    // cursor applies as a logical bound: a keyword must end at or before it
+    // to count as typed.
+    llvm::SmallVector<Token, 16> tokens;
+    {
+        Lexer lexer(text, dialect);
+        for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+            if(token.is_at_start_of_line) {
+                if(token.range.begin > offset) {
+                    break;
+                }
+                tokens.clear();
+            }
+            tokens.push_back(token);
+        }
+    }
+    if(tokens.empty() || text.slice(tokens.back().range.begin, offset).contains('\n')) {
+        return {};
+    }
     auto before_cursor = [&](const Token& token) {
         return token.range.end <= offset;
     };
+    // The line's tokens after the one at `index`, eod and all.
+    auto after = [&](std::size_t index) {
+        return llvm::ArrayRef(tokens).drop_front(index + 1);
+    };
 
-    auto first = lexer.advance();
-
+    auto& first = tokens.front();
     // A header name half typed from `begin`, the text after an include's
     // keyword or `__has_include(`: taken textually up to the cursor. In
     // `__has_include(` the name ends at the parenthesis closing the call.
@@ -181,10 +198,10 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
     };
 
     if(first.is_directive_hash() && before_cursor(first)) {
-        auto keyword = lexer.advance();
-        if(!keyword.is_identifier() || !before_cursor(keyword)) {
+        if(tokens.size() < 2 || !tokens[1].is_identifier() || !before_cursor(tokens[1])) {
             return {};
         }
+        auto& keyword = tokens[1];
         if(keyword.text(text) == "include") {
             return header_name(keyword.range.end, /*parenthesized=*/false);
         }
@@ -195,9 +212,10 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         }
         std::optional<std::uint32_t> header_begin;
         bool after_has_include = false;
-        for(auto token = lexer.advance();
-            !token.is_eod() && !token.is_eof() && before_cursor(token);
-            token = lexer.advance()) {
+        for(auto& token: after(1)) {
+            if(token.is_eod() || !before_cursor(token)) {
+                break;
+            }
             if(after_has_include && token.kind == clang::tok::l_paren) {
                 header_begin = token.range.end;
             } else if(token.is_header_name()) {
@@ -215,15 +233,12 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
     // textual matching) rules out longer identifiers like `importlib` and
     // sees through comments. An interface's `export module` declares a
     // name of its own: nothing to complete.
-    auto keyword = first;
-    bool exported = false;
-    if(first.is_identifier() && before_cursor(first) && first.text(text) == "export") {
-        keyword = lexer.advance();
-        exported = true;
-    }
-    if(!keyword.is_identifier() || !before_cursor(keyword)) {
+    bool exported = first.is_identifier() && before_cursor(first) && first.text(text) == "export";
+    std::size_t at = exported ? 1 : 0;
+    if(at >= tokens.size() || !tokens[at].is_identifier() || !before_cursor(tokens[at])) {
         return {};
     }
+    auto& keyword = tokens[at];
     CompletionContext kind;
     if(keyword.text(text) == "import") {
         kind = CompletionContext::Import;
@@ -252,14 +267,8 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
     }
     // A semicolon before the cursor ended the statement above, so one on
     // the rest of the line, past comments and attributes, closes this one.
-    bool closed = false;
-    for(auto token = lexer.advance(); !token.is_eof() && !token.is_at_start_of_line;
-        token = lexer.advance()) {
-        if(token.kind == clang::tok::semi) {
-            closed = true;
-            break;
-        }
-    }
+    bool closed =
+        llvm::any_of(after(at), [](const Token& token) { return token.kind == clang::tok::semi; });
     return {kind,
             prefix.str(),
             LocalSourceRange(offset - static_cast<std::uint32_t>(prefix.size()), end),

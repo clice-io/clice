@@ -6,8 +6,8 @@ module clice;
 
 import :compile.compilation;
 import :feature.code_action.action;
-import :support.text;
 import :syntax.lexer;
+import :syntax.lexical_scan;
 
 namespace clice::feature::action {
 
@@ -53,33 +53,11 @@ bool needs_space(clang::tok::TokenKind before,
     }
 }
 
-/// Whether the text between two tokens ends a line: it breaks one outside
-/// a block comment and a splice, or holds a line comment, which runs to
-/// such a break.
-bool ends_line(llvm::StringRef gap) {
-    while(!gap.empty()) {
-        if(gap.starts_with("//")) {
-            return true;
-        }
-        if(gap.starts_with("/*")) {
-            auto close = gap.find("*/", 2);
-            gap = close == llvm::StringRef::npos ? "" : gap.drop_front(close + 2);
-        } else if(auto splice = splice_length(gap)) {
-            gap = gap.drop_front(splice);
-        } else if(gap.front() == '\n' || gap.front() == '\r') {
-            return true;
-        } else {
-            gap = gap.drop_front();
-        }
-    }
-    return false;
-}
-
 /// Whether `left` written right before `right` lexes as other tokens:
 /// `-` `-` as a decrement, `/` `*` as a comment, `:` `::` as `::` `:`.
 bool glues(llvm::StringRef left, llvm::StringRef right, const clang::LangOptions& options) {
     auto text = (left + right).str();
-    Lexer lexer(text, {.keep_comments = true, .lang_opts = &options});
+    Lexer lexer(text, options, {.keep_comments = true});
     return lexer.advance().range.end != left.size();
 }
 
@@ -115,13 +93,8 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
             return content.slice(end_of(spelled[index - 1]), tokens.offset(spelled[index]));
         };
         // Macro references in a directive (`#if GUARD`) expand to nothing
-        // in the token stream. The directive is the line starting with
-        // `#`, which goes on past splices and block comments.
-        auto line = first;
-        while(line > 0 && !ends_line(gap(line))) {
-            --line;
-        }
-        if(spelled[line].kind() == clang::tok::hash) {
+        // in the token stream.
+        if(focus.lexical().directive_at(content, begin)) {
             continue;
         }
         // A pragma the expansion executes leaves no token behind.

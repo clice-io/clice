@@ -1,0 +1,24 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules obstacles --scope \"core/**\" --scope \"util/**\" --scope \"feature/**\" --scope \"app/**\""]
+stdout = '''
+{
+  "variantHeaders": [],
+  "contextMacros": [],
+  "borrowedMacros": [],
+  "internalUses": [],
+  "crossModuleRedeclarations": [],
+  "foreignDeclarations": [],
+  "splitDefinitions": [],
+  "duplicateDefinitions": [],
+  "configuringMacros": [],
+  "implicitProviders": [],
+  "specializations": []
+}
+'''
+exit = 0

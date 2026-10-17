@@ -11,6 +11,7 @@ module clice;
 import :compile.diagnostic;
 import :compile.tidy;
 import :support.logging;
+import :syntax.lexical_scan;
 import :vfs.file_system;
 
 namespace clice::tidy {
@@ -60,36 +61,27 @@ public:
 
 private:
     void replay() {
+        using Kind = LexicalInfo::Directive::Kind;
         auto& sm = pp.getSourceManager();
         auto main = sm.getMainFileID();
-        // Lexed over the whole buffer, whose terminating null the lexer
-        // relies on, up to the bound.
         auto text = sm.getBufferData(main);
-        clang::Lexer lexer(sm.getLocForStartOfFile(main),
-                           pp.getLangOpts(),
-                           text.begin(),
-                           text.begin(),
-                           text.end());
-        while(true) {
-            clang::Token hash;
-            lexer.LexFromRawLexer(hash);
-            auto offset = sm.getFileOffset(hash.getLocation());
-            if(offset >= bound) {
+        auto lexical = lexical_scan(text, pp.getLangOpts());
+        for(auto& directive: lexical.directives) {
+            if(directive.range.begin >= bound) {
                 return;
             }
-            if(hash.isNot(clang::tok::hash) || !hash.isAtStartOfLine() || in_inactive(offset)) {
+            if(in_inactive(directive.range.begin) ||
+               (directive.kind != Kind::Include && directive.kind != Kind::Define)) {
                 continue;
             }
-            clang::Token keyword;
-            lexer.LexFromRawLexer(keyword);
-            if(keyword.isNot(clang::tok::raw_identifier)) {
+            auto words = lexical.words(directive);
+            if(words.size() < 2) {
                 continue;
             }
-            if(llvm::is_contained({"include", "include_next", "import"},
-                                  keyword.getRawIdentifier())) {
-                replay_include(hash, keyword, text);
-            } else if(keyword.getRawIdentifier() == "define") {
-                replay_define(lexer);
+            if(directive.kind == Kind::Include) {
+                replay_include(directive, words[0], words[1], text);
+            } else if(words[1].is_identifier()) {
+                replay_define(token_of(words[1], text));
             }
         }
     }
@@ -103,23 +95,36 @@ private:
         return false;
     }
 
-    void replay_include(const clang::Token& hash, clang::Token& keyword, llvm::StringRef text) {
+    /// The main file's raw identifier `token` as the preprocessor sees it,
+    /// its identifier looked up.
+    clang::Token token_of(const Token& token, llvm::StringRef text) {
         auto& sm = pp.getSourceManager();
-        auto line = text.drop_front(sm.getFileOffset(keyword.getEndLoc()))
-                        .ltrim(" \t")
-                        .take_until([](char c) { return c == '\n' || c == '\r'; });
-        if(line.empty() || (line.front() != '<' && line.front() != '"')) {
+        clang::Token result;
+        result.startToken();
+        result.setKind(clang::tok::raw_identifier);
+        result.setLocation(
+            sm.getLocForStartOfFile(sm.getMainFileID()).getLocWithOffset(token.range.begin));
+        result.setLength(token.range.length());
+        result.setRawIdentifierData(text.data() + token.range.begin);
+        pp.LookUpIdentifierInfo(result);
+        return result;
+    }
+
+    void replay_include(const LexicalInfo::Directive& directive,
+                        const Token& keyword,
+                        const Token& operand,
+                        llvm::StringRef text) {
+        if(!operand.is_header_name()) {
             return;
         }
-        auto close = line.find(line.front() == '<' ? '>' : '"', 1);
-        if(close == llvm::StringRef::npos) {
-            return;
-        }
-        auto written = line.take_front(close + 1);
+        // A spliced directive's header name starts at its splice.
+        auto written = operand.text(text);
+        written = written.drop_front(written.find_first_of("<\""));
         auto name = written.drop_front().drop_back();
         bool angled = written.front() == '<';
-        auto location = sm.getLocForStartOfFile(sm.getMainFileID())
-                            .getLocWithOffset(written.data() - text.data());
+        auto& sm = pp.getSourceManager();
+        auto start = sm.getLocForStartOfFile(sm.getMainFileID());
+        auto location = start.getLocWithOffset(written.data() - text.data());
         auto file = pp.LookupFile(location,
                                   name,
                                   angled,
@@ -132,7 +137,7 @@ private:
                                   nullptr,
                                   nullptr);
 
-        pp.LookUpIdentifierInfo(keyword);
+        auto include = token_of(keyword, text);
         clang::Token filename;
         filename.startToken();
         filename.setKind(clang::tok::header_name);
@@ -141,8 +146,8 @@ private:
         filename.setLiteralData(written.data());
         auto kind = file ? pp.getHeaderSearchInfo().getFileDirFlavor(*file) : clang::SrcMgr::C_User;
         delegate.InclusionDirective(
-            hash.getLocation(),
-            keyword,
+            start.getLocWithOffset(directive.range.begin),
+            include,
             name,
             angled,
             clang::CharSourceRange::getCharRange(location, filename.getEndLoc()),
@@ -159,15 +164,10 @@ private:
 
     /// The macro is the one the PCH recorded at the name; the name is
     /// where the main file spells it, as an include's is.
-    void replay_define(clang::Lexer& lexer) {
-        clang::Token name;
-        lexer.LexFromRawLexer(name);
-        if(name.isNot(clang::tok::raw_identifier)) {
-            return;
-        }
+    void replay_define(const clang::Token& name) {
         auto& sm = pp.getSourceManager();
         auto offset = sm.getFileOffset(name.getLocation());
-        auto* identifier = pp.LookUpIdentifierInfo(name);
+        auto* identifier = name.getIdentifierInfo();
         for(auto* directive = pp.getLocalMacroDirectiveHistory(identifier); directive;
             directive = directive->getPrevious()) {
             auto* define = llvm::dyn_cast<clang::DefMacroDirective>(directive);

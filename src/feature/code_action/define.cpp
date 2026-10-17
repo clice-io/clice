@@ -464,35 +464,11 @@ private:
                 }
             }
         }
-        // A byte outside ASCII belongs to an identifier.
-        auto identifier = [](char c) {
-            return llvm::isAlnum(c) || c == '_' || !llvm::isASCII(c);
-        };
         llvm::SmallVector<std::size_t> offsets;
-        for(std::size_t at = 0; at < spelling.size();) {
-            // A literal's text names nothing.
-            if(spelling[at] == '"' || spelling[at] == '\'') {
-                auto quote = spelling[at];
-                at += 1;
-                while(at < spelling.size() && spelling[at] != quote) {
-                    at += spelling[at] == '\\' ? 2 : 1;
-                }
-                at += 1;
-                continue;
+        for(const auto& name: printed_names(spelling, unit.lang_options())) {
+            if(!name.continues && parameters.contains(name.components.front())) {
+                offsets.push_back(name.range.begin);
             }
-            auto word = spelling.substr(at).take_while(identifier);
-            if(word.empty()) {
-                at += 1;
-                continue;
-            }
-            // A component after `::`, `.` or `->` continues a name or an
-            // expression.
-            auto before = spelling.take_front(at);
-            if(!before.ends_with("::") && !before.ends_with(".") && !before.ends_with("->") &&
-               parameters.contains(word)) {
-                offsets.push_back(at);
-            }
-            at += word.size();
         }
         return offsets;
     }

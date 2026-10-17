@@ -1,0 +1,10 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = '⟦#include "a.h"⟧',
+        severity = "warning",
+        message = "duplicate include",
+        source = "clang-tidy",
+        code = "readability-duplicate-include",
+    },
+]

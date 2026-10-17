@@ -6,10 +6,10 @@ module clice;
 
 import :compile.compilation;
 import :feature.feature;
-import :feature.raw_tokens;
 import :semantic.decls;
 import :semantic.semantics;
 import :support.text;
+import :syntax.lexical_scan;
 import :syntax.token;
 
 namespace clice::feature {
@@ -93,9 +93,12 @@ std::vector<FoldingRange> nest(std::vector<Candidate> candidates) {
 class FoldingRangeCollector {
 public:
     explicit FoldingRangeCollector(CompilationUnit& unit) :
-        unit(unit), semantics(unit.get<Semantics>()), content(unit.focus_file().content()) {
-        for(auto& directive: semantics.block_directives()) {
-            block_directives.push_back(directive.range.begin);
+        unit(unit), semantics(unit.get<Semantics>()), lexical(unit.focus_file().lexical()),
+        content(unit.focus_file().content()) {
+        for(auto& directive: lexical.directives) {
+            if(directive.block()) {
+                block_directives.push_back(directive.range.begin);
+            }
         }
     }
 
@@ -131,12 +134,12 @@ public:
         }
 
         collect_brackets();
-        collect_block_directives(semantics.block_directives());
+        collect_block_directives();
         collect_module_fragments(semantics.module_declarations());
         collect_comments(semantics.comments());
-        collect_macro_definitions(semantics.macro_definitions());
+        collect_macro_definitions();
         collect_imports();
-        collect_raw_strings(semantics.raw_strings());
+        collect_raw_strings(lexical.raw_strings);
         add_runs(usings, "usingDeclaration", false);
 
         return nest(std::move(candidates));
@@ -390,8 +393,8 @@ private:
     /// pairs nothing written here. The braces of compiled code fold from the
     /// AST, which knows those a macro closes (`#define END }`).
     void collect_brackets() {
-        auto tokens = lex(content, unit.lang_options());
-        auto skipped = skipped_tokens(unit, tokens);
+        auto& tokens = lexical.tokens;
+        auto skipped = unit.focus_file().tokens().skipped(tokens);
         BracketPairs pairs;
         for(auto [token, skip]: llvm::zip(tokens, skipped)) {
             auto open = pairs.visit(token, skip);
@@ -414,11 +417,12 @@ private:
         }
     }
 
-    void collect_block_directives(llvm::ArrayRef<LexicalInfo::BlockDirective> directives) {
-        using enum LexicalInfo::BlockDirective::Kind;
-        llvm::SmallVector<const LexicalInfo::BlockDirective*> branches;
-        llvm::SmallVector<const LexicalInfo::BlockDirective*> regions;
-        for(const auto& directive: directives) {
+    /// The conditional branches and the regions.
+    void collect_block_directives() {
+        using enum LexicalInfo::Directive::Kind;
+        llvm::SmallVector<const LexicalInfo::Directive*> branches;
+        llvm::SmallVector<const LexicalInfo::Directive*> regions;
+        for(const auto& directive: lexical.directives) {
             switch(directive.kind) {
                 case If: branches.push_back(&directive); break;
                 case Else:
@@ -450,6 +454,7 @@ private:
                     }
                     break;
                 }
+                default: break;
             }
         }
     }
@@ -492,8 +497,12 @@ private:
 
     /// A definition continued over several lines folds below its first
     /// line, like a run.
-    void collect_macro_definitions(llvm::ArrayRef<LocalSourceRange> definitions) {
-        for(auto definition: definitions) {
+    void collect_macro_definitions() {
+        for(auto& directive: lexical.directives) {
+            if(directive.kind != LexicalInfo::Directive::Kind::Define) {
+                continue;
+            }
+            auto definition = directive.range;
             auto first_line_end = line_text_end(definition.begin);
             if(first_line_end < definition.end) {
                 candidates.push_back({
@@ -509,8 +518,11 @@ private:
     /// Include directives and import declarations fold as one run, blank
     /// and comment lines between them included.
     void collect_imports() {
-        auto includes = semantics.include_directives();
-        imports.append(includes.begin(), includes.end());
+        for(auto& directive: lexical.directives) {
+            if(directive.kind == LexicalInfo::Directive::Kind::Include) {
+                imports.push_back(directive.range);
+            }
+        }
         std::ranges::sort(imports, {}, &LocalSourceRange::begin);
         add_runs(imports, protocol::FoldingRangeKind::Imports, true);
     }
@@ -740,6 +752,7 @@ private:
 
     CompilationUnit& unit;
     const Semantics& semantics;
+    const LexicalInfo& lexical;
     llvm::StringRef content;
     std::vector<Candidate> candidates;
 

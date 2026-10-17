@@ -11,6 +11,7 @@ import :project.build;
 import :server.query_commands;
 import :support.markup;
 import :syntax.documentation;
+import :syntax.lexer;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -530,7 +531,7 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
         return ctx.query.symbol_info(hash, **file);
     };
     auto outline = feature::index_document_symbols((*text)->getBuffer(),
-                                                   feature::index_lang_options(file_path, false),
+                                                   dialect_of(file_path, false),
                                                    entries,
                                                    resolve,
                                                    {.locals = false});

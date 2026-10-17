@@ -12,12 +12,6 @@ namespace clice::index {
 
 namespace {
 
-/// A character of an identifier as the lexer reads one, `$` included.
-bool identifier_char(char c) {
-    return clang::isAsciiIdentifierContinue(c, /*AllowDollar=*/true) ||
-           static_cast<unsigned char>(c) >= 0x80;
-}
-
 /// The offsets in `text[begin, end)` where `name` stands as a whole
 /// identifier.
 llvm::SmallVector<std::uint32_t, 1>
@@ -26,8 +20,8 @@ llvm::SmallVector<std::uint32_t, 1>
     for(auto at = text.find(name, begin); at != llvm::StringRef::npos && at + name.size() <= end;
         at = text.find(name, at + 1)) {
         auto after = at + name.size();
-        if((at == 0 || !identifier_char(text[at - 1])) &&
-           (after == text.size() || !identifier_char(text[after]))) {
+        if((at == 0 || !is_identifier_char(text[at - 1])) &&
+           (after == text.size() || !is_identifier_char(text[after]))) {
             found.push_back(static_cast<std::uint32_t>(at));
         }
     }
@@ -112,16 +106,13 @@ std::vector<IndexQuery::Located> all_named(const IndexQuery& query, llvm::String
     }
 }
 
-/// The newest dialect of each language; read-only once built, so scans
-/// on other threads may share them.
+/// The newest dialect of each language.
 const clang::LangOptions& cxx() {
-    const static auto options = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
-    return options;
+    return raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
 }
 
 const clang::LangOptions& c() {
-    const static auto options = raw_dialect(clang::Language::C, clang::LangStandard::lang_c23);
-    return options;
+    return raw_dialect(clang::Language::C, clang::LangStandard::lang_c23);
 }
 
 /// The class template a deduction guide deduces: the one template in the
@@ -147,7 +138,7 @@ std::optional<IndexQuery::Located> guided_template(const IndexQuery& query,
 
 std::optional<std::string> invalid_identifier(llvm::StringRef name) {
     std::string text = name.str();
-    Lexer lexer(text, {.lang_opts = &cxx()});
+    Lexer lexer(text, cxx());
     auto token = lexer.advance();
     if(!token.is_identifier() || token.range.begin != 0 || token.range.end != text.size() ||
        !lexer.advance().is_eof()) {
@@ -168,7 +159,7 @@ std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& 
     llvm::StringRef rest = text;
     bool spelled = false;
     while(!spelled && !rest.empty()) {
-        auto run = rest.take_while(identifier_char);
+        auto run = rest.take_while(is_identifier_char);
         if(run.empty()) {
             rest = rest.drop_front();
             continue;
@@ -181,7 +172,7 @@ std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& 
     }
     ScannedText scanned;
     bool directive = false;
-    Lexer lexer(text, {.lang_opts = &cxx()});
+    Lexer lexer(text, cxx());
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
         if(token.is_directive_hash()) {
             directive = true;
@@ -456,7 +447,7 @@ RenamePlan plan_rename(const IndexQuery& query,
                     // one on another name is a macro's invocation.
                     auto written =
                         llvm::StringRef(*text.text).slice(site.range.begin, site.range.end);
-                    if(llvm::any_of(written, identifier_char) &&
+                    if(llvm::any_of(written, is_identifier_char) &&
                        keywords.get(written).getTokenID() == clang::tok::identifier) {
                         plan.unconfirmed.push_back(
                             {.site = site,

@@ -6,6 +6,7 @@ module clice;
 
 import :support.text;
 import :syntax.lexer;
+import :syntax.lexical_scan;
 import :syntax.preamble_synthesis;
 import :syntax.scan;
 
@@ -88,7 +89,7 @@ static std::optional<TopLevel> last_top_level(llvm::StringRef content, std::uint
         llvm::SmallVector<std::uint32_t> branches;
     };
 
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     std::int32_t depth = 0;
     // One id per conditional branch open, innermost last.
     llvm::SmallVector<std::uint32_t> branches;
@@ -104,17 +105,18 @@ static std::optional<TopLevel> last_top_level(llvm::StringRef content, std::uint
     for(auto token = lexer.advance(); !token.is_eof() && token.range.begin < cut;
         token = lexer.advance()) {
         if(token.is_directive_hash()) {
+            using enum LexicalInfo::Directive::Kind;
             auto keyword = lexer.advance();
-            auto name = keyword.is_eod() ? llvm::StringRef() : keyword.text(content);
-            if(name == "if" || name == "ifdef" || name == "ifndef") {
+            auto kind = directive_kind(keyword.is_eod() ? "" : keyword.text(content), "");
+            if(kind == If) {
                 branches.push_back(next_branch);
                 next_branch += 1;
-            } else if(name == "elif" || name == "elifdef" || name == "elifndef" || name == "else") {
+            } else if(kind == Else) {
                 if(!branches.empty()) {
                     branches.back() = next_branch;
                     next_branch += 1;
                 }
-            } else if(name == "endif" && !branches.empty()) {
+            } else if(kind == EndIf && !branches.empty()) {
                 branches.pop_back();
             }
             auto end = keyword.is_eod() ? keyword : lexer.advance_until(clang::tok::eod);

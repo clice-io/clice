@@ -1,0 +1,9 @@
+[answers.outline]
+document_symbols = [
+    { name = "value", kind = "Function", at = "int ⟦value⟧();", detail = "int ()" },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "value", kind = "Function", at = "int ⟦value⟧();", range = "⟦int value()⟧;" },
+]

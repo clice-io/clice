@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :syntax.doc_comment;
+import :syntax.lexer;
 import :syntax.lexical_scan;
 import :unittests.utils;
 
@@ -15,7 +16,7 @@ namespace {
 /// `content`.
 std::string documenting(llvm::StringRef content, llvm::StringRef decl, bool trailing = false) {
     auto begin = static_cast<std::uint32_t>(content.find(decl));
-    auto comments = scan_comments(content);
+    auto comments = scan_comments(content, dialect_of());
     auto run =
         documenting_comments(content,
                              comments,
@@ -93,7 +94,7 @@ ZEST_CASE(StylesDoNotMerge) {
 ZEST_SUITE(CommentText) {
 
 std::string text_of(llvm::StringRef content) {
-    auto comments = scan_comments(content);
+    auto comments = scan_comments(content, dialect_of());
     return comment_text(content, comments);
 }
 

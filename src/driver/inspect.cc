@@ -22,6 +22,7 @@ import :project.configuration;
 import :project.load;
 import :project.project;
 import :semantic.symbol;
+import :syntax.lexer;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -208,14 +209,16 @@ std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& 
                                                                const Config& config) {
     auto legend = feature::semantic_token_legend(config.semantic_tokens);
     auto focus = unit.focus_file();
-    auto text = focus.content().take_front(unit.text_end(focus.file())).str();
-    llvm::StringRef content = text;
     auto ast =
-        named_tokens(feature::semantic_token_stream(content,
+        named_tokens(feature::semantic_token_stream(focus.lexical().tokens,
+                                                    focus.content(),
                                                     unit.lang_options(),
                                                     feature::semantic_token_facts(unit, {}, true),
                                                     config.semantic_tokens),
                      legend);
+    // A copy: the lexer reads up to a NUL terminator, which a prefix lacks.
+    auto text = focus.content().take_front(unit.text_end(focus.file())).str();
+    llvm::StringRef content = text;
     auto bytes = index::build_tu_index(unit);
     auto tu = index::TUIndex::from_bytes(bytes);
     auto projected =
@@ -1010,15 +1013,10 @@ auto declaration_end(CompilationUnit& unit, const clang::NamedDecl& decl)
         return offset;
     }
 
-    clang::Lexer lexer(sources.getLocForStartOfFile(fid),
-                       unit.lang_options(),
-                       content.begin(),
-                       content.begin() + offset,
-                       content.end());
+    Lexer lexer(content.substr(offset), unit.lang_options());
     int depth = 0;
-    clang::Token token;
-    while(!lexer.LexFromRawLexer(token)) {
-        switch(token.getKind()) {
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        switch(token.kind) {
             case clang::tok::l_paren:
             case clang::tok::l_square:
             case clang::tok::l_brace: depth += 1; break;
@@ -1032,7 +1030,7 @@ auto declaration_end(CompilationUnit& unit, const clang::NamedDecl& decl)
                 break;
             case clang::tok::semi:
                 if(depth == 0) {
-                    return sources.getFileOffset(token.getLocation()) + 1;
+                    return offset + token.range.end;
                 }
                 break;
             default: break;
@@ -2005,16 +2003,11 @@ auto check_hover_definitions(const CompilationInput& input,
     for(auto& twin: twins) {
         std::optional<std::string> broken;
         for(const auto& insertion: twin.insertions) {
-            clang::Lexer lexer(clang::SourceLocation(),
-                               unit->lang_options(),
-                               insertion.text.data(),
-                               insertion.text.data(),
-                               insertion.text.data() + insertion.text.size());
+            Lexer lexer(insertion.text, unit->lang_options());
             std::vector<clang::tok::TokenKind> open;
-            clang::Token token;
-            while(!broken && !lexer.LexFromRawLexer(token)) {
-                auto kind = token.getKind();
-                if(kind == clang::tok::hash && token.isAtStartOfLine()) {
+            for(auto token = lexer.advance(); !broken && !token.is_eof(); token = lexer.advance()) {
+                auto kind = token.kind;
+                if(token.is_directive_hash()) {
                     broken = "a preprocessor directive in the definition";
                 } else if(kind == clang::tok::l_brace || kind == clang::tok::l_paren ||
                           kind == clang::tok::l_square) {

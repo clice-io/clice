@@ -6,12 +6,12 @@ module clice;
 
 import :compile.compilation;
 import :feature.feature;
-import :feature.raw_tokens;
 import :semantic.decls;
 import :semantic.documentation;
 import :semantic.selection;
 import :semantic.semantics;
 import :support.text;
+import :syntax.lexical_scan;
 import :syntax.token;
 
 namespace clice::feature {
@@ -213,16 +213,16 @@ TextSteps scan_text(llvm::StringRef content,
     };
 
     auto close_directive = [&] {
+        using enum LexicalInfo::Directive::Kind;
         text.ranges.push_back(*directive);
-        if(llvm::is_contained({"if", "ifdef", "ifndef"}, directive_name)) {
+        auto kind = directive_kind(directive_name, {});
+        if(kind == If) {
             conditionals.emplace_back(directive->begin, directive->end);
-        } else if(!conditionals.empty() &&
-                  llvm::is_contained({"elif", "elifdef", "elifndef", "else", "endif"},
-                                     directive_name)) {
+        } else if(!conditionals.empty() && (kind == Else || kind == EndIf)) {
             auto& [begin, branch] = conditionals.back();
             text.loose.push_back(trimmed(content, {branch, directive->begin}));
             branch = directive->end;
-            if(directive_name == "endif") {
+            if(kind == EndIf) {
                 text.loose.push_back({begin, directive->end});
                 conditionals.pop_back();
             }
@@ -865,9 +865,10 @@ void add_ast(CompilationUnit& unit,
 
 auto selection_ranges(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> offsets)
     -> std::vector<std::vector<LocalSourceRange>> {
-    auto content = unit.focus_file().content();
-    auto tokens = lex(content, unit.lang_options());
-    auto text = scan_text(content, tokens, skipped_tokens(unit, tokens));
+    auto focus = unit.focus_file();
+    auto content = focus.content();
+    llvm::ArrayRef<Token> tokens = focus.lexical().tokens;
+    auto text = scan_text(content, tokens, focus.tokens().skipped(tokens));
     std::vector<std::vector<LocalSourceRange>> result;
     for(auto offset: offsets) {
         Steps steps{.offset = offset};
@@ -882,7 +883,8 @@ auto lexical_selection_ranges(llvm::StringRef content,
                               const clang::LangOptions& lang_opts,
                               llvm::ArrayRef<std::uint32_t> offsets)
     -> std::vector<std::vector<LocalSourceRange>> {
-    auto tokens = lex(content, lang_opts);
+    auto lexical = lexical_scan(content, lang_opts);
+    llvm::ArrayRef<Token> tokens = lexical.tokens;
     auto text = scan_text(content, tokens, {});
     std::vector<std::vector<LocalSourceRange>> result;
     for(auto offset: offsets) {

@@ -5,6 +5,8 @@ module;
 module clice;
 
 import :feature.feature;
+import :syntax.lexer;
+import :syntax.lexical_scan;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -38,7 +40,7 @@ void EXPECT_LINK(std::size_t index,
 ZEST_CASE(DirectiveArgumentFromFilename) {
     llvm::StringRef content = R"(#if __has_include("test.h"))";
     auto offset = static_cast<std::uint32_t>(content.find("test.h"));
-    auto result = feature::find_directive_argument(content, offset, nullptr);
+    auto result = find_directive_argument(lexical_scan(content, dialect_of()), content, offset);
 
     ZASSERT(result);
     ZASSERT(content.substr(result->begin, result->length()) == R"("test.h")");

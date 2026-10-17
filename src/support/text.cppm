@@ -12,6 +12,16 @@ inline std::uint32_t line_begin(llvm::StringRef content, std::uint32_t offset) {
     return newline == llvm::StringRef::npos ? 0 : static_cast<std::uint32_t>(newline + 1);
 }
 
+/// The first byte of the logical line containing `offset`: its line, or
+/// the first of the lines a backslash continues onto it.
+inline std::uint32_t logical_line_begin(llvm::StringRef content, std::uint32_t offset) {
+    auto begin = line_begin(content, offset);
+    while(begin > 0 && content.take_front(begin - 1).rtrim(" \t\r").ends_with("\\")) {
+        begin = line_begin(content, begin - 1);
+    }
+    return begin;
+}
+
 /// One past the newline ending the line containing `offset`, or the
 /// content's end.
 inline std::uint32_t line_end(llvm::StringRef content, std::uint32_t offset) {
@@ -32,6 +42,19 @@ inline std::size_t splice_length(llvm::StringRef text) {
         return skipped + 2;
     }
     return rest.starts_with('\n') || rest.starts_with('\r') ? skipped + 1 : 0;
+}
+
+/// Source text without its line splices: `SPLIT_\<newline>LIMIT` spells
+/// `SPLIT_LIMIT`.
+inline std::string unspliced(llvm::StringRef text) {
+    std::string result;
+    for(auto splice = text.find('\\'); splice != llvm::StringRef::npos; splice = text.find('\\')) {
+        auto length = splice_length(text.drop_front(splice));
+        result += text.take_front(length != 0 ? splice : splice + 1);
+        text = text.drop_front(splice + std::max<std::size_t>(length, 1));
+    }
+    result += text;
+    return result;
 }
 
 /// A size in bytes as the commands print it: B, KB or MB.

@@ -1,0 +1,97 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --partition partition.json --out wrap"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [],
+    "mirrors": [],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [
+      {
+        "name": "app.core",
+        "primary": "app/core/module.cppm",
+        "interfaces": [
+          "app/core/text.cppm"
+        ],
+        "partitions": [],
+        "sources": [
+          "app/core/text.cpp"
+        ],
+        "imports": []
+      }
+    ],
+    "importers": [
+      "app/main.cpp"
+    ],
+    "macros": [],
+    "removed": [
+      "app/core/text.h"
+    ],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --partition partition.json --out wrap".files]
+"app/core/module.cppm" = '''
++export module app.core;
++
++export import :text;
+'''
+"app/core/text.cpp" = '''
+-#include "core/text.h"
++module;
+
++#include "wrap/prelude.h"
++
++module app.core;
++
+ int core::Text::size() const {
+     return 1;
+'''
+"app/core/text.cppm" = '''
++module;
++
++#include "wrap/prelude.h"
++
++export module app.core:text;
++
++export {
++// An include guard defining its macro to a value is one too: the module
++// interface does without it.
++
++namespace core {
++
++struct Text {
++    int size() const;
++};
++
++}  // namespace core
++
++}
+'''
+"app/core/text.h" = "(removed)"
+"app/main.cpp" = '''
+-#include "core/text.h"
++#include "wrap/prelude.h"
++import app.core;
+
+ int main() {
+'''
+"wrap/.modularize" = "+prelude.h"
+"wrap/prelude.h" = '''
++#pragma once
++
+'''

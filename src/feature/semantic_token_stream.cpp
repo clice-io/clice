@@ -9,7 +9,7 @@ import :feature.semantic_token_stream;
 import :semantic.token_class;
 import :syntax.doc_comment;
 import :syntax.documentation;
-import :syntax.lexer;
+import :syntax.token;
 
 namespace clice::feature {
 
@@ -269,16 +269,17 @@ std::size_t number_suffix(llvm::StringRef text) {
 
 class TokenStream {
 public:
-    TokenStream(llvm::StringRef content,
+    TokenStream(llvm::ArrayRef<Token> stream,
+                llvm::StringRef content,
                 const clang::LangOptions& lang_opts,
                 const TokenFacts& facts,
                 const SemanticTokensOptions& options) :
-        content(content), lang_opts(lang_opts), keywords(lang_opts), facts(facts),
+        stream(stream), content(content), lang_opts(lang_opts), keywords(lang_opts), facts(facts),
         options(options) {}
 
     auto build() -> std::vector<SemanticToken> {
-        Lexer lexer(content, {.keep_comments = true, .lang_opts = &lang_opts});
-        for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        for(at = 0; at < stream.size(); at += 1) {
+            const auto& token = stream[at];
             if(token.is_eod()) {
                 end_directive();
                 continue;
@@ -288,7 +289,7 @@ public:
                 continue;
             }
             doc_closer = {};
-            classify(lexer, token);
+            classify(token);
         }
         return std::move(tokens);
     }
@@ -324,7 +325,12 @@ private:
         bool semantic;
     };
 
-    void classify(Lexer& lexer, const Token& token) {
+    /// The token after the one being classified.
+    Token next() const {
+        return at + 1 < stream.size() ? stream[at + 1] : Token{.kind = clang::tok::eof};
+    }
+
+    void classify(const Token& token) {
         if(directive == Directive::Body) {
             definition_empty = false;
         }
@@ -363,7 +369,7 @@ private:
             return;
         }
 
-        auto piece = lexical(lexer, token, kind, spelling, word);
+        auto piece = lexical(token, kind, spelling, word);
         if(auto semantic = semantic_of(token, spelling, word)) {
             piece = {*semantic, true};
         } else if(word && attribute && depth == attribute->depth && kind != clang::tok::kw_using) {
@@ -429,15 +435,14 @@ private:
 
     /// What a token's spelling says it is, the directive it sits in
     /// included.
-    Piece lexical(Lexer& lexer,
-                  const Token& token,
+    Piece lexical(const Token& token,
                   clang::tok::TokenKind kind,
                   llvm::StringRef spelling,
                   bool word) {
         Piece piece{.semantic = false};
         if(clang::tok::getKeywordSpelling(kind)) {
             piece.classified = keyword_class(kind);
-            if(kind == clang::tok::kw_default && lexer.next().kind == clang::tok::colon) {
+            if(kind == clang::tok::kw_default && next().kind == clang::tok::colon) {
                 piece.classified.modifiers |= mask(Modifier::ControlFlow);
             }
         } else if(clang::tok::getPunctuatorSpelling(kind)) {
@@ -457,18 +462,18 @@ private:
         if(kind == clang::tok::identifier && directive == Directive::None) {
             if(lang_opts.CPlusPlusModules && line_head &&
                (spelling == "module" || spelling == "import")) {
-                auto next = lexer.next();
+                auto following = next();
                 bool opens =
                     spelling == "module"
                         ? llvm::is_contained(
                               {clang::tok::raw_identifier, clang::tok::colon, clang::tok::semi},
-                              next.kind)
+                              following.kind)
                         : llvm::is_contained({clang::tok::raw_identifier,
                                               clang::tok::colon,
                                               clang::tok::less,
                                               clang::tok::header_name,
                                               clang::tok::string_literal},
-                                             next.kind);
+                                             following.kind);
                 if(opens) {
                     return {{.kind = Kind::Keyword}, true};
                 }
@@ -509,8 +514,8 @@ private:
                     directive = Directive::Other;
                     break;
                 }
-                bool function_like = lexer.next().kind == clang::tok::l_paren &&
-                                     lexer.next().range.begin == token.range.end;
+                bool function_like =
+                    next().kind == clang::tok::l_paren && next().range.begin == token.range.end;
                 piece = {
                     {.kind = Kind::Macro,
                      .modifiers = mask(Modifier::Definition) |
@@ -878,6 +883,9 @@ private:
             {.range = range, .kind = classified.kind, .modifiers = classified.modifiers});
     }
 
+    llvm::ArrayRef<Token> stream;
+    /// The index in `stream` of the token being classified.
+    std::size_t at = 0;
     llvm::StringRef content;
     const clang::LangOptions& lang_opts;
     clang::IdentifierTable keywords;
@@ -935,11 +943,12 @@ bool is_override_keyword(llvm::StringRef spelling) {
     return spelling == "override" || spelling == "final" || spelling == "sealed";
 }
 
-auto semantic_token_stream(llvm::StringRef content,
+auto semantic_token_stream(llvm::ArrayRef<Token> tokens,
+                           llvm::StringRef content,
                            const clang::LangOptions& lang_opts,
                            const TokenFacts& facts,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
-    return TokenStream(content, lang_opts, facts, options).build();
+    return TokenStream(tokens, content, lang_opts, facts, options).build();
 }
 
 }  // namespace clice::feature

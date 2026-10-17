@@ -6,11 +6,24 @@ module clice;
 
 import :syntax.completion;
 import :syntax.dependency_graph;
+import :syntax.lexer;
 import :syntax.scan;
 import :unittests.utils;
 
 namespace clice::testing {
 namespace {
+
+bool follows_access_operator(llvm::StringRef text, std::uint32_t offset) {
+    return clice::follows_access_operator(text, offset, dialect_of());
+}
+
+std::vector<WrittenDesignator> written_designators(llvm::StringRef text, std::uint32_t offset) {
+    return clice::written_designators(text, offset, dialect_of());
+}
+
+PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset) {
+    return clice::detect_completion_context(text, offset, dialect_of());
+}
 
 ZEST_SUITE(FollowsAccessOperator) {
 
@@ -43,6 +56,11 @@ ZEST_CASE(PostfixDecrement) {
 
 ZEST_CASE(NonAsciiOperand) {
     ZEXPECT(follows_access_operator("vé2.", 5));
+}
+
+ZEST_CASE(StringsAndComments) {
+    ZEXPECT(!follows_access_operator(R"(auto s = "a.)", 12));
+    ZEXPECT(!follows_access_operator("int a; // a.", 12));
 }
 
 ZEST_CASE(CursorBeforeOperator) {
@@ -105,6 +123,10 @@ ZEST_CASE(DirectiveBraces) {
             std::vector<std::string>{"width"});
 }
 
+ZEST_CASE(DigitSeparator) {
+    ZEXPECT(designators("Size s = { .width = 1'000, .") == std::vector<std::string>{"width"});
+}
+
 ZEST_CASE(TextAfterCursor) {
     ZEXPECT(designators("Size s = { .width = 1, .height = 2 };", 24) ==
             std::vector<std::string>{"width"});
@@ -142,6 +164,12 @@ ZEST_CASE(CursorInsideKeyword) {
     // A keyword is only "typed" once the cursor passed its end.
     ZEXPECT(detect_completion_context("#include", 5).kind == CompletionContext::None);
     ZEXPECT(detect_completion_context("import", 3).kind == CompletionContext::None);
+}
+
+ZEST_CASE(InsideBlockComment) {
+    llvm::StringRef text = "/*\n#include <vec\n*/\n";
+    auto offset = static_cast<std::uint32_t>(text.find("vec") + 3);
+    ZEXPECT(detect_completion_context(text, offset).kind == CompletionContext::None);
 }
 
 ZEST_CASE(CursorAtNewline) {

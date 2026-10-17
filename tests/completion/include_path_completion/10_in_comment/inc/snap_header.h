@@ -1,0 +1,1 @@
+int snap_value();

@@ -1110,7 +1110,7 @@ std::string IndexQuery::doc_comment(SymbolHash hash, Fid anchor, bool inherit) c
                                                  .trailing = kind == SymbolKind::Field ||
                                                              kind == SymbolKind::EnumMember ||
                                                              kind == SymbolKind::Variable};
-                auto comments = scan_comments(content, &dialect);
+                auto comments = scan_comments(content, dialect);
                 return !choice.offer(content, documenting_comments(content, comments, decl));
             });
         if(choice.decided()) {

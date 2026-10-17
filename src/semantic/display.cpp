@@ -13,6 +13,9 @@ import :semantic.decls;
 import :semantic.display;
 import :semantic.types;
 import :support.format;
+import :support.text;
+import :syntax.lexer;
+import :syntax.lexical_scan;
 
 namespace clice::display {
 
@@ -1086,23 +1089,22 @@ auto token_text(const clang::ASTContext& context,
         }
     }
 
-    /// The lexer reads up to the buffer's terminating null.
-    clang::Lexer lexer(sources.getLocForStartOfFile(fid),
-                       context.getLangOpts(),
-                       buffer.begin(),
-                       buffer.begin() + begin,
-                       buffer.end());
     std::string text;
     std::uint32_t previous_end = begin;
-    clang::Token token;
-    for(bool done = false; !done;) {
-        done = lexer.LexFromRawLexer(token);
-        auto offset = sources.getFileOffset(token.getLocation());
-        if(token.is(clang::tok::eof) || offset >= end) {
+    auto rest = buffer.substr(begin);
+    Lexer lexer(rest, context.getLangOpts());
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        auto offset = begin + token.range.begin;
+        if(offset >= end) {
             break;
         }
-        if(token.is(clang::tok::hash) && token.isAtStartOfLine()) {
+        if(token.is_directive_hash()) {
             return std::nullopt;
+        }
+        // A text opening with `module` or `export` lexes as a module
+        // declaration's line, which an eod ends.
+        if(token.is_eod()) {
+            continue;
         }
         const auto* body = llvm::find_if(skipped, [&](const auto& skip) {
             return skip.first <= offset && offset <= skip.second;
@@ -1111,14 +1113,14 @@ auto token_text(const clang::ASTContext& context,
             if(offset == body->first) {
                 text += text.empty() ? "{ ... }" : " { ... }";
             }
-            previous_end = offset + token.getLength();
+            previous_end = offset + token.range.length();
             continue;
         }
         if(!text.empty() && offset != previous_end) {
             text += ' ';
         }
-        text += clang::Lexer::getSpelling(token, sources, context.getLangOpts());
-        previous_end = offset + token.getLength();
+        text += unspliced(token.text(rest));
+        previous_end = offset + token.range.length();
     }
     return text;
 }
@@ -1499,39 +1501,29 @@ struct DeclarationPrinter {
             if(!spelled.isFileID() || sources.isWrittenInScratchSpace(spelled)) {
                 continue;
             }
-            /// The `#define`, over the lines it continues onto.
+            /// The `#define`, from the line it begins on.
             auto [file, offset] = sources.getDecomposedLoc(spelled);
-            auto content = sources.getBufferData(file);
-            auto line = content.take_front(offset).rfind('\n') + 1;
-            while(line > 1 && content.substr(0, line - 1).rtrim(" \t\r").ends_with("\\")) {
-                line = content.take_front(line - 1).rfind('\n') + 1;
+            auto content = sources.getBufferData(file).substr(
+                logical_line_begin(sources.getBufferData(file), offset));
+            Lexer lexer(content, context.getLangOpts());
+            llvm::SmallVector<Token, 16> words;
+            lexer.advance();
+            for(auto token = lexer.advance(); !token.is_eod() && !token.is_eof();
+                token = lexer.advance()) {
+                words.push_back(token);
             }
-            clang::Lexer lexer(sources.getLocForStartOfFile(file),
-                               context.getLangOpts(),
-                               content.begin(),
-                               content.begin() + line,
-                               content.end());
-            clang::Token token;
-            /// `#`, `define` and the macro's name, then its parameters.
-            for(int skipped = 0; skipped < 3; skipped += 1) {
-                lexer.LexFromRawLexer(token);
-            }
-            lexer.LexFromRawLexer(token);
-            if(token.is(clang::tok::l_paren) && !token.hasLeadingSpace()) {
-                while(!token.isOneOf(clang::tok::r_paren, clang::tok::eof)) {
-                    lexer.LexFromRawLexer(token);
-                }
-                lexer.LexFromRawLexer(token);
+            auto definition = macro_definition(words);
+            if(!definition) {
+                continue;
             }
             int depth = 0;
-            for(; !token.isAtStartOfLine() && token.isNot(clang::tok::eof);
-                lexer.LexFromRawLexer(token)) {
-                if(token.isOneOf(clang::tok::l_paren, clang::tok::l_square)) {
+            for(const auto& token: definition->body) {
+                if(token.kind == clang::tok::l_paren || token.kind == clang::tok::l_square) {
                     depth += 1;
-                } else if(token.isOneOf(clang::tok::r_paren, clang::tok::r_square)) {
+                } else if(token.kind == clang::tok::r_paren || token.kind == clang::tok::r_square) {
                     depth -= 1;
-                } else if(depth == 0 && token.is(clang::tok::raw_identifier)) {
-                    auto name = token.getRawIdentifier();
+                } else if(depth == 0 && token.is_identifier()) {
+                    auto name = token.text(content);
                     if(context.Idents.get(name).isKeyword(context.getLangOpts()) &&
                        !llvm::is_contained(
                            {"__attribute__", "__attribute", "__declspec", "alignas", "_Alignas"},

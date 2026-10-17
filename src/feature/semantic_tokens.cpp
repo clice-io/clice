@@ -743,9 +743,11 @@ auto semantic_tokens(CompilationUnit& unit,
                      const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
     auto facts = semantic_token_facts(unit, inactive_regions, false);
     auto focus = unit.focus_file();
-    // A copy: the lexer reads up to a NUL terminator, which a prefix lacks.
-    auto text = focus.content().take_front(unit.text_end(focus.file())).str();
-    return semantic_token_stream(text, unit.lang_options(), facts, options);
+    return semantic_token_stream(focus.lexical().tokens,
+                                 focus.content(),
+                                 unit.lang_options(),
+                                 facts,
+                                 options);
 }
 
 auto semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& options)

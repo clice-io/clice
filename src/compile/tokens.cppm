@@ -4,6 +4,8 @@ module;
 
 module clice:compile.tokens;
 
+import :syntax.token;
+
 namespace clice {
 
 /// A top-level macro invocation written in the main file: its spelled
@@ -54,6 +56,11 @@ public:
     const std::vector<bool>& preprocessed_away() const {
         return away;
     }
+
+    /// Per raw token of the main file, the comments and directive ends of
+    /// its lexical scan among them, whether the preprocessor skipped it; a
+    /// token no spelled token starts at shares the flag of the one before.
+    llvm::SmallVector<bool, 0> skipped(llvm::ArrayRef<Token> tokens) const;
 
     /// The spelled tokens touching `location`, at most two: the one
     /// containing it or starting there, and the one ending there.

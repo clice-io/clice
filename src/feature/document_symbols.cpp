@@ -12,7 +12,6 @@ import :semantic.identity;
 import :semantic.semantics;
 import :semantic.symbol;
 import :support.text;
-import :syntax.lexer;
 import :syntax.lexical_scan;
 
 namespace clice::feature {
@@ -81,19 +80,6 @@ bool outline_lists(SymbolKind kind, bool unnamed, bool template_parameter) {
 
 namespace {
 
-/// Source text without its line splices: `SPLIT_\<newline>LIMIT` spells
-/// `SPLIT_LIMIT`.
-std::string unspliced(llvm::StringRef text) {
-    std::string result;
-    for(auto splice = text.find('\\'); splice != llvm::StringRef::npos; splice = text.find('\\')) {
-        auto length = splice_length(text.drop_front(splice));
-        result += text.take_front(length != 0 ? splice : splice + 1);
-        text = text.drop_front(splice + std::max<std::size_t>(length, 1));
-    }
-    result += text;
-    return result;
-}
-
 std::string spelling(llvm::StringRef content, const Token& token) {
     return unspliced(token.text(content));
 }
@@ -136,28 +122,28 @@ bool spells(llvm::StringRef content, LocalSourceRange selection, llvm::StringRef
 /// argument list written after it, `selection` spelling the name in the
 /// declaration `range`: `Box<T*>::reset`, `Box<void>`.
 std::string written_name(llvm::StringRef content,
-                         const clang::LangOptions& lang_opts,
+                         const LexicalInfo& lexical,
                          clang::IdentifierTable& keywords,
                          LocalSourceRange range,
                          LocalSourceRange selection,
                          llvm::StringRef name) {
-    auto lexer = Lexer::from_line(content, range.begin, {.lang_opts = &lang_opts});
+    auto tokens = lexical.code_from(range.begin);
+    auto token = tokens.begin();
     llvm::SmallVector<Token> before;
-    auto token = lexer.advance();
-    for(; !token.is_eof() && token.range.begin < selection.begin; token = lexer.advance()) {
-        if(token.range.begin >= range.begin) {
-            before.push_back(token);
+    for(; token != tokens.end() && token->range.begin < selection.begin; ++token) {
+        if(token->range.begin >= range.begin) {
+            before.push_back(*token);
         }
     }
-    for(; !token.is_eof() && token.range.begin < selection.end; token = lexer.advance()) {}
+    for(; token != tokens.end() && token->range.begin < selection.end; ++token) {}
 
     llvm::SmallVector<Token> arguments;
-    if(token.kind == clang::tok::less) {
+    if(token != tokens.end() && token->kind == clang::tok::less) {
         std::int32_t angles = 0;
         std::int32_t brackets = 0;
-        for(; !token.is_eof() && !token.is_eod(); token = lexer.advance()) {
-            arguments.push_back(token);
-            switch(token.kind) {
+        for(; token != tokens.end() && !token->is_eod(); ++token) {
+            arguments.push_back(*token);
+            switch(token->kind) {
                 case clang::tok::l_paren:
                 case clang::tok::l_square:
                 case clang::tok::l_brace: brackets += 1; break;
@@ -224,153 +210,56 @@ std::string written_name(llvm::StringRef content,
 /// detail the parameters a function-like macro takes, and the range from
 /// the name through the last token.
 std::optional<OutlineEntry> macro_entry(llvm::StringRef content,
-                                        const clang::LangOptions& lang_opts,
-                                        LocalSourceRange directive) {
-    auto lexer = Lexer::from_line(content, directive.begin, {.lang_opts = &lang_opts});
-    lexer.advance();
-    lexer.advance();
-    auto name = lexer.advance();
-    if(!name.is_identifier()) {
+                                        const LexicalInfo& lexical,
+                                        const LexicalInfo::Directive& directive) {
+    auto words = lexical.words(directive);
+    auto definition = macro_definition(words);
+    if(!definition) {
         return std::nullopt;
     }
 
+    auto& name = definition->name;
     OutlineEntry entry{
         .name = spelling(content, name),
         .kind = SymbolKind::Macro,
+        .range = {name.range.begin, words.back().range.end},
         .selection_range = name.range,
         .definition = true,
     };
-    auto token = lexer.advance();
-    if(token.kind == clang::tok::l_paren && token.range.begin == name.range.end) {
+    if(auto parameters = definition->parameters; !parameters.empty()) {
+        if(parameters.back().kind == clang::tok::r_paren) {
+            parameters = parameters.drop_back();
+        }
         std::string detail = "(";
-        for(token = lexer.advance(); token.kind != clang::tok::r_paren && !token.is_eod();
-            token = lexer.advance()) {
+        for(const auto& token: parameters.drop_front()) {
             detail += token.kind == clang::tok::comma ? ", " : spelling(content, token);
         }
         detail += ')';
         entry.detail = std::move(detail);
     }
-    auto last = name;
-    for(; !token.is_eod() && !token.is_eof(); token = lexer.advance()) {
-        last = token;
-    }
-    entry.range = {name.range.begin, last.range.end};
     return entry;
-}
-
-/// The name an include guard defines: the text is `#ifndef X` (or `#if
-/// !defined X`), `#define X`, and everything up to the `#endif` closing
-/// the first, the last thing written.
-std::optional<LocalSourceRange> include_guard(llvm::StringRef content,
-                                              const clang::LangOptions& lang_opts) {
-    Lexer lexer(content, {.lang_opts = &lang_opts});
-    auto token = lexer.advance();
-    auto skip_line = [&] {
-        while(!token.is_eod() && !token.is_eof()) {
-            token = lexer.advance();
-        }
-        token = lexer.advance();
-    };
-    auto word = [&](llvm::StringRef text) {
-        return token.is_identifier() && token.text(content) == text;
-    };
-
-    if(!token.is_directive_hash()) {
-        return std::nullopt;
-    }
-    token = lexer.advance();
-    std::optional<Token> guarded;
-    if(word("ifndef")) {
-        token = lexer.advance();
-        guarded = token;
-    } else if(word("if")) {
-        token = lexer.advance();
-        if(token.kind == clang::tok::exclaim) {
-            token = lexer.advance();
-            if(word("defined")) {
-                token = lexer.advance();
-                bool parenthesized = token.kind == clang::tok::l_paren;
-                if(parenthesized) {
-                    token = lexer.advance();
-                }
-                guarded = token;
-                if(parenthesized) {
-                    token = lexer.advance();
-                    if(token.kind != clang::tok::r_paren) {
-                        return std::nullopt;
-                    }
-                }
-            }
-        }
-    }
-    if(!guarded || !guarded->is_identifier()) {
-        return std::nullopt;
-    }
-    auto macro = spelling(content, *guarded);
-    token = lexer.advance();
-    if(!token.is_eod()) {
-        return std::nullopt;
-    }
-
-    token = lexer.advance();
-    if(!token.is_directive_hash()) {
-        return std::nullopt;
-    }
-    token = lexer.advance();
-    if(!word("define")) {
-        return std::nullopt;
-    }
-    token = lexer.advance();
-    if(!token.is_identifier() || spelling(content, token) != macro) {
-        return std::nullopt;
-    }
-    auto guard = token.range;
-    skip_line();
-
-    std::int32_t depth = 1;
-    while(!token.is_eof()) {
-        if(depth == 0 || !token.is_directive_hash()) {
-            if(depth == 0) {
-                return std::nullopt;
-            }
-            token = lexer.advance();
-            continue;
-        }
-        token = lexer.advance();
-        if(word("if") || word("ifdef") || word("ifndef")) {
-            depth += 1;
-        } else if(depth == 1 &&
-                  (word("else") || word("elif") || word("elifdef") || word("elifndef"))) {
-            return std::nullopt;
-        } else if(word("endif")) {
-            depth -= 1;
-        }
-        skip_line();
-    }
-    return depth == 0 ? std::optional(guard) : std::nullopt;
 }
 
 /// The macro invocation whose name `name` is: as written, the arguments
 /// cut after 80 characters, and the range it spans.
 std::pair<std::string, LocalSourceRange> invocation(llvm::StringRef content,
-                                                    const clang::LangOptions& lang_opts,
+                                                    const LexicalInfo& lexical,
                                                     LocalSourceRange name) {
-    auto lexer = Lexer::from_line(content, name.begin, {.lang_opts = &lang_opts});
-    auto token = lexer.advance();
-    while(!token.is_eof() && token.range.begin < name.begin) {
-        token = lexer.advance();
-    }
-    auto text = spelling(content, token);
+    auto tokens = lexical.code_from(name.begin);
+    auto token = tokens.begin();
+    auto text = spelling(content, *token);
     LocalSourceRange range = name;
-    token = lexer.advance();
-    if(token.kind != clang::tok::l_paren) {
+    ++token;
+    if(token == tokens.end() || token->kind != clang::tok::l_paren) {
         return {std::move(text), range};
     }
     llvm::SmallVector<Token> arguments;
     std::int32_t depth = 0;
-    for(; !token.is_eof(); token = lexer.advance()) {
-        arguments.push_back(token);
-        depth += token.kind == clang::tok::l_paren ? 1 : token.kind == clang::tok::r_paren ? -1 : 0;
+    for(; token != tokens.end(); ++token) {
+        arguments.push_back(*token);
+        depth += token->kind == clang::tok::l_paren   ? 1
+                 : token->kind == clang::tok::r_paren ? -1
+                                                      : 0;
         if(depth == 0) {
             break;
         }
@@ -378,7 +267,7 @@ std::pair<std::string, LocalSourceRange> invocation(llvm::StringRef content,
     if(depth != 0) {
         return {std::move(text), range};
     }
-    range.end = token.range.end;
+    range.end = token->range.end;
     constexpr std::size_t limit = 80;
     auto written = joined(content, arguments);
     if(written.size() > limit) {
@@ -413,7 +302,8 @@ std::string module_name(llvm::StringRef content, const LexicalInfo::ModuleDeclar
 /// the symbols of its scope after it, up to the scope's next mark or
 /// its end; `#pragma mark Name` is an entry of its own.
 void add_marks(std::vector<DocumentSymbol>& symbols,
-               llvm::ArrayRef<LexicalInfo::PragmaMark> marks,
+               const LexicalInfo& lexical,
+               llvm::ArrayRef<LexicalInfo::Directive> marks,
                llvm::StringRef content) {
     DocumentSymbol root{
         .range = {0, static_cast<std::uint32_t>(content.size())},
@@ -438,7 +328,8 @@ void add_marks(std::vector<DocumentSymbol>& symbols,
             .range = mark.range,
             .selection_range = mark.range,
         };
-        auto text = content.slice(mark.text.begin, mark.text.end).trim();
+        // What follows `mark` on the line, unlexed as clang reads it.
+        auto text = content.slice(lexical.words(mark)[1].range.end, mark.range.end).trim();
         auto group = text;
         if(!group.consume_front("-") || (!group.empty() && group.ltrim() == group)) {
             symbol.name = text.empty() ? "(unnamed mark)" : text.str();
@@ -543,17 +434,14 @@ bool holds(llvm::ArrayRef<Node> nodes, std::uint32_t outer_index, const Node& in
 /// Whether a typedef names the tag written before its name, not a
 /// pointer, reference or array of it (`} *Ref;`, `} Point, *Ref;`,
 /// `} Grid[3];`).
-bool names_tag(llvm::StringRef content,
-               const clang::LangOptions& lang_opts,
-               const OutlineEntry& tag,
-               const OutlineEntry& alias) {
+bool names_tag(const LexicalInfo& lexical, const OutlineEntry& tag, const OutlineEntry& alias) {
     if(alias.range.end > alias.selection_range.end) {
         return false;
     }
-    auto lexer = Lexer::from_line(content, tag.range.end, {.lang_opts = &lang_opts});
-    for(auto token = lexer.advance();
-        !token.is_eof() && token.range.begin < alias.selection_range.begin;
-        token = lexer.advance()) {
+    for(const auto& token: lexical.code_from(tag.range.end)) {
+        if(token.range.begin >= alias.selection_range.begin) {
+            break;
+        }
         if(token.range.begin < tag.range.end) {
             continue;
         }
@@ -571,9 +459,7 @@ bool names_tag(llvm::StringRef content,
 
 /// `typedef struct { ... } Point;`: the struct the typedef declares and
 /// names, unnamed or named alike, lists once, as the typedef's name.
-void merge_typedefs(std::vector<Node>& nodes,
-                    llvm::StringRef content,
-                    const clang::LangOptions& lang_opts) {
+void merge_typedefs(std::vector<Node>& nodes, const LexicalInfo& lexical) {
     std::vector<std::uint32_t> tags;
     for(auto [index, node]: llvm::enumerate(nodes)) {
         if(is_tag(node.entry.kind)) {
@@ -599,7 +485,7 @@ void merge_typedefs(std::vector<Node>& nodes,
             }
             if(merged[*it] || tag.entry.range.end > alias.entry.selection_range.begin ||
                (!tag.entry.unnamed && tag.entry.name != alias.entry.name) ||
-               !names_tag(content, lang_opts, tag.entry, alias.entry)) {
+               !names_tag(lexical, tag.entry, alias.entry)) {
                 continue;
             }
             merged[*it] = true;
@@ -624,9 +510,10 @@ void merge_typedefs(std::vector<Node>& nodes,
 }  // namespace
 
 auto outline(std::vector<OutlineEntry> entries,
-             llvm::ArrayRef<LocalSourceRange> macros,
+             const LexicalInfo& lexical,
+             llvm::ArrayRef<LexicalInfo::Directive> macros,
              llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules,
-             llvm::ArrayRef<LexicalInfo::PragmaMark> marks,
+             llvm::ArrayRef<LexicalInfo::Directive> marks,
              llvm::StringRef content,
              const clang::LangOptions& lang_opts,
              const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
@@ -635,7 +522,7 @@ auto outline(std::vector<OutlineEntry> entries,
         if(!entry.from_macro && !entry.unnamed &&
            spells(content, entry.selection_range, entry.name)) {
             entry.name = written_name(content,
-                                      lang_opts,
+                                      lexical,
                                       keywords,
                                       entry.range,
                                       entry.selection_range,
@@ -643,9 +530,9 @@ auto outline(std::vector<OutlineEntry> entries,
         }
     }
     if(options.macros) {
-        auto guard = include_guard(content, lang_opts);
-        for(auto directive: macros) {
-            if(auto entry = macro_entry(content, lang_opts, directive);
+        auto guard = lexical.include_guard ? lexical.include_guard->name : LocalSourceRange();
+        for(const auto& directive: macros) {
+            if(auto entry = macro_entry(content, lexical, directive);
                entry && entry->selection_range != guard) {
                 entries.push_back(std::move(*entry));
             }
@@ -697,7 +584,7 @@ auto outline(std::vector<OutlineEntry> entries,
         auto anchor = entry.selection_range;
         nodes.push_back({.entry = std::move(entry), .anchor = anchor});
     }
-    merge_typedefs(nodes, content, lang_opts);
+    merge_typedefs(nodes, lexical);
 
     // The members a macro invocation makes list under it.
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> groups;
@@ -709,7 +596,7 @@ auto outline(std::vector<OutlineEntry> entries,
         auto name = nodes[index].entry.selection_range;
         auto [group, created] = groups.try_emplace({name.begin, name.end}, nodes.size());
         if(created) {
-            auto [text, range] = invocation(content, lang_opts, name);
+            auto [text, range] = invocation(content, lexical, name);
             nodes.push_back({
                 .entry = {.name = std::move(text),
                           .kind = SymbolKind::Macro,
@@ -790,7 +677,7 @@ auto outline(std::vector<OutlineEntry> entries,
         return symbols;
     };
     auto symbols = build(roots);
-    add_marks(symbols, marks, content);
+    add_marks(symbols, lexical, marks, content);
     sort_symbols(symbols);
     return symbols;
 }
@@ -1082,27 +969,28 @@ auto document_symbols(CompilationUnit& unit,
         return bounds % 2 == 1;
     };
     auto& semantics = unit.get<Semantics>();
-    std::vector<LocalSourceRange> macros;
-    for(auto directive: semantics.macro_definitions()) {
-        if(!inactive(directive.begin)) {
-            macros.push_back(directive);
+    auto focus = unit.focus_file();
+    const auto& lexical = focus.lexical();
+    std::vector<LexicalInfo::Directive> macros;
+    std::vector<LexicalInfo::Directive> marks;
+    for(const auto& directive: lexical.directives) {
+        if(inactive(directive.range.begin)) {
+            continue;
         }
-    }
-    std::vector<LexicalInfo::PragmaMark> marks;
-    for(const auto& mark: semantics.pragma_marks()) {
-        if(!inactive(mark.range.begin)) {
-            marks.push_back(mark);
+        if(directive.kind == LexicalInfo::Directive::Kind::Define) {
+            macros.push_back(directive);
+        } else if(directive.kind == LexicalInfo::Directive::Kind::PragmaMark) {
+            marks.push_back(directive);
         }
     }
     // The editor's text, without the line a header compiled in its
-    // includer's context gains; a copy, as the lexer reads past a slice.
-    auto focus = unit.focus_file();
-    auto text = focus.content().take_front(unit.text_end(focus.file())).str();
+    // includer's context gains.
     return outline(Collector(unit).collect(),
+                   lexical,
                    macros,
                    semantics.module_declarations(),
                    marks,
-                   text,
+                   focus.content().take_front(unit.text_end(focus.file())),
                    unit.lang_options(),
                    options);
 }

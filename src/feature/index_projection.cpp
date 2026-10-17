@@ -54,25 +54,15 @@ IndexEntries extract_index_entries(const index::Shard& shard) {
 
 namespace {
 
-/// Lang options plus the matching keyword table; both outlive every call
-/// (projections run on the master's single thread).
-struct LangProfile {
-    clang::LangOptions opts;
-    clang::IdentifierTable keywords;
-
-    explicit LangProfile(clang::Language lang, clang::LangStandard::Kind std) :
-        opts(raw_dialect(lang, std)), keywords(opts) {}
-};
-
-LangProfile& profile_for(clang::Language lang, clang::LangStandard::Kind std) {
-    // Stable addresses: callers hold the profile's opts by reference.
-    static std::map<std::pair<clang::Language, clang::LangStandard::Kind>, LangProfile> profiles;
-    return profiles.try_emplace({lang, std}, lang, std).first->second;
-}
-
-LangProfile& profile_for(const clang::LangOptions& lang_opts) {
-    return profile_for(lang_opts.CPlusPlus ? clang::Language::CXX : clang::Language::C,
-                       lang_opts.LangStd);
+/// The keyword table of the raw dialect `lang_opts` lexes as; it outlives
+/// every call (projections run on the master's single thread).
+clang::IdentifierTable& keywords_for(const clang::LangOptions& lang_opts) {
+    auto language = lang_opts.CPlusPlus ? clang::Language::CXX : clang::Language::C;
+    static std::map<std::pair<clang::Language, clang::LangStandard::Kind>, clang::IdentifierTable>
+        tables;
+    return tables
+        .try_emplace({language, lang_opts.LangStd}, raw_dialect(language, lang_opts.LangStd))
+        .first->second;
 }
 
 struct Brace {
@@ -107,22 +97,29 @@ std::optional<LocalSourceRange> last_brace_group(llvm::ArrayRef<Brace> braces,
     return group;
 }
 
-/// The text of a definition before the body its extent ends with, or
-/// nullopt when the extent ends otherwise (`= default`, an initializer).
-std::optional<llvm::StringRef> before_body(const std::string& text) {
+/// The braces of the code, those of directive lines left out: a #define
+/// body's brace pairs nothing in the file's own text.
+std::vector<Brace> braces_of(const LexicalInfo& lexical) {
     std::vector<Brace> braces;
-    bool in_directive = false;
-    Lexer lexer(text, {.lang_opts = &index_lang_options("", false)});
-    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
-        if(token.is_eod()) {
-            in_directive = false;
-        } else if(token.is_directive_hash()) {
-            in_directive = true;
-        } else if(!in_directive &&
-                  (token.kind == clang::tok::l_brace || token.kind == clang::tok::r_brace)) {
+    auto directive = lexical.directives.begin();
+    for(std::uint32_t index = 0; index < lexical.tokens.size(); index += 1) {
+        if(directive != lexical.directives.end() && index == directive->first) {
+            index = directive->last;
+            ++directive;
+            continue;
+        }
+        const auto& token = lexical.tokens[index];
+        if(token.kind == clang::tok::l_brace || token.kind == clang::tok::r_brace) {
             braces.push_back({token.range, token.kind == clang::tok::l_brace});
         }
     }
+    return braces;
+}
+
+/// The text of a definition before the body its extent ends with, or
+/// nullopt when the extent ends otherwise (`= default`, an initializer).
+std::optional<llvm::StringRef> before_body(const std::string& text) {
+    auto braces = braces_of(lexical_scan(text, dialect_of()));
     auto written = llvm::StringRef(text).rtrim();
     auto body = last_brace_group(braces, {0, static_cast<std::uint32_t>(written.size())});
     if(!body || body->end != written.size()) {
@@ -133,42 +130,23 @@ std::optional<llvm::StringRef> before_body(const std::string& text) {
 
 }  // namespace
 
-auto index_lang_options(llvm::StringRef path, bool c_only, llvm::StringRef standard)
-    -> const clang::LangOptions& {
-    bool c = c_only || path.ends_with(".c");
-    auto lang = c ? clang::Language::C : clang::Language::CXX;
-    // A command without -std parses under the driver's default dialect;
-    // the same default keeps the keyword table aligned with the index.
-    auto kind = clang::getDefaultLanguageStandard(lang, llvm::Triple());
-    if(!standard.empty()) {
-        auto parsed = clang::LangStandard::getLangKind(standard);
-        // A standard of the other language contradicts the resolved index's
-        // language; keep the language's default rather than obeying it.
-        if(parsed != clang::LangStandard::lang_unspecified &&
-           clang::LangStandard::getLangStandardForKind(parsed).getLanguage() == lang) {
-            kind = parsed;
-        }
-    }
-    return profile_for(lang, kind).opts;
-}
-
 auto index_semantic_tokens(llvm::StringRef content,
                            const clang::LangOptions& lang_opts,
                            const IndexEntries& entries,
                            IndexSymbolResolver resolve,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
-    auto& profile = profile_for(lang_opts);
+    auto& keywords = keywords_for(lang_opts);
     using Kind = SemanticTokenKind;
     using Modifier = SemanticTokenModifier;
 
     // The token kinds names_token reads.
+    auto lexical = lexical_scan(content, lang_opts);
     llvm::DenseMap<std::uint32_t, clang::tok::TokenKind> lexed;
-    Lexer lexer(content, {.lang_opts = &profile.opts});
-    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+    for(const auto& token: lexical.tokens) {
         auto kind = token.kind;
         if(token.is_identifier()) {
-            auto it = profile.keywords.find(token.text(content));
-            kind = it == profile.keywords.end() ? clang::tok::identifier : it->second->getTokenID();
+            auto it = keywords.find(token.text(content));
+            kind = it == keywords.end() ? clang::tok::identifier : it->second->getTokenID();
         }
         lexed.try_emplace(token.range.begin, kind);
     }
@@ -241,7 +219,7 @@ auto index_semantic_tokens(llvm::StringRef content,
         }
     }
 
-    return semantic_token_stream(content, profile.opts, facts, options);
+    return semantic_token_stream(lexical.tokens, content, lang_opts, facts, options);
 }
 
 auto index_document_symbols(llvm::StringRef content,
@@ -304,11 +282,18 @@ auto index_document_symbols(llvm::StringRef content,
     // The `#define`s the preprocessor read, the ones whose macro the index
     // knows.
     std::ranges::sort(macro_names);
-    auto lexical = lexical_scan(content, &lang_opts);
-    std::vector<LocalSourceRange> macros;
-    for(auto directive: lexical.macro_definitions) {
-        auto name = std::ranges::lower_bound(macro_names, directive.begin);
-        if(name != macro_names.end() && *name < directive.end) {
+    auto lexical = lexical_scan(content, lang_opts);
+    std::vector<LexicalInfo::Directive> macros;
+    std::vector<LexicalInfo::Directive> marks;
+    for(const auto& directive: lexical.directives) {
+        if(directive.kind == LexicalInfo::Directive::Kind::PragmaMark) {
+            marks.push_back(directive);
+        }
+        if(directive.kind != LexicalInfo::Directive::Kind::Define) {
+            continue;
+        }
+        auto name = std::ranges::lower_bound(macro_names, directive.range.begin);
+        if(name != macro_names.end() && *name < directive.range.end) {
             macros.push_back(directive);
         }
     }
@@ -322,9 +307,10 @@ auto index_document_symbols(llvm::StringRef content,
         }
     }
     return outline(std::move(declarations),
+                   lexical,
                    macros,
                    modules,
-                   lexical.pragma_marks,
+                   marks,
                    content,
                    lang_opts,
                    options);
@@ -334,75 +320,49 @@ auto index_folding_ranges(llvm::StringRef content,
                           const clang::LangOptions& lang_opts,
                           llvm::ArrayRef<IndexDecl> decls,
                           IndexSymbolResolver resolve) -> std::vector<FoldingRange> {
-    // One raw lex collects every brace outside comments, literals and
-    // directive lines (a #define body's brace pairs nothing in the file's
-    // own text). Conditional levels are tracked alongside: a branch switch
-    // or #endif observing a brace depth other than its #if's means the
-    // branches unbalance braces — any raw pairing is then wrong for some
-    // variant, and folds touching the region are suppressed below.
+    // The braces outside comments, literals and directive lines, and the
+    // conditional levels: a branch switch or #endif observing a brace depth
+    // other than its #if's means the branches unbalance braces — any raw
+    // pairing is then wrong for some variant, and folds touching the region
+    // are suppressed below.
     struct CondLevel {
         std::uint32_t begin;
         std::int32_t depth;
     };
 
-    std::vector<Brace> braces;
+    auto lexical = lexical_scan(content, lang_opts);
+    auto braces = braces_of(lexical);
     std::vector<LocalSourceRange> ambiguous;
     std::vector<std::uint32_t> block_directives;
     {
+        using enum LexicalInfo::Directive::Kind;
         std::vector<CondLevel> levels;
         std::int32_t depth = 0;
-        std::uint32_t hash_begin = 0;
-        bool after_hash = false;
-        bool in_directive = false;
-        Lexer lexer(content, {.lang_opts = &profile_for(lang_opts).opts});
-        while(true) {
-            auto token = lexer.advance();
-            if(token.is_eof()) {
-                break;
+        auto brace = braces.begin();
+        auto advance_to = [&](std::uint32_t offset) {
+            for(; brace != braces.end() && brace->range.begin < offset; ++brace) {
+                depth += brace->open ? 1 : -1;
             }
-            if(token.is_eod()) {
-                after_hash = false;
-                in_directive = false;
-                continue;
+        };
+        for(const auto& directive: lexical.directives) {
+            advance_to(directive.range.begin);
+            if(directive.block()) {
+                block_directives.push_back(directive.range.begin);
             }
-            if(token.is_directive_hash()) {
-                hash_begin = token.range.begin;
-                after_hash = true;
-                in_directive = true;
-                continue;
-            }
-            if(after_hash) {
-                after_hash = false;
-                auto spelling = token.text(content);
-                if(spelling == "if" || spelling == "ifdef" || spelling == "ifndef") {
-                    block_directives.push_back(hash_begin);
-                    levels.push_back({hash_begin, depth});
-                } else if(spelling == "elif" || spelling == "elifdef" || spelling == "elifndef" ||
-                          spelling == "else" || spelling == "endif") {
-                    block_directives.push_back(hash_begin);
-                    if(!levels.empty() && depth != levels.back().depth) {
-                        ambiguous.push_back({levels.back().begin, token.range.end});
-                        levels.back().depth = depth;
-                    }
-                    if(spelling == "endif" && !levels.empty()) {
-                        levels.pop_back();
-                    }
-                } else if(spelling == "pragma") {
-                    auto pragma = lexer.next().text(content);
-                    if(pragma == "region" || pragma == "endregion") {
-                        block_directives.push_back(hash_begin);
-                    }
+            if(directive.kind == If) {
+                levels.push_back({directive.range.begin, depth});
+            } else if(directive.kind == Else || directive.kind == EndIf) {
+                if(!levels.empty() && depth != levels.back().depth) {
+                    ambiguous.push_back(
+                        {levels.back().begin, lexical.words(directive).front().range.end});
+                    levels.back().depth = depth;
                 }
-                continue;
-            }
-            if(in_directive) {
-                continue;
-            }
-            if(token.kind == clang::tok::l_brace || token.kind == clang::tok::r_brace) {
-                braces.push_back({token.range, token.kind == clang::tok::l_brace});
-                depth += token.kind == clang::tok::l_brace ? 1 : -1;
+                if(directive.kind == EndIf && !levels.empty()) {
+                    levels.pop_back();
+                }
             }
         }
+        advance_to(static_cast<std::uint32_t>(content.size()));
         for(const auto& level: levels) {
             if(depth != level.depth) {
                 ambiguous.push_back({level.begin, static_cast<std::uint32_t>(content.size())});
@@ -473,6 +433,7 @@ auto index_document_links(llvm::StringRef content,
                           llvm::ArrayRef<IndexIncludeEdge> edges)
     -> std::vector<index::DocumentLink> {
     auto line_starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
+    auto lexical = lexical_scan(content, lang_opts);
 
     std::vector<index::DocumentLink> links;
     for(const auto& edge: edges) {
@@ -480,7 +441,7 @@ auto index_document_links(llvm::StringRef content,
             continue;
         }
         auto offset = line_starts[edge.line - 1];
-        auto range = find_directive_argument(content, offset, &lang_opts);
+        auto range = find_directive_argument(lexical, content, offset);
         if(!range) {
             continue;
         }

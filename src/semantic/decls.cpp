@@ -123,7 +123,7 @@ bool applied_by_pragma(const clang::ASTContext& context, clang::SourceLocation l
     }
     auto [file, offset] = sources.getDecomposedLoc(sources.getExpansionLoc(location));
     auto content = sources.getBufferData(file);
-    return content.slice(line_begin(content, offset), offset).ltrim().starts_with("#");
+    return content.slice(logical_line_begin(content, offset), offset).ltrim().starts_with("#");
 }
 
 const clang::NamespaceDecl* outermost_namespace(const clang::Decl* decl) {

@@ -4,33 +4,49 @@ module;
 
 module clice;
 
-import :support.text;
 import :syntax.lexer;
 
 namespace clice {
 
-clang::LangOptions raw_dialect(clang::Language language, clang::LangStandard::Kind standard) {
-    clang::LangOptions options;
-    std::vector<std::string> includes;
-    clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
-    options.CXXOperatorNames = options.CPlusPlus;
-    options.Char8 = options.CPlusPlus20;
-    options.CPlusPlusModules = options.CPlusPlus20;
-    options.GNUKeywords = options.GNUMode;
-    options.LineComment = true;
-    return options;
+const clang::LangOptions& raw_dialect(clang::Language language,
+                                      clang::LangStandard::Kind standard) {
+    static std::mutex mutex;
+    // Stable addresses: callers hold the options by reference.
+    static std::map<std::pair<clang::Language, clang::LangStandard::Kind>, clang::LangOptions>
+        dialects;
+    std::lock_guard lock(mutex);
+    auto [it, inserted] = dialects.try_emplace({language, standard});
+    if(inserted) {
+        auto& options = it->second;
+        std::vector<std::string> includes;
+        clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
+        options.CXXOperatorNames = options.CPlusPlus;
+        options.Char8 = options.CPlusPlus20;
+        options.CPlusPlusModules = options.CPlusPlus20;
+        options.GNUKeywords = options.GNUMode;
+        options.LineComment = true;
+    }
+    return it->second;
+}
+
+const clang::LangOptions& dialect_of(llvm::StringRef path, bool c, llvm::StringRef standard) {
+    auto language = c || path.ends_with(".c") ? clang::Language::C : clang::Language::CXX;
+    auto kind = clang::getDefaultLanguageStandard(language, llvm::Triple());
+    if(!standard.empty()) {
+        auto parsed = clang::LangStandard::getLangKind(standard);
+        if(parsed != clang::LangStandard::lang_unspecified &&
+           clang::LangStandard::getLangStandardForKind(parsed).getLanguage() == language) {
+            kind = parsed;
+        }
+    }
+    return raw_dialect(language, kind);
 }
 
 static clang::SourceLocation fake_loc = clang::SourceLocation::getFromRawEncoding(1);
-static clang::LangOptions default_opts;
 
-Lexer::Lexer(llvm::StringRef content, std::uint32_t start_offset, Options options) :
-    lexed_end(start_offset), content(content),
-    lexer(new clang::Lexer(fake_loc,
-                           options.lang_opts ? *options.lang_opts : default_opts,
-                           content.begin(),
-                           content.begin() + start_offset,
-                           content.end())) {
+Lexer::Lexer(llvm::StringRef content, const clang::LangOptions& dialect, Options options) :
+    content(content),
+    lexer(new clang::Lexer(fake_loc, dialect, content.begin(), content.begin(), content.end())) {
     // clang's raw lexer reads the terminator as its end sentinel; a prefix
     // slice would make it run past the buffer end.
     assert(content.data() != nullptr && content.data()[content.size()] == '\0' &&
@@ -38,20 +54,14 @@ Lexer::Lexer(llvm::StringRef content, std::uint32_t start_offset, Options option
     lexer->SetCommentRetentionState(options.keep_comments);
 }
 
-Lexer::Lexer(llvm::StringRef content, Options options) : Lexer(content, 0, options) {}
-
-Lexer Lexer::from_line(llvm::StringRef content, std::uint32_t offset, Options options) {
-    return Lexer(content, line_begin(content, offset), options);
-}
-
 Lexer::~Lexer() = default;
 
 void Lexer::lex(Token& token) {
     clang::Token raw_token;
 
-    if(parse_header_name) {
-        // One-shot: exactly the next token is a filename argument.
-        parse_header_name = false;
+    // One-shot: exactly the next token is a filename argument.
+    bool header_name = std::exchange(parse_header_name, false);
+    if(header_name) {
         lexer->LexIncludeFilename(raw_token);
     } else {
         lexer->LexFromRawLexer(raw_token);
@@ -62,7 +72,7 @@ void Lexer::lex(Token& token) {
     token.is_pp_keyword = parse_pp_keyword;
 
     // The fake location maps the buffer start, so raw locations decode
-    // straight to offsets into `content` even when lexing starts mid-buffer.
+    // straight to offsets into `content`.
     auto offset = raw_token.getLocation().getRawEncoding() - fake_loc.getRawEncoding();
     token.range = LocalSourceRange{offset, offset + raw_token.getLength()};
 
@@ -84,11 +94,14 @@ void Lexer::lex(Token& token) {
     }
 
     // Comments are transparent to the directive machinery, matching how the
-    // lexer behaves when they are dropped: a retained line-leading comment
-    // must neither consume the start-of-line state the next token keys on
-    // nor end the module declaration context.
+    // lexer behaves when they are dropped: a retained comment must neither
+    // consume the start-of-line state the next token keys on, nor end the
+    // module declaration context, nor take the place of the filename a
+    // directive keyword awaits.
     if(token.kind == clang::tok::comment) {
+        token.is_pp_keyword = false;
         pending_start_of_line |= token.is_at_start_of_line;
+        parse_header_name = header_name;
         return;
     }
 

@@ -37,7 +37,7 @@ ZEST_CASE(IgnoreComments) {
     };
 
     {
-        Lexer lexer(content);
+        Lexer lexer(content, dialect_of());
         auto tokens = lex_all(lexer);
         ZASSERT(tokens.size() == kinds.size());
         for(std::size_t i = 0; i < kinds.size(); i += 1) {
@@ -48,7 +48,7 @@ ZEST_CASE(IgnoreComments) {
     kinds.push_back(clang::tok::comment);
 
     {
-        Lexer lexer(content, {.keep_comments = true});
+        Lexer lexer(content, dialect_of(), {.keep_comments = true});
         auto tokens = lex_all(lexer);
         ZASSERT(tokens.size() == kinds.size());
         for(std::size_t i = 0; i < kinds.size(); i += 1) {
@@ -60,7 +60,7 @@ ZEST_CASE(IgnoreComments) {
 
 ZEST_CASE(TokenRanges) {
     llvm::StringRef content = "int foo = 42;";
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     auto tokens = lex_all(lexer);
 
     ZASSERT(tokens.size() == 5U);
@@ -79,7 +79,7 @@ ZEST_CASE(LexInclude) {
 module;
 int x = 1;
 )";
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     auto tokens = lex_all(lexer);
 
     std::vector<TokenKind> kinds = {
@@ -112,13 +112,21 @@ int x = 1;
     ZASSERT(tokens[8].is_pp_keyword);
 }
 
+ZEST_CASE(DigitSeparator) {
+    llvm::StringRef content = "x = 1'000, y";
+    Lexer lexer(content, dialect_of());
+    auto tokens = lex_all(lexer);
+    ZASSERT(tokens.size() == 5U);
+    ZEXPECT(tokens[2].text(content) == "1'000");
+}
+
 };  // ZEST_SUITE(SourceText)
 
 ZEST_SUITE(HeaderNameLexing) {
 
 /// The text of the first header-name token in `content`, or empty.
 llvm::StringRef first_header_name(llvm::StringRef content) {
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     while(true) {
         Token token = lexer.advance();
         if(token.is_eof()) {
@@ -155,7 +163,7 @@ ZEST_CASE(HashImportArgument) {
 ZEST_CASE(MacroArgument) {
     // A macro filename argument stays an ordinary identifier.
     llvm::StringRef content = "#include HEADER";
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     auto tokens = lex_all(lexer);
 
     ZASSERT(tokens.size() >= 3U);
@@ -168,7 +176,7 @@ ZEST_CASE(CommentThenDirective) {
     // A retained leading comment must not consume the start-of-line state
     // the directive machinery keys on.
     llvm::StringRef content = "/* c */ #include <x>\nint y;\n";
-    Lexer lexer(content, {.keep_comments = true});
+    Lexer lexer(content, dialect_of(), {.keep_comments = true});
 
     auto comment = lexer.advance();
     ZASSERT(comment.kind == clang::tok::comment);
@@ -185,6 +193,22 @@ ZEST_CASE(CommentThenDirective) {
     ZASSERT(name.text(content) == "<x>");
 }
 
+ZEST_CASE(CommentBeforeFilename) {
+    llvm::StringRef content = "#include /* c */ <x>\n#if __has_include( /* d */ \"y\")\n";
+    Lexer lexer(content, dialect_of(), {.keep_comments = true});
+    std::vector<llvm::StringRef> names;
+    for(const auto& token: lex_all(lexer)) {
+        if(token.is_header_name()) {
+            names.push_back(token.text(content));
+        } else if(token.kind == clang::tok::comment) {
+            ZEXPECT(!token.is_pp_keyword);
+        }
+    }
+    ZASSERT(names.size() == 2U);
+    ZEXPECT(names[0] == "<x>");
+    ZEXPECT(names[1] == R"("y")");
+}
+
 ZEST_CASE(SplicedInclude) {
     // The token spelling legitimately contains the line splice; only the
     // trailing part is the written filename.
@@ -193,7 +217,7 @@ ZEST_CASE(SplicedInclude) {
 
 ZEST_CASE(EmptyInclude) {
     llvm::StringRef content = "#include \nint x;";
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     auto tokens = lex_all(lexer);
 
     // No filename: the directive just ends; nothing is lexed as a header name.
@@ -203,79 +227,25 @@ ZEST_CASE(EmptyInclude) {
 
 };  // ZEST_SUITE(HeaderNameLexing)
 
-ZEST_SUITE(FromLine) {
-
-ZEST_CASE(MidFileLine) {
-    llvm::StringRef content = "int a;\n#include <foo>\nint b;\n";
-    auto offset = static_cast<std::uint32_t>(content.find("include"));
-
-    auto lexer = Lexer::from_line(content, offset);
-    auto hash = lexer.advance();
-    ZASSERT(hash.kind == clang::tok::hash);
-    ZASSERT(hash.is_at_start_of_line);
-    ZASSERT(hash.range.begin == static_cast<std::uint32_t>(content.find('#')));
-
-    auto keyword = lexer.advance();
-    ZASSERT(keyword.is_pp_keyword);
-    ZASSERT(keyword.text(content) == "include");
-
-    auto name = lexer.advance();
-    ZASSERT(name.is_header_name());
-    ZASSERT(name.text(content) == "<foo>");
-}
-
-ZEST_CASE(FirstLine) {
-    llvm::StringRef content = "int a = 1;\nint b;\n";
-    auto lexer = Lexer::from_line(content, 4);
-    ZASSERT(lexer.advance().text(content) == "int");
-}
-
-ZEST_CASE(OffsetAtNewline) {
-    // An offset on the terminating newline still lexes the line it ends.
-    llvm::StringRef content = "int a;\nint b;\n";
-    auto offset = static_cast<std::uint32_t>(content.find('\n', content.find('b')));
-
-    auto lexer = Lexer::from_line(content, offset);
-    auto token = lexer.advance();
-    ZASSERT(token.text(content) == "int");
-    ZASSERT(token.range.begin == static_cast<std::uint32_t>(content.find("int b")));
-}
-
-ZEST_CASE(EmptyContent) {
-    auto lexer = Lexer::from_line("", 0);
-    ZASSERT(lexer.advance().is_eof());
-}
-
-ZEST_CASE(ContinuesToEnd) {
-    // from_line picks the starting point; lexing continues past the line.
-    llvm::StringRef content = "int a;\nint b;\nint c;\n";
-    auto lexer = Lexer::from_line(content, static_cast<std::uint32_t>(content.find('b')));
-    auto tokens = lex_all(lexer);
-    ZASSERT(tokens.size() == 6U);
-    ZASSERT(tokens.back().text(content) == ";");
-}
-
-};  // ZEST_SUITE(FromLine)
-
 ZEST_SUITE(IncompleteInput) {
 
 ZEST_CASE(UnterminatedHeaderName) {
     llvm::StringRef content = "#include <iost";
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     auto tokens = lex_all(lexer);
     ZASSERT(tokens.size() >= 2U);
 }
 
 ZEST_CASE(UnterminatedString) {
     llvm::StringRef content = R"(const char* s = "abc)";
-    Lexer lexer(content);
+    Lexer lexer(content, dialect_of());
     auto tokens = lex_all(lexer);
     ZASSERT(tokens.size() >= 4U);
 }
 
 ZEST_CASE(UnterminatedComment) {
     llvm::StringRef content = "int x; /* abc";
-    Lexer lexer(content, {.keep_comments = true});
+    Lexer lexer(content, dialect_of(), {.keep_comments = true});
     auto tokens = lex_all(lexer);
     ZASSERT(tokens.size() == 4U);
     ZEXPECT(tokens.back().kind == clang::tok::comment);

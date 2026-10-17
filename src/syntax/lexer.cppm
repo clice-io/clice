@@ -12,14 +12,33 @@ namespace clice {
 /// language defaults plus what the driver turns on by default and they
 /// leave off — the alternative operator names (`and`) in C++, `char8_t`
 /// and modules from C++20, the GNU keywords (`typeof`) in GNU modes — and
-/// line comments in every dialect.
-clang::LangOptions raw_dialect(clang::Language language, clang::LangStandard::Kind standard);
+/// line comments in every dialect. One object per dialect, alive for the
+/// whole run: the dialect of text no compile reads.
+const clang::LangOptions& raw_dialect(clang::Language language, clang::LangStandard::Kind standard);
+
+/// The dialect a raw lex of `path` runs in without a compile command: C
+/// for .c files and when `c` says the text is C, C++ otherwise. `standard`
+/// is the -std value of a command that compiles the text, when known: a
+/// newer standard's extra keywords (`concept` in C++17 code) would shadow
+/// identifiers. Absent, unknown or contradicting values fall back to the
+/// driver's default standard — the dialect a -std-less command compiles.
+/// With nothing known, that is C++'s, which lexes directive lines, braces
+/// and statements as any dialect past C89 does.
+const clang::LangOptions& dialect_of(llvm::StringRef path = {},
+                                     bool c = false,
+                                     llvm::StringRef standard = {});
+
+/// A character of an identifier as the lexer reads one: `$` included, and
+/// the bytes of multi-byte UTF-8 sequences, as clang accepts extended
+/// characters in identifiers.
+inline bool is_identifier_char(char c) {
+    return clang::isAsciiIdentifierContinue(c, /*AllowDollar=*/true) ||
+           static_cast<unsigned char>(c) >= 0x80;
+}
 
 struct LexerOptions {
     /// Emit comment tokens instead of dropping them.
     bool keep_comments = false;
-
-    const clang::LangOptions* lang_opts = nullptr;
 };
 
 /// Whether a directive keyword takes a header-name argument: `#include`,
@@ -36,7 +55,9 @@ inline bool takes_header_name(llvm::StringRef keyword) {
 /// eod tokens, directive keywords are flagged via Token::is_pp_keyword, and
 /// header-name arguments (after #include/#embed keywords and inside the
 /// parentheses of the __has_include family) are lexed as single
-/// header_name tokens.
+/// header_name tokens. Every tokenization of source text in clice goes
+/// through it, in the dialect of the compile that reads the text or, with
+/// none, raw_dialect's.
 class Lexer {
 public:
     using Options = LexerOptions;
@@ -44,13 +65,7 @@ public:
     /// `content` must end at a NUL terminator (clang's raw lexer reads it
     /// as its end sentinel): full buffers and suffix slices are fine, but
     /// never pass a prefix slice — bound the lexing logically instead.
-    explicit Lexer(llvm::StringRef content, Options options = {});
-
-    /// Lex in place: start at the beginning of the line containing `offset`
-    /// rather than at the buffer start. Token ranges are still offsets into
-    /// the full `content`, so they compose directly with file coordinates
-    /// and token.text(content).
-    static Lexer from_line(llvm::StringRef content, std::uint32_t offset, Options options = {});
+    Lexer(llvm::StringRef content, const clang::LangOptions& dialect, Options options = {});
 
     Lexer(const Lexer&) = delete;
     Lexer(Lexer&&) = delete;
@@ -68,8 +83,6 @@ public:
     Token advance_until(TokenKind kind);
 
 private:
-    Lexer(llvm::StringRef content, std::uint32_t start_offset, Options options);
-
     /// Where the last token other than eod ended.
     std::uint32_t lexed_end = 0;
     bool parse_pp_keyword = false;

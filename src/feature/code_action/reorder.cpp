@@ -34,12 +34,12 @@ struct Slot {
 /// preamble's conditionals are compiled into the PCH and never reach it.
 std::optional<std::uint32_t> enclosing_branch(CompilationUnit& unit, std::uint32_t offset) {
     llvm::SmallVector<std::uint32_t, 4> open;
-    for(const auto& directive: unit.get<Semantics>().block_directives()) {
+    for(const auto& directive: unit.focus_file().lexical().directives) {
         auto at = directive.range.begin;
         if(at >= offset) {
             break;
         }
-        using enum LexicalInfo::BlockDirective::Kind;
+        using enum LexicalInfo::Directive::Kind;
         switch(directive.kind) {
             case If: open.push_back(at); break;
             case Else:
@@ -52,8 +52,7 @@ std::optional<std::uint32_t> enclosing_branch(CompilationUnit& unit, std::uint32
                     open.pop_back();
                 }
                 break;
-            case Region:
-            case EndRegion: break;
+            default: break;
         }
     }
     if(open.empty()) {
@@ -151,8 +150,8 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     }
     LocalSourceRange lines{begin, line_end(content, range->end - 1)};
 
-    using enum LexicalInfo::BlockDirective::Kind;
-    if(llvm::any_of(unit.get<Semantics>().block_directives(), [&](const auto& directive) {
+    using enum LexicalInfo::Directive::Kind;
+    if(llvm::any_of(unit.focus_file().lexical().directives, [&](const auto& directive) {
            return llvm::is_contained({If, Else, EndIf}, directive.kind) &&
                   directive.range.begin >= lines.begin && directive.range.begin < lines.end;
        })) {
@@ -271,7 +270,11 @@ std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot>
     // An included file may rely on the definitions above it and provide
     // for those below: no definition crosses it. One inside a definition
     // moves with it.
-    for(const auto& include: semantics.include_directives()) {
+    for(const auto& directive: unit.focus_file().lexical().directives) {
+        if(directive.kind != LexicalInfo::Directive::Kind::Include) {
+            continue;
+        }
+        auto include = directive.range;
         if(include.begin <= region.begin || include.begin >= region.end ||
            llvm::any_of(slots,
                         [&](const Slot& slot) { return slot.range.contains(include.begin); })) {

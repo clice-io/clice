@@ -211,8 +211,7 @@ public:
             return;
         }
         auto [name_fid, offset] = unit.written_at(start);
-        Lexer lexer(unit.file_content(name_fid).substr(offset),
-                    {.lang_opts = &unit.lang_options()});
+        Lexer lexer(unit.file_content(name_fid).substr(offset), unit.lang_options());
         auto token = lexer.advance();
         if(token.kind == clang::tok::colon) {
             token = lexer.advance();

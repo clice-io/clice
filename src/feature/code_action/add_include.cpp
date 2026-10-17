@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :feature.code_action.action;
 import :syntax.lexer;
+import :syntax.lexical_scan;
 
 namespace clice::feature::action {
 
@@ -171,17 +172,52 @@ std::optional<clang::tooling::stdlib::Header>
 /// The start of the line after the comments opening the file, up to the
 /// last one a blank line sets apart from what follows: a license header,
 /// not the comment of the first declaration. 0 when there is none.
-std::uint32_t after_leading_comments(llvm::StringRef content, const clang::LangOptions& options) {
+std::uint32_t after_leading_comments(llvm::StringRef content, const LexicalInfo& lexical) {
     std::uint32_t offset = 0;
-    Lexer lexer(content, {.keep_comments = true, .lang_opts = &options});
-    for(auto token = lexer.advance(); token.kind == clang::tok::comment;) {
-        auto next = lexer.advance();
-        if(content.slice(token.range.end, next.range.begin).count('\n') > 1) {
-            offset = line_end(content, token.range.end);
+    auto& tokens = lexical.tokens;
+    for(std::size_t index = 0; index < tokens.size() && tokens[index].kind == clang::tok::comment;
+        index += 1) {
+        auto end = tokens[index].range.end;
+        auto next = index + 1 < tokens.size() ? tokens[index + 1].range.begin
+                                              : static_cast<std::uint32_t>(content.size());
+        if(content.slice(end, next).count('\n') > 1) {
+            offset = line_end(content, end);
         }
-        token = next;
     }
     return offset;
+}
+
+/// Where the `module;` opening the global module fragment ends, the
+/// file's first token when there is one.
+std::optional<std::uint32_t> fragment_end(const LexicalInfo& lexical) {
+    if(lexical.modules.empty() ||
+       lexical.modules.front().kind != LexicalInfo::ModuleDeclaration::Kind::GlobalFragment) {
+        return std::nullopt;
+    }
+    auto rest = llvm::ArrayRef(lexical.tokens)
+                    .drop_front(lexical.token_at(lexical.modules.front().keyword.end));
+    return llvm::find_if(rest, [](const Token& token) { return token.kind == clang::tok::semi; })
+        ->range.end;
+}
+
+/// Where the code of the file starts: its first token that is neither a
+/// comment, a directive's nor of the `module;` opening the global module
+/// fragment.
+std::uint32_t code_begin(llvm::StringRef content, const LexicalInfo& lexical) {
+    auto fragment = fragment_end(lexical).value_or(0);
+    auto directive = lexical.directives.begin();
+    for(std::uint32_t index = 0; index < lexical.tokens.size(); index += 1) {
+        if(directive != lexical.directives.end() && index == directive->first) {
+            index = directive->last;
+            ++directive;
+            continue;
+        }
+        const auto& token = lexical.tokens[index];
+        if(token.kind != clang::tok::comment && !token.is_eod() && token.range.end > fragment) {
+            return token.range.begin;
+        }
+    }
+    return static_cast<std::uint32_t>(content.size());
 }
 
 }  // namespace
@@ -194,13 +230,16 @@ std::uint32_t after_leading_comments(llvm::StringRef content, const clang::LangO
 /// always apply. Without one, after the leading `#pragma once`, the
 /// guard's `#define` or the `module;` opening the global module fragment,
 /// else after the comments opening the file. A module unit without that
-/// fragment opens it there: no include may follow the module declaration. Only an
-/// `#ifndef`/`#define` pair enclosing the whole file is a guard; a leading `#ifndef _GNU_SOURCE`
-/// block is not. A raw lex of the text rather than the directive table: the preamble's directives
-/// are compiled into the PCH and never reach this AST.
+/// fragment opens it there: no include may follow the module declaration.
+/// Only a guard enclosing the whole file is one (LexicalInfo::IncludeGuard);
+/// a leading `#ifndef _GNU_SOURCE` block is not. The text's lexical scan
+/// rather than the compile's directives: the preamble's are compiled into
+/// the PCH and never reach this AST.
 IncludeInsertion include_insertion(CompilationUnit& unit) {
-    auto content = unit.focus_file().content();
-    auto end = unit.text_end(unit.focus_file().file());
+    using Kind = LexicalInfo::Directive::Kind;
+    auto focus = unit.focus_file();
+    auto content = focus.content();
+    const auto& lexical = focus.lexical();
 
     /// The anchors at one conditional depth: the file's own level, and
     /// the level directly inside the include guard.
@@ -210,96 +249,39 @@ IncludeInsertion include_insertion(CompilationUnit& unit) {
     };
 
     std::array<Level, 2> levels;
-    enum class Guard : std::uint8_t { None, Opened, Defined, Closed };
-    auto guard = Guard::None;
-    llvm::StringRef guard_macro;
-    bool seen_code = false;
-    bool fragment = false;
-    bool declares_module = false;
-    std::uint32_t depth = 0;
-    std::uint32_t directives = 0;
-    Lexer lexer(content, {.lang_opts = &unit.lang_options()});
-    for(auto token = lexer.advance(); !token.is_eof() && token.range.begin < end;
-        token = lexer.advance()) {
-        if(guard == Guard::Closed) {
-            guard = Guard::None;
+    auto fragment = fragment_end(lexical);
+    if(fragment) {
+        levels[0].prologue = line_end(content, *fragment);
+    }
+    auto& guard = lexical.include_guard;
+    auto code = code_begin(content, lexical);
+    for(auto [index, directive]: llvm::enumerate(lexical.directives)) {
+        if(directive.range.begin >= code) {
+            break;
         }
-        bool module_line = token.is_pp_keyword && token.text(content) == "module";
-        if(!token.is_directive_hash() && !module_line) {
-            if(guard == Guard::Opened) {
-                guard = Guard::None;
-            }
-            seen_code = true;
-            continue;
-        }
-        llvm::SmallVector<Token, 4> line;
-        auto next = lexer.advance();
-        for(; !next.is_eod() && !next.is_eof(); next = lexer.advance()) {
-            line.push_back(next);
-        }
-        auto anchor = line_end(content, next.range.begin);
-        if(module_line) {
-            if(!seen_code && line.size() == 1 && line[0].kind == clang::tok::semi) {
-                levels[0].prologue = anchor;
-                fragment = true;
-            } else {
-                declares_module = true;
-                seen_code = true;
-            }
-            continue;
-        }
-        directives += 1;
-        if(line.empty() || !line[0].is_identifier()) {
-            continue;
-        }
-        auto keyword = line[0].text(content);
-        auto argument = line.size() > 1 ? line[1].text(content) : llvm::StringRef();
-        if(guard == Guard::Opened) {
-            if(keyword == "define" && argument == guard_macro) {
-                guard = Guard::Defined;
-                levels[1].prologue = anchor;
-                continue;
-            }
-            guard = Guard::None;
-        }
-        if(keyword == "include") {
-            if(!seen_code && depth < levels.size()) {
-                levels[depth].include = anchor;
-            }
-        } else if(keyword == "pragma") {
-            if(!seen_code && depth < levels.size() && argument == "once") {
-                levels[depth].prologue = anchor;
-            }
-        } else if(keyword == "if" || keyword == "ifdef" || keyword == "ifndef") {
-            if(keyword == "ifndef" && directives == 1 && !seen_code) {
-                guard = Guard::Opened;
-                guard_macro = argument;
-            }
-            depth += 1;
-        } else if(keyword == "elif" || keyword == "elifdef" || keyword == "elifndef" ||
-                  keyword == "else") {
-            if(depth == 1 && guard == Guard::Defined) {
-                guard = Guard::None;
-            }
-        } else if(keyword == "endif" && depth > 0) {
-            depth -= 1;
-            if(depth == 0 && guard == Guard::Defined) {
-                guard = Guard::Closed;
-            }
+        auto anchor = line_end(content, directive.range.end);
+        if(guard && index == guard->definition) {
+            levels[1].prologue = anchor;
+        } else if(directive.depth < levels.size() && directive.kind == Kind::Include) {
+            levels[directive.depth].include = anchor;
+        } else if(directive.depth < levels.size() && directive.kind == Kind::PragmaOnce) {
+            levels[directive.depth].prologue = anchor;
         }
     }
     // A line starting with `module` declares one only in a module unit; a
     // header compiled in its includer's context is none, whatever the
     // includer is.
+    bool declares_module = llvm::any_of(lexical.modules, [](const auto& module) {
+        return module.kind == LexicalInfo::ModuleDeclaration::Kind::Declaration;
+    });
     if(declares_module && !fragment && unit.is_named_module()) {
-        return {.offset = after_leading_comments(content, unit.lang_options()),
-                .opens_fragment = true};
+        return {.offset = after_leading_comments(content, lexical), .opens_fragment = true};
     }
-    const auto& level = levels[guard == Guard::Closed ? 1 : 0];
+    const auto& level = levels[guard ? 1 : 0];
     if(auto anchor = level.include ? level.include : level.prologue) {
         return {.offset = *anchor};
     }
-    return {.offset = after_leading_comments(content, unit.lang_options())};
+    return {.offset = after_leading_comments(content, lexical)};
 }
 
 std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions& options) {
@@ -310,23 +292,24 @@ std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions
     // the next one would be as conditional.
     std::uint32_t depth = 0;
     bool held = false;
-    Lexer lexer(content, {.lang_opts = &options});
+    Lexer lexer(content, options);
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
         // The lexer ends a module declaration's line as it ends a directive.
         if(token.is_eod()) {
             continue;
         }
         if(token.is_directive_hash()) {
+            using enum LexicalInfo::Directive::Kind;
             auto keyword = lexer.advance();
-            auto name = keyword.text(content);
+            auto kind = directive_kind(keyword.is_eod() ? "" : keyword.text(content), "");
             auto next = keyword;
             while(!next.is_eod() && !next.is_eof()) {
                 next = lexer.advance();
             }
             auto end = line_end(content, next.range.begin);
-            if(name == "if" || name == "ifdef" || name == "ifndef") {
+            if(kind == If) {
                 depth += 1;
-            } else if(name == "endif" && depth > 0) {
+            } else if(kind == EndIf && depth > 0) {
                 depth -= 1;
                 if(depth == 0 && held) {
                     anchor = end;

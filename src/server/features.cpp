@@ -16,9 +16,10 @@ import :server.features;
 import :server.format;
 import :server.lsp_projection;
 import :server.query_commands;
-import :support.text;
 import :syntax.completion;
 import :syntax.include_resolver;
+import :syntax.lexer;
+import :syntax.lexical_scan;
 import :syntax.scan;
 import :vfs.dir_cache;
 import :vfs.file_system;
@@ -229,7 +230,7 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
     // A file's entry is its command; a default command yields to the host
     // a header borrows from, in resolve_command's order.
     if(own && own->language_forced && own->source == CommandSource::CDBExact) {
-        return feature::index_lang_options("", own->is_c, own->standard);
+        return dialect_of("", own->is_c, own->standard);
     }
 
     // A header's active context (the user's persisted choice, else the
@@ -239,12 +240,12 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
         CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
         auto host_lang = command_lang(project, host, edit_paths, host_pin ? pin : nullptr);
         if(host_lang) {
-            return feature::index_lang_options("", host_lang->is_c, host_lang->standard);
+            return dialect_of("", host_lang->is_c, host_lang->standard);
         }
     }
 
     if(own && own->language_forced) {
-        return feature::index_lang_options("", own->is_c, own->standard);
+        return dialect_of("", own->is_c, own->standard);
     }
 
     auto& contributions = project.project_index.contributions;
@@ -253,9 +254,7 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
                   llvm::all_of(llvm::make_first_range(it->second), [&](Fid tu) {
                       return llvm::StringRef(project.file_table.resolve(tu)).ends_with(".c");
                   });
-    return feature::index_lang_options(path,
-                                       c_only,
-                                       own ? llvm::StringRef(own->standard) : llvm::StringRef());
+    return dialect_of(path, c_only, own ? llvm::StringRef(own->standard) : llvm::StringRef());
 }
 
 std::optional<feature::HoverInfo> Features::index_hover_card(const Session& session,
@@ -613,10 +612,9 @@ Features::RawResult Features::hover(Ticket ticket,
     std::optional<LocalSourceRange> argument;
     if(offset) {
         llvm::StringRef text = session->text;
-        if(text.substr(line_begin(text, *offset)).ltrim(" \t").starts_with("#")) {
-            argument =
-                feature::find_directive_argument(text, *offset, &index_lang_options(*session));
-        }
+        argument = find_directive_argument(lexical_scan(text, index_lang_options(*session)),
+                                           text,
+                                           *offset);
     }
     if(argument && argument->begin <= *offset) {
         auto links = co_await directive_links(ticket, token).or_fail();
@@ -918,9 +916,10 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     auto map = session->positions();
     auto offset = map.offset(position, PositionEncoding::UTF16);
 
+    const auto& dialect = index_lang_options(*session);
     PreambleCompletionContext pctx;
     if(offset) {
-        pctx = detect_completion_context(session->text, *offset);
+        pctx = detect_completion_context(session->text, *offset, dialect);
     }
 
     // Clients without request-side gating (nvim, zed) forward every
@@ -935,7 +934,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                           ? pctx.kind == CompletionContext::Import ||
                                 pctx.kind == CompletionContext::ModuleDeclaration
                           : pctx.kind != CompletionContext::None || !offset ||
-                                follows_access_operator(session->text, *offset);
+                                follows_access_operator(session->text, *offset, dialect);
         if(!served) {
             co_return serde_raw{"[]"};
         }

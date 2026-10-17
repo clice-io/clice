@@ -15,6 +15,7 @@ import :semantic.symbol;
 import :semantic.types;
 import :support.text;
 import :syntax.documentation;
+import :syntax.lexical_scan;
 
 namespace clice::feature {
 
@@ -1078,7 +1079,7 @@ auto file_directive_hover(CompilationUnit& unit, std::uint32_t offset) -> std::o
     }
 
     auto content = focus.content();
-    auto* lang_opts = &unit.lang_options();
+    const auto& lexical = focus.lexical();
 
     auto file_name = [&](LocalSourceRange range) -> std::string {
         auto arg = content.substr(range.begin, range.end - range.begin).trim();
@@ -1086,27 +1087,21 @@ auto file_directive_hover(CompilationUnit& unit, std::uint32_t offset) -> std::o
                                (arg.front() == '<' && arg.back() == '>'))) {
             arg = arg.drop_front().drop_back();
         }
-        return arg.str();
+        return unspliced(arg);
     };
 
-    auto line_start = line_begin(content, offset);
-
-    auto line_end = content.find('\n', offset);
-    line_end = line_end == llvm::StringRef::npos ? content.size() : line_end;
-
+    const auto* hovered = lexical.directive_at(content, offset);
+    if(!hovered) {
+        return std::nullopt;
+    }
     auto try_directive = [&](clang::SourceLocation loc,
                              llvm::StringRef target) -> std::optional<HoverInfo> {
         if(target.empty())
             return std::nullopt;
         auto directive_offset = unit.seen_at(loc).offset;
-        /// FIXME: A directive continued with an escaped newline may have its
-        /// keyword and argument on different physical lines. This check then
-        /// rejects a cursor inside the argument before find_directive_argument()
-        /// can match its range. Remove the same-line restriction once continued
-        /// directive hover also handles the spliced argument spelling and range.
-        if(directive_offset < line_start || directive_offset >= line_end)
+        if(lexical.directive_at(content, directive_offset) != hovered)
             return std::nullopt;
-        auto range = find_directive_argument(content, directive_offset, lang_opts);
+        auto range = find_directive_argument(lexical, content, directive_offset);
         if(!range || offset >= range->end || offset < range->begin)
             return std::nullopt;
 
@@ -1264,7 +1259,7 @@ auto macro_hover(CompilationUnit& unit,
     }
 
     auto content = focus.content();
-    if(!content.substr(line_begin(content, offset)).ltrim(" \t").starts_with("#")) {
+    if(!focus.lexical().directive_at(content, offset)) {
         return std::nullopt;
     }
     auto& tokens = focus.tokens();

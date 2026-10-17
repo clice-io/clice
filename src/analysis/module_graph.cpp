@@ -14,7 +14,10 @@ import :project.command_resolver;
 import :project.configuration;
 import :project.open_index;
 import :project.project;
+import :analysis.text;
 import :syntax.lexer;
+import :syntax.lexical_scan;
+import :syntax.token;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -71,112 +74,51 @@ struct RawUse {
     bool strong = false;
 };
 
-/// Whether `text` holds `word` as a whole identifier.
-bool has_word(llvm::StringRef text, llvm::StringRef word) {
-    for(auto at = text.find(word); at != llvm::StringRef::npos; at = text.find(word, at + 1)) {
-        auto before = at == 0 ? ' ' : text[at - 1];
-        auto after = at + word.size() < text.size() ? text[at + word.size()] : ' ';
-        if(!llvm::isAlnum(before) && before != '_' && !llvm::isAlnum(after) && after != '_') {
-            return true;
-        }
+/// Visit each identifier a macro's directive (Text::directive_text)
+/// expands: neither the macro's own name nor its parameters, which name
+/// nothing outside it.
+void for_each_expanded(const std::string& directive,
+                       llvm::function_ref<void(llvm::StringRef)> visit) {
+    Lexer lexer(directive, raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx23));
+    llvm::SmallVector<Token, 16> words;
+    lexer.advance();
+    for(auto token = lexer.advance(); !token.is_eod() && !token.is_eof(); token = lexer.advance()) {
+        words.push_back(token);
     }
-    return false;
-}
-
-/// Whether a block comment `text` opens runs past its end, literals and a
-/// line comment aside.
-bool opens_comment(llvm::StringRef text) {
-    for(std::size_t at = 0; at < text.size(); at += 1) {
-        auto c = text[at];
-        if(c == '"' || c == '\'') {
-            for(at += 1; at < text.size() && text[at] != c; at += 1) {
-                at += text[at] == '\\' ? 1 : 0;
-            }
-        } else if(c == '/' && at + 1 < text.size() && text[at + 1] == '/') {
-            return false;
-        } else if(c == '/' && at + 1 < text.size() && text[at + 1] == '*') {
-            auto close = text.find("*/", at + 2);
-            if(close == llvm::StringRef::npos) {
-                return true;
-            }
-            at = close + 1;
-        }
+    auto definition = macro_definition(words);
+    if(!definition) {
+        return;
     }
-    return false;
-}
-
-/// `text` with its string and character literals emptied and its comments
-/// cut: the code words of a line.
-std::string code_of(llvm::StringRef text) {
-    std::string result;
-    for(std::size_t at = 0; at < text.size(); at += 1) {
-        auto c = text[at];
-        if(c == '/' && at + 1 < text.size() && text[at + 1] == '/') {
-            break;
-        }
-        if(c == '/' && at + 1 < text.size() && text[at + 1] == '*') {
-            auto close = text.find("*/", at + 2);
-            if(close == llvm::StringRef::npos) {
-                break;
-            }
-            result += ' ';
-            at = close + 1;
-            continue;
-        }
-        result += c;
-        if(c != '"' && c != '\'') {
-            continue;
-        }
-        for(at += 1; at < text.size() && text[at] != c; at += 1) {
-            at += text[at] == '\\' ? 1 : 0;
-        }
-        result += c;
-    }
-    return result;
-}
-
-/// Visit each identifier of `text`.
-void for_each_identifier(llvm::StringRef text, llvm::function_ref<void(llvm::StringRef)> visit) {
-    while(true) {
-        auto start = text.find_if([](char c) { return llvm::isAlpha(c) || c == '_'; });
-        if(start == llvm::StringRef::npos) {
-            return;
-        }
-        text = text.drop_front(start);
-        auto word = text.take_while([](char c) { return llvm::isAlnum(c) || c == '_'; });
-        visit(word);
-        text = text.drop_front(word.size());
-    }
-}
-
-/// The identifiers a macro definition's replacement list spells: neither
-/// the macro's own name nor its parameters, which name nothing outside it.
-void for_each_expanded(llvm::StringRef directive, llvm::function_ref<void(llvm::StringRef)> visit) {
-    auto text = directive.ltrim();
-    text.consume_front("#");
-    text = text.ltrim();
-    text.consume_front("define");
-    text = text.ltrim().drop_while([](char c) { return llvm::isAlnum(c) || c == '_'; });
     llvm::SmallVector<llvm::StringRef> parameters;
-    if(text.consume_front("(")) {
-        auto list = text.take_until([](char c) { return c == ')'; });
-        text = text.drop_front(list.size());
-        text.consume_front(")");
-        for_each_identifier(list, [&](llvm::StringRef name) { parameters.push_back(name); });
-    }
-    for_each_identifier(code_of(text), [&](llvm::StringRef word) {
-        if(!llvm::is_contained(parameters, word)) {
-            visit(word);
+    for(const auto& parameter: definition->parameters) {
+        if(parameter.is_identifier()) {
+            parameters.push_back(parameter.text(directive));
         }
-    });
+    }
+    for(const auto& token: definition->body) {
+        if(token.is_identifier() && !llvm::is_contained(parameters, token.text(directive))) {
+            visit(token.text(directive));
+        }
+    }
 }
 
-/// Whether `text` declares `name` a namespace alias: `namespace name =`.
-bool declares_alias(llvm::StringRef text, llvm::StringRef name) {
-    for(auto at = text.find("namespace"); at != llvm::StringRef::npos;
-        at = text.find("namespace", at + 1)) {
-        auto rest = text.drop_front(at + llvm::StringRef("namespace").size()).ltrim();
-        if(rest.consume_front(name) && rest.ltrim().starts_with("=")) {
+/// Visit each identifier of `code`.
+void for_each_identifier(const std::string& code, llvm::function_ref<void(llvm::StringRef)> visit) {
+    Lexer lexer(code, raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx23));
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        if(token.is_identifier()) {
+            visit(token.text(code));
+        }
+    }
+}
+
+/// Whether `line` of `text` declares `name` a namespace alias:
+/// `namespace name =`.
+bool declares_alias(const Text& text, std::uint32_t line, llvm::StringRef name) {
+    auto tokens = text.tokens_on(line);
+    for(std::size_t i = 0; i + 2 < tokens.size(); i += 1) {
+        if(tokens[i].text(text.content) == "namespace" &&
+           tokens[i + 1].text(text.content) == name && tokens[i + 2].kind == clang::tok::equal) {
             return true;
         }
     }
@@ -353,67 +295,67 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         }
     }
 
-    // The text of a scoped file's line, from the disk: the index holds
-    // positions, not the source.
-    llvm::DenseMap<std::uint32_t, std::string> contents;
-    auto text_of = [&](std::uint32_t file) -> llvm::StringRef {
-        auto [it, inserted] = contents.try_emplace(file);
-        if(inserted) {
-            if(auto buffer = vfs::read(table.resolve(fids[file]))) {
-                it->second = (*buffer)->getBuffer().str();
-            }
-        }
-        return it->second;
+    // A scoped file's text, from the disk (the index holds positions, not
+    // the source), by its 1-based lines.
+    struct Source {
+        std::string content;
+        std::optional<Text> text;
     };
-    auto line_text = [&](std::uint32_t file, std::uint32_t line) {
-        auto text = text_of(file);
-        for(std::uint32_t current = 1; current < line && !text.empty(); current += 1) {
-            text = text.split('\n').second;
+
+    llvm::DenseMap<std::uint32_t, std::unique_ptr<Source>> sources;
+    auto text_of = [&](std::uint32_t file) -> const Text& {
+        auto& source = sources[file];
+        if(!source) {
+            source = std::make_unique<Source>();
+            if(auto buffer = vfs::read(table.resolve(fids[file]))) {
+                source->content = (*buffer)->getBuffer().str();
+            }
+            source->text.emplace(source->content);
         }
-        return text.split('\n').first;
+        return *source->text;
+    };
+    // The code tokens of 1-based `line` of `file`.
+    auto tokens_on = [&](std::uint32_t file, std::uint32_t line) -> llvm::ArrayRef<Token> {
+        auto& text = text_of(file);
+        return line != 0 && line <= text.lines.size() ? text.tokens_on(line - 1)
+                                                      : llvm::ArrayRef<Token>();
+    };
+    // Whether `line` of `file` writes the identifier `word` in its code.
+    auto writes = [&](std::uint32_t file, std::uint32_t line, llvm::StringRef word) {
+        auto& text = text_of(file);
+        return line != 0 && line <= text.lines.size() && text.names(line - 1, word);
     };
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
         auto& file = facts.files[id];
         for(auto includer: file.includers) {
             // A forced include (-include) has no directive in the includer;
             // its presumed line points at some other text there.
-            auto directive = line_text(includer, include_lines.lookup({includer, id})).ltrim();
-            auto open = directive.find_first_of("<\"");
-            auto close = open == llvm::StringRef::npos
-                             ? open
-                             : directive.find(directive[open] == '<' ? '>' : '"', open + 1);
-            auto spelled = close == llvm::StringRef::npos ? llvm::StringRef()
-                                                          : directive.slice(open, close + 1);
+            auto& text = text_of(includer);
+            auto line = std::max(include_lines.lookup({includer, id}), 1U) - 1;
+            llvm::StringRef spelled;
+            if(line < text.lines.size() &&
+               text.directive_kind(line) == LexicalInfo::Directive::Kind::Include) {
+                // A spliced directive's header name starts at its splice.
+                spelled = text.operands[line];
+                spelled =
+                    spelled.drop_front(std::min(spelled.find_first_of("<\""), spelled.size()));
+            }
             auto names_file =
                 !spelled.empty() &&
                 llvm::sys::path::filename(spelled.drop_front().drop_back(),
                                           llvm::sys::path::Style::posix) ==
                     llvm::sys::path::filename(file.path, llvm::sys::path::Style::posix);
-            file.spellings.push_back(directive.starts_with("#") && directive.contains("include") &&
-                                             names_file
-                                         ? spelled.str()
-                                         : std::string());
+            file.spellings.push_back(names_file ? spelled.str() : std::string());
         }
     }
 
     // A directive's text, its continuation lines joined.
-    // A block comment the directive opens runs on to the line closing it:
-    // replayed cut short, it would swallow what follows.
     auto directive_text = [&](std::uint32_t file, std::uint32_t line) {
-        std::string text;
-        for(auto current = line; current <= facts.files[file].lines; current += 1) {
-            auto part = line_text(file, current).rtrim('\r');
-            if(part.ends_with("\\")) {
-                text += part.drop_back();
-                continue;
-            }
-            text += part;
-            if(!opens_comment(text)) {
-                break;
-            }
-            text += ' ';
-        }
-        return text;
+        auto& text = text_of(file);
+        return line != 0 && line <= text.lines.size() &&
+                       text.kinds[line - 1] == Text::Line::Directive
+                   ? text.directive_text(line - 1)
+                   : std::string();
     };
 
     // A name qualified by its containers, inline namespaces skipped as
@@ -635,9 +577,9 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 continue;
             }
             auto line = line_of(*shard, offset);
-            auto text =
-                text_of(id).substr(shard->line_starts()[line - 1]).split('\n').first.ltrim();
-            if(!text.consume_front("#") || !text.ltrim().starts_with("undef")) {
+            auto& text = text_of(id);
+            auto start = line <= text.lines.size() ? text.directive_line(line - 1) : std::nullopt;
+            if(!start || text.keywords[*start] != "undef") {
                 continue;
             }
             // Elsewhere, an #undef is one file's cleanup (a consumer dropping
@@ -675,18 +617,25 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         auto first = site.line;
         if(site.extent.end > site.extent.begin) {
             first = std::min(first, line_of(*index.shard(fids[site.file]), site.extent.begin));
-        } else if(first > 1 && line_text(site.file, first).ltrim().starts_with(name)) {
+        } else if(auto tokens = tokens_on(site.file, first);
+                  first > 1 && !tokens.empty() &&
+                  text_of(site.file).content.substr(tokens.front().range.begin).starts_with(name)) {
             first -= 1;
         }
         bool found = false;
         for(auto line = first; line <= site.line && !found; line += 1) {
-            auto text = code_of(line_text(site.file, line));
-            found = has_word(text, "friend");
-            for_each_identifier(text, [&](llvm::StringRef word) {
-                for(auto [file, at]: macro_definitions.lookup(word)) {
-                    found = found || has_word(code_of(directive_text(file, at)), "friend");
+            found = writes(site.file, line, "friend");
+            for(const auto& token: tokens_on(site.file, line)) {
+                if(!token.is_identifier()) {
+                    continue;
                 }
-            });
+                for(auto [file, at]:
+                    macro_definitions.lookup(token.text(text_of(site.file).content))) {
+                    for_each_identifier(directive_text(file, at), [&](llvm::StringRef word) {
+                        found = found || word == "friend";
+                    });
+                }
+            }
         }
         return found;
     };
@@ -735,9 +684,14 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(!identity || identity->name.empty()) {
                 continue;
             }
-            auto text = line_text(id, line_of(*shard, offset));
-            if(!has_word(text, "using") || has_word(text, "namespace") ||
-               !text.contains(("::" + identity->name).str())) {
+            auto line = line_of(*shard, offset);
+            auto tokens = tokens_on(id, line);
+            bool qualified = false;
+            for(std::size_t i = 1; i < tokens.size(); i += 1) {
+                qualified |= tokens[i - 1].kind == clang::tok::coloncolon &&
+                             tokens[i].text(text_of(id).content) == identity->name;
+            }
+            if(!writes(id, line, "using") || writes(id, line, "namespace") || !qualified) {
                 continue;
             }
             auto scope = namespace_at(id, offset, 0);
@@ -763,8 +717,9 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             continue;
         }
         auto site = std::ranges::find_if(list, [&](const Site& site) {
-            return !facts.files[site.file].source &&
-                   declares_alias(line_text(site.file, site.line), identity->name);
+            return !facts.files[site.file].source && site.line != 0 &&
+                   site.line <= text_of(site.file).lines.size() &&
+                   declares_alias(text_of(site.file), site.line - 1, identity->name);
         });
         if(site == list.end()) {
             continue;
@@ -860,8 +815,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                             .owner = display(canonical),
                             .file = site.file,
                             .line = site.line,
-                            .friend_declaration =
-                                has_word(line_text(site.file, site.line), "friend"),
+                            .friend_declaration = writes(site.file, site.line, "friend"),
                         });
                     }
                 }
@@ -936,8 +890,11 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(auto site = std::ranges::find(scoped, declared_in, &Site::file);
                site != scoped.end() && includers.size() > 1) {
                 llvm::StringSet<> names;
-                for_each_identifier(line_text(declared_in, site->line),
-                                    [&](llvm::StringRef word) { names.insert(word); });
+                for(const auto& token: tokens_on(declared_in, site->line)) {
+                    if(token.is_identifier()) {
+                        names.insert(token.text(text_of(declared_in).content));
+                    }
+                }
                 for(auto& word: llvm::to_vector(names.keys())) {
                     for(auto [file, line]: macro_definitions.lookup(word)) {
                         for_each_identifier(directive_text(file, line),
@@ -976,14 +933,12 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                           index::has_flag(scope->flags, index::SymbolFlags::Unnamed);
                })) {
                 linkage = InternalLinkage::AnonymousNamespace;
-            } else if(linkage == InternalLinkage::Const &&
-                      has_word(line_text(declared_in, line), "static")) {
+            } else if(linkage == InternalLinkage::Const && writes(declared_in, line, "static")) {
                 linkage = InternalLinkage::Static;
             }
         }
-        bool constant =
-            kind == SymbolKind::Variable && (has_word(line_text(declared_in, line), "const") ||
-                                             has_word(line_text(declared_in, line), "constexpr"));
+        bool constant = kind == SymbolKind::Variable && (writes(declared_in, line, "const") ||
+                                                         writes(declared_in, line, "constexpr"));
 
         // The index names a C-linkage function without its namespace, one
         // entity across all of them; C++ code names it by the namespace
@@ -1074,7 +1029,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     .file = site.file,
                     .line = site.line,
                     .definition = site.definition,
-                    .friend_declaration = has_word(line_text(site.file, site.line), "friend"),
+                    .friend_declaration = writes(site.file, site.line, "friend"),
                 });
             }
         }
@@ -1130,9 +1085,18 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                        return false;
                    }
                    // From the name to the body: the arguments and the bases.
-                   auto text = text_of(file).substr(site.offset).take_until([](char c) {
-                       return c == '{' || c == ';';
-                   });
+                   auto& text = text_of(file);
+                   auto from = std::ranges::lower_bound(
+                       text.tokens,
+                       site.offset,
+                       {},
+                       [](const Token& token) { return token.range.begin; });
+                   auto head = llvm::make_range(
+                       from,
+                       std::find_if(from, text.tokens.end(), [](const Token& token) {
+                           return token.kind == clang::tok::l_brace ||
+                                  token.kind == clang::tok::semi;
+                       }));
                    return llvm::any_of(owned[file], [&](std::uint32_t entity) {
                        // The specialization and its members are no arguments.
                        if(facts.entities[entity].hash == specialization ||
@@ -1141,9 +1105,11 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                        }
                        llvm::StringRef name = facts.entities[entity].name;
                        auto separator = name.rfind("::");
-                       return has_word(
-                           text,
-                           separator == llvm::StringRef::npos ? name : name.substr(separator + 2));
+                       auto last =
+                           separator == llvm::StringRef::npos ? name : name.substr(separator + 2);
+                       return llvm::any_of(head, [&](const Token& token) {
+                           return token.is_identifier() && token.text(text.content) == last;
+                       });
                    });
                });
     };
@@ -1330,14 +1296,16 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     continue;
                 }
                 auto line = line_of(*shard, offset);
-                auto text = line_text(id, line).ltrim();
-                if(text.consume_front("#")) {
-                    auto directive = text.ltrim().take_while(llvm::isAlpha);
+                auto& text = text_of(id);
+                if(auto start =
+                       line <= text.lines.size() ? text.directive_line(line - 1) : std::nullopt) {
+                    using enum LexicalInfo::Directive::Kind;
+                    auto directive = text.keywords[*start];
                     // Naming it there needs no definition.
                     if(directive == "define" || directive == "undef") {
                         continue;
                     }
-                    if(directive.starts_with("if") || directive.starts_with("elif")) {
+                    if(auto kind = text.directive_kind(*start); kind == If || kind == Else) {
                         tested = std::min(tested, line);
                         continue;
                     }
@@ -1562,8 +1530,8 @@ std::expected<void, std::string> move_entities(Facts& facts,
 }
 
 bool is_keyword(llvm::StringRef word) {
-    const static auto options = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx23);
-    static clang::IdentifierTable table(options);
+    static clang::IdentifierTable table(
+        raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx23));
     return table.get(word).getTokenID() != clang::tok::identifier;
 }
 

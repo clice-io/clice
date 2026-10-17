@@ -787,16 +787,17 @@ struct OutlineEntry {
 /// when it is a scope, a template parameter never.
 bool outline_lists(SymbolKind kind, bool unnamed, bool template_parameter);
 
-/// The outline the entries make in the file `content` holds, with its
-/// `#define` directives (`macros`, those the preprocessor read), module
-/// declarations and `#pragma mark`s (`marks`) as lexical_scan gives them:
+/// The outline the entries make in the file `content` holds, `lexical`
+/// its lexical scan, with its `#define` directives (`macros`, those the
+/// preprocessor read), module declarations and `#pragma mark`s (`marks`):
 /// the entries are named as the text writes them, members of one macro
 /// invocation listed under it, nested by where they are written, and
 /// sections made of the marks.
 auto outline(std::vector<OutlineEntry> entries,
-             llvm::ArrayRef<LocalSourceRange> macros,
+             const LexicalInfo& lexical,
+             llvm::ArrayRef<LexicalInfo::Directive> macros,
              llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules,
-             llvm::ArrayRef<LexicalInfo::PragmaMark> marks,
+             llvm::ArrayRef<LexicalInfo::Directive> marks,
              llvm::StringRef content,
              const clang::LangOptions& lang_opts,
              const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
@@ -853,14 +854,6 @@ auto inlay_hints_to_protocol(
 /// Include-directive links of the main file, in byte offsets; the
 /// reply edge converts them with the session's line map.
 auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink>;
-
-/// Find the filename-like argument of a preprocessor directive on the line
-/// containing `offset`. The offset may point at the directive/operator or
-/// inside its argument.
-auto find_directive_argument(llvm::StringRef content,
-                             std::uint32_t offset,
-                             const clang::LangOptions* lang_opts)
-    -> std::optional<LocalSourceRange>;
 
 /// Scan the main file's condition directives. `open_stack` seeds the
 /// nesting state (from a preceding preamble scan) and `resume_offset` is
@@ -1199,18 +1192,6 @@ auto extract_index_entries(const index::Shard& shard) -> IndexEntries;
 using IndexIncludeEdge = index::IncludeEdge;
 
 using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolRef>(index::SymbolHash)>;
-
-/// Language options for raw-lexing `path` without a compile command: C
-/// for .c files and when `c_only` says the served index was built by C
-/// parses only, C++ otherwise. A default-constructed LangOptions is C89
-/// — `class` would lex as an identifier. `standard` is the serving
-/// command's -std value when known: the entries were classified under it,
-/// and a newer standard's extra keywords (`concept` in C++17 code)
-/// would shadow them. Absent, unknown or contradicting values fall back
-/// to the driver's default standard — the dialect a -std-less command
-/// was indexed under.
-auto index_lang_options(llvm::StringRef path, bool c_only, llvm::StringRef standard = {})
-    -> const clang::LangOptions&;
 
 /// The tokens of `content` as the AST's would be, from what the index
 /// records: each symbol's classified from `resolve` at its occurrences, the

@@ -11,7 +11,7 @@ import :semantic.decls;
 import :semantic.display;
 import :support.markup;
 import :syntax.documentation;
-import :syntax.lexer;
+import :syntax.lexical_scan;
 
 namespace clice::feature {
 
@@ -607,8 +607,10 @@ auto macro_call_at(CompilationUnit& unit, std::uint32_t offset) -> std::optional
     }
 
     // Clang's copy of the buffer carries a NUL at the completion point:
-    // the text before it is the text as the user has it.
-    auto text = unit.focus_file().content().take_front(offset).str();
+    // the tokens before it are the text as the user has it.
+    auto focus = unit.focus_file();
+    auto content = focus.content();
+    const auto& lexical = focus.lexical();
 
     std::optional<MacroCall> innermost;
     std::uint32_t innermost_begin = 0;
@@ -621,24 +623,23 @@ auto macro_call_at(CompilationUnit& unit, std::uint32_t offset) -> std::optional
             continue;
         }
 
-        auto lexer = Lexer::from_line(text, begin, {.lang_opts = &unit.lang_options()});
-        auto token = lexer.advance();
-        while(!token.is_eof() && token.range.begin < begin) {
-            token = lexer.advance();
-        }
-        auto name = token.text(text);
-        if(lexer.advance().kind != clang::tok::l_paren) {
+        auto tokens = lexical.code_from(begin);
+        auto token = tokens.begin();
+        auto name = token->text(content);
+        ++token;
+        if(token == tokens.end() || token->range.begin >= offset ||
+           token->kind != clang::tok::l_paren) {
             continue;
         }
         MacroCall call{.macro = ref.macro, .name = name.str()};
 
         std::uint32_t depth = 1;
-        for(token = lexer.advance(); !token.is_eof() && depth > 0; token = lexer.advance()) {
-            if(token.kind == clang::tok::l_paren) {
+        for(++token; token != tokens.end() && token->range.begin < offset && depth > 0; ++token) {
+            if(token->kind == clang::tok::l_paren) {
                 depth += 1;
-            } else if(token.kind == clang::tok::r_paren) {
+            } else if(token->kind == clang::tok::r_paren) {
                 depth -= 1;
-            } else if(token.kind == clang::tok::comma && depth == 1) {
+            } else if(token->kind == clang::tok::comma && depth == 1) {
                 call.argument += 1;
             }
         }

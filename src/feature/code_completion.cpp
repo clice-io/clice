@@ -14,16 +14,11 @@ import :support.markup;
 import :syntax.documentation;
 import :syntax.completion;
 import :syntax.lexer;
+import :syntax.lexical_scan;
 
 namespace clice::feature {
 
 namespace {
-
-/// Bytes of multi-byte UTF-8 sequences count too: clang accepts extended
-/// characters in identifiers.
-bool is_identifier_char(char c) {
-    return clang::isAsciiIdentifierContinue(c) || static_cast<unsigned char>(c) >= 0x80;
-}
 
 /// The identifier the completion point sits in.
 struct CompletionPrefix {
@@ -369,30 +364,11 @@ bool unqualified_name(clang::CodeCompletionContext& context) {
 bool in_global_fragment(llvm::StringRef content,
                         std::uint32_t offset,
                         const clang::LangOptions& options) {
-    Lexer lexer(content, {.lang_opts = &options});
-    bool fragment = false;
-    for(auto token = lexer.advance(); !token.is_eof() && token.range.end <= offset;
-        token = lexer.advance()) {
-        if(token.is_eod()) {
-            continue;
-        }
-        if(token.is_directive_hash()) {
-            while(!token.is_eod() && !token.is_eof()) {
-                token = lexer.advance();
-            }
-            continue;
-        }
-        auto text = token.text(content);
-        if(text == "export") {
-            token = lexer.advance();
-            text = token.text(content);
-        }
-        if(text != "module" || lexer.advance().kind != clang::tok::semi) {
-            return false;
-        }
-        fragment = true;
-    }
-    return fragment;
+    using Kind = LexicalInfo::ModuleDeclaration::Kind;
+    auto modules = lexical_scan(content, options).modules;
+    return !modules.empty() && modules.front().kind == Kind::GlobalFragment &&
+           modules.front().keyword.end <= offset &&
+           (modules.size() == 1 || modules[1].keyword.begin >= offset);
 }
 
 /// What a member access reaches without an object: a static member.
@@ -1487,7 +1463,8 @@ public:
                 field_order = designator_order(record);
             }
             std::uint32_t passed = 0;
-            for(auto designator: written_designators(content, prefix.typed.begin)) {
+            for(auto designator:
+                written_designators(content, prefix.typed.begin, sema.getLangOpts())) {
                 if(designator.whole) {
                     designated.insert(designator.field);
                 }
