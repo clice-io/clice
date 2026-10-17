@@ -1107,7 +1107,7 @@ public:
 
     /// A keyword standing for a type it does not spell — `auto`,
     /// `decltype(auto)`, `decltype(expr)`, an abbreviated template's
-    /// `auto`, `this` — is an occurrence of the declarations that type names once
+    /// `auto` — is an occurrence of the declarations that type names once
     /// its pointers, references and arrays are stripped and a library's
     /// internal aliases seen through (`std::__detail::__unique_ptr_t`), as if
     /// the type were written there, with a Deduced relation: navigation from
@@ -1132,8 +1132,6 @@ public:
                proto && proto->hasTrailingReturn()) {
                 keyword = function->getTypeSpecStartLoc();
             }
-        } else if(const auto* self = entry.node.get<clang::CXXThisExpr>()) {
-            keyword = self->getLocation();
         }
         if(keyword.isInvalid() || entry.flags.in_instantiation) {
             return;
@@ -1145,7 +1143,7 @@ public:
         }
         // An init-capture's `auto` is implicit, at the captured name.
         auto spelling = unit.token_spelling(location);
-        if(spelling != "auto" && spelling != "decltype" && spelling != "this") {
+        if(spelling != "auto" && spelling != "decltype") {
             return;
         }
 
@@ -1154,8 +1152,7 @@ public:
             owner = semantics.node(owner).parent;
         }
         const auto* decl = semantics.node(owner).node.get<clang::Decl>();
-        const auto* self = entry.node.get<clang::CXXThisExpr>();
-        auto type = self ? self->getType() : types::deduced_type(entry.node.dyn_typed(), decl);
+        auto type = types::deduced_type(entry.node.dyn_typed(), decl);
         if(type.isNull()) {
             return;
         }

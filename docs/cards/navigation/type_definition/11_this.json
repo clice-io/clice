@@ -3,8 +3,8 @@
   "topic": "navigation",
   "subtopic": "type_definition",
   "title": "`this`",
-  "summary": "Go-to-type-definition on `this` reaches the class it points to",
-  "prose": "",
+  "summary": "Go-to-type-definition on `this` answers nothing, as every other navigation request on it does",
+  "prose": "The code spelling `this` already sits in the class it points to, so the\nkeyword leads nowhere new; clangd reaches the class.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -29,22 +29,7 @@
           "label": "self",
           "marker": "self",
           "value": {
-            "type_definition": [
-              {
-                "$place": "struct ⟦Widget⟧ {",
-                "path": "main.cpp",
-                "range": {
-                  "start": {
-                    "line": 0,
-                    "character": 7
-                  },
-                  "end": {
-                    "line": 0,
-                    "character": 13
-                  }
-                }
-              }
-            ]
+            "type_definition": []
           }
         }
       ]

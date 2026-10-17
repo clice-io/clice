@@ -226,7 +226,7 @@ tests/navigation/declaration/07_changed_signatures
 
 ## Go to Type Definition
 
-Navigate to the type definition of a symbol. Applicable to variables, parameters, fields, and any other named entity that has a type. A type alias reaches both the alias and the type it names, a pointer-like wrapper both the wrapper and the type it points to; a type's own name, and `this`, reach the type itself.
+Navigate to the type definition of a symbol. Applicable to variables, parameters, fields, and any other named entity that has a type. A type alias reaches both the alias and the type it names, a pointer-like wrapper both the wrapper and the type it points to; a type's own name reaches the type itself.
 
 <!-- BEGIN GENERATED ITEMS: navigation/type_definition -->
 
@@ -320,7 +320,10 @@ tests/navigation/type_definition/07_pointers_and_references
 
 **`this`**
 
-Go-to-type-definition on `this` reaches the class it points to
+Go-to-type-definition on `this` answers nothing, as every other navigation request on it does
+
+The code spelling `this` already sits in the class it points to, so the
+keyword leads nowhere new; clangd reaches the class.
 
 ```case
 tests/navigation/type_definition/11_this

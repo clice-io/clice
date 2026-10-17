@@ -206,7 +206,7 @@ tests/navigation/declaration/07_changed_signatures
 
 ## 跳转到类型定义
 
-跳转到符号的类型定义。适用于变量、参数、字段以及其他具有类型的命名实体。类型别名会同时跳转到别名本身和它所指代的类型，类似指针的包装类型会同时跳转到包装类型和它所指向的类型；类型自身的名称以及 `this` 会跳转到该类型本身。
+跳转到符号的类型定义。适用于变量、参数、字段以及其他具有类型的命名实体。类型别名会同时跳转到别名本身和它所指代的类型，类似指针的包装类型会同时跳转到包装类型和它所指向的类型；类型自身的名称会跳转到该类型本身。
 
 <!-- BEGIN GENERATED ITEMS: navigation/type_definition -->
 
@@ -300,7 +300,9 @@ tests/navigation/type_definition/07_pointers_and_references
 
 **`this`**
 
-在 `this` 上执行“跳转到类型定义”，会跳转到它所指向的类
+在 `this` 上执行“跳转到类型定义”不会返回结果，在它上面执行其他导航请求也是如此
+
+写有 `this` 的代码本身就位于它所指向的类中，从该关键字跳转不会到达任何新位置；clangd 则会跳转到该类。
 
 ```case
 tests/navigation/type_definition/11_this

@@ -95,8 +95,7 @@ inline std::string symbol_id(SymbolHash hash) {
 /// extent its leading attributes, and a symbol first reached through its
 /// template or a using-declaration is described by its own declaration;
 /// v35: symbols carry their semantic token class; v36: functions carry
-/// their signature, `this` carries an occurrence of its class with a
-/// Deduced relation, a deduced type sees through a library's internal
+/// their signature, a deduced type sees through a library's internal
 /// aliases, an abbreviated template's `auto` names no parameter, a virtual
 /// function named by qualification carries a Direct relation, and the
 /// global blob lists the files whose names of internal linkage the search

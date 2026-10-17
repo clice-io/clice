@@ -2213,9 +2213,9 @@ ZEST_CASE(DeducedKeywords) {
         }
     )");
 
+    // `this` names nothing: the code spelling it sits in the class.
     ZEXPECT(spelled_in("self") == std::vector<Spelled>{
-                                      {"this", SymbolKind::Struct, {RelationKind::Deduced}  },
-                                      {"size", SymbolKind::Field,  {RelationKind::Reference}},
+                                      {"size", SymbolKind::Field, {RelationKind::Reference}},
     });
     // The keyword stands for the type the only call passes; it names no
     // template parameter of its own.
