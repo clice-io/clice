@@ -444,6 +444,20 @@ public:
     /// Whether the config's selector forces a language clang compiles.
     bool forces_c_family(ConfigID id) const;
 
+    /// The precompiled header the config's command writes: its output, when
+    /// it compiles its input as a header (`-x c++-header`) or emits a PCH —
+    /// as CMake builds a target's precompiled headers from
+    /// `cmake_pch.hxx.cxx`.
+    std::optional<Spelling> pch_output(ConfigID id) const;
+
+    /// The precompiled headers the config's command may read: its
+    /// `-include-pch` file, and beside each header it forces in, the `.pch`
+    /// and the `.gch` that clang and GCC load in the header's place.
+    llvm::SmallVector<Spelling, 2> pch_inputs(ConfigID id) const;
+
+    /// The entries writing `pch` (pch_output), in storage order.
+    llvm::ArrayRef<CompilationEntry> pch_writers(Fid pch) const;
+
     /// Identity hash of a config (Frontend view + slot position + directory
     /// + schema salt), with the directory and the option values under the
     /// workspace root taken by their portable names so a moved checkout
@@ -574,6 +588,10 @@ private:
 
     /// Every source's entries, sorted by (file, source, ordinal).
     std::vector<CompilationEntry> entry_list;
+
+    /// The entries writing each precompiled header (see pch_writers),
+    /// rebuilt with entry_list.
+    llvm::DenseMap<Fid, llvm::SmallVector<CompilationEntry, 1>> writers;
 
     /// The path a command gives its input file as: a database's spelling
     /// of it (CompilationEntry::spelling), else its identity.

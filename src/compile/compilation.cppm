@@ -86,6 +86,10 @@ enum class CompilationKind : std::uint8_t {
     /// Build the preamble's PCH into output_file.
     Preamble,
 
+    /// Build the PCH of the whole file into output_file: a precompiled
+    /// header the build declares, which other files load.
+    PrecompiledHeader,
+
     /// Build the PCM of a unit providing a module into output_file.
     ModuleInterface,
 
@@ -142,8 +146,9 @@ struct CompilationInput {
     /// add_synthesized).
     std::optional<std::uint32_t> text_end;
 
-    /// The preamble PCH to load, and how many bytes of the focus file it
-    /// stands for.
+    /// The PCH to load, and how many bytes of the focus file it stands for:
+    /// a preamble's, or with no bytes a precompiled header the build
+    /// declares, which a preamble's PCH built over it chains onto.
     std::pair<std::string, std::uint32_t> pch;
 
     /// The PCMs to load, by module name.
@@ -191,7 +196,8 @@ struct CompilationParams {
 
     CompilationInput input;
 
-    /// Preamble and ModuleInterface: where the PCH or the PCM is written.
+    /// Preamble, PrecompiledHeader and ModuleInterface: where the PCH or
+    /// the PCM is written.
     std::string output_file;
 
     struct Completion {
@@ -281,8 +287,8 @@ public:
     /// that fails to load, ends a parse this way.
     bool fatal_error();
 
-    /// Preamble and ModuleInterface: whether clang produced the output
-    /// file. It is written when the unit is destroyed.
+    /// Preamble, PrecompiledHeader and ModuleInterface: whether clang
+    /// produced the output file. It is written when the unit is destroyed.
     bool has_output();
 
     /// Get the file id for given file. If such file doesn't exist, the result
@@ -560,12 +566,13 @@ private:
     /// See has_output.
     bool output_ready = false;
 
-    /// Preamble: whether the PCH instantiates the templates the preamble
-    /// uses; compile() clears it to build again when that raised an error.
+    /// Preamble and PrecompiledHeader: whether the PCH instantiates the
+    /// templates its code uses; compile() clears it to build again when
+    /// that raised an error.
     bool instantiate = true;
 
-    /// Preamble: how many errors clang had raised when the parse reached
-    /// the end of the focus file.
+    /// Preamble and PrecompiledHeader: how many errors clang had raised
+    /// when the parse reached the end of the focus file.
     std::optional<unsigned> errors_at_end;
 
     /// When the compile started.

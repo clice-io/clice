@@ -43,11 +43,12 @@ struct CompileOutput {
 /// over the cheap members), so a reader that copied the shared_ptr may
 /// keep using it across suspension points.
 struct ASTProjection {
-    /// Content key into Project.pch_cache for the document's PCH, if
-    /// any. The PCH itself is owned by Project (shared,
-    /// content-addressed); whether its preamble-derived state still
-    /// describes the buffer is checked against the blob's stored preamble
-    /// text at the point of use.
+    /// Content key into Project.pch_cache for the PCH the document's parse
+    /// loads, if any: its preamble's, else the precompiled header the build
+    /// declares for its command. The PCH itself is owned by Project
+    /// (shared, content-addressed); whether its preamble-derived state
+    /// still describes the buffer is checked against the blob's stored
+    /// preamble text at the point of use.
     std::optional<std::string> pch_key;
 
     /// The preamble key whose build failed for the latest compilation,

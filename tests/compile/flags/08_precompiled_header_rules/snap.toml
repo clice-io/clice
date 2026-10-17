@@ -1,0 +1,5 @@
+["a rule's define reaches the pch"."main.cpp"]
+diagnostics = []
+
+["a rule's define reaches the pch".width]
+definition = ["include/shapes.h │ inline double ⟦diameter⟧(double radius) {"]

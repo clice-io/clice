@@ -136,15 +136,27 @@ void ServerLiveSources::each_preamble(
 }
 
 void ServerLiveSources::each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const {
-    // Sessions with identical preambles share one blob; visit it once.
+    // Sessions with identical preambles share one blob; visit it once. A
+    // preamble's PCH built over the build's precompiled header indexes
+    // only what it adds: that header's blob is visited too.
     llvm::StringSet<> seen;
-    sessions.for_each([&](Fid file, const Session&) -> bool {
-        auto projection = projections.projection(file);
-        if(!projection || !projection->pch_key || !seen.insert(*projection->pch_key).second) {
+    auto visit_key = [&](llvm::StringRef key) {
+        if(key.empty() || !seen.insert(key).second) {
             return true;
         }
-        auto state = overlay_of(file);
+        auto state = pch.preamble_state(key);
         return state ? visit(*state) : true;
+    };
+    sessions.for_each([&](Fid file, const Session&) -> bool {
+        auto projection = projections.projection(file);
+        if(!projection || !projection->pch_key) {
+            return true;
+        }
+        if(!visit_key(*projection->pch_key)) {
+            return false;
+        }
+        auto it = project.pch_cache.find(*projection->pch_key);
+        return it == project.pch_cache.end() || visit_key(std::string(it->second.base));
     });
 }
 

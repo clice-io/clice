@@ -14,7 +14,9 @@ namespace clice {
 /// Preamble artifacts (a PCH and its pch.idx index, committed as one
 /// pair) as a task-graph family: one node per content-addressed pch_key,
 /// no edges, one round = one revalidation or build. The facade is the
-/// only surface consumers touch.
+/// only surface consumers touch. The precompiled headers the build
+/// declares (Build::pch_unit) are built here too, a whole file each, and
+/// a preamble's PCH is built over the one its command reads.
 ///
 /// The family owns the shared side of the policy: the pair-atomic store
 /// commit and cache metadata (a round runs to a real reply, so no
@@ -50,6 +52,12 @@ public:
         /// The built modules the preamble imports, whose inputs the PCH
         /// depends on.
         llvm::SmallVector<Fid> modules;
+        /// The key of the precompiled header the build declares for the
+        /// command (precompiled_header), built already: the preamble's PCH
+        /// is built over it, and what it read is the preamble's input too.
+        std::string base;
+        /// See worker::BuildPCHParams::whole_file.
+        bool whole_file = false;
     };
 
     enum class Outcome : std::uint8_t {
@@ -68,6 +76,17 @@ public:
     /// acquire observes exactly one attempt; retry policy stays with the
     /// caller.
     kota::task<Outcome> acquire(Request request);
+
+    /// The request for clice's own build of the precompiled header the
+    /// command of `unit` writes (Build::pch_unit): the unit's whole file,
+    /// under that command.
+    Request precompiled_header(const CommandRef& unit);
+
+    /// Whether the PCH registered under `key` read `file`: a parse of that
+    /// very file cannot load it — clang refuses a PCH whose input the parse
+    /// serves from a buffer, and the guard the PCH defines would skip the
+    /// file's text.
+    bool reads(llvm::StringRef key, Fid file) const;
 
     /// The stash-only half of acquire, for waits that must be recorded as
     /// graph edges: intern the key, re-dirty a stale clean node, and
@@ -138,10 +157,10 @@ public:
     /// loaded-state budget (see enforce_loaded_budget).
     std::shared_ptr<index::TUIndex> preamble_state(llvm::StringRef pch_key);
 
-    /// Unload pch.idx indexes beyond the budget (open documents + 2),
-    /// least recently used first. Without this every preamble key ever
-    /// touched keeps its blob mapped for the server's lifetime — tens of
-    /// MB per key on real projects, released by neither didClose nor
+    /// Unload pch.idx indexes beyond the budget (two per open document,
+    /// plus 2), least recently used first. Without this every preamble key
+    /// ever touched keeps its blob mapped for the server's lifetime — tens
+    /// of MB per key on real projects, released by neither didClose nor
     /// store eviction. Unloading only drops the entry's reference:
     /// consumers holding the shared_ptr finish safely, and the next use
     /// reopens the blob from disk.

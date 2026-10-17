@@ -30,7 +30,7 @@ Language Server Protocol features available when using clice as an editor backen
 | [Formatting](./formatting.md)             | 4 supported                               |
 | [C++20 Modules](./modules.md)             | 7 supported                               |
 | [Header Contexts](./header-contexts.md)   | 5 supported                               |
-| [Compilation](./compilation.md)           | 5 supported · 1 partial                   |
+| [Compilation](./compilation.md)           | 6 supported · 1 partial                   |
 
 <!-- END GENERATED OVERVIEW -->
 

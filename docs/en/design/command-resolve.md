@@ -135,7 +135,7 @@ CDB loading uses simdjson for streaming JSON parsing, processing entries one by 
 6. Parse and classify each option once into the structured configuration, absolutizing relative include paths against `directory`
 7. Deduplicate identical configurations into shared `ConfigID`s
 
-The parsing process also handles a special case: CMake-generated CDBs sometimes contain `-Xclang -include-pch -Xclang <pchfile>` sequences (CMake's PCH workaround), which are detected and discarded during loading.
+The parsing process also recognizes the precompiled headers CMake passes to cc1 directly: a unit's `-Xclang -include-pch -Xclang <pchfile>` and the `-Xclang -emit-pch` of the entry building it become structured options that no compile renders. The PCH on disk may come from another compiler, so clice builds its own from the command of the entry writing it (CMake's `cmake_pch.hxx.cxx`, also found through the `.gch` GCC writes beside a forced header), and every unit reading that PCH loads clice's build instead: the open file's preamble PCH chains onto it, and the background index parses over it.
 
 ### Toolchain Probing
 

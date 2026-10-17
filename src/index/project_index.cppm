@@ -164,8 +164,8 @@ struct ProjectIndex {
     /// those TUs (TUManifest::absent).
     llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> probed;
 
-    /// Derived from `manifests`: an input of an imported module -> the TUs
-    /// importing it (TUManifest::imports).
+    /// Derived from `manifests`: an input of an imported module or of a
+    /// loaded precompiled header -> the TUs reading it (TUManifest::imports).
     llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> importers;
 
     /// Derived from `manifests`: file -> (instantiation resolution -> how many

@@ -117,6 +117,26 @@ static worker::ArtifactBuildResult finish_artifact(llvm::StringRef label,
     return result;
 }
 
+/// What an artifact build read; a build that failed on errors read just as
+/// much. The source of a PCM, or of a whole file's PCH, is an input of the
+/// build all the same, and unlike a preamble's PCH key their cache keys
+/// embed no content: only the deps see the source change. Named by its
+/// identity like every other dep: the command spells it as written, which
+/// consumers cannot stat reliably.
+static std::vector<DepFile> artifact_deps(CompilationUnit& unit, bool source) {
+    std::vector<DepFile> deps;
+    if(!unit.completed()) {
+        return deps;
+    }
+    deps = unit.deps();
+    if(source) {
+        auto focus = unit.focus_file();
+        deps.emplace_back(std::string(unit.file_path(focus.file())),
+                          llvm::xxh3_64bits(focus.content()));
+    }
+    return deps;
+}
+
 static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams& params,
                                                     const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
@@ -127,16 +147,18 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     }
 
     CompilationParams cp{
-        .kind = CompilationKind::Preamble,
+        .kind = params.whole_file ? CompilationKind::PrecompiledHeader : CompilationKind::Preamble,
         .input = {.arguments = params.arguments,
                   .directory = params.directory,
                   .workspace = params.workspace},
         .output_file = *output,
         .stop = stop,
     };
-    cp.input.add_remapped_file(params.file, params.content, params.preamble_bound);
+    if(!params.whole_file) {
+        cp.input.add_remapped_file(params.file, params.content, params.preamble_bound);
+    }
     cp.input.add_synthesized(params.synthesized);
-    use_artifacts(cp.input, {}, params.pcms);
+    use_artifacts(cp.input, {params.pch, 0}, params.pcms);
 
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
@@ -146,12 +168,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     // blob nobody will read. The tmp file is removed like any failed build.
     bool success = unit->has_output() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit->build_at().count();
-
-    // A build that failed on errors still reports what it read.
-    std::vector<DepFile> deps;
-    if(unit->completed()) {
-        deps = unit->deps();
-    }
+    auto deps = artifact_deps(*unit, params.whole_file);
 
     std::vector<std::string> errors;
     if(!success)
@@ -160,7 +177,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     std::string blob;
     ScopedTimer index_timer;
     if(success) {
-        blob = serialize_preamble_index(*unit, params.preamble_bound);
+        blob = serialize_preamble_index(*unit, params.whole_file ? 0 : params.preamble_bound);
     }
     auto index_ms = index_timer.ms();
 
@@ -227,20 +244,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
     auto compile_ms = compile_timer.ms();
     bool success = unit->has_output() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit->build_at().count();
-
-    // A build that failed on errors still reports what it read.
-    std::vector<DepFile> deps;
-    if(unit->completed()) {
-        deps = unit->deps();
-        // deps() collects include targets only; the module source is a
-        // build input of its PCM all the same, and unlike the PCH key the
-        // PCM cache key embeds no content: only the deps see the source
-        // change. Named by its identity like every other dep: the command
-        // spells it as written, which consumers cannot stat reliably.
-        auto focus = unit->focus_file();
-        deps.emplace_back(std::string(unit->file_path(focus.file())),
-                          llvm::xxh3_64bits(focus.content()));
-    }
+    auto deps = artifact_deps(*unit, true);
 
     std::vector<std::string> errors;
     if(!success)
@@ -401,7 +405,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
         .stop = stop,
     };
     cp.input.add_synthesized(params.synthesized);
-    use_artifacts(cp.input, {}, params.pcms);
+    use_artifacts(cp.input, {params.pch, 0}, params.pcms);
 
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));

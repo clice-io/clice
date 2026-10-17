@@ -31,6 +31,29 @@ std::uint64_t PCHFamily::intern(llvm::StringRef pch_key) {
     return it->second;
 }
 
+PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit) {
+    // The key names the build but the file's content, which the build's
+    // inputs cover, its own source among them.
+    Request request{.file = std::string(project.file_table.resolve(unit.file)),
+                    .directory = project.cdb.config(unit.config).directory,
+                    .whole_file = true};
+    auto argv = project.cdb.render(unit);
+    request.arguments.assign(argv.begin(), argv.end());
+    request.pch_key = cache_key({clang::getClangFullVersion(),
+                                 pch_build_rule,
+                                 project.build.active_configuration(),
+                                 request.directory,
+                                 request.file,
+                                 canonicalize(request.arguments)});
+    return request;
+}
+
+bool PCHFamily::reads(llvm::StringRef key, Fid file) const {
+    auto it = project.pch_cache.find(key);
+    return it != project.pch_cache.end() &&
+           llvm::any_of(it->second.deps, [&](const DepState& dep) { return dep.path_id == file; });
+}
+
 NodeId PCHFamily::prepare(Request request) {
     auto key_id = intern(request.pch_key);
     auto id = node(key_id);
@@ -132,10 +155,12 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // A preamble whose PCH build killed a worker is refused before the
     // dispatch: the artifact is shared, so one document's quarantine
     // cannot contain it — every session with this preamble would burn a
-    // worker of its own. The key is content-derived: editing the poison
-    // starts a fresh key. Consumption strikes park the key the same way:
-    // rebuilding a pair whose every rebuild gets blamed again would fare
-    // no better (see blame).
+    // worker of its own. A preamble's key is content-derived: editing the
+    // poison starts a fresh key. A precompiled header the build declares
+    // is keyed by its command alone, so its refusal lasts the session:
+    // its consumers parse the header it holds instead. Consumption strikes
+    // park the key the same way: rebuilding a pair whose every rebuild gets
+    // blamed again would fare no better (see blame).
     if(build_crashes.contains(pch_key)) {
         LOG_WARN("PCH build for {} refused: key {} crashed a worker", request.file, pch_key);
         co_return RoundOutcome::Failed;
@@ -171,17 +196,28 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     bp.arguments = std::move(request.arguments);
     bp.content = std::move(request.content);
     bp.preamble_bound = request.preamble_bound;
+    bp.whole_file = request.whole_file;
     bp.synthesized = std::move(request.synthesized);
     bp.pcms = std::move(request.pcms);
     bp.output_path = pending.tmp_path;
     bp.index_output_path = pending_idx.tmp_path;
 
-    // What the imported modules' PCMs were built from as the build starts:
-    // one rebuilt meanwhile stales the PCH.
+    // What the imported modules' PCMs and the PCH built over were built
+    // from as the build starts: one rebuilt meanwhile stales the PCH.
     auto imported = project.module_inputs(request.modules);
+    DepsSnapshot base;
+    if(!request.base.empty()) {
+        auto it = project.pch_cache.find(request.base);
+        if(it == project.pch_cache.end() || it->second.path.empty()) {
+            LOG_DEBUG("PCH build for {} skipped: the PCH it builds over is gone", bp.file);
+            co_return RoundOutcome::Failed;
+        }
+        bp.pch = it->second.path;
+        base = it->second.deps;
+    }
     auto inputs = [&](const worker::ArtifactBuildResult& built) {
         auto deps = capture_deps_snapshot(project.file_table, built.deps, built.build_at);
-        merge_deps(deps, {&imported});
+        merge_deps(deps, {&imported, &base});
         return deps;
     };
 
@@ -191,10 +227,13 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // over IPC while this frame keeps awaiting the real reply
     // (contract 2). A crash is recorded on the key; its
     // consumers book it on their documents when they find it there.
+    // A background index unit waiting on a precompiled header the build
+    // declares leaves the interactive work its priority.
+    auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
     auto result = co_await deliver(
         pool,
         false,
-        [&] { return pool.send_stateless(bp, worker::Priority::High, ctx.token()); },
+        [&] { return pool.send_stateless(bp, priority, ctx.token()); },
         [&](const kota::ipc::Error& error) { build_crashes.insert_or_assign(pch_key, error); });
 
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
@@ -284,6 +323,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     st.superseded = std::exchange(st.blob, std::move(blob));
     st.path = *committed.pch_path;
     st.bound = request.preamble_bound;
+    st.base = request.base;
     st.deps = inputs(result.value());
     st.index_path = *committed.index_path;
     // Replace the previous blob's mapping (same key, rebuilt content);
@@ -387,16 +427,18 @@ void PCHFamily::touch_loaded_state(llvm::StringRef pch_key) {
 }
 
 void PCHFamily::enforce_loaded_budget() {
-    // Two extra slots over the open-document count: a closed file's
-    // recently used state survives a quick close/reopen, and a shared key
-    // serving several documents stays warm while its consumers churn.
+    // Two keys per open document — its preamble's and the build's
+    // precompiled header that preamble is built over — and two extra
+    // slots: a closed file's recently used state survives a quick
+    // close/reopen, and a shared key serving several documents stays warm
+    // while its consumers churn.
     // Open documents' keys always fit the budget, so an unload can only
     // hit keys past the working set; the reload an unlucky consumer then
     // pays (mmap + verification, on the event loop) is the accepted cost
     // of bounding tens of MB per key.
     // Unconnected (tests, tools) assumes a small editor-like working set.
     constexpr std::size_t default_open_documents = 6;
-    std::size_t budget = 2 + (open_documents ? open_documents() : default_open_documents);
+    std::size_t budget = 2 + 2 * (open_documents ? open_documents() : default_open_documents);
 
     std::size_t kept = 0;
     std::size_t i = 0;

@@ -413,6 +413,36 @@ bool Build::declared(Fid file) {
     return default_command(path).has_value() && default_source(path);
 }
 
+std::optional<CommandRef> Build::pch_unit(ConfigID config,
+                                          llvm::ArrayRef<CanonicalRef> paths,
+                                          llvm::ArrayRef<std::string> extra_prepend,
+                                          llvm::ArrayRef<std::string> extra_append) {
+    if(cdb.pch_output(config)) {
+        return std::nullopt;
+    }
+    for(auto& input: cdb.pch_inputs(config)) {
+        auto pch = files.find(input);
+        if(!pch) {
+            continue;
+        }
+        for(auto& writer: cdb.pch_writers(*pch)) {
+            bool active = llvm::any_of(entries(writer.file), [&](const CompilationEntry& entry) {
+                return entry.source == writer.source && entry.ordinal == writer.ordinal;
+            });
+            if(active) {
+                return resolve(writer.file,
+                               writer.config,
+                               CommandSource::CDBExact,
+                               paths,
+                               files.resolve(writer.file),
+                               extra_prepend,
+                               extra_append);
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 llvm::SmallVector<const CompiledRule*> Build::covering_rules() const {
     llvm::SmallVector<const CompiledRule*> result;
     for(auto& rule: config.compiled_rules) {

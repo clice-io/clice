@@ -8,6 +8,7 @@ import :compile.compilation;
 import :project.command_resolver;
 import :project.index_store;
 import :project.project;
+import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.graph;
 import :sched.index.pending_table;
@@ -25,8 +26,9 @@ namespace clice {
 /// late joiner with a different plan cannot arise — that protocol comes
 /// with the first concurrent consumer (in-server background checks).
 ///
-/// The family owns the run policy: command resolution, module-PCM edges,
-/// the worker dispatch, and the store merge with its supersede gate. The
+/// The family owns the run policy: command resolution, edges to the
+/// module PCMs and to the precompiled header the build declares, the
+/// worker dispatch, and the store merge with its supersede gate. The
 /// pump owns the debt table, the queue and the requeue budget; it reads
 /// this family's per-attempt outcome to update them.
 class TURunFamily {
@@ -35,6 +37,7 @@ public:
                 Project& project,
                 CommandResolver& commands,
                 PCMFamily& pcm,
+                PCHFamily& pch,
                 IndexStore& store,
                 WorkerPool& pool);
 
@@ -128,6 +131,7 @@ private:
     Project& project;
     CommandResolver& commands;
     PCMFamily& pcm;
+    PCHFamily& pch;
     IndexStore& store;
     WorkerPool& pool;
 

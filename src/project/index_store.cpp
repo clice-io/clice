@@ -199,6 +199,8 @@ struct CachePCHEntry {
     std::optional<std::string> blob;
     std::uint32_t bound;
     std::vector<CacheDepEntry> deps;
+    /// See PCHState::base; absent for none.
+    std::optional<std::string> base;
 };
 
 struct CachePCMEntry {
@@ -265,6 +267,9 @@ std::string IndexStore::serialize_artifacts() {
         entry.blob = st.blob;
         entry.bound = st.bound;
         dump_deps(st.deps, entry.deps);
+        if(!st.base.empty()) {
+            entry.base = st.base;
+        }
         data.pch.push_back(std::move(entry));
     }
 
@@ -348,6 +353,7 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         st.path = *pch_path;
         st.bound = entry.bound;
         st.deps = load_deps(entry.deps);
+        st.base = entry.base.value_or("");
         st.index_path = *index_path;
     }
 
@@ -668,12 +674,12 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         manifest.absent.push_back(project.file_table.intern_version(fid, 0));
     }
 
-    // The imported modules' inputs never enter the parse's include tree,
-    // yet each is an input of the parse all the same. Not stale on
-    // arrival like the parse's own lookups: a reindex would read the same
-    // PCM, which only a change event reaching the module rebuilds. An
-    // input the module's build could not version reads as stale until a
-    // rebuild names its bytes.
+    // The inputs of the imported modules and of the precompiled header
+    // never enter the parse's include tree, yet each is an input of the
+    // parse all the same. Not stale on arrival like the parse's own
+    // lookups: a reindex would read the same PCM, which only a change
+    // event reaching the module rebuilds. An input the module's build
+    // could not version reads as stale until a rebuild names its bytes.
     for(auto& dep: imports) {
         if(dep.missing) {
             manifest.absent.push_back(project.file_table.intern_version(dep.path_id, 0));

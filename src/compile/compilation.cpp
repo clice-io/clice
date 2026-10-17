@@ -35,8 +35,12 @@ CompilationUnit::~CompilationUnit() {
     }
 }
 
+static bool writes_pch(CompilationKind kind) {
+    return kind == CompilationKind::Preamble || kind == CompilationKind::PrecompiledHeader;
+}
+
 static bool writes_output(CompilationKind kind) {
-    return kind == CompilationKind::Preamble || kind == CompilationKind::ModuleInterface;
+    return writes_pch(kind) || kind == CompilationKind::ModuleInterface;
 }
 
 std::unique_ptr<clang::CompilerInvocation>
@@ -174,10 +178,11 @@ std::unique_ptr<clang::CompilerInvocation>
     }
 
     switch(params.kind) {
-        case CompilationKind::Preamble: {
+        case CompilationKind::Preamble:
+        case CompilationKind::PrecompiledHeader: {
             front_opts.OutputFile = params.output_file;
             front_opts.ProgramAction = clang::frontend::GeneratePCH;
-            pp_opts.GeneratePreamble = true;
+            pp_opts.GeneratePreamble = params.kind == CompilationKind::Preamble;
             // Without recorded mtimes clang checks each input by its size
             // alone. Freshness is the master's call, made on content: a
             // same-bytes rewrite (`git stash pop`, a branch switch) moves
@@ -365,7 +370,7 @@ public:
         // The PCH writer stores each import with the location where the
         // preprocessor made its module visible, and the reader skips the
         // imports without one; a C++20 import is made visible by Sema alone.
-        if(unit.params.kind == CompilationKind::Preamble) {
+        if(writes_pch(unit.params.kind)) {
             auto& pp = unit.instance->getPreprocessor();
             for(auto* import: context.local_imports()) {
                 pp.makeModuleVisible(import->getImportedModule(), import->getLocation());
@@ -400,11 +405,38 @@ private:
     CompilationUnit& unit;
 };
 
+/// Whether clang refused the unit's precompiled header for the options it
+/// was built under, which conflict with the unit's own — not for its
+/// bytes, a failure the master must still see to retract the PCH.
+static bool refused_for_options(CompilationUnit& unit) {
+    return llvm::any_of(unit.diagnostics(), [](const Diagnostic& diag) {
+        if(diag.id.source != DiagnosticSource::Clang) {
+            return false;
+        }
+        switch(diag.id.value) {
+            case clang::diag::err_ast_file_codegenopt_mismatch:
+            case clang::diag::err_ast_file_codegenopt_value_mismatch:
+            case clang::diag::err_ast_file_diagopt_mismatch:
+            case clang::diag::err_ast_file_langopt_mismatch:
+            case clang::diag::err_ast_file_langopt_value_mismatch:
+            case clang::diag::err_ast_file_macro_def_conflict:
+            case clang::diag::err_ast_file_macro_def_undef:
+            case clang::diag::err_ast_file_pp_detailed_record:
+            case clang::diag::err_ast_file_targetopt_feature_mismatch:
+            case clang::diag::err_ast_file_targetopt_mismatch:
+            case clang::diag::err_ast_file_undef: return true;
+            default: return false;
+        }
+    });
+}
+
 static std::unique_ptr<clang::FrontendAction> frontend_action(CompilationKind kind,
                                                               bool reduced_bmi) {
     switch(kind) {
         case CompilationKind::Preprocess: return std::make_unique<clang::PreprocessOnlyAction>();
-        case CompilationKind::Preamble: return std::make_unique<clang::GeneratePCHAction>();
+        case CompilationKind::Preamble:
+        case CompilationKind::PrecompiledHeader:
+            return std::make_unique<clang::GeneratePCHAction>();
         case CompilationKind::ModuleInterface:
             if(reduced_bmi) {
                 return std::make_unique<clang::GenerateReducedModuleInterfaceAction>();
@@ -454,11 +486,6 @@ CompilationStatus CompilationUnit::run() {
         return CompilationStatus::SetupFail;
     }
 
-    if(params.kind == CompilationKind::Completion) {
-        assert(params.completion.consumer && "a completion needs its consumer");
-        instance->setCodeCompletionConsumer(params.completion.consumer.release());
-    }
-
     action = std::make_unique<ParseAction>(
         frontend_action(params.kind, instance->getFrontendOpts().GenReducedBMI),
         *this);
@@ -471,7 +498,11 @@ CompilationStatus CompilationUnit::run() {
         return CompilationStatus::SetupFail;
     }
 
+    // Handed over only now: a compile that could not start keeps it for
+    // another try (see compile()).
     if(params.kind == CompilationKind::Completion) {
+        assert(params.completion.consumer && "a completion needs its consumer");
+        instance->setCodeCompletionConsumer(params.completion.consumer.release());
         complete_at(*instance, params.completion.offset);
     }
 
@@ -507,7 +538,7 @@ CompilationStatus CompilationUnit::run() {
     // preamble uses, and checks little else: the end of the last
     // declaration's body, an unclosed `#pragma clang attribute`. Their
     // errors cost a needless rebuild (see compile()).
-    if(params.kind == CompilationKind::Preamble && instantiate) {
+    if(writes_pch(params.kind) && instantiate) {
         instance->getPreprocessor().setTokenWatcher([this](const clang::Token& token) {
             if(token.is(clang::tok::eof) && !errors_at_end) {
                 errors_at_end = instance->getDiagnostics().getNumErrors();
@@ -527,12 +558,14 @@ CompilationStatus CompilationUnit::run() {
         return CompilationStatus::Cancelled;
     }
 
-    /// A PCM build with errors writes nothing. A PCH is written in spite of
-    /// its preamble's errors; clang writes none only after a module failed
-    /// to load.
+    /// A PCM build with errors writes nothing. A preamble's PCH is written
+    /// in spite of its errors; clang writes none only after a module failed
+    /// to load. A precompiled header with errors serves no file: its
+    /// consumers, compiled over it, would never report them.
     if(params.kind == CompilationKind::Preamble) {
         output_ready = !instance->hadModuleLoaderFatalFailure();
-    } else if(params.kind == CompilationKind::ModuleInterface) {
+    } else if(params.kind == CompilationKind::ModuleInterface ||
+              params.kind == CompilationKind::PrecompiledHeader) {
         output_ready = !instance->getDiagnostics().hasErrorOccurred();
     }
 
@@ -557,6 +590,28 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
 
     std::unique_ptr<CompilationUnit> unit(new CompilationUnit(std::move(params)));
     unit->outcome = unit->run();
+
+    // A precompiled header the build declares that clang refuses for this
+    // parse — the unit's own flags conflict with the ones it was built
+    // under, where GCC takes the .gch for unusable and ignores it — leaves
+    // the header the command forces in to parse what it holds.
+    if(auto& [pch, bound] = unit->params.input.pch;
+       unit->setup_fail() && !pch.empty() && bound == 0 && refused_for_options(*unit)) {
+        LOG_WARN("Compiling without the precompiled header {}, which clang refused", pch);
+        auto& built = unit->params;
+        CompilationParams again{
+            .kind = built.kind,
+            .input = built.input,
+            .output_file = built.output_file,
+            .completion = std::move(built.completion),
+            .tidy = built.tidy,
+            .stop = built.stop,
+        };
+        again.input.pch = {};
+        unit.reset();
+        unit.reset(new CompilationUnit(std::move(again)));
+        unit->outcome = unit->run();
+    }
 
     // Instantiated where the preamble ends, a template misses what the focus
     // file declares later, which clang compiling the whole file sees: an

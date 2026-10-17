@@ -1,0 +1,61 @@
+[navigation.chained]
+definition = ["include/shapes.h │ inline double ⟦area⟧(const Circle& circle) {"]
+
+[navigation.use]
+definition = ["include/shapes.h │ inline double ⟦area⟧(const Circle& circle) {"]
+
+[navigation.tool]
+definition = ["include/shapes.h │ inline double ⟦area⟧(const Circle& circle) {"]
+
+["units share the target's pch"."src/main.cpp"]
+diagnostics = []
+
+["units share the target's pch"."src/area.cpp"]
+diagnostics = []
+
+["units share the target's pch"."src/tool.cpp"]
+diagnostics = []
+
+["units share the target's pch".area]
+references = [
+    "inline double ⟦area⟧(const Circle& circle) {",
+    "return ⟦area⟧(circle);",
+    "src/area.cpp │ return 2 * ⟦area⟧(circle);",
+    "src/main.cpp │ return ⟦area⟧(unit) > 3 ? 0 : 1;",
+    "src/tool.cpp │ return ⟦area⟧(Circle{1.0});",
+]
+
+["units share the target's pch".completion.completion]
+items = [
+    { label = "area(const Circle &circle)", kind = "Function", detail = "double" },
+]
+
+["the targets index"."$ clice index"]
+stdout = '''
+Indexed 5 translation units in #s: 6 file shards (# KB), 9 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a header of the pch changes"."main.cpp"]
+errors = [
+    {
+        at = "return ⟦area⟧(unit) > 3 ? 0 : 1;",
+        severity = "error",
+        message = "use of undeclared identifier 'area'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]
+
+["a header of the pch changes".circle_area]
+workspace_symbols = [
+    {
+        name = "circle_area(const Circle &circle)",
+        kind = "Function",
+        at = "include/shapes.h │ inline double ⟦circle_area⟧(const Circle& circle) {",
+    },
+]
+
+["a restart keeps the pch a preamble is built over".chained]
+definition = ["include/shapes.h │ inline double ⟦area⟧(const Circle& circle) {"]

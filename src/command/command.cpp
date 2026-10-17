@@ -459,7 +459,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
     std::vector<LocalArg> args;
     args.reserve(staged.size() + 1);
     bool slot_placed = false;
-    bool remove_pch = false;
+    bool included_pch = false;
 
     auto place_slot = [&] {
         args.push_back({.opt_id = option::OPT_INPUT, .cls = ArgClass::Input});
@@ -507,18 +507,29 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
             continue;
         }
 
-        /// CMake's Xclang PCH workaround:
-        /// -Xclang -include-pch -Xclang <pchfile> → discard both pairs.
-        /// The PCH may be produced by GCC or a different clang version we
-        /// cannot load; the plain -include survives and our own preamble
-        /// PCH covers it.
+        /// CMake passes a target's precompiled header to cc1 directly:
+        /// `-Xclang -include-pch -Xclang <pch>` in its units' commands,
+        /// `-Xclang -emit-pch` in the one building it. Both take the
+        /// driver's spelling, an argument clice manages itself: the file
+        /// on disk may come from GCC or another clang, so a unit loads
+        /// clice's own build of it instead (Build::pch_unit).
         if(is_xclang_option(id) && parsed->values.size() == 1) {
-            if(remove_pch) {
-                remove_pch = false;
+            llvm::StringRef value = parsed->values[0];
+            if(included_pch) {
+                included_pch = false;
+                args.push_back({
+                    .opt_id = option::OPT_include_pch,
+                    .cls = ArgClass::Discarded,
+                    .values = {anchored(option::OPT_include_pch, value, anchor, strings).data()},
+                });
                 continue;
             }
-            if(std::string_view(parsed->values[0]) == "-include-pch") {
-                remove_pch = true;
+            if(value == "-include-pch") {
+                included_pch = true;
+                continue;
+            }
+            if(value == "-emit-pch") {
+                args.push_back({.opt_id = option::OPT_emit_pch, .cls = ArgClass::Discarded});
                 continue;
             }
         }
@@ -668,8 +679,14 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
             case ArgClass::Diagnostics: render_portable(arg); break;
             case ArgClass::Unknown: append(arg.spelling); break;
             case ArgClass::Input: append("\x01input"); break;
-            case ArgClass::Codegen:
-            case ArgClass::Discarded: break;
+            case ArgClass::Codegen: break;
+            // The precompiled header a command reads decides what it
+            // compiles, though no render passes it on.
+            case ArgClass::Discarded:
+                if(arg.opt_id == option::OPT_include_pch) {
+                    render_portable(arg);
+                }
+                break;
         }
     }
 }
@@ -702,6 +719,13 @@ void CompilationDatabase::rebuild_entry_list() {
     ranges::sort(entry_list, [](const CompilationEntry& a, const CompilationEntry& b) {
         return std::tie(a.file, a.source, a.ordinal) < std::tie(b.file, b.source, b.ordinal);
     });
+
+    writers.clear();
+    for(auto& entry: entry_list) {
+        if(auto output = pch_output(entry.config)) {
+            writers[file_table.intern(*output)].push_back(entry);
+        }
+    }
 }
 
 /// The registered path of a source: the database file (a path without the
@@ -1024,6 +1048,55 @@ static bool cxx_driver(const CompileConfig& config) {
     llvm::StringRef name = lowered;
     name.consume_back(".exe");
     return name.rtrim("0123456789.-").ends_with("++");
+}
+
+std::optional<Spelling> CompilationDatabase::pch_output(ConfigID id) const {
+    namespace types = clang::driver::types;
+    auto language = forced_language(id);
+    bool emits = !language.empty() &&
+                 types::onlyPrecompileType(types::lookupTypeForTypeSpecifier(language.data()));
+    const char* output = nullptr;
+    for(auto& arg: config(id).args) {
+        if(arg.opt_id == option::OPT_emit_pch) {
+            emits = true;
+        } else if(arg.opt_id == option::OPT_o && arg.values.size() == 1) {
+            output = arg.values[0];
+        }
+    }
+    if(!emits || !output) {
+        return std::nullopt;
+    }
+    return Spelling::absolute(output);
+}
+
+llvm::SmallVector<Spelling, 2> CompilationDatabase::pch_inputs(ConfigID id) const {
+    auto& args = config(id).args;
+    auto directory = Spelling::absolute(config(id).directory);
+    for(auto& arg: args) {
+        if(arg.opt_id == option::OPT_working_directory && arg.values.size() == 1) {
+            directory = Spelling::absolute(arg.values[0]);
+        }
+    }
+    llvm::SmallVector<Spelling, 2> inputs;
+    for(auto& arg: args) {
+        if(arg.values.size() != 1) {
+            continue;
+        }
+        if(arg.opt_id == option::OPT_include_pch) {
+            inputs.push_back(Spelling::absolute(arg.values[0]));
+        } else if(arg.opt_id == option::OPT_include) {
+            Spelling header(arg.values[0], directory);
+            inputs.push_back(Spelling::absolute(header.str() + ".pch"));
+            inputs.push_back(Spelling::absolute(header.str() + ".gch"));
+        }
+    }
+    return inputs;
+}
+
+llvm::ArrayRef<CompilationEntry> CompilationDatabase::pch_writers(Fid pch) const {
+    auto it = writers.find(pch);
+    return it != writers.end() ? llvm::ArrayRef<CompilationEntry>(it->second)
+                               : llvm::ArrayRef<CompilationEntry>();
 }
 
 bool CompilationDatabase::forces_c_family(ConfigID id) const {

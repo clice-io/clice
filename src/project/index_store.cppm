@@ -151,8 +151,8 @@ public:
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write shard blobs only for variants no shard stores yet
     /// — a re-index whose entries are unchanged records its contributions and
-    /// touches nothing else. `imports` is what the PCMs the parse read
-    /// were built from (Project::module_inputs).
+    /// touches nothing else. `imports` is what the PCMs and the
+    /// precompiled header the parse read were built from.
     std::expected<Report, MergeError> merge(const void* tu_index_data,
                                             std::size_t size,
                                             llvm::ArrayRef<DepState> imports);

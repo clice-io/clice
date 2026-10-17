@@ -135,7 +135,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 6. 将每个选项解析、分类一次并存入结构化配置，同时以 `directory` 为基准将相对包含路径转换为绝对路径
 7. 对相同配置进行去重，使其共享 `ConfigID`
 
-解析过程还处理一个特殊情况：CMake 生成的 CDB 有时包含 `-Xclang -include-pch -Xclang <pchfile>` 序列（CMake 的 PCH 变通方案），加载时会检测并丢弃这些序列。
+解析过程还会识别 CMake 直接传给 cc1 的预编译头文件：翻译单元的 `-Xclang -include-pch -Xclang <pchfile>`，以及构建该 PCH 的条目中的 `-Xclang -emit-pch`，都会成为结构化选项，任何编译都不会把它们渲染到命令中。磁盘上的 PCH 可能出自其他编译器，因此 clice 会用写出它的那个条目的命令自行构建一份（在 CMake 中即 `cmake_pch.hxx.cxx` 的条目；GCC 在强制包含的头文件旁写出的 `.gch` 同样能用来找到该条目），读取该 PCH 的每个翻译单元都改为加载 clice 构建的版本：打开文件的 Preamble PCH 以链式 PCH 的方式接在它之后，后台索引也在它之上解析。
 
 ### 工具链探测
 

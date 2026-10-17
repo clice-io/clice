@@ -19,6 +19,7 @@ import :index.tu_index;
 import :project.command_resolver;
 import :project.index_store;
 import :project.project;
+import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.families.turun;
 import :sched.graph;
@@ -51,8 +52,9 @@ struct IndexerFixture {
     CommandResolver commands{project};
     TaskGraph graph;
     PCMFamily pcm{graph, project, commands, pool};
+    PCHFamily pch{graph, project, pool};
     IndexStore index_store{loop, project, commands};
-    TURunFamily turun{graph, project, commands, pcm, index_store, pool};
+    TURunFamily turun{graph, project, commands, pcm, pch, index_store, pool};
     IndexPump pump{loop, project, turun, index_store, pool};
 
     IndexerFixture() {

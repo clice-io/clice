@@ -756,6 +756,64 @@ int main() { return four(); }
     ZEXPECT(defines_specialization(*preamble, "twice"));
 }
 
+ZEST_CASE(RefusedPCHFallsBack) {
+    add_file("shapes.h", R"(
+#pragma once
+inline int scale() { return SCALE; }
+)");
+    add_focus("main.cpp", R"(
+#include "shapes.h"
+
+int main() { return scale(); }
+)");
+    prepare();
+
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
+    overlay->pushOverlay(vfs);
+    params.input.vfs = overlay;
+
+    auto pch_path = artifact("pch");
+    CompilationParams header{
+        .kind = CompilationKind::PrecompiledHeader,
+        .input = params.input,
+        .output_file = pch_path,
+    };
+    auto& arguments = header.input.arguments;
+    arguments.pop_back();
+    arguments.back() = "c++-header";
+    arguments.push_back("-DSCALE=1");
+    arguments.push_back(TestVFS::path("shapes.h"));
+    ZASSERT(clice::compile(std::move(header))->has_output());
+
+    auto compile_with = [&](llvm::StringRef define) {
+        CompilationParams consumer{.kind = CompilationKind::Content, .input = params.input};
+        consumer.input.arguments.insert(consumer.input.arguments.end() - 1, define.str());
+        consumer.input.pch = {pch_path, 0};
+        return clice::compile(std::move(consumer));
+    };
+    auto scale_from_pch = [](CompilationUnit& unit) {
+        auto found = unit.tu()->lookup(&unit.context().Idents.get("scale"));
+        return !found.empty() && found.front()->isFromASTFile();
+    };
+
+    auto matching = compile_with("-DSCALE=1");
+    ZASSERT(matching->completed());
+    ZEXPECT(scale_from_pch(*matching));
+
+    auto conflicting = compile_with("-DSCALE=2");
+    ZASSERT(conflicting->completed());
+    ZEXPECT(collect_errors(*conflicting).empty());
+    ZEXPECT(!scale_from_pch(*conflicting));
+
+    // Bytes clang cannot read are the PCH's fault: the failure stays.
+    auto blob = read_file(pch_path);
+    ZASSERT(blob.operator bool());
+    ZASSERT(!vfs::write(pch_path, std::string(blob->size(), '\x5A')));
+    auto corrupt = compile_with("-DSCALE=1");
+    ZEXPECT((corrupt->setup_fail() || corrupt->fatal_error()));
+}
+
 };  // ZEST_SUITE(Compiler)
 
 ZEST_SUITE(PreambleHash) {

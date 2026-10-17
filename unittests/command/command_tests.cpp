@@ -920,6 +920,34 @@ ZEST_CASE(WorkingDirectoryAnchorsIncludes) {
     ZEXPECT((path::is_rooted(value) && llvm::StringRef(value).ends_with("/project/build")));
 };
 
+ZEST_CASE(WorkingDirectoryPCHOutput) {
+    /// The precompiled header a command writes is spelled where the
+    /// compile runs, as the one a command reads is, and the one GCC finds
+    /// beside a forced header.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command(
+        "/project",
+        "/project/pch.cxx",
+        "clang++ -working-directory build -x c++-header -o app.pch /project/pch.cxx"sv);
+    database.add_command("/project",
+                         "/project/main.cpp",
+                         "clang++ -Xclang -include-pch -Xclang build/app.pch main.cpp"sv);
+    auto main = database.candidate_entries("/project/main.cpp").front().config;
+    auto inputs = database.pch_inputs(main);
+    ZASSERT(inputs.size() == 1U);
+    auto pch = file_table.find(inputs.front());
+    ZASSERT(pch);
+    ZEXPECT(database.pch_writers(*pch).size() == 1U);
+
+    database.add_command("/project",
+                         "/project/tool.cpp",
+                         "clang++ -working-directory build -include app /project/tool.cpp"sv);
+    auto tool = database.candidate_entries("/project/tool.cpp").front().config;
+    ZEXPECT(llvm::any_of(database.pch_inputs(tool),
+                         [&](const Spelling& input) { return file_table.find(input) == pch; }));
+};
+
 ZEST_CASE(BareFileValueAnchored) {
     /// A file an option reads is relative to the entry directory with or
     /// without a separator; the toolchain probe runs elsewhere. A bare

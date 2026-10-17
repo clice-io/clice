@@ -27,6 +27,20 @@ tests/compile/flags/01_forced_include
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**预编译头文件**
+
+启用预编译头文件的构建目标中，各翻译单元共享同一个 PCH，由 clice 按构建中的命令构建
+
+对于这类目标，CMake 会让其每个翻译单元使用它由 `cmake_pch.hxx.cxx` 构建出的预编译头文件。磁盘上的这个文件可能出自其他编译器，因此 clice 会用同一条命令自行构建一份：目标的头文件只需解析一次，所有打开的文件和索引都共用这次解析；修改其中某个头文件会重建该 PCH，并反映到每个翻译单元中。
+
+```case
+tests/compile/flags/07_precompiled_headers
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 其他语言
