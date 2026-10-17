@@ -26,11 +26,23 @@ describe("snap.toml layout", () => {
         ]);
     });
 
+    test("a field of a table on several lines counts its indentation, key and comma", () => {
+        const field = (n: number) => write({ x: [{ k: [a(n)], b: a(120) }] })[3];
+        expect(field(103)).toBe(`        k = ["${a(103)}"],`);
+        expect(field(104)).toBe("        k = [");
+    });
+
     test("a column is a grapheme", () => {
         for (const char of ["⟦", "│", "中", "é", "👩‍💻"]) {
             expect(write({ x: [char.repeat(112)] })[1]).toBe(`x = ["${char.repeat(112)}"]`);
             expect(write({ x: [char.repeat(113)] })[1]).toBe("x = [");
         }
+        const key = "👩‍💻";
+        expect(write({ [key]: [a(110)] })[1]).toBe(`"${key}" = ["${a(110)}"]`);
+        expect(write({ [key]: [a(111)] })[1]).toBe(`"${key}" = [`);
+        const field = (n: number) => write({ x: [{ [key]: [a(n)], b: a(120) }] })[3];
+        expect(field(101)).toBe(`        "${key}" = ["${a(101)}"],`);
+        expect(field(102)).toBe(`        "${key}" = [`);
     });
 
     test("tables and lists in a list take a line each, text of several lines too", () => {
