@@ -1,3 +1,8 @@
+# Case inputs are test data the case framework writes in TOML 1.1 (multi-line
+# inline tables); like tests/.fdignore, tooling neither lints nor rewrites them.
+[files]
+exclude = ["tests/*/*/*/**"]
+
 # tombi.toml
 [format.rules]
 indent-style = "space"
