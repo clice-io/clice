@@ -636,6 +636,32 @@ void describe(Point) {}
     ZEXPECT(!defines_specialization(*preamble, "show"));
 }
 
+ZEST_CASE(PCHInstantiatesPastErrors) {
+    add_file("twice.h", R"(
+#pragma once
+template <typename T>
+T twice(T value) {
+    return value + value;
+}
+
+inline int four() {
+    return twice(2);
+}
+)");
+
+    // The missing header is an error of the preamble itself, raised before
+    // it ends: the PCH still instantiates what the preamble uses.
+    auto preamble = build_preamble(R"(
+#include "twice.h"
+#include "missing.h"
+
+int main() { return four(); }
+)");
+    ZASSERT(preamble->has_output());
+    ZEXPECT(collect_errors(*preamble).size() == 1U);
+    ZEXPECT(defines_specialization(*preamble, "twice"));
+}
+
 };  // ZEST_SUITE(Compiler)
 
 ZEST_SUITE(PreambleHash) {

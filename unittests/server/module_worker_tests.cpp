@@ -101,9 +101,6 @@ ZEST_CASE(BuildPCMThenCompileWithImport) {
     });
 
     ZASSERT(phase2_done);
-
-    // Cleanup PCM temp file.
-    std::remove(pcm_path.c_str());
 }
 
 ZEST_CASE(BuildPCMChainThenCompile) {
@@ -214,9 +211,6 @@ ZEST_CASE(BuildPCMChainThenCompile) {
     });
 
     ZASSERT(compile_done);
-
-    std::remove(pcm_a.c_str());
-    std::remove(pcm_b.c_str());
 }
 
 ZEST_CASE(ModuleImplementationUnitWithWorker) {
@@ -295,8 +289,6 @@ ZEST_CASE(ModuleImplementationUnitWithWorker) {
     });
 
     ZASSERT(compile_done);
-
-    std::remove(pcm_path.c_str());
 }
 
 ZEST_CASE(BuildPCMFirstError) {
