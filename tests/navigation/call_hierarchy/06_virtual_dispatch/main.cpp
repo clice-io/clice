@@ -26,3 +26,13 @@ struct Group : Base {
         child->draw();
     }
 };
+
+#define TRACE(call) call
+#define DRAW_BASE() Base::draw()
+
+struct Logged : Base {
+    void §(logged)draw() override {
+        TRACE(Base::draw());
+        DRAW_BASE();
+    }
+};

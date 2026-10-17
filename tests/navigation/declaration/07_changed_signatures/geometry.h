@@ -10,3 +10,5 @@ public:
 private:
     Mutex(const Mutex&);
 };
+
+int area(int side);

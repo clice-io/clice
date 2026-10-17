@@ -3,14 +3,14 @@
   "topic": "navigation",
   "subtopic": "call_hierarchy",
   "title": "Calls through an override",
-  "summary": "A call through a virtual method is an incoming call of every override it may dispatch to; a call naming a method by qualification only of that method",
-  "prose": "`b.draw()` on a `Base&` may run `Base::draw` or `Derived::draw`, so both\nlist it among their incoming calls. `d.draw()` on a `Derived&` runs\n`Derived::draw` or an override below it, never `Base::draw`, so only the\noverride lists it. `Base::draw()`, in an override's body or anywhere else,\nruns `Base::draw` alone, while `Group`'s `child->draw()` may reach either.",
+  "summary": "A call through a virtual method reaches every override it may dispatch to, a qualified call only the method it names",
+  "prose": "`b.draw()` on a `Base&` may run `Base::draw` or `Derived::draw`, so both\nlist it among their incoming calls. `d.draw()` on a `Derived&` runs\n`Derived::draw` or an override below it, never `Base::draw`, so only the\noverride lists it. `Base::draw()`, in an override's body or anywhere else,\nruns `Base::draw` alone, while `Group`'s `child->draw()` may reach either.\nSo does `Base::draw()` spelled by a macro, in `Logged`'s override.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Base {\n    virtual void draw();\n};\n\nstruct Derived : Base {\n    void draw() override;\n};\n\nvoid Derived::draw() {\n    Base::draw();\n}\n\nvoid call_base(Base& b) {\n    b.draw();\n}\n\nvoid call_derived(Derived& d) {\n    d.draw();\n}\n\nstruct Group : Base {\n    Base* child;\n\n    void draw() override {\n        Base::draw();\n        child->draw();\n    }\n};\n",
+      "text": "struct Base {\n    virtual void draw();\n};\n\nstruct Derived : Base {\n    void draw() override;\n};\n\nvoid Derived::draw() {\n    Base::draw();\n}\n\nvoid call_base(Base& b) {\n    b.draw();\n}\n\nvoid call_derived(Derived& d) {\n    d.draw();\n}\n\nstruct Group : Base {\n    Base* child;\n\n    void draw() override {\n        Base::draw();\n        child->draw();\n    }\n};\n\n#define TRACE(call) call\n#define DRAW_BASE() Base::draw()\n\nstruct Logged : Base {\n    void draw() override {\n        TRACE(Base::draw());\n        DRAW_BASE();\n    }\n};\n",
       "markers": [
         {
           "name": "base",
@@ -22,6 +22,12 @@
           "name": "override",
           "begin": 76,
           "end": 76,
+          "range": false
+        },
+        {
+          "name": "logged",
+          "begin": 446,
+          "end": 446,
           "range": false
         }
       ]
@@ -131,7 +137,7 @@
                 "name": "draw",
                 "kind": "Method",
                 "at": {
-                  "$place": "void ⟦draw⟧() override {",
+                  "$place": "void ⟦draw⟧() override { @+22",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -170,6 +176,55 @@
                       },
                       "end": {
                         "line": 25,
+                        "character": 19
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "draw",
+                "kind": "Method",
+                "at": {
+                  "$place": "void ⟦draw⟧() override { @+32",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 33,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 33,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "Logged::draw()",
+                "sites": [
+                  {
+                    "$place": "⟦TRACE(Base::draw())⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 34,
+                        "character": 8
+                      },
+                      "end": {
+                        "line": 34,
+                        "character": 27
+                      }
+                    }
+                  },
+                  {
+                    "$place": "⟦DRAW_BASE()⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 35,
+                        "character": 8
+                      },
+                      "end": {
+                        "line": 35,
                         "character": 19
                       }
                     }
@@ -280,7 +335,7 @@
                 "name": "draw",
                 "kind": "Method",
                 "at": {
-                  "$place": "void ⟦draw⟧() override {",
+                  "$place": "void ⟦draw⟧() override { @+18",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -343,6 +398,156 @@
                       "end": {
                         "line": 9,
                         "character": 14
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "logged",
+          "marker": "logged",
+          "value": {
+            "call_hierarchy": [
+              {
+                "name": "draw",
+                "kind": "Method",
+                "at": {
+                  "$place": "void ⟦draw⟧() override { @+0",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 33,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 33,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "Logged::draw()"
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "call_base",
+                "kind": "Function",
+                "at": {
+                  "$place": "void ⟦call_base⟧(Base& b) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 14
+                    }
+                  }
+                },
+                "detail": "call_base(Base &b)",
+                "sites": [
+                  {
+                    "$place": "b.⟦draw⟧();",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 13,
+                        "character": 6
+                      },
+                      "end": {
+                        "line": 13,
+                        "character": 10
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "draw",
+                "kind": "Method",
+                "at": {
+                  "$place": "void ⟦draw⟧() override { @-10",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 23,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 23,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "Group::draw()",
+                "sites": [
+                  {
+                    "$place": "child->⟦draw⟧();",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 25,
+                        "character": 15
+                      },
+                      "end": {
+                        "line": 25,
+                        "character": 19
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "outgoing_calls": [
+              {
+                "name": "draw",
+                "kind": "Method",
+                "at": {
+                  "$place": "virtual void ⟦draw⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 21
+                    }
+                  }
+                },
+                "detail": "Base::draw()",
+                "sites": [
+                  {
+                    "$place": "⟦TRACE(Base::draw())⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 34,
+                        "character": 8
+                      },
+                      "end": {
+                        "line": 34,
+                        "character": 27
+                      }
+                    }
+                  },
+                  {
+                    "$place": "⟦DRAW_BASE()⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 35,
+                        "character": 8
+                      },
+                      "end": {
+                        "line": 35,
+                        "character": 19
                       }
                     }
                   }

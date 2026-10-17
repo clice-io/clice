@@ -4,7 +4,7 @@
   "subtopic": "references",
   "title": "Calls through overridden methods",
   "summary": "Find references on an override includes the calls made through the methods it overrides, which may dispatch to it",
-  "prose": "`shape.area()` on a `Shape&` may run `Circle::area`, so it is among the\nreferences of the override. A call through `Circle` never runs\n`Shape::area`, so it is not among the references of the method overridden;\nnor is `Shape::area()` in the override's own body, which names the method\noverridden.",
+  "prose": "`shape.area()` on a `Shape&` may run `Circle::area`, so it is among the\nreferences of the override. A call through `Circle` never runs\n`Shape::area`, so it is not among the references of the method overridden;\nnor is `Shape::area()` in the override's own body, which names the method\noverridden, or `circle.Shape::scale(factor)` in a template, which names one\nof the overloads overridden before any instantiation picks it.",
   "status": "supported",
   "issues": [
     "clangd#1558"
@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Shape {\n    virtual double area() const {\n        return 0.0;\n    }\n};\n\nstruct Circle : Shape {\n    double area() const override {\n        return Shape::area() + 3.0;\n    }\n};\n\ndouble through_base(const Shape& shape) {\n    return shape.area();\n}\n\ndouble through_circle(const Circle& circle) {\n    return circle.area();\n}\n",
+      "text": "struct Shape {\n    virtual double area() const {\n        return 0.0;\n    }\n\n    virtual double scale(int factor) const {\n        return factor;\n    }\n\n    virtual double scale(double factor) const {\n        return factor;\n    }\n};\n\nstruct Circle : Shape {\n    double area() const override {\n        return Shape::area() + 3.0;\n    }\n\n    double scale(int factor) const override {\n        return factor * 2.0;\n    }\n};\n\ndouble through_base(const Shape& shape) {\n    return shape.area() + shape.scale(2);\n}\n\ndouble through_circle(const Circle& circle) {\n    return circle.area();\n}\n\ntemplate <typename T>\ndouble base_scale(const Circle& circle, T factor) {\n    return circle.Shape::scale(factor);\n}\n",
       "markers": [
         {
           "name": "base",
@@ -22,8 +22,14 @@
         },
         {
           "name": "override",
-          "begin": 114,
-          "end": 114,
+          "begin": 267,
+          "end": 267,
+          "range": false
+        },
+        {
+          "name": "scale",
+          "begin": 345,
+          "end": 345,
           "range": false
         }
       ]
@@ -57,25 +63,25 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 8,
+                    "line": 16,
                     "character": 22
                   },
                   "end": {
-                    "line": 8,
+                    "line": 16,
                     "character": 26
                   }
                 }
               },
               {
-                "$place": "return shape.⟦area⟧();",
+                "$place": "return shape.⟦area⟧() + shape.scale(2);",
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 13,
+                    "line": 25,
                     "character": 17
                   },
                   "end": {
-                    "line": 13,
+                    "line": 25,
                     "character": 21
                   }
                 }
@@ -93,25 +99,25 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 7,
+                    "line": 15,
                     "character": 11
                   },
                   "end": {
-                    "line": 7,
+                    "line": 15,
                     "character": 15
                   }
                 }
               },
               {
-                "$place": "return shape.⟦area⟧();",
+                "$place": "return shape.⟦area⟧() + shape.scale(2);",
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 13,
+                    "line": 25,
                     "character": 17
                   },
                   "end": {
-                    "line": 13,
+                    "line": 25,
                     "character": 21
                   }
                 }
@@ -121,12 +127,48 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 17,
+                    "line": 29,
                     "character": 18
                   },
                   "end": {
-                    "line": 17,
+                    "line": 29,
                     "character": 22
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "scale",
+          "marker": "scale",
+          "value": {
+            "references": [
+              {
+                "$place": "double ⟦scale⟧(int factor) const override {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 19,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 19,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "return shape.area() + shape.⟦scale⟧(2);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 25,
+                    "character": 32
+                  },
+                  "end": {
+                    "line": 25,
+                    "character": 37
                   }
                 }
               }

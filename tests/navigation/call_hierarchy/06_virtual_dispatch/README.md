@@ -7,3 +7,4 @@ list it among their incoming calls. `d.draw()` on a `Derived&` runs
 `Derived::draw` or an override below it, never `Base::draw`, so only the
 override lists it. `Base::draw()`, in an override's body or anywhere else,
 runs `Base::draw` alone, while `Group`'s `child->draw()` may reach either.
+So does `Base::draw()` spelled by a macro, in `Logged`'s override.

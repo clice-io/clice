@@ -314,6 +314,21 @@ const clang::NamedDecl* specialized_template(const clang::NamedDecl* decl) {
     return nullptr;
 }
 
+/// Whether a member access names its member by a qualified name
+/// (`object.Base::draw`), which calls it without virtual dispatch.
+bool names_member_qualified(const SemanticNode& node) {
+    if(const auto* member = node.get<clang::MemberExpr>()) {
+        return member->hasQualifier();
+    }
+    if(const auto* member = node.get<clang::UnresolvedMemberExpr>()) {
+        return bool(member->getQualifierLoc());
+    }
+    if(const auto* member = node.get<clang::CXXDependentScopeMemberExpr>()) {
+        return bool(member->getQualifierLoc());
+    }
+    return false;
+}
+
 /// clangd's rule for what unqualified completion may offer from an index:
 /// namespace-scope declarations, and the enumerators of unscoped enums at
 /// namespace or class scope. Members are Sema's after `.`, and a
@@ -1265,15 +1280,15 @@ public:
                     if(!entries[i].flags.in_instantiation && is_written(semantics, i)) {
                         add_self_relation(occurrence.decl, RelationKind::Write, name);
                     }
-                    if(const auto* member = node.get<clang::MemberExpr>();
-                       member && member->hasQualifier()) {
-                        if(const auto* method =
-                               llvm::dyn_cast<clang::CXXMethodDecl>(occurrence.decl);
-                           method && method->isVirtual()) {
-                            add_self_relation(occurrence.decl, RelationKind::Direct, name);
-                        }
-                    }
                     add_specialized_type(occurrence.decl, name);
+                }
+                if(occurrence.kind.is_one_of(RelationKind::Reference,
+                                             RelationKind::WeakReference) &&
+                   names_member_qualified(node)) {
+                    if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(occurrence.decl);
+                       method && method->isVirtual()) {
+                        add_self_relation(occurrence.decl, RelationKind::Direct, name);
+                    }
                 }
 
                 if(!occurrence.kind.is_one_of(RelationKind::Declaration,

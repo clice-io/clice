@@ -9,3 +9,12 @@ declaration = ["geometry.h │ int ⟦scale⟧(double factor);"]
 
 [answers.internal]
 declaration = ["static int ⟦checksum⟧(const char* data, int size) {"]
+
+[answers.template]
+declaration = ["T ⟦area⟧(T side) {"]
+
+[answers.static_changed]
+declaration = ["static int ⟦measure⟧(int size);"]
+
+[answers.anonymous]
+declaration = ["int ⟦tally⟧(long count) {"]

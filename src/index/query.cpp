@@ -874,8 +874,10 @@ IndexQuery::CallGraph IndexQuery::call_graph(SymbolHash root,
                     auto direct = sites(base.symbol, base.anchor, RelationKind::Direct);
                     for(auto& [caller, calls]: through_base) {
                         for(auto& call: calls) {
+                            // A call a macro spells sits at the whole
+                            // invocation, the name it qualifies inside.
                             if(llvm::none_of(direct, [&](const Site& site) {
-                                   return site_key(site) == site_key(call);
+                                   return covers(call, site);
                                })) {
                                 by_caller[caller].push_back(std::move(call));
                             }
@@ -1023,8 +1025,11 @@ std::vector<Site> IndexQuery::definition(const Cursor& cursor) const {
 }
 
 std::vector<Site> IndexQuery::mismatched_declarations(SymbolHash hash, Fid anchor) const {
+    // A template or a system header's function is defined where it is
+    // declared: no edit of the project's leaves its declaration behind.
+    constexpr auto in_place = SymbolFlags::Template | SymbolFlags::SystemHeader;
     auto info = symbol_info(hash, anchor);
-    if(!info || !is_function(info->kind)) {
+    if(!info || !is_function(info->kind) || has_flag(info->flags, in_place)) {
         return {};
     }
     auto defined = sites(hash, anchor, RelationKind::Definition);
@@ -1055,15 +1060,22 @@ std::vector<Site> IndexQuery::mismatched_declarations(SymbolHash hash, Fid ancho
         query.scope.push_back({.name = container.name});
     }
     std::vector<Site> result;
+    auto anonymous = has_flag(info->flags, SymbolFlags::AnonymousNamespace);
     for(auto& namesake: locate(query)) {
         auto& other = namesake.symbol;
         if(other.hash == hash || other.name != info->name || !is_function(other.kind) ||
-           other.scope != info->scope ||
+           other.scope != info->scope || has_flag(other.flags, in_place) ||
+           has_flag(other.flags, SymbolFlags::AnonymousNamespace) != anonymous ||
            !sites(other.hash, namesake.site.file, RelationKind::Definition).empty()) {
             continue;
         }
-        llvm::append_range(result,
-                           sites(other.hash, namesake.site.file, RelationKind::Declaration));
+        for(auto& site: sites(other.hash, namesake.site.file, RelationKind::Declaration)) {
+            // Two files' internal functions are never one.
+            if(info->scope == SymbolScope::External ||
+               llvm::any_of(defined, [&](const Site& own) { return own.path == site.path; })) {
+                result.push_back(std::move(site));
+            }
+        }
     }
     dedup_sites(result);
     return result;

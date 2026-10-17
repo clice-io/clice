@@ -20,9 +20,16 @@ incoming_calls = [
     {
         name = "draw",
         kind = "Method",
-        at = "void ⟦draw⟧() override {",
+        at = "void ⟦draw⟧() override { @+22",
         detail = "Group::draw()",
         sites = ["Base::⟦draw⟧(); @+23", "child->⟦draw⟧();"],
+    },
+    {
+        name = "draw",
+        kind = "Method",
+        at = "void ⟦draw⟧() override { @+32",
+        detail = "Logged::draw()",
+        sites = ["⟦TRACE(Base::draw())⟧;", "⟦DRAW_BASE()⟧;"],
     },
 ]
 outgoing_calls = []
@@ -49,7 +56,7 @@ incoming_calls = [
     {
         name = "draw",
         kind = "Method",
-        at = "void ⟦draw⟧() override {",
+        at = "void ⟦draw⟧() override { @+18",
         detail = "Group::draw()",
         sites = ["child->⟦draw⟧();"],
     },
@@ -61,5 +68,35 @@ outgoing_calls = [
         at = "virtual void ⟦draw⟧();",
         detail = "Base::draw()",
         sites = ["Base::⟦draw⟧(); @+4"],
+    },
+]
+
+[answers.logged]
+call_hierarchy = [
+    { name = "draw", kind = "Method", at = "void ⟦draw⟧() override { @+0", detail = "Logged::draw()" },
+]
+incoming_calls = [
+    {
+        name = "call_base",
+        kind = "Function",
+        at = "void ⟦call_base⟧(Base& b) {",
+        detail = "call_base(Base &b)",
+        sites = ["b.⟦draw⟧();"],
+    },
+    {
+        name = "draw",
+        kind = "Method",
+        at = "void ⟦draw⟧() override { @-10",
+        detail = "Group::draw()",
+        sites = ["child->⟦draw⟧();"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "draw",
+        kind = "Method",
+        at = "virtual void ⟦draw⟧();",
+        detail = "Base::draw()",
+        sites = ["⟦TRACE(Base::draw())⟧;", "⟦DRAW_BASE()⟧;"],
     },
 ]

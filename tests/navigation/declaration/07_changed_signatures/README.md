@@ -6,6 +6,8 @@ When a parameter changes on one side only, the definition and the header
 declaration become two functions, and the definition has no declaration of
 its own. Go-to-declaration on it falls back to the functions of its name and
 linkage in its scope that nothing defines: the declaration that wants the
-same edit. An overload with a definition of its own is no candidate, nor is a
-function of external linkage for a `static` one, and a method defined in
-its class never had a declaration apart.
+same edit, a `static` one's in its own file. An overload with a definition
+of its own is no candidate, nor is a function of another linkage or of an
+anonymous namespace it is not in. A method defined in its class never had a
+declaration apart, and a template or a system header's function is left
+alone: those are declared where they are defined.
