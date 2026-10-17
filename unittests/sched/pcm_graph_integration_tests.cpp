@@ -87,10 +87,13 @@ struct GraphShim {
 
 /// Build a dispatch_fn that compiles PCMs in-process (no workers).
 /// Clang requires ALL transitive PCM deps (not just direct imports)
-/// in PrebuiltModuleFiles, so we pass every available PCM.
+/// in PrebuiltModuleFiles, so we pass every available PCM. Each build
+/// writes a PCM of its own under `tmp`, as the master names every build's
+/// artifact anew.
 DispatchFn make_dispatch(CompilationDatabase& cdb,
                          DependencyGraph& graph,
                          const TempDir& tmp,
+                         std::uint32_t& builds,
                          llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
     return [&](std::uint32_t path_id, bool) -> kota::task<RoundOutcome> {
         auto file_path = cdb.files().resolve(Fid{path_id});
@@ -120,7 +123,8 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
             }
         }
 
-        auto pcm = tmp.path(std::format("{}.pcm", path_id));
+        builds += 1;
+        auto pcm = tmp.path(std::format("{}.pcm", builds));
         cp.output_file = pcm;
 
         auto unit = compile(std::move(cp));
@@ -166,6 +170,7 @@ struct ModuleTestEnv {
     FileTable file_table;
     CompilationDatabase cdb{file_table};
     DependencyGraph graph;
+    std::uint32_t pcm_builds = 0;
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 
     void setup(llvm::ArrayRef<CDBEntry> entries, llvm::StringRef json) {
@@ -185,7 +190,7 @@ ModuleTestEnv env;
 std::optional<GraphShim> cg;
 
 DispatchFn default_dispatch() {
-    return make_dispatch(env.cdb, env.graph, env.tmp, env.pcm_paths);
+    return make_dispatch(env.cdb, env.graph, env.tmp, env.pcm_builds, env.pcm_paths);
 }
 
 ResolveFn default_resolver() {
