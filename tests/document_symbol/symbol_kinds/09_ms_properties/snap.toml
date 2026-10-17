@@ -6,9 +6,24 @@ document_symbols = [
         at = "struct ⟦Holder⟧ {",
         detail = "struct",
         children = [
-            { name = "get_value", kind = "Method", at = "int ⟦get_value⟧();", detail = "int ()" },
-            { name = "put_value", kind = "Method", at = "void ⟦put_value⟧(int);", detail = "void (int)" },
-            { name = "value", kind = "Field", at = "__declspec(property(get = get_value, put = put_value)) int ⟦value⟧;", detail = "int" },
+            {
+                name = "get_value",
+                kind = "Method",
+                at = "int ⟦get_value⟧();",
+                detail = "int ()",
+            },
+            {
+                name = "put_value",
+                kind = "Method",
+                at = "void ⟦put_value⟧(int);",
+                detail = "void (int)",
+            },
+            {
+                name = "value",
+                kind = "Field",
+                at = "__declspec(property(get = get_value, put = put_value)) int ⟦value⟧;",
+                detail = "int",
+            },
         ],
     },
 ]
@@ -21,9 +36,24 @@ document_symbols = [
         at = "struct ⟦Holder⟧ {",
         range = "⟦struct Holder { … }⟧ (5 lines)",
         children = [
-            { name = "get_value", kind = "Method", at = "int ⟦get_value⟧();", range = "⟦int get_value()⟧;" },
-            { name = "put_value", kind = "Method", at = "void ⟦put_value⟧(int);", range = "⟦void put_value(int)⟧;" },
-            { name = "value", kind = "Field", at = "__declspec(property(get = get_value, put = put_value)) int ⟦value⟧;", range = "⟦__declspec(property(get = get_value, put = put_value)) int value⟧;" },
+            {
+                name = "get_value",
+                kind = "Method",
+                at = "int ⟦get_value⟧();",
+                range = "⟦int get_value()⟧;",
+            },
+            {
+                name = "put_value",
+                kind = "Method",
+                at = "void ⟦put_value⟧(int);",
+                range = "⟦void put_value(int)⟧;",
+            },
+            {
+                name = "value",
+                kind = "Field",
+                at = "__declspec(property(get = get_value, put = put_value)) int ⟦value⟧;",
+                range = "⟦__declspec(property(get = get_value, put = put_value)) int value⟧;",
+            },
         ],
     },
 ]

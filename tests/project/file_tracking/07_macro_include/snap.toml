@@ -1,11 +1,5 @@
 ["macro include change reindexes".v1]
-references = [
-    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
-    "inline int ⟦alpha⟧() { return 1; }",
-]
+references = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦alpha⟧() { return 1; }"]
 
 ["macro include change reindexes".v2]
-references = [
-    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
-    "inline int ⟦beta⟧() { return 2; }",
-]
+references = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦beta⟧() { return 2; }"]

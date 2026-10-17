@@ -14,11 +14,7 @@ semantic_tokens = [
     { at = "⟦// R�sum� of the build, saved as Latin-1⟧", type = "comment" },
     { at = '⟦const⟧ char* label = "caf�"; int after = 1;', type = "keyword" },
     { at = 'const ⟦char⟧* label = "caf�"; int after = 1;', type = "primitive" },
-    {
-        at = 'const char⟦*⟧ label = "caf�"; int after = 1;',
-        type = "operator",
-        modifiers = ["declarator"],
-    },
+    { at = 'const char⟦*⟧ label = "caf�"; int after = 1;', type = "operator", modifiers = ["declarator"] },
     {
         at = 'const char* ⟦label⟧ = "caf�"; int after = 1;',
         type = "variable",

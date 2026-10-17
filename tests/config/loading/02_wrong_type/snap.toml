@@ -1,7 +1,12 @@
 ["a wrong type is an error"."clice.toml"]
 pushes = [
     [
-        { at = 'enable_indexing = ⟦"yes"⟧', severity = "error", message = "invalid type: expected boolean, got string at project.enable_indexing (line 2, column 19)", source = "clice" },
+        {
+            at = 'enable_indexing = ⟦"yes"⟧',
+            severity = "error",
+            message = "invalid type: expected boolean, got string at project.enable_indexing (line 2, column 19)",
+            source = "clice",
+        },
     ],
 ]
 
@@ -11,7 +16,12 @@ diagnostics = []
 ["the fix clears it".broken]
 pushes = [
     [
-        { at = 'enable_indexing = ⟦"yes"⟧', severity = "error", message = "invalid type: expected boolean, got string at project.enable_indexing (line 2, column 19)", source = "clice" },
+        {
+            at = 'enable_indexing = ⟦"yes"⟧',
+            severity = "error",
+            message = "invalid type: expected boolean, got string at project.enable_indexing (line 2, column 19)",
+            source = "clice",
+        },
     ],
 ]
 

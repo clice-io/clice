@@ -1,8 +1,5 @@
 ["checkout under an open header".v1]
-alpha = [
-    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
-    "inline int ⟦alpha⟧() { return 1; }",
-]
+alpha = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦alpha⟧() { return 1; }"]
 beta = ["inline int ⟦beta⟧() { return 2; }"]
 
 ["checkout under an open header".v2]
@@ -10,10 +7,7 @@ alpha = ["inline int ⟦alpha⟧() { return 1; }"]
 beta = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦beta⟧() { return 2; }"]
 
 ["rewrite before first tick reported".v1]
-alpha = [
-    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
-    "inline int ⟦alpha⟧() { return 1; }",
-]
+alpha = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦alpha⟧() { return 1; }"]
 beta = ["inline int ⟦beta⟧() { return 2; }"]
 
 ["rewrite before first tick reported".v2]
@@ -21,10 +15,7 @@ alpha = ["inline int ⟦alpha⟧() { return 1; }"]
 beta = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦beta⟧() { return 2; }"]
 
 ["background ticks see a rewrite".v1]
-alpha = [
-    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
-    "inline int ⟦alpha⟧() { return 1; }",
-]
+alpha = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦alpha⟧() { return 1; }"]
 beta = ["inline int ⟦beta⟧() { return 2; }"]
 
 ["background ticks see a rewrite".v2]
@@ -33,6 +24,18 @@ beta = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline in
 
 ["deleted header reaches open includer".deleted]
 errors = [
-    { at = '#include ⟦"header.h"⟧', severity = "error", message = "'header.h' file not found", source = "clang", code = "err_pp_file_not_found" },
-    { at = "int use_target() { return ⟦TARGET⟧(); }", severity = "error", message = "use of undeclared identifier 'TARGET'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = '#include ⟦"header.h"⟧',
+        severity = "error",
+        message = "'header.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
+    {
+        at = "int use_target() { return ⟦TARGET⟧(); }",
+        severity = "error",
+        message = "use of undeclared identifier 'TARGET'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]

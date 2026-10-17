@@ -31,9 +31,4 @@ selection_ranges = [
 ]
 
 [answers.char]
-selection_ranges = [
-    "char letter = '⟦x⟧';",
-    "char letter = ⟦'x'⟧;",
-    "⟦char letter = 'x'⟧;",
-    "⟦char letter = 'x';⟧",
-]
+selection_ranges = ["char letter = '⟦x⟧';", "char letter = ⟦'x'⟧;", "⟦char letter = 'x'⟧;", "⟦char letter = 'x';⟧"]

@@ -33,10 +33,7 @@ references = []
 
 [answers.use]
 definition = ["lib.cpp │ int ⟦area⟧(int width, int height) {"]
-declaration = [
-    "lib.cpp │ int ⟦area⟧(int width, int height) {",
-    "lib.h │ int ⟦area⟧(int width, int height);",
-]
+declaration = ["lib.cpp │ int ⟦area⟧(int width, int height) {", "lib.h │ int ⟦area⟧(int width, int height);"]
 references = [
     "lib.cpp │ int ⟦area⟧(int width, int height) {",
     "lib.h │ int ⟦area⟧(int width, int height);",
@@ -54,10 +51,7 @@ references = [
 
 [answers.second_use]
 definition = ["lib.cpp │ int ⟦area⟧(int width, int height) {"]
-declaration = [
-    "lib.cpp │ int ⟦area⟧(int width, int height) {",
-    "lib.h │ int ⟦area⟧(int width, int height);",
-]
+declaration = ["lib.cpp │ int ⟦area⟧(int width, int height) {", "lib.h │ int ⟦area⟧(int width, int height);"]
 references = [
     "lib.cpp │ int ⟦area⟧(int width, int height) {",
     "lib.h │ int ⟦area⟧(int width, int height);",

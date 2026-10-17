@@ -1,9 +1,21 @@
 [test."b.cppm"]
 errors = [
-    { at = "import ⟦A;⟧", severity = "error", message = "could not build module 'A': module 'missing' not found", source = "clang", code = "err_module_not_built" },
+    {
+        at = "import ⟦A;⟧",
+        severity = "error",
+        message = "could not build module 'A': module 'missing' not found",
+        source = "clang",
+        code = "err_module_not_built",
+    },
 ]
 
 [test."a.cppm"]
 errors = [
-    { at = "import ⟦missing;⟧", severity = "error", message = "module 'missing' not found", source = "clang", code = "err_module_not_found" },
+    {
+        at = "import ⟦missing;⟧",
+        severity = "error",
+        message = "module 'missing' not found",
+        source = "clang",
+        code = "err_module_not_found",
+    },
 ]

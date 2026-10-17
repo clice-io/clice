@@ -5,7 +5,12 @@ items = [
 
 [answers.shadowed_namespace.completion]
 items = [
-    { label = "::lib::versioned_value", kind = "Variable", detail = "int", insert = "::lib::versioned_value" },
+    {
+        label = "::lib::versioned_value",
+        kind = "Variable",
+        detail = "int",
+        insert = "::lib::versioned_value",
+    },
 ]
 
 [answers.inline_namespace.completion]
@@ -49,10 +54,21 @@ items = []
 
 [answers.class_specialization.completion]
 items = [
-    { label = "containers::Vector<class T>", kind = "Class", insert = "containers::Vector<${1:class T}>", snippet = true },
+    {
+        label = "containers::Vector<class T>",
+        kind = "Class",
+        insert = "containers::Vector<${1:class T}>",
+        snippet = true,
+    },
 ]
 
 [answers.function_specialization.completion]
 items = [
-    { label = "containers::fill(T value)", kind = "Function", detail = "void", insert = "containers::fill(${1:T value})", snippet = true },
+    {
+        label = "containers::fill(T value)",
+        kind = "Function",
+        detail = "void",
+        insert = "containers::fill(${1:T value})",
+        snippet = true,
+    },
 ]

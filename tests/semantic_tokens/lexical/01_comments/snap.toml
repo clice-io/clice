@@ -14,11 +14,7 @@ semantic_tokens = [
     { at = "⟦/* first⟧", type = "comment" },
     { at = "⟦second */⟧ int after_block = 1;", type = "comment" },
     { at = "second */ ⟦int⟧ after_block = 1;", type = "primitive" },
-    {
-        at = "second */ int ⟦after_block⟧ = 1;",
-        type = "variable",
-        modifiers = ["definition", "global"],
-    },
+    { at = "second */ int ⟦after_block⟧ = 1;", type = "variable", modifiers = ["definition", "global"] },
     { at = "second */ int after_block ⟦=⟧ 1;", type = "operator" },
     { at = "second */ int after_block = ⟦1⟧;", type = "number" },
 ]

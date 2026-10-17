@@ -1,8 +1,20 @@
 [open.diagnostics]
 wrong = "an assembler source is parsed as C after preprocessing: its comment and directive lines, which the build accepts, show errors"
 diagnostics = [
-    { at = "⟦#⟧ Copyright 2003 Pavel Machek <pavel@suse.cz", severity = "error", message = "expected identifier or '('", source = "clang", code = "err_expected_either" },
-    { at = "⟦.⟧text", severity = "error", message = "expected identifier or '('", source = "clang", code = "err_expected_either" },
+    {
+        at = "⟦#⟧ Copyright 2003 Pavel Machek <pavel@suse.cz",
+        severity = "error",
+        message = "expected identifier or '('",
+        source = "clang",
+        code = "err_expected_either",
+    },
+    {
+        at = "⟦.⟧text",
+        severity = "error",
+        message = "expected identifier or '('",
+        source = "clang",
+        code = "err_expected_either",
+    },
 ]
 
 [open.size.hover]

@@ -1,11 +1,7 @@
 [answers."main.cpp"]
 semantic_tokens = [
     { at = "⟦#define⟧ TRACE(message)", type = "directive" },
-    {
-        at = "#define ⟦TRACE⟧(message)",
-        type = "macro",
-        modifiers = ["definition", "callable", "empty"],
-    },
+    { at = "#define ⟦TRACE⟧(message)", type = "macro", modifiers = ["definition", "callable", "empty"] },
     { at = "#define TRACE(⟦message⟧)", type = "macroParameter" },
     { at = "⟦#define⟧ UNUSED", type = "directive" },
     { at = "#define ⟦UNUSED⟧", type = "macro", modifiers = ["definition", "empty"] },

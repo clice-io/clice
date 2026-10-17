@@ -1,7 +1,12 @@
 [outline.index]
 document_symbols = [
     { name = "LIMIT", kind = "Constant", at = "#define ⟦LIMIT⟧ 8", range = "#define ⟦LIMIT 8⟧" },
-    { name = "FIELDS", kind = "Constant", at = "#define ⟦FIELDS⟧ int generated_a; int generated_b;", range = "#define ⟦FIELDS int generated_a; int generated_b;⟧" },
+    {
+        name = "FIELDS",
+        kind = "Constant",
+        at = "#define ⟦FIELDS⟧ int generated_a; int generated_b;",
+        range = "#define ⟦FIELDS int generated_a; int generated_b;⟧",
+    },
     {
         name = "app",
         kind = "Namespace",
@@ -14,41 +19,96 @@ document_symbols = [
                 at = "struct ⟦Box⟧ {",
                 range = "⟦template <typename T> … }⟧ (10 lines)",
                 children = [
-                    { name = "value", kind = "Field", at = "T ⟦value⟧;", range = "⟦T value⟧;" },
-                    { name = "first", kind = "Field", at = "int ⟦first⟧, second;", range = "⟦int first⟧, second;" },
-                    { name = "second", kind = "Field", at = "int first, ⟦second⟧;", range = "⟦int first, second⟧;" },
+                    {
+                        name = "value",
+                        kind = "Field",
+                        at = "T ⟦value⟧;",
+                        range = "⟦T value⟧;",
+                    },
+                    {
+                        name = "first",
+                        kind = "Field",
+                        at = "int ⟦first⟧, second;",
+                        range = "⟦int first⟧, second;",
+                    },
+                    {
+                        name = "second",
+                        kind = "Field",
+                        at = "int first, ⟦second⟧;",
+                        range = "⟦int first, second⟧;",
+                    },
                     {
                         name = "FIELDS",
                         kind = "Constant",
                         at = "⟦FIELDS⟧",
                         range = "⟦FIELDS⟧",
                         children = [
-                            { name = "generated_a", kind = "Field", at = "⟦FIELDS⟧", range = "⟦FIELDS⟧" },
-                            { name = "generated_b", kind = "Field", at = "⟦FIELDS⟧", range = "⟦FIELDS⟧" },
+                            {
+                                name = "generated_a",
+                                kind = "Field",
+                                at = "⟦FIELDS⟧",
+                                range = "⟦FIELDS⟧",
+                            },
+                            {
+                                name = "generated_b",
+                                kind = "Field",
+                                at = "⟦FIELDS⟧",
+                                range = "⟦FIELDS⟧",
+                            },
                         ],
                     },
-                    { name = "convert", kind = "Method", at = "U ⟦convert⟧() const;", range = "⟦template <typename U> … U convert() const⟧ (2 lines)" },
+                    {
+                        name = "convert",
+                        kind = "Method",
+                        at = "U ⟦convert⟧() const;",
+                        range = "⟦template <typename U> … U convert() const⟧ (2 lines)",
+                    },
                 ],
             },
-            { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {", range = "⟦template <typename T> … }⟧ (5 lines)" },
-            { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", range = "⟦template struct Box<int>⟧;" },
+            {
+                name = "Box<T>::convert",
+                kind = "Method",
+                at = "U Box<T>::⟦convert⟧() const {",
+                range = "⟦template <typename T> … }⟧ (5 lines)",
+            },
+            {
+                name = "Box<int>",
+                kind = "Struct",
+                at = "template struct ⟦Box⟧<int>;",
+                range = "⟦template struct Box<int>⟧;",
+            },
             {
                 name = "Size",
                 kind = "Struct",
                 at = "} ⟦Size⟧;",
                 range = "⟦typedef struct { … } Size⟧ (3 lines)",
                 children = [
-                    { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
+                    {
+                        name = "width",
+                        kind = "Field",
+                        at = "int ⟦width⟧;",
+                        range = "⟦int width⟧;",
+                    },
                 ],
             },
-            { name = "alias", kind = "Namespace", at = "namespace ⟦alias⟧ = app;", range = "⟦namespace alias = app⟧;" },
+            {
+                name = "alias",
+                kind = "Namespace",
+                at = "namespace ⟦alias⟧ = app;",
+                range = "⟦namespace alias = app⟧;",
+            },
             {
                 name = "scale",
                 kind = "Function",
                 at = "[[nodiscard]] int ⟦scale⟧(int value) {",
                 range = "⟦[[nodiscard]] int scale(int value) { … }⟧ (4 lines)",
                 children = [
-                    { name = "doubled", kind = "Variable", at = "int ⟦doubled⟧ = value * LIMIT;", range = "⟦int doubled = value * LIMIT⟧;" },
+                    {
+                        name = "doubled",
+                        kind = "Variable",
+                        at = "int ⟦doubled⟧ = value * LIMIT;",
+                        range = "⟦int doubled = value * LIMIT⟧;",
+                    },
                 ],
             },
         ],
@@ -58,7 +118,12 @@ document_symbols = [
 [outline.ast]
 document_symbols = [
     { name = "LIMIT", kind = "Constant", at = "#define ⟦LIMIT⟧ 8", range = "#define ⟦LIMIT 8⟧" },
-    { name = "FIELDS", kind = "Constant", at = "#define ⟦FIELDS⟧ int generated_a; int generated_b;", range = "#define ⟦FIELDS int generated_a; int generated_b;⟧" },
+    {
+        name = "FIELDS",
+        kind = "Constant",
+        at = "#define ⟦FIELDS⟧ int generated_a; int generated_b;",
+        range = "#define ⟦FIELDS int generated_a; int generated_b;⟧",
+    },
     {
         name = "app",
         kind = "Namespace",
@@ -71,41 +136,96 @@ document_symbols = [
                 at = "struct ⟦Box⟧ {",
                 range = "⟦template <typename T> … }⟧ (10 lines)",
                 children = [
-                    { name = "value", kind = "Field", at = "T ⟦value⟧;", range = "⟦T value⟧;" },
-                    { name = "first", kind = "Field", at = "int ⟦first⟧, second;", range = "⟦int first⟧, second;" },
-                    { name = "second", kind = "Field", at = "int first, ⟦second⟧;", range = "⟦int first, second⟧;" },
+                    {
+                        name = "value",
+                        kind = "Field",
+                        at = "T ⟦value⟧;",
+                        range = "⟦T value⟧;",
+                    },
+                    {
+                        name = "first",
+                        kind = "Field",
+                        at = "int ⟦first⟧, second;",
+                        range = "⟦int first⟧, second;",
+                    },
+                    {
+                        name = "second",
+                        kind = "Field",
+                        at = "int first, ⟦second⟧;",
+                        range = "⟦int first, second⟧;",
+                    },
                     {
                         name = "FIELDS",
                         kind = "Constant",
                         at = "⟦FIELDS⟧",
                         range = "⟦FIELDS⟧",
                         children = [
-                            { name = "generated_a", kind = "Field", at = "⟦FIELDS⟧", range = "⟦FIELDS⟧" },
-                            { name = "generated_b", kind = "Field", at = "⟦FIELDS⟧", range = "⟦FIELDS⟧" },
+                            {
+                                name = "generated_a",
+                                kind = "Field",
+                                at = "⟦FIELDS⟧",
+                                range = "⟦FIELDS⟧",
+                            },
+                            {
+                                name = "generated_b",
+                                kind = "Field",
+                                at = "⟦FIELDS⟧",
+                                range = "⟦FIELDS⟧",
+                            },
                         ],
                     },
-                    { name = "convert", kind = "Method", at = "U ⟦convert⟧() const;", range = "⟦template <typename U> … U convert() const⟧ (2 lines)" },
+                    {
+                        name = "convert",
+                        kind = "Method",
+                        at = "U ⟦convert⟧() const;",
+                        range = "⟦template <typename U> … U convert() const⟧ (2 lines)",
+                    },
                 ],
             },
-            { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {", range = "⟦template <typename T> … }⟧ (5 lines)" },
-            { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", range = "⟦template struct Box<int>⟧;" },
+            {
+                name = "Box<T>::convert",
+                kind = "Method",
+                at = "U Box<T>::⟦convert⟧() const {",
+                range = "⟦template <typename T> … }⟧ (5 lines)",
+            },
+            {
+                name = "Box<int>",
+                kind = "Struct",
+                at = "template struct ⟦Box⟧<int>;",
+                range = "⟦template struct Box<int>⟧;",
+            },
             {
                 name = "Size",
                 kind = "Struct",
                 at = "} ⟦Size⟧;",
                 range = "⟦typedef struct { … } Size⟧ (3 lines)",
                 children = [
-                    { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
+                    {
+                        name = "width",
+                        kind = "Field",
+                        at = "int ⟦width⟧;",
+                        range = "⟦int width⟧;",
+                    },
                 ],
             },
-            { name = "alias", kind = "Namespace", at = "namespace ⟦alias⟧ = app;", range = "⟦namespace alias = app⟧;" },
+            {
+                name = "alias",
+                kind = "Namespace",
+                at = "namespace ⟦alias⟧ = app;",
+                range = "⟦namespace alias = app⟧;",
+            },
             {
                 name = "scale",
                 kind = "Function",
                 at = "[[nodiscard]] int ⟦scale⟧(int value) {",
                 range = "⟦[[nodiscard]] int scale(int value) { … }⟧ (4 lines)",
                 children = [
-                    { name = "doubled", kind = "Variable", at = "int ⟦doubled⟧ = value * LIMIT;", range = "⟦int doubled = value * LIMIT⟧;" },
+                    {
+                        name = "doubled",
+                        kind = "Variable",
+                        at = "int ⟦doubled⟧ = value * LIMIT;",
+                        range = "⟦int doubled = value * LIMIT⟧;",
+                    },
                 ],
             },
         ],
@@ -125,18 +245,38 @@ document_symbols = [
                 at = "struct ⟦Box⟧ {",
                 children = [
                     { name = "value", kind = "Field", at = "T ⟦value⟧;" },
-                    { name = "first", kind = "Field", at = "int ⟦first⟧, second;" },
-                    { name = "second", kind = "Field", at = "int first, ⟦second⟧;" },
+                    {
+                        name = "first",
+                        kind = "Field",
+                        at = "int ⟦first⟧, second;",
+                    },
+                    {
+                        name = "second",
+                        kind = "Field",
+                        at = "int first, ⟦second⟧;",
+                    },
                     {
                         name = "FIELDS",
                         kind = "Constant",
                         at = "⟦FIELDS⟧",
                         children = [
-                            { name = "generated_a", kind = "Field", at = "⟦FIELDS⟧" },
-                            { name = "generated_b", kind = "Field", at = "⟦FIELDS⟧" },
+                            {
+                                name = "generated_a",
+                                kind = "Field",
+                                at = "⟦FIELDS⟧",
+                            },
+                            {
+                                name = "generated_b",
+                                kind = "Field",
+                                at = "⟦FIELDS⟧",
+                            },
                         ],
                     },
-                    { name = "convert", kind = "Method", at = "U ⟦convert⟧() const;" },
+                    {
+                        name = "convert",
+                        kind = "Method",
+                        at = "U ⟦convert⟧() const;",
+                    },
                 ],
             },
             { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {" },

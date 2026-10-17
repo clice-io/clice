@@ -1,36 +1,86 @@
 [answers."\"process\""]
 workspace_symbols = [
-    { name = "process", kind = "Function", at = "main.cpp │ void ⟦process⟧(Stream& stream);", container = "io" },
+    {
+        name = "process",
+        kind = "Function",
+        at = "main.cpp │ void ⟦process⟧(Stream& stream);",
+        container = "io",
+    },
 ]
 
 [answers."proc*"]
 workspace_symbols = [
-    { name = "process", kind = "Function", at = "main.cpp │ void ⟦process⟧(Stream& stream);", container = "io" },
+    {
+        name = "process",
+        kind = "Function",
+        at = "main.cpp │ void ⟦process⟧(Stream& stream);",
+        container = "io",
+    },
     { name = "process_all", kind = "Function", at = "main.cpp │ void ⟦process_all⟧();", container = "io" },
-    { name = "processor", kind = "Function", at = "main.cpp │ void ⟦processor⟧();", container = "io::detail" },
+    {
+        name = "processor",
+        kind = "Function",
+        at = "main.cpp │ void ⟦processor⟧();",
+        container = "io::detail",
+    },
     { name = "processed", kind = "Variable", at = "main.cpp │ int ⟦processed⟧;" },
 ]
 
 [answers."io::*"]
 workspace_symbols = [
     { name = "io::Stream", kind = "Struct", at = "main.cpp │ struct ⟦Stream⟧ {};", container = "io" },
-    { name = "io::process", kind = "Function", at = "main.cpp │ void ⟦process⟧(Stream& stream);", container = "io" },
-    { name = "io::process_all", kind = "Function", at = "main.cpp │ void ⟦process_all⟧();", container = "io" },
+    {
+        name = "io::process",
+        kind = "Function",
+        at = "main.cpp │ void ⟦process⟧(Stream& stream);",
+        container = "io",
+    },
+    {
+        name = "io::process_all",
+        kind = "Function",
+        at = "main.cpp │ void ⟦process_all⟧();",
+        container = "io",
+    },
     { name = "io::detail", kind = "Namespace", at = "main.cpp │ namespace ⟦detail⟧ {", container = "io" },
 ]
 
 [answers."io::**"]
 workspace_symbols = [
     { name = "io::Stream", kind = "Struct", at = "main.cpp │ struct ⟦Stream⟧ {};", container = "io" },
-    { name = "io::process", kind = "Function", at = "main.cpp │ void ⟦process⟧(Stream& stream);", container = "io" },
-    { name = "io::process_all", kind = "Function", at = "main.cpp │ void ⟦process_all⟧();", container = "io" },
+    {
+        name = "io::process",
+        kind = "Function",
+        at = "main.cpp │ void ⟦process⟧(Stream& stream);",
+        container = "io",
+    },
+    {
+        name = "io::process_all",
+        kind = "Function",
+        at = "main.cpp │ void ⟦process_all⟧();",
+        container = "io",
+    },
     { name = "io::detail", kind = "Namespace", at = "main.cpp │ namespace ⟦detail⟧ {", container = "io" },
-    { name = "io::detail::processor", kind = "Function", at = "main.cpp │ void ⟦processor⟧();", container = "io::detail" },
+    {
+        name = "io::detail::processor",
+        kind = "Function",
+        at = "main.cpp │ void ⟦processor⟧();",
+        container = "io::detail",
+    },
 ]
 
 [answers."process kind:function"]
 workspace_symbols = [
-    { name = "process", kind = "Function", at = "main.cpp │ void ⟦process⟧(Stream& stream);", container = "io" },
+    {
+        name = "process",
+        kind = "Function",
+        at = "main.cpp │ void ⟦process⟧(Stream& stream);",
+        container = "io",
+    },
     { name = "process_all", kind = "Function", at = "main.cpp │ void ⟦process_all⟧();", container = "io" },
-    { name = "processor", kind = "Function", at = "main.cpp │ void ⟦processor⟧();", container = "io::detail" },
+    {
+        name = "processor",
+        kind = "Function",
+        at = "main.cpp │ void ⟦processor⟧();",
+        container = "io::detail",
+    },
 ]

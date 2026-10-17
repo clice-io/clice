@@ -1,7 +1,8 @@
 /// What an output holds and how snap.toml writes it: text, numbers, flags,
 /// places, lists and tables. Short values stay on a line; text spanning
 /// lines is a raw ''' string, so code, markdown and diffs read as they are,
-/// unescaped.
+/// unescaped. The layout is the one tombi gives TOML 1.1 under the
+/// repository's rules (tombi.toml), so formatting leaves snap.toml as written.
 
 import { parse } from "smol-toml";
 import type { Location } from "./position.ts";
@@ -66,8 +67,9 @@ export function mapText(value: Value, map: (text: string) => string): Value {
     return value;
 }
 
-const WIDTH = 100;
+const WIDTH = 120;
 const INDENT = "    ";
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const BARE = /^[A-Za-z0-9_-]+$/;
 /// What a literal string cannot hold: control characters but the tab.
 const CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f]/;
@@ -125,11 +127,48 @@ function scalarLike(value: Value): boolean {
     return isList(value) ? value.length === 0 : !isTable(value) || Object.keys(value).length === 0;
 }
 
-/// `value` written inline. A table of scalars stays on one line, an entry
-/// of a list reads as a row; a list of tables, and anything holding text of
-/// several lines or not fitting after `used` columns, takes a line per item
-/// under `indent`.
-function inline(value: Value, indent: string, used: number): string {
+/// Columns as tombi counts them: one a grapheme.
+function columns(text: string): number {
+    return [...GRAPHEMES.segment(text)].length;
+}
+
+/// `value` on one line.
+function oneLine(value: Value): string {
+    if (isList(value)) {
+        return `[${value.map(oneLine).join(", ")}]`;
+    }
+    if (!isTable(value)) {
+        return inline(value, "", 0, false);
+    }
+    const entries = Object.entries(value);
+    return entries.length === 0
+        ? "{}"
+        : `{ ${entries.map(([key, item]) => `${tomlKey(key)} = ${oneLine(item)}`).join(", ")} }`;
+}
+
+/// Whether tombi keeps `value` on one line, `start` columns into it: the
+/// value and each list or table in it fit from `start`, every item counted
+/// `extra` columns wider. Tombi measures a row of a list taking a line per
+/// item from the line's start, and each item in the row as wide again as
+/// the row's indentation.
+function fits(value: Value, start: number, extra: number): boolean {
+    if (!isList(value) && !isTable(value)) {
+        return true;
+    }
+    const items = isList(value) ? value : Object.values(value);
+    return (
+        start + columns(oneLine(value)) + extra * items.length <= WIDTH &&
+        items.every((item) => fits(item, start, extra))
+    );
+}
+
+/// `value` written inline under `indent`, `start` columns into its line;
+/// a `row` is an item of a list taking a line per item. A list or table
+/// stays on one line while tombi keeps it there; a list of tables or
+/// lists, and anything holding text of several lines, takes a line per
+/// item. An item on a line of its own ends with a comma: tombi keeps such
+/// a list or table as it stands.
+function inline(value: Value, indent: string, start: number, row: boolean): string {
     if (typeof value === "string") {
         return text(value);
     }
@@ -139,31 +178,24 @@ function inline(value: Value, indent: string, used: number): string {
     if (typeof value === "number" || typeof value === "boolean") {
         return scalar(value);
     }
+    if (scalarLike(value)) {
+        return isList(value) ? "[]" : "{}";
+    }
     const inner = indent + INDENT;
-    if (isList(value)) {
-        if (value.length === 0) {
-            return "[]";
-        }
-        const items = value.map((item) => inline(item, inner, inner.length));
-        const flat = `[${items.join(", ")}]`;
-        const rows = value.some((item) => !scalarLike(item)) || flat.includes("\n");
-        return !rows && used + flat.length <= WIDTH
-            ? flat
-            : `[\n${items.map((item) => `${inner}${item},`).join("\n")}\n${indent}]`;
+    const items = isList(value)
+        ? value.map((item) => inline(item, inner, 0, true))
+        : Object.entries(value).map(([key, item]) => {
+              const head = `${tomlKey(key)} = `;
+              return head + inline(item, inner, columns(inner + head), false);
+          });
+    const rows =
+        items.some((item) => item.includes("\n")) ||
+        (isList(value) && value.some((item) => !scalarLike(item)));
+    if (!rows && fits(value, start, row ? indent.length : 0)) {
+        return oneLine(value);
     }
-    const entries = Object.entries(value);
-    if (entries.length === 0) {
-        return "{}";
-    }
-    const items = entries.map(([key, item]) => {
-        const head = `${tomlKey(key)} = `;
-        return head + inline(item, inner, inner.length + head.length);
-    });
-    const flat = `{ ${items.join(", ")} }`;
-    const scalars = entries.every(([, item]) => scalarLike(item));
-    return !flat.includes("\n") && (scalars || used + flat.length <= WIDTH)
-        ? flat
-        : `{\n${items.map((item) => `${inner}${item},`).join("\n")}\n${indent}}`;
+    const [open, close] = isList(value) ? ["[", "]"] : ["{", "}"];
+    return `${open}\n${items.map((item) => `${inner}${item},`).join("\n")}\n${indent}${close}`;
 }
 
 /// Whether `value` holds text of several lines.
@@ -197,7 +229,7 @@ function sections(path: readonly string[], table: Table, item = false): string[]
             item ? `[[${keys}]]` : `[${keys}]`,
             ...flat.map(([key, value]) => {
                 const head = `${tomlKey(key)} = `;
-                return head + inline(value, "", head.length);
+                return head + inline(value, "", columns(head), false);
             }),
         ]);
     }

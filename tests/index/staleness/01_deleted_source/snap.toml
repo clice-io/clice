@@ -26,5 +26,11 @@ workspace_symbols = [
 
 ["closed header edit reaches its includers".errors]
 errors = [
-    { at = "return ⟦registry_count⟧();", severity = "error", message = "use of undeclared identifier 'registry_count'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦registry_count⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'registry_count'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]

@@ -1,26 +1,46 @@
 [answers.outline]
 document_symbols = [
-    { name = "DESCRIBE", kind = "Constant", at = "#define ⟦DESCRIBE⟧(text) static const char* description = text;", detail = "(text)" },
+    {
+        name = "DESCRIBE",
+        kind = "Constant",
+        at = "#define ⟦DESCRIBE⟧(text) static const char* description = text;",
+        detail = "(text)",
+    },
     {
         name = 'DESCRIBE("a一二三四五六七八九十一二三四五六七八九十一二三四五...)',
         kind = "Constant",
         at = '⟦DESCRIBE⟧("a一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十")',
         children = [
-            { name = "description", kind = "Variable", at = '⟦DESCRIBE⟧("a一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十")', detail = "const char *" },
+            {
+                name = "description",
+                kind = "Variable",
+                at = '⟦DESCRIBE⟧("a一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十")',
+                detail = "const char *",
+            },
         ],
     },
 ]
 
 [answers.extents]
 document_symbols = [
-    { name = "DESCRIBE", kind = "Constant", at = "#define ⟦DESCRIBE⟧(text) static const char* description = text;", range = "#define ⟦DESCRIBE(text) static const char* description = text;⟧" },
+    {
+        name = "DESCRIBE",
+        kind = "Constant",
+        at = "#define ⟦DESCRIBE⟧(text) static const char* description = text;",
+        range = "#define ⟦DESCRIBE(text) static const char* description = text;⟧",
+    },
     {
         name = 'DESCRIBE("a一二三四五六七八九十一二三四五六七八九十一二三四五...)',
         kind = "Constant",
         at = '⟦DESCRIBE⟧("a一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十")',
         range = '⟦DESCRIBE("a一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十")⟧',
         children = [
-            { name = "description", kind = "Variable", at = '⟦DESCRIBE⟧("a一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十")', range = '⟦DESCRIBE("a一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十")⟧' },
+            {
+                name = "description",
+                kind = "Variable",
+                at = '⟦DESCRIBE⟧("a一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十")',
+                range = '⟦DESCRIBE("a一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十")⟧',
+            },
         ],
     },
 ]

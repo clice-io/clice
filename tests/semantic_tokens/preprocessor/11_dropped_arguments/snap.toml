@@ -6,11 +6,7 @@ semantic_tokens = [
     { at = "#define FIRST(a, ⟦b⟧) a", type = "macroParameter" },
     { at = "#define FIRST(a, b) ⟦a⟧", type = "macroParameter" },
     { at = "⟦#define⟧ IGNORE(...)", type = "directive" },
-    {
-        at = "#define ⟦IGNORE⟧(...)",
-        type = "macro",
-        modifiers = ["definition", "callable", "empty"],
-    },
+    { at = "#define ⟦IGNORE⟧(...)", type = "macro", modifiers = ["definition", "callable", "empty"] },
     { at = "⟦int⟧ left();", type = "primitive" },
     { at = "int ⟦left⟧();", type = "function", modifiers = ["declaration", "global"] },
     { at = "⟦int⟧ right();", type = "primitive" },

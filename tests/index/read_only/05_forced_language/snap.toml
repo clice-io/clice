@@ -1,16 +1,8 @@
 [test.tokens]
 semantic_tokens = [
     { at = "⟦class⟧ Widget { public: int value; };", type = "keyword" },
-    {
-        at = "class ⟦Widget⟧ { public: int value; };",
-        type = "class",
-        modifiers = ["definition", "global"],
-    },
+    { at = "class ⟦Widget⟧ { public: int value; };", type = "class", modifiers = ["definition", "global"] },
     { at = "class Widget { ⟦public⟧: int value; };", type = "keyword" },
     { at = "class Widget { public: ⟦int⟧ value; };", type = "primitive" },
-    {
-        at = "class Widget { public: int ⟦value⟧; };",
-        type = "field",
-        modifiers = ["definition", "member"],
-    },
+    { at = "class Widget { public: int ⟦value⟧; };", type = "field", modifiers = ["definition", "member"] },
 ]

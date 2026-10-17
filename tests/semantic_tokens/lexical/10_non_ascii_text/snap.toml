@@ -34,11 +34,7 @@ semantic_tokens = [
     { at = "/* café ☕ and 😀 */ int after_block ⟦=⟧ 2;", type = "operator" },
     { at = "/* café ☕ and 😀 */ int after_block = ⟦2⟧;", type = "number" },
     { at = "⟦int⟧ after_comment = 3; // naïve 😀", type = "primitive" },
-    {
-        at = "int ⟦after_comment⟧ = 3; // naïve 😀",
-        type = "variable",
-        modifiers = ["definition", "global"],
-    },
+    { at = "int ⟦after_comment⟧ = 3; // naïve 😀", type = "variable", modifiers = ["definition", "global"] },
     { at = "int after_comment ⟦=⟧ 3; // naïve 😀", type = "operator" },
     { at = "int after_comment = ⟦3⟧; // naïve 😀", type = "number" },
     { at = "int after_comment = 3; ⟦// naïve 😀⟧", type = "comment" },

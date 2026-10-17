@@ -11,8 +11,18 @@ document_symbols = [
                 at = "union ⟦Value⟧ {",
                 detail = "union",
                 children = [
-                    { name = "i", kind = "Field", at = "int ⟦i⟧;", detail = "int" },
-                    { name = "f", kind = "Field", at = "float ⟦f⟧;", detail = "float" },
+                    {
+                        name = "i",
+                        kind = "Field",
+                        at = "int ⟦i⟧;",
+                        detail = "int",
+                    },
+                    {
+                        name = "f",
+                        kind = "Field",
+                        at = "float ⟦f⟧;",
+                        detail = "float",
+                    },
                 ],
             },
             {
@@ -21,8 +31,18 @@ document_symbols = [
                 at = "enum ⟦Flags⟧ { FlagA, FlagB };",
                 detail = "enum",
                 children = [
-                    { name = "FlagA", kind = "EnumMember", at = "enum Flags { ⟦FlagA⟧, FlagB };", detail = "Flags" },
-                    { name = "FlagB", kind = "EnumMember", at = "enum Flags { FlagA, ⟦FlagB⟧ };", detail = "Flags" },
+                    {
+                        name = "FlagA",
+                        kind = "EnumMember",
+                        at = "enum Flags { ⟦FlagA⟧, FlagB };",
+                        detail = "Flags",
+                    },
+                    {
+                        name = "FlagB",
+                        kind = "EnumMember",
+                        at = "enum Flags { FlagA, ⟦FlagB⟧ };",
+                        detail = "Flags",
+                    },
                 ],
             },
             {
@@ -31,8 +51,18 @@ document_symbols = [
                 at = "enum class ⟦Mode⟧ : unsigned char { Fast, Safe };",
                 detail = "enum",
                 children = [
-                    { name = "Fast", kind = "EnumMember", at = "enum class Mode : unsigned char { ⟦Fast⟧, Safe };", detail = "Mode" },
-                    { name = "Safe", kind = "EnumMember", at = "enum class Mode : unsigned char { Fast, ⟦Safe⟧ };", detail = "Mode" },
+                    {
+                        name = "Fast",
+                        kind = "EnumMember",
+                        at = "enum class Mode : unsigned char { ⟦Fast⟧, Safe };",
+                        detail = "Mode",
+                    },
+                    {
+                        name = "Safe",
+                        kind = "EnumMember",
+                        at = "enum class Mode : unsigned char { Fast, ⟦Safe⟧ };",
+                        detail = "Mode",
+                    },
                 ],
             },
             {
@@ -47,18 +77,58 @@ document_symbols = [
                         at = "struct ⟦Meta⟧ {",
                         detail = "struct",
                         children = [
-                            { name = "tag", kind = "Field", at = "int ⟦tag⟧;", detail = "int" },
+                            {
+                                name = "tag",
+                                kind = "Field",
+                                at = "int ⟦tag⟧;",
+                                detail = "int",
+                            },
                         ],
                     },
-                    { name = "first", kind = "Field", at = "int ⟦first⟧;", detail = "int" },
-                    { name = "second", kind = "Field", at = "int ⟦second⟧;", detail = "int" },
-                    { name = "instances", kind = "Variable", at = "static int ⟦instances⟧;", detail = "static int" },
+                    {
+                        name = "first",
+                        kind = "Field",
+                        at = "int ⟦first⟧;",
+                        detail = "int",
+                    },
+                    {
+                        name = "second",
+                        kind = "Field",
+                        at = "int ⟦second⟧;",
+                        detail = "int",
+                    },
+                    {
+                        name = "instances",
+                        kind = "Variable",
+                        at = "static int ⟦instances⟧;",
+                        detail = "static int",
+                    },
                 ],
             },
-            { name = "make_pair", kind = "Function", at = "Pair ⟦make_pair⟧();", detail = "Pair ()" },
-            { name = "bound_first", kind = "Variable", at = "auto [⟦bound_first⟧, bound_second] = make_pair();", detail = "int" },
-            { name = "bound_second", kind = "Variable", at = "auto [bound_first, ⟦bound_second⟧] = make_pair();", detail = "int" },
-            { name = "lambda", kind = "Variable", at = "auto ⟦lambda⟧ = [](int x) {", detail = "int (int x)" },
+            {
+                name = "make_pair",
+                kind = "Function",
+                at = "Pair ⟦make_pair⟧();",
+                detail = "Pair ()",
+            },
+            {
+                name = "bound_first",
+                kind = "Variable",
+                at = "auto [⟦bound_first⟧, bound_second] = make_pair();",
+                detail = "int",
+            },
+            {
+                name = "bound_second",
+                kind = "Variable",
+                at = "auto [bound_first, ⟦bound_second⟧] = make_pair();",
+                detail = "int",
+            },
+            {
+                name = "lambda",
+                kind = "Variable",
+                at = "auto ⟦lambda⟧ = [](int x) {",
+                detail = "int (int x)",
+            },
         ],
     },
 ]
@@ -77,8 +147,18 @@ document_symbols = [
                 at = "union ⟦Value⟧ {",
                 range = "⟦union Value { … }⟧ (4 lines)",
                 children = [
-                    { name = "i", kind = "Field", at = "int ⟦i⟧;", range = "⟦int i⟧;" },
-                    { name = "f", kind = "Field", at = "float ⟦f⟧;", range = "⟦float f⟧;" },
+                    {
+                        name = "i",
+                        kind = "Field",
+                        at = "int ⟦i⟧;",
+                        range = "⟦int i⟧;",
+                    },
+                    {
+                        name = "f",
+                        kind = "Field",
+                        at = "float ⟦f⟧;",
+                        range = "⟦float f⟧;",
+                    },
                 ],
             },
             {
@@ -87,8 +167,18 @@ document_symbols = [
                 at = "enum ⟦Flags⟧ { FlagA, FlagB };",
                 range = "⟦enum Flags { FlagA, FlagB }⟧;",
                 children = [
-                    { name = "FlagA", kind = "EnumMember", at = "enum Flags { ⟦FlagA⟧, FlagB };", range = "enum Flags { ⟦FlagA⟧, FlagB };" },
-                    { name = "FlagB", kind = "EnumMember", at = "enum Flags { FlagA, ⟦FlagB⟧ };", range = "enum Flags { FlagA, ⟦FlagB⟧ };" },
+                    {
+                        name = "FlagA",
+                        kind = "EnumMember",
+                        at = "enum Flags { ⟦FlagA⟧, FlagB };",
+                        range = "enum Flags { ⟦FlagA⟧, FlagB };",
+                    },
+                    {
+                        name = "FlagB",
+                        kind = "EnumMember",
+                        at = "enum Flags { FlagA, ⟦FlagB⟧ };",
+                        range = "enum Flags { FlagA, ⟦FlagB⟧ };",
+                    },
                 ],
             },
             {
@@ -97,8 +187,18 @@ document_symbols = [
                 at = "enum class ⟦Mode⟧ : unsigned char { Fast, Safe };",
                 range = "⟦enum class Mode : unsigned char { Fast, Safe }⟧;",
                 children = [
-                    { name = "Fast", kind = "EnumMember", at = "enum class Mode : unsigned char { ⟦Fast⟧, Safe };", range = "enum class Mode : unsigned char { ⟦Fast⟧, Safe };" },
-                    { name = "Safe", kind = "EnumMember", at = "enum class Mode : unsigned char { Fast, ⟦Safe⟧ };", range = "enum class Mode : unsigned char { Fast, ⟦Safe⟧ };" },
+                    {
+                        name = "Fast",
+                        kind = "EnumMember",
+                        at = "enum class Mode : unsigned char { ⟦Fast⟧, Safe };",
+                        range = "enum class Mode : unsigned char { ⟦Fast⟧, Safe };",
+                    },
+                    {
+                        name = "Safe",
+                        kind = "EnumMember",
+                        at = "enum class Mode : unsigned char { Fast, ⟦Safe⟧ };",
+                        range = "enum class Mode : unsigned char { Fast, ⟦Safe⟧ };",
+                    },
                 ],
             },
             {
@@ -113,18 +213,58 @@ document_symbols = [
                         at = "struct ⟦Meta⟧ {",
                         range = "⟦struct Meta { … }⟧ (3 lines)",
                         children = [
-                            { name = "tag", kind = "Field", at = "int ⟦tag⟧;", range = "⟦int tag⟧;" },
+                            {
+                                name = "tag",
+                                kind = "Field",
+                                at = "int ⟦tag⟧;",
+                                range = "⟦int tag⟧;",
+                            },
                         ],
                     },
-                    { name = "first", kind = "Field", at = "int ⟦first⟧;", range = "⟦int first⟧;" },
-                    { name = "second", kind = "Field", at = "int ⟦second⟧;", range = "⟦int second⟧;" },
-                    { name = "instances", kind = "Variable", at = "static int ⟦instances⟧;", range = "⟦static int instances⟧;" },
+                    {
+                        name = "first",
+                        kind = "Field",
+                        at = "int ⟦first⟧;",
+                        range = "⟦int first⟧;",
+                    },
+                    {
+                        name = "second",
+                        kind = "Field",
+                        at = "int ⟦second⟧;",
+                        range = "⟦int second⟧;",
+                    },
+                    {
+                        name = "instances",
+                        kind = "Variable",
+                        at = "static int ⟦instances⟧;",
+                        range = "⟦static int instances⟧;",
+                    },
                 ],
             },
-            { name = "make_pair", kind = "Function", at = "Pair ⟦make_pair⟧();", range = "⟦Pair make_pair()⟧;" },
-            { name = "bound_first", kind = "Variable", at = "auto [⟦bound_first⟧, bound_second] = make_pair();", range = "auto [⟦bound_first⟧, bound_second] = make_pair();" },
-            { name = "bound_second", kind = "Variable", at = "auto [bound_first, ⟦bound_second⟧] = make_pair();", range = "auto [bound_first, ⟦bound_second⟧] = make_pair();" },
-            { name = "lambda", kind = "Variable", at = "auto ⟦lambda⟧ = [](int x) {", range = "⟦auto lambda = [](int x) { … }⟧ (3 lines)" },
+            {
+                name = "make_pair",
+                kind = "Function",
+                at = "Pair ⟦make_pair⟧();",
+                range = "⟦Pair make_pair()⟧;",
+            },
+            {
+                name = "bound_first",
+                kind = "Variable",
+                at = "auto [⟦bound_first⟧, bound_second] = make_pair();",
+                range = "auto [⟦bound_first⟧, bound_second] = make_pair();",
+            },
+            {
+                name = "bound_second",
+                kind = "Variable",
+                at = "auto [bound_first, ⟦bound_second⟧] = make_pair();",
+                range = "auto [bound_first, ⟦bound_second⟧] = make_pair();",
+            },
+            {
+                name = "lambda",
+                kind = "Variable",
+                at = "auto ⟦lambda⟧ = [](int x) {",
+                range = "⟦auto lambda = [](int x) { … }⟧ (3 lines)",
+            },
         ],
     },
 ]

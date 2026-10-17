@@ -1,10 +1,16 @@
 [answers."main.cpp"]
 folding_ranges = [
-    { kind = "comment", at = "// Written specializations and their members fold; instantiated declarations⟦ … // reuse the pattern's source locations and do not fold it again.⟧ (2 lines)" },
+    {
+        kind = "comment",
+        at = "// Written specializations and their members fold; instantiated declarations⟦ … // reuse the pattern's source locations and do not fold it again.⟧ (2 lines)",
+    },
     { kind = "struct", at = "struct Box ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "void reset() ⟦{ … }⟧ (3 lines) @7", collapsed = "{...}" },
     { kind = "struct", at = "struct Box<void> ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "void reset() ⟦{ … }⟧ (3 lines) @14", collapsed = "{...}" },
     { kind = "struct", at = "struct Box<T*> ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
-    { kind = "comment", at = "// Neither the implicit instantiation Box<int> nor the explicit instantiation⟦ … // Box<char> re-folds the primary's braces or the reset() body.⟧ (2 lines)" },
+    {
+        kind = "comment",
+        at = "// Neither the implicit instantiation Box<int> nor the explicit instantiation⟦ … // Box<char> re-folds the primary's braces or the reset() body.⟧ (2 lines)",
+    },
 ]

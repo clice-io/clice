@@ -1,6 +1,12 @@
 ["the client's capability picks the model".pulled]
 diagnostics = [
-    { at = "int main() { return ⟦missing⟧; }", severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦missing⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["the client's capability picks the model"."pushes to a pulling client"]
@@ -9,13 +15,25 @@ pushes = []
 ["the client's capability picks the model"."pushes to another client"]
 pushes = [
     [
-        { at = "int main() { return ⟦missing⟧; }", severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+        {
+            at = "int main() { return ⟦missing⟧; }",
+            severity = "error",
+            message = "use of undeclared identifier 'missing'",
+            source = "clang",
+            code = "err_undeclared_var_use",
+        },
     ],
 ]
 
 ["pulls follow edits".first]
 diagnostics = [
-    { at = "int main() { return ⟦missing⟧; }", severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦missing⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["pulls follow edits".fixed]
@@ -23,7 +41,13 @@ diagnostics = []
 
 ["pulls follow edits"."broken again"]
 diagnostics = [
-    { at = "int main() { return ⟦second⟧; }", severity = "error", message = "use of undeclared identifier 'second'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦second⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'second'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["pulls follow edits".pushes]
@@ -31,17 +55,35 @@ pushes = []
 
 ["an edit mid-pull answers the new text".pulled]
 diagnostics = [
-    { at = "int main() { return ⟦second⟧; }", severity = "error", message = "use of undeclared identifier 'second'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦second⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'second'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["a cancelled pull answers at once".next]
 diagnostics = [
-    { at = "int main() { return ⟦missing⟧; }", severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦missing⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["a closed document pulls empty".open]
 diagnostics = [
-    { at = "int main() { return ⟦missing⟧; }", severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦missing⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["a closed document pulls empty".pushes]

@@ -7,11 +7,27 @@ value = 1
 [test.pushes]
 pushes = [
     [
-        { at = "⟦⟧import Math;", severity = "warning", message = "clice's worker crashed while building a module imported by this file (${CRASH}). The module is paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+        {
+            at = "⟦⟧import Math;",
+            severity = "warning",
+            message = "clice's worker crashed while building a module imported by this file (${CRASH}). The module is paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
     ],
     [
-        { at = "⟦⟧import Math;", severity = "warning", message = "clice's worker crashed while building a module imported by this file (${CRASH}). The module is paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
-        { at = "import ⟦Math;⟧", severity = "error", message = "module 'Math' not found", source = "clang", code = "err_module_not_found" },
+        {
+            at = "⟦⟧import Math;",
+            severity = "warning",
+            message = "clice's worker crashed while building a module imported by this file (${CRASH}). The module is paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
+        {
+            at = "import ⟦Math;⟧",
+            severity = "error",
+            message = "module 'Math' not found",
+            source = "clang",
+            code = "err_module_not_found",
+        },
     ],
 ]
 
@@ -33,11 +49,27 @@ hover = {}
 [test."other pushes"]
 pushes = [
     [
-        { at = "⟦⟧import Math;", severity = "warning", message = "clice's worker crashed while building a module imported by this file (${CRASH}). The module is paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+        {
+            at = "⟦⟧import Math;",
+            severity = "warning",
+            message = "clice's worker crashed while building a module imported by this file (${CRASH}). The module is paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
     ],
     [
-        { at = "⟦⟧import Math;", severity = "warning", message = "clice's worker crashed while building a module imported by this file (${CRASH}). The module is paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
-        { at = "import ⟦Math;⟧", severity = "error", message = "module 'Math' not found", source = "clang", code = "err_module_not_found" },
+        {
+            at = "⟦⟧import Math;",
+            severity = "warning",
+            message = "clice's worker crashed while building a module imported by this file (${CRASH}). The module is paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
+        {
+            at = "import ⟦Math;⟧",
+            severity = "error",
+            message = "module 'Math' not found",
+            source = "clang",
+            code = "err_module_not_found",
+        },
     ],
 ]
 

@@ -8,11 +8,7 @@ references = [
     "struct Dog : public ⟦Animal⟧ {",
     "struct Cat : public ⟦Animal⟧ {",
 ]
-uses = [
-    "virtual ~⟦Animal⟧() = default;",
-    "struct Dog : public ⟦Animal⟧ {",
-    "struct Cat : public ⟦Animal⟧ {",
-]
+uses = ["virtual ~⟦Animal⟧() = default;", "struct Dog : public ⟦Animal⟧ {", "struct Cat : public ⟦Animal⟧ {"]
 type_hierarchy = [
     { name = "Animal", kind = "Struct", at = "struct ⟦Animal⟧ {" },
 ]
@@ -131,11 +127,7 @@ definition = []
 [test.area]
 definition = ["nav.h │ int ⟦area⟧(const Shape& s);"]
 declaration = ["nav.h │ int ⟦area⟧(const Shape& s);"]
-references = [
-    "int ⟦area⟧(const Shape& s) {",
-    "return ⟦area⟧(global_shape);",
-    "nav.h │ int ⟦area⟧(const Shape& s);",
-]
+references = ["int ⟦area⟧(const Shape& s) {", "return ⟦area⟧(global_shape);", "nav.h │ int ⟦area⟧(const Shape& s);"]
 uses = ["return ⟦area⟧(global_shape);"]
 call_hierarchy = [
     { name = "area", kind = "Function", at = "int ⟦area⟧(const Shape& s) {" },
@@ -248,7 +240,12 @@ declaration = ["nav.cpp │ void GLRenderer::⟦render⟧() {}"]
 implementation = ["nav.cpp │ void DebugGLRenderer::⟦render⟧() {}"]
 references = ["nav.cpp │ void GLRenderer::⟦render⟧() {}", "void ⟦render⟧() override; @+0"]
 call_hierarchy = [
-    { name = "render", kind = "Method", at = "nav.cpp │ void GLRenderer::⟦render⟧() {}", detail = "GLRenderer::render" },
+    {
+        name = "render",
+        kind = "Method",
+        at = "nav.cpp │ void GLRenderer::⟦render⟧() {}",
+        detail = "GLRenderer::render",
+    },
 ]
 
 [test.make_unit_shape]
@@ -267,5 +264,10 @@ add = [
 ]
 animal = [
     { name = "Animal", kind = "Struct", at = "main.cpp │ struct ⟦Animal⟧ {" },
-    { name = "~Animal", kind = "Method", at = "main.cpp │ virtual ⟦~Animal⟧() = default;", container = "Animal" },
+    {
+        name = "~Animal",
+        kind = "Method",
+        at = "main.cpp │ virtual ⟦~Animal⟧() = default;",
+        container = "Animal",
+    },
 ]

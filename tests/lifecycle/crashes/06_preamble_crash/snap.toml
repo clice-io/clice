@@ -13,7 +13,12 @@ hover = {}
 [test."twin pushes"]
 pushes = [
     [
-        { at = "⟦⟧#pragma clang __debug crash", severity = "warning", message = "clice's worker crashed while building the precompiled preamble of this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+        {
+            at = "⟦⟧#pragma clang __debug crash",
+            severity = "warning",
+            message = "clice's worker crashed while building the precompiled preamble of this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
     ],
 ]
 
@@ -43,7 +48,12 @@ range = "int ⟦add⟧(int a, int b) {"
 [test.pushes]
 pushes = [
     [
-        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while building the precompiled preamble of this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+        {
+            at = "⟦⟧int add(int a, int b) {",
+            severity = "warning",
+            message = "clice's worker crashed while building the precompiled preamble of this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
     ],
     [],
 ]

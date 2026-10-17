@@ -1,6 +1,12 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = "std::unique_ptr<int> make() { return ⟦std::unique_ptr⟧<int>(new int(1)); }", severity = "warning", message = "use mem::make_unique instead", source = "clang-tidy", code = "modernize-make-unique" },
+    {
+        at = "std::unique_ptr<int> make() { return ⟦std::unique_ptr⟧<int>(new int(1)); }",
+        severity = "warning",
+        message = "use mem::make_unique instead",
+        source = "clang-tidy",
+        code = "modernize-make-unique",
+    },
 ]
 
 [[test.fixes.code_actions]]

@@ -5,7 +5,12 @@ hover = {}
 pushes = [
     [],
     [
-        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while computing hover for this file (${CRASH}). Hover is paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+        {
+            at = "⟦⟧int add(int a, int b) {",
+            severity = "warning",
+            message = "clice's worker crashed while computing hover for this file (${CRASH}). Hover is paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
     ],
 ]
 

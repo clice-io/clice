@@ -1,18 +1,10 @@
 [answers.macro_def_site]
 definition = ["#define ⟦DECLARE_HOOK⟧(name) int name(int value)"]
-references = [
-    "#define ⟦DECLARE_HOOK⟧(name) int name(int value)",
-    "⟦DECLARE_HOOK⟧(notify);",
-    "⟦DECLARE_HOOK⟧(notify) {",
-]
+references = ["#define ⟦DECLARE_HOOK⟧(name) int name(int value)", "⟦DECLARE_HOOK⟧(notify);", "⟦DECLARE_HOOK⟧(notify) {"]
 
 [answers.macro_name_use]
 definition = ["#define ⟦DECLARE_HOOK⟧(name) int name(int value)"]
-references = [
-    "#define ⟦DECLARE_HOOK⟧(name) int name(int value)",
-    "⟦DECLARE_HOOK⟧(notify);",
-    "⟦DECLARE_HOOK⟧(notify) {",
-]
+references = ["#define ⟦DECLARE_HOOK⟧(name) int name(int value)", "⟦DECLARE_HOOK⟧(notify);", "⟦DECLARE_HOOK⟧(notify) {"]
 
 [answers.macro_decl]
 definition = ["DECLARE_HOOK(⟦notify⟧) {"]

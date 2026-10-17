@@ -1,4 +1,10 @@
 ["saved partition joins module".before]
 errors = [
-    { at = "import ⟦a;⟧", severity = "error", message = "could not build module 'a': module 'a:part' not found", source = "clang", code = "err_module_not_built" },
+    {
+        at = "import ⟦a;⟧",
+        severity = "error",
+        message = "could not build module 'a': module 'a:part' not found",
+        source = "clang",
+        code = "err_module_not_built",
+    },
 ]

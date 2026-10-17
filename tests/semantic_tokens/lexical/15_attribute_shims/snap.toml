@@ -27,11 +27,7 @@ semantic_tokens = [
     },
     { at = "int helper(int value, ⟦const⟧ char* name);", type = "keyword" },
     { at = "int helper(int value, const ⟦char⟧* name);", type = "primitive" },
-    {
-        at = "int helper(int value, const char⟦*⟧ name);",
-        type = "operator",
-        modifiers = ["declarator"],
-    },
+    { at = "int helper(int value, const char⟦*⟧ name);", type = "operator", modifiers = ["declarator"] },
     {
         at = "int helper(int value, const char* ⟦name⟧);",
         type = "parameter",

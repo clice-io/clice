@@ -7,7 +7,12 @@ document_symbols = [
         at = "class ⟦Owner⟧ {",
         detail = "class",
         children = [
-            { name = "secret", kind = "Field", at = "int ⟦secret⟧;", detail = "int" },
+            {
+                name = "secret",
+                kind = "Field",
+                at = "int ⟦secret⟧;",
+                detail = "int",
+            },
         ],
     },
 ]
@@ -21,7 +26,12 @@ document_symbols = [
         at = "class ⟦Owner⟧ {",
         range = "⟦class Owner { … }⟧ (6 lines)",
         children = [
-            { name = "secret", kind = "Field", at = "int ⟦secret⟧;", range = "⟦int secret⟧;" },
+            {
+                name = "secret",
+                kind = "Field",
+                at = "int ⟦secret⟧;",
+                range = "⟦int secret⟧;",
+            },
         ],
     },
 ]

@@ -19,6 +19,18 @@ host = "main.cpp"
 
 ["a changed includer is read again".diagnostics]
 diagnostics = [
-    { at = "⟦X⟧(alpha)", severity = "error", message = "use of undeclared identifier 'missing_value'", source = "clang", code = "err_undeclared_var_use" },
-    { at = "⟦X⟧(beta)", severity = "error", message = "use of undeclared identifier 'missing_value'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "⟦X⟧(alpha)",
+        severity = "error",
+        message = "use of undeclared identifier 'missing_value'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+    {
+        at = "⟦X⟧(beta)",
+        severity = "error",
+        message = "use of undeclared identifier 'missing_value'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]

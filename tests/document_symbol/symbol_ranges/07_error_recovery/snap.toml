@@ -7,7 +7,12 @@ document_symbols = [
         detail = "void ()",
         children = [
             { name = "v", kind = "Variable", at = "int ⟦v⟧[3];", detail = "int[3]" },
-            { name = "x", kind = "Variable", at = "for(⟦x⟧ : v) {}", detail = "int &" },
+            {
+                name = "x",
+                kind = "Variable",
+                at = "for(⟦x⟧ : v) {}",
+                detail = "int &",
+            },
             { name = "first", kind = "Variable", at = "auto [⟦first⟧, second] = 1;" },
             { name = "second", kind = "Variable", at = "auto [first, ⟦second⟧] = 1;" },
         ],
@@ -30,10 +35,30 @@ document_symbols = [
         at = "void ⟦f⟧() {",
         range = "⟦void f() { … }⟧ (5 lines)",
         children = [
-            { name = "v", kind = "Variable", at = "int ⟦v⟧[3];", range = "⟦int v[3]⟧;" },
-            { name = "x", kind = "Variable", at = "for(⟦x⟧ : v) {}", range = "for(⟦x :⟧ v) {}" },
-            { name = "first", kind = "Variable", at = "auto [⟦first⟧, second] = 1;", range = "auto [⟦first⟧, second] = 1;" },
-            { name = "second", kind = "Variable", at = "auto [first, ⟦second⟧] = 1;", range = "auto [first, ⟦second⟧] = 1;" },
+            {
+                name = "v",
+                kind = "Variable",
+                at = "int ⟦v⟧[3];",
+                range = "⟦int v[3]⟧;",
+            },
+            {
+                name = "x",
+                kind = "Variable",
+                at = "for(⟦x⟧ : v) {}",
+                range = "for(⟦x :⟧ v) {}",
+            },
+            {
+                name = "first",
+                kind = "Variable",
+                at = "auto [⟦first⟧, second] = 1;",
+                range = "auto [⟦first⟧, second] = 1;",
+            },
+            {
+                name = "second",
+                kind = "Variable",
+                at = "auto [first, ⟦second⟧] = 1;",
+                range = "auto [first, ⟦second⟧] = 1;",
+            },
         ],
     },
     {

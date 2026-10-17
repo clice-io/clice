@@ -1,5 +1,8 @@
 [answers."main.cpp"]
 folding_ranges = [
-    { kind = "comment", at = "// A namespace an included file closes folds from its brace to the end of⟦ … // this file, which holds no closing brace.⟧ (2 lines)" },
+    {
+        kind = "comment",
+        at = "// A namespace an included file closes folds from its brace to the end of⟦ … // this file, which holds no closing brace.⟧ (2 lines)",
+    },
     { kind = "namespace", at = "namespace outer ⟦{ … ⟧ (7 lines)", collapsed = "{..." },
 ]

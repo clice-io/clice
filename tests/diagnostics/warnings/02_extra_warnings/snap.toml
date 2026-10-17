@@ -1,5 +1,17 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = "int narrow(long value, int ⟦unused⟧) {", severity = "warning", message = "unused parameter 'unused'", source = "clang", code = "-Wunused-parameter" },
-    { at = "short small = ⟦value⟧;", severity = "warning", message = "implicit conversion loses integer precision: 'long' to 'short'", source = "clang", code = "-Wimplicit-int-conversion" },
+    {
+        at = "int narrow(long value, int ⟦unused⟧) {",
+        severity = "warning",
+        message = "unused parameter 'unused'",
+        source = "clang",
+        code = "-Wunused-parameter",
+    },
+    {
+        at = "short small = ⟦value⟧;",
+        severity = "warning",
+        message = "implicit conversion loses integer precision: 'long' to 'short'",
+        source = "clang",
+        code = "-Wimplicit-int-conversion",
+    },
 ]

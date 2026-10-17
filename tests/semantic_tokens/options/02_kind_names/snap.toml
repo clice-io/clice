@@ -11,11 +11,7 @@ semantic_tokens = [
     { at = "⟦template⟧ <typename T, int N>", type = "keyword" },
     { at = "template ⟦<⟧typename T, int N>", type = "bracket" },
     { at = "template <⟦typename⟧ T, int N>", type = "keyword" },
-    {
-        at = "template <typename ⟦T⟧, int N>",
-        type = "typeParameter",
-        modifiers = ["definition", "local"],
-    },
+    { at = "template <typename ⟦T⟧, int N>", type = "typeParameter", modifiers = ["definition", "local"] },
     { at = "template <typename T, ⟦int⟧ N>", type = "primitive" },
     {
         at = "template <typename T, int ⟦N⟧>",
@@ -24,21 +20,13 @@ semantic_tokens = [
     },
     { at = "template <typename T, int N⟦>⟧", type = "bracket" },
     { at = "⟦T⟧ scaled(T value) {", type = "typeParameter", modifiers = ["local"] },
-    {
-        at = "T ⟦scaled⟧(T value) {",
-        type = "function",
-        modifiers = ["definition", "global", "template"],
-    },
+    { at = "T ⟦scaled⟧(T value) {", type = "function", modifiers = ["definition", "global", "template"] },
     { at = "T scaled(⟦T⟧ value) {", type = "typeParameter", modifiers = ["local"] },
     { at = "T scaled(T ⟦value⟧) {", type = "parameter", modifiers = ["definition", "local"] },
     { at = "⟦return⟧ value * N;", type = "keyword", modifiers = ["controlFlow"] },
     { at = "return ⟦value⟧ * N;", type = "parameter", modifiers = ["local"] },
     { at = "return value ⟦*⟧ N;", type = "operator" },
-    {
-        at = "return value * ⟦N⟧;",
-        type = "templateParameter",
-        modifiers = ["readonly", "local", "constexpr"],
-    },
+    { at = "return value * ⟦N⟧;", type = "templateParameter", modifiers = ["readonly", "local", "constexpr"] },
 ]
 
 [renamed."main.cpp"]
@@ -60,19 +48,11 @@ semantic_tokens = [
     },
     { at = "template <typename T, int N⟦>⟧", type = "bracket" },
     { at = "⟦T⟧ scaled(T value) {", type = "type", modifiers = ["local"] },
-    {
-        at = "T ⟦scaled⟧(T value) {",
-        type = "function",
-        modifiers = ["definition", "global", "template"],
-    },
+    { at = "T ⟦scaled⟧(T value) {", type = "function", modifiers = ["definition", "global", "template"] },
     { at = "T scaled(⟦T⟧ value) {", type = "type", modifiers = ["local"] },
     { at = "T scaled(T ⟦value⟧) {", type = "parameter", modifiers = ["definition", "local"] },
     { at = "⟦return⟧ value * N;", type = "keyword", modifiers = ["controlFlow"] },
     { at = "return ⟦value⟧ * N;", type = "parameter", modifiers = ["local"] },
     { at = "return value ⟦*⟧ N;", type = "operator" },
-    {
-        at = "return value * ⟦N⟧;",
-        type = "templateParameter",
-        modifiers = ["readonly", "local", "constexpr"],
-    },
+    { at = "return value * ⟦N⟧;", type = "templateParameter", modifiers = ["readonly", "local", "constexpr"] },
 ]

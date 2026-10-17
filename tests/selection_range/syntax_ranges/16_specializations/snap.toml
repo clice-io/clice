@@ -25,9 +25,4 @@ selection_ranges = [
 ]
 
 [answers.function]
-selection_ranges = [
-    "int zero<⟦int⟧>() {",
-    "int zero⟦<int>⟧() {",
-    "⟦int zero<int>()⟧ {",
-    "⟦template <> … }⟧ (4 lines)",
-]
+selection_ranges = ["int zero<⟦int⟧>() {", "int zero⟦<int>⟧() {", "⟦int zero<int>()⟧ {", "⟦template <> … }⟧ (4 lines)"]

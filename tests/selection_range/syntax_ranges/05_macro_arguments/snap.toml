@@ -1,10 +1,5 @@
 [answers.declared]
-selection_ranges = [
-    "DECLARE(⟦counter⟧);",
-    "DECLARE⟦(counter)⟧;",
-    "⟦DECLARE(counter)⟧;",
-    "⟦DECLARE(counter);⟧",
-]
+selection_ranges = ["DECLARE(⟦counter⟧);", "DECLARE⟦(counter)⟧;", "⟦DECLARE(counter)⟧;", "⟦DECLARE(counter);⟧"]
 
 [answers.expr]
 selection_ranges = [

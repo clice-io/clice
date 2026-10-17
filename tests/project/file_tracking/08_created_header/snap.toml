@@ -1,7 +1,19 @@
 ["created header reaches includers".missing]
 errors = [
-    { at = '#include ⟦"gen.h"⟧', severity = "error", message = "'gen.h' file not found", source = "clang", code = "err_pp_file_not_found" },
-    { at = "int use_a() { return ⟦make⟧(); }", severity = "error", message = "use of undeclared identifier 'make'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = '#include ⟦"gen.h"⟧',
+        severity = "error",
+        message = "'gen.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
+    {
+        at = "int use_a() { return ⟦make⟧(); }",
+        severity = "error",
+        message = "use of undeclared identifier 'make'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["created header reaches includers".failed]

@@ -8,8 +8,14 @@ diagnostics = [
         code = "err_typecheck_member_reference_struct_union",
         related = [
             { at = "box.h │ t⟦.⟧member();", message = "error occurred here" },
-            { at = "box.h │ ⟦touch⟧(t);", message = "in instantiation of function template specialization 'touch<int>' requested here" },
-            { at = "ints.⟦put⟧(1);", message = "in instantiation of member function 'Box<int>::put' requested here" },
+            {
+                at = "box.h │ ⟦touch⟧(t);",
+                message = "in instantiation of function template specialization 'touch<int>' requested here",
+            },
+            {
+                at = "ints.⟦put⟧(1);",
+                message = "in instantiation of member function 'Box<int>::put' requested here",
+            },
         ],
     },
 ]

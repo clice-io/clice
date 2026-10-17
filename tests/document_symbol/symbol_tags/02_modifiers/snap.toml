@@ -7,9 +7,27 @@ document_symbols = [
         detail = "class",
         tags = [],
         children = [
-            { name = "render", kind = "Method", at = "virtual void ⟦render⟧() = 0;", detail = "virtual void () = 0", tags = [] },
-            { name = "instances", kind = "Method", at = "static int ⟦instances⟧();", detail = "static int ()", tags = [] },
-            { name = "id", kind = "Field", at = "int ⟦id⟧;", detail = "int", tags = [] },
+            {
+                name = "render",
+                kind = "Method",
+                at = "virtual void ⟦render⟧() = 0;",
+                detail = "virtual void () = 0",
+                tags = [],
+            },
+            {
+                name = "instances",
+                kind = "Method",
+                at = "static int ⟦instances⟧();",
+                detail = "static int ()",
+                tags = [],
+            },
+            {
+                name = "id",
+                kind = "Field",
+                at = "int ⟦id⟧;",
+                detail = "int",
+                tags = [],
+            },
         ],
     },
 ]

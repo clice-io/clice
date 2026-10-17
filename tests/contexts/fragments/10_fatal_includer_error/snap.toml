@@ -1,4 +1,10 @@
 [test."ops.def"]
 diagnostics = [
-    { at = "⟦⟧OP(add)", severity = "error", message = "In includer context: 'missing.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+    {
+        at = "⟦⟧OP(add)",
+        severity = "error",
+        message = "In includer context: 'missing.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
 ]

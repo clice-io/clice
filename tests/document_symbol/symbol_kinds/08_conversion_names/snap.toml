@@ -5,8 +5,18 @@ document_symbols = [
         kind = "Namespace",
         at = "namespace ⟦lib⟧ {",
         children = [
-            { name = "basic_string", kind = "Struct", at = "struct ⟦basic_string⟧ {};", detail = "struct" },
-            { name = "string", kind = "Class", at = "using ⟦string⟧ = basic_string;", detail = "type alias" },
+            {
+                name = "basic_string",
+                kind = "Struct",
+                at = "struct ⟦basic_string⟧ {};",
+                detail = "struct",
+            },
+            {
+                name = "string",
+                kind = "Class",
+                at = "using ⟦string⟧ = basic_string;",
+                detail = "type alias",
+            },
         ],
     },
     { name = "Handle", kind = "Class", at = "using ⟦Handle⟧ = int*;", detail = "type alias" },
@@ -16,10 +26,30 @@ document_symbols = [
         at = "struct ⟦Box⟧ {",
         detail = "template struct",
         children = [
-            { name = "operator T &", kind = "Method", at = "⟦operator T&⟧();", detail = "T &()" },
-            { name = "operator Handle", kind = "Method", at = "⟦operator Handle⟧();", detail = "Handle ()" },
-            { name = "operator lib::string", kind = "Method", at = "⟦operator lib::string⟧();", detail = "lib::string ()" },
-            { name = "operator bool", kind = "Method", at = "explicit ⟦operator bool⟧();", detail = "bool ()" },
+            {
+                name = "operator T &",
+                kind = "Method",
+                at = "⟦operator T&⟧();",
+                detail = "T &()",
+            },
+            {
+                name = "operator Handle",
+                kind = "Method",
+                at = "⟦operator Handle⟧();",
+                detail = "Handle ()",
+            },
+            {
+                name = "operator lib::string",
+                kind = "Method",
+                at = "⟦operator lib::string⟧();",
+                detail = "lib::string ()",
+            },
+            {
+                name = "operator bool",
+                kind = "Method",
+                at = "explicit ⟦operator bool⟧();",
+                detail = "bool ()",
+            },
         ],
     },
 ]
@@ -32,8 +62,18 @@ document_symbols = [
         at = "namespace ⟦lib⟧ {",
         range = "⟦namespace lib { … }⟧ (4 lines)",
         children = [
-            { name = "basic_string", kind = "Struct", at = "struct ⟦basic_string⟧ {};", range = "⟦struct basic_string {}⟧;" },
-            { name = "string", kind = "Class", at = "using ⟦string⟧ = basic_string;", range = "⟦using string = basic_string⟧;" },
+            {
+                name = "basic_string",
+                kind = "Struct",
+                at = "struct ⟦basic_string⟧ {};",
+                range = "⟦struct basic_string {}⟧;",
+            },
+            {
+                name = "string",
+                kind = "Class",
+                at = "using ⟦string⟧ = basic_string;",
+                range = "⟦using string = basic_string⟧;",
+            },
         ],
     },
     { name = "Handle", kind = "Class", at = "using ⟦Handle⟧ = int*;", range = "⟦using Handle = int*⟧;" },
@@ -43,10 +83,30 @@ document_symbols = [
         at = "struct ⟦Box⟧ {",
         range = "⟦template <class T> … }⟧ (7 lines)",
         children = [
-            { name = "operator T &", kind = "Method", at = "⟦operator T&⟧();", range = "⟦operator T&()⟧;" },
-            { name = "operator Handle", kind = "Method", at = "⟦operator Handle⟧();", range = "⟦operator Handle()⟧;" },
-            { name = "operator lib::string", kind = "Method", at = "⟦operator lib::string⟧();", range = "⟦operator lib::string()⟧;" },
-            { name = "operator bool", kind = "Method", at = "explicit ⟦operator bool⟧();", range = "⟦explicit operator bool()⟧;" },
+            {
+                name = "operator T &",
+                kind = "Method",
+                at = "⟦operator T&⟧();",
+                range = "⟦operator T&()⟧;",
+            },
+            {
+                name = "operator Handle",
+                kind = "Method",
+                at = "⟦operator Handle⟧();",
+                range = "⟦operator Handle()⟧;",
+            },
+            {
+                name = "operator lib::string",
+                kind = "Method",
+                at = "⟦operator lib::string⟧();",
+                range = "⟦operator lib::string()⟧;",
+            },
+            {
+                name = "operator bool",
+                kind = "Method",
+                at = "explicit ⟦operator bool⟧();",
+                range = "⟦explicit operator bool()⟧;",
+            },
         ],
     },
 ]

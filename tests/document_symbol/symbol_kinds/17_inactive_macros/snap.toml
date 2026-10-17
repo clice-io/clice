@@ -7,7 +7,22 @@ document_symbols = [
 
 [answers.extents]
 document_symbols = [
-    { name = "PREAMBLE_TAKEN", kind = "Constant", at = "#define ⟦PREAMBLE_TAKEN⟧ 2", range = "#define ⟦PREAMBLE_TAKEN 2⟧" },
-    { name = "after", kind = "Variable", at = "int ⟦after⟧ = PREAMBLE_TAKEN;", range = "⟦int after = PREAMBLE_TAKEN⟧;" },
-    { name = "BODY_TAKEN", kind = "Constant", at = "#define ⟦BODY_TAKEN⟧ 4", range = "#define ⟦BODY_TAKEN 4⟧" },
+    {
+        name = "PREAMBLE_TAKEN",
+        kind = "Constant",
+        at = "#define ⟦PREAMBLE_TAKEN⟧ 2",
+        range = "#define ⟦PREAMBLE_TAKEN 2⟧",
+    },
+    {
+        name = "after",
+        kind = "Variable",
+        at = "int ⟦after⟧ = PREAMBLE_TAKEN;",
+        range = "⟦int after = PREAMBLE_TAKEN⟧;",
+    },
+    {
+        name = "BODY_TAKEN",
+        kind = "Constant",
+        at = "#define ⟦BODY_TAKEN⟧ 4",
+        range = "#define ⟦BODY_TAKEN 4⟧",
+    },
 ]

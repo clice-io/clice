@@ -1,6 +1,12 @@
 ["context from another folder"."library host"]
 errors = [
-    { at = "#⟦error⟧ missing IN_APP", severity = "error", message = "missing IN_APP", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing IN_APP",
+        severity = "error",
+        message = "missing IN_APP",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 contexts = [
     { label = "lib.cpp", description = "${WS}/lib/src/lib.cpp", host = "lib/src/lib.cpp" },
@@ -17,7 +23,13 @@ host = "app/main.cpp"
 
 ["context from another folder".reset]
 errors = [
-    { at = "#⟦error⟧ missing IN_APP", severity = "error", message = "missing IN_APP", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing IN_APP",
+        severity = "error",
+        message = "missing IN_APP",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 ["context from another folder".reset.current]
@@ -31,12 +43,24 @@ host = "lib/src/lib.cpp"
 ["context from another folder".pushes]
 pushes = [
     [
-        { at = "#⟦error⟧ missing IN_APP", severity = "error", message = "missing IN_APP", source = "clang", code = "err_pp_hash_error" },
+        {
+            at = "#⟦error⟧ missing IN_APP",
+            severity = "error",
+            message = "missing IN_APP",
+            source = "clang",
+            code = "err_pp_hash_error",
+        },
     ],
     [],
     [],
     [],
     [
-        { at = "#⟦error⟧ missing IN_APP", severity = "error", message = "missing IN_APP", source = "clang", code = "err_pp_hash_error" },
+        {
+            at = "#⟦error⟧ missing IN_APP",
+            severity = "error",
+            message = "missing IN_APP",
+            source = "clang",
+            code = "err_pp_hash_error",
+        },
     ],
 ]

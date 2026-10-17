@@ -29,10 +29,20 @@ value = 3
 pushes = [
     [],
     [
-        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed 2 times in a row while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+        {
+            at = "⟦⟧int add(int a, int b) {",
+            severity = "warning",
+            message = "clice's worker crashed 2 times in a row while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
     ],
     [
-        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed 3 times in a row while compiling this file (${CRASH}). Semantic features are paused here until you save this file.", source = "clice" },
+        {
+            at = "⟦⟧int add(int a, int b) {",
+            severity = "warning",
+            message = "clice's worker crashed 3 times in a row while compiling this file (${CRASH}). Semantic features are paused here until you save this file.",
+            source = "clice",
+        },
     ],
 ]
 

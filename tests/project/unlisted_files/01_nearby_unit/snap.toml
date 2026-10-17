@@ -1,11 +1,23 @@
 ["nearby unit lends its command"."lone.c"]
 errors = [
-    { at = "#⟦error⟧ missing FEATURE", severity = "error", message = "missing FEATURE", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing FEATURE",
+        severity = "error",
+        message = "missing FEATURE",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 ["nearby unit lends its command"."lender changed"]
 errors = [
-    { at = "#⟦error⟧ missing FEATURE", severity = "error", message = "missing FEATURE", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing FEATURE",
+        severity = "error",
+        message = "missing FEATURE",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 ["inspect borrows the same way"."$ clice inspect hover zsrc/new.cpp"]

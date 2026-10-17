@@ -1,6 +1,12 @@
 [test.diagnostics]
 diagnostics = [
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + ⟦missing⟧;', severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + ⟦missing⟧;',
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 [test.hover.hover]
@@ -41,11 +47,7 @@ semantic_tokens = [
         type = "parameter",
         modifiers = ["definition", "local"],
     },
-    {
-        at = "int add(int a, int b) { ⟦return⟧ a + b; }",
-        type = "keyword",
-        modifiers = ["controlFlow"],
-    },
+    { at = "int add(int a, int b) { ⟦return⟧ a + b; }", type = "keyword", modifiers = ["controlFlow"] },
     { at = "int add(int a, int b) { return ⟦a⟧ + b; }", type = "parameter", modifiers = ["local"] },
     { at = "int add(int a, int b) { return a ⟦+⟧ b; }", type = "operator" },
     { at = "int add(int a, int b) { return a + ⟦b⟧; }", type = "parameter", modifiers = ["local"] },

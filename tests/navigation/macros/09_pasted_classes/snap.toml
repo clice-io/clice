@@ -1,10 +1,6 @@
 [answers.base]
 definition = ["struct ⟦TestBase⟧ {"]
-references = [
-    "struct ⟦TestBase⟧ {",
-    "virtual ~⟦TestBase⟧() = default;",
-    "⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {",
-]
+references = ["struct ⟦TestBase⟧ {", "virtual ~⟦TestBase⟧() = default;", "⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {"]
 subtypes = [
     { name = "Parser_HandlesEmpty_Test", kind = "Struct", at = "⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {" },
 ]
@@ -15,9 +11,7 @@ references = ["virtual void ⟦run⟧() = 0;"]
 subtypes = []
 
 [answers.register_site]
-definition = [
-    '#define ⟦REGISTER_TEST⟧(suite, name)                                                                 \',
-]
+definition = ['#define ⟦REGISTER_TEST⟧(suite, name)                                                                 \']
 references = [
     '#define ⟦REGISTER_TEST⟧(suite, name)                                                                 \',
     "⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {",
@@ -26,10 +20,7 @@ subtypes = []
 
 [answers.class_use]
 definition = ["⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {"]
-references = [
-    "⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {",
-    "static ⟦Parser_HandlesEmpty_Test⟧ instance;",
-]
+references = ["⟦REGISTER_TEST⟧(Parser, HandlesEmpty) {", "static ⟦Parser_HandlesEmpty_Test⟧ instance;"]
 subtypes = []
 
 [answers.run_use]

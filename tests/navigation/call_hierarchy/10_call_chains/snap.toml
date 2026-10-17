@@ -7,10 +7,7 @@ incoming_calls = [
         name = "route",
         kind = "Function",
         at = "int ⟦route⟧(int value) {",
-        sites = [
-            "return ⟦settle⟧(value) + settle(value + 1);",
-            "return settle(value) + ⟦settle⟧(value + 1);",
-        ],
+        sites = ["return ⟦settle⟧(value) + settle(value + 1);", "return settle(value) + ⟦settle⟧(value + 1);"],
     },
 ]
 outgoing_calls = []
@@ -38,10 +35,7 @@ outgoing_calls = [
         name = "settle",
         kind = "Function",
         at = "int ⟦settle⟧(int value) {",
-        sites = [
-            "return ⟦settle⟧(value) + settle(value + 1);",
-            "return settle(value) + ⟦settle⟧(value + 1);",
-        ],
+        sites = ["return ⟦settle⟧(value) + settle(value + 1);", "return settle(value) + ⟦settle⟧(value + 1);"],
     },
 ]
 

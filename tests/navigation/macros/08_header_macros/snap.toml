@@ -8,19 +8,11 @@ references = [
 
 [answers.hook_decl]
 definition = ["EXPORT_HOOK(⟦advance⟧) {"]
-references = [
-    "EXPORT_HOOK(⟦advance⟧);",
-    "EXPORT_HOOK(⟦advance⟧) {",
-    "return uses_counted && ⟦advance⟧(1) > 0;",
-]
+references = ["EXPORT_HOOK(⟦advance⟧);", "EXPORT_HOOK(⟦advance⟧) {", "return uses_counted && ⟦advance⟧(1) > 0;"]
 
 [answers.hook_def]
 definition = ["EXPORT_HOOK(⟦advance⟧);"]
-references = [
-    "EXPORT_HOOK(⟦advance⟧);",
-    "EXPORT_HOOK(⟦advance⟧) {",
-    "return uses_counted && ⟦advance⟧(1) > 0;",
-]
+references = ["EXPORT_HOOK(⟦advance⟧);", "EXPORT_HOOK(⟦advance⟧) {", "return uses_counted && ⟦advance⟧(1) > 0;"]
 
 [answers.body_gen_site]
 definition = ["hooks.h │ #define ⟦COUNT_USES⟧ bool uses_counted = true"]
@@ -32,8 +24,4 @@ references = ["⟦COUNT_USES⟧;", "return ⟦uses_counted⟧ && advance(1) > 0;
 
 [answers.hook_use]
 definition = ["EXPORT_HOOK(⟦advance⟧) {"]
-references = [
-    "EXPORT_HOOK(⟦advance⟧);",
-    "EXPORT_HOOK(⟦advance⟧) {",
-    "return uses_counted && ⟦advance⟧(1) > 0;",
-]
+references = ["EXPORT_HOOK(⟦advance⟧);", "EXPORT_HOOK(⟦advance⟧) {", "return uses_counted && ⟦advance⟧(1) > 0;"]

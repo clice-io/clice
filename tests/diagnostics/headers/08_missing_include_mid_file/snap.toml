@@ -1,5 +1,19 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = '#include ⟦"missing.h"⟧', severity = "error", message = "'missing.h' file not found", source = "clang", code = "err_pp_file_not_found", related = [] },
-    { at = "return ⟦undeclared⟧;", severity = "error", message = "use of undeclared identifier 'undeclared'", source = "clang", code = "err_undeclared_var_use", related = [] },
+    {
+        at = '#include ⟦"missing.h"⟧',
+        severity = "error",
+        message = "'missing.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+        related = [],
+    },
+    {
+        at = "return ⟦undeclared⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'undeclared'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+        related = [],
+    },
 ]

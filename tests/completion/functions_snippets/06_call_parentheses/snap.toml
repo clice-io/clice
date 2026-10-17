@@ -1,6 +1,12 @@
 [default.bare.completion]
 items = [
-    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute(${1:int x})", snippet = true },
+    {
+        label = "compute(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "compute(${1:int x})",
+        snippet = true,
+    },
 ]
 
 [default.followed.completion]
@@ -20,7 +26,13 @@ items = [
 
 [delimiters.bare.completion]
 items = [
-    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute($0)", snippet = true },
+    {
+        label = "compute(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "compute($0)",
+        snippet = true,
+    },
 ]
 
 [delimiters.followed.completion]

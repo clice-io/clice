@@ -33,11 +33,7 @@ selection_ranges = [
 ]
 
 [answers.constructor]
-selection_ranges = [
-    "Timer::⟦Timer⟧(int ticks) {}",
-    "⟦Timer::Timer(int ticks)⟧ {}",
-    "⟦Timer::Timer(int ticks) {}⟧",
-]
+selection_ranges = ["Timer::⟦Timer⟧(int ticks) {}", "⟦Timer::Timer(int ticks)⟧ {}", "⟦Timer::Timer(int ticks) {}⟧"]
 
 [answers.trailing]
 selection_ranges = [

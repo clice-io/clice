@@ -1,6 +1,12 @@
 ["no rules"."main.cpp"]
 diagnostics = [
-    { at = "return ⟦FROM_EDITOR⟧;", severity = "error", message = "use of undeclared identifier 'FROM_EDITOR'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦FROM_EDITOR⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'FROM_EDITOR'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["rules from the editor"."main.cpp"]
@@ -8,7 +14,13 @@ diagnostics = []
 
 ["rules that match nothing"."main.cpp"]
 diagnostics = [
-    { at = "return ⟦FROM_EDITOR⟧;", severity = "error", message = "use of undeclared identifier 'FROM_EDITOR'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦FROM_EDITOR⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'FROM_EDITOR'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["rules in both clients".macro.hover]

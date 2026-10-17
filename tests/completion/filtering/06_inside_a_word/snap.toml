@@ -1,4 +1,10 @@
 [answers.pos.completion]
 items = [
-    { label = "balance", kind = "Variable", detail = "int", replace = "int v = ⟦balance⟧;", insert_range = "int v = ⟦bal⟧ance;" },
+    {
+        label = "balance",
+        kind = "Variable",
+        detail = "int",
+        replace = "int v = ⟦balance⟧;",
+        insert_range = "int v = ⟦bal⟧ance;",
+    },
 ]

@@ -1,6 +1,9 @@
 [answers."main.cpp"]
 folding_ranges = [
-    { kind = "comment", at = "// Bodies of functions with `auto` or constrained `auto` parameters fold like⟦ … // any other function.⟧ (2 lines)" },
+    {
+        kind = "comment",
+        at = "// Bodies of functions with `auto` or constrained `auto` parameters fold like⟦ … // any other function.⟧ (2 lines)",
+    },
     { kind = "functionBody", at = "void consume(Small auto x) ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "void forward(auto value) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
 ]

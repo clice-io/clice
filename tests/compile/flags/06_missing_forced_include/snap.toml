@@ -1,4 +1,10 @@
 ["missing forced header"."main.cpp"]
 diagnostics = [
-    { at = "⟦⟧int main() {", severity = "error", message = "'missing_force.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+    {
+        at = "⟦⟧int main() {",
+        severity = "error",
+        message = "'missing_force.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
 ]

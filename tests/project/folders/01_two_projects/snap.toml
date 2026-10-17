@@ -11,7 +11,13 @@ workspace_symbols = [
 
 ["added folder adopts its files"."alpha serves"]
 errors = [
-    { at = "#⟦error⟧ missing IN_BETA", severity = "error", message = "missing IN_BETA", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing IN_BETA",
+        severity = "error",
+        message = "missing IN_BETA",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 ["removed folder releases its files".pushes]
@@ -19,7 +25,13 @@ pushes = [
     [],
     [],
     [
-        { at = "#⟦error⟧ missing IN_BETA", severity = "error", message = "missing IN_BETA", source = "clang", code = "err_pp_hash_error" },
+        {
+            at = "#⟦error⟧ missing IN_BETA",
+            severity = "error",
+            message = "missing IN_BETA",
+            source = "clang",
+            code = "err_pp_hash_error",
+        },
     ],
     [],
     [],
@@ -27,12 +39,24 @@ pushes = [
 
 ["database change moves a document".unlisted]
 errors = [
-    { at = "#⟦error⟧ missing IN_BETA", severity = "error", message = "missing IN_BETA", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing IN_BETA",
+        severity = "error",
+        message = "missing IN_BETA",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 ["removed first folder hands over".alpha]
 errors = [
-    { at = "#⟦error⟧ missing IN_ALPHA", severity = "error", message = "missing IN_ALPHA", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing IN_ALPHA",
+        severity = "error",
+        message = "missing IN_ALPHA",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 ["removed first folder hands over".beta.hover]
@@ -47,7 +71,13 @@ range = "int ⟦beta_fn⟧() { return 0; }"
 
 ["removed only folder goes rootless".guessed]
 errors = [
-    { at = "#⟦error⟧ missing IN_ALPHA", severity = "error", message = "missing IN_ALPHA", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing IN_ALPHA",
+        severity = "error",
+        message = "missing IN_ALPHA",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 ["batch index asks the folder's server"."$ clice index --workspace beta --jobs 1"]

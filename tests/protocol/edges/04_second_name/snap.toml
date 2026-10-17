@@ -16,7 +16,12 @@ range = "int ⟦main⟧() { return 0; }"
 
 ["a second name"."second diverged"]
 diagnostics = [
-    { at = "⟦⟧int main() { return undefined_name; }", severity = "warning", message = "This file is also open as ${WS}/real/main.cpp, which clice analyzes; edits here are not analyzed until the texts agree. Close one of the two.", source = "clice" },
+    {
+        at = "⟦⟧int main() { return undefined_name; }",
+        severity = "warning",
+        message = "This file is also open as ${WS}/real/main.cpp, which clice analyzes; edits here are not analyzed until the texts agree. Close one of the two.",
+        source = "clice",
+    },
 ]
 
 ["a second name"."second hover diverged"]
@@ -30,7 +35,12 @@ references = []
 pushes = [
     [],
     [
-        { at = "real/main.cpp │ ⟦⟧int main() { return 0; }", severity = "warning", message = "This file is also open as ${WS}/real/main.cpp, which clice analyzes; edits here are not analyzed until the texts agree. Close one of the two.", source = "clice" },
+        {
+            at = "real/main.cpp │ ⟦⟧int main() { return 0; }",
+            severity = "warning",
+            message = "This file is also open as ${WS}/real/main.cpp, which clice analyzes; edits here are not analyzed until the texts agree. Close one of the two.",
+            source = "clice",
+        },
     ],
     [],
 ]
@@ -53,5 +63,11 @@ value = 0
 
 ["the second takes over".second]
 diagnostics = [
-    { at = "int main() { return ⟦undefined_name⟧; }", severity = "error", message = "use of undeclared identifier 'undefined_name'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦undefined_name⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'undefined_name'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]

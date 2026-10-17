@@ -1,4 +1,10 @@
 [test."typo.h"]
 diagnostics = [
-    { at = "inline int broken() { return ⟦}⟧", severity = "error", message = "expected expression", source = "clang", code = "err_expected_expression" },
+    {
+        at = "inline int broken() { return ⟦}⟧",
+        severity = "error",
+        message = "expected expression",
+        source = "clang",
+        code = "err_expected_expression",
+    },
 ]

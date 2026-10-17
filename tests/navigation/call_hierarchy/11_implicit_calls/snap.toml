@@ -1,6 +1,11 @@
 [answers.dealloc]
 call_hierarchy = [
-    { name = "operator delete", kind = "Operator", at = "void ⟦operator delete⟧(void* memory);", detail = "Node::operator delete" },
+    {
+        name = "operator delete",
+        kind = "Operator",
+        at = "void ⟦operator delete⟧(void* memory);",
+        detail = "Node::operator delete",
+    },
 ]
 incoming_calls = [
     {

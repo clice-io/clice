@@ -4,7 +4,12 @@ document_symbols = [
     { name = "Circle", kind = "Class", at = "⟦struct Circle { … }⟧ (5 lines)", container = "shapes" },
     { name = "radius", kind = "Field", at = "⟦double radius⟧;", container = "Circle" },
     { name = "area", kind = "Method", at = "⟦double area() const⟧;", container = "Circle" },
-    { name = "operator==", kind = "String", at = "⟦bool operator==(const Circle& other) const⟧;", container = "Circle" },
+    {
+        name = "operator==",
+        kind = "String",
+        at = "⟦bool operator==(const Circle& other) const⟧;",
+        container = "Circle",
+    },
     { name = "Kind", kind = "Enum", at = "⟦enum class Kind { Round }⟧;", container = "shapes" },
     { name = "Round", kind = "Enum", at = "enum class Kind { ⟦Round⟧ };", container = "Kind" },
 ]
@@ -22,8 +27,16 @@ document_symbols = [
                 at = "struct ⟦Circle⟧ {",
                 children = [
                     { name = "radius", kind = "Field", at = "double ⟦radius⟧;" },
-                    { name = "area", kind = "Method", at = "double ⟦area⟧() const;" },
-                    { name = "operator==", kind = "String", at = "bool ⟦operator==⟧(const Circle& other) const;" },
+                    {
+                        name = "area",
+                        kind = "Method",
+                        at = "double ⟦area⟧() const;",
+                    },
+                    {
+                        name = "operator==",
+                        kind = "String",
+                        at = "bool ⟦operator==⟧(const Circle& other) const;",
+                    },
                 ],
             },
             {
@@ -31,7 +44,11 @@ document_symbols = [
                 kind = "Enum",
                 at = "enum class ⟦Kind⟧ { Round };",
                 children = [
-                    { name = "Round", kind = "Enum", at = "enum class Kind { ⟦Round⟧ };" },
+                    {
+                        name = "Round",
+                        kind = "Enum",
+                        at = "enum class Kind { ⟦Round⟧ };",
+                    },
                 ],
             },
         ],

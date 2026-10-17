@@ -1,6 +1,9 @@
 [answers."main.cpp"]
 folding_ranges = [
-    { kind = "comment", at = "// The constructor's braces and the nested initializer list share delimiters⟦ … // and fold once; a parenthesized list argument keeps both folds.⟧ (2 lines)" },
+    {
+        kind = "comment",
+        at = "// The constructor's braces and the nested initializer list share delimiters⟦ … // and fold once; a parenthesized list argument keeps both folds.⟧ (2 lines)",
+    },
     { kind = "namespace", at = "namespace std ⟦{ … }⟧ (12 lines)", collapsed = "{...}" },
     { kind = "class", at = "class initializer_list ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
     { kind = "accessSpecifier", at = "public:⟦ … ⟧ (6 lines)" },

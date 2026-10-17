@@ -7,7 +7,12 @@ value = 1
 ["a header change retries".pushes]
 pushes = [
     [
-        { at = '⟦⟧#include "header.h"', severity = "warning", message = "clice's worker crashed while building the precompiled preamble of this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+        {
+            at = '⟦⟧#include "header.h"',
+            severity = "warning",
+            message = "clice's worker crashed while building the precompiled preamble of this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
     ],
 ]
 
@@ -32,7 +37,12 @@ value = 2
 ["a crash reading the preamble rebuilds it".pushes]
 pushes = [
     [
-        { at = '⟦⟧#include "header.h"', severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+        {
+            at = '⟦⟧#include "header.h"',
+            severity = "warning",
+            message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
     ],
 ]
 

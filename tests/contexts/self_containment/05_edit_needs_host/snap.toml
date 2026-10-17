@@ -1,6 +1,12 @@
 ["the save switches".edited]
 diagnostics = [
-    { at = "inline int get() { return ⟦Host⟧{2}.v; }", severity = "error", message = "use of undeclared identifier 'Host'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "inline int get() { return ⟦Host⟧{2}.v; }",
+        severity = "error",
+        message = "use of undeclared identifier 'Host'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["the save switches".saved]

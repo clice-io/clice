@@ -10,8 +10,20 @@ message = "Document not open"
 
 ["every change applies".diagnostics]
 diagnostics = [
-    { at = "int broken(⟦⟧", severity = "error", message = "expected ';' after top level declarator", source = "clang", code = "err_invalid_token_after_toplevel_declarator" },
-    { at = "int broken(⟦⟧", severity = "error", message = "expected expression", source = "clang", code = "err_expected_expression" },
+    {
+        at = "int broken(⟦⟧",
+        severity = "error",
+        message = "expected ';' after top level declarator",
+        source = "clang",
+        code = "err_invalid_token_after_toplevel_declarator",
+    },
+    {
+        at = "int broken(⟦⟧",
+        severity = "error",
+        message = "expected expression",
+        source = "clang",
+        code = "err_expected_expression",
+    },
 ]
 
 ["every change applies".hover.hover]

@@ -2,11 +2,7 @@
 references = ["int ⟦use⟧(int x) {", "return ⟦use⟧(v);", "return ⟦use⟧(1);"]
 
 [answers.str]
-references = [
-    "const char* ⟦str⟧;",
-    "return fmt.⟦str⟧;",
-    'return print(Fmt<int>{"x"}) + Fmt<>{"y"}.⟦str⟧[0];',
-]
+references = ["const char* ⟦str⟧;", "return fmt.⟦str⟧;", 'return print(Fmt<int>{"x"}) + Fmt<>{"y"}.⟦str⟧[0];']
 
 [answers.helper]
 references = ["int ⟦helper⟧();", "using lib::⟦helper⟧;"]

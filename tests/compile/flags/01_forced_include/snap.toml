@@ -22,7 +22,13 @@ workspace_symbols = [
 
 ["forced header edit".renamed]
 errors = [
-    { at = '#include ⟦"header.h"⟧', severity = "error", message = "In included file: use of undeclared identifier 'FORCED'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = '#include ⟦"header.h"⟧',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'FORCED'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["forced header edit".failed]

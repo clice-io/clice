@@ -1,4 +1,10 @@
 [test.before]
 errors = [
-    { at = "import ⟦A;⟧", severity = "error", message = "could not build module 'A': use of undeclared identifier 'c'", source = "clang", code = "err_module_not_built" },
+    {
+        at = "import ⟦A;⟧",
+        severity = "error",
+        message = "could not build module 'A': use of undeclared identifier 'c'",
+        source = "clang",
+        code = "err_module_not_built",
+    },
 ]

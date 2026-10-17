@@ -4,10 +4,7 @@ references = []
 
 [answers.counter_site]
 definition = ["#define ⟦DEFINE_COUNTER⟧ int counter_value = 0; int next_value()"]
-references = [
-    "#define ⟦DEFINE_COUNTER⟧ int counter_value = 0; int next_value()",
-    "⟦DEFINE_COUNTER⟧ {",
-]
+references = ["#define ⟦DEFINE_COUNTER⟧ int counter_value = 0; int next_value()", "⟦DEFINE_COUNTER⟧ {"]
 
 [answers.counter_use]
 definition = ["⟦DEFINE_COUNTER⟧ {"]

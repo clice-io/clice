@@ -1,6 +1,12 @@
 [test.before]
 diagnostics = [
-    { at = "Person() : ⟦name()⟧ {}", severity = "warning", message = "initializer for member 'name' is redundant", source = "clang-tidy", code = "readability-redundant-member-init" },
+    {
+        at = "Person() : ⟦name()⟧ {}",
+        severity = "warning",
+        message = "initializer for member 'name' is redundant",
+        source = "clang-tidy",
+        code = "readability-redundant-member-init",
+    },
 ]
 
 [[test.fixes.code_actions]]

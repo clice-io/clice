@@ -12,11 +12,7 @@ semantic_tokens = [
     { at = "return add(⟦x⟧, x);", type = "parameter", modifiers = ["local"] },
     { at = "return add(x, ⟦x⟧);", type = "parameter", modifiers = ["local"] },
     { at = "⟦int⟧ main() { return twice(2); }", type = "primitive" },
-    {
-        at = "int ⟦main⟧() { return twice(2); }",
-        type = "function",
-        modifiers = ["definition", "global"],
-    },
+    { at = "int ⟦main⟧() { return twice(2); }", type = "function", modifiers = ["definition", "global"] },
     { at = "int main() { ⟦return⟧ twice(2); }", type = "keyword", modifiers = ["controlFlow"] },
     { at = "int main() { return ⟦twice⟧(2); }", type = "function", modifiers = ["global"] },
     { at = "int main() { return twice(⟦2⟧); }", type = "number" },

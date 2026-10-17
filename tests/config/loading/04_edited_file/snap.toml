@@ -1,11 +1,23 @@
 [test.before]
 diagnostics = [
-    { at = "return ⟦FROM_TOML⟧;", severity = "error", message = "use of undeclared identifier 'FROM_TOML'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦FROM_TOML⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'FROM_TOML'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 [test.edited]
 diagnostics = [
-    { at = "return ⟦FROM_TOML⟧;", severity = "error", message = "use of undeclared identifier 'FROM_TOML'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦FROM_TOML⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'FROM_TOML'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 [test.restarted]

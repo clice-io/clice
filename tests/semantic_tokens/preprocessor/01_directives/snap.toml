@@ -1,11 +1,7 @@
 [answers."main.cpp"]
 semantic_tokens = [
     { at = "⟦int⟧ before_conditional = 0;", type = "primitive" },
-    {
-        at = "int ⟦before_conditional⟧ = 0;",
-        type = "variable",
-        modifiers = ["definition", "global"],
-    },
+    { at = "int ⟦before_conditional⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
     { at = "int before_conditional ⟦=⟧ 0;", type = "operator" },
     { at = "int before_conditional = ⟦0⟧;", type = "number" },
     { at = "⟦#if⟧ 0", type = "directive" },
@@ -36,11 +32,7 @@ semantic_tokens = [
     { at = "#define STRINGIZE(x) #⟦x⟧", type = "macroParameter" },
     { at = "⟦const⟧ char* stringized = STRINGIZE(abc);", type = "keyword" },
     { at = "const ⟦char⟧* stringized = STRINGIZE(abc);", type = "primitive" },
-    {
-        at = "const char⟦*⟧ stringized = STRINGIZE(abc);",
-        type = "operator",
-        modifiers = ["declarator"],
-    },
+    { at = "const char⟦*⟧ stringized = STRINGIZE(abc);", type = "operator", modifiers = ["declarator"] },
     {
         at = "const char* ⟦stringized⟧ = STRINGIZE(abc);",
         type = "variable",

@@ -1,6 +1,12 @@
 [test.before]
 diagnostics = [
-    { at = "int* p = ⟦0⟧;", severity = "warning", message = "use nullptr", source = "clang-tidy", code = "modernize-use-nullptr" },
+    {
+        at = "int* p = ⟦0⟧;",
+        severity = "warning",
+        message = "use nullptr",
+        source = "clang-tidy",
+        code = "modernize-use-nullptr",
+    },
 ]
 
 [[test.fixes.code_actions]]

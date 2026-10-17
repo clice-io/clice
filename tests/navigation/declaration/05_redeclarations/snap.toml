@@ -8,8 +8,4 @@ declaration = ["int ⟦clamp⟧(int value); @-1", "int ⟦clamp⟧(int value) {"
 declaration = ["int ⟦clamp⟧(int value); @-3", "int ⟦clamp⟧(int value); @-2"]
 
 [answers.use]
-declaration = [
-    "int ⟦clamp⟧(int value); @-8",
-    "int ⟦clamp⟧(int value); @-7",
-    "int ⟦clamp⟧(int value) {",
-]
+declaration = ["int ⟦clamp⟧(int value); @-8", "int ⟦clamp⟧(int value); @-7", "int ⟦clamp⟧(int value) {"]

@@ -1,6 +1,12 @@
 [unsaved.errors]
 errors = [
-    { at = "return add(1, 2) + ⟦twice⟧(3);", severity = "error", message = "use of undeclared identifier 'twice'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return add(1, 2) + ⟦twice⟧(3);",
+        severity = "error",
+        message = "use of undeclared identifier 'twice'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 [unsaved.hover]

@@ -6,6 +6,11 @@ document_symbols = [
 
 [answers.extents]
 document_symbols = [
-    { name = "longname", kind = "Module", at = 'export module ⟦long\ … name⟧ (2 lines)', range = 'export module ⟦long\ … name⟧ (2 lines)' },
+    {
+        name = "longname",
+        kind = "Module",
+        at = 'export module ⟦long\ … name⟧ (2 lines)',
+        range = 'export module ⟦long\ … name⟧ (2 lines)',
+    },
     { name = "entry", kind = "Function", at = "export int ⟦entry⟧();", range = "export ⟦int entry()⟧;" },
 ]

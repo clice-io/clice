@@ -1,6 +1,12 @@
 ["cdb appears after startup".guessed]
 errors = [
-    { at = "#⟦error⟧ missing FEATURE", severity = "error", message = "missing FEATURE", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing FEATURE",
+        severity = "error",
+        message = "missing FEATURE",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 ["cdb appears after startup".indexed]

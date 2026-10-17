@@ -1,8 +1,5 @@
 ["header save reindexes dependents".before]
-alpha = [
-    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
-    "inline int ⟦alpha⟧() { return 1; }",
-]
+alpha = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦alpha⟧() { return 1; }"]
 beta = ["inline int ⟦beta⟧() { return 2; }"]
 
 ["header save reindexes dependents".after]

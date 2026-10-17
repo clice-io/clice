@@ -16,7 +16,12 @@ workspace_symbols = [
 
 [answers.fast]
 workspace_symbols = [
-    { name = "Fast", kind = "EnumMember", at = "main.cpp │ enum class Mode { ⟦Fast⟧, Safe };", container = "Mode" },
+    {
+        name = "Fast",
+        kind = "EnumMember",
+        at = "main.cpp │ enum class Mode { ⟦Fast⟧, Safe };",
+        container = "Mode",
+    },
 ]
 
 [answers.no_such_symbol]

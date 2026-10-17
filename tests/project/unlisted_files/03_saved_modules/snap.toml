@@ -5,5 +5,11 @@ workspace_symbols = [
 
 ["deleted member comes back".deleted]
 errors = [
-    { at = "import ⟦b;⟧", severity = "error", message = "module 'b' not found", source = "clang", code = "err_module_not_found" },
+    {
+        at = "import ⟦b;⟧",
+        severity = "error",
+        message = "module 'b' not found",
+        source = "clang",
+        code = "err_module_not_found",
+    },
 ]

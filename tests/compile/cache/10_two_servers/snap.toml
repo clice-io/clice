@@ -1,4 +1,10 @@
 ["two servers share the cache".changed]
 errors = [
-    { at = "return s.⟦x⟧;", severity = "error", message = "no member named 'x' in 'Shared'", source = "clang", code = "err_no_member" },
+    {
+        at = "return s.⟦x⟧;",
+        severity = "error",
+        message = "no member named 'x' in 'Shared'",
+        source = "clang",
+        code = "err_no_member",
+    },
 ]

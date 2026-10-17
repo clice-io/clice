@@ -1,16 +1,33 @@
 [test."equal texts"]
 diagnostics = [
-    { at = "int main() { return ⟦missing⟧; }", severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦missing⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 [test."texts part"]
 diagnostics = [
-    { at = "⟦⟧int main() { return missing; }", severity = "warning", message = "This file is also open as ${WS}/real/main.cpp, which clice analyzes; edits here are not analyzed until the texts agree. Close one of the two.", source = "clice" },
+    {
+        at = "⟦⟧int main() { return missing; }",
+        severity = "warning",
+        message = "This file is also open as ${WS}/real/main.cpp, which clice analyzes; edits here are not analyzed until the texts agree. Close one of the two.",
+        source = "clice",
+    },
 ]
 
 [test."second name alone"]
 diagnostics = [
-    { at = "int main() { return ⟦missing⟧; }", severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦missing⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 [test."pushes of the first"]

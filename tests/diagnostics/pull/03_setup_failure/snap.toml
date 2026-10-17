@@ -1,6 +1,12 @@
 [test.pulled]
 diagnostics = [
-    { at = "⟦⟧int main() { return 0; }", severity = "error", message = "unknown target triple 'bogus-unknown-none'", source = "clang", code = "err_target_unknown_triple" },
+    {
+        at = "⟦⟧int main() { return 0; }",
+        severity = "error",
+        message = "unknown target triple 'bogus-unknown-none'",
+        source = "clang",
+        code = "err_target_unknown_triple",
+    },
 ]
 
 [test.hover]
@@ -8,5 +14,11 @@ hover = {}
 
 [test."pulled again"]
 diagnostics = [
-    { at = "⟦⟧int main() { return 0; }", severity = "error", message = "unknown target triple 'bogus-unknown-none'", source = "clang", code = "err_target_unknown_triple" },
+    {
+        at = "⟦⟧int main() { return 0; }",
+        severity = "error",
+        message = "unknown target triple 'bogus-unknown-none'",
+        source = "clang",
+        code = "err_target_unknown_triple",
+    },
 ]

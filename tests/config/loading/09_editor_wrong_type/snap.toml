@@ -1,4 +1,2 @@
 [test.guidance]
-value = [
-    "Failed to apply initializationOptions: invalid type: expected boolean, got string at project.enable_indexing",
-]
+value = ["Failed to apply initializationOptions: invalid type: expected boolean, got string at project.enable_indexing"]

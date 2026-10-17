@@ -17,11 +17,28 @@ value = 1
 [test.pushes]
 pushes = [
     [
-        { at = "int x = ⟦ad⟧;", severity = "error", message = "use of undeclared identifier 'ad'", source = "clang", code = "err_undeclared_var_use" },
+        {
+            at = "int x = ⟦ad⟧;",
+            severity = "error",
+            message = "use of undeclared identifier 'ad'",
+            source = "clang",
+            code = "err_undeclared_var_use",
+        },
     ],
     [
-        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while completing code in this file (${CRASH}). Code completion is paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
-        { at = "int x = ⟦ad⟧;", severity = "error", message = "use of undeclared identifier 'ad'", source = "clang", code = "err_undeclared_var_use" },
+        {
+            at = "⟦⟧int add(int a, int b) {",
+            severity = "warning",
+            message = "clice's worker crashed while completing code in this file (${CRASH}). Code completion is paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
+        {
+            at = "int x = ⟦ad⟧;",
+            severity = "error",
+            message = "use of undeclared identifier 'ad'",
+            source = "clang",
+            code = "err_undeclared_var_use",
+        },
     ],
 ]
 

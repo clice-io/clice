@@ -1,6 +1,12 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = '⟦#include "a.h"⟧ @6', severity = "warning", message = "duplicate include", source = "clang-tidy", code = "readability-duplicate-include" },
+    {
+        at = '⟦#include "a.h"⟧ @6',
+        severity = "warning",
+        message = "duplicate include",
+        source = "clang-tidy",
+        code = "readability-duplicate-include",
+    },
 ]
 
 [[test.fixes.code_actions]]

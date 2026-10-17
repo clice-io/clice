@@ -1,7 +1,11 @@
 [answers."main.cpp"]
 folding_ranges = [
     { kind = "rawString", at = 'auto sql = ⟦R"( … )"⟧ (5 lines)', collapsed = 'R"(...)"' },
-    { kind = "rawString", at = 'auto delimited = ⟦u8R"html( … )html"⟧ (3 lines)', collapsed = 'u8R"html(...)html"' },
+    {
+        kind = "rawString",
+        at = 'auto delimited = ⟦u8R"html( … )html"⟧ (3 lines)',
+        collapsed = 'u8R"html(...)html"',
+    },
     { kind = "rawString", at = 'auto query = ⟦R"( … )"_query⟧ (3 lines)', collapsed = 'R"(...)"_query' },
     { at = 'auto quoted = QUOTE⟦(R"( … )")⟧ (3 lines)', collapsed = "(...)" },
     { kind = "rawString", at = 'auto quoted = QUOTE(⟦R"( … )"⟧ (3 lines)', collapsed = 'R"(...)"' },

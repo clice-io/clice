@@ -10,7 +10,13 @@ range = "int ⟦add⟧(int a, int b) {"
 
 ["body edits reuse the pch"."body error"]
 errors = [
-    { at = "return result +⟦;⟧", severity = "error", message = "expected expression", source = "clang", code = "err_expected_expression" },
+    {
+        at = "return result +⟦;⟧",
+        severity = "error",
+        message = "expected expression",
+        source = "clang",
+        code = "err_expected_expression",
+    },
 ]
 
 ["body edits reuse the pch".completion.completion]

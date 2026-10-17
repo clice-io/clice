@@ -6,7 +6,12 @@ items = [
 [default.function.completion]
 items = [
     { label = "class", kind = "Keyword", insert = "class" },
-    { label = "CLAMP(value, limit)", kind = "Function", insert = "CLAMP(${1:value}, ${2:limit})", snippet = true },
+    {
+        label = "CLAMP(value, limit)",
+        kind = "Function",
+        insert = "CLAMP(${1:value}, ${2:limit})",
+        snippet = true,
+    },
 ]
 
 [none.object.completion]

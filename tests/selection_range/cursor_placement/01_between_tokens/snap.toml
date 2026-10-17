@@ -55,7 +55,4 @@ selection_ranges = [
 ]
 
 [answers.blank]
-selection_ranges = [
-    "int probe(int count) ⟦{ … }⟧ (7 lines)",
-    "⟦int probe(int count) { … }⟧ (7 lines)",
-]
+selection_ranges = ["int probe(int count) ⟦{ … }⟧ (7 lines)", "⟦int probe(int count) { … }⟧ (7 lines)"]

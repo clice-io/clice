@@ -27,6 +27,18 @@ message = "Server already initialized"
 
 ["an edit drops the replay".diagnostics]
 diagnostics = [
-    { at = "int bad(⟦⟧", severity = "error", message = "expected ';' after top level declarator", source = "clang", code = "err_invalid_token_after_toplevel_declarator" },
-    { at = "int bad(⟦⟧", severity = "error", message = "expected expression", source = "clang", code = "err_expected_expression" },
+    {
+        at = "int bad(⟦⟧",
+        severity = "error",
+        message = "expected ';' after top level declarator",
+        source = "clang",
+        code = "err_invalid_token_after_toplevel_declarator",
+    },
+    {
+        at = "int bad(⟦⟧",
+        severity = "error",
+        message = "expected expression",
+        source = "clang",
+        code = "err_expected_expression",
+    },
 ]

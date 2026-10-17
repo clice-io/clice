@@ -1,7 +1,12 @@
 [answers.outline]
 document_symbols = [
     { name = "MAX_BUFFER_SIZE", kind = "Constant", at = "#define ⟦MAX_BUFFER_SIZE⟧ 4096" },
-    { name = "CHECK", kind = "Constant", at = "#define ⟦CHECK⟧(cond, msg) ((cond) ? 0 : (msg))", detail = "(cond, msg)" },
+    {
+        name = "CHECK",
+        kind = "Constant",
+        at = "#define ⟦CHECK⟧(cond, msg) ((cond) ? 0 : (msg))",
+        detail = "(cond, msg)",
+    },
     { name = "TRACE", kind = "Constant", at = "#define ⟦TRACE⟧(...) log(__VA_ARGS__)", detail = "(...)" },
     { name = "SPLIT_LIMIT", kind = "Constant", at = '#define ⟦SPLIT_\ … LIMIT⟧ (2 lines)' },
     {
@@ -11,25 +16,60 @@ document_symbols = [
         detail = "struct",
         children = [
             { name = "CONFIG_VERSION", kind = "Constant", at = "#define ⟦CONFIG_VERSION⟧ 3" },
-            { name = "version", kind = "Field", at = "int ⟦version⟧ = CONFIG_VERSION;", detail = "int" },
+            {
+                name = "version",
+                kind = "Field",
+                at = "int ⟦version⟧ = CONFIG_VERSION;",
+                detail = "int",
+            },
         ],
     },
 ]
 
 [answers.extents]
 document_symbols = [
-    { name = "MAX_BUFFER_SIZE", kind = "Constant", at = "#define ⟦MAX_BUFFER_SIZE⟧ 4096", range = "#define ⟦MAX_BUFFER_SIZE 4096⟧" },
-    { name = "CHECK", kind = "Constant", at = "#define ⟦CHECK⟧(cond, msg) ((cond) ? 0 : (msg))", range = "#define ⟦CHECK(cond, msg) ((cond) ? 0 : (msg))⟧" },
-    { name = "TRACE", kind = "Constant", at = "#define ⟦TRACE⟧(...) log(__VA_ARGS__)", range = "#define ⟦TRACE(...) log(__VA_ARGS__)⟧" },
-    { name = "SPLIT_LIMIT", kind = "Constant", at = '#define ⟦SPLIT_\ … LIMIT⟧ (2 lines)', range = '#define ⟦SPLIT_\ … LIMIT 7⟧ (2 lines)' },
+    {
+        name = "MAX_BUFFER_SIZE",
+        kind = "Constant",
+        at = "#define ⟦MAX_BUFFER_SIZE⟧ 4096",
+        range = "#define ⟦MAX_BUFFER_SIZE 4096⟧",
+    },
+    {
+        name = "CHECK",
+        kind = "Constant",
+        at = "#define ⟦CHECK⟧(cond, msg) ((cond) ? 0 : (msg))",
+        range = "#define ⟦CHECK(cond, msg) ((cond) ? 0 : (msg))⟧",
+    },
+    {
+        name = "TRACE",
+        kind = "Constant",
+        at = "#define ⟦TRACE⟧(...) log(__VA_ARGS__)",
+        range = "#define ⟦TRACE(...) log(__VA_ARGS__)⟧",
+    },
+    {
+        name = "SPLIT_LIMIT",
+        kind = "Constant",
+        at = '#define ⟦SPLIT_\ … LIMIT⟧ (2 lines)',
+        range = '#define ⟦SPLIT_\ … LIMIT 7⟧ (2 lines)',
+    },
     {
         name = "Config",
         kind = "Struct",
         at = "struct ⟦Config⟧ {",
         range = "⟦struct Config { … }⟧ (4 lines)",
         children = [
-            { name = "CONFIG_VERSION", kind = "Constant", at = "#define ⟦CONFIG_VERSION⟧ 3", range = "#define ⟦CONFIG_VERSION 3⟧" },
-            { name = "version", kind = "Field", at = "int ⟦version⟧ = CONFIG_VERSION;", range = "⟦int version = CONFIG_VERSION⟧;" },
+            {
+                name = "CONFIG_VERSION",
+                kind = "Constant",
+                at = "#define ⟦CONFIG_VERSION⟧ 3",
+                range = "#define ⟦CONFIG_VERSION 3⟧",
+            },
+            {
+                name = "version",
+                kind = "Field",
+                at = "int ⟦version⟧ = CONFIG_VERSION;",
+                range = "⟦int version = CONFIG_VERSION⟧;",
+            },
         ],
     },
 ]

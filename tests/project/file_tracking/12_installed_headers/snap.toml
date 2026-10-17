@@ -1,4 +1,10 @@
 ["save looks at installed headers"."installed 1"]
 errors = [
-    { at = 'static_assert(⟦INSTALLED == 2⟧, "");', severity = "error", message = "static assertion failed due to requirement '1 == 2': ", source = "clang", code = "err_static_assert_requirement_failed" },
+    {
+        at = 'static_assert(⟦INSTALLED == 2⟧, "");',
+        severity = "error",
+        message = "static assertion failed due to requirement '1 == 2': ",
+        source = "clang",
+        code = "err_static_assert_requirement_failed",
+    },
 ]

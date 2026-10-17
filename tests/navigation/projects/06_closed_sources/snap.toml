@@ -8,12 +8,7 @@ references = [
     "shared.h │ int ⟦compute⟧(int value);",
 ]
 incoming_calls = [
-    {
-        name = "run",
-        kind = "Function",
-        at = "int ⟦run⟧(int value) {",
-        sites = ["return ⟦compute⟧(value);"],
-    },
+    { name = "run", kind = "Function", at = "int ⟦run⟧(int value) {", sites = ["return ⟦compute⟧(value);"] },
     {
         name = "again",
         kind = "Function",

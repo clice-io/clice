@@ -5,7 +5,12 @@ document_symbols = [
         kind = "File",
         at = "⟦#pragma mark - Lifecycle⟧",
         children = [
-            { name = "setup", kind = "Function", at = "void ⟦setup⟧();", detail = "void ()" },
+            {
+                name = "setup",
+                kind = "Function",
+                at = "void ⟦setup⟧();",
+                detail = "void ()",
+            },
         ],
     },
     {
@@ -13,7 +18,12 @@ document_symbols = [
         kind = "File",
         at = "⟦#pragma mark - Rendering⟧",
         children = [
-            { name = "draw", kind = "Function", at = "void ⟦draw⟧();", detail = "void ()" },
+            {
+                name = "draw",
+                kind = "Function",
+                at = "void ⟦draw⟧();",
+                detail = "void ()",
+            },
         ],
     },
 ]
@@ -26,7 +36,12 @@ document_symbols = [
         at = "⟦#pragma mark - Lifecycle⟧",
         range = "⟦#pragma mark - Lifecycle … void setup()⟧ (3 lines)",
         children = [
-            { name = "setup", kind = "Function", at = "void ⟦setup⟧();", range = "⟦void setup()⟧;" },
+            {
+                name = "setup",
+                kind = "Function",
+                at = "void ⟦setup⟧();",
+                range = "⟦void setup()⟧;",
+            },
         ],
     },
     {
@@ -35,7 +50,12 @@ document_symbols = [
         at = "⟦#pragma mark - Rendering⟧",
         range = "⟦#pragma mark - Rendering … void draw()⟧ (3 lines)",
         children = [
-            { name = "draw", kind = "Function", at = "void ⟦draw⟧();", range = "⟦void draw()⟧;" },
+            {
+                name = "draw",
+                kind = "Function",
+                at = "void ⟦draw⟧();",
+                range = "⟦void draw()⟧;",
+            },
         ],
     },
 ]

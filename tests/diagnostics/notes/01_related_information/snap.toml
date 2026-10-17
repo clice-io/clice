@@ -17,7 +17,10 @@ diagnostics = [
         source = "clang",
         code = "err_ovl_no_viable_function_in_call",
         related = [
-            { at = "void ⟦report⟧(int value);", message = "candidate function not viable: requires single argument 'value', but 2 arguments were provided" },
+            {
+                at = "void ⟦report⟧(int value);",
+                message = "candidate function not viable: requires single argument 'value', but 2 arguments were provided",
+            },
         ],
     },
 ]

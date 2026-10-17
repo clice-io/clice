@@ -1,14 +1,32 @@
 ["saved interface reaches importers"."mid.cppm"]
 errors = [
-    { at = "return ⟦leaf⟧() + helper();", severity = "error", message = "use of undeclared identifier 'leaf'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦leaf⟧() + helper();",
+        severity = "error",
+        message = "use of undeclared identifier 'leaf'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["unsaved interface edit".asked]
 errors = [
-    { at = "return ⟦leaf⟧() + helper();", severity = "error", message = "use of undeclared identifier 'leaf'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦leaf⟧() + helper();",
+        severity = "error",
+        message = "use of undeclared identifier 'leaf'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["unsaved interface header edit".asked]
 errors = [
-    { at = "return leaf() + ⟦helper⟧();", severity = "error", message = "no matching function for call to 'helper'", source = "clang", code = "err_ovl_no_viable_function_in_call" },
+    {
+        at = "return leaf() + ⟦helper⟧();",
+        severity = "error",
+        message = "no matching function for call to 'helper'",
+        source = "clang",
+        code = "err_ovl_no_viable_function_in_call",
+    },
 ]

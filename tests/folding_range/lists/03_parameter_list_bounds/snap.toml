@@ -1,6 +1,9 @@
 [answers."main.cpp"]
 folding_ranges = [
-    { kind = "comment", at = "// A parameter list folds between its own parentheses: not from the name of⟦ … // or a `noexcept(...)` after it.⟧ (3 lines)" },
+    {
+        kind = "comment",
+        at = "// A parameter list folds between its own parentheses: not from the name of⟦ … // or a `noexcept(...)` after it.⟧ (3 lines)",
+    },
     { kind = "struct", at = "struct Functor ⟦{ … }⟧ (8 lines)", collapsed = "{...}" },
     { at = "int operator()⟦( … )⟧ (4 lines)", collapsed = "(...)" },
     { kind = "functionBody", at = ") const ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },

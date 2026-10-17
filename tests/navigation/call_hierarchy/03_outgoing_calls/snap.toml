@@ -4,18 +4,8 @@ call_hierarchy = [
 ]
 incoming_calls = []
 outgoing_calls = [
-    {
-        name = "one",
-        kind = "Function",
-        at = "int ⟦one⟧() {",
-        sites = ["return ⟦one⟧() + two() + three();"],
-    },
-    {
-        name = "two",
-        kind = "Function",
-        at = "int ⟦two⟧() {",
-        sites = ["return one() + ⟦two⟧() + three();"],
-    },
+    { name = "one", kind = "Function", at = "int ⟦one⟧() {", sites = ["return ⟦one⟧() + two() + three();"] },
+    { name = "two", kind = "Function", at = "int ⟦two⟧() {", sites = ["return one() + ⟦two⟧() + three();"] },
     {
         name = "three",
         kind = "Function",

@@ -1,6 +1,12 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = "#⟦error⟧ missing FROM_BUILD", severity = "error", message = "missing FROM_BUILD", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing FROM_BUILD",
+        severity = "error",
+        message = "missing FROM_BUILD",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 [test.guidance]

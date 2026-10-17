@@ -1,7 +1,31 @@
 [test."main.cpp"]
 errors = [
-    { at = 'import ⟦"local.h"⟧;', severity = "error", message = 'header units are not supported; "local.h" is not imported', source = "clang", code = "err_header_import_not_header_unit" },
-    { at = "import ⟦<⟧util.h>;", severity = "error", message = "header units are not supported; <util.h> is not imported", source = "clang", code = "err_header_import_not_header_unit" },
-    { at = "return ⟦local⟧() + util();", severity = "error", message = "use of undeclared identifier 'local'", source = "clang", code = "err_undeclared_var_use" },
-    { at = "return local() + ⟦util⟧();", severity = "error", message = "use of undeclared identifier 'util'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = 'import ⟦"local.h"⟧;',
+        severity = "error",
+        message = 'header units are not supported; "local.h" is not imported',
+        source = "clang",
+        code = "err_header_import_not_header_unit",
+    },
+    {
+        at = "import ⟦<⟧util.h>;",
+        severity = "error",
+        message = "header units are not supported; <util.h> is not imported",
+        source = "clang",
+        code = "err_header_import_not_header_unit",
+    },
+    {
+        at = "return ⟦local⟧() + util();",
+        severity = "error",
+        message = "use of undeclared identifier 'local'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+    {
+        at = "return local() + ⟦util⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'util'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]

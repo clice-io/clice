@@ -7,11 +7,7 @@ semantic_tokens = [
     { at = "namespace ⟦demo⟧ {", type = "namespace", modifiers = ["definition", "global"] },
     { at = "⟦enum⟧ class Color { Red, Green };", type = "keyword" },
     { at = "enum ⟦class⟧ Color { Red, Green };", type = "keyword" },
-    {
-        at = "enum class ⟦Color⟧ { Red, Green };",
-        type = "enum",
-        modifiers = ["definition", "global"],
-    },
+    { at = "enum class ⟦Color⟧ { Red, Green };", type = "enum", modifiers = ["definition", "global"] },
     {
         at = "enum class Color { ⟦Red⟧, Green };",
         type = "enumMember",
@@ -27,22 +23,10 @@ semantic_tokens = [
     { at = "⟦int⟧ sides;", type = "primitive" },
     { at = "int ⟦sides⟧;", type = "field", modifiers = ["definition", "member"] },
     { at = "⟦int⟧ area(int width, int height);", type = "primitive" },
-    {
-        at = "int ⟦area⟧(int width, int height);",
-        type = "function",
-        modifiers = ["declaration", "global"],
-    },
+    { at = "int ⟦area⟧(int width, int height);", type = "function", modifiers = ["declaration", "global"] },
     { at = "int area(⟦int⟧ width, int height);", type = "primitive" },
-    {
-        at = "int area(int ⟦width⟧, int height);",
-        type = "parameter",
-        modifiers = ["definition", "local"],
-    },
+    { at = "int area(int ⟦width⟧, int height);", type = "parameter", modifiers = ["definition", "local"] },
     { at = "int area(int width, ⟦int⟧ height);", type = "primitive" },
-    {
-        at = "int area(int width, int ⟦height⟧);",
-        type = "parameter",
-        modifiers = ["definition", "local"],
-    },
+    { at = "int area(int width, int ⟦height⟧);", type = "parameter", modifiers = ["definition", "local"] },
     { at = "}  ⟦// namespace demo⟧", type = "comment" },
 ]

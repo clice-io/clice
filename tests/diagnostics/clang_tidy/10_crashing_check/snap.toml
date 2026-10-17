@@ -1,7 +1,18 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = "⟦⟧// tidy poison", severity = "warning", message = "clice's worker crashed while running clang-tidy on this file (${CRASH}). clang-tidy is paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
-    { at = "int ⟦broken⟧ = nullptr;", severity = "error", message = "cannot initialize a variable of type 'int' with an rvalue of type 'std::nullptr_t'", source = "clang", code = "err_init_conversion_failed" },
+    {
+        at = "⟦⟧// tidy poison",
+        severity = "warning",
+        message = "clice's worker crashed while running clang-tidy on this file (${CRASH}). clang-tidy is paused here until this file or a header it includes changes, or until you save it.",
+        source = "clice",
+    },
+    {
+        at = "int ⟦broken⟧ = nullptr;",
+        severity = "error",
+        message = "cannot initialize a variable of type 'int' with an rvalue of type 'std::nullptr_t'",
+        source = "clang",
+        code = "err_init_conversion_failed",
+    },
 ]
 
 [test.hover.hover]

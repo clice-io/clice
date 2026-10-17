@@ -1,14 +1,32 @@
 [test."cycle_a.cppm"]
 errors = [
-    { at = "import ⟦CycB;⟧", severity = "error", message = "cyclic dependency in module 'CycB': CycB -> CycA -> CycB", source = "clang", code = "err_module_cycle" },
+    {
+        at = "import ⟦CycB;⟧",
+        severity = "error",
+        message = "cyclic dependency in module 'CycB': CycB -> CycA -> CycB",
+        source = "clang",
+        code = "err_module_cycle",
+    },
 ]
 
 [test."cycle_b.cppm"]
 errors = [
-    { at = "import ⟦CycA;⟧", severity = "error", message = "cyclic dependency in module 'CycA': CycA -> CycB -> CycA", source = "clang", code = "err_module_cycle" },
+    {
+        at = "import ⟦CycA;⟧",
+        severity = "error",
+        message = "cyclic dependency in module 'CycA': CycA -> CycB -> CycA",
+        source = "clang",
+        code = "err_module_cycle",
+    },
 ]
 
 [test."entry.cppm"]
 errors = [
-    { at = "import ⟦CycMid;⟧", severity = "error", message = "could not build module 'CycMid': cyclic dependency in module 'CycA': CycA -> CycB -> CycA", source = "clang", code = "err_module_not_built" },
+    {
+        at = "import ⟦CycMid;⟧",
+        severity = "error",
+        message = "could not build module 'CycMid': cyclic dependency in module 'CycA': CycA -> CycB -> CycA",
+        source = "clang",
+        code = "err_module_not_built",
+    },
 ]

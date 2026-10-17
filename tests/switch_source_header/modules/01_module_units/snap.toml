@@ -1,10 +1,7 @@
 [answers."shapes.cppm".counterparts]
 preferred = "shapes.cpp"
 candidates = [
-    {
-        path = "shapes.cpp",
-        reasons = ["defines 2 of 2 declarations", "same name", "implements module shapes"],
-    },
+    { path = "shapes.cpp", reasons = ["defines 2 of 2 declarations", "same name", "implements module shapes"] },
     { path = "shapes_debug.cpp", reasons = ["implements module shapes"] },
 ]
 

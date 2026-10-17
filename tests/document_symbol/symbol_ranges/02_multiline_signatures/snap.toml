@@ -1,11 +1,21 @@
 [answers.outline]
 document_symbols = [
     { name = "Config", kind = "Struct", at = "struct ⟦Config⟧ {};", detail = "struct" },
-    { name = "process_data", kind = "Function", at = "void ⟦process_data⟧(", detail = "void (const Config &cfg, int flags)" },
+    {
+        name = "process_data",
+        kind = "Function",
+        at = "void ⟦process_data⟧(",
+        detail = "void (const Config &cfg, int flags)",
+    },
 ]
 
 [answers.extents]
 document_symbols = [
     { name = "Config", kind = "Struct", at = "struct ⟦Config⟧ {};", range = "⟦struct Config {}⟧;" },
-    { name = "process_data", kind = "Function", at = "void ⟦process_data⟧(", range = "⟦void process_data( … ) {}⟧ (4 lines)" },
+    {
+        name = "process_data",
+        kind = "Function",
+        at = "void ⟦process_data⟧(",
+        range = "⟦void process_data( … ) {}⟧ (4 lines)",
+    },
 ]

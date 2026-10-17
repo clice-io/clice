@@ -6,7 +6,12 @@ value = [
 ["defaults stand in"."clice.toml"]
 pushes = [
     [
-        { at = "[project ⟦⟧enable_indexing = false]", severity = "error", message = "TOML parse error: Error while parsing table header: expected ']', saw 'e' (line 1, column 10)", source = "clice" },
+        {
+            at = "[project ⟦⟧enable_indexing = false]",
+            severity = "error",
+            message = "TOML parse error: Error while parsing table header: expected ']', saw 'e' (line 1, column 10)",
+            source = "clice",
+        },
     ],
 ]
 

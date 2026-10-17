@@ -9,7 +9,13 @@ diagnostics = []
 
 [test."without it"]
 diagnostics = [
-    { at = "#⟦error⟧ missing EXPECTED", severity = "error", message = "missing EXPECTED", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing EXPECTED",
+        severity = "error",
+        message = "missing EXPECTED",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 [test."with it again"]

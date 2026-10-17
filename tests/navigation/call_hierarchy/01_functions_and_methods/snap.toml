@@ -3,12 +3,7 @@ call_hierarchy = [
     { name = "start", kind = "Method", at = "void Service::⟦start⟧() {}", detail = "Service::start" },
 ]
 incoming_calls = [
-    {
-        name = "launch",
-        kind = "Function",
-        at = "void ⟦launch⟧(Service& s) {",
-        sites = ["s.⟦start⟧();"],
-    },
+    { name = "launch", kind = "Function", at = "void ⟦launch⟧(Service& s) {", sites = ["s.⟦start⟧();"] },
 ]
 outgoing_calls = []
 

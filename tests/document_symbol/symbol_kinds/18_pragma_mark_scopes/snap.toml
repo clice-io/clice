@@ -13,8 +13,18 @@ document_symbols = [
                 kind = "File",
                 at = "⟦#pragma mark - Drawing⟧",
                 children = [
-                    { name = "draw", kind = "Method", at = "void ⟦draw⟧();", detail = "void ()" },
-                    { name = "paint", kind = "Method", at = "void ⟦paint⟧();", detail = "void ()" },
+                    {
+                        name = "draw",
+                        kind = "Method",
+                        at = "void ⟦draw⟧();",
+                        detail = "void ()",
+                    },
+                    {
+                        name = "paint",
+                        kind = "Method",
+                        at = "void ⟦paint⟧();",
+                        detail = "void ()",
+                    },
                 ],
             },
             {
@@ -22,7 +32,12 @@ document_symbols = [
                 kind = "File",
                 at = "⟦#pragma mark -⟧",
                 children = [
-                    { name = "width", kind = "Field", at = "int ⟦width⟧;", detail = "int" },
+                    {
+                        name = "width",
+                        kind = "Field",
+                        at = "int ⟦width⟧;",
+                        detail = "int",
+                    },
                 ],
             },
         ],
@@ -46,8 +61,18 @@ document_symbols = [
                 at = "⟦#pragma mark - Drawing⟧",
                 range = "⟦#pragma mark - Drawing … void paint()⟧ (3 lines)",
                 children = [
-                    { name = "draw", kind = "Method", at = "void ⟦draw⟧();", range = "⟦void draw()⟧;" },
-                    { name = "paint", kind = "Method", at = "void ⟦paint⟧();", range = "⟦void paint()⟧;" },
+                    {
+                        name = "draw",
+                        kind = "Method",
+                        at = "void ⟦draw⟧();",
+                        range = "⟦void draw()⟧;",
+                    },
+                    {
+                        name = "paint",
+                        kind = "Method",
+                        at = "void ⟦paint⟧();",
+                        range = "⟦void paint()⟧;",
+                    },
                 ],
             },
             {
@@ -56,7 +81,12 @@ document_symbols = [
                 at = "⟦#pragma mark -⟧",
                 range = "⟦#pragma mark - … int width⟧ (2 lines)",
                 children = [
-                    { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
+                    {
+                        name = "width",
+                        kind = "Field",
+                        at = "int ⟦width⟧;",
+                        range = "⟦int width⟧;",
+                    },
                 ],
             },
         ],

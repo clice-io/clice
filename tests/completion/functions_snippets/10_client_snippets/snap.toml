@@ -5,5 +5,11 @@ items = [
 
 ["snippet client".call.completion]
 items = [
-    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute(${1:int x})", snippet = true },
+    {
+        label = "compute(int x)",
+        kind = "Function",
+        detail = "int",
+        insert = "compute(${1:int x})",
+        snippet = true,
+    },
 ]

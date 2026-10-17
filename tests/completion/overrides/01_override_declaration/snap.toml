@@ -1,9 +1,19 @@
 [answers.pos.completion]
 items = [
-    { label = "draw(int x, int y) const override", kind = "Method", insert = "int draw(int x, int y) const override;" },
+    {
+        label = "draw(int x, int y) const override",
+        kind = "Method",
+        insert = "int draw(int x, int y) const override;",
+    },
 ]
 
 [answers.inside_override.completion]
 items = [
-    { label = "draw(int x, int y) const", kind = "Method", detail = "int", insert = "draw(${1:int x}, ${2:int y})", snippet = true },
+    {
+        label = "draw(int x, int y) const",
+        kind = "Method",
+        detail = "int",
+        insert = "draw(${1:int x}, ${2:int y})",
+        snippet = true,
+    },
 ]

@@ -1,17 +1,67 @@
 [answers.outline]
 document_symbols = [
-    { name = "convert", kind = "Function", at = "void ⟦convert⟧(T value) {}", detail = "template void (T value)" },
-    { name = "convert<char>", kind = "Function", at = "template void ⟦convert⟧<char>(char);", detail = "void (char value)" },
-    { name = "convert", kind = "Function", at = "template void ⟦convert⟧(double);", detail = "void (double value)" },
-    { name = "convert<long>", kind = "Function", at = "void ⟦convert⟧<long>(long value) {}", detail = "void (long value)" },
-    { name = "convert<long>", kind = "Function", at = "template void ⟦convert⟧<long>(long);", detail = "void (long value)" },
+    {
+        name = "convert",
+        kind = "Function",
+        at = "void ⟦convert⟧(T value) {}",
+        detail = "template void (T value)",
+    },
+    {
+        name = "convert<char>",
+        kind = "Function",
+        at = "template void ⟦convert⟧<char>(char);",
+        detail = "void (char value)",
+    },
+    {
+        name = "convert",
+        kind = "Function",
+        at = "template void ⟦convert⟧(double);",
+        detail = "void (double value)",
+    },
+    {
+        name = "convert<long>",
+        kind = "Function",
+        at = "void ⟦convert⟧<long>(long value) {}",
+        detail = "void (long value)",
+    },
+    {
+        name = "convert<long>",
+        kind = "Function",
+        at = "template void ⟦convert⟧<long>(long);",
+        detail = "void (long value)",
+    },
 ]
 
 [answers.extents]
 document_symbols = [
-    { name = "convert", kind = "Function", at = "void ⟦convert⟧(T value) {}", range = "⟦template <typename T, typename U = int> … void convert(T value) {}⟧ (2 lines)" },
-    { name = "convert<char>", kind = "Function", at = "template void ⟦convert⟧<char>(char);", range = "⟦template void convert<char>(char)⟧;" },
-    { name = "convert", kind = "Function", at = "template void ⟦convert⟧(double);", range = "⟦template void convert(double)⟧;" },
-    { name = "convert<long>", kind = "Function", at = "void ⟦convert⟧<long>(long value) {}", range = "⟦template <> … void convert<long>(long value) {}⟧ (2 lines)" },
-    { name = "convert<long>", kind = "Function", at = "template void ⟦convert⟧<long>(long);", range = "⟦template void convert<long>(long)⟧;" },
+    {
+        name = "convert",
+        kind = "Function",
+        at = "void ⟦convert⟧(T value) {}",
+        range = "⟦template <typename T, typename U = int> … void convert(T value) {}⟧ (2 lines)",
+    },
+    {
+        name = "convert<char>",
+        kind = "Function",
+        at = "template void ⟦convert⟧<char>(char);",
+        range = "⟦template void convert<char>(char)⟧;",
+    },
+    {
+        name = "convert",
+        kind = "Function",
+        at = "template void ⟦convert⟧(double);",
+        range = "⟦template void convert(double)⟧;",
+    },
+    {
+        name = "convert<long>",
+        kind = "Function",
+        at = "void ⟦convert⟧<long>(long value) {}",
+        range = "⟦template <> … void convert<long>(long value) {}⟧ (2 lines)",
+    },
+    {
+        name = "convert<long>",
+        kind = "Function",
+        at = "template void ⟦convert⟧<long>(long);",
+        range = "⟦template void convert<long>(long)⟧;",
+    },
 ]

@@ -1,7 +1,20 @@
 [test."without a database"]
 diagnostics = [
-    { at = '⟦⟧#include "config.h"', severity = "warning", message = "No compilation database entry for this file (compile command was synthesized from defaults), so some includes may not be found. Configure compile_commands.json for accurate diagnostics.", source = "clice", code = "inferred-compile-command", link = "https://docs.clice.io/clice/guide/quick-start#project-setup" },
-    { at = '#include ⟦"config.h"⟧', severity = "error", message = "'config.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+    {
+        at = '⟦⟧#include "config.h"',
+        severity = "warning",
+        message = "No compilation database entry for this file (compile command was synthesized from defaults), so some includes may not be found. Configure compile_commands.json for accurate diagnostics.",
+        source = "clice",
+        code = "inferred-compile-command",
+        link = "https://docs.clice.io/clice/guide/quick-start#project-setup",
+    },
+    {
+        at = '#include ⟦"config.h"⟧',
+        severity = "error",
+        message = "'config.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
 ]
 
 [test.guidance]
@@ -11,5 +24,11 @@ value = [
 
 [test."with a database"]
 diagnostics = [
-    { at = '#include ⟦"config.h"⟧', severity = "error", message = "'config.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+    {
+        at = '#include ⟦"config.h"⟧',
+        severity = "error",
+        message = "'config.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
 ]

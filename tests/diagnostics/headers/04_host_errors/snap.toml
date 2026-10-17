@@ -1,4 +1,11 @@
 [test."frag.h"]
 diagnostics = [
-    { at = "int own = ⟦undeclared_own⟧;", severity = "error", message = "use of undeclared identifier 'undeclared_own'", source = "clang", code = "err_undeclared_var_use", related = [] },
+    {
+        at = "int own = ⟦undeclared_own⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'undeclared_own'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+        related = [],
+    },
 ]

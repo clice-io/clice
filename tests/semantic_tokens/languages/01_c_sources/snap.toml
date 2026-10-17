@@ -15,11 +15,7 @@ semantic_tokens = [
     { at = "⟦typedef⟧ struct point point_t;", type = "keyword" },
     { at = "typedef ⟦struct⟧ point point_t;", type = "keyword" },
     { at = "typedef struct ⟦point⟧ point_t;", type = "struct", modifiers = ["global"] },
-    {
-        at = "typedef struct point ⟦point_t⟧;",
-        type = "typeAlias",
-        modifiers = ["definition", "global"],
-    },
+    { at = "typedef struct point ⟦point_t⟧;", type = "typeAlias", modifiers = ["definition", "global"] },
     { at = "⟦enum⟧ color { RED, GREEN };", type = "keyword" },
     { at = "enum ⟦color⟧ { RED, GREEN };", type = "enum", modifiers = ["definition", "global"] },
     {
@@ -59,11 +55,7 @@ semantic_tokens = [
     },
     { at = "bool same(const point_t* a, ⟦const⟧ struct point* b) {", type = "keyword" },
     { at = "bool same(const point_t* a, const ⟦struct⟧ point* b) {", type = "keyword" },
-    {
-        at = "bool same(const point_t* a, const struct ⟦point⟧* b) {",
-        type = "struct",
-        modifiers = ["global"],
-    },
+    { at = "bool same(const point_t* a, const struct ⟦point⟧* b) {", type = "struct", modifiers = ["global"] },
     {
         at = "bool same(const point_t* a, const struct point⟦*⟧ b) {",
         type = "operator",
@@ -88,33 +80,13 @@ semantic_tokens = [
         type = "keyword",
         modifiers = ["controlFlow"],
     },
-    {
-        at = "return ⟦a⟧->x == b->x and c == RED && flag && count;",
-        type = "parameter",
-        modifiers = ["local"],
-    },
-    {
-        at = "return a->⟦x⟧ == b->x and c == RED && flag && count;",
-        type = "field",
-        modifiers = ["member"],
-    },
+    { at = "return ⟦a⟧->x == b->x and c == RED && flag && count;", type = "parameter", modifiers = ["local"] },
+    { at = "return a->⟦x⟧ == b->x and c == RED && flag && count;", type = "field", modifiers = ["member"] },
     { at = "return a->x ⟦==⟧ b->x and c == RED && flag && count;", type = "operator" },
-    {
-        at = "return a->x == ⟦b⟧->x and c == RED && flag && count;",
-        type = "parameter",
-        modifiers = ["local"],
-    },
-    {
-        at = "return a->x == b->⟦x⟧ and c == RED && flag && count;",
-        type = "field",
-        modifiers = ["member"],
-    },
+    { at = "return a->x == ⟦b⟧->x and c == RED && flag && count;", type = "parameter", modifiers = ["local"] },
+    { at = "return a->x == b->⟦x⟧ and c == RED && flag && count;", type = "field", modifiers = ["member"] },
     { at = "return a->x == b->x ⟦and⟧ c == RED && flag && count;", type = "operator" },
-    {
-        at = "return a->x == b->x and ⟦c⟧ == RED && flag && count;",
-        type = "variable",
-        modifiers = ["local"],
-    },
+    { at = "return a->x == b->x and ⟦c⟧ == RED && flag && count;", type = "variable", modifiers = ["local"] },
     { at = "return a->x == b->x and c ⟦==⟧ RED && flag && count;", type = "operator" },
     {
         at = "return a->x == b->x and c == ⟦RED⟧ && flag && count;",
@@ -122,15 +94,7 @@ semantic_tokens = [
         modifiers = ["readonly", "global"],
     },
     { at = "return a->x == b->x and c == RED ⟦&&⟧ flag && count;", type = "operator" },
-    {
-        at = "return a->x == b->x and c == RED && ⟦flag⟧ && count;",
-        type = "variable",
-        modifiers = ["local"],
-    },
+    { at = "return a->x == b->x and c == RED && ⟦flag⟧ && count;", type = "variable", modifiers = ["local"] },
     { at = "return a->x == b->x and c == RED && flag ⟦&&⟧ count;", type = "operator" },
-    {
-        at = "return a->x == b->x and c == RED && flag && ⟦count⟧;",
-        type = "variable",
-        modifiers = ["internal"],
-    },
+    { at = "return a->x == b->x and c == RED && flag && ⟦count⟧;", type = "variable", modifiers = ["internal"] },
 ]

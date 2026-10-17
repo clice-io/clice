@@ -1,4 +1,10 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = "#⟦ifdef⟧ __linux__", severity = "error", message = "unterminated conditional directive", source = "clang", code = "err_pp_unterminated_conditional" },
+    {
+        at = "#⟦ifdef⟧ __linux__",
+        severity = "error",
+        message = "unterminated conditional directive",
+        source = "clang",
+        code = "err_pp_unterminated_conditional",
+    },
 ]

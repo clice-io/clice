@@ -1,8 +1,5 @@
 [answers.implicit_this.signature_help]
-signatures = [
-    "at(int row, ⟦int column⟧) const -> const int &",
-    "at(int row, ⟦int column⟧) -> int &",
-]
+signatures = ["at(int row, ⟦int column⟧) const -> const int &", "at(int row, ⟦int column⟧) -> int &"]
 active = 0
 
 [answers.lvalue.signature_help]

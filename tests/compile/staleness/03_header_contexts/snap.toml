@@ -1,14 +1,32 @@
 ["host change reaches the header"."utils.h"]
 errors = [
-    { at = "inline int get_x(⟦Point⟧ p) {", severity = "error", message = "unknown type name 'Point'", source = "clang", code = "err_unknown_typename" },
+    {
+        at = "inline int get_x(⟦Point⟧ p) {",
+        severity = "error",
+        message = "unknown type name 'Point'",
+        source = "clang",
+        code = "err_unknown_typename",
+    },
 ]
 
 ["intermediate change reaches the header"."target.h"]
 errors = [
-    { at = "return ⟦VALUE⟧;", severity = "error", message = "use of undeclared identifier 'VALUE'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦VALUE⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'VALUE'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["rewrite keeps its stamp"."utils.h"]
 errors = [
-    { at = "inline int get_x(⟦Point⟧ p) {", severity = "error", message = "unknown type name 'Point'", source = "clang", code = "err_unknown_typename" },
+    {
+        at = "inline int get_x(⟦Point⟧ p) {",
+        severity = "error",
+        message = "unknown type name 'Point'",
+        source = "clang",
+        code = "err_unknown_typename",
+    },
 ]

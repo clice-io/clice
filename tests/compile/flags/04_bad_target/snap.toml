@@ -1,9 +1,21 @@
 ["unrunnable command stays dirty".first]
 diagnostics = [
-    { at = "⟦⟧int main() {", severity = "error", message = "unknown target triple 'bogus-unknown-none'", source = "clang", code = "err_target_unknown_triple" },
+    {
+        at = "⟦⟧int main() {",
+        severity = "error",
+        message = "unknown target triple 'bogus-unknown-none'",
+        source = "clang",
+        code = "err_target_unknown_triple",
+    },
 ]
 
 ["unrunnable command stays dirty".retried]
 diagnostics = [
-    { at = "⟦⟧int main() {", severity = "error", message = "unknown target triple 'bogus-unknown-none'", source = "clang", code = "err_target_unknown_triple" },
+    {
+        at = "⟦⟧int main() {",
+        severity = "error",
+        message = "unknown target triple 'bogus-unknown-none'",
+        source = "clang",
+        code = "err_target_unknown_triple",
+    },
 ]

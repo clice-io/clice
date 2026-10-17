@@ -8,7 +8,10 @@ diagnostics = [
         code = "-Wsign-compare",
         related = [
             { at = "cmp.h │ return a ⟦<⟧ b;", message = "warning occurred here" },
-            { at = "bool b = ⟦less⟧(-1, 1u);", message = "in instantiation of function template specialization 'less<int>' requested here" },
+            {
+                at = "bool b = ⟦less⟧(-1, 1u);",
+                message = "in instantiation of function template specialization 'less<int>' requested here",
+            },
         ],
     },
 ]

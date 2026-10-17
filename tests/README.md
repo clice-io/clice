@@ -259,10 +259,11 @@ exit = 0
 ```
 
 - **Blocks.** A label is what the script names it, a marker's name or a
-  file's path as a rule, unique in its test. Short values stay on a line, a
-  table of plain values as one row; text of several lines (markdown, diffs,
-  a command's output) is a raw `'''` string, unescaped; a table follows as
-  `[…]` of its own.
+  file's path as a rule, unique in its test. A list or table stays on a
+  line while it fits 120 columns, else takes a line per item, a list of
+  tables a row per table; text of several lines (markdown, diffs, a
+  command's output) is a raw `'''` string, unescaped; a table follows as
+  `[…]` of its own. The file is TOML 1.1, laid out as tombi formats it.
 - **`show(label, value, options?)`** takes a request itself, `s.hover(at)`,
   which knows what it asked: its answer goes under the request's kind
   (`hover`, `highlights`, `definition`, …) as the table below shapes it. A
@@ -495,8 +496,9 @@ npm test -w tools                  the tools' own tests, the framework's among t
 ```
 
 Commands run under the pixi environment. Repository formatting skips case
-inputs (`.fdignore`): they are test data, formatted the way the case needs
-them.
+inputs (`.fdignore`, `tombi.toml`): they are test data, formatted the way the
+case needs them. `snap.toml` is the exception: the framework writes it as
+tombi formats it, and the format check holds the two together.
 
 ## Framework
 

@@ -16,11 +16,7 @@ workspace_symbols = [
 ]
 
 ["names held work".pending]
-value = [
-    "index ${WS}/d.cpp: reply parked by hold 1",
-    "index ${WS}/d.cpp",
-    "index round at 0/1, 0 files queued",
-]
+value = ["index ${WS}/d.cpp: reply parked by hold 1", "index ${WS}/d.cpp", "index round at 0/1, 0 files queued"]
 
 ["names held work".symbols]
 workspace_symbols = [

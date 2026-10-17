@@ -1,4 +1,11 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = "int x = ⟦undeclared⟧;", severity = "error", message = "use of undeclared identifier 'undeclared'", source = "clang", code = "err_undeclared_var_use", related = [] },
+    {
+        at = "int x = ⟦undeclared⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'undeclared'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+        related = [],
+    },
 ]

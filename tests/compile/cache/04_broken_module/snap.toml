@@ -1,4 +1,10 @@
 ["broken module drops its pcm"."mid.cppm"]
 errors = [
-    { at = "import ⟦Leaf;⟧", severity = "error", message = "could not build module 'Leaf': use of undeclared identifier 'broken_in_leaf'", source = "clang", code = "err_module_not_built" },
+    {
+        at = "import ⟦Leaf;⟧",
+        severity = "error",
+        message = "could not build module 'Leaf': use of undeclared identifier 'broken_in_leaf'",
+        source = "clang",
+        code = "err_module_not_built",
+    },
 ]

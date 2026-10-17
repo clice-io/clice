@@ -12,13 +12,28 @@ document_symbols = [
                 at = "struct ⟦Inner⟧ {",
                 detail = "struct",
                 children = [
-                    { name = "k", kind = "Field", at = "int ⟦k⟧;", detail = "int" },
-                    { name = "f", kind = "Method", at = "void ⟦f⟧() {}", detail = "void ()" },
+                    {
+                        name = "k",
+                        kind = "Field",
+                        at = "int ⟦k⟧;",
+                        detail = "int",
+                    },
+                    {
+                        name = "f",
+                        kind = "Method",
+                        at = "void ⟦f⟧() {}",
+                        detail = "void ()",
+                    },
                 ],
             },
         ],
     },
-    { name = "Outer<int>::Inner", kind = "Struct", at = "template struct Outer<int>::⟦Inner⟧;", detail = "struct" },
+    {
+        name = "Outer<int>::Inner",
+        kind = "Struct",
+        at = "template struct Outer<int>::⟦Inner⟧;",
+        detail = "struct",
+    },
 ]
 
 [answers.extents]
@@ -35,11 +50,26 @@ document_symbols = [
                 at = "struct ⟦Inner⟧ {",
                 range = "⟦struct Inner { … }⟧ (4 lines)",
                 children = [
-                    { name = "k", kind = "Field", at = "int ⟦k⟧;", range = "⟦int k⟧;" },
-                    { name = "f", kind = "Method", at = "void ⟦f⟧() {}", range = "⟦void f() {}⟧" },
+                    {
+                        name = "k",
+                        kind = "Field",
+                        at = "int ⟦k⟧;",
+                        range = "⟦int k⟧;",
+                    },
+                    {
+                        name = "f",
+                        kind = "Method",
+                        at = "void ⟦f⟧() {}",
+                        range = "⟦void f() {}⟧",
+                    },
                 ],
             },
         ],
     },
-    { name = "Outer<int>::Inner", kind = "Struct", at = "template struct Outer<int>::⟦Inner⟧;", range = "⟦template struct Outer<int>::Inner⟧;" },
+    {
+        name = "Outer<int>::Inner",
+        kind = "Struct",
+        at = "template struct Outer<int>::⟦Inner⟧;",
+        range = "⟦template struct Outer<int>::Inner⟧;",
+    },
 ]

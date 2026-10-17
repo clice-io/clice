@@ -2,16 +2,10 @@
 references = ["int ⟦select⟧(int value) {", "return ⟦select⟧(1) + static_cast<int>(select(2.0));"]
 
 [answers.double_def]
-references = [
-    "double ⟦select⟧(double value) {",
-    "return select(1) + static_cast<int>(⟦select⟧(2.0));",
-]
+references = ["double ⟦select⟧(double value) {", "return select(1) + static_cast<int>(⟦select⟧(2.0));"]
 
 [answers.int_use]
 references = ["int ⟦select⟧(int value) {", "return ⟦select⟧(1) + static_cast<int>(select(2.0));"]
 
 [answers.double_use]
-references = [
-    "double ⟦select⟧(double value) {",
-    "return select(1) + static_cast<int>(⟦select⟧(2.0));",
-]
+references = ["double ⟦select⟧(double value) {", "return select(1) + static_cast<int>(⟦select⟧(2.0));"]

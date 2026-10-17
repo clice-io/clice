@@ -1,7 +1,12 @@
 [test."clice.toml"]
 pushes = [
     [
-        { at = "⟦clang_tdy⟧ = true", severity = "warning", message = "unknown field 'clang_tdy' at project (line 2, column 1)", source = "clice" },
+        {
+            at = "⟦clang_tdy⟧ = true",
+            severity = "warning",
+            message = "unknown field 'clang_tdy' at project (line 2, column 1)",
+            source = "clice",
+        },
     ],
 ]
 

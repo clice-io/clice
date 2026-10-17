@@ -6,7 +6,10 @@ inlay_hints = [
             {
                 label = "level:",
                 links = [
-                    { value = "level", target = "void log(int ⟦level⟧, bool flush = true, int repeat = 1);" },
+                    {
+                        value = "level",
+                        target = "void log(int ⟦level⟧, bool flush = true, int repeat = 1);",
+                    },
                 ],
             },
         ],
@@ -21,14 +24,23 @@ inlay_hints = [
             {
                 label = "level:",
                 links = [
-                    { value = "level", target = "void log(int ⟦level⟧, bool flush = true, int repeat = 1);" },
+                    {
+                        value = "level",
+                        target = "void log(int ⟦level⟧, bool flush = true, int repeat = 1);",
+                    },
                 ],
             },
             {
                 label = ", flush: true, repeat: 1",
                 links = [
-                    { value = "flush", target = "void log(int level, bool ⟦flush⟧ = true, int repeat = 1);" },
-                    { value = "repeat", target = "void log(int level, bool flush = true, int ⟦repeat⟧ = 1);" },
+                    {
+                        value = "flush",
+                        target = "void log(int level, bool ⟦flush⟧ = true, int repeat = 1);",
+                    },
+                    {
+                        value = "repeat",
+                        target = "void log(int level, bool flush = true, int ⟦repeat⟧ = 1);",
+                    },
                 ],
             },
         ],

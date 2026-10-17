@@ -16,7 +16,13 @@ default = "debug"
 ["restart activates the selection".debug]
 main = ["⟦int release_only = lib();⟧"]
 gated = [
-    { at = "#⟦error⟧ missing RELEASE", severity = "error", message = "missing RELEASE", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing RELEASE",
+        severity = "error",
+        message = "missing RELEASE",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 ["restart activates the selection".release]
@@ -84,7 +90,13 @@ host = "other.cpp"
 
 ["command line overrides the selection".pinned]
 gated = [
-    { at = "#⟦error⟧ missing RELEASE", severity = "error", message = "missing RELEASE", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing RELEASE",
+        severity = "error",
+        message = "missing RELEASE",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 
 ["command line overrides the selection".pinned.menu]

@@ -28,7 +28,5 @@ signatures = ["emplace(⟦initializer_list<U> list⟧, Args &&...args) -> Grid &
 active = 0
 
 [answers.dependent_return.signature_help]
-signatures = [
-    "emplace(int rows, ⟦int columns⟧) -> enable_if_t<is_constructible_v<Grid, Args...>, Grid &>",
-]
+signatures = ["emplace(int rows, ⟦int columns⟧) -> enable_if_t<is_constructible_v<Grid, Args...>, Grid &>"]
 active = 0

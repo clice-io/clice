@@ -1,6 +1,9 @@
 [answers."main.cpp"]
 folding_ranges = [
-    { kind = "comment", at = "// Enums, unions, classes, member functions and a namespace whose brace sits⟦ … // on a line of its own fold at their braces too.⟧ (2 lines)" },
+    {
+        kind = "comment",
+        at = "// Enums, unions, classes, member functions and a namespace whose brace sits⟦ … // on a line of its own fold at their braces too.⟧ (2 lines)",
+    },
     { kind = "namespace", at = "namespace geometry ⟦{ … }⟧ (30 lines)", collapsed = "{...}" },
     { kind = "enum", at = "enum class Shape ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
     { kind = "struct", at = "struct Point ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },

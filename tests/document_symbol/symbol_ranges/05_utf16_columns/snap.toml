@@ -1,13 +1,38 @@
 [answers.outline]
 document_symbols = [
     { name = "半径", kind = "Variable", at = "constexpr double ⟦半径⟧ = 2.0;", detail = "const double" },
-    { name = "π值", kind = "Variable", at = "constexpr double ⟦π值⟧ = 3.14159; double area();", detail = "const double" },
-    { name = "area", kind = "Function", at = "constexpr double π值 = 3.14159; double ⟦area⟧();", detail = "double ()" },
+    {
+        name = "π值",
+        kind = "Variable",
+        at = "constexpr double ⟦π值⟧ = 3.14159; double area();",
+        detail = "const double",
+    },
+    {
+        name = "area",
+        kind = "Function",
+        at = "constexpr double π值 = 3.14159; double ⟦area⟧();",
+        detail = "double ()",
+    },
 ]
 
 [answers.extents]
 document_symbols = [
-    { name = "半径", kind = "Variable", at = "constexpr double ⟦半径⟧ = 2.0;", range = "⟦constexpr double 半径 = 2.0⟧;" },
-    { name = "π值", kind = "Variable", at = "constexpr double ⟦π值⟧ = 3.14159; double area();", range = "⟦constexpr double π值 = 3.14159⟧; double area();" },
-    { name = "area", kind = "Function", at = "constexpr double π值 = 3.14159; double ⟦area⟧();", range = "constexpr double π值 = 3.14159; ⟦double area()⟧;" },
+    {
+        name = "半径",
+        kind = "Variable",
+        at = "constexpr double ⟦半径⟧ = 2.0;",
+        range = "⟦constexpr double 半径 = 2.0⟧;",
+    },
+    {
+        name = "π值",
+        kind = "Variable",
+        at = "constexpr double ⟦π值⟧ = 3.14159; double area();",
+        range = "⟦constexpr double π值 = 3.14159⟧; double area();",
+    },
+    {
+        name = "area",
+        kind = "Function",
+        at = "constexpr double π值 = 3.14159; double ⟦area⟧();",
+        range = "constexpr double π值 = 3.14159; ⟦double area()⟧;",
+    },
 ]

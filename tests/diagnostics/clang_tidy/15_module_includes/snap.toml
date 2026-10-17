@@ -1,6 +1,12 @@
 [test."main.cppm"]
 diagnostics = [
-    { at = "export void order(std::vector<int>& v) { ⟦std::sort⟧(v.rbegin(), v.rend()); }", severity = "warning", message = "use a ranges version of this algorithm", source = "clang-tidy", code = "modernize-use-ranges" },
+    {
+        at = "export void order(std::vector<int>& v) { ⟦std::sort⟧(v.rbegin(), v.rend()); }",
+        severity = "warning",
+        message = "use a ranges version of this algorithm",
+        source = "clang-tidy",
+        code = "modernize-use-ranges",
+    },
 ]
 
 [[test.fixes.code_actions]]

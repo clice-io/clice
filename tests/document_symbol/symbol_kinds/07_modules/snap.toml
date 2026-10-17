@@ -7,22 +7,42 @@ document_symbols = [
         kind = "Namespace",
         at = "namespace ⟦detail⟧ {",
         children = [
-            { name = "helper", kind = "Function", at = "int ⟦helper⟧();", detail = "int ()" },
+            {
+                name = "helper",
+                kind = "Function",
+                at = "int ⟦helper⟧();",
+                detail = "int ()",
+            },
         ],
     },
 ]
 
 [answers.extents]
 document_symbols = [
-    { name = "app.core", kind = "Module", at = "export module ⟦app.core⟧;", range = "export module ⟦app.core⟧;" },
-    { name = "core_entry", kind = "Function", at = "export int ⟦core_entry⟧();", range = "export ⟦int core_entry()⟧;" },
+    {
+        name = "app.core",
+        kind = "Module",
+        at = "export module ⟦app.core⟧;",
+        range = "export module ⟦app.core⟧;",
+    },
+    {
+        name = "core_entry",
+        kind = "Function",
+        at = "export int ⟦core_entry⟧();",
+        range = "export ⟦int core_entry()⟧;",
+    },
     {
         name = "detail",
         kind = "Namespace",
         at = "namespace ⟦detail⟧ {",
         range = "⟦namespace detail { … }⟧ (3 lines)",
         children = [
-            { name = "helper", kind = "Function", at = "int ⟦helper⟧();", range = "⟦int helper()⟧;" },
+            {
+                name = "helper",
+                kind = "Function",
+                at = "int ⟦helper⟧();",
+                range = "⟦int helper()⟧;",
+            },
         ],
     },
 ]

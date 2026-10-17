@@ -1,20 +1,44 @@
 ["pushed before the includes"."pack.cpp"]
 wrong = "the pop after the includes is not seen: the push is reported unterminated, though the packing applies"
 diagnostics = [
-    { at = "#pragma ⟦pack⟧(push, 1)", severity = "warning", message = "unterminated '#pragma pack (push, ...)' at end of file", source = "clang", code = "-Wpragma-pack" },
+    {
+        at = "#pragma ⟦pack⟧(push, 1)",
+        severity = "warning",
+        message = "unterminated '#pragma pack (push, ...)' at end of file",
+        source = "clang",
+        code = "-Wpragma-pack",
+    },
 ]
 
 ["pushed before the includes"."attribute.cpp"]
 wrong = "the push before the includes is lost to the body: the file shows two errors clang does not report"
 diagnostics = [
-    { at = '#pragma clang ⟦attribute⟧ push(__attribute__((annotate("legacy"))), apply_to = function)', severity = "error", message = "unterminated '#pragma clang attribute push' at end of file", source = "clang", code = "err_pragma_attribute_no_pop_eof" },
-    { at = "#pragma clang ⟦attribute⟧ pop", severity = "error", message = "'#pragma clang attribute pop' with no matching '#pragma clang attribute push'", source = "clang", code = "err_pragma_attribute_stack_mismatch" },
+    {
+        at = '#pragma clang ⟦attribute⟧ push(__attribute__((annotate("legacy"))), apply_to = function)',
+        severity = "error",
+        message = "unterminated '#pragma clang attribute push' at end of file",
+        source = "clang",
+        code = "err_pragma_attribute_no_pop_eof",
+    },
+    {
+        at = "#pragma clang ⟦attribute⟧ pop",
+        severity = "error",
+        message = "'#pragma clang attribute pop' with no matching '#pragma clang attribute push'",
+        source = "clang",
+        code = "err_pragma_attribute_stack_mismatch",
+    },
 ]
 
 ["pushed before the includes"."visibility.cpp"]
 wrong = "the push before the includes is lost to the body: its pop shows an error clang does not report"
 diagnostics = [
-    { at = "#pragma GCC ⟦visibility⟧ pop", severity = "error", message = "#pragma visibility pop with no matching #pragma visibility push", source = "clang", code = "err_pragma_pop_visibility_mismatch" },
+    {
+        at = "#pragma GCC ⟦visibility⟧ pop",
+        severity = "error",
+        message = "#pragma visibility pop with no matching #pragma visibility push",
+        source = "clang",
+        code = "err_pragma_pop_visibility_mismatch",
+    },
 ]
 
 ["pushed before the includes"."diagnostic.cpp"]

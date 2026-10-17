@@ -1,5 +1,8 @@
 [answers."main.cpp"]
 folding_ranges = [
-    { kind = "comment", at = "// The global module fragment folds up to a module declaration without⟦ … // `export` just as well.⟧ (2 lines)" },
+    {
+        kind = "comment",
+        at = "// The global module fragment folds up to a module declaration without⟦ … // `export` just as well.⟧ (2 lines)",
+    },
     { kind = "moduleFragment", at = "module;⟦ … ⟧ (6 lines)" },
 ]

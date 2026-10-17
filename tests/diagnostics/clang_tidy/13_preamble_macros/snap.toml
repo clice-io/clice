@@ -1,10 +1,28 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = "#define ⟦_EARLY⟧ 1", severity = "warning", message = "declaration uses identifier '_EARLY', which is a reserved identifier", source = "clang-tidy", code = "bugprone-reserved-identifier" },
-    { at = "#define ⟦_LATE⟧ 2", severity = "warning", message = "declaration uses identifier '_LATE', which is a reserved identifier", source = "clang-tidy", code = "bugprone-reserved-identifier" },
+    {
+        at = "#define ⟦_EARLY⟧ 1",
+        severity = "warning",
+        message = "declaration uses identifier '_EARLY', which is a reserved identifier",
+        source = "clang-tidy",
+        code = "bugprone-reserved-identifier",
+    },
+    {
+        at = "#define ⟦_LATE⟧ 2",
+        severity = "warning",
+        message = "declaration uses identifier '_LATE', which is a reserved identifier",
+        source = "clang-tidy",
+        code = "bugprone-reserved-identifier",
+    },
 ]
 
 [test."guard.h"]
 diagnostics = [
-    { at = "#define ⟦_GUARD_H⟧", severity = "warning", message = "declaration uses identifier '_GUARD_H', which is a reserved identifier", source = "clang-tidy", code = "bugprone-reserved-identifier" },
+    {
+        at = "#define ⟦_GUARD_H⟧",
+        severity = "warning",
+        message = "declaration uses identifier '_GUARD_H', which is a reserved identifier",
+        source = "clang-tidy",
+        code = "bugprone-reserved-identifier",
+    },
 ]

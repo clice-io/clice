@@ -1,4 +1,11 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = "return ⟦HALF⟧(value);", severity = "error", message = "invalid operands to binary expression ('double' and 'const char[1]')", source = "clang", code = "err_typecheck_invalid_operands", related = [] },
+    {
+        at = "return ⟦HALF⟧(value);",
+        severity = "error",
+        message = "invalid operands to binary expression ('double' and 'const char[1]')",
+        source = "clang",
+        code = "err_typecheck_invalid_operands",
+        related = [],
+    },
 ]

@@ -1,14 +1,32 @@
 ["the module reports its errors"."bad.cppm"]
 errors = [
-    { at = "return ⟦UNDEFINED_SYMBOL⟧ + good();", severity = "error", message = "use of undeclared identifier 'UNDEFINED_SYMBOL'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦UNDEFINED_SYMBOL⟧ + good();",
+        severity = "error",
+        message = "use of undeclared identifier 'UNDEFINED_SYMBOL'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["the importer reports the import"."main.cpp"]
 errors = [
-    { at = "import ⟦Bad;⟧", severity = "error", message = "could not build module 'Bad': use of undeclared identifier 'UNDEFINED_SYMBOL'", source = "clang", code = "err_module_not_built" },
+    {
+        at = "import ⟦Bad;⟧",
+        severity = "error",
+        message = "could not build module 'Bad': use of undeclared identifier 'UNDEFINED_SYMBOL'",
+        source = "clang",
+        code = "err_module_not_built",
+    },
 ]
 
 ["the importer reports the import"."after an edit"]
 errors = [
-    { at = "import ⟦Bad;⟧", severity = "error", message = "could not build module 'Bad': use of undeclared identifier 'UNDEFINED_SYMBOL'", source = "clang", code = "err_module_not_built" },
+    {
+        at = "import ⟦Bad;⟧",
+        severity = "error",
+        message = "could not build module 'Bad': use of undeclared identifier 'UNDEFINED_SYMBOL'",
+        source = "clang",
+        code = "err_module_not_built",
+    },
 ]

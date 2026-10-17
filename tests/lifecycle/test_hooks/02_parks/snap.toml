@@ -7,7 +7,13 @@ value = [
 
 ["a reply park holds a compile".diagnostics]
 diagnostics = [
-    { at = "int main() { return ⟦missing⟧; }", severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦missing⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["a reply park holds a compile".compiles]
@@ -22,7 +28,13 @@ value = [
 
 ["a worker park holds a compile".diagnostics]
 diagnostics = [
-    { at = "int main() { return ⟦missing⟧; }", severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "int main() { return ⟦missing⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["a worker park holds a compile".compiles]

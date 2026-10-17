@@ -1,6 +1,12 @@
 [test."orphan.h"]
 diagnostics = [
-    { at = "inline int get_x(⟦Point⟧ p) { return p.x; }", severity = "error", message = "unknown type name 'Point'", source = "clang", code = "err_unknown_typename" },
+    {
+        at = "inline int get_x(⟦Point⟧ p) { return p.x; }",
+        severity = "error",
+        message = "unknown type name 'Point'",
+        source = "clang",
+        code = "err_unknown_typename",
+    },
 ]
 
 [test.contexts]

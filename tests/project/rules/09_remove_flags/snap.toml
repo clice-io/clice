@@ -3,5 +3,11 @@ errors = []
 
 [test."other.cpp"]
 errors = [
-    { at = "#⟦error⟧ missing FEATURE", severity = "error", message = "missing FEATURE", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing FEATURE",
+        severity = "error",
+        message = "missing FEATURE",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]

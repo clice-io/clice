@@ -1,30 +1,72 @@
 ["precompiled header edit".renamed]
 errors = [
-    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦pre⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'pre'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["transitive header edit".broken]
 errors = [
-    { at = '#include ⟦"pre.h"⟧', severity = "error", message = "In included file: non-void function 'base' should return a value", source = "clang", code = "-Wreturn-mismatch" },
+    {
+        at = '#include ⟦"pre.h"⟧',
+        severity = "error",
+        message = "In included file: non-void function 'base' should return a value",
+        source = "clang",
+        code = "-Wreturn-mismatch",
+    },
 ]
 
 ["body header edit".renamed]
 errors = [
-    { at = "return ⟦late⟧();", severity = "error", message = "use of undeclared identifier 'late'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦late⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'late'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["both edits compile once".renamed]
 errors = [
-    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
-    { at = "return ⟦late⟧();", severity = "error", message = "use of undeclared identifier 'late'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦pre⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'pre'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+    {
+        at = "return ⟦late⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'late'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["shared header edit".renamed]
 main = [
-    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦pre⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'pre'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 other = [
-    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦pre⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'pre'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["same bytes are no change".member.completion]
@@ -34,10 +76,22 @@ items = [
 
 ["backdated edit".renamed]
 errors = [
-    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦pre⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'pre'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]
 
 ["saved at once".renamed]
 errors = [
-    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+    {
+        at = "return ⟦pre⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'pre'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
 ]

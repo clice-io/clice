@@ -1,6 +1,12 @@
 ["header hosts match the language"."types.hpp"]
 errors = [
-    { at = "#⟦error⟧ missing CXX", severity = "error", message = "missing CXX", source = "clang", code = "err_pp_hash_error" },
+    {
+        at = "#⟦error⟧ missing CXX",
+        severity = "error",
+        message = "missing CXX",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
 ]
 contexts = []
 
