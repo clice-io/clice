@@ -1463,6 +1463,7 @@ void LSPClient::register_extensions() {
                     }
                 }
                 stats.pch_cache_entries += static_cast<std::uint32_t>(project.pch_cache.size());
+                stats.pch_stashed_bytes += served->sched.pch.stashed_bytes();
 
                 auto& store = served->sched.store;
                 stats.index_inmemory_shards +=

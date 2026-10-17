@@ -200,7 +200,10 @@ struct CachePCHEntry {
 };
 
 struct CachePCMEntry {
-    std::string key;  // CacheStore key in the "pcm" namespace
+    std::string key;
+    /// CacheStore key in the "pcm" namespace; absent in records written
+    /// before PCMs had names of their own.
+    std::optional<std::string> blob;
     std::uint32_t source_file;
     std::string module_name;
     std::vector<CacheDepEntry> deps;
@@ -263,11 +266,12 @@ std::string IndexStore::serialize_artifacts() {
         data.pch.push_back(std::move(entry));
     }
 
-    for(auto& [path_id, st]: project.pcm_cache) {
+    for(auto& [path_id, st]: project.pcm_builds) {
         if(st.path.empty())
             continue;
         CachePCMEntry entry;
         entry.key = st.key;
+        entry.blob = st.blob;
         entry.source_file = intern(path_id);
         entry.module_name = project.dep_graph.module_of(path_id).str();
         dump_deps(st.deps, entry.deps);
@@ -346,7 +350,11 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
     }
 
     for(auto& entry: data.pcm) {
-        auto pcm_path = project.store->lookup("pcm", entry.key);
+        if(!entry.blob) {
+            project.store->invalidate("pcm", entry.key);
+            continue;
+        }
+        auto pcm_path = project.store->lookup("pcm", *entry.blob);
         // A dep-less entry is an unvalidatable snapshot that would blindly
         // serve a stale PCM (the key embeds no content). Drop it and let
         // the module rebuild once.
@@ -355,9 +363,10 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         auto source = file_of(entry.source_file);
         if(!source)
             continue;
-        auto& st = project.pcm_cache[*source];
+        auto& st = project.pcm_builds[*source];
         st.path = *pcm_path;
         st.key = entry.key;
+        st.blob = std::move(*entry.blob);
         st.deps = load_deps(entry.deps);
     }
 
@@ -365,7 +374,7 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
 
     LOG_INFO("Loaded artifact metadata: {} PCH entries, {} PCM entries",
              project.pch_cache.size(),
-             project.pcm_cache.size());
+             project.pcm_builds.size());
 }
 
 std::expected<IndexStore::Report, IndexStore::MergeError>

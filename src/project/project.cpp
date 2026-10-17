@@ -28,10 +28,10 @@ void Project::forget_file(Fid path_id) {
 }
 
 Project::Rebuilt Project::rebuild_dependency_graph() {
-    llvm::StringMap<Fid> selected;
+    llvm::StringMap<llvm::SmallVector<Fid, 2>> providers;
     for(auto& entry: dep_graph.modules()) {
         if(!entry.getValue().empty()) {
-            selected[entry.getKey()] = entry.getValue().front();
+            providers[entry.getKey()] = entry.getValue();
         }
     }
 
@@ -54,11 +54,16 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
         if(entry.getValue().empty()) {
             continue;
         }
-        auto it = selected.find(entry.getKey());
-        if(it == selected.end()) {
+        auto it = providers.find(entry.getKey());
+        if(it == providers.end()) {
             changes.appeared.push_back(entry.getKey().str());
-        } else if(it->second != entry.getValue().front()) {
-            changes.replaced.push_back(it->second);
+            continue;
+        }
+        auto now = llvm::to_vector(entry.getValue());
+        llvm::sort(it->second);
+        llvm::sort(now);
+        if(it->second != now) {
+            llvm::append_range(changes.replaced, it->second);
         }
     }
     return changes;
@@ -325,11 +330,28 @@ const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
     return state;
 }
 
+const DepsSnapshot* Project::build_inputs(Fid module) const {
+    llvm::SmallVector<Fid, 4> chain;
+    for(auto current = module; !llvm::is_contained(chain, current);) {
+        auto it = pcm_builds.find(current);
+        if(it == pcm_builds.end()) {
+            return nullptr;
+        }
+        auto& build = it->second;
+        if(!build.failure || !build.failure->import.valid()) {
+            return &build.deps;
+        }
+        chain.push_back(current);
+        current = build.failure->import;
+    }
+    return nullptr;
+}
+
 DepsSnapshot Project::module_inputs(llvm::ArrayRef<Fid> modules) const {
     llvm::SmallVector<const DepsSnapshot*> parts;
     for(auto module: modules) {
-        if(auto it = pcm_cache.find(module); it != pcm_cache.end()) {
-            parts.push_back(&it->second.deps);
+        if(auto* inputs = build_inputs(module)) {
+            parts.push_back(inputs);
         }
     }
     DepsSnapshot inputs;
@@ -338,13 +360,12 @@ DepsSnapshot Project::module_inputs(llvm::ArrayRef<Fid> modules) const {
 }
 
 void Project::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
-                            Fid exclude_path_id) const {
-    for(auto& [pid, st]: pcm_cache) {
-        if(pid == exclude_path_id)
-            continue;
-        auto module_name = dep_graph.module_of(pid);
-        if(!module_name.empty()) {
-            pcms[module_name.str()] = st.path;
+                            llvm::ArrayRef<Fid> modules) const {
+    for(auto module: modules) {
+        auto it = pcm_builds.find(module);
+        auto name = dep_graph.module_of(module);
+        if(it != pcm_builds.end() && !it->second.path.empty() && !name.empty()) {
+            pcms[name.str()] = it->second.path;
         }
     }
 }

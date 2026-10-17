@@ -2925,9 +2925,10 @@ ZEST_CASE(DeplessPcmDropped) {
         ZASSERT(!vfs::write(pending.tmp_path, "pcm-bytes"));
         ZASSERT(f.project.store->commit(std::move(pending)));
 
-        auto& st = f.project.pcm_cache[f.project.file_table.intern(Spelling::absolute(src))];
+        auto& st = f.project.pcm_builds[f.project.file_table.intern(Spelling::absolute(src))];
         st.path = "m.pcm";
         st.key = "k";
+        st.blob = "k";
         f.project.mark_artifacts_dirty();
         f.save();
 
@@ -2941,7 +2942,7 @@ ZEST_CASE(DeplessPcmDropped) {
     IndexerFixture f;
     setup(f);
     f.load();
-    ZASSERT(f.project.pcm_cache.empty());
+    ZASSERT(f.project.pcm_builds.empty());
 }
 
 ZEST_CASE(HeaderModePersisted) {
@@ -3847,7 +3848,7 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
 
         for(auto name: {"m.cppm", "detail.cpp", "impl.cpp"}) {
             if(llvm::StringRef(name) == "impl.cpp") {
-                pcms_before_impl = f.project.pcm_cache.size();
+                pcms_before_impl = f.project.pcm_builds.size();
             }
             TURunFamily::Plan plan;
             plan.index = true;
@@ -3866,8 +3867,8 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     using enum TURunFamily::Result;
     ZEXPECT(results == (std::vector<TURunFamily::Result>{Completed, Completed, Completed}));
     ZEXPECT(pcms_before_impl == 0u);
-    ZEXPECT(f.project.pcm_cache.size() == 1u);
-    ZEXPECT(f.project.pcm_cache.contains(id("m.cppm")));
+    ZEXPECT(f.project.pcm_builds.size() == 1u);
+    ZEXPECT(f.project.pcm_builds.contains(id("m.cppm")));
 }
 
 };  // ZEST_SUITE(TURunIndex)

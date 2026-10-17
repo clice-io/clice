@@ -1,0 +1,3 @@
+{
+  "units": { "b.cppm": ["-DVALUE=1"], "a.cppm": [], "main.cpp": [] }
+}

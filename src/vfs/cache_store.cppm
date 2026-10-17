@@ -38,22 +38,11 @@ struct CacheNamespace {
 /// Dependency tracking and staleness decisions are the caller's job.
 ///
 /// FIXME: Whether several processes (a server plus a batch `clice lint`)
-/// may share one store read-write — and how blob metadata stays truthful
-/// if they do — is an undecided design question this layer does not
-/// answer. The exposure: PCH/PCM keys are not fully content-addressed (a
-/// dependency edit changes the bytes but not the key), and their validity
-/// metadata is flushed debounced by the owner, so a crash before the
-/// flush — or a concurrent writer republishing a key mid-session — can
-/// leave metadata that validates against its deps while describing bytes
-/// it never saw; clang's own PCH/PCM validation is the backstop (for a
-/// PCH, input sizes only: a same-size edit gets past it). An
-/// earlier revision pinned each record to its blob's identity (size,
-/// mtime, UniqueID and xxh3, captured from the tmp file before the
-/// publishing rename) and revalidated it on every use, with per-writer
-/// durable dirty markers latching content-verification debt across
-/// crashes; it was backed out of PR #650 to keep the scope on the file
-/// table until the concurrency model is decided — see that PR's history
-/// to resurrect it.
+/// may share one store read-write is an undecided design question this
+/// layer does not answer: each keeps its own LRU accounting and can evict
+/// the other's blobs. Republishing is not part of it — PCH and PCM records
+/// name a blob of their own build (key plus nonce), never one another
+/// writer rewrites.
 ///
 /// On-disk layout under `{root}/cache/v{version}/`:
 ///   manifest.json        last-accessed checkpoint (not a source of truth)

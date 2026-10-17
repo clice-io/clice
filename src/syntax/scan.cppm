@@ -39,8 +39,9 @@ struct ScanResult {
         return is_implementation_unit() ? llvm::StringRef() : llvm::StringRef(module_name);
     }
 
-    /// Whether module declaration is inside conditional directive,
-    /// signaling caller should fall back to preprocessor-based scan.
+    /// Whether the module declaration is beyond the lexical scan — inside a
+    /// conditional directive, or in text the directive scanner rejects —
+    /// signaling the caller should fall back to the preprocessor-based scan.
     bool need_preprocess = false;
 
     struct IncludeInfo {
@@ -114,8 +115,9 @@ struct ScanResult {
 ///     the declared module name is literal tokens a lexer can read.
 ///
 /// The directive may still sit inside #if/#ifdef branches, which a lexer
-/// cannot evaluate: then need_preprocess is set (module_name stays empty)
-/// and scan_module_decl() resolves it.
+/// cannot evaluate, or in text the directive scanner rejects: then
+/// need_preprocess is set (module_name stays empty) and scan_module_decl()
+/// resolves it.
 ///
 /// Imports are deliberately NOT collected (`modules` stays empty): unlike
 /// the module declaration, an import's tokens ARE macro-expanded
@@ -176,10 +178,15 @@ ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
 /// fragment's `module;`, that open the file.
 std::uint32_t compute_preamble_bound(llvm::StringRef content);
 
-/// Check if the preamble region contains only syntactically complete directives.
-/// Returns false if any #include/#import has an unclosed "" or <>, or any
-/// C++20 module statement (import/export) is missing a trailing ';',
-/// indicating the user is still typing and PCH/PCM rebuild should be deferred.
-bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound);
+/// The part of the preamble up to `bound` that is finished: `bound` itself,
+/// or the end of the line before the first #include/#import whose "" or <>
+/// is still open or C++20 module statement (import/export) still lacks its
+/// ';' — the user is typing it, and it belongs with the body until done.
+std::uint32_t complete_preamble_bound(llvm::StringRef content, std::uint32_t bound);
+
+/// Whether a directive of the preamble up to `bound` defines, undefines or
+/// tests a macro: the macro and its uses then sit at positions of the file
+/// itself.
+bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound);
 
 }  // namespace clice

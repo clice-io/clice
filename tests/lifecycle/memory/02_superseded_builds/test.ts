@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 
 // Each edit changes the preamble while its build runs, so each build is
 // superseded mid-way under a fresh content key: none leaves a temporary
-// blob behind.
+// blob behind, nor the buffer text it was started with.
 
 test(async (t) => {
     const s = await t.start();
@@ -29,6 +29,7 @@ test(async (t) => {
     await t.show("after the storm", {
         pendingTmpFiles: stats.pendingTmpFiles,
         pchCacheEntries: stats.pchCacheEntries,
+        pchStashedBytes: stats.pchStashedBytes,
         sessions: stats.sessions,
     });
     expect(t.disk.list(".clice/cache/*/tmp/**")).toEqual([]);
@@ -50,6 +51,7 @@ test(async (t) => {
                 "pchCacheEntries",
                 "pchLoadedStates",
                 "pchStateBytes",
+                "pchStashedBytes",
                 "pendingTmpFiles",
                 "sessions",
                 "workers",

@@ -210,6 +210,27 @@ ZEST_CASE(BlameParksKey) {
     ZEXPECT(parked == PCHFamily::Outcome::Failed);
 }
 
+ZEST_CASE(EvictedPairNotBlamed) {
+    // A pair the store evicted while a parse read it says nothing of its
+    // bytes: its consumers' blames book no strike, and the key keeps
+    // building however often that happens.
+    std::optional<PCHFamily::Outcome> first, second;
+    execute([&]() -> kota::task<> {
+        auto evict = [&] {
+            project.store->invalidate("pch", project.pch_cache.find("shared-key")->second.blob);
+        };
+        ZASSERT(co_await pch.acquire(request("#define X 1\n")) == PCHFamily::Outcome::Ready);
+        evict();
+        pch.blame("shared-key");
+        first = co_await pch.acquire(request("#define X 1\n"));
+        evict();
+        pch.blame("shared-key");
+        second = co_await pch.acquire(request("#define X 1\n"));
+    });
+    ZEXPECT(first == PCHFamily::Outcome::Ready);
+    ZEXPECT(second == PCHFamily::Outcome::Ready);
+}
+
 };  // ZEST_SUITE(PCHFamilyAcquisition)
 
 }  // namespace

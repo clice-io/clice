@@ -224,6 +224,7 @@ export const LogFloodRequest = new RequestType<LogFloodParams, LogFloodResult, v
 export interface StatsResult {
     pchLoadedStates: number;
     pchStateBytes: number;
+    pchStashedBytes: number;
     indexInmemoryShards: number;
     indexShardContentBytes: number;
     lastSaveShards: number;

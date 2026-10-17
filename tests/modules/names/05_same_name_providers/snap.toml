@@ -1,0 +1,9 @@
+[test.p1]
+diagnostics = [
+    { at = "⟦import util;⟧", severity = "warning", message = "module 'util' is declared by more than one file; this file imports ${WS}/p1/util.cppm, the nearest, not ${WS}/p2/util.cppm", source = "clice", code = "ambiguous-module" },
+]
+
+[test.p2]
+diagnostics = [
+    { at = "⟦import util;⟧", severity = "warning", message = "module 'util' is declared by more than one file; this file imports ${WS}/p2/util.cppm, the nearest, not ${WS}/p1/util.cppm", source = "clice", code = "ambiguous-module" },
+]

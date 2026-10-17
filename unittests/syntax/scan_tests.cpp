@@ -347,61 +347,69 @@ ZEST_SUITE(PreambleComplete) {
 ZEST_CASE(CompleteQuotedInclude) {
     llvm::StringRef content = "#include \"foo.h\"\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == bound);
 }
 
 ZEST_CASE(CompleteAngledInclude) {
     llvm::StringRef content = "#include <vector>\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == bound);
 }
 
 ZEST_CASE(IncompleteQuotedInclude) {
     llvm::StringRef content = "#include \"foo\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(!is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == 0u);
 }
 
 ZEST_CASE(IncompleteAngledInclude) {
     llvm::StringRef content = "#include <sys/\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(!is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == 0u);
 }
 
 ZEST_CASE(IncludeWithNoPath) {
     llvm::StringRef content = "#include \nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(!is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == 0u);
 }
 
 ZEST_CASE(IncompleteEmbed) {
     llvm::StringRef content = "#embed <data\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(!is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == 0u);
 }
 
 ZEST_CASE(CompleteEmbed) {
     llvm::StringRef content = "#embed \"data.bin\" limit(4)\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == bound);
 }
 
 ZEST_CASE(IncludeMacroUsage) {
     llvm::StringRef content = "#include FOO\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == bound);
 }
 
 ZEST_CASE(MultipleIncludesAllComplete) {
     llvm::StringRef content = "#include <vector>\n#include \"foo.h\"\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == bound);
 }
 
 ZEST_CASE(MultipleIncludesLastIncomplete) {
     llvm::StringRef content = "#include <vector>\n#include \"foo\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(!is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == content.find('\n'));
+}
+
+ZEST_CASE(IncompleteIncludeMidBlock) {
+    // Typed in the middle of the block: the finished includes before it
+    // stay in the preamble, the ones after it go with the body.
+    llvm::StringRef content = "#include <a>\n#include <vec\n#include \"c.h\"\nint x;";
+    auto bound = compute_preamble_bound(content);
+    ZEXPECT(complete_preamble_bound(content, bound) == content.find('\n'));
 }
 
 // compute_preamble_bound does not include import/export lines in its
@@ -410,76 +418,76 @@ ZEST_CASE(MultipleIncludesLastIncomplete) {
 ZEST_CASE(CompleteImport) {
     llvm::StringRef content = "import std;\nint x;";
     // Bound covers "import std;\n".
-    ZEXPECT(is_preamble_complete(content, 12));
+    ZEXPECT(complete_preamble_bound(content, 12) == 12);
 }
 
 ZEST_CASE(ImportMissingSemicolon) {
     llvm::StringRef content = "import std\nint x;";
     // Bound covers "import std\n".
-    ZEXPECT(!is_preamble_complete(content, 11));
+    ZEXPECT(complete_preamble_bound(content, 11) == 0u);
 }
 
 ZEST_CASE(ImportWithNothing) {
     llvm::StringRef content = "import \nint x;";
     // Bound covers "import \n".
-    ZEXPECT(!is_preamble_complete(content, 8));
+    ZEXPECT(complete_preamble_bound(content, 8) == 0u);
 }
 
 ZEST_CASE(CompleteExportModule) {
     llvm::StringRef content = "export module foo;\nint x;";
     // Bound covers "export module foo;\n".
-    ZEXPECT(is_preamble_complete(content, 19));
+    ZEXPECT(complete_preamble_bound(content, 19) == 19);
 }
 
 ZEST_CASE(ExportModuleMissingSemicolon) {
     llvm::StringRef content = "export module foo\nint x;";
     // Bound covers "export module foo\n".
-    ZEXPECT(!is_preamble_complete(content, 18));
+    ZEXPECT(complete_preamble_bound(content, 18) == 0u);
 }
 
 ZEST_CASE(SplicedIncompleteInclude) {
     // The unterminated filename token's spelling begins with the splice.
     llvm::StringRef content = "#include \\\n<foo\nint x;";
-    ZEXPECT(!is_preamble_complete(content, 16));
+    ZEXPECT(complete_preamble_bound(content, 16) == 0u);
 }
 
 ZEST_CASE(SplicedCompleteInclude) {
     llvm::StringRef content = "#include \\\n<foo.h>\nint x;";
-    ZEXPECT(is_preamble_complete(content, 19));
+    ZEXPECT(complete_preamble_bound(content, 19) == 19);
 }
 
 ZEST_CASE(AngledHashImport) {
     llvm::StringRef content = "#import <foo.h>\nint x;";
-    ZEXPECT(is_preamble_complete(content, 16));
+    ZEXPECT(complete_preamble_bound(content, 16) == 16);
 }
 
 ZEST_CASE(TrailingCommentAfterSemicolon) {
     // A trailing comment must not hide the terminating semicolon.
     llvm::StringRef content = "import std; // done\nint x;";
-    ZEXPECT(is_preamble_complete(content, 20));
+    ZEXPECT(complete_preamble_bound(content, 20) == 20);
 }
 
 ZEST_CASE(TrailingCommentNoSemicolon) {
     llvm::StringRef content = "import std // ;\nint x;";
     // The semicolon inside the comment does not terminate the statement.
-    ZEXPECT(!is_preamble_complete(content, 16));
+    ZEXPECT(complete_preamble_bound(content, 16) == 0u);
 }
 
 ZEST_CASE(CompleteExportImport) {
     llvm::StringRef content = "export import std;\nint x;";
     // Bound covers "export import std;\n".
-    ZEXPECT(is_preamble_complete(content, 19));
+    ZEXPECT(complete_preamble_bound(content, 19) == 19);
 }
 
 ZEST_CASE(EmptyPreamble) {
     llvm::StringRef content = "int x;";
-    ZEXPECT(is_preamble_complete(content, 0));
+    ZEXPECT(complete_preamble_bound(content, 0) == 0);
 }
 
 ZEST_CASE(NonImportIncludeLinesIgnored) {
     llvm::StringRef content = "#define FOO 1\n#ifdef BAR\n#endif\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == bound);
 }
 
 ZEST_CASE(ImportantDoesNotMatchImport) {
@@ -488,24 +496,48 @@ ZEST_CASE(ImportantDoesNotMatchImport) {
     auto bound = compute_preamble_bound(content);
     // Manually test with content that has "important" within the preamble region.
     // Since compute_preamble_bound won't include non-directive lines, we test
-    // is_preamble_complete directly with a crafted bound.
+    // complete_preamble_bound directly with a crafted bound.
     llvm::StringRef crafted = "important = 1;\n";
-    ZEXPECT(is_preamble_complete(crafted, crafted.size()));
+    ZEXPECT(complete_preamble_bound(crafted, crafted.size()) == crafted.size());
 }
 
 ZEST_CASE(PreprocessorDirectivesIgnored) {
     llvm::StringRef content = "#ifdef FOO\n#define BAR 1\n#endif\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == bound);
 }
 
 ZEST_CASE(MixedIncludeAndImportAllComplete) {
     llvm::StringRef content = "#include <vector>\nimport std;\nint x;";
     auto bound = compute_preamble_bound(content);
-    ZEXPECT(is_preamble_complete(content, bound));
+    ZEXPECT(complete_preamble_bound(content, bound) == bound);
 }
 
 };  // ZEST_SUITE(PreambleComplete)
+
+ZEST_SUITE(PreambleUsesMacros) {
+
+ZEST_CASE(Includes) {
+    llvm::StringRef content = "#include <a>\n#include_next \"b.h\"\n#pragma message(\"m\")\nint x;";
+    ZEXPECT(!preamble_uses_macros(content, compute_preamble_bound(content)));
+}
+
+ZEST_CASE(Definition) {
+    llvm::StringRef content = "#include <a>\n#define A 1\nint x;";
+    ZEXPECT(preamble_uses_macros(content, compute_preamble_bound(content)));
+}
+
+ZEST_CASE(Condition) {
+    llvm::StringRef content = "#ifdef A\n#include <a>\n#endif\nint x;";
+    ZEXPECT(preamble_uses_macros(content, compute_preamble_bound(content)));
+}
+
+ZEST_CASE(DefinitionPastBound) {
+    llvm::StringRef content = "#include <a>\nint x;\n#define A 1\n";
+    ZEXPECT(!preamble_uses_macros(content, compute_preamble_bound(content)));
+}
+
+};  // ZEST_SUITE(PreambleUsesMacros)
 
 }  // namespace
 }  // namespace clice::testing

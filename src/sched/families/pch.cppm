@@ -114,11 +114,13 @@ public:
     void invalidate(llvm::StringRef pch_key);
 
     /// A parse consuming the pair died or blamed it: retract it AND book a
-    /// strike against the key. Each successful rebuild clears the build
-    /// side, so consumption strikes keep their own table; enough of them
-    /// park the key and acquisitions fail fast, so consumers fall back to
-    /// compiling without a PCH instead of looping rebuild/blame forever
-    /// over failing storage.
+    /// strike against the key — unless the pair was gone from the store by
+    /// then: evicted under the parse, which says nothing of its bytes, or
+    /// retracted by a blame that struck already. Each successful rebuild
+    /// clears the build side, so consumption strikes keep their own table;
+    /// enough of them park the key and acquisitions fail fast, so consumers
+    /// fall back to compiling without a PCH instead of looping
+    /// rebuild/blame forever over failing storage.
     void blame(llvm::StringRef pch_key);
 
     /// A parse consumed the key's pair and completed without blaming it:
@@ -144,6 +146,15 @@ public:
     /// consumers holding the shared_ptr finish safely, and the next use
     /// reopens the blob from disk.
     void enforce_loaded_budget();
+
+    /// The buffer text the dispatch owners' stashes hold (see KeyState).
+    std::size_t stashed_bytes() const {
+        std::size_t bytes = 0;
+        for(auto& state: states) {
+            bytes += state.inputs.content.size();
+        }
+        return bytes;
+    }
 
     /// Open-document count provider, connected by the master. Sizes the
     /// loaded-state budget; unset (tests, tools) falls back to

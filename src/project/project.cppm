@@ -155,13 +155,46 @@ struct PCHState {
     const std::shared_ptr<index::TUIndex>& load_state();
 };
 
-/// Cached PCM state for a single C++20 module.  Shared across all files that
-/// import the same module.
-struct PCMState {
-    std::string path;
-    /// CacheStore key: "{module}-{hash}" over source path + canonical flags.
+/// The last build of a C++20 module unit, failed or not: what it read and
+/// what came of it. Shared across all files that import the module.
+struct PCMBuild {
+    /// The build's identity: "{module}-{hash}" over the unit's path and
+    /// canonical flags, the build configuration, and the key of every module
+    /// it imports (an unresolved import by its name) — so a command change
+    /// anywhere below the module changes its key too. Empty when an import
+    /// failed and the build never ran.
     std::string key;
+
+    /// The PCM's name in the store: the key and a nonce of the build that
+    /// produced it. A rebuild publishes under a new name, never over the
+    /// old PCM, which a running compile may still read — and the record
+    /// names the very bytes it describes, whatever a crash before the
+    /// metadata flush or another writer of the store left behind.
+    std::string blob;
+
+    /// The PCM the latest build replaced, kept for one more build.
+    std::string superseded;
+
+    /// The built PCM; empty while a rebuild runs, after a failure, and once
+    /// the store evicted it.
+    std::string path;
+
+    /// What the build read and looked for, the inputs of the modules it
+    /// imports included; none while a rebuild runs and when an import
+    /// failed it — the import's build tells what to watch.
     DepsSnapshot deps;
+
+    /// Why the build failed on the user's code.
+    struct Failure {
+        /// The build's first error; empty when an import failed it.
+        std::string error;
+
+        /// The import whose build failed, or that closed a cycle back to
+        /// the unit; invalid when the unit's own build failed.
+        Fid import;
+    };
+
+    std::optional<Failure> failure;
 };
 
 /// All persistent, project-wide state derived from files on disk.
@@ -232,8 +265,8 @@ struct Project {
     /// of CacheStore state; blob paths come from the store.
     llvm::StringMap<PCHState> pch_cache;
 
-    /// PCM cache, keyed by module source path_id.
-    llvm::DenseMap<Fid, PCMState> pcm_cache;
+    /// The last PCM build of each module unit, failed ones included.
+    llvm::DenseMap<Fid, PCMBuild> pcm_builds;
 
     /// The persisted index as loaded: the global symbol table, the per-TU
     /// manifests, the per-file shard blobs and the name search index.
@@ -273,13 +306,11 @@ struct Project {
 
     /// What rebuilding the dependency graph changed.
     struct Rebuilt {
-        /// Module names that gained their first provider, by the provider
-        /// import resolution selects (the candidate list's head), not mere
-        /// existence.
+        /// Module names that gained their first provider.
         llvm::SmallVector<std::string> appeared;
 
-        /// The previously selected providers of names whose selection moved
-        /// to another file.
+        /// The previous providers of names whose providers changed: an
+        /// importer picks the nearest of them, which may now be another.
         llvm::SmallVector<Fid> replaced;
 
         /// How the provisional members followed (see refresh_provisional).
@@ -321,12 +352,20 @@ struct Project {
         }
     }
 
-    /// Fill PCM paths for all built modules, excluding exclude_path_id.
+    /// The PCM of each built module of `modules`, under its name: what a
+    /// compile importing them hands clang.
     void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
-                       Fid exclude_path_id = {}) const;
+                       llvm::ArrayRef<Fid> modules) const;
 
-    /// What the PCMs of `modules` were built from, their imports' inputs
-    /// included, each once; a module without a PCM contributes nothing.
+    /// What decides whether the module's last PCM build still holds: what
+    /// it read, or — for a build an import failed — what the import's
+    /// failure rests on, down to the module whose own build failed. Null
+    /// for a module never built and for a cycle of imports failing each
+    /// other.
+    const DepsSnapshot* build_inputs(Fid module) const;
+
+    /// The build_inputs of `modules`, each once: what their PCMs were built
+    /// from, their imports' inputs included, or what keeps them failing.
     DepsSnapshot module_inputs(llvm::ArrayRef<Fid> modules) const;
 };
 

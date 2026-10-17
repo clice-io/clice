@@ -55,8 +55,9 @@ public:
     /// buffer's imports under the request's command). Building a
     /// dependency can itself evict another clean module's PCM under budget
     /// pressure, which reopens the window the revalidation just closed —
-    /// hence the bounded retry until the set is stable. None when a
-    /// dependency did not build.
+    /// hence the bounded retry until the set is stable. A module that did
+    /// not build is the compile's to report, as the stateful compile does;
+    /// none only when the graph shut down.
     kota::task<std::optional<ModuleDeps>> prepare_deps(Fid path_id,
                                                        const Resolution& resolution,
                                                        llvm::ArrayRef<const char*> arguments,
@@ -64,11 +65,13 @@ public:
                                                        llvm::StringRef content);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
-    /// blob while its node is still clean, so evicted units are
-    /// invalidated instead of handing clang a dangling path. Returns
-    /// whether anything was evicted.
+    /// blob while its node is still clean, so evicted units lose their path
+    /// and are re-dirtied instead of handing clang a dangling path — and
+    /// so are the units importing them, directly or not: a clean module
+    /// promises every module below it built (see closure). Returns whether
+    /// anything was evicted.
     ///
-    /// FIXME: this scans every pcm_cache entry (one stat() per module) on
+    /// FIXME: this scans every pcm_builds entry (one stat() per module) on
     /// every compile, even in steady state when nothing was evicted. For
     /// large modular projects on NFS this adds measurable latency.
     /// Consider having CacheStore notify on eviction or caching the scan
@@ -79,12 +82,19 @@ public:
     /// depended on before).
     bool tracks(Fid path_id) const;
 
+    /// The modules a compile importing `modules` reads, once it waited on
+    /// them: they and, below each that built, the modules it imports in
+    /// turn — clang loads every module below an import, and a built
+    /// module's imports are built too.
+    llvm::SetVector<Fid> closure(llvm::ArrayRef<Fid> modules) const;
+
     /// Mark a module unit and its transitive importers dirty, voiding
-    /// in-flight rounds and dropping their cached PCM state — the single
-    /// write point for PCM content invalidation. Artifact-only loss
-    /// (cache eviction) goes through revalidate_blobs' graph.mark_dirty
-    /// instead: no cascade, importers' results still describe unchanged
-    /// content. Returns the dirtied path_ids.
+    /// in-flight rounds: their next rounds check their builds again, and a
+    /// build whose key and inputs still hold is kept — the single write
+    /// point for PCM content invalidation. Artifact-only loss (cache
+    /// eviction) goes through revalidate_blobs' graph.mark_dirty instead:
+    /// no cascade, importers' results still describe unchanged content.
+    /// Returns the dirtied nodes' path_ids, of every family.
     llvm::SmallVector<Fid> invalidate(Fid path_id);
 
     /// Invoked after a PCM commits so background indexing can pick up the
@@ -96,7 +106,7 @@ public:
 
     /// A closed document's buffer scans no more.
     void forget_buffer(Fid path_id) {
-        scan_memos.erase(path_id);
+        buffer_scans.erase(path_id);
     }
 
     /// The graph identity of an import that resolves to nothing: a node
@@ -134,11 +144,10 @@ public:
     /// blame; nullopt for any other failure (a crash, an outage).
     std::optional<BuildFailure> build_failure(Fid module) const;
 
-    /// An importer's save retries the module's failed build (see
-    /// build_failures). Returns whether it had failed.
-    bool forget_failure(Fid module) {
-        return build_failures.erase(module);
-    }
+    /// An importer's save retries the module's failed build: a failed
+    /// build is otherwise kept until its key or one of its inputs changes.
+    /// Returns whether it had failed.
+    bool forget_failure(Fid module);
 
     /// Whether a node is an unresolved-import sentinel.
     static bool is_unresolved(NodeId id) {
@@ -146,8 +155,8 @@ public:
     }
 
     /// A module name gained a provider it lacked: void the sentinel's
-    /// dependents (dropping dirtied units' cached PCM state on the way)
-    /// and return them for serving-side treatment.
+    /// dependents (their keys name the import as unresolved, so their next
+    /// rounds rebuild) and return them for serving-side treatment.
     llvm::SmallVector<NodeId> provider_appeared(llvm::StringRef name);
 
     /// Scan a module unit's disk text for its direct module dependencies
@@ -172,9 +181,9 @@ public:
     /// unit that can import nothing pays none: its own text has no module
     /// syntax, neither it nor the host whose command it borrows reaches an
     /// import candidate, and a buffer's directives are the ones the
-    /// dependency scan saw. A buffer's scan is reused while its directive
-    /// stream, its arguments and the project's disk state (context_epoch)
-    /// stay the same.
+    /// dependency scan saw. A scan is reused while its arguments and the
+    /// project's disk state (context_epoch) stay the same, a buffer's while
+    /// its directive stream does too.
     kota::task<ModuleDeps> direct_deps(Fid path_id,
                                        const Resolution& resolution,
                                        llvm::ArrayRef<const char*> arguments,
@@ -186,15 +195,18 @@ private:
     /// TaskGraph::declare).
     void declare_deps(Fid path_id, llvm::ArrayRef<NodeId> deps);
 
-    /// One PCM round: declare dependency edges, revalidate the cache, and
-    /// dispatch the build.
+    /// One PCM round: declare dependency edges, wait on the imports, keep
+    /// the last build while it holds, else dispatch a new one.
     kota::task<RoundOutcome> run(RoundContext& ctx, Fid path_id);
+
+    /// Move the build's PCM to `superseded`, removing the one it replaced.
+    void retire_blob(PCMBuild& build);
 
     static NodeId node(Fid path_id) {
         return {Family::PCM, path_id.raw};
     }
 
-    /// A buffer's last precise scan and what it ran against.
+    /// A unit's last precise scan and what it ran against.
     struct ScanMemo {
         std::uint64_t directives = 0;
         /// The preamble bound of the scanned text: the import offsets are
@@ -213,7 +225,12 @@ private:
     CommandResolver& commands;
     WorkerPool& pool;
 
-    llvm::DenseMap<Fid, ScanMemo> scan_memos;
+    /// The scans of open buffers, and of units' disk text: kept while the
+    /// arguments and the project's disk state (context_epoch) stay the
+    /// same — and for a buffer, its directives. A failed module's every
+    /// importer waits on it again, and each wait would preprocess it again.
+    llvm::DenseMap<Fid, ScanMemo> buffer_scans;
+    llvm::DenseMap<Fid, ScanMemo> disk_scans;
 
     /// A module build that killed a worker: the content it was built from
     /// and the death.
@@ -229,27 +246,6 @@ private:
     /// document's quarantine cannot contain it alone: every importer would
     /// burn a worker of its own.
     llvm::DenseMap<Fid, Crash> build_crashes;
-
-    /// A module build that failed on errors in the user's code: the cache
-    /// key it ran under and what it read and looked for, its own source
-    /// and the modules it imported included.
-    struct Failure {
-        std::string key;
-        DepsSnapshot deps;
-        /// The build's first error.
-        std::string error;
-    };
-
-    /// The modules whose build failed (see Failure): refused until their
-    /// command or one of those files changes, an import that resolved to
-    /// nothing gains a provider, or an importer is saved. Rebuilt on unchanged inputs, every
-    /// compile and completion of every importer would pay for the failing
-    /// build first.
-    llvm::DenseMap<Fid, Failure> build_failures;
-
-    /// The modules whose last round failed because an import of theirs
-    /// failed (or closed a cycle), with that import.
-    llvm::DenseMap<Fid, Fid> failed_imports;
 };
 
 }  // namespace clice

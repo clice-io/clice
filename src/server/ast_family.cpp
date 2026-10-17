@@ -181,6 +181,52 @@ static void explain_failed_imports(std::vector<feature::FileDiagnostic>& diagnos
     }
 }
 
+/// An import of a module several units provide resolves to the nearest
+/// of them (PCMFamily::direct_deps); the import says which it took and
+/// which it passed over.
+static void note_provider_choices(std::vector<feature::FileDiagnostic>& diagnostics,
+                                  const PCMFamily::ModuleDeps& imports,
+                                  const Project& project,
+                                  const Session& session) {
+    auto& graph = project.dep_graph;
+    for(auto [dep, offset]: llvm::zip_equal(imports.declared, imports.offsets)) {
+        if(PCMFamily::is_unresolved(dep)) {
+            continue;
+        }
+        auto chosen = Fid{static_cast<std::uint32_t>(dep.key)};
+        auto name = graph.module_of(chosen);
+        auto providers = graph.lookup_module(name);
+        if(providers.size() < 2) {
+            continue;
+        }
+        std::string others;
+        for(auto provider: providers) {
+            if(provider != chosen) {
+                others += others.empty() ? "" : ", ";
+                others += project.file_table.display(provider);
+            }
+        }
+        auto warning = feature::file_warning(
+            std::format("module '{}' is declared by more than one file; this file imports {}, the "
+                        "nearest, not {}",
+                        name,
+                        project.file_table.display(chosen),
+                        others));
+        warning.code = "ambiguous-module";
+        // At the import when it is the file's own; an import through an
+        // included file sits at the include, one of the command line's or
+        // the implicit one of an implementation unit at the top.
+        if(offset < session.text.size()) {
+            auto end = std::min(session.text.find('\n', offset), session.text.size());
+            if(auto range = session.positions().range({offset, static_cast<std::uint32_t>(end)},
+                                                      PositionEncoding::UTF16)) {
+                warning.range = *range;
+            }
+        }
+        diagnostics.push_back(std::move(warning));
+    }
+}
+
 ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        llvm::StringRef text,
                                        const std::string& directory,
@@ -189,8 +235,14 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        const PCMFamily::ModuleDeps& imports) {
     auto path = project.file_table.resolve(path_id);
     // The part of the prefix inside braces comes after the preamble, which
-    // the header's own directives would otherwise precede.
-    auto bound = synthesized && !synthesized->open.empty() ? 0 : compute_preamble_bound(text);
+    // the header's own directives would otherwise precede. A preamble still
+    // being typed ends before its unfinished directive: the finished part
+    // keeps its PCH — the key of the one before, when the directive goes at
+    // the end of the block — and the unfinished one parses with the body,
+    // which reports its own error.
+    auto bound = synthesized && !synthesized->open.empty()
+                     ? 0
+                     : complete_preamble_bound(text, compute_preamble_bound(text));
     if(bound == 0 && !synthesized) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts end up here too: they borrow
@@ -224,7 +276,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
         imported = true;
         if(!PCMFamily::is_unresolved(dep)) {
             auto module = Fid{static_cast<std::uint32_t>(dep.key)};
-            if(auto it = project.pcm_cache.find(module); it != project.pcm_cache.end()) {
+            if(auto it = project.pcm_builds.find(module);
+               it != project.pcm_builds.end() && !it->second.path.empty()) {
                 pcm_keys += it->second.key;
                 modules.push_back(module);
             }
@@ -242,35 +295,25 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // files with identical preambles share one PCH — but its DIRECTORY (and
     // the working directory) must stay in: quote includes and relative paths
     // resolve against them, so equal preamble text in different directories
-    // can mean different content.  The clang version guards against reusing
+    // can mean different content.  A preamble defining or testing a macro
+    // keeps the path in too: the PCH places the macro and its uses in the
+    // file that built it, where a file sharing it would find its own.  The
+    // clang version guards against reusing
     // blobs a newer bundled clang would reject, and the build configuration
     // keeps the blob with the library that records its dependencies:
     // shared across configurations, one could rebuild it while another's
     // records still confirmed the old content.
     auto preamble_text = text.substr(0, bound);
+    auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               pch_input_check,
                               project.build.active_configuration(),
                               directory,
                               path::parent_path(path),
+                              own_path,
                               preamble_text,
                               canonicalize(arguments),
                               pcm_keys});
-    // The text first: freshness checks every dependency of the key.
-    if(!is_preamble_complete(text, bound) && !pch.fresh(pch_key)) {
-        // Preamble incomplete (user still typing) and nothing fresh to
-        // adopt under the new key: defer the rebuild, keep using the
-        // previously adopted PCH while its artifact is still available.
-        LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
-        PCHPlan plan{.decision = PCHPlan::Decision::Defer};
-        if(auto previous = projections.projection(path_id); previous && previous->pch_key) {
-            auto it = project.pch_cache.find(*previous->pch_key);
-            if(it != project.pch_cache.end() && !it->second.path.empty()) {
-                plan.previous = previous->pch_key;
-            }
-        }
-        return plan;
-    }
     PCHPlan plan{
         .decision = PCHPlan::Decision::Acquire,
         .request =
@@ -285,7 +328,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       },
     };
     if(imported) {
-        project.fill_pcm_deps(plan.request.pcms, path_id);
+        project.fill_pcm_deps(plan.request.pcms, pcm.closure(imports.resolved).getArrayRef());
         plan.request.modules = std::move(modules);
     }
     return plan;
@@ -435,7 +478,7 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
     on_output.emit(session);
 }
 
-void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit) {
+void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit) const {
     if(auto it = projections.entries.find(path_id);
        it != projections.entries.end() && it->second.deps) {
         visit(*it->second.deps);
@@ -450,14 +493,12 @@ void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapsh
             visit(it->second.deps);
         }
     }
-    // A module's snapshot covers the modules it imports in turn.
     for(auto dep: graph.dependencies(node(path_id))) {
         if(dep.family != Family::PCM || PCMFamily::is_unresolved(dep)) {
             continue;
         }
-        if(auto it = project.pcm_cache.find(Fid{static_cast<std::uint32_t>(dep.key)});
-           it != project.pcm_cache.end()) {
-            visit(it->second.deps);
+        if(auto* inputs = project.build_inputs(Fid{static_cast<std::uint32_t>(dep.key)})) {
+            visit(*inputs);
         }
     }
 }
@@ -471,7 +512,7 @@ bool ASTFamily::is_stale(const Session& session) {
     return stale;
 }
 
-void ASTFamily::closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files) {
+void ASTFamily::closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files) const {
     each_input(path_id, [&](const DepsSnapshot& deps) {
         for(auto& dep: deps) {
             files.push_back(dep.path_id);
@@ -921,7 +962,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             switch(plan.decision) {
                 // No PCH build left to crash on.
                 case PCHPlan::Decision::None: session->quarantine->on_success(pch_kind); break;
-                case PCHPlan::Decision::Defer: adopted_pch = plan.previous; break;
                 case PCHPlan::Decision::Acquire: {
                     auto pch_key = plan.request.pch_key;
                     // A preamble whose build crashed a worker — for this
@@ -982,9 +1022,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             }
         }
 
-        // Fill all available PCM paths, excluding the file's own PCM
-        // to avoid "multiple module declarations".
-        project.fill_pcm_deps(params.pcms, path_id);
+        project.fill_pcm_deps(params.pcms, pcm.closure(imports->resolved).getArrayRef());
 
         if(session->generation != gen) {
             LOG_INFO("compile round: superseded before send for {}", file_path);
@@ -1196,6 +1234,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             diagnostics = with_preamble(std::move(diagnostics), *preamble_state, file_path);
         }
         explain_failed_imports(diagnostics, imports->resolved, pcm, project.dep_graph);
+        note_provider_choices(diagnostics, *imports, project, *session);
         if(tidy_config && !tidy_config->error.empty()) {
             auto warning = feature::file_warning(std::format(
                 "clang-tidy does not run on this file until its configuration parses. {}",
@@ -1348,9 +1387,6 @@ kota::task<std::optional<std::string>>
                 session->quarantine->on_success(evidence_kind(EvidenceKind::PCH));
             }
             co_return std::nullopt;
-        // The adopted PCH may by now belong to a newer buffer than a
-        // stale request's; without the license it cannot tell.
-        case PCHPlan::Decision::Defer: co_return license() ? plan.previous : std::nullopt;
         case PCHPlan::Decision::Acquire: break;
     }
     auto pch_key = plan.request.pch_key;
@@ -1433,9 +1469,7 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
         }
     }
 
-    // Fill all available PCM paths, excluding the file's own PCM
-    // to avoid "multiple module declarations".
-    project.fill_pcm_deps(inputs.pcms, path_id);
+    project.fill_pcm_deps(inputs.pcms, pcm.closure(imports->resolved).getArrayRef());
 
     co_return true;
 }

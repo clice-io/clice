@@ -145,7 +145,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         }
     }
 
-    project.fill_pcm_deps(params.pcms, path_id);
+    project.fill_pcm_deps(params.pcms, pcm.closure(deps.resolved).getArrayRef());
     // The modules the parse reads, taken with the PCM paths: a module
     // rebuilt while the parse runs is no input of it.
     auto imports = project.module_inputs(deps.resolved);

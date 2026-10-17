@@ -35,31 +35,21 @@ index::Shard shard_of(llvm::StringRef content) {
 /// Non-module fixtures need the invalidator's PCMFamily and index store
 /// references but never drive them; this bundles the inert plumbing
 /// behind them.
-struct PCMHarness {
-    kota::event_loop loop;
-    TaskGraph graph;
-    WorkerPool pool{loop};
-    PCMFamily pcm;
-    IndexStore index;
-    ASTProjectionTable projections;
-
-    PCMHarness(Project& project, EditorContext& resolver) :
-        pcm(graph, project, resolver.commands, pool), index(loop, project, resolver.commands) {}
-};
-
-/// The orphaned-choice tests exercise ContextService's session reset,
-/// which goes through the AST family; this bundles its inert stack.
-struct ASTHarness {
+/// The inert family stack an Invalidator reads through: no worker ever
+/// starts, so no round dispatches.
+struct Harness {
     kota::event_loop loop;
     TaskGraph graph;
     WorkerPool pool{loop};
     PCMFamily pcm;
     PCHFamily pch;
     ASTFamily ast;
+    IndexStore index;
 
-    ASTHarness(Project& project, EditorContext& resolver, SessionStore& store) :
+    Harness(Project& project, EditorContext& resolver, SessionStore& store) :
         pcm(graph, project, resolver.commands, pool), pch(graph, project, pool),
-        ast(project, resolver, graph, pcm, pch, pool, store) {}
+        ast(project, resolver, graph, pcm, pch, pool, store),
+        index(loop, project, resolver.commands) {}
 };
 
 ZEST_SUITE(Invalidator) {
@@ -71,8 +61,8 @@ ZEST_CASE(EmptyBatchNoEffects) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
 
     auto dirty = invalidator.apply({});
 
@@ -109,10 +99,10 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
+    Harness ph(project, resolver, store);
     ph.graph.declare({Family::TURun, closed.raw}, {PCMFamily::unresolved_node("m")});
     ph.graph.declare({Family::AST, open.raw}, {PCMFamily::unresolved_node("m")});
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
 
     FileEvent events[] = {FileEvent::disk_changed(iface)};
     auto dirty = invalidator.apply(events);
@@ -150,9 +140,9 @@ ZEST_CASE(ReloadProviderCascades) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
+    Harness ph(project, resolver, store);
     ph.graph.declare({Family::TURun, retired.raw}, {PCMFamily::unresolved_node("m")});
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
 
     CDBDiff delta;
     delta.added = {iface};
@@ -178,8 +168,8 @@ ZEST_CASE(DiskRemovedDropsProvider) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
 
     FileEvent events[] = {FileEvent::disk_removed(iface)};
     invalidator.apply(events);
@@ -203,8 +193,8 @@ ZEST_CASE(DiskChangeSparesSession) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
     // The open file's own compile reads its buffer, never its disk: it is
@@ -233,8 +223,8 @@ ZEST_CASE(DiskChangeBesideBuffer) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(changed));
 
     // Bytes from elsewhere replace the buffer the result was scored on.
@@ -252,7 +242,7 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
+    Harness ph(project, resolver, store);
     // The consumer edges build_deps declares in production — no rounds.
     auto node = [](Fid pid) {
         return NodeId{Family::PCM, pid.raw};
@@ -261,7 +251,7 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
     ph.graph.declare(node(closed_user), {node(mod)});
 
     store.open(open_user);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
 
     auto dirty = invalidator.apply(FileEvent::disk_changed(mod));
 
@@ -293,8 +283,8 @@ ZEST_CASE(ChainHitAndMiss) {
     resolver.header_contexts[hit].chain = {saved};
     resolver.header_contexts[miss].chain = {other};
     resolver.header_contexts[closed].chain = {saved};
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
     // Every context derived through the saved file resolves again and
@@ -327,8 +317,8 @@ ZEST_CASE(SaveMarksDependents) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // Open dependents recompile, closed ones reindex; the old/new dependent
@@ -353,8 +343,8 @@ ZEST_CASE(TransitiveDependentsEnqueue) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // Only root TUs own index shards; the intermediate header is not one.
@@ -382,8 +372,8 @@ ZEST_CASE(ForcedHeaderReachesUnits) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open});
@@ -416,8 +406,8 @@ ZEST_CASE(BatchSeesEarlierEdges) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty =
         invalidator.apply({FileEvent::disk_changed(added), FileEvent::disk_changed(header)});
 
@@ -444,8 +434,8 @@ ZEST_CASE(RemovalThenChangeKeepsClear) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty =
         invalidator.apply({FileEvent::disk_removed(removed), FileEvent::disk_changed(header)});
 
@@ -482,8 +472,8 @@ ZEST_CASE(RescanKeepsGuardedProvider) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
 
     invalidator.apply(FileEvent::disk_changed(iface));
 
@@ -503,8 +493,8 @@ ZEST_CASE(CrashMarksLostDirty) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     Fid lost[] = {first, second};
     auto dirty = invalidator.apply(FileEvent::worker_crashed(lost));
 
@@ -526,8 +516,8 @@ ZEST_CASE(EvictionMarksLost) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::document_evicted(file));
 
     // Same loss as a crash, scoped to one document.
@@ -546,8 +536,8 @@ ZEST_CASE(BatchChangesDeduplicate) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     FileEvent events[] = {FileEvent::disk_changed(saved), FileEvent::disk_changed(saved)};
     auto dirty = invalidator.apply(events);
 
@@ -569,8 +559,8 @@ ZEST_CASE(DiskChangeClosedCascades) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // A closed file's disk change cascades exactly like a save, plus the
@@ -603,8 +593,8 @@ ZEST_CASE(DiskChangeOpenCascades) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
@@ -629,8 +619,8 @@ ZEST_CASE(CompiledIncluderCascades) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     llvm::SmallVector<Fid> reindexed{scanned, compiled};
@@ -651,18 +641,50 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
+    Harness ph(project, resolver, store);
     ph.graph.declare(
         NodeId{
             Family::PCM,
             user.raw
     },
         {NodeId{Family::PCM, mod.raw}});
-    project.pcm_cache[mod].deps.push_back({.path_id = header});
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    project.pcm_builds[mod].deps.push_back({.path_id = header});
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     ZASSERT(llvm::is_contained(dirty.reindex_deps_only, user));
+}
+
+ZEST_CASE(FailedModuleHeaderCascades) {
+    // The module's build failed on the header: it is no less an input, and
+    // its importers hear of its change through the same record.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(Spelling::absolute("/proj/gmf.h"));
+    auto mod = project.file_table.intern(Spelling::absolute("/proj/m.cppm"));
+    auto user = project.file_table.intern(Spelling::absolute("/proj/user.cpp"));
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    Harness ph(project, resolver, store);
+    ph.graph.declare(
+        NodeId{
+            Family::PCM,
+            user.raw
+    },
+        {NodeId{Family::PCM, mod.raw}});
+    auto& build = project.pcm_builds[mod];
+    build.deps.push_back({.path_id = header});
+    build.failure = PCMBuild::Failure{.error = "use of undeclared identifier 'x'"};
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
+
+    ZASSERT(llvm::is_contained(invalidator.readers(header), mod));
+    auto changed = invalidator.apply(FileEvent::disk_changed(header));
+    ZASSERT(llvm::is_contained(changed.reindex_deps_only, user));
+    auto removed = invalidator.apply(FileEvent::disk_removed(header));
+    ZASSERT(llvm::is_contained(removed.reindex_deps_only, user));
 }
 
 ZEST_CASE(AppearedHeaderCascades) {
@@ -681,11 +703,11 @@ ZEST_CASE(AppearedHeaderCascades) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    ph.projections.entries[open].deps = DepsSnapshot{
+    Harness ph(project, resolver, store);
+    ph.ast.projections.entries[open].deps = DepsSnapshot{
         DepState{.path_id = header, .missing = true}
     };
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
@@ -707,8 +729,8 @@ ZEST_CASE(DiskRemovedScrubsSourceRole) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_removed(removed_tu));
 
     // The removed file stops being an includer (and thus a host-source
@@ -736,8 +758,8 @@ ZEST_CASE(RemoveRecreateBatchOrder) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
 
     // Change then delete: the removal is the later fact, the clear wins.
     {
@@ -778,8 +800,8 @@ ZEST_CASE(EntryChangeThenRemoval) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     CDBDiff delta;
     delta.changed = {file};
     FileEvent events[] = {FileEvent::cdb_changed(std::move(delta)), FileEvent::disk_removed(file)};
@@ -812,8 +834,8 @@ ZEST_CASE(CDBAddedScansAndEnqueues) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     CDBDiff delta;
     delta.added = {main_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -850,8 +872,8 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     CDBDiff delta;
     delta.changed = {open_id, closed_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -888,8 +910,8 @@ ZEST_CASE(CDBAddedOpenMarksDirty) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     CDBDiff delta;
     delta.added = {file};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -920,8 +942,8 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     resolver.header_contexts[open_header].host_path_id = host;
     resolver.header_contexts[closed_header].host_path_id = host;
     resolver.header_contexts[other_header].host_path_id = Fid{};
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     CDBDiff delta;
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -956,9 +978,9 @@ ZEST_CASE(CDBDropsBorrowedIndex) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
+    Harness ph(project, resolver, store);
     ph.index.record_header_host(header, host);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     CDBDiff delta;
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -985,10 +1007,10 @@ ZEST_CASE(CDBBorrowersByServing) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
+    Harness ph(project, resolver, store);
     ph.index.record_header_host(served, host);
     ph.index.record_header_host(compiled, host);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     CDBDiff delta;
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -1012,7 +1034,7 @@ ZEST_CASE(CDBChangedCascadesModule) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
+    Harness ph(project, resolver, store);
     // The consumer edges build_deps declares in production — no rounds.
     auto node = [](Fid pid) {
         return NodeId{Family::PCM, pid.raw};
@@ -1021,7 +1043,7 @@ ZEST_CASE(CDBChangedCascadesModule) {
     ph.graph.declare(node(closed_user), {node(mod)});
 
     store.open(open_user);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
 
     CDBDiff delta;
     delta.changed = {mod};
@@ -1055,8 +1077,8 @@ ZEST_CASE(DiskRemovedReindexesIncluders) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_removed(header));
 
     // Dependents now compile against a missing include: open ones
@@ -1091,8 +1113,8 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     CDBDiff delta;
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -1131,8 +1153,8 @@ ZEST_CASE(CDBRemovedStillCovered) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     CDBDiff delta;
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -1150,8 +1172,8 @@ ZEST_CASE(CDBEmptyDeltaNoEffects) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::cdb_changed({}));
 
     ZASSERT(dirty.empty());
@@ -1167,8 +1189,8 @@ ZEST_CASE(BatchDiskEventsDeduplicate) {
     CommandResolver commands(project);
     ContextsBlob blob;
     EditorContext resolver(project, commands, blob);
-    PCMHarness ph(project, resolver);
-    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Harness ph(project, resolver, store);
+    Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
     FileEvent events[] = {FileEvent::disk_changed(first),
                           FileEvent::disk_changed(first),
                           FileEvent::disk_changed(second)};
@@ -1207,7 +1229,7 @@ ZEST_CASE(SurvivingEdgeKeepsChoice) {
     auto session = store.open(header);
     resolver.selections[header] = Selection{host, std::nullopt, ""};
 
-    ASTHarness harness(project, resolver, store);
+    Harness harness(project, resolver, store);
     ZASSERT(!ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
     ZASSERT(resolver.selections.contains(header));
 }
@@ -1239,7 +1261,7 @@ ZEST_CASE(RemovedEdgeDropsChoice) {
     resolver.selections[header] = Selection{host, std::nullopt, ""};
     auto generation = session->generation;
 
-    ASTHarness harness(project, resolver, store);
+    Harness harness(project, resolver, store);
     harness.ast.projections.entries[header].current = true;
     ZASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
     ZASSERT(!resolver.header_contexts.contains(header));
@@ -1274,7 +1296,7 @@ ZEST_CASE(VanishedOccurrenceDropsChoice) {
     store.open(header);
     resolver.selections[header] = Selection{host, 1, ""};
 
-    ASTHarness harness(project, resolver, store);
+    Harness harness(project, resolver, store);
     ZASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
     ZASSERT(!resolver.selections.contains(header));
 }

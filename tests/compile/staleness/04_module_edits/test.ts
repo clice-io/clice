@@ -12,6 +12,9 @@ test("saved interface reaches importers", async (t) => {
     await t.show("mid.cppm", s.errors("mid.cppm"));
     await s.sync();
     expect((await s.counts()).files["leaf.cppm"]?.pcm).toBe(2);
+    // The rebuild wrote a PCM of its own: the one before stays, for a
+    // compile that may still read it, until the next build replaces it.
+    expect(t.disk.list(".clice/cache/*/pcm/Leaf-*.pcm")).toHaveLength(2);
 });
 
 test("unsaved interface edit", async (t) => {

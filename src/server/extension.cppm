@@ -207,6 +207,10 @@ struct StatsResult {
     std::uint32_t pch_loaded_states = 0;
     std::uint64_t pch_state_bytes = 0;
 
+    /// Buffer text the PCH family keeps for builds that may still run:
+    /// zero once every build finished and nobody waits on one.
+    std::uint64_t pch_stashed_bytes = 0;
+
     /// Shard blobs awaiting persistence (the indexer's dirty set — zero
     /// after a finished save), and the total mapped bytes of every loaded
     /// shard blob.

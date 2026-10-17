@@ -32,7 +32,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     live_sources(project, sched.pch, sessions, ast.projections),
     index_query(project.project_index, project.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
-    invalidator(project, sessions, contexts, ast.projections, sched.pcm, sched.store) {
+    invalidator(project, sessions, contexts, ast, sched.pcm, sched.store) {
     ast.register_runner();
     // The loaded-state budget follows the open-document count; the PCH
     // family cannot see SessionStore, so the project connects the provider.

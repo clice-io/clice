@@ -79,6 +79,14 @@ ZEST_CASE(ModuleImplementationUnit) {
     ZEXPECT(!result.need_preprocess);
 }
 
+// The directive scanner rejects a declaration with its semicolon on a
+// line of its own: the preprocessor reads the name.
+ZEST_CASE(SemicolonOnNextLine) {
+    auto result = scan_quick("export module mylib\n;\n");
+    ZEXPECT(result.module_name.empty());
+    ZEXPECT(result.need_preprocess);
+}
+
 // Dotted module name: export module std.io;
 ZEST_CASE(DottedModuleName) {
     auto result = scan_quick("export module std.io;");
@@ -228,6 +236,16 @@ export module mylib;
     auto result = f.decl();
     ZEXPECT(result.module_name == "mylib");
     ZEXPECT(!result.is_implementation_unit());
+}
+
+ZEST_CASE(SemicolonOnNextLine) {
+    ModuleScanFixture f(R"(
+#[main.cppm]
+export module mylib
+;
+)");
+    ZEXPECT(f.decl().module_name == "mylib");
+    ZEXPECT(f.precise().module_name == "mylib");
 }
 
 ZEST_CASE(ConditionalWithDefine) {

@@ -227,7 +227,8 @@ public:
     bool is_dirty(NodeId id) const;
     bool is_compiling(NodeId id) const;
 
-    /// Current in-flight interest count (testing/diagnostics).
+    /// Current in-flight interest count: whether anyone still waits on the
+    /// node (a family retiring a round's inputs; testing).
     std::uint32_t refcount(NodeId id) const;
 
     /// Durable edge set: the candidates of the last current successful

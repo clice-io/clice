@@ -1,0 +1,19 @@
+["typed mid-block".errors]
+errors = [
+    { at = "#include <vec⟦⟧", severity = "error", message = "expected '>'", source = "clang", code = "err_expected" },
+]
+
+["typed mid-block".hover.hover]
+markdown = '''
+**function** `c`
+
+```cpp
+inline int c()
+```
+'''
+range = "return a() + ⟦c⟧();"
+
+["file cut inside the preamble".errors]
+errors = [
+    { at = '#include ⟦"c⟧', severity = "error", message = 'expected "FILENAME" or <FILENAME>', source = "clang", code = "err_pp_expects_filename" },
+]

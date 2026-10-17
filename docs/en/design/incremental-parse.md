@@ -85,7 +85,7 @@ The benefit of this model is avoiding wasteful compilations during rapid success
 
 PCH files on disk are named by a hash of the preamble content together with the frontend-relevant compile flags, directories, and clang version (e.g., `a3f7e8c1d2b4f6e9.pch`), implementing content-addressed storage. This provides two benefits:
 
-- **Disk sharing**: Different files whose preamble content and compile configuration agree naturally share the same PCH file on disk, with no additional deduplication logic needed.
+- **Disk sharing**: Different files whose preamble content and compile configuration agree naturally share the same PCH file on disk, with no additional deduplication logic needed. A preamble that defines a macro or tests one in a condition keeps its file's path in the key: the PCH places those in the file that built it, where a file sharing it would find its own.
 - **Cross-session persistence**: PCH cache metadata (path, hash, boundary, dependency snapshot) is persisted into the index database alongside the symbol index. On server restart, this metadata is loaded and each PCH's validity is verified through two-layer invalidation detection, avoiding the need to rebuild all PCHs on a cold start.
 
 When preamble content changes, the new PCH uses a different hash for its filename and the old file becomes orphaned. Orphans are reclaimed by the artifact store's eviction: PCH and PCM caches live in a capacity-budgeted namespace, and once the budget is exceeded the coldest entries are evicted first.
@@ -107,24 +107,19 @@ Before triggering a PCH rebuild, the preamble must be checked for syntactic comp
 import std.core        // missing semicolon, user is typing a module declaration
 ```
 
-Building a PCH from an incomplete preamble produces a PCH containing erroneous preprocessor state. Subsequent compilations loading this erroneous PCH would see a flood of spurious errors. Therefore, when the preamble is detected as incomplete, the rebuild is deferred and the old PCH (if one exists) continues to be used.
+Building a PCH from an incomplete preamble produces a PCH containing erroneous preprocessor state. Subsequent compilations loading this erroneous PCH would see a flood of spurious errors. Therefore the preamble ends before its first unfinished directive: the finished directives above it are precompiled as usual — a line being added at the end of the include block leaves the preamble text, and so its PCH, as it was — and the unfinished line is parsed with the body, where it reports its own error.
 
 ### PCH Build Pipeline
 
 When a compilation request requires a PCH, the following pipeline executes:
 
 ```
-Compute preamble boundary and hash
+Compute preamble boundary (before an unfinished directive) and hash
          │
          ▼
    ┌─ Cache hit? ──── yes → Reuse cached PCH
    │     │
    │    no
-   │     │
-   │     ▼
-   │  Preamble complete? ── no → Defer rebuild, keep old PCH
-   │     │
-   │   yes
    │     │
    │     ▼
    │  Another coroutine building? ── yes → Wait for completion, use result
@@ -174,7 +169,7 @@ For non-self-contained headers, the compilation context system synthesizes a pre
 
 ### Cache Persistence
 
-PCH and PCM cache metadata are persisted as a metadata blob in the index database. The blob is flushed shortly after each successful build and loaded on server startup; blob writes are atomic, and each record additionally pins the exact artifact file it describes (size, mtime, filesystem identity, content hash), so a crash between publishing an artifact and flushing its metadata is detected and the artifact re-verified instead of trusted.
+PCH and PCM cache metadata are persisted as a metadata blob in the index database. The blob is flushed shortly after each successful build and loaded on server startup; blob writes are atomic, and each record names the artifact file of its own build — its key plus a nonce, a name no later build writes again — so a crash between publishing an artifact and flushing its metadata leaves the old record naming the old file, never the new bytes.
 
 After loading the cache on startup, all PCH entries are validated through two-layer invalidation detection. Stale entries are automatically rebuilt on the next compilation, requiring no special cache consistency recovery logic.
 

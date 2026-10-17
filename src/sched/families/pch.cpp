@@ -72,10 +72,11 @@ kota::task<RoundOutcome> PCHFamily::run(RoundContext& ctx, std::uint64_t key_id)
     auto outcome = co_await attempt(ctx, key_id);
     // A stale round's replacement respawns through join_node without
     // passing prepare(), so attempt() copies the stash instead of
-    // consuming it. Retire it only on a current round's result — an
-    // overtaken or preempted round is about to be retried and the retry
-    // still needs the inputs.
-    if(outcome != RoundOutcome::Stale && ctx.current()) {
+    // consuming it. Retire it on a current round's result, or once nobody
+    // waits on the key: an overtaken or preempted round its waiters retry
+    // still needs the inputs, one that lost every waiter (the preamble
+    // being typed moved on to another key) never runs again.
+    if((outcome != RoundOutcome::Stale && ctx.current()) || graph.refcount(node(key_id)) == 0) {
         states[key_id] = {};
     }
     co_return outcome;
@@ -106,12 +107,6 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
             // the pair rather than serving a PCH with no index forever.
             pch_miss = "idx_unreadable";
         } else if(deps_changed(project.file_table, st.deps)) {
-            // FIXME: deps are the only revalidation — the blobs
-            // themselves are not pinned, so metadata surviving a
-            // crashed flush or a concurrent writer's republish is
-            // trusted on its deps alone (see CacheStore's FIXME);
-            // clang's own validation, which checks input sizes only,
-            // backstops.
             pch_miss = "deps_changed";
         } else {
             LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.file);
@@ -349,7 +344,12 @@ void PCHFamily::invalidate(llvm::StringRef pch_key) {
 }
 
 void PCHFamily::blame(llvm::StringRef pch_key) {
-    consume_blames.on_blame(pch_key);
+    auto it = project.pch_cache.find(pch_key);
+    bool gone = it != project.pch_cache.end() && project.store &&
+                !project.store->lookup("pch", it->second.blob);
+    if(!gone) {
+        consume_blames.on_blame(pch_key);
+    }
     invalidate(pch_key);
 }
 

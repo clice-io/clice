@@ -365,13 +365,8 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
                                               wp.arguments,
                                               resolution,
                                               inputs)) {
-        // A module refused for crashing a worker is no error to show: the
-        // note the compile put on the file says why.
-        if(session.quarantine->crashed(evidence_kind(EvidenceKind::PCM))) {
-            co_return empty_value<Result>();
-        }
-        LOG_WARN("{}: dependency preparation failed for {}", label, path);
-        co_await kota::fail(kota::ipc::Error{"Dependency preparation failed"});
+        co_await kota::fail(
+            kota::ipc::Error{protocol::ErrorCode::InvalidRequest, "the server is shutting down"});
     }
     wp.pch = std::move(inputs.pch);
     wp.pcms = std::move(inputs.pcms);

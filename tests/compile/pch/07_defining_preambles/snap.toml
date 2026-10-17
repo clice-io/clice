@@ -1,0 +1,15 @@
+[test.definition]
+definition = ["#define ⟦LIMIT⟧ 3"]
+
+[test.hover.hover]
+markdown = '''
+**macro** `LIMIT`
+
+```cpp
+#define LIMIT 3
+```
+'''
+range = "#define ⟦LIMIT⟧ 3"
+
+[test.references]
+references = ["#define ⟦LIMIT⟧ 3", "return x() + ⟦LIMIT⟧;"]

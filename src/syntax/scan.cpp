@@ -11,6 +11,26 @@ import :vfs.file_system;
 
 namespace clice {
 
+/// Whether a line of the text starts with `module` or `export module`.
+static bool declares_module(llvm::StringRef content) {
+    Lexer lexer(content);
+    while(true) {
+        auto token = lexer.advance();
+        if(token.is_eof()) {
+            return false;
+        }
+        if(!token.is_at_start_of_line || !token.is_identifier()) {
+            continue;
+        }
+        if(token.text(content) == "export") {
+            token = lexer.advance();
+        }
+        if(token.is_identifier() && token.text(content) == "module") {
+            return true;
+        }
+    }
+}
+
 ScanResult scan_quick(llvm::StringRef content) {
     namespace dds = clang::dependency_directives_scan;
 
@@ -20,8 +40,11 @@ ScanResult scan_quick(llvm::StringRef content) {
     llvm::SmallVector<dds::Directive> directives;
 
     if(clang::scanSourceForDependencyDirectives(content, tokens, directives)) {
-        // A precise scan lexes text the directive scanner rejects in full.
+        // A precise scan lexes text the directive scanner rejects in full,
+        // and the preprocessor reads a module declaration in it — one the
+        // scanner balks at, as with its `;` on the next line, included.
         result.directives_hash = llvm::xxh3_64bits(content);
+        result.need_preprocess = declares_module(content);
         return result;
     }
 
@@ -383,7 +406,7 @@ std::uint32_t compute_preamble_bound(llvm::StringRef content) {
     return bound;
 }
 
-bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound) {
+std::uint32_t complete_preamble_bound(llvm::StringRef content, std::uint32_t bound) {
     // The full (NUL-terminated) content is lexed; `bound` applies as a
     // logical end — tokens starting at or past it belong to the body.
     Lexer lexer(content);
@@ -430,13 +453,15 @@ bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound) {
         return line.back().kind == clang::tok::semi;
     };
 
+    std::uint32_t complete = 0;
     while(true) {
         auto token = lexer.advance();
         bool at_end = token.is_eof() || token.range.begin >= bound;
         if((at_end || token.is_at_start_of_line) && !line.empty()) {
             if(!line_complete()) {
-                return false;
+                return complete;
             }
+            complete = line.back().range.end;
             line.clear();
         }
         if(at_end) {
@@ -447,7 +472,27 @@ bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound) {
         }
     }
 
-    return true;
+    return bound;
+}
+
+bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound) {
+    Lexer lexer(content);
+    while(true) {
+        auto token = lexer.advance();
+        if(token.is_eof() || token.range.begin >= bound) {
+            return false;
+        }
+        if(!token.is_directive_hash()) {
+            continue;
+        }
+        auto name = lexer.advance();
+        if(name.is_identifier() &&
+           llvm::is_contained(
+               {"define", "undef", "if", "ifdef", "ifndef", "elif", "elifdef", "elifndef"},
+               name.text(content))) {
+            return true;
+        }
+    }
 }
 
 }  // namespace clice

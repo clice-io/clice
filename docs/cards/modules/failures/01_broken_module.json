@@ -115,6 +115,25 @@
           }
         }
       ]
+    },
+    {
+      "name": "the importer still completes",
+      "blocks": [
+        {
+          "label": "completion",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "local",
+                  "kind": "Variable",
+                  "detail": "int"
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   ]
 }

@@ -99,11 +99,13 @@ public:
     /// epoch snapshotted here, before the first suspension: a supersede
     /// bumps the generation, a Lost-type invalidation bumps only the
     /// epoch — either way the resolved command may describe a command
-    /// that no longer exists, and adopting the key would hand later
-    /// incomplete-preamble edits a stale-flag PCH. This path runs no
-    /// graph round it could ask instead. The inputs themselves follow
-    /// `text`, the buffer the build sends, so a request that outlives its
-    /// ticket still compiles against a PCH of its own preamble.
+    /// that no longer exists, and adopting the key would hand the
+    /// document's preamble features and staleness checks a PCH of another
+    /// command. This path runs no graph round it could ask instead. The
+    /// inputs themselves follow `text`, the buffer the build sends, so a
+    /// request that outlives its ticket still compiles against a PCH of
+    /// its own preamble. False only when the graph shut down: an import
+    /// that did not build is the compile's to report.
     kota::task<bool> prepare_stateless_inputs(const Ticket& ticket,
                                               llvm::StringRef text,
                                               const std::string& directory,
@@ -131,7 +133,15 @@ public:
 
     /// The files the document's compile depends on: the ones is_stale()
     /// checks.
-    void closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files);
+    void closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files) const;
+
+    /// What the document's compile read, one snapshot at a time: its own
+    /// deps, its header context's chain, its PCH's and those of the modules
+    /// it imports — of a module that failed to build, what the failure
+    /// rests on (Project::build_inputs). Both the staleness check and the
+    /// invalidator's readers go through it: what a request finds changed
+    /// and what a disk event reaches are the same files.
+    void each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit) const;
 
     /// clice/switchContext: the new context is a different compilation
     /// identity. Supersede any in-flight compile and drop the state
@@ -228,26 +238,18 @@ private:
     /// the tree records, or never answered.
     kota::task<bool> fetch_include_tree(Fid host);
 
-    /// What the document's compile read, one snapshot at a time: its own
-    /// deps, its header context's chain, its PCH's and the PCMs' it imports.
-    void each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit);
-
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);
 
     /// What a buffer state owes the PCH family: nothing (an empty
     /// preamble with no injected prefix, or a module unit's global module
     /// fragment that imports — a previously adopted key must be cleared),
-    /// a deferral (the preamble is mid-edit and nothing
-    /// fresh exists under its key: keep `previous`, the last adopted key,
-    /// while its artifact is still built), or the acquisition of
-    /// `request`.
+    /// or the acquisition of `request`.
     struct PCHPlan {
-        enum class Decision : std::uint8_t { None, Defer, Acquire };
+        enum class Decision : std::uint8_t { None, Acquire };
 
         Decision decision = Decision::None;
         PCHFamily::Request request;
-        std::optional<std::string> previous;
     };
 
     PCHPlan plan_pch(Fid path_id,

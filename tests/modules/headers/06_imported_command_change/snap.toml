@@ -1,0 +1,21 @@
+[test.before.hover]
+markdown = '''
+**variable** `value`
+
+```cpp
+export constexpr int value = 1
+```
+Value: `1`
+'''
+range = "return ⟦value⟧;"
+
+[test.after.hover]
+markdown = '''
+**variable** `value`
+
+```cpp
+export constexpr int value = 2
+```
+Value: `2`
+'''
+range = "return ⟦value⟧;"

@@ -84,7 +84,7 @@ Each node uses a dirty flag to indicate that a rebuild is needed. The generation
 
 Module nodes maintain forward dependencies (modules they import) and reverse dependencies (modules importing them). Forward dependencies are obtained via lazy resolution; reverse dependencies are back-filled at resolution time. Reverse dependencies are the basis for cascading notifications on file changes — starting from the modified module, following reverse edges finds all affected modules.
 
-The module name to file mapping is maintained by DependencyGraph (see [Dependency Scanning](dependency-scanning.md)) — the startup fast scan discovers all module declarations and builds a module name → file path registry. The PCM family uses this registry to resolve `import` statements to concrete file paths.
+The module name to file mapping is maintained by DependencyGraph (see [Dependency Scanning](dependency-scanning.md)) — the startup fast scan discovers all module declarations and builds a module name → file path registry. The PCM family uses this registry to resolve `import` statements to concrete file paths. When several units declare one module name, an import resolves to the nearest of them — the fewest directories up from the importing file — and the importer shows a warning naming the others.
 
 ## Implementation
 
@@ -113,7 +113,7 @@ Request enters
   └─ Based on result: Success → return / Failed → error / Stale → retry
 ```
 
-Lazy resolution uses the Clang preprocessor for precise scanning, which differs from the fast lexer-based scan used during startup [dependency scanning](dependency-scanning.md). The fast scan does not expand macros or evaluate conditionals, suitable for building a global overview of include relationships; precise scanning expands all preprocessor directives to obtain the file's actual module dependencies under its current compile command. Resolution runs at the start of every build round, so a changed compile command or import list is always seen by the next round. Two things keep it cheap. A unit that can import nothing skips it: no macro can produce an import, so when neither the unit's own text nor any file it reaches through includes and `-include` holds module syntax, the answer is empty. And an open file's scan is reused while its directive lines, its compile command and the files on disk stay the same — typing anywhere but a directive line scans nothing.
+Lazy resolution uses the Clang preprocessor for precise scanning, which differs from the fast lexer-based scan used during startup [dependency scanning](dependency-scanning.md). The fast scan does not expand macros or evaluate conditionals, suitable for building a global overview of include relationships; precise scanning expands all preprocessor directives to obtain the file's actual module dependencies under its current compile command. Resolution runs at the start of every build round, so a changed compile command or import list is always seen by the next round. Two things keep it cheap. A unit that can import nothing skips it: no macro can produce an import, so when neither the unit's own text nor any file it reaches through includes and `-include` holds module syntax, the answer is empty. And a scan is reused while the unit's compile command and the files on disk stay the same — an open file's while its directive lines do too, so typing anywhere but a directive line scans nothing, and a module that keeps failing is not scanned again for each importer that waits on it.
 
 > Module implementation units (those with `module X;` but no `export`) implicitly depend on their corresponding module interface unit. Precise scanning detects this and automatically adds the dependency.
 
@@ -129,7 +129,7 @@ When a module file is saved (didSave), the graph performs a cascading update:
 
 1. Mark the saved file's node dirty, increment its generation counter, and supersede any round in flight
 2. Traverse all transitive dependents along reverse edges — both the durable edges recorded by earlier rounds and the candidate edges of rounds still in flight; for each affected module: supersede its running round, mark dirty, increment generation
-3. Invalidate the affected cached PCMs so nothing consumes a stale product
+3. Each affected module's next round checks its last build again — its key and its inputs — and keeps it when both still hold; a consumer never reads a PCM whose module is dirty
 
 Forward edges are left untouched: the saved file's next round rescans its `import` declarations and replaces them, so an import removed by the edit stops cascading only after that rescan. Cascading updates do not modify interest — existing waiters retain theirs. Upon observing a Stale outcome, they automatically drive a new round.
 
@@ -143,13 +143,15 @@ All rounds run as tasks inside a task group owned by the graph, providing struct
 
 ### PCM Caching
 
-PCM files are named by configuration, not by content: the module name plus a hash of the compiler version, working directory, source path and frontend-relevant flags, stored in a dedicated cache directory. This is fully isolated from build system artifacts, avoiding file-locking conflicts. Content changes are caught by the dependency snapshots described next, not by the name.
+Each module keeps one record of its last build, failed or not: its key, what it read, and what came of it. The key names the build by configuration, not by content: the module name plus a hash of the compiler version, working directory, source path, frontend-relevant flags and the keys of the modules it imports — so a command change anywhere below a module changes its key too. Content changes are caught by the dependency snapshots described next, not by the key. Each build stores its PCM under the key and a nonce, in a dedicated cache directory: a rebuild never overwrites a PCM a compile may still be reading, and a record names exactly the file it describes. This is fully isolated from build system artifacts, avoiding file-locking conflicts.
 
-Cached PCMs are validated through their dependency snapshots: each dependency's identity and observed content version are checked against the shared file table (stat fast path, content hash confirmation — see [Incremental Compilation](incremental-parse.md)). Recompilation only occurs when dependency content has actually changed, avoiding unnecessary rebuilds caused by "touch without modification." Cache metadata is persisted alongside the index and restored on server restart, and Clang's own PCM validation remains as the final backstop.
+Builds are validated through their dependency snapshots: each dependency's identity and observed content version are checked against the shared file table (stat fast path, content hash confirmation — see [Incremental Compilation](incremental-parse.md)). A module's snapshot holds the inputs of the modules it imports as well, and a failed build's holds what it read and looked for. A build whose key and inputs still hold is kept — a failed one too, since it would fail again; recompilation only occurs when one of them has actually changed, avoiding unnecessary rebuilds caused by "touch without modification." The records of successful builds are persisted alongside the index and restored on server restart — failed ones are not, so a restart tries them once more — and Clang's own PCM validation remains as the final backstop.
+
+The same records answer which modules a changed file reaches: every module whose last build read it, failed builds included, is checked again along with the units importing it — a header in a global module fragment, which no `import` edge names, included.
 
 ### Integration with the Compilation Pipeline
 
-Before a document AST or interactive build is dispatched, its dependency preparation acquires the needed PCM nodes — this is the first step of compilation preparation, executed before PCH construction. The import scan runs on the request's actual buffer text (including any synthesized suffix for header contexts), so an `import m;` the user has typed but not yet saved still gets its PCM built before the parse needs it.
+Before a document AST or interactive build is dispatched, its dependency preparation acquires the needed PCM nodes — this is the first step of compilation preparation, executed before PCH construction. The import scan runs on the request's actual buffer text (including any synthesized suffix for header contexts), so an `import m;` the user has typed but not yet saved still gets its PCM built before the parse needs it. Clang reads every module below an import, and a module that finished building has built every module below it: when the cache evicts one PCM, every module importing it, directly or not, is checked again before its next use. The compile is given exactly the PCMs of the modules it reaches, each the one its import resolved to; a module that did not build is left out, and the compile reports the import as it does any error.
 
 ## FAQ
 
@@ -163,7 +165,7 @@ Before a document AST or interactive build is dispatched, its dependency prepara
 
 - **Why lazy dependency resolution?** Dependency resolution requires running the Clang preprocessor (precise scanning) on each module file, which is not cheap. If all module dependencies were resolved at startup, it would add to startup time. Lazy resolution ensures only modules actually needed for compilation are scanned — opening a file doesn't trigger scanning the entire module graph.
 
-- **Why are failures not sticky?** Users are actively editing code — syntax errors are the norm. If failures were marked as persistent, users couldn't get correct results after fixing errors without restarting the server. Retaining the dirty flag lets the next request naturally trigger a retry.
+- **Why are failures not sticky?** Users are actively editing code — syntax errors are the norm. If failures were marked as persistent, users couldn't get correct results after fixing errors without restarting the server. Retaining the dirty flag lets the next request naturally check again; the PCM family answers that check from the failed build's record while its key and inputs hold, and builds again once one of them changes or an importer is saved.
 
 - **Why store PCMs in a separate cache directory?** clangd shares PCM files with the build system, which causes file-locking conflicts — the language server holds the PCM open, preventing the build system from overwriting it (see [clangd/clangd#2292](https://github.com/clangd/clangd/issues/2292)). clice keeps its PCMs in its own cache directory, avoiding this problem. The trade-off is additional disk space usage and extra time for first-time compilation.
 

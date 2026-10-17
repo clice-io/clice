@@ -30,3 +30,8 @@ errors = [
         code = "err_module_not_built",
     },
 ]
+
+["the importer still completes".completion.completion]
+items = [
+    { label = "local", kind = "Variable", detail = "int" },
+]
