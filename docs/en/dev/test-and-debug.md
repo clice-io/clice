@@ -79,7 +79,7 @@ CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice \
   pixi run node tools/nightly/run.ts abseil --dir ~/nightly  # one job
 ```
 
-`--steps index` or `--steps sweep` runs one half, `--file` sweeps the named files and `--only` the named requests. Preparing LLVM or the kernel takes a runner's disk and a long build: run those on a box, not a workstation.
+`--steps index` or `--steps sweep` runs one half, `--file` sweeps the named files and `--only` the named requests. Preparing LLVM or the kernel takes a long build and several gigabytes of disk.
 
 ## Debug
 

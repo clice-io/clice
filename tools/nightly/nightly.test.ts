@@ -168,10 +168,10 @@ describe("report", () => {
         const text = report(results, {
             ...results,
             failures: [],
-            index: { ...index, seconds: 60 },
+            index: { ...index, seconds: 90 },
         });
         expect(text).toContain("# p: 1 failures");
-        expect(text).toContain("| index | 2.0 min | 1.0 min |");
+        expect(text).toContain("| index | 2.0 min | 90 s |");
         expect(text).toContain("## Units clice reports errors on, which the compiler compiles (1)");
         expect(text).toContain("run it");
     });

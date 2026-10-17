@@ -28,7 +28,11 @@ function rows(now: Results, before: Results | undefined): string[][] {
     const old = before?.index;
     const sweep = now.sweep;
     const time = (seconds: number | undefined) =>
-        seconds === undefined ? "" : `${(seconds / 60).toFixed(1)} min`;
+        seconds === undefined
+            ? ""
+            : seconds < 120
+              ? `${seconds.toFixed(0)} s`
+              : `${(seconds / 60).toFixed(1)} min`;
     const out: string[][] = [["prepare", time(now.prepareSeconds), time(before?.prepareSeconds)]];
     if (index !== undefined) {
         out.push(
