@@ -136,7 +136,7 @@ struct CompilationInput {
     /// compile but a preamble's (SynthesizedFile::forced).
     std::vector<std::string> forced_includes;
 
-    /// The PCH to load, and how many bytes of the main file it stands for:
+    /// The PCH to load, and how many bytes of the focus file it stands for:
     /// a preamble's, or with no bytes a precompiled header the build
     /// declares, which a preamble's PCH built over it chains onto.
     std::pair<std::string, std::uint32_t> pch;
@@ -543,7 +543,7 @@ private:
     bool instantiate = true;
 
     /// Preamble and PrecompiledHeader: how many errors clang had raised
-    /// when the parse reached the end of the main file.
+    /// when the parse reached the end of the focus file.
     std::optional<unsigned> errors_at_end;
 
     /// When the compile started.
