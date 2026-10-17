@@ -24,6 +24,7 @@
     "compat/**/*.ts",
     "docs/**/*.ts",
     "lint/**/*.ts",
+    "nightly/**/*.ts",
     "protocol/**/*.ts",
     "testing/**/*.ts",
     "*.ts"

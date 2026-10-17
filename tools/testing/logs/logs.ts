@@ -11,7 +11,7 @@ export interface LogLine {
 }
 
 /// A log line's level, from the `[level]` field after its timestamp.
-function levelOf(text: string): string | undefined {
+export function levelOf(text: string): string | undefined {
     return /^\[[^\]]*\] \[(\w+)\]/.exec(text)?.[1];
 }
 

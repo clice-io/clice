@@ -35,7 +35,7 @@ Filtering specific tests:
 - Unit: `pixi run -e test-run unit-test [type] -- --test-filter=SuiteName.CaseName` (also `SuiteName.*`)
 - Cases: `CLICE_CASES=<path prefix> pixi run -e test-run cases-test [type]`, e.g. `CLICE_CASES=hover/` or `CLICE_CASES=hover/templates/06_template_forms`; the "Running" section of `tests/README.md` lists the rest.
 
-The compat suite (`pixi run compat-test`) and the editors' end-to-end tests (`pixi run -e editor editor-test`) need build systems and editors installed; run them only when the caller names them.
+The compat suite (`pixi run compat-test`) and the editors' end-to-end tests (`pixi run -e editor editor-test`) need build systems and editors installed; run them only when the caller names them. So do the nightly real-project jobs (`pixi run node tools/nightly/run.ts <job> --dir <dir>`, `docs/en/dev/test-and-debug.md`), which prepare and index large projects.
 
 This skill runs and reports — nothing else. Never fix code or tests from here, never set `UPDATE_SNAPSHOTS`. Fixing happens in the main conversation with full context.
 
