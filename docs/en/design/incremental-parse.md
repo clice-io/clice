@@ -46,6 +46,8 @@ The preamble is the region at the top of a source file consisting of preprocesso
 
 The preamble is compiled into a PCH file and cached on disk. Subsequent compilations load the PCH and only need to process user code after the bound. If the preamble is empty (bound is zero), no PCH is needed and the entire PCH flow is skipped.
 
+The PCH build also instantiates the function templates the preamble itself uses, such as the members of `std::vector<int>` an inline function in a header calls. A compilation loading the PCH finds them instantiated instead of instantiating them again at its end, which on large files is often most of the work an edit waits for; the PCH build takes longer and the PCH grows in exchange.
+
 `PCHState` is a PCH cache entry, containing:
 
 - The PCH file path on disk
@@ -190,5 +192,7 @@ After loading the cache on startup, all PCH entries are validated through two-la
 - **Incomplete preamble completeness check**. The current completeness check only covers unclosed quotes and missing semicolons in `#include`/`import` directives. Other types of incomplete edits (e.g., typing a `#define` value) are not detected. The impact of building a PCH from such an incomplete preamble on subsequent compilation has not been thoroughly tested. Further investigation is needed into Clang's behavior when processing incomplete preprocessor directives, to determine whether the completeness check scope should be extended.
 
 - **No PCH for a global module fragment that imports**. A module unit whose global module fragment imports a module, typically through a header it includes, parses its whole preamble on every edit. Clang keeps no record in a PCH that the global module fragment was open, and the module declaration that follows the PCH would hide the modules the fragment imported. The improvement direction is a Clang change that restores the fragment when the PCH is loaded.
+
+- **Templates the preamble instantiates see only the preamble**. The PCH instantiates the function templates its headers use where the preamble ends, as an MSVC-style precompiled header does, while a compiler instantiates them at the end of the file. A template that finds a function by argument-dependent lookup only among the main file's declarations, which the standard makes ill-formed with no diagnostic required, gets an error on the `#include` that the compiler does not report. And a warning raised inside such an instantiation is the header's: it no longer shows on the main file's own use of the same specialization, where the compiler reports it.
 
 - **No proactive recompilation after a header save**. Saving a header (or a change discovered by the file tracker) proactively marks dependent open files dirty, but recompilation stays pull-triggered: their diagnostics refresh on the next request against that file (e.g., hover, edit) rather than immediately. The improvement direction is to proactively trigger compilation for the affected open sessions (a hybrid push/pull model).
