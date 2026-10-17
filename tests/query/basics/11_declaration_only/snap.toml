@@ -11,13 +11,13 @@ stdout = '''
   "result": {
     "name": "checksum",
     "kind": "Function",
-    "symbol": "#c55e89483b081e6f",
+    "symbol": "#2ac638334627aaf7",
     "documentation": null,
     "definition": {
       "file": "${WS}/lib.h",
       "startLine": 1,
       "endLine": 1,
-      "text": "int checksum(const char* data, int size)"
+      "text": "int checksum(const int* data, int size)"
     }
   },
   "stale": []

@@ -1,1 +1,1 @@
-int checksum(const char* data, int size);
+int checksum(const int* data, int size);

@@ -1,5 +1,6 @@
 #include "lib.h"
 
 int run() {
-    return checksum("x", 1);
+    int values[] = {1, 2};
+    return checksum(values, 2);
 }
