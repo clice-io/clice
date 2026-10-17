@@ -64,6 +64,33 @@ describe("snap.toml is laid out as tombi formats it", () => {
         expect(row(99)).toBe("        r = {");
     });
 
+    test("an empty table ending a list counts as tombi measures it, `{  }`", () => {
+        expect(write({ x: [a(107), {}] })[1]).toBe(`x = ["${a(107)}", {}]`);
+        expect(write({ x: [a(108), {}] })).toEqual([
+            "[t]",
+            "x = [",
+            `    "${a(108)}",`,
+            "    {},",
+            "]",
+            "",
+        ]);
+    });
+
+    test("an item holding only tables has its header right above the first", () => {
+        expect(write({ l: [{ s: { t: "one\ntwo" } }, { k: 1 }] })).toEqual([
+            "[[t.l]]",
+            "[t.l.s]",
+            "t = '''",
+            "one",
+            "two",
+            "'''",
+            "",
+            "[[t.l]]",
+            "k = 1",
+            "",
+        ]);
+    });
+
     test("tables and lists in a list take a line each, text of several lines too", () => {
         expect(write({ x: [{ a: 1 }, [2]], y: ["one\ntwo", "three"] })).toEqual([
             "[t]",

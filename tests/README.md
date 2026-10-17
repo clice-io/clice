@@ -259,11 +259,12 @@ exit = 0
 ```
 
 - **Blocks.** A label is what the script names it, a marker's name or a
-  file's path as a rule, unique in its test. A list or table stays on a
-  line while it fits 120 columns, else takes a line per item, a list of
-  tables a row per table; text of several lines (markdown, diffs, a
-  command's output) is a raw `'''` string, unescaped; a table follows as
-  `[…]` of its own. The file is TOML 1.1, laid out as tombi formats it.
+  file's path as a rule, unique in its test. The file is TOML 1.1, laid
+  out as tombi formats it: a list or table stays on a line while tombi
+  keeps it there (120 columns as tombi counts them), else takes a line per
+  item; a list of tables or lists takes a line per item; text of several
+  lines (markdown, diffs, a command's output) is a raw `'''` string,
+  unescaped; a table follows as `[…]` of its own.
 - **`show(label, value, options?)`** takes a request itself, `s.hover(at)`,
   which knows what it asked: its answer goes under the request's kind
   (`hover`, `highlights`, `definition`, …) as the table below shapes it. A
