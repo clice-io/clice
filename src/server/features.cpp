@@ -20,7 +20,6 @@ import :support.text;
 import :syntax.completion;
 import :syntax.include_resolver;
 import :syntax.lexer;
-import :syntax.lexical_scan;
 import :syntax.scan;
 import :vfs.dir_cache;
 import :vfs.file_system;
@@ -610,16 +609,15 @@ Features::RawResult Features::hover(Ticket ticket,
     // identity: this side answers it, from the links. Off a directive line
     // there is none to look for.
     auto offset = session->positions().offset(position, PositionEncoding::UTF16);
-    std::optional<LocalSourceRange> argument;
+    bool on_directive = false;
     if(offset) {
         llvm::StringRef text = session->text;
-        const auto& dialect = index_lang_options(*session);
-        Lexer line(text.substr(logical_line_begin(text, *offset)), dialect);
-        if(line.advance().is_directive_hash()) {
-            argument = find_directive_argument(lexical_scan(text, dialect), text, *offset);
-        }
+        on_directive =
+            Lexer(text.substr(logical_line_begin(text, *offset)), index_lang_options(*session))
+                .advance()
+                .is_directive_hash();
     }
-    if(argument && argument->begin <= *offset) {
+    if(on_directive) {
         auto links = co_await directive_links(ticket, token).or_fail();
         if(auto* link = link_at(links, *offset)) {
             auto hover = directive_hover(*session, *link, markup);
