@@ -262,7 +262,7 @@ std::optional<SynthesizedContext>
                        std::optional<llvm::StringRef> target_content) {
     SynthesizedContext context;
     std::string snapshot_path;
-    if(target_content && !pragma_once(*target_content)) {
+    if(target_content && !pragma_once(*target_content, target_content->size())) {
         snapshot_path =
             synthesized_path(llvm::sys::path::parent_path(target_path), *target_content);
     }

@@ -438,7 +438,7 @@ CompilationStatus CompilationUnit::run() {
        !pch.empty() && instance->getLangOpts().IsHeaderFile) {
         auto& SM = instance->getSourceManager();
         auto main = SM.getMainFileID();
-        if(pragma_once(SM.getBufferData(main).take_front(bound))) {
+        if(pragma_once(SM.getBufferData(main), bound)) {
             instance->getPreprocessor().getHeaderSearchInfo().MarkFileIncludeOnce(
                 *SM.getFileEntryRefForID(main));
         }

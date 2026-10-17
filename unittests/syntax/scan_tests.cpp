@@ -539,5 +539,25 @@ ZEST_CASE(DefinitionPastBound) {
 
 };  // ZEST_SUITE(PreambleUsesMacros)
 
+ZEST_SUITE(PragmaOnce) {
+
+ZEST_CASE(InPreamble) {
+    llvm::StringRef content = "#pragma once\n#include <a>\nint x;\n#include <b>\n";
+    ZEXPECT(pragma_once(content, compute_preamble_bound(content)));
+}
+
+ZEST_CASE(PastBound) {
+    llvm::StringRef content = "#include <a>\nint x;\n#pragma once\n";
+    ZEXPECT(!pragma_once(content, compute_preamble_bound(content)));
+    ZEXPECT(pragma_once(content, content.size()));
+}
+
+ZEST_CASE(OtherPragmas) {
+    llvm::StringRef content = "#pragma message(\"once\")\n#pragma pack(1)\nint x;";
+    ZEXPECT(!pragma_once(content, content.size()));
+}
+
+};  // ZEST_SUITE(PragmaOnce)
+
 }  // namespace
 }  // namespace clice::testing

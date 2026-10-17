@@ -189,8 +189,8 @@ std::uint32_t complete_preamble_bound(llvm::StringRef content, std::uint32_t bou
 /// itself.
 bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound);
 
-/// Whether the text guards itself with `#pragma once`: a compile enters it
-/// once, so its other includes find it skipped.
-bool pragma_once(llvm::StringRef content);
+/// Whether the text up to `bound` guards itself with `#pragma once`: a
+/// compile enters it once, so its other includes find it skipped.
+bool pragma_once(llvm::StringRef content, std::uint32_t bound);
 
 }  // namespace clice
