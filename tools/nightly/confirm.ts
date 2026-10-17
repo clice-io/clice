@@ -71,6 +71,15 @@ export async function confirm<T extends { unit: string }>(
         if (result.error !== undefined) {
             return { outcome: "unchecked", output: result.error.message };
         }
+        // A database command does not say where the build put the modules a
+        // unit imports (CMake passes them in a module map at build time).
+        const module = /fatal error: module '[^']+' not found/.exec(result.stderr);
+        if (module !== null) {
+            return {
+                outcome: "unchecked",
+                output: `the modules it imports are the build's: ${module[0]}`,
+            };
+        }
         return {
             outcome: result.status === 0 ? "accepted" : "rejected",
             output: result.stderr.split("\n").slice(0, 12).join("\n"),

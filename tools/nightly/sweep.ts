@@ -401,8 +401,12 @@ async function sweepFile(
     if (why !== undefined) {
         run.serverOnly.push({ file, why });
     }
-    const opening = fromServer.get(opened.label)?.raw as Diagnostic[] | undefined;
-    if (opening !== undefined && opening.length > 0) {
+    // A project's clang-tidy configuration may raise its findings to errors;
+    // only the compile's own are the compiler's to judge.
+    const opening = ((fromServer.get(opened.label)?.raw ?? []) as Diagnostic[]).filter(
+        (diagnostic) => diagnostic.source !== "clang-tidy",
+    );
+    if (opening.length > 0) {
         run.serverErrors.push({
             file,
             errors: opening
