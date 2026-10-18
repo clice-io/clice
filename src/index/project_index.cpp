@@ -306,106 +306,102 @@ struct ProjectIndex::Base {
         auto entry = static_cast<std::uint32_t>(begin + (found - symbols.begin()));
         return read_file_set(back_to_back(table.units, table.unit_ends, entry));
     }
-}
 
-}
-
-std::uint32_t count() const {
-    return static_cast<std::uint32_t>(hashes.size());
-}
-
-std::optional<std::uint32_t> find(SymbolHash hash) const {
-    auto it = std::ranges::lower_bound(hashes, hash);
-    if(it == hashes.end() || *it != hash) {
-        return std::nullopt;
+    std::uint32_t count() const {
+        return static_cast<std::uint32_t>(hashes.size());
     }
-    return static_cast<std::uint32_t>(it - hashes.begin());
-}
 
-llvm::StringRef name(std::uint32_t doc) const {
-    return back_to_back(names, name_ends, doc);
-}
-
-llvm::StringRef arguments(std::uint32_t doc) const {
-    auto it = std::ranges::lower_bound(args_docs, doc);
-    if(it == args_docs.end() || *it != doc) {
-        return {};
+    std::optional<std::uint32_t> find(SymbolHash hash) const {
+        auto it = std::ranges::lower_bound(hashes, hash);
+        if(it == hashes.end() || *it != hash) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint32_t>(it - hashes.begin());
     }
-    return back_to_back(args, args_ends, static_cast<std::uint32_t>(it - args_docs.begin()));
-}
 
-SymbolHash parent(std::uint32_t doc) const {
-    if(parents[doc] != 0) {
-        return hashes[parents[doc] - 1];
+    llvm::StringRef name(std::uint32_t doc) const {
+        return back_to_back(names, name_ends, doc);
     }
-    auto it = std::ranges::lower_bound(far_parents, doc);
-    if(it == far_parents.end() || *it != doc) {
-        return 0;
+
+    llvm::StringRef arguments(std::uint32_t doc) const {
+        auto it = std::ranges::lower_bound(args_docs, doc);
+        if(it == args_docs.end() || *it != doc) {
+            return {};
+        }
+        return back_to_back(args, args_ends, static_cast<std::uint32_t>(it - args_docs.begin()));
     }
-    return far_parent_hashes[it - far_parents.begin()];
-}
 
-/// The symbol's file as a path id of the blob, or no_file.
-std::uint32_t file(std::uint32_t doc) const {
-    return files[doc] == 0 ? no_file : files[doc] - 1;
-}
-
-llvm::StringRef signature(std::uint32_t doc) const {
-    return back_to_back(signatures, signature_ends, doc);
-}
-
-llvm::ArrayRef<std::uint8_t> image(std::uint32_t doc) const {
-    return back_to_back(bitmaps, bitmap_ends, doc);
-}
-
-std::optional<Bitmap> bitmap(std::uint32_t doc) const {
-    return read_file_set(image(doc));
-}
-
-/// Empty for a symbol no instantiation names.
-llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t doc) const {
-    auto it = std::ranges::lower_bound(instantiation_docs, doc);
-    if(it == instantiation_docs.end() || *it != doc) {
-        return {};
+    SymbolHash parent(std::uint32_t doc) const {
+        if(parents[doc] != 0) {
+            return hashes[parents[doc] - 1];
+        }
+        auto it = std::ranges::lower_bound(far_parents, doc);
+        if(it == far_parents.end() || *it != doc) {
+            return 0;
+        }
+        return far_parent_hashes[it - far_parents.begin()];
     }
-    return back_to_back(instantiation_images,
-                        instantiation_ends,
-                        static_cast<std::uint32_t>(it - instantiation_docs.begin()));
-}
 
-std::optional<Bitmap> instantiation_bitmap(std::uint32_t doc) const {
-    return read_file_set(instantiation_image(doc));
-}
-
-/// The portable name of the file a persisted version id names.
-std::optional<llvm::StringRef> version_path(std::uint32_t persisted) const {
-    auto it = std::ranges::lower_bound(fv_ids, persisted);
-    if(it == fv_ids.end() || *it != persisted) {
-        return std::nullopt;
+    /// The symbol's file as a path id of the blob, or no_file.
+    std::uint32_t file(std::uint32_t doc) const {
+        return files[doc] == 0 ? no_file : files[doc] - 1;
     }
-    return to_ref(fv_paths[it - fv_ids.begin()]);
-}
 
-SymbolIdentity identity(std::uint32_t doc) const {
-    auto file = this->file(doc);
-    return {
-        .name = name(doc),
-        .args = arguments(doc),
-        .signature = signature(doc),
-        .parent = parent(doc),
-        .kind = SymbolKind(kinds[doc]),
-        .scope = SymbolScope::External,
-        .flags = static_cast<SymbolFlags>(flags[doc]),
-        .file = file == no_file ? no_file : remap[file].raw,
-        .token_class = {.kind = static_cast<SemanticTokenKind>(token_kinds[doc]),
-                        .modifiers = token_modifiers[doc]},
-    };
-}
+    llvm::StringRef signature(std::uint32_t doc) const {
+        return back_to_back(signatures, signature_ends, doc);
+    }
 
-/// Bind the columns of a verified blob, checking they line up.
-std::expected<void, llvm::StringRef> bind(BlobView root);
-}
-;
+    llvm::ArrayRef<std::uint8_t> image(std::uint32_t doc) const {
+        return back_to_back(bitmaps, bitmap_ends, doc);
+    }
+
+    std::optional<Bitmap> bitmap(std::uint32_t doc) const {
+        return read_file_set(image(doc));
+    }
+
+    /// Empty for a symbol no instantiation names.
+    llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t doc) const {
+        auto it = std::ranges::lower_bound(instantiation_docs, doc);
+        if(it == instantiation_docs.end() || *it != doc) {
+            return {};
+        }
+        return back_to_back(instantiation_images,
+                            instantiation_ends,
+                            static_cast<std::uint32_t>(it - instantiation_docs.begin()));
+    }
+
+    std::optional<Bitmap> instantiation_bitmap(std::uint32_t doc) const {
+        return read_file_set(instantiation_image(doc));
+    }
+
+    /// The portable name of the file a persisted version id names.
+    std::optional<llvm::StringRef> version_path(std::uint32_t persisted) const {
+        auto it = std::ranges::lower_bound(fv_ids, persisted);
+        if(it == fv_ids.end() || *it != persisted) {
+            return std::nullopt;
+        }
+        return to_ref(fv_paths[it - fv_ids.begin()]);
+    }
+
+    SymbolIdentity identity(std::uint32_t doc) const {
+        auto file = this->file(doc);
+        return {
+            .name = name(doc),
+            .args = arguments(doc),
+            .signature = signature(doc),
+            .parent = parent(doc),
+            .kind = SymbolKind(kinds[doc]),
+            .scope = SymbolScope::External,
+            .flags = static_cast<SymbolFlags>(flags[doc]),
+            .file = file == no_file ? no_file : remap[file].raw,
+            .token_class = {.kind = static_cast<SemanticTokenKind>(token_kinds[doc]),
+                            .modifiers = token_modifiers[doc]},
+        };
+    }
+
+    /// Bind the columns of a verified blob, checking they line up.
+    std::expected<void, llvm::StringRef> bind(BlobView root);
+};
 
 std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     if(root[&GlobalBlob::format_version] != index_format_version) {
