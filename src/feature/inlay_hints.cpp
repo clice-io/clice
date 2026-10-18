@@ -1515,7 +1515,7 @@ private:
         if(expr->isTypeDependent() || expr->isValueDependent()) {
             dependent_callee = true;
             // A dependent call has no resolved callee. The template
-            // resolver's arity-filtered candidate set stands in; only a
+            // resolver's filtered candidate set stands in; only a
             // unique candidate gives trustworthy parameter names — with
             // several overloads left we must not pick one arbitrarily.
             auto candidates = unit.get<types::TemplateResolver>().lookup(expr);

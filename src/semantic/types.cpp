@@ -413,25 +413,32 @@ struct Value {
 /// The non-class types whose standard conversions are decided here. The
 /// rest — member and function pointers, vectors, `_Complex`, `_BitInt`,
 /// atomics — stay undecided.
-enum class Kind { arithmetic, unscoped_enum, scoped_enum, pointer, null_pointer, other };
+enum class Kind : std::uint8_t {
+    Arithmetic,
+    UnscopedEnum,
+    ScopedEnum,
+    Pointer,
+    NullPointer,
+    Other
+};
 
 Kind kind_of(clang::QualType type) {
     if(const auto* builtin = type->getAs<clang::BuiltinType>()) {
         if(builtin->isInteger() || builtin->isFloatingPoint()) {
-            return Kind::arithmetic;
+            return Kind::Arithmetic;
         }
-        return builtin->getKind() == clang::BuiltinType::NullPtr ? Kind::null_pointer : Kind::other;
+        return builtin->getKind() == clang::BuiltinType::NullPtr ? Kind::NullPointer : Kind::Other;
     }
     if(type->isEnumeralType()) {
-        return type->isScopedEnumeralType() ? Kind::scoped_enum : Kind::unscoped_enum;
+        return type->isScopedEnumeralType() ? Kind::ScopedEnum : Kind::UnscopedEnum;
     }
-    return type->isPointerType() ? Kind::pointer : Kind::other;
+    return type->isPointerType() ? Kind::Pointer : Kind::Other;
 }
 
 /// A non-class type whose reference binds only its own type.
 bool plain(clang::QualType type) {
     auto kind = kind_of(type);
-    return kind != Kind::pointer && kind != Kind::other;
+    return kind != Kind::Pointer && kind != Kind::Other;
 }
 
 /// The definition of the class `type` names, null while it has none.
@@ -473,23 +480,23 @@ bool never_converts(clang::ASTContext& context, const Value& from, clang::QualTy
     }
     auto kind = kind_of(type);
     switch(kind_of(to)) {
-        case Kind::arithmetic: {
+        case Kind::Arithmetic: {
             if(to->isBooleanType()) {
-                return kind == Kind::scoped_enum;
+                return kind == Kind::ScopedEnum;
             }
-            return kind == Kind::scoped_enum || kind == Kind::pointer || kind == Kind::null_pointer;
+            return kind == Kind::ScopedEnum || kind == Kind::Pointer || kind == Kind::NullPointer;
         }
-        case Kind::unscoped_enum:
-        case Kind::scoped_enum: return kind != Kind::other;
-        case Kind::pointer: break;
+        case Kind::UnscopedEnum:
+        case Kind::ScopedEnum: return kind != Kind::Other;
+        case Kind::Pointer: break;
         default: return false;
     }
 
-    if(from.null || kind == Kind::null_pointer) {
+    if(from.null || kind == Kind::NullPointer) {
         return false;
     }
-    if(kind != Kind::pointer) {
-        return kind != Kind::other;
+    if(kind != Kind::Pointer) {
+        return kind != Kind::Other;
     }
     auto target = to->getPointeeType();
     auto pointee = type->getPointeeType();

@@ -8,5 +8,11 @@ items = [
 [answers.differing_template.completion]
 items = []
 
+[answers.ruled_out.completion]
+items = [
+    { label = "right", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
 [answers.parameter_template.completion]
 items = []

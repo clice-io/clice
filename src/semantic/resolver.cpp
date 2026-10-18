@@ -1648,7 +1648,7 @@ public:
                 }
                 offset = 1;
             }
-            for(unsigned index = 0; index < expr->getNumArgs(); ++index) {
+            for(unsigned index = 0; index < expr->getNumArgs(); index += 1) {
                 auto argument = expr->getArg(index);
                 if(llvm::isa<clang::PackExpansionExpr>(argument) ||
                    index + offset >= FD->getNumParams()) {

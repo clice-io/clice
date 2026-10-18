@@ -10,6 +10,9 @@ struct Holder {
 void overload(int value);
 void overload(double value);
 
+void place(int x, int y);
+void place(const char* name, int y);
+
 template <typename T>
 struct Runner {
     void run(Holder<T> holder, T value) {
@@ -17,5 +20,6 @@ struct Runner {
         holder.member(value);
         Holder<T>::static_member(value);
         overload(T{});
+        place(1, value);
     }
 };
