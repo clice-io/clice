@@ -120,6 +120,21 @@ ZEST_CASE(KeyIgnoresDriverIgnored) {
     ZEXPECT(f.key(base) == f.key(seed_b));
 }
 
+ZEST_CASE(KeyIgnoresPreprocessorDependencyFile) {
+    /// Kbuild writes `-Wp,-MMD,<depfile>` into every command: keying on the
+    /// file would spawn one probe per unit of the kernel.
+    Fixture f;
+    auto base = f.add("/fake", "/tmp/a.c", {"gcc", "-std=gnu11", "/tmp/a.c"});
+    auto b = f.add("/fake", "/tmp/b.c", {"gcc", "-std=gnu11", "-Wp,-MMD,.b.o.d", "/tmp/b.c"});
+    auto c = f.add("/fake", "/tmp/c.c", {"gcc", "-std=gnu11", "-Wp,-MMD,.c.o.d", "/tmp/c.c"});
+    ZEXPECT(f.key(base) == f.key(b));
+    ZEXPECT(f.key(base) == f.key(c));
+
+    auto fortified =
+        f.add("/fake", "/tmp/d.c", {"gcc", "-std=gnu11", "-Wp,-D_FORTIFY_SOURCE=2", "/tmp/d.c"});
+    ZEXPECT(f.key(base) != f.key(fortified));
+}
+
 ZEST_CASE(KeyTracksSemantics) {
     Fixture f;
     auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});
@@ -353,6 +368,49 @@ ZEST_CASE(WarmPartialFailure, skip = Windows) {
     ZASSERT(resolved);
     ZEXPECT(!f.db.toolchain().resolve(bad.config, bad.input).has_value());
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
+}
+
+ZEST_CASE(WarmBoundsDrivers, skip = Windows) {
+    // Each driver records how many drivers run beside it: twice as many
+    // probes as the machine has cores never run more drivers than cores.
+    TempDir tmp;
+    tmp.mkdir("running");
+    auto driver = tmp.path("cc.clang");
+    auto script = std::format(R"(#!/bin/sh
+touch '{0}/'$$
+ls '{0}' | wc -l >> '{1}'
+sleep 0.2
+rm '{0}/'$$
+echo '{2}' >&2
+)",
+                              tmp.path("running"),
+                              tmp.path("counts"),
+                              fake_cc1_line);
+    ZASSERT(!vfs::write(driver, script));
+    ZASSERT(
+        !llvm::sys::fs::setPermissions(driver, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
+
+    auto cores = std::max(1u, std::thread::hardware_concurrency());
+    Fixture f;
+    llvm::SmallVector<CommandRef> refs;
+    for(unsigned i = 0; i < 2 * cores; i += 1) {
+        auto src = tmp.path(std::format("{}.cpp", i));
+        auto depth = std::format("-ftemplate-depth={}", 100 + i);
+        refs.push_back(f.add(tmp.root.str(), src, {driver.c_str(), depth.c_str(), src.c_str()}));
+    }
+    f.db.warm(refs);
+    ZEXPECT(f.db.toolchain().probe_count() == std::size_t(2 * cores));
+
+    auto counts = vfs::read(tmp.path("counts"));
+    ZASSERT(counts);
+    llvm::SmallVector<llvm::StringRef> lines;
+    (*counts)->getBuffer().split(lines, '\n', -1, false);
+    ZEXPECT(lines.size() == std::size_t(2 * cores));
+    for(auto line: lines) {
+        unsigned running = 0;
+        ZASSERT(!line.trim().getAsInteger(10, running));
+        ZEXPECT(running <= cores);
+    }
 }
 
 ZEST_CASE(ResolveFailNegativeCache, skip = Windows) {

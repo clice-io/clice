@@ -51,8 +51,9 @@ public:
         return resolved_configs[id];
     }
 
-    /// Pre-probe in parallel, deduplicated by probe key. Blocks until all
-    /// unique probes complete.
+    /// Pre-probe in parallel, deduplicated by probe key, running as many
+    /// drivers at once as the machine has cores. Blocks until all unique
+    /// probes complete.
     void warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs);
 
     bool has_cache() const {
