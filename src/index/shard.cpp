@@ -888,7 +888,7 @@ void Shard::relations_of(SymbolHash symbol,
                            cursor,
                            live_filter(table.columns),
                            [&](const Relation& relation) {
-                               if(!(RelationKind(relation.kind) & kind)) {
+                               if(RelationKind(relation.kind) != kind) {
                                    return true;
                                }
                                return callback(relation);

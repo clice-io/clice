@@ -166,10 +166,6 @@ constexpr bool operator==(RelationKind lhs, RelationKind rhs) {
     return lhs.value() == rhs.value();
 }
 
-constexpr bool operator&(RelationKind lhs, RelationKind rhs) {
-    return lhs.value() == rhs.value();
-}
-
 }  // namespace clice
 
 /// SymbolKind hides its enum behind constructors, which keeps it out of
