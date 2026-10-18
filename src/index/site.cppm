@@ -58,4 +58,32 @@ inline std::optional<LineColumn> line_column(const PositionMap& map, std::uint32
     };
 }
 
+/// The line holding `offset` in the text `positions` maps, which it must
+/// have been given, its line end excluded.
+inline llvm::StringRef line_at(const PositionMap& positions, std::uint32_t offset) {
+    auto line = positions.position(offset, PositionEncoding::UTF8)->line;
+    auto bounds = *positions.line_bounds(line);
+    return positions.text().slice(bounds.begin, bounds.end);
+}
+
+/// The site of `range` in the text `positions` maps; nullopt for a range
+/// past the text.
+inline std::optional<Site> site_of(Fid file,
+                                   llvm::StringRef path,
+                                   const PositionMap& positions,
+                                   LocalSourceRange range,
+                                   SiteOrigin origin = SiteOrigin::Written) {
+    if(range.end > positions.size()) {
+        return std::nullopt;
+    }
+    return Site{
+        .file = file,
+        .path = path.str(),
+        .range = range,
+        .begin = *line_column(positions, range.begin),
+        .end = *line_column(positions, range.end),
+        .origin = origin,
+    };
+}
+
 }  // namespace clice::index

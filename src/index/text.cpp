@@ -11,6 +11,7 @@ import :syntax.doc_comment;
 import :syntax.documentation;
 import :syntax.lexer;
 import :syntax.lexical_scan;
+import :syntax.source_text;
 
 namespace clice::index {
 
@@ -74,13 +75,29 @@ std::optional<DeclaredText> declaration_text(const IndexQuery& index, SymbolHash
 }
 
 std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bool inherit) {
-    const static auto dialect = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
     auto info = index.symbol_info(hash, anchor);
     SymbolKind kind = info ? info->kind : SymbolKind(SymbolKind::Invalid);
     // As the compiled unit's doc_comment: a namespace has none.
     if(kind == SymbolKind::Namespace) {
         return {};
     }
+    // Each source's text is read and its comments scanned once, however
+    // many declarations it holds.
+    llvm::DenseMap<std::pair<const Shard*, Fid>, std::unique_ptr<SourceText>> texts;
+    auto text_of = [&](const IndexSource& source) -> SourceText* {
+        auto& text = texts[{source.shard, source.file}];
+        if(!text) {
+            std::unique_ptr<llvm::MemoryBuffer> kept;
+            auto read = index.source_text(source, kept);
+            if(!read) {
+                return nullptr;
+            }
+            // Owned: the lexer reads past the end of what it lexes.
+            text = std::make_unique<SourceText>(read->str());
+            text->set_dialect(raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26));
+        }
+        return text.get();
+    };
     DocCommentChoice choice;
     for(auto relation_kind: {RelationKind::Declaration, RelationKind::Definition}) {
         index.for_each_relation(
@@ -91,22 +108,19 @@ std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bo
             {},
             [&](const IndexSource& source, const Relation& relation) {
                 auto extent = relation.extent();
-                std::unique_ptr<llvm::MemoryBuffer> kept;
-                auto text =
-                    extent.begin < extent.end ? index.source_text(source, kept) : std::nullopt;
-                if(!text || extent.end > text->size()) {
+                auto* text = extent.begin < extent.end ? text_of(source) : nullptr;
+                if(!text || extent.end > text->text().size()) {
                     return true;
                 }
-                // The lexer reads past the end of what it lexes.
-                std::string content(*text);
+                auto content = text->text();
                 auto decl = kind == SymbolKind::Macro
                                 ? documented_macro(content, extent)
                                 : DocumentedDecl{.range = extent,
                                                  .trailing = kind == SymbolKind::Field ||
                                                              kind == SymbolKind::EnumMember ||
                                                              kind == SymbolKind::Variable};
-                auto comments = scan_comments(content, dialect);
-                return !choice.offer(content, documenting_comments(content, comments, decl));
+                return !choice.offer(content,
+                                     documenting_comments(content, text->comments(), decl));
             });
         if(choice.decided()) {
             break;

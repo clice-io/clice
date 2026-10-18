@@ -52,17 +52,7 @@ struct IndexSource {
 
     /// The site of an entry's range; nullopt for a range outside the text.
     std::optional<Site> site(LocalSourceRange range) const {
-        if(range.end > positions.size()) {
-            return std::nullopt;
-        }
-        return Site{
-            .file = file,
-            .path = path,
-            .range = range,
-            .begin = *line_column(positions, range.begin),
-            .end = *line_column(positions, range.end),
-            .origin = origin,
-        };
+        return site_of(file, path, positions, range, origin);
     }
 };
 
