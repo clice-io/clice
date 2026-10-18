@@ -177,6 +177,22 @@ ZEST_CASE(ContentNotStored) {
     ZASSERT(std::vector<std::uint32_t>(starts.begin(), starts.end()) == expected);
 }
 
+ZEST_CASE(MisalignedBytesLoad) {
+    // A blob embedded in another (a TU index's sections) sits at whatever
+    // offset the outer layout gave it, while its columns are read in place.
+    auto file_index = simple_index({
+        {{4, 5}, 111}
+    });
+    auto bytes = write_fresh(file_index, "int x;\n");
+    std::vector<std::uint64_t> storage(bytes.size() / sizeof(std::uint64_t) + 2);
+    auto* misaligned = reinterpret_cast<char*>(storage.data()) + sizeof(std::uint32_t);
+    std::memcpy(misaligned, bytes.data(), bytes.size());
+
+    auto shard = index::Shard::from_bytes(llvm::StringRef(misaligned, bytes.size()));
+    ZASSERT(shard.loaded());
+    ZASSERT(hash_at(shard, 4) == 111u);
+}
+
 ZEST_CASE(CRLFLinesMarked) {
     // Content is not stored: the shard marks the lines ending in "\r\n" so
     // its coordinates place their ends without the text.
