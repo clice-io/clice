@@ -1,7 +1,8 @@
 /// Peak memory of a process tree on Linux, read from /proc: the root's
 /// high-water mark, the largest of its descendants', and the most the tree
 /// held at once. A descendant that ends between two looks keeps the peak
-/// seen last.
+/// seen last. The tree's total counts each process's own memory only: the
+/// pages of a binary a thousand processes share are there once.
 
 import * as fs from "node:fs";
 
@@ -23,15 +24,15 @@ function parentOf(pid: string): number | undefined {
     }
 }
 
-/// The resident and peak resident megabytes of a process.
-function sizes(pid: number): { rss: number; peak: number } | undefined {
+/// The private and peak resident megabytes of a process.
+function sizes(pid: number): { own: number; peak: number } | undefined {
     try {
         const status = fs.readFileSync(`/proc/${String(pid)}/status`, "utf8");
         const field = (name: string): number =>
             Math.round(
                 Number(new RegExp(`^${name}:\\s+(\\d+)`, "m").exec(status)?.[1] ?? 0) / 1024,
             );
-        return { rss: field("VmRSS"), peak: field("VmHWM") };
+        return { own: field("RssAnon") + field("RssShmem"), peak: field("VmHWM") };
     } catch {
         return undefined;
     }
@@ -64,7 +65,7 @@ export function watchMemory(root: number): { stop: () => PeakMemory } {
             if (size === undefined) {
                 continue;
             }
-            total += size.rss;
+            total += size.own;
             if (pid === root) {
                 peak.root = Math.max(peak.root, size.peak);
             } else {
