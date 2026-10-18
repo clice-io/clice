@@ -767,4 +767,13 @@ void measure_fields(const T& blob, FieldBytes& bytes, llvm::StringRef prefix) {
     }(std::make_index_sequence<kota::meta::field_count<T>()>{});
 }
 
+/// Add the fields of a blob of layout `Blob` to `bytes`; nothing for bytes
+/// that do not decode as one.
+template <typename Blob>
+void measure_blob(llvm::StringRef data, FieldBytes& bytes) {
+    if(Blob blob; deserialize_blob(data, blob)) {
+        measure_fields(blob, bytes);
+    }
+}
+
 }  // namespace clice::index

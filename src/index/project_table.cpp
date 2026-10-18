@@ -180,10 +180,4 @@ std::expected<void, llvm::StringRef>
     return {};
 }
 
-void measure_table(llvm::StringRef data, FieldBytes& bytes) {
-    if(ProjectTableBlob blob; deserialize_blob(data, blob)) {
-        measure_fields(blob, bytes);
-    }
-}
-
 }  // namespace clice::index

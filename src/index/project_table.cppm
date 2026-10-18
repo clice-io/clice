@@ -194,7 +194,4 @@ struct ProjectTable {
     std::expected<void, llvm::StringRef> bind(kota::codec::fbs::table_view<ProjectTableBlob> root);
 };
 
-/// Add the fields of a project table blob to `bytes`, for `clice index stats`.
-void measure_table(llvm::StringRef data, FieldBytes& bytes);
-
 }  // namespace clice::index

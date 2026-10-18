@@ -100,7 +100,4 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os);
 /// drops manifests referencing ids the project table does not know.
 std::optional<TUManifest> deserialize_manifest(llvm::StringRef data);
 
-/// Add the fields of a manifest blob to `bytes`, for `clice index stats`.
-void measure_manifest(llvm::StringRef data, FieldBytes& bytes);
-
 }  // namespace clice::index

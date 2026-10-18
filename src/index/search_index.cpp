@@ -794,12 +794,6 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     return {};
 }
 
-void measure_search(llvm::StringRef data, FieldBytes& bytes) {
-    if(SearchIndexBlob blob; deserialize_blob(data, blob)) {
-        measure_fields(blob, bytes);
-    }
-}
-
 SearchIndex::SearchIndex() = default;
 SearchIndex::~SearchIndex() = default;
 SearchIndex::SearchIndex(SearchIndex&&) noexcept = default;

@@ -69,9 +69,6 @@ struct SearchSnapshot {
 /// without a name are left out.
 std::string build_search_blob(const SearchSnapshot& snapshot);
 
-/// Add the fields of a search blob to `bytes`, for `clice index stats`.
-void measure_search(llvm::StringRef data, FieldBytes& bytes);
-
 /// How a symbol answers a query's name pattern.
 struct NameRank {
     /// 0 the exact name; 1 the exact name in another case; 2 a fuzzy,

@@ -12,7 +12,6 @@ import :index.database;
 import :index.format;
 import :index.instantiation_shard;
 import :index.project_index;
-import :index.project_table;
 import :index.query;
 import :index.search_index;
 import :index.symbol_query;
@@ -368,9 +367,7 @@ IndexStats collect_stats(Project& project) {
         stats.occurrences += stat.occurrences;
         stats.relations += stat.relations;
         stats.variants_per_shard.add(stat.variants);
-        if(index::ShardBlob blob; index::deserialize_blob(shard.bytes(), blob)) {
-            index::measure_fields(blob, stats.shard_fields);
-        }
+        index::measure_blob<index::ShardBlob>(shard.bytes(), stats.shard_fields);
         stats.shards.push_back(stat);
     }
     std::ranges::sort(stats.shards, std::ranges::greater{}, &ShardStat::bytes);
@@ -389,10 +386,8 @@ IndexStats collect_stats(Project& project) {
             stats.keys_per_template[key.pattern] += 1;
             return true;
         });
-        if(index::InstantiationShardBlob blob;
-           index::deserialize_blob(instantiations.bytes(), blob)) {
-            index::measure_fields(blob, stats.instantiation_fields);
-        }
+        index::measure_blob<index::InstantiationShardBlob>(instantiations.bytes(),
+                                                           stats.instantiation_fields);
         stats.instantiation_bytes += stat.bytes;
         stats.stored_uses += instantiations.uses().size();
         stats.resolutions += stat.resolutions;
@@ -414,17 +409,18 @@ IndexStats collect_stats(Project& project) {
         if(auto blob = project.database->read(index::BlobKind::TUManifest,
                                               project_index.key_of(project.file_table, tu))) {
             stats.manifest_bytes += blob.buffer->getBufferSize();
-            index::measure_manifest(blob.buffer->getBuffer(), stats.manifest_fields);
+            index::measure_blob<index::TUManifestBlob>(blob.buffer->getBuffer(),
+                                                       stats.manifest_fields);
         }
     }
     auto& db = *project.database;
     if(auto blob = db.read(index::BlobKind::ProjectTable, "global")) {
         stats.table_bytes = blob.buffer->getBufferSize();
-        index::measure_table(blob.buffer->getBuffer(), stats.table_fields);
+        index::measure_blob<index::ProjectTableBlob>(blob.buffer->getBuffer(), stats.table_fields);
     }
     if(auto blob = db.read(index::BlobKind::SearchIndex, "search")) {
         stats.search_bytes = blob.buffer->getBufferSize();
-        index::measure_search(blob.buffer->getBuffer(), stats.search_fields);
+        index::measure_blob<index::SearchIndexBlob>(blob.buffer->getBuffer(), stats.search_fields);
     }
 
     stats.usage = db.usage();
