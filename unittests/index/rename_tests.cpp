@@ -806,7 +806,7 @@ ZEST_CASE(FilesOutsideTheIndex) {
     ZEXPECT(edits(*renamed) == marks());
     ZEXPECT(!renamed->blocked());
     ZASSERT(renamed->unconfirmed.size() == 1U);
-    ZEXPECT(renamed->unconfirmed.front().reason.contains("holds no rows"));
+    ZEXPECT(renamed->unconfirmed.front().reason.contains("holds nothing"));
 
     // A unit of the build the index has yet to reach may include it.
     units_pending = true;

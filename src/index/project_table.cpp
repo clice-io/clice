@@ -161,7 +161,7 @@ std::expected<void, llvm::StringRef>
     }
     for(auto hash: search_pending) {
         if(reserved_key(hash)) {
-            return std::unexpected("reserved pending search row");
+            return std::unexpected("reserved pending search entry");
         }
     }
     for(auto file: search_pending_files) {

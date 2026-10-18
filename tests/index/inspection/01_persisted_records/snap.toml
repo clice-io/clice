@@ -89,7 +89,7 @@ stdout = "nowhere: symbol not found"
 exit = 1
 
 ["names nothing recorded"."$ clice index file gone.h"]
-stdout = "No rows for ${WS}/gone.h in the index."
+stdout = "No entries for ${WS}/gone.h in the index."
 exit = 1
 
 ["names nothing recorded"."$ clice index unit geo.h"]

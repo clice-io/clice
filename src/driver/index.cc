@@ -737,7 +737,7 @@ int run_show_file(Project& project, llvm::StringRef argument) {
     auto file = project.file_table.find(path);
     auto shard_it = file ? project.index.shards.find(*file) : project.index.shards.end();
     if(shard_it == project.index.shards.end()) {
-        driver::println("No rows for {} in the index.",
+        driver::println("No entries for {} in the index.",
                         project.file_table.display(CanonicalPath(path)));
         return 1;
     }

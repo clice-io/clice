@@ -454,7 +454,7 @@ CheckResult relations_ok(BlobView root) {
     auto table = RelationTable::of(root);
     auto content_size = root[&ShardBlob::content_size];
     if(table.kinds.size() != table.size()) {
-        return std::unexpected("relation kinds do not match the row count");
+        return std::unexpected("relation kinds do not match the relation count");
     }
 
     // Readers place a payload by its block's counts and the payload bits
@@ -520,7 +520,7 @@ CheckResult relations_ok(BlobView root) {
                            relation.range.end,
                            relation.target};
             if(entry != table.offsets[id] && key <= prev) {
-                return std::unexpected("relation rows of one symbol are not strictly ascending");
+                return std::unexpected("relations of one symbol are not strictly ascending");
             }
             prev = key;
         }

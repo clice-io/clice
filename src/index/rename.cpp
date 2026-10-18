@@ -522,7 +522,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
             if(!indexed) {
                 plan.unconfirmed.push_back(
                     {.site = token_site(source, file, display, offset, old_name.size()),
-                     .reason = "the index holds no rows of this file: no unit it indexes "
+                     .reason = "the index holds nothing of this file: no unit it indexes "
                                "compiles or includes it",
                      .line = preview_line(source, offset)});
                 continue;

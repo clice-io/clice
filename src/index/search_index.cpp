@@ -733,7 +733,7 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     if(view.name_ends.size() != count || view.args_ends.size() != count ||
        view.parents.size() != count || view.qualities.size() != count ||
        view.by_lower_name.size() != count || view.by_hash.size() != count) {
-        return std::unexpected("row columns do not line up");
+        return std::unexpected("entry columns do not line up");
     }
     if(!monotone_ends(view.name_ends, view.names.size()) ||
        !monotone_ends(view.args_ends, view.args.size())) {
@@ -741,12 +741,12 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     }
     for(auto parent: view.parents) {
         if(parent != no_entry && parent >= count) {
-            return std::unexpected("parent outside the rows");
+            return std::unexpected("parent outside the entries");
         }
     }
     for(auto entry: view.by_lower_name) {
         if(entry >= count) {
-            return std::unexpected("name order outside the rows");
+            return std::unexpected("name order outside the entries");
         }
     }
     for(std::size_t i = 0; i < count; i += 1) {

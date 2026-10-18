@@ -436,7 +436,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     auto record_consumed = [&](std::uint32_t local_id, std::uint64_t content_hash) {
         auto compiled_hash = view.content_hash(local_id);
         if(compiled_hash != 0 && compiled_hash != content_hash) {
-            LOG_WARN("Reject merge for {}: rows for {} consumed other content than the compiler",
+            LOG_WARN("Reject merge for {}: the entries for {} consumed other content than the compiler",
                      tu_path,
                      project.file_table.resolve(file_ids_map[local_id]));
             return false;
@@ -481,14 +481,14 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         // with this file's index missing or stale — reject the whole
         // result; nothing is committed yet.
         if(llvm::xxh3_64bits(bytes) != blob_hash) {
-            LOG_WARN("Reject merge for {}: rows section for {} failed verification",
+            LOG_WARN("Reject merge for {}: the section for {} failed verification",
                      tu_path,
                      project.file_table.resolve(global_id));
             return std::unexpected(MergeError::Invalid);
         }
         auto fresh = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(!fresh.loaded()) {
-            LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
+            LOG_WARN("Reject merge for {}: the entries for {} do not form a valid shard",
                      tu_path,
                      project.file_table.resolve(global_id));
             return std::unexpected(MergeError::Invalid);
@@ -2010,7 +2010,7 @@ void IndexStore::retire_excluded(Report& report) {
         }
     }
     for(auto tu: excluded) {
-        LOG_INFO("A rule keeps {} out of the index; dropping its rows",
+        LOG_INFO("A rule keeps {} out of the index; dropping its entries",
                  project.file_table.resolve(tu));
         drop_index_into(tu, report);
     }
