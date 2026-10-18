@@ -523,13 +523,14 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     }
 
     // Instantiations: a skipped key stands for the resolution its file stores
-    // for it, a walked one merges in. Staged like the shards.
+    // for it, a walked one merges in, and what the unit uses there is one use
+    // of the file's blob. Staged like the shards.
     index::Producer producer{
         .unit = project_index.unit_of(project.file_table, tu_path_id),
         .run = static_cast<std::uint64_t>(view.built_at()),
     };
     llvm::SmallVector<std::pair<Fid, index::InstantiationShard>> instantiation_replacements;
-    llvm::DenseMap<Fid, std::pair<std::uint32_t, std::vector<std::uint64_t>>> instantiation_uses;
+    llvm::DenseMap<Fid, std::pair<std::uint32_t, index::UseHash>> unit_uses;
     for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
         auto local_id = view.instantiation_path(section);
         auto global_id = file_ids_map[local_id];
@@ -542,8 +543,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
                 ? &stored_it->second
                 : nullptr;
 
-        auto& [use_id, used] = instantiation_uses[global_id];
-        use_id = local_id;
+        std::vector<index::ResolutionHash> used;
         for(auto key: view.skipped_instantiations(section)) {
             auto found = stored ? stored->find_key(key) : std::nullopt;
             if(!found) {
@@ -558,29 +558,43 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         }
 
         auto bytes = view.instantiation_blob(section);
-        if(bytes.empty()) {
+        std::optional<index::InstantiationShard> fresh;
+        if(!bytes.empty()) {
+            fresh = index::InstantiationShard::from_bytes(bytes);
+            if(!fresh->loaded()) {
+                LOG_WARN("Reject merge for {}: instantiations for {} do not form a valid blob",
+                         tu_path,
+                         project.file_table.resolve(global_id));
+                return std::unexpected(MergeError::Invalid);
+            }
+            if(!record_consumed(local_id, fresh->content_hash())) {
+                return std::unexpected(MergeError::Invalid);
+            }
+            llvm::append_range(used, fresh->resolutions());
+        }
+        llvm::sort(used);
+        used.erase(llvm::unique(used), used.end());
+        std::optional<index::AddedUse> added;
+        if(!used.empty()) {
+            added = index::AddedUse{.use = index::use_identity(used), .resolutions = used};
+            unit_uses[global_id] = {local_id, added->use};
+        }
+        // Walking nothing new, a unit naming a use the file stores already
+        // changes nothing there.
+        if(!fresh && (!added || stored->has_use(added->use))) {
             continue;
         }
-        auto fresh = index::InstantiationShard::from_bytes(bytes);
-        if(!fresh.loaded()) {
-            LOG_WARN("Reject merge for {}: instantiations for {} do not form a valid blob",
-                     tu_path,
-                     project.file_table.resolve(global_id));
-            return std::unexpected(MergeError::Invalid);
-        }
-        if(!record_consumed(local_id, fresh.content_hash())) {
-            return std::unexpected(MergeError::Invalid);
-        }
-        llvm::append_range(used, fresh.resolutions());
         const static index::InstantiationShard none;
+        const auto& old = stored ? *stored : none;
         std::string merged;
         llvm::raw_string_ostream os(merged);
         index::merge_instantiations(
-            stored ? *stored : none,
-            stored ? stored->resolutions() : llvm::ArrayRef<std::uint64_t>(),
+            old,
+            old.uses(),
             [&](const index::Producer& run) { return project_index.current_run(run); },
-            &fresh,
+            fresh ? &*fresh : nullptr,
             producer,
+            added,
             os);
         auto replacement =
             index::InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(merged));
@@ -588,12 +602,31 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         instantiation_replacements.emplace_back(global_id, std::move(replacement));
     }
 
-    // The manifest's contributions follow section_contributions' order.
-    auto local_fanout =
-        view.local_fanout(llvm::to_vector(llvm::make_first_range(section_contributions)));
+    // The files the unit holds entries of: its own sections, the
+    // resolutions it uses, and what it reads through the precompiled header
+    // or its modules, whose own units wrote the entries there.
+    llvm::BitVector held(view.path_count());
+    for(auto local_id: llvm::make_first_range(section_contributions)) {
+        held.set(local_id);
+    }
+    for(auto local_id: llvm::make_first_range(llvm::make_second_range(unit_uses))) {
+        held.set(local_id);
+    }
+    llvm::DenseSet<Fid> read_precompiled;
+    for(auto& dep: imports) {
+        read_precompiled.insert(dep.path_id);
+    }
+    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
+        if(read_precompiled.contains(file_ids_map[i])) {
+            held.set(i);
+        }
+    }
+    auto local_fanout = view.local_fanout(held);
     if(!local_fanout) {
-        LOG_WARN("Reject merge for {}: an internal symbol's reference files carry no rows",
-                 tu_path);
+        LOG_WARN(
+            "Reject merge for {}: a symbol below external scope names a file the unit holds "
+            "no entries of",
+            tu_path);
         return std::unexpected(MergeError::Invalid);
     }
 
@@ -651,15 +684,15 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     for(auto [local_id, variant]: section_contributions) {
         manifest.contributions.emplace_back(fv_of[local_id], variant);
     }
-    manifest.local_fanout = std::move(*local_fanout);
-    for(auto& [local_id, used]: llvm::make_second_range(instantiation_uses)) {
-        if(used.empty()) {
-            continue;
+    for(auto& fanout: *local_fanout) {
+        index::LocalFanout entry{.symbol = fanout.symbol};
+        for(auto path_id: fanout.paths) {
+            entry.files.push_back(fv_of[path_id]);
         }
-        llvm::sort(used);
-        used.erase(llvm::unique(used), used.end());
-        manifest.instantiations.push_back(
-            {.file = fv_of[local_id], .resolutions = std::move(used)});
+        manifest.local_fanout.push_back(std::move(entry));
+    }
+    for(auto [local_id, use]: llvm::make_second_range(unit_uses)) {
+        manifest.instantiations.push_back({.file = fv_of[local_id], .use = use});
     }
 
     // The places the parse's failed lookups looked: the file table watches
@@ -835,7 +868,7 @@ void IndexStore::search_file_changed(Fid path_id) {
 void IndexStore::refresh_live(Fid path_id) {
     auto& index = project.project_index;
     if(auto it = index.instantiations.find(path_id); it != index.instantiations.end()) {
-        it->second.set_live(index.live_resolutions(path_id));
+        it->second.set_live(index.live_uses(path_id));
     }
     auto it = index.shards.find(path_id);
     if(it == index.shards.end()) {
@@ -922,9 +955,9 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     }
 
     // A file's instantiations live with its shard of the same generation.
-    // Dead resolutions compact like dead variants, and the keys of runs that
-    // are no longer their unit's current one leave with them; a file left
-    // with neither is retired.
+    // Dead uses and the resolutions only they held compact like dead
+    // variants, and the keys of runs that are no longer their unit's current
+    // one leave with them; a file left with neither is retired.
     auto current_run = [&](const index::Producer& run) {
         return project_index.current_run(run);
     };
@@ -941,27 +974,21 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
             gone_runs = !current_run(*key.producer);
             return !gone_runs;
         });
-        if(!instantiations.has_dead_resolutions() && !gone_runs) {
-            continue;
-        }
-        auto live = project_index.live_resolutions(path_id);
-        auto survives = [&](const std::optional<std::uint64_t>& resolution) {
-            return resolution ? std::ranges::binary_search(live, *resolution) : true;
-        };
-        bool kept = llvm::any_of(live, [&](std::uint64_t resolution) {
-            return instantiations.has_resolution(resolution);
-        });
-        instantiations.for_each_key([&](const index::InstantiationShard::Key& key) {
-            kept = kept || (current_run(*key.producer) && survives(key.resolution));
-            return !kept;
-        });
-        if(!kept) {
-            retired_files.push_back(path_id);
+        if(!instantiations.has_dead_uses() && !gone_runs) {
             continue;
         }
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
-        index::merge_instantiations(instantiations, live, current_run, nullptr, {}, os);
+        if(!index::merge_instantiations(instantiations,
+                                        project_index.live_uses(path_id),
+                                        current_run,
+                                        nullptr,
+                                        {},
+                                        std::nullopt,
+                                        os)) {
+            retired_files.push_back(path_id);
+            continue;
+        }
         auto replacement =
             index::InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         assert(replacement.loaded() && "a freshly written instantiation blob must verify");
@@ -1866,12 +1893,11 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         refresh_live(path_id);
     }
 
-    // Each loaded shard's instantiations, at its generation. A resolution some
-    // manifest uses that its file no longer stores lost what that TU's
+    // Each loaded shard's instantiations, at its generation. A use some
+    // manifest names that its file no longer stores lost what that TU's
     // instantiations resolved there: the TU reindexes, keeping its index
     // meanwhile.
     llvm::StringSet<> expected_instantiations;
-    llvm::DenseSet<Fid> lost_instantiations;
     for(auto& [path_id, shard]: project.project_index.shards) {
         auto key = project.project_index.key_of(project.file_table, path_id);
         auto blob = db.read(index::IndexBlobKind::Instantiations, key);
@@ -1891,25 +1917,16 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
             continue;
         }
         expected_instantiations.insert(key);
-        instantiations.set_live(project_index.live_resolutions(path_id));
+        instantiations.set_live(project_index.live_uses(path_id));
         project_index.instantiations[path_id] = std::move(instantiations);
     }
-    for(auto& [path_id, uses]: project_index.instantiation_uses) {
-        auto it = project_index.instantiations.find(path_id);
-        if(it == project_index.instantiations.end() ||
-           llvm::any_of(llvm::make_first_range(uses), [&](std::uint64_t resolution) {
-               return !it->second.has_resolution(resolution);
+    for(auto& [tu, manifest]: project_index.manifests) {
+        if(llvm::any_of(manifest.instantiations, [&](const index::InstantiationUse& use) {
+               auto it =
+                   project_index.instantiations.find(project.file_table.version(use.file).fid);
+               return it == project_index.instantiations.end() || !it->second.has_use(use.use);
            })) {
-            lost_instantiations.insert(path_id);
-        }
-    }
-    if(!lost_instantiations.empty()) {
-        for(auto& [tu, manifest]: project_index.manifests) {
-            if(llvm::any_of(manifest.instantiations, [&](const index::InstantiationUse& use) {
-                   return lost_instantiations.contains(project.file_table.version(use.file).fid);
-               })) {
-                report.add_reindex(tu);
-            }
+            report.add_reindex(tu);
         }
     }
 

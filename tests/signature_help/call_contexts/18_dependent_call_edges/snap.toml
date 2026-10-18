@@ -1,0 +1,18 @@
+[answers.brought_in.signature_help]
+signatures = ["add(⟦int amount⟧) -> void", "add(⟦const T &item⟧, int count) -> void"]
+active = 0
+
+[answers.after_pack.signature_help]
+signatures = ["add(int amount) -> void", "add(const T &item, ⟦int count⟧) -> void"]
+active = 0
+
+[answers.typing.signature_help]
+signatures = ["add(⟦int amount⟧) -> void", "add(⟦const T &item⟧, int count) -> void"]
+active = 0
+
+[answers.typing_number.signature_help]
+signatures = ["add(const T &item, ⟦int count⟧) -> void"]
+active = 0
+
+[answers.inner_unanswered.signature_help]
+signatures = []

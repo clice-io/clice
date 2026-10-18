@@ -212,6 +212,20 @@ tests/signature_help/call_contexts/13_class_template_members
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**依赖成员调用**
+
+在模板内部，通过依赖类型的对象发起的调用会显示其类模板声明的重载
+
+过了第一个实参，就只保留还能再接受一个实参的重载。模板实例化之前，Clang 给不出这类调用的签名。
+
+```case
+tests/signature_help/call_contexts/17_dependent_member_calls
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 参数显示
@@ -292,6 +306,20 @@ tests/signature_help/parameters/06_forwarding
 
 ```case
 tests/signature_help/parameters/07_standard_forwarding
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**通过依赖特化访问的成员**
+
+经由类模板的依赖特化调用的成员，按代码写出的模板实参显示
+
+对于 `lib::vector<Point<T>>`，`pts.assign(` 的参数为 `const Point<T> &`，而不是模板自身的 `const _Tp &`。
+
+```case
+tests/signature_help/parameters/13_specialization_members
 ```
 
 <!-- END CAPABILITY -->

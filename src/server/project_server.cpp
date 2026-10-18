@@ -11,6 +11,7 @@ module clice;
 import :command.command;
 import :index.writer_lock;
 import :project.build;
+import :project.load;
 import :sched.bootstrap;
 import :server.control_server;
 import :server.file_tracker;
@@ -175,10 +176,11 @@ void ProjectServer::start() {
         }
         if(!report.has_commands) {
             LOG_GUIDANCE(
-                "No compile_commands.json found in workspace {}. Compile commands will be "
-                "guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for "
-                "setup.",
-                project.file_table.display(root));
+                "No compile_commands.json found in workspace {} or its direct subdirectories. "
+                "Compile commands will be guessed; see "
+                "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.{}",
+                project.file_table.display(root),
+                deeper_databases_hint(project));
         }
     }
 
@@ -291,7 +293,7 @@ void ProjectServer::decide_open_serving(std::shared_ptr<Session> session) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: escalate
         // now instead of answering empty until the first edit.
-        if(!it->second.matches_content(session->text.size(), session->hash)) {
+        if(!it->second.matches_content(session->text().size(), session->hash)) {
             ast.escalate(*session);
         }
         return;
@@ -389,7 +391,7 @@ void ProjectServer::index_attempt_finished(Fid path_id) {
     }
     auto it = project.project_index.shards.find(path_id);
     if(it == project.project_index.shards.end() ||
-       !it->second.matches_content(session->text.size(), session->hash)) {
+       !it->second.matches_content(session->text().size(), session->hash)) {
         ast.escalate(*session);
     }
 }

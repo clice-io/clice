@@ -379,6 +379,39 @@ public:
         condemned = true;
     }
 
+    std::optional<StorageUsage> usage() override {
+        if(!txn) {
+            return std::nullopt;
+        }
+        MDB_envinfo info;
+        mdb_env_info(env, &info);
+        MDB_stat tree;
+        if(mdb_stat(txn, dbi, &tree)) {
+            return std::nullopt;
+        }
+        StorageUsage usage{
+            .page_size = tree.ms_psize,
+            .pages = info.me_last_pgno + 1,
+            .tree_pages = tree.ms_branch_pages + tree.ms_leaf_pages,
+            .overflow_pages = tree.ms_overflow_pages,
+        };
+        // LMDB keeps its free list in database 0, one record per write
+        // transaction that freed pages: their count, then their numbers.
+        MDB_cursor* cursor = nullptr;
+        if(mdb_cursor_open(txn, 0, &cursor)) {
+            return std::nullopt;
+        }
+        MDB_val key;
+        MDB_val value;
+        while(mdb_cursor_get(cursor, &key, &value, MDB_NEXT) == 0) {
+            std::size_t count = 0;
+            std::memcpy(&count, value.mv_data, sizeof(count));
+            usage.free_pages += count;
+        }
+        mdb_cursor_close(cursor);
+        return usage;
+    }
+
 private:
     /// Latch corruption-family read errors for the loader's rebuild
     /// decision; everything else stays "missing or transiently unreadable".

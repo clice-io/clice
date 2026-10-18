@@ -16,7 +16,7 @@ namespace {
 
 /// Layout and scoring version of the search blob, apart from the index
 /// format it is derived from: a bump rebuilds the search index alone.
-constexpr std::uint32_t search_format_version = 2;
+constexpr std::uint32_t search_format_version = 3;
 
 constexpr std::uint32_t no_doc = ~0u;
 
@@ -28,7 +28,7 @@ using Mode = SymbolQuery::Mode;
 /// The persisted search index. Entries are in quality order (ties by hash),
 /// which is the doc id order every bitmap speaks; the arenas hold the
 /// names back to back with one end offset per entry; posting arenas hold
-/// portable roaring images the same way.
+/// posting lists over the docs (write_postings) the same way.
 struct SearchBlob {
     std::uint32_t format_version = 0;
     std::uint32_t search_version = 0;
@@ -58,11 +58,11 @@ struct SearchBlob {
     std::vector<std::uint32_t> container_docs;
     std::vector<std::uint32_t> children_ends;
     std::vector<std::uint8_t> children_postings;
-    /// The docs with no parent in the index, one image.
+    /// The docs with no parent in the index, one posting list.
     std::vector<std::uint8_t> top_level;
 
     /// The docs whose name runs past the token bound (name_bound), one
-    /// image: their tail carries no token, so every name lookup scans
+    /// posting list: their tail carries no token, so every name lookup scans
     /// them.
     std::vector<std::uint8_t> long_names;
 
@@ -88,12 +88,12 @@ struct SearchBlob {
 
 using BlobView = kota::codec::fbs::table_view<SearchBlob>;
 
-void append_image(std::vector<std::uint8_t>& arena,
-                  std::vector<std::uint32_t>& ends,
-                  const Bitmap& bitmap) {
-    auto image = write_bitmap(bitmap);
-    auto* bytes = reinterpret_cast<const std::uint8_t*>(image.data());
-    arena.insert(arena.end(), bytes, bytes + image.size());
+void append_postings(std::vector<std::uint8_t>& arena,
+                     std::vector<std::uint32_t>& ends,
+                     const Bitmap& docs,
+                     std::uint32_t count) {
+    auto list = write_postings(docs, count);
+    arena.insert(arena.end(), list.begin(), list.end());
     ends.push_back(static_cast<std::uint32_t>(arena.size()));
 }
 
@@ -366,7 +366,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     }
     llvm::sort(blob.token_keys);
     for(auto token: blob.token_keys) {
-        append_image(blob.token_postings, blob.token_ends, postings.find(token)->second);
+        append_postings(blob.token_postings, blob.token_ends, postings.find(token)->second, count);
     }
 
     llvm::DenseMap<std::uint32_t, Bitmap> children;
@@ -384,22 +384,19 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     }
     llvm::sort(blob.container_docs);
     for(auto container: blob.container_docs) {
-        append_image(blob.children_postings, blob.children_ends, children.find(container)->second);
+        append_postings(blob.children_postings,
+                        blob.children_ends,
+                        children.find(container)->second,
+                        count);
     }
-    auto top_image = write_bitmap(top_level);
-    blob.top_level.assign(reinterpret_cast<const std::uint8_t*>(top_image.data()),
-                          reinterpret_cast<const std::uint8_t*>(top_image.data()) +
-                              top_image.size());
+    blob.top_level = write_postings(top_level, count);
     Bitmap long_names;
     for(std::uint32_t doc = 0; doc < count; doc += 1) {
         if(entry_of(doc).name.size() > name_bound) {
             long_names.add(doc);
         }
     }
-    auto long_image = write_bitmap(long_names);
-    blob.long_names.assign(reinterpret_cast<const std::uint8_t*>(long_image.data()),
-                           reinterpret_cast<const std::uint8_t*>(long_image.data()) +
-                               long_image.size());
+    blob.long_names = write_postings(long_names, count);
 
     llvm::DenseMap<std::uint32_t, Bitmap> subtrees;
     llvm::DenseSet<std::uint32_t> visiting;
@@ -424,7 +421,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     for(auto container: blob.container_docs) {
         if(entry_of(container).kind == SymbolKind::Namespace) {
             blob.subtree_docs.push_back(container);
-            append_image(blob.subtree_postings, blob.subtree_ends, subtree_of(container));
+            append_postings(blob.subtree_postings, blob.subtree_ends, subtree_of(container), count);
         }
     }
 
@@ -441,11 +438,11 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
         }
     }
     for(auto& bitmap: kinds) {
-        append_image(blob.kind_postings, blob.kind_ends, bitmap);
+        append_postings(blob.kind_postings, blob.kind_ends, bitmap, count);
     }
     blob.paths = snapshot.paths;
     for(auto& bitmap: files) {
-        append_image(blob.file_postings, blob.file_ends, bitmap);
+        append_postings(blob.file_postings, blob.file_ends, bitmap, count);
     }
 
     std::string bytes;
@@ -543,8 +540,8 @@ std::optional<NameRank>
     return std::nullopt;
 }
 
-/// The mapped blob with its columns bound and its bitmaps viewed in
-/// place on first use.
+/// The mapped blob with its columns bound and its posting lists decoded
+/// on first use.
 struct SearchIndex::View {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
     std::uint64_t generation = 0;
@@ -564,8 +561,8 @@ struct SearchIndex::View {
     llvm::ArrayRef<std::uint32_t> container_docs;
     llvm::ArrayRef<std::uint32_t> children_ends;
     llvm::ArrayRef<std::uint8_t> children_postings;
-    llvm::ArrayRef<std::uint8_t> top_level_image;
-    llvm::ArrayRef<std::uint8_t> long_names_image;
+    llvm::ArrayRef<std::uint8_t> top_level_postings;
+    llvm::ArrayRef<std::uint8_t> long_names_postings;
     llvm::ArrayRef<std::uint32_t> subtree_docs;
     llvm::ArrayRef<std::uint32_t> subtree_ends;
     llvm::ArrayRef<std::uint8_t> subtree_postings;
@@ -585,7 +582,7 @@ struct SearchIndex::View {
     mutable std::optional<Bitmap> top_level_cache;
     mutable std::optional<Bitmap> long_names_cache;
 
-    /// Whether a posting image failed to decode: the answers since are
+    /// Whether a posting list failed to decode: the answers since are
     /// incomplete, and the owner rebuilds the index.
     mutable bool damaged = false;
 
@@ -614,14 +611,13 @@ struct SearchIndex::View {
         return to_ref(paths[local_paths[it - local_docs.begin()]]);
     }
 
-    /// A posting image viewed in place; a malformed one reads as empty
-    /// and marks the index damaged.
+    /// A posting list decoded; a malformed one reads as empty and marks
+    /// the index damaged.
     Bitmap decode(llvm::ArrayRef<std::uint8_t> arena,
                   llvm::ArrayRef<std::uint32_t> ends,
                   std::uint32_t i) const {
-        auto image = back_to_back(arena, ends, i);
-        auto decoded = view_bitmap(image.data(), image.size());
-        if(!decoded || (!decoded->isEmpty() && decoded->maximum() >= count())) {
+        auto decoded = read_postings(back_to_back(arena, ends, i), count());
+        if(!decoded) {
             if(!damaged) {
                 LOG_WARN("A search index posting list does not decode; the index is rebuilt");
             }
@@ -656,8 +652,8 @@ struct SearchIndex::View {
     const Bitmap& children(std::uint32_t container) const {
         if(container == no_doc) {
             if(!top_level_cache) {
-                std::uint32_t ends[] = {static_cast<std::uint32_t>(top_level_image.size())};
-                top_level_cache = decode(top_level_image, ends, 0);
+                std::uint32_t ends[] = {static_cast<std::uint32_t>(top_level_postings.size())};
+                top_level_cache = decode(top_level_postings, ends, 0);
             }
             return *top_level_cache;
         }
@@ -673,8 +669,8 @@ struct SearchIndex::View {
     /// The docs whose name outruns the token bound.
     const Bitmap& long_names() const {
         if(!long_names_cache) {
-            std::uint32_t ends[] = {static_cast<std::uint32_t>(long_names_image.size())};
-            long_names_cache = decode(long_names_image, ends, 0);
+            std::uint32_t ends[] = {static_cast<std::uint32_t>(long_names_postings.size())};
+            long_names_cache = decode(long_names_postings, ends, 0);
         }
         return *long_names_cache;
     }
@@ -795,8 +791,8 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     view.container_docs = to_array_ref(root[&SearchBlob::container_docs]);
     view.children_ends = to_array_ref(root[&SearchBlob::children_ends]);
     view.children_postings = to_array_ref(root[&SearchBlob::children_postings]);
-    view.top_level_image = to_array_ref(root[&SearchBlob::top_level]);
-    view.long_names_image = to_array_ref(root[&SearchBlob::long_names]);
+    view.top_level_postings = to_array_ref(root[&SearchBlob::top_level]);
+    view.long_names_postings = to_array_ref(root[&SearchBlob::long_names]);
     view.subtree_docs = to_array_ref(root[&SearchBlob::subtree_docs]);
     view.subtree_ends = to_array_ref(root[&SearchBlob::subtree_ends]);
     view.subtree_postings = to_array_ref(root[&SearchBlob::subtree_postings]);
@@ -871,6 +867,12 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
         return std::unexpected("local columns do not line up");
     }
     return {};
+}
+
+void measure_search(llvm::StringRef data, FieldBytes& bytes) {
+    if(SearchBlob blob; deserialize_blob(data, blob)) {
+        measure_fields(blob, bytes);
+    }
 }
 
 SearchIndex::SearchIndex() = default;

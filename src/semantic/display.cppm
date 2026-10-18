@@ -17,8 +17,19 @@ class ReadableTypes;
 /// clang's printers. A feature keeps one Options for a request, so every
 /// type it shows prints the same way.
 struct Options {
-    /// Drop scope qualifiers to keep names short.
+    /// Drop scope qualifiers to keep names short. Through options.readable,
+    /// a type keeps only the namespaces inside std, whose names repeat those
+    /// of std (`pmr::string`, `chrono::seconds`).
     bool suppress_scope = false;
+
+    /// type(), through options.readable, as a hint shows a type: a member
+    /// alias of a class template specialization gives way to what it names
+    /// where that reads shorter and names nothing the library keeps to
+    /// itself (`size_t` for `vector<int>::size_type`, but
+    /// `vector<int>::iterator`); a type keeps the namespaces code at the
+    /// scope would write but `std` and those a using-directive brings in
+    /// (`chrono::seconds`; `StringRef` under `using namespace llvm`).
+    bool hint_types = false;
 
     /// Skip unwritten scopes (inline/anonymous namespaces) in qualifiers.
     bool suppress_unwritten_scope = false;
@@ -68,8 +79,22 @@ struct Options {
     /// type(): the scope the type is shown in. Through options.readable, a
     /// type named in another scope is named as code here names it
     /// (`std::vector<int>::iterator`, not the `iterator` the vector writes);
-    /// without one, a name keeps the qualifier it is written with.
+    /// without one, as the translation unit names it. A declaration's types
+    /// are shown in its scope, a deduced type or an expression's where its
+    /// code is.
     const clang::DeclContext* scope = nullptr;
+
+    /// type(): the expression the type is read from — what a deduced type is
+    /// deduced from, an expression shown with its own — which names the
+    /// specialization a member typedef of its class template is read through
+    /// (ReadableTypes::readable).
+    const clang::Expr* source = nullptr;
+
+    /// type(): the dependent specialization of a class template a member of
+    /// it is shown through, as the code names it (`vector<Point<T>>` for
+    /// `pts.push_back`): the template's own parameters read as its
+    /// arguments.
+    const clang::TemplateSpecializationType* specialization = nullptr;
 };
 
 /// A pretty-printed type, optionally with its desugared form.
@@ -179,50 +204,100 @@ auto type(clang::ASTContext& context,
           const Options& options = {},
           llvm::StringRef declarator = {}) -> Type;
 
-/// Apply a series of heuristic methods to determine whether or not the
-/// type is suitable for desugaring (e.g. getting the real name behind the
-/// using-alias name). If so, return the desugared type. Otherwise, return
-/// the unchanged type.
-///
-/// This could be refined further. See
-/// https://github.com/clangd/clangd/issues/1298.
-auto maybe_desugar(clang::ASTContext& context, clang::QualType type) -> clang::QualType;
-
 /// Types as a reader knows them: a deduced `auto` gives way to the type it
-/// stands for, an alias the standard library keeps to itself
-/// (`_NonArray<int>`) to what it names, and a standard class template specialization to the
-/// standard alias naming it (`string` for `basic_string<char>`), in template arguments too, under
-/// the namespaces the code writes it with
-/// (`std::string`) unless the options suppress scopes. libc++ marks those
-/// aliases as preferred names, which the printer honors; libstdc++ only
-/// declares them. One per request: a specialization's alias is looked up
-/// once, on first use.
+/// stands for; an alias the library keeps to itself (`_NonArray<int>`, a
+/// member of `__alloc_traits`) or one that computes its type as a trait
+/// does (`common_type<A, B>::type`, `enable_if_t<…>`) to what it names; a
+/// standard class template specialization to the standard alias naming it
+/// (`string` for `basic_string<char>`), and a class the library keeps to
+/// itself to the member alias a class of its arguments or of the source
+/// names it with (`vector<int>::iterator` for `__normal_iterator<…>`). In
+/// template arguments too, every name under the qualifier code at the scope
+/// would write. libc++ marks the standard aliases as preferred names, which
+/// the printer honors; libstdc++ only declares them. One per request: a
+/// specialization's alias is looked up once, on first use.
 class ReadableTypes {
 public:
     ReadableTypes(clang::ASTContext& context, const Options& options) :
-        context(context), scoped(!options.suppress_scope) {}
+        context(context), policy(printing_policy(context, options)),
+        scoped(!options.suppress_scope), hinted(options.hint_types) {}
 
     /// `type` as a reader knows it, shown in `scope`: a type named in
-    /// another scope gets the qualifier that names it from there. Without a
-    /// scope, a name keeps the qualifier it is written with.
-    auto readable(clang::QualType type, const clang::DeclContext* scope = nullptr)
+    /// another scope gets the qualifier that names it from there, the
+    /// translation unit without a scope. A member typedef of a class template
+    /// that names the same type in every specialization stays the template's
+    /// own in a specialization's members (`size_type` of `vector<int>::size()`):
+    /// it is named through the specialization a member `source` names belongs
+    /// to, by its name alone without one; a member of a base class through
+    /// the derived class `source` reaches it in (`DenseMap<K, V>::iterator`
+    /// of `map.find(key)`, `find` being `DenseMapBase`'s). The parameters of
+    /// the template a dependent `specialization` names read as its
+    /// arguments (Options::specialization).
+    auto readable(clang::QualType type,
+                  const clang::DeclContext* scope,
+                  const clang::Expr* source = nullptr,
+                  const clang::TemplateSpecializationType* specialization = nullptr)
         -> clang::QualType;
 
-    /// A reserved name a library keeps to itself, within namespace std or a
-    /// reserved one (`_NonArray`, `__gnu_cxx::__alloc_traits`). One outside
-    /// them, as `__m128`, is the name its header gives its users.
+    /// What `type` is past every alias, its parts named as readable() names
+    /// them but a class the library keeps to itself left as itself: an aka
+    /// tells what the alias hides (`__normal_iterator<…>` for
+    /// `vector<int>::iterator`).
+    auto underlying(clang::QualType type,
+                    const clang::DeclContext* scope,
+                    const clang::TemplateSpecializationType* specialization) -> clang::QualType;
+
+    /// A name a library keeps to itself: a reserved one, or a member of a
+    /// class or namespace with one, within namespace std or a reserved one
+    /// (`_NonArray`, `__gnu_cxx::__alloc_traits<A>::value_type`). One
+    /// outside them, as `__m128`, is the name its header gives its users.
     bool internal(const clang::NamedDecl* decl) const;
 
+    /// Whether `type`, a readable one, is a class or alias the library keeps
+    /// to itself, or a pointer, reference or array of one: no name a reader
+    /// knows spells it.
+    bool internal(clang::QualType type) const;
+
 private:
-    auto readable(const clang::TemplateArgument& argument, const clang::DeclContext* scope)
-        -> clang::TemplateArgument;
+    /// Whose aliases a type carries, which decides those it keeps.
+    enum class Sugar : std::uint8_t {
+        /// The code's, as a declaration writes it: every alias stays but
+        /// one the library keeps to itself.
+        Written,
+        /// What a deduction got from the declarations it read: an alias
+        /// that computes its type (`invoke_result_t<…>`) gives way to it.
+        Deduced,
+        /// The library's own, past the aliases the code names a type with:
+        /// a specialization's member alias also gives way to what it names
+        /// where that reads shorter (Options::hint_types).
+        Library,
+    };
+
+    auto readable(clang::QualType type,
+                  const clang::DeclContext* scope,
+                  const clang::Expr* source,
+                  Sugar sugar) -> clang::QualType;
+
+    auto readable(const clang::TemplateArgument& argument,
+                  const clang::DeclContext* scope,
+                  const clang::Expr* source,
+                  Sugar sugar) -> clang::TemplateArgument;
 
     /// The qualifier that names `decl`, a type's declaration, from `scope`;
     /// null when its name alone does.
-    auto qualifier(const clang::NamedDecl& decl, const clang::DeclContext* scope)
-        -> clang::NestedNameSpecifier;
+    auto qualifier(const clang::NamedDecl& decl,
+                   const clang::DeclContext* scope,
+                   const clang::Expr* source) -> clang::NestedNameSpecifier;
 
     bool reserved(const clang::NamedDecl* decl) const;
+
+    /// The argument `type`, a parameter of the template `substitution` names,
+    /// reads as; null for any other type, or a parameter it gives none.
+    auto argument_of(const clang::Type& type) const -> const clang::TemplateArgument*;
+
+    /// Whether `type` names something the library keeps to itself anywhere,
+    /// its qualifier and template arguments included.
+    bool shows_internal(clang::QualType type) const;
 
     /// The typedef the code names the type of `sizeof` or of a pointer
     /// difference with (`std::size_t`, else `size_t`); null when it declares
@@ -234,8 +309,28 @@ private:
     auto standard_alias(const clang::ClassTemplateSpecializationDecl& spec)
         -> const clang::TypedefNameDecl*;
 
+    /// A public member alias naming `tag`, a class the library keeps to
+    /// itself, in a class among its template arguments or the types of
+    /// `source`'s expressions; null when none names it.
+    auto public_alias(const clang::TagDecl& tag, const clang::Expr* source) const
+        -> const clang::TypedefNameDecl*;
+
     clang::ASTContext& context;
+    clang::PrintingPolicy policy;
     bool scoped;
+    bool hinted;
+
+    /// Whether a class the library keeps to itself gives way to the alias
+    /// naming it, and a standard class to its standard alias; not while
+    /// underlying() names what a type is.
+    bool aliasing = true;
+
+    /// The dependent specialization whose template's parameters the call in
+    /// progress reads as its arguments.
+    const clang::TemplateSpecializationType* substitution = nullptr;
+
+    /// The classes the call in progress names by a public alias.
+    llvm::SmallPtrSet<const clang::TagDecl*, 4> naming;
 
     /// The alias found for a specialization or a compiler's internal type,
     /// null when there is none.

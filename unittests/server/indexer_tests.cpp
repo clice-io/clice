@@ -253,7 +253,7 @@ std::string planted_blob(llvm::StringRef text, std::uint64_t variant) {
     }
     blob.variants = {variant};
     blob.sym_hashes = {111};
-    blob.sym_rel_offsets = {0, 0};
+    blob.rel_offsets = {0, 0};
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::serialize_blob(blob, os);
@@ -318,6 +318,49 @@ ZEST_CASE(MergeRejectsGarbage) {
 
     ZASSERT(project.project_index.shards.empty());
     ZASSERT(project.project_index.symbol_count() == 0u);
+}
+
+ZEST_CASE(FanoutNamesPrecompiledInput) {
+    // An internal symbol a unit names in a file it holds no entries of is
+    // rejected, unless the unit reads that file through its precompiled
+    // header or a module: their own units wrote its entries.
+    TempDir tmp;
+    tmp.touch("shared.h", "");
+    tmp.touch("main.cpp", R"(#include "shared.h"
+int use() { return 1; }
+)");
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ZASSERT(!indexed.data.empty());
+    auto mirror = TUIndexMirror::of(index::TUIndex::from_bytes(indexed.data));
+    auto header_path = std::ranges::find_if(mirror.paths, [](const std::string& path) {
+        return llvm::StringRef(path).ends_with("shared.h");
+    });
+    ZASSERT(header_path != mirror.paths.end());
+    auto header_id = static_cast<std::uint32_t>(header_path - mirror.paths.begin());
+    auto focus_id = static_cast<std::uint32_t>(mirror.paths.size() - 1);
+    constexpr index::SymbolHash helper = ~0ull - 2;
+    mirror.add_symbol(helper,
+                      {.name = "helper", .scope = index::SymbolScope::TULocal},
+                      {header_id, focus_id});
+    auto planted = mirror.bytes();
+
+    ZEXPECT(!merge(planted.data(), planted.size()));
+
+    auto header = project.file_table.intern(Spelling::absolute(*header_path));
+    DepState input{.path_id = header, .version = project.file_table.intern_version(header, 1)};
+    auto report = index_store.merge(planted.data(), planted.size(), {input});
+    ZASSERT(report);
+    pump.apply_report(*report);
+    auto focus = project.file_table.intern(Spelling::absolute(mirror.paths.back()));
+    llvm::SmallVector<Fid> reached;
+    project.project_index.each_fanout_file(helper, header, [&](Fid file) {
+        reached.push_back(file);
+    });
+    ZEXPECT(reached == llvm::SmallVector<Fid>{header, focus});
+
+    // One the build saw gone still came out of the precompiled header.
+    DepState gone{.path_id = header, .missing = true};
+    ZEXPECT(index_store.merge(planted.data(), planted.size(), {gone}).has_value());
 }
 
 ZEST_CASE(MergeIgnoresDiskDrift) {
@@ -3824,8 +3867,48 @@ void a() { Box<A>{}.show(); }
     auto* instantiations = f.project.project_index.instantiation_shard(box_id);
     ZASSERT(instantiations);
     ZEXPECT(std::ranges::equal(instantiations->resolutions(), stored));
-    ZEXPECT(f.project.project_index.live_resolutions(box_id) ==
-            llvm::SmallVector<std::uint64_t>(stored.begin(), stored.end()));
+    auto uses = f.project.project_index.live_uses(box_id);
+    ZASSERT(uses.size() == 1u);
+    ZEXPECT(instantiations->resolutions_of(uses.front()) == stored);
+    ZEXPECT(
+        !f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
+}
+
+ZEST_CASE(UnservableInstantiationsReindex) {
+    // A unit naming a use its file's blob cannot serve is indexed again:
+    // nothing else would restore what it resolved.
+    TempDir tmp;
+    tmp.touch("box.h", R"(#pragma once
+template <typename T>
+struct Box {
+    T value;
+    void show() { value.print(); }
+};
+)");
+    tmp.touch("a.cpp", R"(#include "box.h"
+struct A { void print(); };
+void a() { Box<A>{}.show(); }
+)");
+    std::string box_key;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, tmp.path("a.cpp"));
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+        box_key = blob_key(f.project.file_table.resolve(
+            f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")))));
+    }
+    inject_blob(tmp,
+                index::IndexBlobKind::Instantiations,
+                box_key,
+                "corrupted beyond verification");
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    ZEXPECT(
+        f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
 }
 
 };  // ZEST_SUITE(IndexerPersist)
@@ -4109,7 +4192,8 @@ ZEST_CASE(ResolutionsSharedAndSkipped) {
     ZASSERT(index("a2.cpp"));
     auto& manifest = f.project.project_index.manifests.find(id("a2.cpp"))->second;
     ZASSERT(manifest.instantiations.size() == 1u);
-    ZEXPECT(llvm::ArrayRef(manifest.instantiations.front().resolutions) == box()->resolutions());
+    ZEXPECT(llvm::ArrayRef(box()->resolutions_of(manifest.instantiations.front().use)) ==
+            box()->resolutions());
 
     ZASSERT(index("b.cpp"));
     ZEXPECT(box()->resolutions().size() == 2u);
@@ -4133,6 +4217,30 @@ ZEST_CASE(ResolutionLivesWhileUsed) {
     ZEXPECT(prints() == 1u);
     f.save();
     ZEXPECT(box()->resolutions().size() == 1u);
+}
+
+ZEST_CASE(SkippedKeysFormNewUse) {
+    // A unit skipping every key it meets walks nothing new, yet the
+    // resolutions it uses together form a set no unit used before: the
+    // file's blob must store it, or the manifest names a use nothing holds.
+    tmp.touch("a2.cpp", R"(#include "box.h"
+#include "a.h"
+#include "b.h"
+void a2() { Box<A>{}.show(); Box<B>{}.show(); }
+)");
+    ZASSERT(index("a.cpp"));
+    ZASSERT(index("b.cpp"));
+    ZASSERT(index("a2.cpp"));
+    auto uses = f.project.project_index.manifests.find(id("a2.cpp"))->second.instantiations;
+    ZASSERT(uses.size() == 1u);
+    ZEXPECT(box()->has_use(uses.front().use));
+    ZEXPECT(box()->resolutions_of(uses.front().use).size() == 2u);
+
+    // a2.cpp alone keeps both resolutions alive.
+    f.drop_index(id("a.cpp"));
+    f.drop_index(id("b.cpp"));
+    f.save();
+    ZEXPECT(prints() == 2u);
 }
 
 ZEST_CASE(StaleProducerNotOffered) {
@@ -4186,6 +4294,44 @@ void a() {}
     ZASSERT(index("a.cpp"));
     f.save();
     ZEXPECT(!box());
+}
+
+ZEST_CASE(HeaderInternalUnkeyed) {
+    // A type of a.h's anonymous namespace: what Box<A>::show resolves names
+    // it outside box.h, which only a unit walking the instantiation lists
+    // among the files naming `print`. No key is offered for it, so when
+    // a.cpp stops instantiating, a2.cpp still leads from a.h to the record.
+    tmp.touch("a.h", R"(#pragma once
+namespace {
+struct A { void print(); };
+}
+)");
+    ZASSERT(index("a.cpp"));
+    f.begin_round();
+    ZEXPECT(f.index_store.known_instantiations(id("a2.cpp")).empty());
+    ZASSERT(index("a2.cpp"));
+    tmp.touch("a.cpp", R"(#include "box.h"
+#include "a.h"
+void a() {}
+)");
+    ZASSERT(index("a.cpp"));
+
+    auto* header = f.project.project_index.shard(id("a.h"));
+    ZASSERT(header);
+    std::optional<index::SymbolHash> print;
+    header->for_each_local_symbol(
+        [&](index::SymbolHash hash, const index::SymbolIdentity& identity) {
+            if(identity.name == "print") {
+                print = hash;
+            }
+            return true;
+        });
+    ZASSERT(print);
+    llvm::SmallVector<Fid> reached;
+    f.project.project_index.each_fanout_file(*print, id("a.h"), [&](Fid file) {
+        reached.push_back(file);
+    });
+    ZEXPECT(llvm::is_contained(reached, id("box.h")));
 }
 
 ZEST_CASE(GoneKeyReruns) {

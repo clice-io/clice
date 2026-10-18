@@ -5,6 +5,7 @@ module;
 module clice:index.manifest;
 
 import :index.include_tree;
+import :index.serialization;
 import :vfs.file_table;
 
 namespace clice::index {
@@ -16,24 +17,25 @@ struct IncludeEdge {
     std::string target;
 };
 
-/// An internal-linkage symbol more than one of a TU's files names, with
-/// those files as indices into the manifest's contributions. No
-/// project-wide table lists such a symbol: this is how a query reaches its
-/// entries in files other than the one it started from.
+/// A symbol below external scope more than one of a TU's files names, with
+/// those files: the TU's own, the ones its instantiations and expansions
+/// resolve in, and the ones declaring it behind the precompiled header or a
+/// module. No project-wide table lists such a symbol: this is how a query
+/// reaches its entries in files other than the one it started from.
 struct LocalFanout {
     std::uint64_t symbol = 0;
-    std::vector<std::uint32_t> files;
+    std::vector<VersionID> files;
 
     friend bool operator==(const LocalFanout&, const LocalFanout&) = default;
 };
 
-/// The instantiation resolutions a TU uses in one file: the ones it walked and
-/// the ones the known keys it skipped there stand for.
+/// The instantiation resolutions a TU uses in one file — the ones it walked
+/// and the ones the known keys it skipped there stand for — by the identity
+/// of their set (index::use_identity), which the file's instantiation blob
+/// stores.
 struct InstantiationUse {
     VersionID file;
-
-    /// Ascending.
-    std::vector<std::uint64_t> resolutions;
+    std::uint64_t use = 0;
 
     friend bool operator==(const InstantiationUse&, const InstantiationUse&) = default;
 };
@@ -97,5 +99,8 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os);
 /// old-format data. FileVersion ids are not resolved here — the loader
 /// drops manifests referencing ids the global table does not know.
 std::optional<TUManifest> deserialize_manifest(llvm::StringRef data);
+
+/// Add the fields of a manifest blob to `bytes`, for `clice index stats`.
+void measure_manifest(llvm::StringRef data, FieldBytes& bytes);
 
 }  // namespace clice::index

@@ -56,10 +56,26 @@ auto declared_type(const clang::TypeDecl* decl) -> clang::QualType;
 /// where `written` holds none of these or no single instantiation exists.
 auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clang::QualType;
 
+/// The dependent class template specialization `access` names a member of,
+/// resolved: `vector<Point<T>>` for `pts.push_back`; null when it names none.
+auto accessed_specialization(const clang::CXXDependentScopeMemberExpr& access,
+                             TemplateResolver& resolver)
+    -> const clang::TemplateSpecializationType*;
+
 /// Whether code could write `type` where it stands: nothing in it waits for
 /// instantiation to say what an expression's type is (`<dependent type>`,
 /// a dependent `decltype`, an undeduced `auto`), and no template parameter
 /// in it is one an abbreviated template invented for an `auto`.
 auto writable(clang::QualType type) -> bool;
+
+/// Whether `argument` can never copy-initialize a parameter of type
+/// `parameter`: no standard conversion, converting constructor or
+/// conversion function reaches it. False wherever that is not certain: a
+/// dependent type on either side, a braced list, a constructor or
+/// conversion function template, a class whose definition the answer
+/// needs and does not have.
+auto never_initializes(clang::ASTContext& context,
+                       const clang::Expr& argument,
+                       clang::QualType parameter) -> bool;
 
 }  // namespace clice::types

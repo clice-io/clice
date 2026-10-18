@@ -82,8 +82,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
 
     auto it = sources.all_files.find(llvm::sys::path::filename(focus_path));
     ZASSERT(it != sources.all_files.end());
-    session->text = it->second.content;
-    session->sync_text();
+    session->set_text(it->second.content);
 
     auto& entry = projections.entries[path_id];
     auto projection = std::make_shared<ASTProjection>();
@@ -120,11 +119,14 @@ std::string header_path(llvm::StringRef basename) {
 }
 
 /// Merge the full TU index into the workspace's disk index, installing
-/// each section's blob verbatim as background indexing would.
-void merge_disk_index() {
+/// each section's blob verbatim as background indexing would;
+/// `focus_on_disk` names the focus file by a copy of it on disk instead.
+void merge_disk_index(llvm::StringRef focus_on_disk = {}) {
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
-        file_ids_map.push_back(project.file_table.intern(Spelling::absolute(full_index.path(i))));
+        auto focus = i + 1 == full_index.path_count() && !focus_on_disk.empty();
+        file_ids_map.push_back(project.file_table.intern(
+            Spelling::absolute(focus ? focus_on_disk : full_index.path(i))));
     }
     project.project_index.merge(full_index, file_ids_map);
 
@@ -359,8 +361,9 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 }
 
 ZEST_CASE(MacroDefinitionText) {
-    // The π comment keeps the file non-ASCII, so its content is stored in
-    // the blob and the text path serves without touching the disk.
+    // Macro Definition relations carry the full #define extent, so the
+    // disk text path previews macros — in a non-ASCII file too, whose blob
+    // keeps the text of its non-ASCII lines for position mapping alone.
     add_focus("main.cpp", R"(// π
 #define §(macro)⟦FOO⟧ 1
 int main() { return 0; }
@@ -369,10 +372,9 @@ int main() { return 0; }
     full_index = index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
     ZASSERT(full_index.loaded());
-    merge_disk_index();
+    dir.touch("main.cpp", sources.all_files.find("main.cpp")->second.content);
+    merge_disk_index(dir.path("main.cpp"));
 
-    // Macro Definition relations carry the full #define extent, so the
-    // disk text path works for macros.
     auto text = disk_query.definition_text(hash_of("FOO"), Fid{});
     ZASSERT(text);
     ZEXPECT(llvm::StringRef(text->text).contains("FOO"));
@@ -403,9 +405,9 @@ int main() { return 0; }
     }
 }
 
-ZEST_CASE(AsciiPreviewFromDisk) {
-    // The ASCII preview happy path: the blob omits the text, the disk
-    // still holds the exact bytes, so definition text and context lines
+ZEST_CASE(PreviewFromDisk) {
+    // The preview happy path: the disk still holds the exact bytes the
+    // shard was built from, so definition text and context lines
     // serve from the re-read; once the file moves on, the hash check
     // degrades both back to positions-only.
     llvm::StringRef text = "int value = 1;\nint other = value;\n";
@@ -436,7 +438,7 @@ ZEST_CASE(AsciiPreviewFromDisk) {
     index::write_shard(file_index, {}, text, os);
     project.project_index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    ZASSERT(project.project_index.shards[path_id].content().empty());
+    ZASSERT(project.project_index.shards[path_id].positions().text().empty());
     auto& symbol = project.project_index.touch(sym);
     symbol.name = "value";
     symbol.reference_files.add(path_id.raw);
@@ -471,8 +473,7 @@ int main() { return 0; }
     // file that built the blob.
     auto other_path = std::string(llvm::sys::path::parent_path(focus_path)) + "/other.cpp";
     auto other = session_store.open(project.file_table.intern(Spelling::absolute(other_path)));
-    other->text = session->text;
-    other->line_starts = session->line_starts;
+    other->set_text(session->text().str());
     auto& other_entry = projections.entries[other->path_id];
     auto other_projection = std::make_shared<ASTProjection>();
     other_projection->pch_key = "key";
@@ -495,8 +496,7 @@ int main() { return 0; }
     // as the buffer still starts with the blob's preamble text, the
     // entry keeps serving — the prefix comparison is the freshness check.
     projections.entries[session->path_id].current = false;
-    session->text += "int more;\n";
-    session->sync_text();
+    session->set_text(session->text().str() + "int more;\n");
     ZEXPECT(index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
 }
 
@@ -510,8 +510,7 @@ int main() { return 0; }
     // A deferred PCH rebuild keeps an old blob while the buffer's
     // preamble moved on; once the buffer no longer starts with the blob's
     // stored preamble text, its entries must not be served.
-    session->text = "// drift\n" + session->text;
-    session->sync_text();
+    session->set_text("// drift\n" + session->text().str());
     ZEXPECT(!index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition).has_value());
 }
 

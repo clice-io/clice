@@ -1,0 +1,40 @@
+[answers.push_back.hover]
+markdown = '''
+**method** `push_back` · struct `lib::vector<Point<T>>`
+
+```cpp
+void push_back(const value_type &__x)
+```
+`value_type` is `Point<T>`
+'''
+range = "pts.⟦push_back⟧(Point<T>{});"
+
+[answers.append.hover]
+markdown = '''
+**method** `append` · struct `lib::vector<Point<T>>`
+
+```cpp
+lib::vector<Point<T>> &append(const lib::vector<Point<T>> &__other)
+```
+'''
+range = "pts.⟦append⟧(pts);"
+
+[answers.second.hover]
+markdown = '''
+**field** `second` · struct `lib::pair<const int, T>`
+
+```cpp
+T second
+```
+'''
+range = "auto value = m.find(1)->⟦second⟧;"
+
+[answers.value_type.hover]
+markdown = '''
+**type** `value_type` · struct `lib::vector<Point<T>>`
+
+```cpp
+using value_type = Point<T>
+```
+'''
+range = "typename lib::vector<Point<T>>::⟦value_type⟧ copy = pts.front();"

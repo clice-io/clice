@@ -11,7 +11,7 @@ import :project.build;
 import :server.query_commands;
 import :support.markup;
 import :syntax.documentation;
-import :syntax.lexer;
+import :syntax.source_text;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -552,11 +552,8 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
     auto resolve = [&](index::SymbolHash hash) {
         return ctx.query.symbol_info(hash, **file);
     };
-    auto outline = feature::index_document_symbols((*text)->getBuffer(),
-                                                   dialect_of(file_path, false),
-                                                   entries,
-                                                   resolve,
-                                                   {.locals = false});
+    SourceText buffer((*text)->getBuffer(), ctx.contexts.dialect(**file));
+    auto outline = feature::index_document_symbols(buffer, entries, resolve, {.locals = false});
     // The entry of a `#define` or a module declaration is where its symbol
     // is declared.
     llvm::DenseMap<std::uint32_t, index::SymbolHash> declared;

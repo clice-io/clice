@@ -540,6 +540,22 @@ void add_macros(HoverInfo& info,
     }
 }
 
+/// The dependent specialization the code at `node` names a member of a
+/// class template through: `vector<Point<T>>` for `pts.push_back` or
+/// `typename vector<Point<T>>::value_type`.
+auto accessed_specialization(const SelectionTree::Node& node, CompilationUnit& unit)
+    -> const clang::TemplateSpecializationType* {
+    if(const auto* access = node.get<clang::CXXDependentScopeMemberExpr>()) {
+        return types::accessed_specialization(*access, unit.get<types::TemplateResolver>());
+    }
+    const auto* loc = node.get<clang::TypeLoc>();
+    const auto* name = loc ? loc->getType()->getAs<clang::DependentNameType>() : nullptr;
+    if(!name || name->getQualifier().getKind() != clang::NestedNameSpecifier::Kind::Type) {
+        return nullptr;
+    }
+    return name->getQualifier().getAsType()->getAs<clang::TemplateSpecializationType>();
+}
+
 /// The card of a declaration.
 auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverInfo {
     HoverInfo info;
@@ -551,6 +567,12 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
     /// names them.
     auto shown = options;
     shown.scope = decl->getDeclContext();
+    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        shown.source = var->getInit();
+    } else if(const auto* binding = llvm::dyn_cast<clang::BindingDecl>(decl)) {
+        const auto* decomposed = llvm::cast<clang::VarDecl>(binding->getDecomposedDecl());
+        shown.source = decomposed->getInit();
+    }
 
     if(auto access = decl->getAccess();
        access == clang::AS_private || access == clang::AS_protected) {
@@ -861,7 +883,9 @@ void add_pass(const SelectionTree::Node& node, HoverInfo& info, const display::O
         }
         const auto* param = binding.forwarded;
         auto type = param->getType();
-        info.callee_arg_info = display::param(param, options);
+        auto shown = options;
+        shown.scope = param->getDeclContext();
+        info.callee_arg_info = display::param(param, shown);
         if(!type->isReferenceType()) {
             info.pass_mode = PassMode::Value;
         } else if(type->isRValueReferenceType()) {
@@ -871,8 +895,6 @@ void add_pass(const SelectionTree::Node& node, HoverInfo& info, const display::O
                 type.getNonReferenceType().isConstQualified() ? PassMode::ConstRef : PassMode::Ref;
         }
         if(converts(node, argument)) {
-            auto shown = options;
-            shown.scope = param->getDeclContext();
             info.converted_to = display::type(param->getASTContext(),
                                               type.getNonReferenceType().getUnqualifiedType(),
                                               shown)
@@ -1016,7 +1038,10 @@ auto expr_hover(const SelectionTree::Node& node, const clang::Expr& expr, const 
     }
     HoverInfo info;
     info.name = "expression";
-    info.type = display::type(context, expr.getType(), request.display);
+    auto shown = request.display;
+    shown.scope = &node.decl_context();
+    shown.source = &expr;
+    info.type = display::type(context, expr.getType(), shown);
     info.value = std::move(value);
     add_pass(node, info, request.display);
     return info;
@@ -1038,12 +1063,13 @@ auto attr_hover(CompilationUnit& unit, const clang::Attr& attr) -> HoverInfo {
     return info;
 }
 
-/// The card of `auto` or `decltype`: the type it stands for, with the
-/// documentation of what that names: an alias's own, not that of the class
-/// behind it, which may be a library's internal one.
+/// The card of `auto` or `decltype`: the type it stands for, deduced from
+/// `source`, with the documentation of what that names: an alias's own, not
+/// that of the class behind it, which may be a library's internal one.
 auto deduced_hover(clang::QualType type,
                    clang::tok::TokenKind keyword,
                    const clang::DeclContext* scope,
+                   const clang::Expr* source,
                    const Request& request) -> HoverInfo {
     HoverInfo info;
     /// FIXME: distinguish decltype(auto) vs decltype(expr).
@@ -1055,15 +1081,21 @@ auto deduced_hover(clang::QualType type,
 
     auto options = request.display;
     options.scope = scope;
-    auto shown = display::type(request.unit.context(), type, options);
+    options.source = source;
+    /// What the keyword stands for carries the aliases of the declarations
+    /// it was deduced from, as a placeholder's deduced type does.
+    auto& context = request.unit.context();
+    type = context.getAutoType(clang::DeducedKind::Deduced, type, clang::AutoTypeKeyword::Auto);
+    auto shown = display::type(context, type, options);
     info.definition = shown.text;
     reformat(info.definition);
-    add_alias(info, request.unit.context(), type, options);
+    add_alias(info, context, type, options);
+    auto readable = options.readable->readable(type, scope, source);
     const clang::NamedDecl* named = nullptr;
-    if(const auto* alias = type->getAs<clang::TypedefType>()) {
+    if(const auto* alias = readable->getAs<clang::TypedefType>()) {
         named = alias->getDecl();
     } else {
-        named = type->getAsTagDecl();
+        named = readable->getAsTagDecl();
     }
     if(named) {
         info.documentation = documentation(request.unit, named, request.documentation);
@@ -1910,9 +1942,18 @@ auto hover_info(CompilationUnit& unit,
                     }
                 }
                 if(!deduced.isNull()) {
+                    const auto* written = node->data.get<clang::TypeLoc>();
+                    const auto* operand =
+                        written ? llvm::dyn_cast<clang::DecltypeType>(written->getTypePtr())
+                                : nullptr;
+                    const auto* var = llvm::dyn_cast<clang::VarDecl>(node->owning_decl());
+                    const clang::Expr* source = operand ? operand->getUnderlyingExpr()
+                                                : var   ? var->getInit()
+                                                        : nullptr;
                     info = deduced_hover(deduced,
                                          kind,
                                          node->owning_decl()->getDeclContext(),
+                                         source,
                                          request);
                     highlight_range = token.range;
                     break;
@@ -1938,7 +1979,11 @@ auto hover_info(CompilationUnit& unit,
                 decl = deduced;
             }
             if(decl) {
-                info = decl_hover(decl, request);
+                auto through = display_options;
+                through.specialization = accessed_specialization(*node, unit);
+                info =
+                    decl_hover(decl,
+                               {.unit = unit, .documentation = documentation, .display = through});
                 if(options.layout) {
                     add_layout(*templated(decl), *info);
                 }

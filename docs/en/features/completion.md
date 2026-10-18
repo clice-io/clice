@@ -400,6 +400,20 @@ tests/completion/templates/15_concept_requirements
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Members through a dependent specialization**
+
+The members of a dependent specialization of a class template show the arguments the code names it with
+
+After `m.find(1)->` over a `lib::map<int, T>`, `first` is a `const int` and `second` a `T`, not the pair's own `_T1` and `_T2`.
+
+```case
+tests/completion/templates/29_library_specialization_members
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Override and Out-of-line Definitions
@@ -484,7 +498,7 @@ tests/completion/include_path_completion/04_sibling_headers
 
 **Nearest headers first**
 
-Header names list the includer's directory first, then the quoted include directories, the others in order, the system's last
+Header names list the includer's directory first, then the quoted include directories, the others in order, the system's last; a name two directories hold is listed once, from the first
 
 ```case
 tests/completion/include_path_completion/09_header_order

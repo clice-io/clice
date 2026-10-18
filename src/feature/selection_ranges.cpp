@@ -12,6 +12,7 @@ import :semantic.selection;
 import :semantic.semantics;
 import :support.text;
 import :syntax.lexical_scan;
+import :syntax.source_text;
 import :syntax.token;
 
 namespace clice::feature {
@@ -877,12 +878,10 @@ auto selection_ranges(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> offse
     return result;
 }
 
-auto lexical_selection_ranges(llvm::StringRef content,
-                              const clang::LangOptions& lang_opts,
-                              llvm::ArrayRef<std::uint32_t> offsets)
+auto lexical_selection_ranges(SourceText& source, llvm::ArrayRef<std::uint32_t> offsets)
     -> std::vector<std::vector<LocalSourceRange>> {
-    auto lexical = lexical_scan(content, lang_opts);
-    llvm::ArrayRef<Token> tokens = lexical.tokens;
+    auto content = source.text();
+    llvm::ArrayRef<Token> tokens = source.lexical().tokens;
     auto text = scan_text(content, tokens, {});
     std::vector<std::vector<LocalSourceRange>> result;
     for(auto offset: offsets) {

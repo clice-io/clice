@@ -102,11 +102,10 @@ This lexer-based detection does not require starting a full preprocessor and is 
 
 ### Preamble Completeness Check
 
-Before triggering a PCH rebuild, the preamble must be checked for syntactic completeness. Two typical incomplete states:
+Before triggering a PCH rebuild, the preamble must be checked for syntactic completeness. The typical incomplete state is a header name being typed:
 
 ```cpp
 #include "lib          // unclosed quote, user is typing a filename
-import std.core        // missing semicolon, user is typing a module declaration
 ```
 
 Building a PCH from an incomplete preamble produces a PCH containing erroneous preprocessor state. Subsequent compilations loading this erroneous PCH would see a flood of spurious errors. Therefore the preamble ends before its first unfinished directive: the finished directives above it are precompiled as usual — a line being added at the end of the include block leaves the preamble text, and so its PCH, as it was — and the unfinished line is parsed with the body, where it reports its own error.
@@ -189,7 +188,7 @@ After loading the cache on startup, all PCH entries are validated through two-la
 
 - **Full rebuild**. Any content change in a dependency file triggers a full PCH rebuild, with no way to rebuild only the affected portion. The improvement direction is to adopt chained PCH (see FAQ), limiting the rebuild scope to the chain links after the point of change.
 
-- **Incomplete preamble completeness check**. The current completeness check only covers unclosed quotes and missing semicolons in `#include`/`import` directives. Other types of incomplete edits (e.g., typing a `#define` value) are not detected. The impact of building a PCH from such an incomplete preamble on subsequent compilation has not been thoroughly tested. Further investigation is needed into Clang's behavior when processing incomplete preprocessor directives, to determine whether the completeness check scope should be extended.
+- **Incomplete preamble completeness check**. The current completeness check only covers a header name left open (an unclosed `"` or `<` in `#include`, `#embed` and the like). Other types of incomplete edits (e.g., typing a `#define` value) are not detected. The impact of building a PCH from such an incomplete preamble on subsequent compilation has not been thoroughly tested. Further investigation is needed into Clang's behavior when processing incomplete preprocessor directives, to determine whether the completeness check scope should be extended.
 
 - **No PCH for a global module fragment that imports**. A module unit whose global module fragment imports a module, typically through a header it includes, parses its whole preamble on every edit. Clang keeps no record in a PCH that the global module fragment was open, and the module declaration that follows the PCH would hide the modules the fragment imported. The improvement direction is a Clang change that restores the fragment when the PCH is loaded.
 

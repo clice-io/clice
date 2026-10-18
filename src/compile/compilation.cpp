@@ -15,7 +15,7 @@ import :compile.tokens;
 import :support.logging;
 import :syntax.header_context;
 import :syntax.position;
-import :syntax.scan;
+import :syntax.preamble;
 import :vfs.file_system;
 
 namespace clice {
@@ -522,7 +522,7 @@ CompilationStatus CompilationUnit::run() {
     if(auto& [pch, bound] = params.input.pch;
        !pch.empty() && instance->getLangOpts().IsHeaderFile) {
         auto focus = focus_file();
-        if(pragma_once(focus.content(), bound)) {
+        if(has_pragma_once(focus.content(), bound)) {
             instance->getPreprocessor().getHeaderSearchInfo().MarkFileIncludeOnce(
                 *SM().getFileEntryRefForID(focus.file()));
         }

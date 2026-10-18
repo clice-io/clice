@@ -1307,6 +1307,28 @@ ZEST_CASE(CrossFileHeaderIndex) {
     ZASSERT(found_in_header);
 }
 
+ZEST_CASE(LocalClassAsBase) {
+    kind = CompilationKind::Whole;
+    add_file("make.h", R"(
+            #pragma once
+            inline auto make() {
+                struct Made {};
+                return Made{};
+            }
+        )");
+    add_focus("main.cpp", R"(
+            #include "make.h"
+            struct Derived : decltype(make()) {};
+        )");
+    ZASSERT(compile());
+    decode_index(index::build_tu_index(*unit));
+    // Only the base relation names the header function's class in
+    // main.cpp: the table lists it with both files.
+    auto made = symbol_named("Made").second;
+    ZEXPECT(static_cast<int>(made.scope) == static_cast<int>(index::SymbolScope::FileLocal));
+    ZEXPECT(made.reference_files.cardinality() == 2u);
+}
+
 ZEST_CASE(KnownVariantsSkipped) {
     kind = CompilationKind::Whole;
     add_file("header.h", R"(

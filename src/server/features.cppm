@@ -14,6 +14,7 @@ import :server.dispatcher;
 import :server.editor_context;
 import :server.session;
 import :server.session_store;
+import :syntax.source_text;
 import :vfs.dir_cache;
 
 namespace clice {
@@ -344,14 +345,9 @@ private:
     std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
                                                        const protocol::Position& position) const;
 
-    /// The dialect the server lexes a session's text in: for its index
-    /// projections, hover's directive lookup and completion's context
-    /// checks. An explicit -x in the file's own CDB entry decides outright;
-    /// a header follows its active context's host when one exists;
-    /// otherwise C when the file is a C source or every TU contributing its
-    /// indexed entries is one, C++ else (mixed inclusion favors the
-    /// superset).
-    const clang::LangOptions& index_lang_options(const Session& session);
+    /// The session's text, read in the dialect the server lexes it in
+    /// (EditorContext::dialect).
+    SourceText& text_of(Session& session);
 
     /// The read-only hover card for the symbol under the cursor: name and
     /// kind from the symbol tables, definition text sliced from stored
@@ -365,11 +361,6 @@ private:
     /// index, which knows the defining unit across files.
     feature::HoverInfo module_hover_card(const index::IndexQuery::Cursor& cursor,
                                          const index::SymbolRef& module);
-
-    /// The host source of a header session: the user's persisted choice,
-    /// else the resolved header context, else its best-ranked includer;
-    /// invalid for a file without any.
-    Fid host_of(Fid path_id) const;
 
     /// The preamble include links of a session's active PCH; empty when
     /// there is no PCH or its preamble no longer matches the buffer.

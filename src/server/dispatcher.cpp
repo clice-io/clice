@@ -352,7 +352,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     }
 
     wp.file = path;
-    wp.text = session.text;
+    wp.text = session.text().str();
     wp.offset = session.positions().offset_clamped(position, PositionEncoding::UTF16);
     auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
     wp.config = project.config;
@@ -384,7 +384,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     auto carried = wp.text.substr(0, wp.offset);
     auto snapshot = [&] {
         return std::is_same_v<Params, worker::CompletionParams> &&
-               session.text.starts_with(carried);
+               session.text().starts_with(carried);
     };
     if(!ticket.fresh() && !snapshot()) {
         co_await kota::fail(content_modified());
@@ -455,7 +455,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
 
     worker::FormatParams wp;
     wp.file = project.file_table.display(session.path_id);
-    wp.text = session.text;
+    wp.text = session.text().str();
 
     if(range) {
         wp.range = session.positions().offset_range(*range, PositionEncoding::UTF16);

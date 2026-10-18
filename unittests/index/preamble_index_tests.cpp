@@ -161,13 +161,12 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     ZEXPECT(found_ref);
 
     // Everything needed to map entries to LSP positions rides in each shard;
-    // pure-ASCII content itself is omitted.
+    // the content itself is not stored.
     for(std::uint32_t i = 0; i < state->section_count(); i += 1) {
         auto& shard = state->shard_of(state->section_path(i));
         ZEXPECT(shard.content_size() > 0);
         ZEXPECT(!shard.line_starts().empty());
-        ZEXPECT(shard.content().empty());
-        ZEXPECT(shard.content().empty());
+        ZEXPECT(shard.positions().text().empty());
     }
 }
 

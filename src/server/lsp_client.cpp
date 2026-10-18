@@ -213,7 +213,7 @@ LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     // text.
     auto session = this->server.find_session(path_id);
     if(auto* alias = find_alias(path_id, *path);
-       alias && session && alias->buffer.text != session->text) {
+       alias && session && alias->buffer.text() != session->text()) {
         return ResolvedDoc{.path = path->str(), .project = std::move(project)};
     }
     return ResolvedDoc{path->str(), path_id, std::move(session), std::move(project)};
@@ -260,7 +260,7 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     if(!client_ready) {
         return;
     }
-    bool diverged = !owner || owner->text != alias.buffer.text;
+    bool diverged = !owner || owner->text() != alias.buffer.text();
     bool flipped = std::exchange(alias.warned, diverged) != diverged;
     if(diverged && flipped) {
         peer.send_notification(protocol::ShowMessageParams{
@@ -753,7 +753,7 @@ void LSPClient::register_document_sync() {
             auto next = take_alias(path_id, &it->second.front());
             clear_alias(next.spelling);
             srv.files.show_as(path_id, next.spelling);
-            srv.open_session(path_id, std::move(next.buffer.text), next.buffer.version);
+            srv.open_session(path_id, next.buffer.text().str(), next.buffer.version);
             // A pulling client still holds its divergence warning.
             if(pull_diagnostics && next.warned) {
                 refresh_diagnostics();
@@ -947,7 +947,7 @@ void LSPClient::register_language_features() {
         // A second name answers the warning once its text parted from the
         // first name's, before the pull or while it waited.
         if(auto* alias = find_alias(path);
-           alias && (!session || alias->buffer.text != session->text)) {
+           alias && (!session || alias->buffer.text() != session->text())) {
             co_return full_report(to_client({feature::file_warning(divergence_message(*alias))}));
         }
         auto report = full_report(to_client(items));

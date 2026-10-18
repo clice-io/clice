@@ -1,11 +1,11 @@
 [answers.map]
 inlay_hints = [
-    { line = "for (auto& [name⟨: const std::string⟩, point⟨: Point⟩] : points) {" },
+    { line = "for (auto& [name⟨: const string⟩, point⟨: Point⟩] : points) {" },
 ]
 
 [answers.tuple]
 inlay_hints = [
-    { line = "auto& [label⟨: std::string⟩, origin⟨: Point⟩] = entry;" },
+    { line = "auto& [label⟨: string⟩, origin⟨: Point⟩] = entry;" },
 ]
 
 [answers.two_aliases]
@@ -15,17 +15,17 @@ inlay_hints = [
 
 [answers.variable]
 inlay_hints = [
-    { line = "auto copy⟨: std::string⟩ = text;" },
+    { line = "auto copy⟨: string⟩ = text;" },
 ]
 
 [answers.through_alias]
 inlay_hints = [
-    { line = "for (auto& [key⟨: const std::string⟩, value⟨: Point⟩] : table) {" },
+    { line = "for (auto& [key⟨: const string⟩, value⟨: Point⟩] : table) {" },
 ]
 
 [answers.pointer]
 inlay_hints = [
-    { line = "auto& [where⟨: std::string *⟩, place⟨: Point⟩] = found;" },
+    { line = "auto& [where⟨: string *⟩, place⟨: Point⟩] = found;" },
 ]
 
 [answers.alias_and_plain]

@@ -18,7 +18,6 @@ ProjectLoad bootstrap_project(Project& project,
                               IndexPump& pump,
                               CanonicalRef root,
                               llvm::StringRef requested_configuration,
-                              bool read_only_index = false,
-                              bool scan_tree = false);
+                              bool read_only_index = false);
 
 }  // namespace clice

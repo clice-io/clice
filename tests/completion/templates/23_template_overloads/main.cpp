@@ -59,6 +59,7 @@ struct Picker {
 
 template <class T>
 void choose(Picker<T> picker) {
-    picker.pick("x").§(differing_template);
+    picker.pick(1).§(differing_template);
+    picker.pick("x").§(ruled_out);
     picker.choose(Right()).§(parameter_template);
 }

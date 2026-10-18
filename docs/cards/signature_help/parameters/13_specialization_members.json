@@ -1,0 +1,48 @@
+{
+  "id": "signature_help/parameters/13_specialization_members",
+  "topic": "signature_help",
+  "subtopic": "parameters",
+  "title": "Members through a dependent specialization",
+  "summary": "A member of a class template called through a dependent specialization of it shows the arguments the code names it with",
+  "prose": "`pts.assign(` over a `lib::vector<Point<T>>` takes a `const Point<T> &`, not the template's own `const _Tp &`.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "lib.h",
+      "text": "#pragma once\n\nnamespace lib {\ntemplate <class _Tp>\nstruct vector {\n    void assign(int __count, const _Tp& __value);\n};\n}  // namespace lib\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"lib.h\"\n\ntemplate <class T>\nstruct Point {\n    T x;\n};\n\ntemplate <class T>\nvoid f(lib::vector<Point<T>>& pts) {\n    pts.assign(1, Point<T>{});\n}\n",
+      "markers": [
+        {
+          "name": "assign",
+          "begin": 136,
+          "end": 136,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "assign",
+          "marker": "assign",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "assign(⟦int count⟧, const Point<T> &value) -> void"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

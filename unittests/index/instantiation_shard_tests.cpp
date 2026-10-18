@@ -49,18 +49,25 @@ InstantiationShard write(const FileInstantiations& instantiations) {
     return make(bytes);
 }
 
-InstantiationShard merge(
-    const InstantiationShard& old,
-    llvm::ArrayRef<ResolutionHash> keep,
-    const InstantiationShard* fresh,
-    Producer producer,
-    llvm::function_ref<bool(const Producer&)> keep_producer = [](const Producer&) {
-        return true;
-    }) {
+constexpr auto any_producer = [](const Producer&) {
+    return true;
+};
+
+InstantiationShard merge(const InstantiationShard& old,
+                         llvm::ArrayRef<index::UseHash> keep,
+                         const InstantiationShard* fresh,
+                         Producer producer,
+                         llvm::function_ref<bool(const Producer&)> keep_producer = any_producer,
+                         std::optional<index::AddedUse> added = std::nullopt) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
-    index::merge_instantiations(old, keep, keep_producer, fresh, producer, os);
+    index::merge_instantiations(old, keep, keep_producer, fresh, producer, added, os);
     return make(bytes);
+}
+
+/// The use of a unit using every resolution of `shard`.
+index::AddedUse use_of(const InstantiationShard& shard) {
+    return {.use = index::use_identity(shard.resolutions()), .resolutions = shard.resolutions()};
 }
 
 std::vector<InstantiationRecord> records_of(const InstantiationShard& shard) {
@@ -132,6 +139,33 @@ ZEST_CASE(Roundtrip) {
     ZEXPECT(!shard.find_key(9));
 }
 
+ZEST_CASE(LookupAcrossBlocks) {
+    // Records span several blocks of their delta-encoded begins, one of
+    // them long enough to hold offsets far past its begin.
+    std::vector<InstantiationRecord> held;
+    for(std::uint32_t i = 0; i < 60; i += 1) {
+        held.push_back(reference(i * 15, 100 + i));
+    }
+    InstantiationRecord outer{
+        .range = {16, 400},
+        .kind = InstantiationKind::Reference,
+        .target = 99
+    };
+    held.push_back(outer);
+    FileInstantiations instantiations;
+    instantiations.resolutions = {held};
+    auto shard = write(instantiations);
+    ZASSERT(shard.loaded());
+    for(std::uint32_t i = 0; i < 60; i += 1) {
+        auto offset = i * 15 + 1;
+        auto found = at(shard, offset);
+        ZEXPECT(found.size() == (offset >= 16 && offset <= 400 ? 2u : 1u));
+        ZEXPECT(llvm::is_contained(found, reference(i * 15, 100 + i)));
+        ZEXPECT(naming(shard, 100 + i) == std::vector{reference(i * 15, 100 + i)});
+    }
+    ZEXPECT(at(shard, 399) == std::vector{outer});
+}
+
 ZEST_CASE(ResolutionsFoldAcrossRuns) {
     // Two runs with the same resolution store it once; a record two
     // resolutions share is stored once and serves while either lives.
@@ -156,27 +190,34 @@ ZEST_CASE(ResolutionsFoldAcrossRuns) {
     Producer one{.unit = 100, .run = 1};
     Producer two{.unit = 200, .run = 1};
 
-    auto stored = merge({}, {}, &a, one);
-    stored = merge(stored, stored.resolutions(), &b, two);
+    auto first_use = use_of(a);
+    auto stored = merge({}, {}, &a, one, any_producer, first_use);
+    auto stored_uses = std::vector(stored.uses().begin(), stored.uses().end());
+    stored = merge(stored, stored_uses, &b, two, any_producer, use_of(b));
     ZASSERT(stored.loaded());
     ZASSERT(stored.resolutions().size() == 2u);
     ZEXPECT(records_of(stored).size() == 3u);
+    ZASSERT(stored.uses().size() == 2u);
+    ZEXPECT(stored.resolutions_of(first_use.use) ==
+            std::vector(a.resolutions().begin(), a.resolutions().end()));
 
     // The later run walked key 1 again: it is the producer now.
     ZEXPECT(stored.find_key(1)->producer == std::optional(two));
     ZEXPECT(stored.find_key(2)->producer == std::optional(two));
 
-    // Only the resolution holding (30, 33) dies: the shared record stays.
-    auto first_resolution = a.resolutions().front();
-    stored.set_live({first_resolution});
-    ZEXPECT(stored.has_dead_resolutions());
+    // Only the second unit's use dies, and with it the resolution holding
+    // (30, 33): the shared record stays.
+    stored.set_live({first_use.use});
+    ZEXPECT(stored.has_dead_uses());
     ZEXPECT(at(stored, 11).size() == 1u);
     ZEXPECT(at(stored, 31).empty());
 
-    // Compaction drops the dead resolution, its records and its key.
-    auto compacted = merge(stored, {first_resolution}, nullptr, {});
+    // Compaction drops the dead use, the resolution only it held, its
+    // records and its key.
+    auto compacted = merge(stored, {first_use.use}, nullptr, {});
     ZASSERT(compacted.loaded());
     ZEXPECT(compacted.resolutions().size() == 1u);
+    ZEXPECT(compacted.uses().size() == 1u);
     ZEXPECT(records_of(compacted).size() == 2u);
     ZEXPECT(compacted.find_key(1).has_value());
     ZEXPECT(!compacted.find_key(2).has_value());
@@ -249,13 +290,15 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.content_hash = generation;
     blob.content_size = size;
     blob.sym_hashes = {11};
-    blob.records.packed = {index::pack_range(10, 3)};
+    blob.records.block_begins = {10};
+    blob.records.deltas = {0};
+    blob.records.lengths = {3};
     blob.record_kinds = {0};
-    blob.record_targets.ids8 = {0};
-    blob.record_froms.ids8 = {0};
+    blob.record_targets = {0};
+    blob.record_froms = {0};
     blob.resolutions = {5};
     blob.resolution_ends = {1};
-    blob.resolution_records.ids8 = {0};
+    blob.resolution_records = {0};
     auto bytes_of = [&] {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
@@ -266,22 +309,22 @@ ZEST_CASE(CorruptBlobRejected) {
 
     // A record no resolution holds.
     blob.resolution_ends = {0};
-    blob.resolution_records.ids8 = {};
+    blob.resolution_records = {};
     ZEXPECT(!make(bytes_of()).loaded());
     blob.resolution_ends = {1};
-    blob.resolution_records.ids8 = {0};
+    blob.resolution_records = {0};
 
     // A record past the content.
-    blob.records.packed = {index::pack_range(size, 3)};
+    blob.records.block_begins = {size};
     ZEXPECT(!make(bytes_of()).loaded());
-    blob.records.packed = {index::pack_range(10, 3)};
+    blob.records.block_begins = {10};
 
     // A key whose resolution is not stored.
     blob.keys = {1};
-    blob.key_patterns.ids8 = {0};
-    blob.key_resolutions.ids8 = {2};
+    blob.key_patterns = {0};
+    blob.key_resolutions = {2};
     ZEXPECT(!make(bytes_of()).loaded());
-    blob.key_resolutions.ids8 = {1};
+    blob.key_resolutions = {1};
     ZEXPECT(make(bytes_of()).loaded());
 
     // Hashes that key DenseMaps once decoded.
@@ -296,10 +339,32 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.producer_units = {100};
     blob.producer_runs = {1};
     ZEXPECT(!make(bytes_of()).loaded());
-    blob.key_producers.ids8 = {0};
+    blob.key_producers = {0};
     ZEXPECT(make(bytes_of()).loaded());
     blob.producer_units = {~0ull - 1};
     ZEXPECT(!make(bytes_of()).loaded());
+    blob.producer_units = {100};
+
+    // A use names stored resolutions under the identity they hash to.
+    std::vector<ResolutionHash> used = {5};
+    blob.uses = {index::use_identity(used)};
+    blob.use_ends = {1};
+    blob.use_resolutions = {0};
+    ZEXPECT(make(bytes_of()).loaded());
+    blob.uses = {index::use_identity(used) + 1};
+    ZEXPECT(!make(bytes_of()).loaded());
+    blob.uses = {index::use_identity(used)};
+    blob.use_resolutions = {1};
+    ZEXPECT(!make(bytes_of()).loaded());
+    blob.use_resolutions = {0};
+
+    // Use lists partition the resolution column.
+    blob.use_ends = {2};
+    ZEXPECT(!make(bytes_of()).loaded());
+    blob.use_ends = {0};
+    ZEXPECT(!make(bytes_of()).loaded());
+    blob.use_ends = {1};
+    ZEXPECT(make(bytes_of()).loaded());
 }
 
 };  // ZEST_SUITE(InstantiationShard)

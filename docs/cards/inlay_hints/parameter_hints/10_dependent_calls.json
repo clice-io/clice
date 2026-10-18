@@ -4,13 +4,13 @@
   "subtopic": "parameter_hints",
   "title": "Dependent calls",
   "summary": "Parameter names appear even when the callee is only known inside a template",
-  "prose": "Candidates are matched by argument count; only a unique surviving candidate names the parameters, so a call that could still hit several overloads stays bare rather than guessing.",
+  "prose": "Candidates are matched by argument count and by the arguments whose type is known; only a unique surviving candidate names the parameters, so a call that could still hit several overloads stays bare rather than guessing.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nvoid apply(T scale);\n\ntemplate <typename T>\nstruct Holder {\n    void member(T item);\n    static void static_member(T slot);\n};\n\nvoid overload(int value);\nvoid overload(double value);\n\ntemplate <typename T>\nstruct Runner {\n    void run(Holder<T> holder, T value) {\n        apply(value);\n        holder.member(value);\n        Holder<T>::static_member(value);\n        overload(T{});\n    }\n};\n",
+      "text": "template <typename T>\nvoid apply(T scale);\n\ntemplate <typename T>\nstruct Holder {\n    void member(T item);\n    static void static_member(T slot);\n};\n\nvoid overload(int value);\nvoid overload(double value);\n\nvoid place(int x, int y);\nvoid place(const char* name, int y);\n\ntemplate <typename T>\nstruct Runner {\n    void run(Holder<T> holder, T value) {\n        apply(value);\n        holder.member(value);\n        Holder<T>::static_member(value);\n        overload(T{});\n        place(1, value);\n    }\n};\n",
       "markers": []
     }
   ],
@@ -28,11 +28,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 15,
+                      "line": 18,
                       "character": 8
                     },
                     "end": {
-                      "line": 15,
+                      "line": 18,
                       "character": 21
                     }
                   }
@@ -44,11 +44,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 16,
+                      "line": 19,
                       "character": 8
                     },
                     "end": {
-                      "line": 16,
+                      "line": 19,
                       "character": 29
                     }
                   }
@@ -60,12 +60,28 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 17,
+                      "line": 20,
                       "character": 8
                     },
                     "end": {
-                      "line": 17,
+                      "line": 20,
                       "character": 40
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "place(⟨x:⟩1, ⟨y:⟩value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 24
                     }
                   }
                 }

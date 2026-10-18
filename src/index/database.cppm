@@ -67,6 +67,20 @@ struct BlobKey {
     std::string key;
 };
 
+/// How the pages of a database file are used.
+struct StorageUsage {
+    std::uint64_t page_size = 0;
+    /// Pages up to the last one the file has used: the file's size, which
+    /// never shrinks.
+    std::uint64_t pages = 0;
+    /// B-tree pages: the keys, and the values small enough to sit beside them.
+    std::uint64_t tree_pages = 0;
+    /// The values too large for a tree page, each in a run of whole pages.
+    std::uint64_t overflow_pages = 0;
+    /// Pages earlier writes freed, kept for later writes to reuse.
+    std::uint64_t free_pages = 0;
+};
+
 /// Keyed blob database of the persisted index.
 ///
 /// Boundary with CacheStore: CacheStore manages the versioned cache
@@ -150,6 +164,12 @@ public:
     /// corruption observed at read time. The files go away under the
     /// writer lock, so the next open starts from an empty database.
     virtual void condemn() {}
+
+    /// How the file's pages are used as of the read snapshot, for `clice
+    /// index stats`; nullopt from backends without a file.
+    virtual std::optional<StorageUsage> usage() {
+        return std::nullopt;
+    }
 
     /// Whether this handle was opened read-only (a session that must not
     /// take the writer lock — batch lint, `clice index stats`). Writes

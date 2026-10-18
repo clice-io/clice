@@ -9,6 +9,7 @@ import :feature.semantic_token_stream;
 import :index.tu_index;
 import :semantic.token_class;
 import :syntax.lexer;
+import :syntax.source_text;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -51,29 +52,19 @@ auto resolver() {
 
 /// The outline the index projects from the unit's own entries.
 auto projected_outline() -> std::vector<feature::DocumentSymbol> {
-    return feature::index_document_symbols(unit->focus_file().content(),
-                                           unit->lang_options(),
-                                           entries,
-                                           resolver(),
-                                           {});
+    SourceText text(unit->focus_file().content(), unit->lang_options());
+    return feature::index_document_symbols(text, entries, resolver(), {});
 }
 
 /// The projected tokens of the compiled unit equal what the AST knows
 /// that the index records too, modifiers included; both under the
 /// Tester's C++20.
 void expect_tokens_match_ast() {
-    auto content = unit->focus_file().content();
-    auto ast = feature::semantic_token_stream(unit->focus_file().lexical().tokens,
-                                              content,
-                                              unit->lang_options(),
-                                              unit->keywords(),
-                                              feature::semantic_token_facts(*unit, {}, true),
-                                              {});
-    auto projected = feature::index_semantic_tokens(content,
-                                                    dialect_of("main.cpp", false, "c++20"),
-                                                    entries,
-                                                    resolver(),
-                                                    {});
+    auto& source = unit->focus_file().text();
+    auto ast =
+        feature::semantic_token_stream(source, feature::semantic_token_facts(*unit, {}, true), {});
+    SourceText served(source.text(), dialect_of("main.cpp", false, "c++20"));
+    auto projected = feature::index_semantic_tokens(served, entries, resolver(), {});
 
     ZASSERT(projected.size() == ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {
@@ -90,9 +81,9 @@ auto project(llvm::StringRef content,
              const clang::LangOptions& lang_opts,
              feature::IndexEntries synthetic,
              llvm::ArrayRef<SemanticTokenKind> kinds) -> std::vector<feature::SemanticToken> {
+    SourceText text(content, lang_opts);
     return feature::index_semantic_tokens(
-        content,
-        lang_opts,
+        text,
         synthetic,
         [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
             if(hash == 0 || hash > kinds.size()) {
@@ -305,10 +296,8 @@ int compute() {
     extract_entries();
 
     auto ast = feature::folding_ranges(*unit);
-    auto projected = feature::index_folding_ranges(unit->focus_file().content(),
-                                                   dialect_of("main.cpp", false),
-                                                   entries.decls,
-                                                   resolver());
+    SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
+    auto projected = feature::index_folding_ranges(text, entries.decls, resolver());
 
     ZASSERT(!projected.empty());
     for(auto& fold: projected) {
@@ -353,10 +342,8 @@ typedef struct {
     extract_entries();
 
     auto ast = feature::folding_ranges(*unit);
-    auto projected = feature::index_folding_ranges(unit->focus_file().content(),
-                                                   dialect_of("main.cpp", false),
-                                                   entries.decls,
-                                                   resolver());
+    SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
+    auto projected = feature::index_folding_ranges(text, entries.decls, resolver());
 
     ZASSERT(projected.size() == std::size_t(3));
     for(auto& fold: projected) {
@@ -383,10 +370,8 @@ int values[] =
     ZASSERT(compile());
     extract_entries();
 
-    auto projected = feature::index_folding_ranges(unit->focus_file().content(),
-                                                   dialect_of("main.cpp", false),
-                                                   entries.decls,
-                                                   resolver());
+    SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
+    auto projected = feature::index_folding_ranges(text, entries.decls, resolver());
     ZASSERT(projected.size() == std::size_t(1));
     ZASSERT(!projected[0].lines.has_value());
 }
@@ -424,10 +409,8 @@ void g() {
         return index::SymbolRef{.name = hash == 1 ? "f" : "g", .kind = SymbolKind::Function};
     };
 
-    auto folds = feature::index_folding_ranges(content,
-                                               dialect_of("main.cpp", false),
-                                               entries,
-                                               resolve_synthetic);
+    SourceText text(content, dialect_of("main.cpp", false));
+    auto folds = feature::index_folding_ranges(text, entries, resolve_synthetic);
     ZASSERT(folds.size() == std::size_t(1));
     ZASSERT(folds[0].range.begin == static_cast<std::uint32_t>(content.find("{", g_begin)));
     ZASSERT(folds[0].range.end == g_end);
@@ -548,7 +531,8 @@ ZEST_CASE(LinksFromEdges) {
         {.line = 3, .target = "/usr/include/second"},
     };
 
-    auto links = feature::index_document_links(content, dialect_of("main.cpp", false), edges);
+    SourceText text(content, dialect_of("main.cpp", false));
+    auto links = feature::index_document_links(text, edges);
     ZASSERT(links.size() == std::size_t(2));
     ZASSERT(content.substr(links[0].range.begin, links[0].range.length()) == "\"first.h\"");
     ZASSERT(links[0].target == "/tmp/first.h");

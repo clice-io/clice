@@ -374,6 +374,16 @@ auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clan
     return type ? type->desugar() : clang::QualType();
 }
 
+auto accessed_specialization(const clang::CXXDependentScopeMemberExpr& access,
+                             TemplateResolver& resolver)
+    -> const clang::TemplateSpecializationType* {
+    if(access.isImplicitAccess()) {
+        return nullptr;
+    }
+    auto object = resolver.member_object(access.getBase(), access.isArrow());
+    return object.isNull() ? nullptr : object->getAs<clang::TemplateSpecializationType>();
+}
+
 auto writable(clang::QualType type) -> bool {
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         bool VisitBuiltinType(clang::BuiltinType* type) {
@@ -394,6 +404,295 @@ auto writable(clang::QualType type) -> bool {
     };
 
     return Finder().TraverseType(type);
+}
+
+namespace {
+
+/// What initializes a parameter: the argument, or what a conversion
+/// function returns.
+struct Value {
+    clang::QualType type;
+    bool lvalue = false;
+    /// A null pointer constant (`0`, `NULL`).
+    bool null = false;
+    /// A string literal, which clang still converts to a pointer to
+    /// non-const `char` (`wchar_t` when wide), with a warning.
+    bool literal = false;
+};
+
+/// The non-class types whose standard conversions are decided here. The
+/// rest — member and function pointers, vectors, `_Complex`, `_BitInt`,
+/// atomics — stay undecided.
+enum class Kind : std::uint8_t {
+    Arithmetic,
+    UnscopedEnum,
+    ScopedEnum,
+    Pointer,
+    NullPointer,
+    Other
+};
+
+Kind kind_of(clang::QualType type) {
+    if(const auto* builtin = type->getAs<clang::BuiltinType>()) {
+        if(builtin->isInteger() || builtin->isFloatingPoint()) {
+            return Kind::Arithmetic;
+        }
+        return builtin->getKind() == clang::BuiltinType::NullPtr ? Kind::NullPointer : Kind::Other;
+    }
+    if(type->isEnumeralType()) {
+        return type->isScopedEnumeralType() ? Kind::ScopedEnum : Kind::UnscopedEnum;
+    }
+    return type->isPointerType() ? Kind::Pointer : Kind::Other;
+}
+
+/// An arithmetic, enumeration or `std::nullptr_t` type.
+bool plain(clang::QualType type) {
+    auto kind = kind_of(type);
+    return kind != Kind::Pointer && kind != Kind::Other;
+}
+
+/// What a pointer whose conversions are decided here points to.
+bool decided_pointee(clang::QualType type) {
+    return type->isVoidType() || type->isRecordType() || plain(type);
+}
+
+/// A non-class type whose reference bindings are decided here.
+bool decided_referee(clang::QualType type) {
+    return plain(type) || (type->isPointerType() && decided_pointee(type->getPointeeType()));
+}
+
+/// The definition of the class `type` names, null while it has none.
+const clang::CXXRecordDecl* class_of(clang::QualType type) {
+    const auto* record = type->getAsCXXRecordDecl();
+    if(!record || type->isDependentType() || !record->hasDefinition()) {
+        return nullptr;
+    }
+    record = record->getDefinition();
+    return record->isInvalidDecl() ? nullptr : record;
+}
+
+bool same_or_derived(const clang::CXXRecordDecl& from, const clang::CXXRecordDecl& to) {
+    return from.getCanonicalDecl() == to.getCanonicalDecl() || from.isDerivedFrom(&to);
+}
+
+/// Whether `outer` carries every cv-qualifier of `inner`.
+bool includes_qualifiers(clang::QualType outer, clang::QualType inner) {
+    return (inner.getCVRQualifiers() & ~outer.getCVRQualifiers()) == 0;
+}
+
+/// Whether only an lvalue binds `reference` with no conversion: a
+/// reference to non-const, or to volatile.
+bool binds_lvalue_only(clang::QualType reference) {
+    auto referred = reference.getNonReferenceType();
+    return reference->isLValueReferenceType() &&
+           (!referred.isConstQualified() || referred.isVolatileQualified());
+}
+
+/// Whether no standard conversion takes `from`, of non-class type, to the
+/// non-class `to`.
+bool never_converts(clang::ASTContext& context, const Value& from, clang::QualType to) {
+    auto type = from.type;
+    if(type->isArrayType()) {
+        type = context.getArrayDecayedType(type);
+    }
+    if(context.hasSameUnqualifiedType(type, to)) {
+        return false;
+    }
+    auto kind = kind_of(type);
+    switch(kind_of(to)) {
+        case Kind::Arithmetic: {
+            /// `std::nullptr_t` converts to `bool` by direct-initialization
+            /// only.
+            if(to->isBooleanType()) {
+                return kind == Kind::ScopedEnum || kind == Kind::NullPointer;
+            }
+            return kind == Kind::ScopedEnum || kind == Kind::Pointer || kind == Kind::NullPointer;
+        }
+        case Kind::UnscopedEnum:
+        case Kind::ScopedEnum: return kind != Kind::Other;
+        case Kind::Pointer: break;
+        default: return false;
+    }
+
+    if(from.null || kind == Kind::NullPointer) {
+        return false;
+    }
+    if(kind != Kind::Pointer) {
+        return kind != Kind::Other;
+    }
+    auto target = to->getPointeeType();
+    auto pointee = type->getPointeeType();
+    if(!decided_pointee(target) || !decided_pointee(pointee)) {
+        return false;
+    }
+    bool writable_literal = from.literal && target.getCVRQualifiers() == 0 &&
+                            (target->isCharType() || target->isWideCharType());
+    if(!includes_qualifiers(target, pointee) && !writable_literal) {
+        return true;
+    }
+    if(target->isVoidType()) {
+        return false;
+    }
+    if(pointee->isVoidType()) {
+        return true;
+    }
+    if(context.hasSameUnqualifiedType(target, pointee)) {
+        return false;
+    }
+    if(target->isRecordType() && pointee->isRecordType()) {
+        const auto* base = class_of(target);
+        const auto* derived = class_of(pointee);
+        return base && derived && !same_or_derived(*derived, *base);
+    }
+    return true;
+}
+
+/// Whether no standard conversion sequence, reference binding included,
+/// takes `from` to `to`: all a converting constructor's parameter or a
+/// conversion function's result allows, on its side of the one
+/// user-defined conversion.
+bool never_standard(clang::ASTContext& context, const Value& from, clang::QualType to) {
+    auto target = to.getNonReferenceType();
+    if(target->isFunctionType() || from.type->isFunctionType()) {
+        return false;
+    }
+    if(target->isRecordType() != from.type->isRecordType()) {
+        return true;
+    }
+
+    bool reference = to->isReferenceType();
+    if(target->isRecordType()) {
+        const auto* base = class_of(target);
+        const auto* derived = class_of(from.type);
+        if(!base || !derived) {
+            return false;
+        }
+        if(!same_or_derived(*derived, *base)) {
+            return true;
+        }
+        return reference && (!includes_qualifiers(target, from.type) ||
+                             (from.lvalue ? to->isRValueReferenceType() : binds_lvalue_only(to)));
+    }
+
+    if(!reference) {
+        return never_converts(context, from, target);
+    }
+    bool decided = decided_referee(target) && decided_referee(from.type);
+    bool related = decided && context.hasSimilarType(target, from.type);
+    bool same = related && context.hasSameUnqualifiedType(target, from.type);
+    if(binds_lvalue_only(to)) {
+        if(!from.lvalue) {
+            return true;
+        }
+        return decided && (!related || (same && !includes_qualifiers(target, from.type)));
+    }
+    if(related && from.lvalue && to->isRValueReferenceType()) {
+        return true;
+    }
+    if(same) {
+        return !includes_qualifiers(target, from.type);
+    }
+    return never_converts(context, from, target.getUnqualifiedType());
+}
+
+/// Whether a converting constructor of `record` may take `from`.
+bool constructs(clang::ASTContext& context, const clang::CXXRecordDecl& record, const Value& from) {
+    auto name =
+        context.DeclarationNames.getCXXConstructorName(context.getCanonicalTagType(&record));
+    for(const auto* found: record.lookup(name)) {
+        /// A constructor template, or one inherited by a using-declaration.
+        const auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(found);
+        if(!constructor) {
+            return true;
+        }
+        if(!constructor->isConvertingConstructor(/*AllowExplicit=*/false)) {
+            continue;
+        }
+        /// `S(...)` takes anything.
+        if(constructor->getNumParams() == 0 ||
+           !never_standard(context, from, constructor->getParamDecl(0)->getType())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Whether one user-defined conversion — a converting constructor of the
+/// parameter's class, a conversion function of the argument's — may take
+/// `from` to `to`; true wherever unsure.
+bool may_convert(clang::ASTContext& context, const Value& from, clang::QualType to) {
+    auto target = to.getNonReferenceType();
+    bool lvalue_only = binds_lvalue_only(to);
+    const clang::CXXRecordDecl* source = nullptr;
+    if(from.type->isRecordType()) {
+        source = class_of(from.type);
+        if(!source) {
+            return true;
+        }
+    }
+    if(target->isRecordType()) {
+        const auto* record = class_of(target);
+        if(!record) {
+            return source || !lvalue_only;
+        }
+        /// A class binds a reference to itself or a base directly, or not
+        /// at all.
+        if(source && same_or_derived(*source, *record)) {
+            return false;
+        }
+        if(!lvalue_only && constructs(context, *record, from)) {
+            return true;
+        }
+    }
+    if(!source) {
+        return false;
+    }
+
+    for(const auto* found: source->getVisibleConversionFunctions()) {
+        const auto* conversion =
+            llvm::dyn_cast<clang::CXXConversionDecl>(found->getUnderlyingDecl());
+        if(!conversion) {
+            return true;
+        }
+        if(conversion->isExplicit()) {
+            continue;
+        }
+        auto type = conversion->getConversionType();
+        if(type->isDependentType() || type->isUndeducedType()) {
+            return true;
+        }
+        /// A reference only an lvalue binds takes what a conversion
+        /// function returns by lvalue reference, else a temporary.
+        if(lvalue_only && !type->isLValueReferenceType()) {
+            continue;
+        }
+        Value result{.type = type.getNonReferenceType(), .lvalue = type->isLValueReferenceType()};
+        if(!never_standard(context, result, lvalue_only ? to : target.getUnqualifiedType())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+auto never_initializes(clang::ASTContext& context,
+                       const clang::Expr& argument,
+                       clang::QualType parameter) -> bool {
+    auto type = argument.getType();
+    if(argument.isTypeDependent() || argument.containsErrors() || parameter->isDependentType() ||
+       type->isPlaceholderType() || type->isUndeducedType() ||
+       llvm::isa<clang::InitListExpr>(argument.IgnoreParens())) {
+        return false;
+    }
+    Value from{
+        .type = type,
+        .lvalue = argument.isLValue(),
+        .null = argument.isNullPointerConstant(context, clang::Expr::NPC_ValueDependentIsNull) !=
+                clang::Expr::NPCK_NotNull,
+        .literal = llvm::isa<clang::StringLiteral>(argument.IgnoreParenImpCasts()),
+    };
+    return never_standard(context, from, parameter) && !may_convert(context, from, parameter);
 }
 
 }  // namespace clice::types

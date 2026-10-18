@@ -36,7 +36,7 @@ struct ASTFamilyFixture {
             .ref = {.config = project.build.builtin(project.file_table.resolve(session->path_id))},
         };
         auto key = co_await ast.ensure_pch(session,
-                                           session->text,
+                                           session->text(),
                                            license_generation,
                                            license_epoch,
                                            directory,
@@ -77,8 +77,7 @@ struct Stack {
 
     std::shared_ptr<Session> open(llvm::StringRef path, std::string text) {
         auto session = sessions.open(project.file_table.intern(Spelling::absolute(path)));
-        session->text = std::move(text);
-        session->sync_text();
+        session->set_text(std::move(text));
         return session;
     }
 
@@ -340,8 +339,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
         ZASSERT(stack.is_compiling(session->path_id));
 
         // What the didChange handler does: fold the edit in, then supersede.
-        session->text = "int fixed;\n";
-        session->sync_text();
+        session->set_text("int fixed;\n");
         session->generation += 1;
         stack.ast.supersede(session->path_id);
         stack.probe.release(gate);
@@ -406,8 +404,7 @@ ZEST_CASE(SupersededCompileCancelled) {
         ZASSERT(stack.is_compiling(session->path_id));
 
         // The edit arrives while the slow compile is in flight.
-        session->text = "int fixed;\n";
-        session->sync_text();
+        session->set_text("int fixed;\n");
         session->generation += 1;
         stack.ast.supersede(session->path_id);
 
@@ -585,8 +582,7 @@ ZEST_CASE(ImportScanPerUnit) {
     auto plain = stack.open(tmp.path("plain.cpp"), "int plain() { return 0; }\n");
     auto main = stack.open(tmp.path("main.cpp"), "import m;\nint main() { return mv(); }\n");
     auto edit = [&](const std::shared_ptr<Session>& session, std::string text) {
-        session->text = std::move(text);
-        session->sync_text();
+        session->set_text(std::move(text));
         session->generation += 1;
         stack.ast.supersede(session->path_id);
     };
@@ -1228,7 +1224,7 @@ ZEST_CASE(PoisonPreambleShared) {
     auto make_session = [&] {
         auto session = std::make_shared<Session>();
         session->path_id = stack.project.file_table.intern(Spelling::absolute(src));
-        session->text = "#pragma clang __debug crash\n";
+        session->set_text("#pragma clang __debug crash\n");
         return session;
     };
     auto first = make_session();
@@ -1377,7 +1373,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
     auto make_session = [&] {
         auto session = std::make_shared<Session>();
         session->path_id = stack.project.file_table.intern(Spelling::absolute(src));
-        session->text = "#include \"dep.h\"\nint x;\n";
+        session->set_text("#include \"dep.h\"\nint x;\n");
         return session;
     };
     auto builder = make_session();

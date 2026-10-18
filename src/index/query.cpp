@@ -35,7 +35,7 @@ std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
     return content.slice(line_start, line_end).str();
 }
 
-/// The disk bytes of a pure-ASCII blob's file, served only while their
+/// The disk bytes of a shard's file, served only while their
 /// hash still matches what the shard was built from — a moved-on file
 /// degrades to no text rather than slicing mismatched text.
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
@@ -473,18 +473,9 @@ void IndexQuery::each_disk_file(SymbolHash hash,
                                 llvm::function_ref<void(Fid)> visit) const {
     if(index.identity_of(hash)) {
         index.each_reference_file(hash, visit);
-        return;
+    } else if(anchor.valid()) {
+        index.each_fanout_file(hash, anchor, visit);
     }
-    auto* shard = anchor.valid() ? index.shard(anchor) : nullptr;
-    auto identity = shard ? shard->find_symbol(hash) : std::nullopt;
-    if(!identity) {
-        return;
-    }
-    if(identity->scope == SymbolScope::FileLocal) {
-        visit(anchor);
-        return;
-    }
-    index.each_fanout_file(hash, anchor, files, visit);
 }
 
 void IndexQuery::for_each_relation(SymbolHash hash,
@@ -773,6 +764,19 @@ std::optional<SymbolRef> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) co
     if(auto* shard = anchor.valid() ? index.shard(anchor) : nullptr) {
         if(auto identity = shard->find_symbol(hash)) {
             return SymbolRef::from(hash, *identity);
+        }
+    }
+    // An instantiation or an expansion names it in a file other than its
+    // own: the files the fanouts list for it hold its declaration.
+    if(anchor.valid()) {
+        index.each_fanout_file(hash, anchor, [&](Fid file) {
+            auto* shard = found ? nullptr : index.shard(file);
+            if(auto identity = shard ? shard->find_symbol(hash) : std::nullopt) {
+                adopt(*identity);
+            }
+        });
+        if(found) {
+            return found;
         }
     }
     for(auto& [path_id, shard]: index.shards) {
@@ -1498,9 +1502,8 @@ std::vector<IndexQuery::Located> IndexQuery::implementation(SymbolHash hash, Fid
 std::optional<llvm::StringRef>
     IndexQuery::source_text(const IndexSource& source,
                             std::unique_ptr<llvm::MemoryBuffer>& storage) const {
-    // Buffer-backed sources and non-ASCII blobs carry their text; an
-    // open session served by its shard reads in buffer coordinates, so it
-    // ends up here too.
+    // Buffer-backed sources carry their text; an open session served by
+    // its shard reads in buffer coordinates, so it ends up here too.
     if(source.kind == IndexSource::Kind::SessionShard ||
        source.kind == IndexSource::Kind::PreambleShard || !source.positions.text().empty()) {
         return source.positions.text();

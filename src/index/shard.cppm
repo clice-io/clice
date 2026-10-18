@@ -70,15 +70,9 @@ public:
     /// every stored range.
     std::uint32_t content_size() const;
 
-    /// The file's text. Empty for pure-ASCII content, which is not
-    /// stored: byte offsets are already UTF-16 column offsets, so
-    /// position mapping needs only line_starts(), and text previews
-    /// re-read the file from disk under a content_hash check.
-    llvm::StringRef content() const;
-
     /// Whether `text` is the exact content the shard was built from —
     /// the freshness comparison for disk state. Compares by size and
-    /// hash, so it works for ASCII blobs, whose text is not stored.
+    /// hash: the shard does not keep the content.
     bool matches_content(llvm::StringRef text) const;
 
     /// The same comparison for a caller that already holds the disk
@@ -128,8 +122,9 @@ public:
     /// Which lines end in "\r\n" (ShardBlob::crlf_lines), read in place.
     std::span<const std::uint64_t> crlf_lines() const;
 
-    /// The positions of the text the shard was built from: over its stored
-    /// text, or its line table alone when it is pure ASCII.
+    /// The positions of the text the shard was built from, over its line
+    /// table and the text of its lines holding non-ASCII bytes. Text
+    /// previews read the file from disk under a content_hash check.
     PositionMap positions() const;
 
 private:
@@ -163,7 +158,8 @@ private:
 /// non-External names end up in the blob's local-name table (External names
 /// live in the ProjectIndex); returned name refs must stay valid for the
 /// duration of the call. `content` is the text the indexing compile
-/// consumed; pure-ASCII content is hashed and measured but not stored.
+/// consumed; the blob keeps its hash, size and line table, and the text of
+/// its non-ASCII lines only.
 void write_shard(const FileIndex& file_index,
                  llvm::function_ref<std::optional<SymbolIdentity>(SymbolHash)> symbols,
                  llvm::StringRef content,

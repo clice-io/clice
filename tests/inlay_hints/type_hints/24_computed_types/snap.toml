@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto elapsed⟨: chrono::seconds⟩ = later - earlier;" },
+    { line = "auto measured⟨: chrono::duration<double, ratio<1, 1000>>⟩ = stop - start;" },
+    { line = "auto same⟨: int⟩ = std::identity(⟨value:⟩1);" },
+    { line = "auto first⟨: int⟩ = std::pick<0>(1, 2.0);" },
+]

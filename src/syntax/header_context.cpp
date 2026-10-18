@@ -8,6 +8,7 @@ import :support.text;
 import :syntax.header_context;
 import :syntax.lexer;
 import :syntax.lexical_scan;
+import :syntax.preamble;
 import :syntax.scan;
 
 namespace clice {
@@ -398,7 +399,7 @@ std::optional<SynthesizedContext>
                        std::optional<llvm::StringRef> target_content) {
     SynthesizedContext context;
     std::string snapshot_path;
-    if(target_content && !pragma_once(*target_content, target_content->size())) {
+    if(target_content && !has_pragma_once(*target_content, target_content->size())) {
         snapshot_path =
             synthesized_path(llvm::sys::path::parent_path(target_path), *target_content);
     }

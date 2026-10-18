@@ -3,7 +3,6 @@ stdout = '''
 Scanned 4 files (1 source, 3 headers) in #ms: 3 of 4 includes resolved.
   ${WS}/main.cpp: "missing.h" not found
 '''
-stderr = "warning: 1 unresolved includes"
 exit = 0
 
 [test."$ clice scan --json"]
@@ -48,5 +47,4 @@ stdout = '''
   ]
 }
 '''
-stderr = "warning: 1 unresolved includes"
 exit = 0

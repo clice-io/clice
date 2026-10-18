@@ -149,6 +149,17 @@ const clang::NamedDecl* shown_declaration(const clang::NamedDecl* decl) {
     return llvm::cast<clang::NamedDecl>(shown);
 }
 
+/// The policy Sema prints its completion strings with.
+auto completion_policy(clang::Sema& sema) -> clang::PrintingPolicy {
+    auto policy = sema.getPrintingPolicy();
+    policy.AnonymousTagNameStyle =
+        llvm::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
+    policy.SuppressStrongLifetime = true;
+    policy.SuppressUnwrittenScope = true;
+    policy.CleanUglifiedParameters = true;
+    return policy;
+}
+
 /// The completion string Sema builds for a class template, with the
 /// template parameters of `pattern`: Sema reads them from the first
 /// declaration, whichever it is.
@@ -157,12 +168,7 @@ const clang::CodeCompletionString&
                           const clang::CodeCompletionResult& candidate,
                           const clang::ClassTemplateDecl& pattern,
                           clang::Sema& sema) {
-    auto policy = sema.getPrintingPolicy();
-    policy.AnonymousTagNameStyle =
-        llvm::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
-    policy.SuppressStrongLifetime = true;
-    policy.SuppressUnwrittenScope = true;
-    policy.CleanUglifiedParameters = true;
+    auto policy = completion_policy(sema);
     auto copy = [&](llvm::StringRef text) {
         return builder.getAllocator().CopyString(text);
     };
@@ -405,6 +411,56 @@ std::string sort_text(float score, std::optional<std::uint32_t> order) {
         text += std::format("{:05}", *order);
     }
     return text;
+}
+
+/// The virtual functions of `record`'s bases, direct or not, an override
+/// declaration in its body may name: none that it, or a class between it and
+/// the base, overrides, and none final or deleted. Sema offers only its
+/// direct bases'.
+auto overridable(const clang::CXXRecordDecl& record)
+    -> llvm::SmallVector<const clang::CXXMethodDecl*> {
+    llvm::SmallVector<const clang::CXXRecordDecl*> bases;
+    llvm::SmallPtrSet<const clang::CXXRecordDecl*, 8> seen;
+    auto collect = [&](this auto& self, const clang::CXXRecordDecl& derived) -> void {
+        for(const auto& base: derived.bases()) {
+            const auto* decl = base.getType()->getAsCXXRecordDecl();
+            decl = decl ? decl->getDefinition() : nullptr;
+            if(decl && seen.insert(decl).second) {
+                bases.push_back(decl);
+                self(*decl);
+            }
+        }
+    };
+    collect(record);
+
+    llvm::SmallPtrSet<const clang::CXXMethodDecl*, 16> overridden;
+    auto close = [&](this auto& self, const clang::CXXMethodDecl& method) -> void {
+        for(const auto* base: method.overridden_methods()) {
+            if(overridden.insert(base->getCanonicalDecl()).second) {
+                self(*base);
+            }
+        }
+    };
+    for(const auto* method: record.methods()) {
+        close(*method);
+    }
+    for(const auto* base: bases) {
+        for(const auto* method: base->methods()) {
+            close(*method);
+        }
+    }
+
+    llvm::SmallVector<const clang::CXXMethodDecl*> methods;
+    for(const auto* base: bases) {
+        for(const auto* method: base->methods()) {
+            if(method->isVirtual() && method->getIdentifier() && !method->isDeleted() &&
+               !method->hasAttr<clang::FinalAttr>() &&
+               !overridden.contains(method->getCanonicalDecl())) {
+                methods.push_back(method);
+            }
+        }
+    }
+    return methods;
 }
 
 /// The type a call of a variable holding a callable returns: a lambda's, a
@@ -1255,6 +1311,10 @@ public:
                         tag = object.isNull() ? nullptr : informed.resolve_tag(object);
                     }
                 }
+                /// The members of a dependent specialization read its
+                /// template's parameters as its arguments.
+                display_options.specialization =
+                    object.isNull() ? nullptr : object->getAs<clang::TemplateSpecializationType>();
                 if(auto* name = llvm::dyn_cast<clang::DeclRefExpr>(base->IgnoreParenImpCasts());
                    !tag && !arrow && name) {
                     if(auto* var = llvm::dyn_cast<clang::VarDecl>(name->getDecl());
@@ -1381,8 +1441,11 @@ public:
 
         if(resolving) {
             resolved_candidates |= candidate_count > 0;
-        } else if(complete_resolved(sema, context)) {
-            return;
+        } else {
+            display_options.specialization = nullptr;
+            if(complete_resolved(sema, context)) {
+                return;
+            }
         }
 
         if(candidate_count == 0) {
@@ -1839,6 +1902,9 @@ public:
                 readable.emplace(sema.getASTContext(), display_options);
                 display_options.readable = &*readable;
             }
+            display_options.scope = declaration->getDeclContext();
+            const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration);
+            display_options.source = variable ? variable->getInit() : nullptr;
             const auto* function = declaration->getAsFunction();
             if(function && parameters != std::string::npos) {
                 item.signature.replace(parameters,
@@ -1917,19 +1983,11 @@ public:
                 case clang::CodeCompletionResult::RK_Pattern: {
                     auto& pattern = *candidate.Pattern;
                     // A pattern carrying a method is an override declaration
-                    // in a class body, or in a method body a call of the
+                    // in a class body, which the overrides below offer for
+                    // every base, or in a method body a call of the
                     // overridden method — a duplicate of the method's own
                     // candidate that would change which function is called.
                     if(candidate.Declaration) {
-                        if(!llvm::isa<clang::CXXRecordDecl>(sema.CurContext)) {
-                            break;
-                        }
-                        add({
-                            .label = pattern.getAllTypedText(),
-                            .kind = protocol::CompletionItemKind::Method,
-                            .insert = pattern_text(pattern, /*whole=*/false) + ";",
-                            .relevance = priority_weight(candidate.Priority),
-                        });
                         break;
                     }
                     if(requirements) {
@@ -1996,6 +2054,31 @@ public:
                     }
                     break;
                 }
+            }
+        }
+
+        // Where a member declaration starts, as Sema offers its override
+        // declarations.
+        const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(sema.CurContext);
+        if(record && context.getKind() == clang::CodeCompletionContext::CCC_ClassStructUnion &&
+           sema.getCurScope()->isClassScope()) {
+            auto policy = completion_policy(sema);
+            for(const auto* method: overridable(*record)) {
+                clang::CodeCompletionBuilder builder(getAllocator(), getCodeCompletionTUInfo());
+                auto& pattern =
+                    *clang::CodeCompletionResult(method, clang::CCP_CodePattern)
+                         .createCodeCompletionStringForOverride(sema.getPreprocessor(),
+                                                                sema.getASTContext(),
+                                                                builder,
+                                                                /*IncludeBriefComments=*/false,
+                                                                context,
+                                                                policy);
+                add({
+                    .label = pattern.getAllTypedText(),
+                    .kind = protocol::CompletionItemKind::Method,
+                    .insert = pattern_text(pattern, /*whole=*/false) + ";",
+                    .relevance = priority_weight(clang::CCP_CodePattern),
+                });
             }
         }
 

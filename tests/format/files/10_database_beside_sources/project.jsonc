@@ -1,0 +1,4 @@
+{
+  // bear ran in native/: its database sits beside the sources it lists.
+  "databases": { "native": ["native/main.cpp"] }
+}

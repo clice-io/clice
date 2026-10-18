@@ -1,0 +1,11 @@
+[answers.call]
+definition = [
+    "void ⟦print⟧(File* file, const char* format, Args&&... args);",
+    "void ⟦print⟧(Format format, Args&&... args);",
+]
+
+[answers.path]
+definition = ["void ⟦open⟧(const char* name, int flags);"]
+
+[answers.descriptor]
+definition = ["void ⟦open⟧(int descriptor, int flags);"]

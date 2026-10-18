@@ -1,0 +1,326 @@
+["the units index"."$ clice index"]
+stdout = '''
+Indexed 5 translation units in #s: 6 file shards (# KB), 10 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice index"]
+stdout = '''
+Indexed 5 translation units in #s: 6 file shards (# KB), 10 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice query references src/main.cpp:2:20 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#930802bd3359aed2 path:${WS}/include/shapes.h",
+    "references": [
+      {
+        "file": "${WS}/include/shapes.h",
+        "line": 5,
+        "context": "static double helper(double value) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/src/main.cpp",
+        "line": 2,
+        "context": "    return scale * helper(1.0);",
+        "function": "use_scale"
+      },
+      {
+        "file": "${WS}/src/other.cpp",
+        "line": 2,
+        "context": "    return helper(scale);",
+        "function": "other"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice query references include/shapes.h:5:15 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#930802bd3359aed2 path:${WS}/include/shapes.h",
+    "references": [
+      {
+        "file": "${WS}/include/shapes.h",
+        "line": 5,
+        "context": "static double helper(double value) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/src/main.cpp",
+        "line": 2,
+        "context": "    return scale * helper(1.0);",
+        "function": "use_scale"
+      },
+      {
+        "file": "${WS}/src/other.cpp",
+        "line": 2,
+        "context": "    return helper(scale);",
+        "function": "other"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice query definition src/other.cpp:2:12"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#930802bd3359aed2 path:${WS}/include/shapes.h",
+    "documentation": null,
+    "definition": {
+      "file": "${WS}/include/shapes.h",
+      "startLine": 5,
+      "endLine": 7,
+      "text": "static double helper(double value) {\n    return value * scale;\n}"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice query references src/main.cpp:2:12 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "scale",
+    "kind": "Variable",
+    "symbol": "#57104ffe1961fb99 path:${WS}/include/shapes.h",
+    "references": [
+      {
+        "file": "${WS}/include/shapes.h",
+        "line": 3,
+        "context": "const double scale = 2.0;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/shapes.h",
+        "line": 6,
+        "context": "    return value * scale;",
+        "function": "helper"
+      },
+      {
+        "file": "${WS}/src/main.cpp",
+        "line": 2,
+        "context": "    return scale * helper(1.0);",
+        "function": "use_scale"
+      },
+      {
+        "file": "${WS}/src/other.cpp",
+        "line": 2,
+        "context": "    return helper(scale);",
+        "function": "other"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice query definition src/other.cpp:2:19"]
+stdout = '''
+{
+  "result": {
+    "name": "scale",
+    "kind": "Variable",
+    "symbol": "#57104ffe1961fb99 path:${WS}/include/shapes.h",
+    "documentation": null,
+    "definition": {
+      "file": "${WS}/include/shapes.h",
+      "startLine": 3,
+      "endLine": 3,
+      "text": "const double scale = 2.0"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice query references src/local.cpp:3:12 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#6a61696dee5b366d path:${WS}/src/local.cpp",
+    "references": [
+      {
+        "file": "${WS}/include/shapes.h",
+        "line": 17,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/src/local.cpp",
+        "line": 3,
+        "context": "    double radius;",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice query references src/local.cpp:13:16 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#ccef730dd8927c2e path:${WS}/src/local.cpp",
+    "references": [
+      {
+        "file": "${WS}/include/shapes.h",
+        "line": 17,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/src/local.cpp",
+        "line": 13,
+        "context": "        double radius = 0;",
+        "function": "scoped_twice"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice query references include/shapes.h:17:22 --include-declaration"]
+stdout = '''
+{
+  "error": "ambiguous: 3 symbols match; name one by the `symbol` of a candidate",
+  "candidates": [
+    {
+      "name": "radius",
+      "signature": null,
+      "kind": "Field",
+      "file": "${WS}/include/shapes.h",
+      "line": 11,
+      "container": "Hidden",
+      "symbol": "#5080540e43ee68b2 path:${WS}/include/shapes.h"
+    },
+    {
+      "name": "radius",
+      "signature": null,
+      "kind": "Field",
+      "file": "${WS}/src/local.cpp",
+      "line": 3,
+      "container": "Local",
+      "symbol": "#6a61696dee5b366d path:${WS}/src/local.cpp"
+    },
+    {
+      "name": "radius",
+      "signature": null,
+      "kind": "Field",
+      "file": "${WS}/src/local.cpp",
+      "line": 13,
+      "container": "scoped_twice::Scoped",
+      "symbol": "#ccef730dd8927c2e path:${WS}/src/local.cpp"
+    }
+  ],
+  "stale": []
+}
+'''
+exit = 1
+
+["internal names across the pch"."$ clice query definition src/made.cpp:2:19"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Field",
+    "symbol": "#25a69d0b87eb083c path:${WS}/include/shapes.h",
+    "documentation": null,
+    "definition": {
+      "file": "${WS}/include/shapes.h",
+      "startLine": 22,
+      "endLine": 22,
+      "text": "double value"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice query references include/shapes.h:22:16 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Field",
+    "symbol": "#25a69d0b87eb083c path:${WS}/include/shapes.h",
+    "references": [
+      {
+        "file": "${WS}/include/shapes.h",
+        "line": 22,
+        "context": "        double value;",
+        "function": "make"
+      },
+      {
+        "file": "${WS}/src/made.cpp",
+        "line": 2,
+        "context": "    return make().value;",
+        "function": "made"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["the server reads them alike".helper]
+references = [
+    "static double ⟦helper⟧(double value) {",
+    "src/main.cpp │ return scale * ⟦helper⟧(1.0);",
+    "src/other.cpp │ return ⟦helper⟧(scale);",
+]
+
+["the server reads them alike".scale]
+references = [
+    "include/shapes.h │ const double ⟦scale⟧ = 2.0;",
+    "include/shapes.h │ return value * ⟦scale⟧;",
+    "src/main.cpp │ return ⟦scale⟧ * helper(1.0);",
+    "return helper(⟦scale⟧);",
+]
+
+["the server reads them alike".local]
+references = ["include/shapes.h │ return 2 * shape.⟦radius⟧;", "double ⟦radius⟧;"]
+
+["the server reads them alike".scoped]
+references = ["include/shapes.h │ return 2 * shape.⟦radius⟧;", "double ⟦radius⟧ = 0;"]

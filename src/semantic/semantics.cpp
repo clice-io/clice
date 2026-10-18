@@ -1216,8 +1216,18 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
             }
         }
 
-        RelationKind kind = TD->isThisDeclarationADefinition() ? RelationKind::Definition
-                                                               : RelationKind::Declaration;
+        /// template <typename T> friend class Foo;
+        ///                                     ^~~~ reference: a friend
+        /// declaration only grants access, code names the class through its
+        /// own declarations
+        const clang::Decl* declared = TD;
+        if(const auto* described = TD->getDescribedTemplate()) {
+            declared = described;
+        }
+        RelationKind kind = declared->getFriendObjectKind() != clang::Decl::FOK_None
+                                ? RelationKind::Reference
+                            : TD->isThisDeclarationADefinition() ? RelationKind::Definition
+                                                                 : RelationKind::Declaration;
         refer(out, TD, kind, TD->getLocation());
         return;
     }

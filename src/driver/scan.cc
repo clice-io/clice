@@ -68,9 +68,7 @@ Loaded load(const Spelling& root, const Config& config, llvm::StringRef configur
     loaded.files->spell_root(root);
     auto& project = *loaded.project;
     project.config = config;
-    CanonicalPath identity(root);
-    auto nearby = compile_commands_in_tree(project, identity, configuration);
-    loaded.load = load_build(project, identity, configuration, nearby);
+    loaded.load = load_build(project, CanonicalPath(root), configuration);
     return loaded;
 }
 
@@ -198,7 +196,9 @@ int run_scan(const ScanOptions& opts) {
 
     auto first = load(root, config, configuration);
     if(first.load.members.empty()) {
-        LOG_ERROR("Nothing to scan: no compilation database for {} lists a file", root.str());
+        LOG_ERROR("Nothing to scan: no compilation database for {} lists a file.{}",
+                  root.str(),
+                  deeper_databases_hint(*first.project));
         return 1;
     }
     auto output = describe(first);

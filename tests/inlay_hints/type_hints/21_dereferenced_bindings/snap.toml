@@ -1,0 +1,19 @@
+[answers.begin]
+inlay_hints = [
+    { line = "auto [name⟨: const string⟩, point⟨: Point⟩] = *points.begin();" },
+]
+
+[answers.reference]
+inlay_hints = [
+    { line = "auto& [key⟨: const string⟩, value⟨: Point⟩] = *points.begin();" },
+]
+
+[answers.find]
+inlay_hints = [
+    { line = "auto [found⟨: const string⟩, at⟨: Point⟩] = *points.find(⟨key:⟩std::string());" },
+]
+
+[answers.pair]
+inlay_hints = [
+    { line = "auto [label⟨: const string⟩, origin⟨: Point⟩] = entry;" },
+]

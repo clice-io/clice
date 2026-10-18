@@ -399,6 +399,20 @@ tests/completion/templates/15_concept_requirements
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**通过依赖特化访问的成员**
+
+类模板依赖特化的成员，按代码写出的模板实参显示
+
+对于 `lib::map<int, T>`，输入 `m.find(1)->` 后，`first` 为 `const int`，`second` 为 `T`，而不是 pair 自身的 `_T1` 和 `_T2`。
+
+```case
+tests/completion/templates/29_library_specialization_members
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 重写与类外定义
@@ -483,7 +497,7 @@ tests/completion/include_path_completion/04_sibling_headers
 
 **距离最近的头文件优先**
 
-头文件名先列出包含方文件所在目录中的头文件，再列出引号包含目录中的头文件，然后按顺序列出其他包含目录中的头文件，系统目录排在最后
+头文件名先列出包含方文件所在目录中的头文件，再列出引号包含目录中的头文件，然后按顺序列出其他包含目录中的头文件，系统目录排在最后；两个目录都有的头文件名只列出一次，取自靠前的目录
 
 ```case
 tests/completion/include_path_completion/09_header_order

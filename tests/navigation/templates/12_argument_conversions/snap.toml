@@ -1,0 +1,86 @@
+[answers.constructor]
+definition = ["void ⟦tag⟧(Name name, int value);"]
+
+[answers.explicit_constructor]
+definition = ["void ⟦find⟧(long number, int value);"]
+
+[answers.constructor_parameter]
+definition = ["void ⟦label⟧(Base* base, int value);"]
+
+[answers.constructor_to_reference]
+definition = ["void ⟦rename⟧(const char* text, int value);"]
+
+[answers.rvalue_to_reference]
+definition = ["void ⟦bump⟧(long counter, int value);"]
+
+[answers.lvalue_to_reference]
+definition = ["void ⟦bump⟧(int& counter, int value);", "void ⟦bump⟧(long counter, int value);"]
+
+[answers.other_lvalue_to_reference]
+definition = ["void ⟦bump⟧(long counter, int value);"]
+
+[answers.const_lvalue_to_reference]
+definition = ["void ⟦bump⟧(long counter, int value);"]
+
+[answers.lvalue_to_rvalue_reference]
+definition = ["void ⟦consume⟧(long number, int value);"]
+
+[answers.pointer_to_rvalue_reference]
+definition = ["void ⟦adopt⟧(const int* view, int value);"]
+
+[answers.pointer_to_other_reference]
+definition = ["void ⟦reseat⟧(const void* raw, int value);"]
+
+[answers.pointer_to_const_reference]
+definition = ["void ⟦show⟧(Base* base, int value);"]
+
+[answers.class_lvalue_to_rvalue_reference]
+definition = ["void ⟦take⟧(const Box& box, int value);"]
+
+[answers.class_rvalue_to_reference]
+definition = ["void ⟦hold⟧(const Box& box, int value);"]
+
+[answers.const_class_to_reference]
+definition = ["void ⟦hold⟧(const Box& box, int value);"]
+
+[answers.derived_to_base]
+definition = ["void ⟦keep⟧(Base base, int value);"]
+
+[answers.scoped_enum]
+definition = ["void ⟦paint⟧(Color color, int value);"]
+
+[answers.integer_to_enum]
+definition = ["void ⟦paint⟧(int number, int value);"]
+
+[answers.scoped_enum_to_bool]
+definition = ["void ⟦toggle⟧(Color color, int value);"]
+
+[answers.null_to_bool]
+definition = ["void ⟦mark⟧(Base* base, int value);"]
+
+[answers.derived_pointer]
+definition = ["void ⟦visit⟧(Base* base, int value);"]
+
+[answers.unrelated_pointer]
+definition = ["void ⟦open_box⟧(Box* box, int value);"]
+
+[answers.lost_qualifier]
+definition = ["void ⟦scan⟧(const char* text, int value);"]
+
+[answers.void_pointer]
+definition = ["void ⟦load⟧(void* raw, int value);"]
+
+[answers.literal_to_void_pointer]
+definition = ["void ⟦name⟧(const char* text, int value);"]
+
+[answers.null_to_integer]
+definition = ["void ⟦measure⟧(Base* base, int value);"]
+
+[answers.conversion_function]
+definition = ["void ⟦store⟧(Box box, int value);"]
+
+[answers.explicit_conversion]
+definition = ["void ⟦check⟧(Flag flag, int value);"]
+
+[answers.explicit_object]
+definition = ["void ⟦draw⟧(this Canvas& self, int x, int y);"]

@@ -150,7 +150,7 @@ struct QuickScanCache {
 /// conditionals are evaluated and macros expand. This is the only
 /// trustworthy source of module dependency edges — `import MACRO;` is
 /// legal ([cpp.import] macro-expands an import's tokens, see
-/// ImportMacroExpandedName in module_import_tests) — and it resolves a
+/// ModuleImportScan.ImportMacroExpandedName in scan_tests) — and it resolves a
 /// partition import (`import :part;`) against the enclosing module's
 /// name. Fills the module name and the imports with their offsets.
 /// An engaged `content` remaps the scanned file to it — even when empty:
@@ -173,24 +173,5 @@ ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
                             llvm::StringRef directory,
                             std::optional<llvm::StringRef> content = std::nullopt,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
-
-/// The end of the preamble: the directives, and the global module
-/// fragment's `module;`, that open the file.
-std::uint32_t compute_preamble_bound(llvm::StringRef content);
-
-/// The part of the preamble up to `bound` that is finished: `bound` itself,
-/// or the end of the line before the first #include/#import whose "" or <>
-/// is still open or C++20 module statement (import/export) still lacks its
-/// ';' — the user is typing it, and it belongs with the body until done.
-std::uint32_t complete_preamble_bound(llvm::StringRef content, std::uint32_t bound);
-
-/// Whether a directive of the preamble up to `bound` defines, undefines or
-/// tests a macro: the macro and its uses then sit at positions of the file
-/// itself.
-bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound);
-
-/// Whether the text up to `bound` guards itself with `#pragma once`: a
-/// compile enters it once, so its other includes find it skipped.
-bool pragma_once(llvm::StringRef content, std::uint32_t bound);
 
 }  // namespace clice

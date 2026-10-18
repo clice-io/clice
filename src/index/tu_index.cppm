@@ -7,7 +7,6 @@ module clice:index.tu_index;
 import :compile.compilation;
 import :index.include_tree;
 import :index.instantiation_shard;
-import :index.manifest;
 import :index.shard;
 import :index.types;
 
@@ -16,6 +15,13 @@ namespace clice::index {
 /// Which level of the multi-level symbol table stores a declaration's
 /// symbol.
 SymbolScope classify_scope(const clang::NamedDecl* decl);
+
+/// A symbol below external scope more than one of a TU's files names,
+/// with those files as the TU index's path ids.
+struct PathFanout {
+    SymbolHash symbol = 0;
+    llvm::SmallVector<std::uint32_t, 2> paths;
+};
 
 /// How build_tu_index shapes the TU index blob.
 struct TUIndexOptions {
@@ -178,9 +184,10 @@ public:
 
     /// Visit every symbol of the table in ascending hash order: hash,
     /// identity, and its reference files as path ids. The table leaves out
-    /// file-local symbols (see find_symbol) and the external symbols only
-    /// sections left empty name (TUIndexOptions::known_variants). Return
-    /// false from the callback to stop.
+    /// the file-local symbols no other file names (see find_symbol) and the
+    /// external symbols only sections left empty name
+    /// (TUIndexOptions::known_variants). Return false from the callback to
+    /// stop.
     void iterate_symbols(
         llvm::function_ref<bool(SymbolHash,
                                 const SymbolIdentity&,
@@ -191,13 +198,10 @@ public:
     /// function's locals, a template's parameters).
     std::optional<SymbolIdentity> find_symbol(SymbolHash hash) const;
 
-    /// The internal-linkage symbols more than one of the TU's files names
-    /// (Symbol::reference_files), sorted by symbol, their files as indices
-    /// into `contribution_paths` — the path ids of the manifest's
-    /// contributions, in order. Nullopt when a symbol's reference files are
-    /// not all among them.
-    std::optional<std::vector<LocalFanout>>
-        local_fanout(llvm::ArrayRef<std::uint32_t> contribution_paths) const;
+    /// The symbols below external scope more than one of the TU's files
+    /// names (Symbol::reference_files), sorted by symbol. Nullopt when a
+    /// symbol's reference files are not all among the `held` path ids.
+    std::optional<std::vector<PathFanout>> local_fanout(const llvm::BitVector& held) const;
 
     /// Whether `text` still begins with the exact preamble this TU index
     /// was built from — the gate for serving preamble-derived state

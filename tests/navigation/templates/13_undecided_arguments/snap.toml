@@ -1,0 +1,35 @@
+[answers.null_pointer]
+definition = ["void ⟦visit⟧(Base* base, int value);", "void ⟦visit⟧(int* number, int value);"]
+
+[answers.zero]
+definition = ["void ⟦visit⟧(Base* base, int value);", "void ⟦visit⟧(int* number, int value);"]
+
+[answers.conversion_template]
+definition = ["void ⟦use⟧(Base* base, int value);", "void ⟦use⟧(int number, int value);"]
+
+[answers.string_literal]
+definition = ["void ⟦write⟧(char* text, int value);"]
+
+[answers.pointer_to_bool]
+definition = ["void ⟦enable⟧(bool flag, int value);"]
+
+[answers.pointer_to_void]
+definition = ["void ⟦release⟧(void* raw, int value);"]
+
+[answers.constructor_template]
+definition = ["void ⟦print_text⟧(Text text, int value);"]
+
+[answers.incomplete_parameter]
+definition = ["void ⟦send⟧(const Later& later, int value);"]
+
+[answers.incomplete_argument]
+definition = ["void ⟦post⟧(int number, int value);", "void ⟦post⟧(Box box, int value);"]
+
+[answers.braced_list]
+definition = ["void ⟦place⟧(Point point, int value);", "void ⟦place⟧(int number, int value);"]
+
+[answers.array_rvalue]
+definition = ["void ⟦fill⟧(const int (&values)[3], int value);"]
+
+[answers.pack_before]
+definition = ["void ⟦emit⟧(Color color, int code = 0);", "void ⟦emit⟧(int code, Color color);"]

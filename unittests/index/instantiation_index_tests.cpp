@@ -297,6 +297,26 @@ ZEST_CASE(AbbreviatedParameterDeduced) {
     });
 }
 
+ZEST_CASE(PackParametersMapped) {
+    build(R"(
+        struct A {};
+        struct B {};
+        void sink(A);
+        void sink(B);
+        void take(auto... values) { (sink(values), ...); }
+        void use() { take(A{}, B{}); }
+    )");
+    // Every element of the pack is the one parameter `values`, which the
+    // written code already names: each deduces its own type, and none is a
+    // parameter of its own.
+    auto records = resolved();
+    for(auto type: {"A", "B"}) {
+        ZEXPECT(llvm::is_contained(records, Resolved{"auto", Deduced, type}));
+    }
+    ZEXPECT(
+        llvm::none_of(records, [](const Resolved& record) { return record.target == "values"; }));
+}
+
 ZEST_CASE(MacroDeclaredAutoUnwritten) {
     build(R"(
         struct A {};
@@ -323,6 +343,114 @@ ZEST_CASE(MacroBodyNamesResolved) {
     });
     // An expansion has a resolution, no key.
     ZEXPECT(keys().empty());
+}
+
+ZEST_CASE(ForeignInternalUnkeyed) {
+    add_file("run.h", R"(
+        template <typename T>
+        void run(T t) { t.go(); }
+    )");
+    build(R"(
+        #include "run.h"
+        namespace {
+        struct A { void go(); };
+        }
+        void use() { run(A{}); }
+    )");
+    auto section = section_of("run.h");
+    ZASSERT(section);
+    const auto& shard = view.instantiation_shard(*section);
+    // Only the units walking it list run.h among the files naming the
+    // internal `go`: a skipped key could not stand for it.
+    ZEXPECT(shard.keys().empty());
+    ZEXPECT(shard.resolutions().size() == 1u);
+}
+
+ZEST_CASE(SignatureNamesItsParameter) {
+    build(R"(
+        struct V { int front(); };
+        template <typename C>
+        auto first(C& c) -> decltype(c.front());
+        int head(V& v) { return first(v); }
+        template <typename C>
+        auto first(C& c) -> decltype(c.front()) { return c.front(); }
+    )");
+    // The specialization takes its parameter from the declaration: the
+    // declaration's signature names its own `c`, the definition its own, as
+    // the written code does.
+    ZEXPECT(llvm::none_of(resolved(), [](const Resolved& record) { return record.target == "c"; }));
+}
+
+ZEST_CASE(WrappedSignatureNamesParameter) {
+    build(R"(
+        #define WRAP(...) __VA_ARGS__
+        struct V { int front(); };
+        WRAP(
+            template <typename C>
+            auto first(C& c) -> decltype(c.front());
+            int head(V& v) { return first(v); }
+            template <typename C>
+            auto first(C& c) -> decltype(c.front()) { return c.front(); }
+        )
+    )");
+    // One macro argument holds both declarations: their text, not the
+    // invocation, tells them apart.
+    ZEXPECT(llvm::none_of(resolved(), [](const Resolved& record) { return record.target == "c"; }));
+}
+
+ZEST_CASE(ForeignCallerUnkeyed) {
+    add_file("box.h", R"(
+        namespace {
+        struct Box {
+            template <typename T>
+            void put(T t);
+        };
+        }
+    )");
+    add_file("put.h", R"(
+        template <typename T>
+        void Box::put(T t) { t.go(); }
+    )");
+    build(R"(
+        #include "box.h"
+        #include "put.h"
+        struct Ext { void go(); };
+        void use() { Box{}.put(Ext{}); }
+    )");
+    auto section = section_of("put.h");
+    ZASSERT(section);
+    const auto& shard = view.instantiation_shard(*section);
+    // The call's target is external, but its caller is the internal `put`
+    // box.h declares.
+    ZEXPECT(shard.keys().empty());
+    ZEXPECT(shard.resolutions().size() == 1u);
+}
+
+ZEST_CASE(LocalClassNamesHeader) {
+    add_file("run.h", R"(
+        template <typename T>
+        void run(T t) { t.go(); }
+    )");
+    build(R"(
+        #include "run.h"
+        void use() {
+            struct Local { void go() {} };
+            run(Local{});
+        }
+    )");
+    // A function's own class is named in the header the instantiation
+    // resolves in: the table lists it with both files.
+    std::optional<std::size_t> files;
+    view.iterate_symbols([&](index::SymbolHash hash,
+                             const index::SymbolIdentity& identity,
+                             llvm::ArrayRef<std::uint32_t> references) {
+        if(identity.name == "go") {
+            ZEXPECT(identity.scope == index::SymbolScope::FileLocal);
+            files = references.size();
+        }
+        return true;
+    });
+    ZEXPECT(files == 2u);
 }
 
 ZEST_CASE(SymbolsNameTheirFiles) {

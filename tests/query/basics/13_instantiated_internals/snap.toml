@@ -1,0 +1,96 @@
+["closed sources"."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 4 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["closed sources"."$ clice query references main.cpp:5:12 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#e713b5aad0f6b40b path:${WS}/main.cpp",
+    "references": [
+      {
+        "file": "${WS}/box.h",
+        "line": 5,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    double radius;",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["closed sources"."$ clice query references main.cpp:15:16 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#98f5ba17864bc461 path:${WS}/main.cpp",
+    "references": [
+      {
+        "file": "${WS}/box.h",
+        "line": 5,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "        double radius = 0;",
+        "function": "scoped_twice"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["closed sources"."$ clice query references box.h:5:22 --include-declaration"]
+stdout = '''
+{
+  "error": "ambiguous: 2 symbols match; name one by the `symbol` of a candidate",
+  "candidates": [
+    {
+      "name": "radius",
+      "signature": null,
+      "kind": "Field",
+      "file": "${WS}/main.cpp",
+      "line": 15,
+      "container": "scoped_twice::Scoped",
+      "symbol": "#98f5ba17864bc461 path:${WS}/main.cpp"
+    },
+    {
+      "name": "radius",
+      "signature": null,
+      "kind": "Field",
+      "file": "${WS}/main.cpp",
+      "line": 5,
+      "container": "Local",
+      "symbol": "#e713b5aad0f6b40b path:${WS}/main.cpp"
+    }
+  ],
+  "stale": []
+}
+'''
+exit = 1
+
+["open header".read]
+references = ["return 2 * shape.⟦radius⟧;", "main.cpp │ double ⟦radius⟧;", "main.cpp │ double ⟦radius⟧ = 0;"]

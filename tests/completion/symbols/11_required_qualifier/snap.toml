@@ -12,7 +12,7 @@ items = [
 
 [answers.namespace_enum.completion]
 items = [
-    { label = "ns::Apple", kind = "EnumMember", detail = "ns::Fruit", filter = "Apple" },
+    { label = "ns::Apple", kind = "EnumMember", detail = "Fruit", filter = "Apple" },
 ]
 
 [answers.case_label.completion]

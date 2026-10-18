@@ -226,7 +226,8 @@ export const SCENARIOS: Scenario[] = [
         // Outputs, dependency files, debug info and pure codegen switches
         // are dropped; what changes the parse stays (the macro check sees
         // -ffast-math, -funsigned-char, -march and -fno-exceptions), a
-        // relative include directory anchored at the entry's directory.
+        // relative include directory anchored at the entry's directory, and
+        // -flto, which the driver requires for flags such as -fsanitize=cfi.
         files: {
             "src/main.cpp": {
                 contains: [
@@ -238,8 +239,8 @@ export const SCENARIOS: Scenario[] = [
                 excludes: ["-dependency-file", "-debug-info-kind=constructor"],
             },
             "src/util.c": {
-                contains: [["-std=c11"], ["-fsanitize=address"]],
-                excludes: ["-ffunction-sections", "-flto=full"],
+                contains: [["-std=c11"], ["-fsanitize=address"], ["-flto=full"]],
+                excludes: ["-ffunction-sections"],
             },
         },
     },

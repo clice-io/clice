@@ -261,10 +261,10 @@ std::vector<Highlight>
 /// The project table lists the files holding an external symbol's entries,
 /// and only an external one's: every question about a symbol's entries also
 /// takes an `anchor`, a file holding one of them — the cursor's file, the
-/// file a relation was read from, a located symbol's site. A
-/// file-local symbol's entries are the anchor's own; a TU-local symbol's are
-/// also in the files the TUs contributing to the anchor list for it
-/// (ProjectIndex::each_fanout_file). External symbols ignore the anchor.
+/// file a relation was read from, a located symbol's site. Any other
+/// symbol's entries are the anchor's and those in the files the TUs' local
+/// fanouts list for it (ProjectIndex::each_fanout_file). External symbols
+/// ignore the anchor.
 class IndexQuery {
 public:
     /// A null gate never withholds; null live sources are the disk-only
@@ -449,10 +449,9 @@ public:
 
     /// A symbol's definition as text: the extent's site and the text it
     /// spans, sliced from the first source that holds the definition in
-    /// first-hit order (an open buffer's text, its preamble region, an
-    /// overlay's stored text or the disk re-read for pure-ASCII blobs —
-    /// verified against the index's content hash, so a moved-on file
-    /// degrades to no text rather than mismatched text).
+    /// first-hit order (an open buffer's text, its preamble region, or the
+    /// file read from disk — verified against the index's content hash, so
+    /// a moved-on file degrades to no text rather than mismatched text).
     struct DeclaredText {
         Site extent;
         std::string text;
@@ -726,9 +725,9 @@ private:
     /// The file's instantiation shard when it resolves in the shard's text.
     const InstantiationShard* instantiations_of(Fid file, const Shard& shard) const;
 
-    /// The text a source's offsets index: the buffer, the blob's stored
-    /// text, or the disk re-read for pure-ASCII blobs (kept alive in
-    /// `storage`), verified against the index's content hash.
+    /// The text a source's offsets index: the buffer, or the file read from
+    /// disk (kept alive in `storage`) and verified against the index's
+    /// content hash.
     std::optional<llvm::StringRef> source_text(const IndexSource& source,
                                                std::unique_ptr<llvm::MemoryBuffer>& storage) const;
 

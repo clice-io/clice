@@ -28,6 +28,18 @@ inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
     return buffer;
 }
 
+/// An ascending set of ids below `universe` as an Elias–Fano list, about
+/// 2 + log2(universe / count) bits an id: the count as a varint; then
+/// the low log2(universe / count) bits of each id, back to back; then a
+/// bit vector holding, for the i-th id, a one at its remaining high bits
+/// plus i. Every bit past the last of each part is zero, and the vector
+/// ends with the byte holding its last one.
+std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t universe);
+
+/// The ids of a list write_postings wrote for `universe`; nullopt for
+/// bytes it would not have written.
+std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t universe);
+
 /// The two highest values of an id type are reserved: they were DenseMap's
 /// sentinel keys when the format was defined, so no writer has ever emitted
 /// them, and IPC or disk bytes carrying one are corrupt.
@@ -102,8 +114,19 @@ inline std::string symbol_id(SymbolHash hash) {
 /// index misses; v37: what instantiations and macro expansions resolve
 /// lives in per-file instantiation blobs, manifests list the resolutions of
 /// those they use, symbols the files whose instantiation blobs name them,
-/// and no entry resolves through a template's only instantiation.
-constexpr inline std::uint32_t index_format_version = 37;
+/// and no entry resolves through a template's only instantiation; v38: a
+/// friend class declaration is a reference to the class, no declaration;
+/// v39: id and offset columns are as narrow as their tables allow, masks as
+/// their variant count, occurrences store their begins as deltas, relation
+/// payloads are placed by kind bits and block counts, shards keep only the
+/// text of their non-ASCII lines, the global table's file sets of one or two
+/// files are raw ids, and manifests name the use set their unit shares in a
+/// file's instantiation blob and encode runs of include siblings; v40: a
+/// local fanout names its files by version, including files the unit reads
+/// through a precompiled header or a module, function-local symbols other
+/// files name join the TU index's table and the fanout, and the global
+/// table lists the files the fanouts name per symbol.
+constexpr inline std::uint32_t index_format_version = 40;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
@@ -119,8 +142,8 @@ void serialize_blob(const T& value, llvm::raw_ostream& os) {
 /// Persisted blob layouts. Shared by writers, load-time validation and the
 /// hand-built blobs of corruption tests; everything else consumes blobs
 /// through their readers.
-/// Sentinel in a length column (entry ranges, line lengths): the real end
-/// lives in the sparse escape table.
+/// Sentinel in a length column: the sparse escape table holds an entry
+/// range's real end, a line's real length.
 constexpr inline std::uint8_t length_escape = 0xff;
 
 /// Files whose content fits 24-bit offsets use the packed range column;
@@ -139,16 +162,40 @@ constexpr inline std::uint32_t pack_range(std::uint32_t begin, std::uint8_t leng
 /// past a begin that already sits at the content limit.
 constexpr inline std::uint32_t packed_sentinel = 0xffffffff;
 
-/// One side of the blob's entry storage (occurrences or relations).
+/// A column of ids into a table, back to back in the width the table's
+/// size picks: u8 up to 256 entries, u16 up to 65536, u32 beyond. Readers
+/// know the table, so the width is stored nowhere. End offsets into a text
+/// of `n` bytes are ids into a table of `n + 1`.
+using IdColumn = std::vector<std::uint8_t>;
+
+/// Entries per block of a delta-encoded begin column.
+constexpr inline std::uint32_t delta_block = 16;
+
+/// The delta of a delta-encoded begin that does not fit: the sparse table
+/// holds the begin.
+constexpr inline std::uint8_t delta_escape = 0xff;
+
+/// One side of a blob's entry storage (occurrences, relations, records).
 ///
-/// Ranges use exactly one of two self-describing encodings:
-///   - packed: `(begin << 8) | length` per entry (content < 16MB)
-///   - wide: begin u32 + length u8 columns
-/// Lengths >= 255 escape to the sparse (entry, end) table in either encoding.
+/// Ranges use exactly one of three self-describing encodings:
+///   - delta, for a side sorted by begin (occurrences, records): the begin
+///     of every `delta_block`-th entry, then per entry the distance from the
+///     previous entry's begin (0 at a block's start) as a u8 — 255
+///     escaping to the sparse (entry, begin) table — and its length u8;
+///   - packed, for an unsorted side of content < 16MB: `(begin << 8) |
+///     length` per entry;
+///   - wide: begin u32 + length u8 columns.
+/// Lengths >= 255 escape to the sparse (entry, end) table in every
+/// encoding.
 ///
-/// Variant masks are absent for a single variant, then u32 / u64 /
-/// concatenated roaring bitmaps by variant count.
+/// Variant masks are absent for a single variant, then u8 / u16 / u32 /
+/// u64 / concatenated roaring bitmaps by variant count.
 struct RangeColumns {
+    std::vector<std::uint32_t> block_begins;
+    std::vector<std::uint8_t> deltas;
+    std::vector<std::uint32_t> far_entries;
+    std::vector<std::uint32_t> far_begins;
+
     std::vector<std::uint32_t> packed;
 
     std::vector<std::uint32_t> begins;
@@ -157,25 +204,34 @@ struct RangeColumns {
     std::vector<std::uint32_t> long_entries;
     std::vector<std::uint32_t> long_ends;
 
+    std::vector<std::uint8_t> masks8;
+    std::vector<std::uint16_t> masks16;
     std::vector<std::uint32_t> masks32;
     std::vector<std::uint64_t> masks64;
     std::vector<std::uint32_t> roaring_offsets;
     std::vector<std::uint8_t> roaring;
 };
 
+/// Relations per block of the payload counts (ShardBlob::rel_target_ranks).
+constexpr inline std::uint32_t rank_block = 64;
+
+/// The bit of a stored relation kind saying the relation carries a payload.
+constexpr inline std::uint8_t payload_bit = 0x80;
+
+/// The head of an extent that does not fit the u16 extent columns.
+constexpr inline std::uint16_t extent_escape = 0xffff;
+
 /// A file's index as one persisted blob.
 ///
 /// The worker encodes one blob per file per TU: single variant (an empty
-/// `variants` table), self-contained (content, line table, local symbol
-/// names), canonical byte-for-byte — its identity is the hash of its
-/// bytes, computed by whoever holds them, never stored inside. The master
-/// stores first variants verbatim and merges only when a second distinct
-/// variant of the same content generation arrives; merged blobs list the
-/// original single-variant identities in `variants` (mask bit position ->
-/// identity) and deduplicate entries shared between variants via the masks.
-///
-/// Symbol ids used by the entry columns index `sym_hashes`; the id column
-/// width is chosen from the table size (u8 / u16 / u32).
+/// `variants` table), self-contained (line table, the text of the lines
+/// holding non-ASCII bytes, local symbol names), canonical byte-for-byte —
+/// its identity is the hash of its bytes, computed by whoever holds them,
+/// never stored inside. The master stores first variants verbatim and
+/// merges only when a second distinct variant of the same content
+/// generation arrives; merged blobs list the original single-variant
+/// identities in `variants` (mask bit position -> identity) and deduplicate
+/// entries shared between variants via the masks.
 struct ShardBlob {
     /// Persisted-blob schema version (index_format_version), set by
     /// the writer and gated by Shard::from_bytes.
@@ -189,11 +245,13 @@ struct ShardBlob {
     /// Size of the consumed content; bounds every stored range.
     std::uint32_t content_size = 0;
 
-    /// The file's text, for UTF-16 position mapping and text previews.
-    /// Empty when the content is pure ASCII: byte offsets are already
-    /// UTF-16 column offsets, so the text itself is dead weight. The form
-    /// is canonical — a blob storing pure-ASCII content is invalid.
-    std::string content;
+    /// The lines holding non-ASCII bytes, ascending, and their text without
+    /// the line end, back to back: all UTF-16 and UTF-32 position mapping
+    /// reads, since on every other line a byte is a unit. Text previews
+    /// read the file from disk under a content-hash check.
+    std::vector<std::uint32_t> utf8_lines;
+    std::string utf8_text;
+    std::vector<std::uint32_t> utf8_text_ends;
 
     /// Mask bit position -> variant identity. Empty for a worker-emitted
     /// blob (one anonymous variant, identified by its own byte hash).
@@ -208,58 +266,67 @@ struct ShardBlob {
     std::vector<std::uint32_t> long_line_lengths;
 
     /// A bit for each line ending in "\r\n" — line `n` is bit `n % 64` of
-    /// word `n / 64`, the words ending at the last set bit — for mapping
-    /// positions without the content. Empty when the content is stored,
-    /// whose bytes tell.
+    /// word `n / 64`, the words ending at the last set bit.
     std::vector<std::uint64_t> crlf_lines;
 
-    /// Referenced symbols, sorted by hash; the index into this table is
-    /// the symbol id the entry columns use.
+    /// Referenced symbols and the parents of the local ones, sorted by
+    /// hash; the index into this table is the symbol id the entry columns
+    /// use.
     std::vector<std::uint64_t> sym_hashes;
 
     /// Relation slice per symbol: entry i's relations occupy positions
-    /// [sym_rel_offsets[i], sym_rel_offsets[i + 1]). Size is table size + 1.
-    std::vector<std::uint32_t> sym_rel_offsets;
+    /// [rel_offsets[i], rel_offsets[i + 1]). Size is table size + 1.
+    IdColumn rel_offsets;
 
     /// Symbols local to this file (FileLocal) or its TU (TULocal), whose
     /// names live nowhere else: sparse over the symbol table, ascending.
-    std::vector<std::uint32_t> local_syms;
-    std::vector<std::string> local_names;
+    IdColumn local_syms;
+    /// Names back to back, an end offset each.
+    std::string local_names;
+    IdColumn local_name_ends;
+    /// Arguments and signatures of the few locals having them: those
+    /// locals' positions in `local_syms`, ascending, and their text back
+    /// to back.
+    IdColumn local_args_of;
+    std::string local_args;
+    IdColumn local_args_ends;
+    IdColumn local_signatures_of;
+    std::string local_signatures;
+    IdColumn local_signature_ends;
     std::vector<std::uint8_t> local_kinds;
     std::vector<std::uint8_t> local_scopes;
-    std::vector<std::string> local_args;
-    std::vector<std::string> local_signatures;
-    std::vector<std::uint64_t> local_parents;
+    /// The parent's symbol id plus one; 0 for none.
+    IdColumn local_parents;
     std::vector<std::uint16_t> local_flags;
     std::vector<std::uint8_t> local_token_kinds;
     std::vector<std::uint32_t> local_token_modifiers;
 
-    /// Occurrences sorted by (begin, end, symbol hash).
+    /// Occurrences sorted by (begin, end, symbol hash), delta-encoded.
     RangeColumns occs;
-    std::vector<std::uint8_t> occ_syms8;
-    std::vector<std::uint16_t> occ_syms16;
-    std::vector<std::uint32_t> occ_syms32;
+    IdColumn occ_syms;
 
     /// Relations in symbol-table order, sorted by (kind, begin, end,
     /// payload) within each group.
     RangeColumns rels;
+    /// The RelationKind, payload_bit set for a relation carrying a payload:
+    /// for the kinds carrying an extent the extent of what it declares,
+    /// for the others a target symbol.
     std::vector<std::uint8_t> rel_kinds;
-    std::vector<std::uint32_t> rel_sym_entries;
-    std::vector<std::uint8_t> rel_sym8;
-    std::vector<std::uint16_t> rel_sym16;
-    std::vector<std::uint32_t> rel_sym32;
-    std::vector<std::uint32_t> rel_def_entries;
-    std::vector<std::uint32_t> rel_def_begins;
-    std::vector<std::uint32_t> rel_def_ends;
-};
-
-/// A column of ids into a table, in the width the table's size picks: u8
-/// up to 256 entries, u16 up to 65536, u32 beyond. Exactly one width is
-/// present.
-struct IdColumn {
-    std::vector<std::uint8_t> ids8;
-    std::vector<std::uint16_t> ids16;
-    std::vector<std::uint32_t> ids32;
+    /// Per block of rank_block relations, the target and the extent
+    /// payloads before it; with the payload bits inside the block they
+    /// place a relation's payload in its column.
+    IdColumn rel_target_ranks;
+    IdColumn rel_extent_ranks;
+    IdColumn rel_targets;
+    /// An extent as the distance from its begin back to the relation's
+    /// begin, and its length. One that does not fit has extent_escape for a
+    /// head, 0 for a length and its bounds in the sparse (extent, begin,
+    /// end) table.
+    std::vector<std::uint16_t> rel_extent_heads;
+    std::vector<std::uint16_t> rel_extent_lengths;
+    std::vector<std::uint32_t> rel_far_extents;
+    std::vector<std::uint32_t> rel_far_begins;
+    std::vector<std::uint32_t> rel_far_ends;
 };
 
 /// A file's instantiation shard as one persisted blob: what the template
@@ -306,6 +373,14 @@ struct InstantiationBlob {
     std::vector<std::uint32_t> resolution_ends;
     IdColumn resolution_records;
 
+    /// The sets of resolutions the TUs use here, which manifests name by
+    /// identity (use_identity), ascending; use i's resolutions are
+    /// use_resolutions[use_ends[i - 1], use_ends[i]), ascending. A worker's
+    /// blob has none: the master knows what its TU uses.
+    std::vector<std::uint64_t> uses;
+    std::vector<std::uint32_t> use_ends;
+    IdColumn use_resolutions;
+
     /// The instantiation keys walked (the entity of the instantiated
     /// declaration), ascending: per key the template it instantiates, its
     /// resolution plus one (0: the instantiation resolves nothing here) and the
@@ -321,6 +396,57 @@ struct InstantiationBlob {
     std::vector<std::uint64_t> producer_units;
     std::vector<std::uint64_t> producer_runs;
 };
+
+/// The bytes the fields of persisted blobs hold, summed over the blobs
+/// measured, by field path (`occs.packed`) in declaration order — how
+/// `clice index stats` splits a blob kind. Scalar fields and vector
+/// headers are left to the framing, the rest of the blobs' size.
+struct FieldBytes {
+    llvm::SmallVector<std::pair<std::string, std::uint64_t>> fields;
+
+    void add(llvm::StringRef name, std::uint64_t bytes) {
+        auto it = llvm::find_if(fields, [&](const auto& field) { return field.first == name; });
+        if(it == fields.end()) {
+            fields.emplace_back(name.str(), bytes);
+        } else {
+            it->second += bytes;
+        }
+    }
+};
+
+template <typename T>
+void measure_fields(const T& blob, FieldBytes& bytes, llvm::StringRef prefix = {});
+
+template <std::size_t I, typename T>
+void measure_field(const T& blob, FieldBytes& bytes, llvm::StringRef prefix) {
+    auto& value = kota::meta::field_of<I>(blob);
+    using Field = std::remove_cvref_t<decltype(value)>;
+    auto name = std::format("{}{}", std::string_view(prefix), kota::meta::field_name<I, T>());
+    if constexpr(std::is_same_v<Field, std::string>) {
+        bytes.add(name, value.size());
+    } else if constexpr(std::is_same_v<Field, std::vector<std::string>>) {
+        // Each string lies out of line behind an offset: its length, its
+        // bytes and a NUL, padded to 4.
+        std::uint64_t total = 0;
+        for(auto& text: value) {
+            total += 4 + llvm::alignTo(4 + text.size() + 1, 4);
+        }
+        bytes.add(name, total);
+    } else if constexpr(requires { value.data(); }) {
+        bytes.add(name, value.size() * sizeof(*value.data()));
+    } else if constexpr(std::is_class_v<Field>) {
+        measure_fields(value, bytes, std::format("{}.", name));
+    } else {
+        static_assert(std::is_arithmetic_v<Field>);
+    }
+}
+
+template <typename T>
+void measure_fields(const T& blob, FieldBytes& bytes, llvm::StringRef prefix) {
+    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        (measure_field<Is>(blob, bytes, prefix), ...);
+    }(std::make_index_sequence<kota::meta::field_count<T>()>{});
+}
 
 /// The bytes of `data` as the span every kota fbs entry point takes.
 inline std::span<const std::uint8_t> blob_bytes(llvm::StringRef data) {
@@ -360,6 +486,12 @@ inline bool monotone_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_
         last = end;
     }
     return true;
+}
+
+/// monotone_ends whose entries cover the whole arena.
+inline bool covering_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_size) {
+    return monotone_ends(ends, arena_size) &&
+           (ends.empty() ? arena_size == 0 : ends.back() == arena_size);
 }
 
 /// Entry `i` of an "entries back to back" column pair: the arena between

@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["main.cpp"]
+append = ["-std=c++20"]

@@ -221,6 +221,21 @@ tests/signature_help/call_contexts/13_class_template_members
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent member calls**
+
+Inside a template, a call through an object of dependent type shows the overloads its class template declares
+
+Past the first argument only the overloads taking another one stay. Clang has
+no signature for such a call until the template is instantiated.
+
+```case
+tests/signature_help/call_contexts/17_dependent_member_calls
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Parameter Display
@@ -304,6 +319,20 @@ such as the key of a map's `try_emplace`. An aggregate lists its fields.
 
 ```case
 tests/signature_help/parameters/07_standard_forwarding
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Members through a dependent specialization**
+
+A member of a class template called through a dependent specialization of it shows the arguments the code names it with
+
+`pts.assign(` over a `lib::vector<Point<T>>` takes a `const Point<T> &`, not the template's own `const _Tp &`.
+
+```case
+tests/signature_help/parameters/13_specialization_members
 ```
 
 <!-- END CAPABILITY -->

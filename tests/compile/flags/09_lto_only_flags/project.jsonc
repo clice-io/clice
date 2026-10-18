@@ -1,0 +1,4 @@
+{
+  // -fwhole-program-vtables is only allowed with -flto.
+  "units": { "main.cpp": ["-flto", "-fwhole-program-vtables"] }
+}

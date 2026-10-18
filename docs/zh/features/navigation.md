@@ -674,6 +674,20 @@ tests/navigation/templates/04_dependent_expressions
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**被实参排除的重载**
+
+依赖调用会略去某个类型已知的实参无法匹配的重载
+
+标准转换、转换构造函数和转换函数都无法把该实参转换为该重载对应形参的类型。形参依赖于模板参数的重载则会保留。
+
+```case
+tests/navigation/templates/11_known_arguments
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 宏

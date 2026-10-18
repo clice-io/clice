@@ -16,6 +16,7 @@ module;
 
 module clice:index.search_index;
 
+import :index.serialization;
 import :index.symbol_query;
 import :index.types;
 import :support.bitmap;
@@ -67,6 +68,9 @@ struct SearchSnapshot {
 /// Encode the search blob for a snapshot; symbols of other kinds or
 /// without a name are left out.
 std::string build_search_blob(const SearchSnapshot& snapshot);
+
+/// Add the fields of a search blob to `bytes`, for `clice index stats`.
+void measure_search(llvm::StringRef data, FieldBytes& bytes);
 
 /// How a symbol answers a query's name pattern.
 struct NameRank {

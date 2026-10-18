@@ -24,8 +24,7 @@ ProjectLoad load_project(Project& project,
                          IndexStore& store,
                          CanonicalRef root,
                          llvm::StringRef requested_configuration,
-                         bool read_only_index,
-                         bool scan_tree) {
+                         bool read_only_index) {
     ProjectLoad report;
     project.project_index.workspace = root;
     auto& cfg = project.config.project;
@@ -78,12 +77,8 @@ ProjectLoad load_project(Project& project,
     }
 
     auto remembered = store.remembered();
-    auto& nearby = remembered.sources;
-    if(scan_tree) {
-        auto below = compile_commands_in_tree(project, root, configuration);
-        nearby.insert(nearby.end(), below.begin(), below.end());
-    }
-    auto load = load_build(project, root, configuration, nearby, remembered.provisional);
+    auto load =
+        load_build(project, root, configuration, remembered.sources, remembered.provisional);
     report.has_commands = !load.members.empty() || project.build.declares_sources();
     report.members = std::move(load.members);
     // Persisted index shards are CDB-independent; they load even with no
@@ -97,17 +92,28 @@ ProjectLoad load_project(Project& project,
     return report;
 }
 
-llvm::SmallVector<Spelling> compile_commands_in_tree(Project& project,
-                                                     CanonicalRef root,
-                                                     llvm::StringRef configuration) {
-    project.build.reset_active(configuration);
+std::string deeper_databases_hint(const Project& project) {
     if(project.build.declares_sources()) {
         return {};
     }
+    CanonicalRef root = project.config.workspace_root;
     auto& cache_dir = project.config.project.cache_dir;
-    return compile_commands_below(root,
-                                  cache_dir.empty() ? CanonicalPath()
-                                                    : CanonicalPath(Spelling::absolute(cache_dir)));
+    std::vector<std::string> names;
+    for(auto& database: deeper_compile_commands(
+            root,
+            cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(cache_dir)))) {
+        auto directory = database.parent();
+        auto name = llvm::StringRef(directory).drop_front(root.size()).ltrim(R"(/\)");
+        names.push_back(std::format(R"("{}")", llvm::sys::path::convert_to_slash(name)));
+    }
+    if(names.empty()) {
+        return {};
+    }
+    return std::format(
+        " Deeper ones load only when clice.toml names them (the editor also loads one when it "
+        "opens a file below it); to use those found, give clice.toml a [[rules]] table with "
+        "compile_commands = [{}].",
+        llvm::join(names, ", "));
 }
 
 BuildLoad load_build(Project& project,
@@ -129,15 +135,12 @@ BuildLoad load_build(Project& project,
         // serving meanwhile. Sorted like Build::source_order ranks them, so
         // registration order — which the persisted command sequences
         // follow — does not depend on the order files were opened in.
-        auto listed = [&](const Spelling& source) {
-            return llvm::is_contained(paths, source);
-        };
         auto stable = llvm::to_vector(llvm::make_filter_range(nearby, [&](const Spelling& source) {
             // Where the database sits, as the walks below the root spell
             // it, not what it links to: a compile_commands.json or a build
             // directory symlinked to a tree outside still belongs to the
             // root.
-            return path::under(llvm::StringRef(source), llvm::StringRef(root)) && !listed(source);
+            return path::under(llvm::StringRef(source), llvm::StringRef(root));
         }));
         auto key = [](const Spelling& source) {
             return std::tuple(
@@ -145,22 +148,33 @@ BuildLoad load_build(Project& project,
                 llvm::StringRef(source));
         };
         std::ranges::sort(stable, {}, key);
-        auto duplicates = std::ranges::unique(stable, {}, &Spelling::str);
-        stable.erase(duplicates.begin(), duplicates.end());
         paths.append(stable.begin(), stable.end());
-        if(paths.size() > 1) {
-            LOG_WARN(
-                "No rule names a compilation database; the {} found apply in this order, "
-                "an earlier one winning for a file both list: {}. To switch between them "
-                "instead, declare each on a tagged rule: [[rules]] configuration = \"...\" "
-                "compile_commands = [\"...\"]",
-                paths.size(),
-                llvm::join(llvm::map_range(paths, [](const Spelling& path) { return path.str(); }),
-                           ", "));
+    }
+    // One source per database, however many of its spellings discovery
+    // found: the root's link to build/compile_commands.json is that
+    // database. A rule's spelling stays its own, which its patterns rank.
+    llvm::SmallVector<SourceID> sources;
+    for(auto& path: paths) {
+        if(!project.build.declares_sources() && !project.cdb.find_source(path) &&
+           project.cdb.find_same_file(path)) {
+            continue;
+        }
+        if(auto id = project.cdb.add_source(path); !llvm::is_contained(sources, id)) {
+            sources.push_back(id);
         }
     }
-    for(auto& path: paths) {
-        auto id = project.cdb.add_source(path);
+    if(!project.build.declares_sources() && sources.size() > 1) {
+        LOG_WARN(
+            "No rule names a compilation database; the {} found apply in this order, "
+            "an earlier one winning for a file both list: {}. To switch between them "
+            "instead, declare each on a tagged rule: [[rules]] configuration = \"...\" "
+            "compile_commands = [\"...\"]",
+            sources.size(),
+            llvm::join(
+                llvm::map_range(sources, [&](SourceID id) { return project.cdb.source_path(id); }),
+                ", "));
+    }
+    for(auto id: sources) {
         if(auto loaded = project.cdb.load_source(id)) {
             LOG_INFO("Loaded CDB from {} with {} entries", project.cdb.source_path(id), *loaded);
             entries += *loaded;
@@ -203,8 +217,6 @@ BuildLoad load_build(Project& project,
         found,
         accuracy,
         scan.waves);
-    if(!scan.unresolved.empty())
-        LOG_WARN("{} unresolved includes", scan.unresolved.size());
     LOG_PERF("startup",
              "phase=dep_scan files={} edges={} elapsed_ms={}",
              scan.total_files,

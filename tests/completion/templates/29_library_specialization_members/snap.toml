@@ -1,0 +1,14 @@
+[answers.members.completion]
+items = [
+    { label = "first", kind = "Field", detail = "const int" },
+    { label = "second", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.dot.completion]
+items = [
+    { label = "append(const lib::vector<Point<T>> &other)", kind = "Method", detail = "lib::vector<Point<T>> &" },
+    { label = "front()", kind = "Method", detail = "Point<T> &" },
+    { label = "push_back(const value_type &x)", kind = "Method", detail = "void" },
+    { label = "template", kind = "Keyword" },
+]

@@ -1,0 +1,23 @@
+#pragma once
+
+namespace std {
+template <class K, class V>
+struct pair {
+    K first;
+    V second;
+};
+
+template <class T>
+struct tree_iterator {
+    typedef T& reference;
+    reference operator*() const;
+};
+
+template <class K, class V>
+struct map {
+    typedef pair<const K, V> value_type;
+    typedef tree_iterator<value_type> iterator;
+    iterator begin();
+    iterator find(const K& key);
+};
+}  // namespace std

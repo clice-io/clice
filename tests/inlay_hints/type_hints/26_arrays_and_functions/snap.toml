@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto& values⟨: string (&)[2]⟩ = box.values;" },
+    { line = "auto visit⟨: void (*)(string)⟩ = box.visit;" },
+]

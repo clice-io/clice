@@ -1,0 +1,10 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto count⟨: size_t⟩ = values.size();" },
+    { line = "auto& first⟨: int &⟩ = values.front();" },
+    { line = "auto it⟨: vector<int>::iterator⟩ = values.begin();" },
+    { line = "auto ticks⟨: long⟩ = elapsed.count();" },
+    { line = "auto now⟨: steady_clock::time_point⟩ = std::steady_clock::now();" },
+    { line = "auto user⟨: UserId⟩ = current_user();" },
+    { line = "auto large⟨: int64_t⟩ = big();" },
+]

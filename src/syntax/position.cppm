@@ -13,6 +13,12 @@ namespace clice {
 
 using PositionEncoding = kota::ipc::lsp::PositionEncoding;
 
+/// Whether line `line` ends in "\r\n" by `crlf`, whose bit `n % 64` of word
+/// `n / 64` marks line `n`.
+inline bool ends_crlf(std::span<const std::uint64_t> crlf, std::size_t line) {
+    return line / 64 < crlf.size() && ((crlf[line / 64] >> (line % 64)) & 1) != 0;
+}
+
 /// The conversions between one text's byte offsets and its positions, over
 /// the line starts its owner keeps, in the encoding each call names.
 /// Borrows everything.
@@ -30,13 +36,19 @@ public:
         content(content), content_size(static_cast<std::uint32_t>(content.size())), starts(lines),
         non_ascii(non_ascii) {}
 
-    /// An all-ASCII text known by its size and line starts alone, where
-    /// every encoding counts bytes. `crlf` has bit `n % 64` of word `n / 64`
-    /// set when line `n` ends in "\r\n".
+    /// A text known by its size and line starts, with the text of the lines
+    /// holding non-ASCII bytes alone: `utf8_lines` ascending, their text
+    /// without the line end back to back in `utf8_text`, ending at
+    /// `utf8_ends`. On every other line every encoding counts bytes. `crlf`
+    /// has bit `n % 64` of word `n / 64` set when line `n` ends in "\r\n".
     PositionMap(std::uint32_t size,
                 std::span<const std::uint32_t> lines,
-                std::span<const std::uint64_t> crlf) :
-        content_size(size), starts(lines), crlf(crlf) {}
+                std::span<const std::uint64_t> crlf,
+                std::span<const std::uint32_t> utf8_lines = {},
+                llvm::StringRef utf8_text = {},
+                std::span<const std::uint32_t> utf8_ends = {}) :
+        content_size(size), starts(lines), crlf(crlf), utf8_lines(utf8_lines), utf8_text(utf8_text),
+        utf8_ends(utf8_ends) {}
 
     /// The text, when this map was given it.
     llvm::StringRef text() const {
@@ -52,9 +64,7 @@ public:
     /// the code point's start.
     std::optional<kota::ipc::protocol::Position> position(std::uint32_t offset,
                                                           PositionEncoding encoding) const {
-        auto position = dispatch(encoding, [&](auto text, const auto&... known) {
-            return kota::ipc::lsp::to_position(text, starts, offset, known...);
-        });
+        auto position = to_position(offset, encoding);
         if(!position) {
             LOG_ANOMALY(PositionMapFail, "offset {} cannot be mapped to a position", offset);
         }
@@ -64,9 +74,17 @@ public:
     /// The positions of a byte range's ends, as position() converts each.
     std::optional<kota::ipc::protocol::Range> range(LocalSourceRange range,
                                                     PositionEncoding encoding) const {
-        auto converted = dispatch(encoding, [&](auto text, const auto&... known) {
-            return kota::ipc::lsp::to_range(text, starts, range.begin, range.end, known...);
-        });
+        std::optional<kota::ipc::protocol::Range> converted;
+        if(by_line()) {
+            // The start is in the text if the end is.
+            if(auto end = to_position(range.end, encoding); end && range.begin <= range.end) {
+                converted = kota::ipc::protocol::Range{*to_position(range.begin, encoding), *end};
+            }
+        } else {
+            converted = dispatch(encoding, [&](auto text, const auto&... known) {
+                return kota::ipc::lsp::to_range(text, starts, range.begin, range.end, known...);
+            });
+        }
         if(!converted) {
             LOG_ANOMALY(PositionMapFail,
                         "range {}-{} cannot be mapped to positions",
@@ -80,6 +98,13 @@ public:
     /// being its end; none past the last line or inside a code point.
     std::optional<std::uint32_t> offset(kota::ipc::protocol::Position position,
                                         PositionEncoding encoding) const {
+        if(auto line = line_text(position.line)) {
+            auto offset = kota::ipc::lsp::to_offset(line->text,
+                                                    one_line,
+                                                    {.line = 0, .character = position.character},
+                                                    encoding);
+            return offset ? std::optional(line->start + *offset) : std::nullopt;
+        }
         return dispatch(encoding, [&](auto text, const auto&... known) {
             return kota::ipc::lsp::to_offset(text, starts, position, known...);
         });
@@ -90,6 +115,13 @@ public:
     /// code point is its start.
     std::uint32_t offset_clamped(kota::ipc::protocol::Position position,
                                  PositionEncoding encoding) const {
+        if(auto line = line_text(position.line)) {
+            return line->start +
+                   kota::ipc::lsp::to_offset_clamped(line->text,
+                                                     one_line,
+                                                     {.line = 0, .character = position.character},
+                                                     encoding);
+        }
         return dispatch(encoding, [&](auto text, const auto&... known) {
             return kota::ipc::lsp::to_offset_clamped(text, starts, position, known...);
         });
@@ -99,6 +131,12 @@ public:
     /// range covers the bytes between its ends.
     LocalSourceRange offset_range(kota::ipc::protocol::Range range,
                                   PositionEncoding encoding) const {
+        if(by_line()) {
+            // Clamping keeps the order of positions, so this is their order too.
+            auto begin = offset_clamped(range.start, encoding);
+            auto end = offset_clamped(range.end, encoding);
+            return {std::min(begin, end), std::max(begin, end)};
+        }
         auto offsets = dispatch(encoding, [&](auto text, const auto&... known) {
             return kota::ipc::lsp::to_offset_range(text, starts, range, known...);
         });
@@ -122,11 +160,54 @@ public:
     }
 
 private:
+    /// The line table of a single line's text.
+    constexpr static std::array<std::uint32_t, 1> one_line = {0};
+
+    /// Whether conversions read the lines the map knows by line: in every
+    /// encoding, since even UTF-8 places an offset inside a code point at
+    /// the code point's start.
+    bool by_line() const {
+        return !utf8_lines.empty();
+    }
+
+    struct LineText {
+        std::uint32_t start;
+        std::string_view text;
+    };
+
+    /// The text of `line` when the map knows it by line.
+    std::optional<LineText> line_text(std::uint32_t line) const {
+        auto it = std::ranges::lower_bound(utf8_lines, line);
+        if(it == utf8_lines.end() || *it != line) {
+            return std::nullopt;
+        }
+        auto i = static_cast<std::size_t>(it - utf8_lines.begin());
+        auto text = utf8_text.slice(i == 0 ? 0 : utf8_ends[i - 1], utf8_ends[i]);
+        return LineText{starts[line], std::string_view(text.data(), text.size())};
+    }
+
+    std::optional<kota::ipc::protocol::Position> to_position(std::uint32_t offset,
+                                                             PositionEncoding encoding) const {
+        if(by_line() && offset <= content_size) {
+            auto number = kota::ipc::lsp::line_of(starts, offset);
+            if(auto line = line_text(number)) {
+                // An offset inside the line end is at the end of the text.
+                auto local = std::min<std::uint32_t>(offset - line->start, line->text.size());
+                auto position = kota::ipc::lsp::to_position(line->text, one_line, local, encoding);
+                position->line = number;
+                return position;
+            }
+        }
+        return dispatch(encoding, [&](auto text, const auto&... known) {
+            return kota::ipc::lsp::to_position(text, starts, offset, known...);
+        });
+    }
+
     struct CRLF {
         std::span<const std::uint64_t> bits;
 
         bool operator()(std::uint32_t line) const {
-            return line / 64 < bits.size() && ((bits[line / 64] >> (line % 64)) & 1) != 0;
+            return ends_crlf(bits, line);
         }
     };
 
@@ -152,6 +233,9 @@ private:
     std::span<const std::uint32_t> starts;
     std::optional<std::span<const std::uint64_t>> non_ascii;
     std::optional<std::span<const std::uint64_t>> crlf;
+    std::span<const std::uint32_t> utf8_lines;
+    llvm::StringRef utf8_text;
+    std::span<const std::uint32_t> utf8_ends;
 };
 
 }  // namespace clice

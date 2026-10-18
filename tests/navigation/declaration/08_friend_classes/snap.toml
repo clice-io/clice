@@ -1,0 +1,11 @@
+[answers.friend_template]
+declaration = ["class ⟦Seq⟧ {};"]
+
+[answers.friend_class]
+declaration = ["class ⟦Box⟧ {};"]
+
+[answers.template_use]
+declaration = ["class ⟦Seq⟧ {};"]
+
+[answers.class_use]
+declaration = ["class ⟦Box⟧ {};"]

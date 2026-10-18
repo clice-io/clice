@@ -430,6 +430,9 @@ public:
                !llvm::isa<clang::NamespaceDecl>(decl)) {
                 imported.push_back(decl);
             }
+            if(it->second.scope != SymbolScope::External) {
+                internal_decls.try_emplace(hash, described);
+            }
         }
         return hash;
     }
@@ -1204,7 +1207,8 @@ public:
 
         clang::SourceRange name(location, SM.getFileLoc(keyword.getEnd()));
         for(const auto* target:
-            types::decls_of(types::unwrap(readable.readable(type)), &resolver)) {
+            types::decls_of(types::unwrap(readable.readable(type, decl->getDeclContext())),
+                            &resolver)) {
             // A closure type is declared by no name to reach.
             if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(target);
                record && record->isLambda()) {
@@ -1298,7 +1302,9 @@ public:
         // its body's expressions make and the types its placeholders
         // deduce; it declares nothing its template does not, and the types
         // it substitutes are no references.
-        if(space && !semantics.node(i).node.get<clang::Stmt>()) {
+        const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
+        space_location = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
+        if(space && !stmt) {
             project_placeholder(semantics, i);
             if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
                 add_deduced_type(value);
@@ -1410,7 +1416,25 @@ public:
             }
         }
         auto found = it->second.find(key(decl));
-        return found != it->second.end() ? found->second : decl;
+        if(found == it->second.end()) {
+            return decl;
+        }
+        // A specialization takes its parameters from whichever declaration
+        // lookup met (`fwd.h` redeclaring the template): the definition's
+        // text names the definition's, that declaration's signature its own.
+        const auto* definition = pattern->getDefinition();
+        if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(found->second);
+           param && definition && param->getDeclContext() != definition &&
+           space_location.isValid()) {
+            auto& SM = unit.context().getSourceManager();
+            auto range = definition->getSourceRange();
+            if(SM.isPointWithin(SM.getFileLoc(space_location),
+                                SM.getFileLoc(range.getBegin()),
+                                SM.getFileLoc(range.getEnd()))) {
+                return definition->getParamDecl(param->getFunctionScopeIndex());
+            }
+        }
+        return found->second;
     }
 
     /// The file holding the definition an instantiation was made from: what
@@ -1586,7 +1610,20 @@ public:
                     spilled = true;
                 }
             }
-            if(!spilled) {
+            // Nor can a skipped key stand for a name below external scope
+            // that another file declares: only the units walking the
+            // instantiation list the key's file among the files naming it
+            // (TUManifest::local_fanout).
+            auto& SM = unit.context().getSourceManager();
+            auto foreign = [&](SymbolHash hash) {
+                auto it = internal_decls.find(hash);
+                return it != internal_decls.end() &&
+                       SM.getFileID(SM.getFileLoc(it->second->getLocation())) != home;
+            };
+            bool names_foreign = llvm::any_of(records, [&](const InstantiationRecord& record) {
+                return foreign(record.target) || (has_from(record.kind) && foreign(record.from));
+            });
+            if(!spilled && !names_foreign) {
                 add_walked(home, decl, std::move(records));
             } else if(!records.empty()) {
                 resolved[home].walked.resolutions.push_back(std::move(records));
@@ -1798,7 +1835,35 @@ public:
                 indexed_fids.push_back(fid);
             }
         }
+        // The unit writes no entries for what it reads through the
+        // precompiled header or a module, yet a name below external scope
+        // declared there (a header `static`, a header function's class the
+        // unit reaches through `auto`) is named in the declaring files as
+        // much as in the unit's own. A header module's files (-fmodules) are
+        // no unit's to index.
+        auto& SM = unit.context().getSourceManager();
+        llvm::SmallVector<std::pair<SymbolHash, clang::FileID>> declaring_files;
+        llvm::DenseSet<clang::FileID> queued(indexed_fids.begin(), indexed_fids.end());
+        for(auto [hash, decl]: internal_decls) {
+            for(const auto* redecl: decl->redecls()) {
+                auto* module = redecl->getOwningModule();
+                auto fid = SM.getFileID(SM.getFileLoc(redecl->getLocation()));
+                if(!focus_only && redecl->isFromASTFile() &&
+                   !(module && module->isHeaderLikeModule()) && fid.isValid() &&
+                   !unit.from_context(fid)) {
+                    declaring_files.emplace_back(hash, fid);
+                    if(queued.insert(fid).second) {
+                        indexed_fids.push_back(fid);
+                    }
+                }
+            }
+        }
         tree = IncludeTree::from(unit, indexed_fids);
+        for(auto [hash, fid]: declaring_files) {
+            if(tree.node_of(fid) != no_node) {
+                symbols.find(hash)->second.reference_files.add(tree.path_id(fid));
+            }
+        }
 
         // Entries are keyed by FileID while they accumulate, by path from here
         // on. A header entered several times (its FileIDs differ, its path
@@ -1841,7 +1906,6 @@ public:
         // is one set of resolutions and keys.
         // A `#define` of the focus file's preamble lies in the PCH's copy of
         // the file, at the offsets the buffer has.
-        auto& SM = unit.context().getSourceManager();
         llvm::DenseMap<std::uint32_t, Resolved> resolved_by_path;
         for(auto& [fid, file]: resolved) {
             auto home = fid == SM.getPreambleFileID() ? unit.focus_file().file() : fid;
@@ -1864,7 +1928,7 @@ public:
             llvm::append_range(into.skipped, file.skipped);
         }
         // An external symbol lists the files whose instantiations name it on
-        // their own; an internal one reaches them as its reference files.
+        // their own; any other reaches them as its reference files.
         auto named_in = [&](SymbolHash hash, std::uint32_t path_id) {
             auto it = symbols.find(hash);
             if(it == symbols.end()) {
@@ -1872,7 +1936,7 @@ public:
             }
             if(it->second.scope == SymbolScope::External) {
                 it->second.instantiation_files.add(path_id);
-            } else if(it->second.scope == SymbolScope::TULocal) {
+            } else {
                 it->second.reference_files.add(path_id);
             }
         };
@@ -1915,7 +1979,7 @@ public:
                         // holding the relation; an internal one reaches its
                         // own entries from there only through this file.
                         if(auto it = symbols.find(relation.target_symbol);
-                           it != symbols.end() && it->second.scope == SymbolScope::TULocal) {
+                           it != symbols.end() && it->second.scope != SymbolScope::External) {
                             it->second.reference_files.add(path_id);
                         }
                     }
@@ -1990,7 +2054,10 @@ public:
         blob.absent = unit.absent();
         llvm::SmallVector<SymbolHash> table;
         for(auto& [hash, symbol]: symbols) {
-            if(symbol.scope == SymbolScope::FileLocal) {
+            // A function's own name stays out but where another file names
+            // it, which the merge lists (TUIndex::local_fanout).
+            if(symbol.scope == SymbolScope::FileLocal &&
+               (focus_only || symbol.reference_files.cardinality() < 2)) {
                 continue;
             }
             if(symbol.scope == SymbolScope::External && !symbol.reference_files.isEmpty() &&
@@ -2079,6 +2146,9 @@ private:
     /// module declares, a namespace aside: every unit reopening it
     /// redeclares it.
     llvm::SmallVector<const clang::NamedDecl*> imported;
+    /// The declaration describing each symbol registered below external
+    /// scope.
+    llvm::DenseMap<SymbolHash, const clang::NamedDecl*> internal_decls;
     llvm::DenseSet<clang::FileID> module_files;
     llvm::DenseMap<std::uint32_t, const clang::NamedDecl*> enclosing_cache;
     llvm::DenseMap<std::uint32_t, const clang::Decl*> top_level_cache;
@@ -2109,6 +2179,8 @@ private:
     /// definition, when it is a function, is the caller of its calls.
     llvm::DenseMap<clang::FileID, FileIndex>* space = nullptr;
     const clang::FunctionDecl* space_function = nullptr;
+    /// Where the expression being projected is written (in_pattern).
+    clang::SourceLocation space_location;
 
     /// Per pattern function, its parameters and locals by location and kind.
     llvm::DenseMap<
@@ -2555,29 +2627,22 @@ std::optional<SymbolIdentity> TUIndex::find_symbol(SymbolHash hash) const {
     return std::nullopt;
 }
 
-std::optional<std::vector<LocalFanout>>
-    TUIndex::local_fanout(llvm::ArrayRef<std::uint32_t> contribution_paths) const {
-    llvm::DenseMap<std::uint32_t, std::uint32_t> contribution_of;
-    for(auto [index, path_id]: llvm::enumerate(contribution_paths)) {
-        contribution_of.try_emplace(path_id, static_cast<std::uint32_t>(index));
-    }
-    std::vector<LocalFanout> result;
+std::optional<std::vector<PathFanout>> TUIndex::local_fanout(const llvm::BitVector& held) const {
+    std::vector<PathFanout> result;
     bool valid = true;
     iterate_symbols(
         [&](SymbolHash hash, const SymbolIdentity& identity, llvm::ArrayRef<std::uint32_t> files) {
-            if(identity.scope != SymbolScope::TULocal || files.size() < 2) {
+            if(identity.scope == SymbolScope::External || files.size() < 2) {
                 return true;
             }
-            LocalFanout fanout{.symbol = hash};
-            for(auto path_id: files) {
-                auto it = contribution_of.find(path_id);
-                if(it == contribution_of.end()) {
-                    valid = false;
-                    return false;
-                }
-                fanout.files.push_back(it->second);
+            if(llvm::any_of(files, [&](std::uint32_t path_id) { return !held.test(path_id); })) {
+                valid = false;
+                return false;
             }
-            result.push_back(std::move(fanout));
+            result.push_back({
+                .symbol = hash,
+                .paths = {files.begin(), files.end()}
+            });
             return true;
         });
     if(!valid) {
