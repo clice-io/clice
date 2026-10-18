@@ -614,9 +614,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     }
     llvm::DenseSet<Fid> read_precompiled;
     for(auto& dep: imports) {
-        if(!dep.missing) {
-            read_precompiled.insert(dep.path_id);
-        }
+        read_precompiled.insert(dep.path_id);
     }
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         if(read_precompiled.contains(file_ids_map[i])) {
