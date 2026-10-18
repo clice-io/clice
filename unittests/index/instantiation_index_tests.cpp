@@ -381,6 +381,23 @@ ZEST_CASE(SignatureNamesItsParameter) {
     ZEXPECT(llvm::none_of(resolved(), [](const Resolved& record) { return record.target == "c"; }));
 }
 
+ZEST_CASE(WrappedSignatureNamesParameter) {
+    build(R"(
+        #define WRAP(...) __VA_ARGS__
+        struct V { int front(); };
+        WRAP(
+            template <typename C>
+            auto first(C& c) -> decltype(c.front());
+            int head(V& v) { return first(v); }
+            template <typename C>
+            auto first(C& c) -> decltype(c.front()) { return c.front(); }
+        )
+    )");
+    // One macro argument holds both declarations: their text, not the
+    // invocation, tells them apart.
+    ZEXPECT(llvm::none_of(resolved(), [](const Resolved& record) { return record.target == "c"; }));
+}
+
 ZEST_CASE(ForeignCallerUnkeyed) {
     add_file("box.h", R"(
         namespace {

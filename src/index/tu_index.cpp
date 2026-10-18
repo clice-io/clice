@@ -1428,9 +1428,9 @@ public:
            space_location.isValid()) {
             auto& SM = unit.context().getSourceManager();
             auto range = definition->getSourceRange();
-            if(SM.isPointWithin(SM.getExpansionLoc(space_location),
-                                SM.getExpansionLoc(range.getBegin()),
-                                SM.getExpansionLoc(range.getEnd()))) {
+            if(SM.isPointWithin(SM.getFileLoc(space_location),
+                                SM.getFileLoc(range.getBegin()),
+                                SM.getFileLoc(range.getEnd()))) {
                 return definition->getParamDecl(param->getFunctionScopeIndex());
             }
         }
