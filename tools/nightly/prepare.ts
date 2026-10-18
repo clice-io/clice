@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { REPO_ROOT } from "../repo.ts";
-import type { Project, Step } from "./projects.ts";
+import { currentPlatform, type Platform, type Project, type Step } from "./projects.ts";
 
 /// Run a command with its output streamed through, resolving once it
 /// exits 0 and rejecting with its exit otherwise.
@@ -106,10 +106,27 @@ async function buildGenerated(build: string): Promise<void> {
     }
 }
 
-function expand(arg: string, target: string): string {
-    return arg
-        .replaceAll("${JOBS}", String(os.availableParallelism()))
-        .replaceAll("${CHECKOUT}", target.split(path.sep).join("/"));
+/// What `${CMAKE_TOOLCHAIN}` stands for on each platform: the target most
+/// of its code builds for, where xclang's default is another (MinGW on
+/// Windows, where most code builds against MSVC).
+const CMAKE_TOOLCHAIN: Record<Platform, string[]> = {
+    linux: [],
+    macos: [],
+    windows: [
+        "-DCMAKE_C_COMPILER_TARGET=x86_64-pc-windows-msvc",
+        "-DCMAKE_CXX_COMPILER_TARGET=x86_64-pc-windows-msvc",
+    ],
+};
+
+function expand(arg: string, target: string): string[] {
+    if (arg === "${CMAKE_TOOLCHAIN}") {
+        return CMAKE_TOOLCHAIN[currentPlatform()];
+    }
+    return [
+        arg
+            .replaceAll("${JOBS}", String(os.availableParallelism()))
+            .replaceAll("${CHECKOUT}", target.split(path.sep).join("/")),
+    ];
 }
 
 async function run(step: Step, target: string): Promise<void> {
@@ -117,7 +134,7 @@ async function run(step: Step, target: string): Promise<void> {
         await buildGenerated(path.join(target, step.generated));
         return;
     }
-    const [command, ...args] = step.map((arg) => expand(arg, target));
+    const [command, ...args] = step.flatMap((arg) => expand(arg, target));
     if (command === undefined) {
         throw new Error("an empty preparation step");
     }

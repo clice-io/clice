@@ -10,8 +10,10 @@ import { REPO_ROOT } from "../repo.ts";
 const PROJECTS_FILE = path.join(REPO_ROOT, "tests", "nightly", "projects.json");
 
 /// A command run in the checkout, an argv in which `${JOBS}` reads the
-/// machine's core count and `${CHECKOUT}` the checkout's path (with `/`); or the
-/// generated sources of a CMake build directory using Ninja.
+/// machine's core count, `${CHECKOUT}` the checkout's path (with `/`) and an
+/// argument `${CMAKE_TOOLCHAIN}` the CMake arguments of the platform's
+/// target (prepare.ts); or the generated sources of a CMake build directory
+/// using Ninja.
 export type Step = string[] | { generated: string };
 
 export const PLATFORMS = ["linux", "macos", "windows"] as const;

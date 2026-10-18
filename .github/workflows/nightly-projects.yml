@@ -123,8 +123,6 @@ jobs:
     timeout-minutes: 350
     env:
       TARGET: ${{ fromJSON('{"linux":"x86_64-unknown-linux-gnu","macos":"aarch64-apple-darwin","windows":"x86_64-w64-mingw32"}')[matrix.platform] }}
-      # Windows has no build environment, as in the test legs.
-      PIXI_ENV: ${{ matrix.platform == 'windows' && 'test-run' || 'default' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -135,8 +133,8 @@ jobs:
         with:
           target: ${{ env.TARGET }}
           build_type: RelWithDebInfo
-          environments: ${{ env.PIXI_ENV }}
-          activate-environment: ${{ env.PIXI_ENV }}
+          environments: default
+          activate-environment: default
 
       # clice's own project: its database comes from Bazel.
       - name: Restore Bazel caches
@@ -157,7 +155,7 @@ jobs:
             echo "common --disk_cache=$RUNNER_TEMP/bazel-disk"
             echo "common --repository_cache=$RUNNER_TEMP/bazel-repo"
           } > user.bazelrc
-          pixi run -e "$PIXI_ENV" install-tests
+          pixi run install-tests
 
       - name: Install the project's packages
         if: matrix.packages != ''
@@ -188,7 +186,7 @@ jobs:
           CLICE_EXECUTABLE: ${{ github.workspace }}/build/RelWithDebInfo/bin/bin/clice
         run: >-
           ${{ runner.os == 'Linux' && 'sudo -E env "PATH=$PATH" systemd-run --scope --quiet --uid="$(id -u)" --gid="$(id -g)" -p MemoryMax=14G -p MemorySwapMax=0 -p OOMPolicy=continue --' || '' }}
-          pixi run -e "$PIXI_ENV" node tools/nightly/run.ts "${{ matrix.name }}"
+          pixi run node tools/nightly/run.ts "${{ matrix.name }}"
           --dir "$RUNNER_TEMP/projects"
           --out "$RUNNER_TEMP/out"
           --previous "$RUNNER_TEMP/previous/results.json"
