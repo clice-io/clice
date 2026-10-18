@@ -63,7 +63,8 @@ auto semantic_token_facts(CompilationUnit& unit,
 
 /// The semantic tokens of `content`, the single writer of both the AST's
 /// and the index's: every token of its lexical scan (`tokens`, lexed under
-/// `lang_opts`) classified by `facts` where they say, by its spelling
+/// `lang_opts`, whose keywords `keywords` holds) classified by `facts`
+/// where they say, by its spelling
 /// otherwise — keywords, literals split into their prefix, escapes,
 /// placeholders and suffix, comments with their documentation commands,
 /// directives, template brackets. Adjacent tokens of one classification
@@ -71,6 +72,7 @@ auto semantic_token_facts(CompilationUnit& unit,
 auto semantic_token_stream(llvm::ArrayRef<Token> tokens,
                            llvm::StringRef content,
                            const clang::LangOptions& lang_opts,
+                           const clang::IdentifierTable& keywords,
                            const TokenFacts& facts,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
 

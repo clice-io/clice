@@ -52,25 +52,30 @@ struct QualifiedName {
 /// when they open none, it is never closed, a bracket in it is closed by
 /// another kind, or it holds a `<`: the text alone cannot tell a less-than
 /// from a template argument list, whose commas separate no arguments.
-std::optional<std::size_t> call_arguments(llvm::ArrayRef<clang::syntax::Token> tokens) {
-    if(tokens.empty() || tokens.front().kind() != clang::tok::l_paren) {
+std::optional<std::size_t> call_arguments(llvm::ArrayRef<Token> tokens) {
+    auto code = llvm::make_filter_range(tokens, [](const Token& token) {
+        return token.kind != clang::tok::comment;
+    });
+    if(code.begin() == code.end() || code.begin()->kind != clang::tok::l_paren) {
         return std::nullopt;
     }
+    std::size_t seen = 0;
     std::size_t commas = 0;
     llvm::SmallVector<clang::tok::TokenKind, 4> closers;
-    for(const auto& token: tokens) {
-        switch(token.kind()) {
+    for(const auto& token: code) {
+        seen += 1;
+        switch(token.kind) {
             case clang::tok::l_paren: closers.push_back(clang::tok::r_paren); break;
             case clang::tok::l_square: closers.push_back(clang::tok::r_square); break;
             case clang::tok::l_brace: closers.push_back(clang::tok::r_brace); break;
             case clang::tok::r_paren:
             case clang::tok::r_square:
             case clang::tok::r_brace:
-                if(closers.pop_back_val() != token.kind()) {
+                if(closers.pop_back_val() != token.kind) {
                     return std::nullopt;
                 }
                 if(closers.empty()) {
-                    return &token == &tokens[1] ? 0 : commas + 1;
+                    return seen == 2 ? 0 : commas + 1;
                 }
                 break;
             case clang::tok::comma:
@@ -88,55 +93,71 @@ std::optional<std::size_t> call_arguments(llvm::ArrayRef<clang::syntax::Token> t
 /// None for a member named through `.` or `->`: the object's class
 /// declares it, not a header.
 std::optional<QualifiedName> qualified_name_at(CompilationUnit& unit, std::uint32_t offset) {
-    auto& token_map = unit.focus_file().tokens();
-    auto tokens = token_map.spelled();
-    auto& SM = unit.context().getSourceManager();
-    auto offset_of = [&](const clang::syntax::Token& token) {
-        return token_map.offset(token);
-    };
+    auto focus = unit.focus_file();
+    auto content = focus.content();
+    auto tokens = focus.tokens().spelled();
     // The token under the cursor, else the one the cursor sits right
     // after: editors ask at either end of a name.
-    auto it = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
-        return offset_of(token) + token.length() <= offset;
+    auto it = std::ranges::partition_point(tokens, [&](const Token& token) {
+        return token.range.end <= offset;
     });
-    if((it == tokens.end() || offset_of(*it) > offset) && it != tokens.begin() &&
-       offset_of(*std::prev(it)) + std::prev(it)->length() == offset) {
+    if((it == tokens.end() || it->range.begin > offset) && it != tokens.begin() &&
+       std::prev(it)->range.end == offset) {
         --it;
     }
-    if(it == tokens.end() || it->kind() != clang::tok::identifier || offset_of(*it) > offset) {
+    if(it == tokens.end() || focus.kind(*it) != clang::tok::identifier ||
+       it->range.begin > offset) {
         return std::nullopt;
     }
-    auto index = static_cast<std::size_t>(it - tokens.begin());
-    auto is_identifier = [&](std::size_t i) {
-        return i < tokens.size() && tokens[i].kind() == clang::tok::identifier;
+    // The tokens before and after token `i`, past the comments between.
+    auto previous = [&](std::size_t i) -> std::optional<std::size_t> {
+        while(i > 0) {
+            i -= 1;
+            if(tokens[i].kind != clang::tok::comment) {
+                return i;
+            }
+        }
+        return std::nullopt;
     };
-    auto is_scope = [&](std::size_t i) {
-        return i < tokens.size() && tokens[i].kind() == clang::tok::coloncolon;
+    auto next = [&](std::size_t i) -> std::optional<std::size_t> {
+        for(i += 1; i < tokens.size(); i += 1) {
+            if(tokens[i].kind != clang::tok::comment) {
+                return i;
+            }
+        }
+        return std::nullopt;
     };
-    auto first = index;
-    while(first >= 2 && is_scope(first - 1) && is_identifier(first - 2)) {
-        first -= 2;
+    auto is = [&](std::optional<std::size_t> i, TokenKind kind) {
+        return i && focus.kind(tokens[*i]) == kind;
+    };
+    llvm::SmallVector<std::size_t, 4> components{static_cast<std::size_t>(it - tokens.begin())};
+    for(auto scope = previous(components.front());
+        is(scope, clang::tok::coloncolon) && is(previous(*scope), clang::tok::identifier);
+        scope = previous(components.front())) {
+        components.insert(components.begin(), *previous(*scope));
     }
-    auto access = first;
-    if(access > 0 && tokens[access - 1].kind() == clang::tok::kw_template) {
-        access -= 1;
+    auto access = previous(components.front());
+    if(is(access, clang::tok::kw_template)) {
+        access = previous(*access);
     }
-    if(access > 0 &&
-       llvm::is_contained({clang::tok::period, clang::tok::arrow}, tokens[access - 1].kind())) {
+    if(is(access, clang::tok::period) || is(access, clang::tok::arrow)) {
         return std::nullopt;
     }
-    auto last = index;
-    while(is_scope(last + 1) && is_identifier(last + 2)) {
-        last += 2;
+    for(auto scope = next(components.back());
+        is(scope, clang::tok::coloncolon) && is(next(*scope), clang::tok::identifier);
+        scope = next(components.back())) {
+        components.push_back(*next(*scope));
     }
     QualifiedName result;
-    for(auto i = first; i < last; i += 2) {
-        result.scope += tokens[i].text(SM);
+    for(auto i: llvm::ArrayRef(components).drop_back()) {
+        result.scope += tokens[i].text(content);
         result.scope += "::";
     }
-    result.name = tokens[last].text(SM).str();
-    result.range = {offset_of(tokens[first]), offset_of(tokens[last]) + tokens[last].length()};
-    result.arguments = call_arguments(tokens.drop_front(last + 1));
+    const auto& first = tokens[components.front()];
+    const auto& last = tokens[components.back()];
+    result.name = last.text(content).str();
+    result.range = {first.range.begin, last.range.end};
+    result.arguments = call_arguments(tokens.drop_front(components.back() + 1));
     return result;
 }
 

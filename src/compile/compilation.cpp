@@ -568,7 +568,7 @@ CompilationStatus CompilationUnit::run() {
     }
 
     if(collected_tokens) {
-        collected_tokens->finish();
+        collected_tokens->finish(focus_file().lexical().tokens);
     }
 
     run_tidy();

@@ -788,18 +788,17 @@ struct OutlineEntry {
 bool outline_lists(SymbolKind kind, bool unnamed, bool template_parameter);
 
 /// The outline the entries make in the file `content` holds, `lexical`
-/// its lexical scan, with its `#define` directives (`macros`, those the
-/// preprocessor read), module declarations and `#pragma mark`s (`marks`):
-/// the entries are named as the text writes them, members of one macro
-/// invocation listed under it, nested by where they are written, and
-/// sections made of the marks.
+/// its lexical scan and `keywords` its dialect's, with its `#define` directives (`macros`, those
+/// the preprocessor read), module declarations and `#pragma mark`s (`marks`): the entries are named
+/// as the text writes them, members of one macro invocation listed under it, nested by where they
+/// are written, and sections made of the marks.
 auto outline(std::vector<OutlineEntry> entries,
              const LexicalInfo& lexical,
              llvm::ArrayRef<LexicalInfo::Directive> macros,
              llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules,
              llvm::ArrayRef<LexicalInfo::Directive> marks,
              llvm::StringRef content,
-             const clang::LangOptions& lang_opts,
+             const clang::IdentifierTable& keywords,
              const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
 /// The outline of the focus file, a `#define` in it only outside the

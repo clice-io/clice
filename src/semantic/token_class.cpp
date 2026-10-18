@@ -222,15 +222,6 @@ bool is_default_library(const clang::NamedDecl* decl) {
            decl->getASTContext().getSourceManager().isInSystemHeader(location);
 }
 
-/// The keyword tables of the newest C and C++ dialects, where a keyword of
-/// any dialect is found.
-struct KeywordTables {
-    clang::LangOptions cxx = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
-    clang::LangOptions c = raw_dialect(clang::Language::C, clang::LangStandard::lang_c23);
-    clang::IdentifierTable cxx_keywords{cxx};
-    clang::IdentifierTable c_keywords{c};
-};
-
 }  // namespace
 
 TokenClass token_class(const clang::NamedDecl* decl) {
@@ -438,10 +429,11 @@ TokenClass keyword_class(clang::tok::TokenKind kind) {
 }
 
 clang::tok::TokenKind keyword_of(llvm::StringRef name) {
-    const static KeywordTables tables;
-    for(const auto* keywords: {&tables.cxx_keywords, &tables.c_keywords}) {
-        if(auto it = keywords->find(name); it != keywords->end()) {
-            return it->second->getTokenID();
+    // The newest C and C++ dialects, where a keyword of any dialect is found.
+    for(const auto* dialect: {&raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26),
+                              &raw_dialect(clang::Language::C, clang::LangStandard::lang_c23)}) {
+        if(auto kind = keyword_kind(name, keywords(*dialect)); kind != clang::tok::identifier) {
+            return kind;
         }
     }
     return clang::tok::identifier;

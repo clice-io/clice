@@ -257,7 +257,9 @@ private:
             // lookup located at its keyword.
             if(auto name = unresolved_name(entry.node); name && !index_known) {
                 if(auto index = spelled_index(name->first);
-                   index && semantics.spelled_tokens()[*index].kind() == clang::tok::identifier &&
+                   index &&
+                   unit.focus_file().kind(semantics.spelled_tokens()[*index]) ==
+                       clang::tok::identifier &&
                    !semantics.token_preprocessed_away(*index)) {
                     auto offset = semantics.token_offset(*index);
                     unresolved.try_emplace(offset, name->second);
@@ -406,11 +408,20 @@ private:
     /// drop: those of the parameters their definition never names.
     void collect_inactive() {
         auto spelled = semantics.spelled_tokens();
+        auto comment = [&](std::uint32_t index) {
+            return spelled[index].kind == clang::tok::comment;
+        };
         std::vector<std::pair<std::uint32_t, std::uint32_t>> dropped;
         for(const auto* ref: invocations) {
             auto name = spelled_index(ref->loc);
-            if(!name || *name + 1 >= spelled.size() ||
-               spelled[*name + 1].kind() != clang::tok::l_paren) {
+            if(!name) {
+                continue;
+            }
+            auto open = *name + 1;
+            while(open < spelled.size() && comment(open)) {
+                open += 1;
+            }
+            if(open == spelled.size() || spelled[open].kind != clang::tok::l_paren) {
                 continue;
             }
             const auto& macro = *ref->macro;
@@ -423,18 +434,20 @@ private:
             // parameter, a variadic macro's arguments are one.
             std::uint32_t parameter = 0;
             std::optional<std::uint32_t> first;
+            std::uint32_t last = 0;
             std::uint32_t depth = 0;
-            for(auto index = *name + 2; index < spelled.size(); index += 1) {
-                auto kind = spelled[index].kind();
+            for(auto index = open + 1; index < spelled.size(); index += 1) {
+                if(comment(index)) {
+                    continue;
+                }
+                auto kind = spelled[index].kind;
                 bool ends = depth == 0 &&
                             (kind == clang::tok::r_paren ||
                              (kind == clang::tok::comma && parameter + 1 < macro.getNumParams()));
                 if(ends) {
                     if(first && parameter < macro.getNumParams() &&
                        !used(macro.params()[parameter])) {
-                        const auto& last = spelled[index - 1];
-                        dropped.emplace_back(semantics.token_offset(*first),
-                                             semantics.token_offset(index - 1) + last.length());
+                        dropped.emplace_back(spelled[*first].range.begin, spelled[last].range.end);
                     }
                     if(kind == clang::tok::r_paren) {
                         break;
@@ -451,6 +464,7 @@ private:
                 if(!first) {
                     first = index;
                 }
+                last = index;
             }
         }
         // An argument may hold a whole untaken branch: overlapping spans
@@ -480,8 +494,7 @@ private:
 
     std::optional<std::uint32_t> spelled_index(clang::SourceLocation location) {
         auto index = spelled_containing(location);
-        if(!index || semantics.spelled_tokens()[*index].location() !=
-                         (location.isMacroID() ? sources.getSpellingLoc(location) : location)) {
+        if(!index || semantics.token_offset(*index) != unit.written_at(location).offset) {
             return std::nullopt;
         }
         return index;
@@ -493,19 +506,19 @@ private:
         if(location.isInvalid()) {
             return std::nullopt;
         }
-        if(location.isMacroID()) {
-            location = sources.getSpellingLoc(location);
+        auto [file, offset] = unit.written_at(location);
+        if(file != unit.focus_file().file()) {
+            return std::nullopt;
         }
         auto spelled = semantics.spelled_tokens();
-        auto it = std::partition_point(
-            spelled.begin(),
-            spelled.end(),
-            [&](const clang::syntax::Token& token) { return !(location < token.location()); });
+        auto it = llvm::partition_point(spelled, [&](const Token& token) {
+            return token.range.begin <= offset;
+        });
         if(it == spelled.begin()) {
             return std::nullopt;
         }
         it -= 1;
-        if(location.getRawEncoding() - it->location().getRawEncoding() >= it->length()) {
+        if(offset >= it->range.end) {
             return std::nullopt;
         }
         return static_cast<std::uint32_t>(it - spelled.begin());
@@ -542,7 +555,7 @@ private:
         }
         auto spelled = semantics.spelled_tokens();
         for(auto index = *first; index <= *last; index += 1) {
-            if(!names_token(spelled[index].kind(), classified) ||
+            if(!names_token(unit.focus_file().kind(spelled[index]), classified) ||
                semantics.token_preprocessed_away(index)) {
                 continue;
             }
@@ -746,6 +759,7 @@ auto semantic_tokens(CompilationUnit& unit,
     return semantic_token_stream(focus.lexical().tokens,
                                  focus.content(),
                                  unit.lang_options(),
+                                 unit.keywords(),
                                  facts,
                                  options);
 }

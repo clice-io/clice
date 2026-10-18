@@ -54,17 +54,6 @@ IndexEntries extract_index_entries(const index::Shard& shard) {
 
 namespace {
 
-/// The keyword table of the raw dialect `lang_opts` lexes as; it outlives
-/// every call (projections run on the master's single thread).
-clang::IdentifierTable& keywords_for(const clang::LangOptions& lang_opts) {
-    auto language = lang_opts.CPlusPlus ? clang::Language::CXX : clang::Language::C;
-    static std::map<std::pair<clang::Language, clang::LangStandard::Kind>, clang::IdentifierTable>
-        tables;
-    return tables
-        .try_emplace({language, lang_opts.LangStd}, raw_dialect(language, lang_opts.LangStd))
-        .first->second;
-}
-
 struct Brace {
     LocalSourceRange range;
     bool open;
@@ -135,7 +124,7 @@ auto index_semantic_tokens(llvm::StringRef content,
                            const IndexEntries& entries,
                            IndexSymbolResolver resolve,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
-    auto& keywords = keywords_for(lang_opts);
+    const auto& table = keywords(lang_opts);
     using Kind = SemanticTokenKind;
     using Modifier = SemanticTokenModifier;
 
@@ -143,12 +132,7 @@ auto index_semantic_tokens(llvm::StringRef content,
     auto lexical = lexical_scan(content, lang_opts);
     llvm::DenseMap<std::uint32_t, clang::tok::TokenKind> lexed;
     for(const auto& token: lexical.tokens) {
-        auto kind = token.kind;
-        if(token.is_identifier()) {
-            auto it = keywords.find(token.text(content));
-            kind = it == keywords.end() ? clang::tok::identifier : it->second->getTokenID();
-        }
-        lexed.try_emplace(token.range.begin, kind);
+        lexed.try_emplace(token.range.begin, lexed_kind(token, content, table));
     }
     auto anchors = [&](std::uint32_t offset, const TokenClass& token) {
         auto it = lexed.find(offset);
@@ -219,7 +203,7 @@ auto index_semantic_tokens(llvm::StringRef content,
         }
     }
 
-    return semantic_token_stream(lexical.tokens, content, lang_opts, facts, options);
+    return semantic_token_stream(lexical.tokens, content, lang_opts, table, facts, options);
 }
 
 auto index_document_symbols(llvm::StringRef content,
@@ -312,7 +296,7 @@ auto index_document_symbols(llvm::StringRef content,
                    modules,
                    marks,
                    content,
-                   lang_opts,
+                   keywords(lang_opts),
                    options);
 }
 

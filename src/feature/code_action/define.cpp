@@ -131,8 +131,8 @@ clang::SourceRange default_argument_range(const clang::NamedDecl* param) {
 }
 
 /// The keywords a function's decl-specifiers may mix with its return type.
-bool is_specifier(const clang::syntax::Token& token) {
-    switch(token.kind()) {
+bool is_specifier(TokenKind kind) {
+    switch(kind) {
         case clang::tok::kw_static:
         case clang::tok::kw_virtual:
         case clang::tok::kw_inline:
@@ -144,9 +144,9 @@ bool is_specifier(const clang::syntax::Token& token) {
 }
 
 /// `virtual`, `static` and `explicit` are declaration-only.
-bool declaration_only(const clang::syntax::Token& token) {
-    return token.kind() == clang::tok::kw_virtual || token.kind() == clang::tok::kw_static ||
-           token.kind() == clang::tok::kw_explicit;
+bool declaration_only(TokenKind kind) {
+    return kind == clang::tok::kw_virtual || kind == clang::tok::kw_static ||
+           kind == clang::tok::kw_explicit;
 }
 
 /// How a declaration turns into the head of its out-of-line definition.
@@ -174,10 +174,18 @@ public:
         fid = begin.file;
         base = begin.offset;
         source = *text;
-        // Lexed here: the unit's spelled tokens cover the focus file only.
-        tokens = clang::syntax::tokenize(clang::syntax::FileRange(fid, base, base + source.size()),
-                                         unit.context().getSourceManager(),
-                                         unit.lang_options());
+        auto content = unit.file_content(fid);
+        for(const auto& token: unit.lexical(fid).code_from(base)) {
+            if(token.range.begin >= base + source.size()) {
+                break;
+            }
+            if(token.is_eod()) {
+                continue;
+            }
+            auto& added = tokens.emplace_back(token);
+            added.kind = lexed_kind(token, content, unit.keywords());
+            added.range = {token.range.begin - base, token.range.end - base};
+        }
 
         auto name = offset_of(decl->getNameInfo().getBeginLoc());
         if(!name) {
@@ -211,11 +219,6 @@ private:
         return offset - base;
     }
 
-    /// The tokens all lie in the declaration's text.
-    std::uint32_t offset_of(const clang::syntax::Token& token) {
-        return unit.written_at(token.location()).offset - base;
-    }
-
     /// The end of a token at `offset`, with the spaces following it.
     std::uint32_t past_spaces(std::uint32_t offset) {
         while(offset < source.size() && source[offset] == ' ') {
@@ -234,13 +237,13 @@ private:
     /// The index of the token closing the bracket opened at `open`, a `(`
     /// or a `[`; nullopt when a macro spells it.
     std::optional<std::size_t> closing(std::size_t open) {
-        auto kind = tokens[open].kind();
+        auto kind = tokens[open].kind;
         auto close = kind == clang::tok::l_paren ? clang::tok::r_paren : clang::tok::r_square;
         std::uint32_t depth = 0;
         for(auto index = open; index < tokens.size(); index += 1) {
-            if(tokens[index].kind() == kind) {
+            if(tokens[index].kind == kind) {
                 depth += 1;
-            } else if(tokens[index].kind() == close) {
+            } else if(tokens[index].kind == close) {
                 depth -= 1;
                 if(depth == 0) {
                     return index;
@@ -254,15 +257,15 @@ private:
     /// `[[...]]` attributes may precede.
     bool add_inline() {
         std::size_t index = 0;
-        while(tokens[index].kind() == clang::tok::l_square &&
-              tokens[index + 1].kind() == clang::tok::l_square) {
+        while(tokens[index].kind == clang::tok::l_square &&
+              tokens[index + 1].kind == clang::tok::l_square) {
             auto close = closing(index);
             if(!close) {
                 return false;
             }
             index = *close + 1;
         }
-        auto offset = offset_of(tokens[index]);
+        auto offset = tokens[index].range.begin;
         patches.push_back({offset, offset, "inline "});
         return true;
     }
@@ -271,25 +274,24 @@ private:
     /// `explicit(...)`, outside the return type, which drops its own.
     bool drop_specifiers(std::uint32_t name) {
         for(std::size_t index = 0; index < tokens.size(); index += 1) {
-            auto offset = offset_of(tokens[index]);
+            auto offset = tokens[index].range.begin;
             if(offset >= name) {
                 break;
             }
-            if(!declaration_only(tokens[index]) ||
+            if(!declaration_only(tokens[index].kind) ||
                (return_type && offset >= return_type->first && offset < return_type->second)) {
                 continue;
             }
             auto last = index;
-            if(tokens[index].kind() == clang::tok::kw_explicit &&
-               tokens[index + 1].kind() == clang::tok::l_paren) {
+            if(tokens[index].kind == clang::tok::kw_explicit &&
+               tokens[index + 1].kind == clang::tok::l_paren) {
                 auto close = closing(index + 1);
                 if(!close) {
                     return false;
                 }
                 last = *close;
             }
-            patches.push_back(
-                {offset, past_spaces(offset_of(tokens[last]) + tokens[last].length()), ""});
+            patches.push_back({offset, past_spaces(tokens[last].range.end), ""});
             index = last;
         }
         return true;
@@ -316,11 +318,11 @@ private:
         }
         std::optional<std::uint32_t> equal;
         for(const auto& token: tokens) {
-            auto offset = offset_of(token);
+            auto offset = token.range.begin;
             if(offset >= *begin) {
                 break;
             }
-            equal = token.kind() == clang::tok::equal ? std::optional(offset) : std::nullopt;
+            equal = token.kind == clang::tok::equal ? std::optional(offset) : std::nullopt;
         }
         if(!equal) {
             return false;
@@ -539,16 +541,16 @@ private:
         if(!spelling) {
             return;
         }
-        auto first = std::ranges::find_if(tokens, [&](const clang::syntax::Token& token) {
-            return offset_of(token) >= *begin;
+        auto first = std::ranges::find_if(tokens, [&](const Token& token) {
+            return token.range.begin >= *begin;
         });
         // The end may fall inside a token: the `>` of `A<B<int>>` is half
         // of a `>>`.
-        auto last = std::prev(std::ranges::find_if(tokens, [&](const clang::syntax::Token& token) {
-            return offset_of(token) > *end;
+        auto last = std::prev(std::ranges::find_if(tokens, [&](const Token& token) {
+            return token.range.begin > *end;
         }));
-        auto absorbed = [](const clang::syntax::Token& token) {
-            return is_cv(token) || is_specifier(token);
+        auto absorbed = [](const Token& token) {
+            return is_cv(token.kind) || is_specifier(token.kind);
         };
         while(first != tokens.begin() && absorbed(*std::prev(first))) {
             --first;
@@ -558,13 +560,13 @@ private:
         }
         std::string text;
         for(const auto& token: llvm::make_range(first, std::next(last))) {
-            if(is_specifier(token) && !declaration_only(token)) {
-                text += token.text(unit.context().getSourceManager());
+            if(is_specifier(token.kind) && !declaration_only(token.kind)) {
+                text += token.text(source);
                 text += ' ';
             }
         }
         text += *spelling;
-        return_type = {offset_of(*first), offset_of(*last) + last->length()};
+        return_type = {first->range.begin, last->range.end};
         patches.push_back({return_type->first, return_type->second, std::move(text)});
     }
 
@@ -576,7 +578,9 @@ private:
     clang::FileID fid;
     std::uint32_t base = 0;
     llvm::StringRef source;
-    std::vector<clang::syntax::Token> tokens;
+    /// The declaration's tokens, comments and directive ends left out, at
+    /// offsets in `source`; a keyword is its own kind.
+    std::vector<Token> tokens;
     std::vector<Patch> patches;
     /// The span the respelled return type replaces.
     std::optional<std::pair<std::uint32_t, std::uint32_t>> return_type;

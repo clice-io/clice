@@ -1042,12 +1042,12 @@ auto attr_hover(CompilationUnit& unit, const clang::Attr& attr) -> HoverInfo {
 /// documentation of what that names: an alias's own, not that of the class
 /// behind it, which may be a library's internal one.
 auto deduced_hover(clang::QualType type,
-                   const clang::syntax::Token& token,
+                   clang::tok::TokenKind keyword,
                    const clang::DeclContext* scope,
                    const Request& request) -> HoverInfo {
     HoverInfo info;
     /// FIXME: distinguish decltype(auto) vs decltype(expr).
-    info.name = clang::tok::getTokenName(token.kind());
+    info.name = clang::tok::getTokenName(keyword);
     if(type->isUndeducedAutoType()) {
         info.definition = "/* not deduced */";
         return info;
@@ -1264,10 +1264,10 @@ auto macro_hover(CompilationUnit& unit,
     }
     auto& tokens = focus.tokens();
     for(const auto& token: tokens.spelled_touching(focus.location(offset))) {
-        if(token.kind() != clang::tok::identifier && token.kind() != clang::tok::raw_identifier) {
+        if(focus.kind(token) != clang::tok::identifier) {
             continue;
         }
-        auto name = token.text(unit.context().getSourceManager());
+        auto name = token.text(content);
         for(const auto* macro: unit.macro_definitions(name)) {
             auto defined = unit.seen_at(macro->getDefinitionLoc());
             if(!focus.contains(defined.file) || defined.offset <= offset) {
@@ -1275,8 +1275,7 @@ auto macro_hover(CompilationUnit& unit,
             }
             auto info = macro_card(unit, *macro, documentation_options);
             info.name = name.str();
-            auto begin = tokens.offset(token);
-            info.symbol_range = LocalSourceRange(begin, begin + token.length());
+            info.symbol_range = token.range;
             info.defined_on_line = content.take_front(defined.offset).count('\n') + 1;
             return info;
         }
@@ -1288,7 +1287,7 @@ auto macro_hover(CompilationUnit& unit,
 /// them, which the editor highlights.
 struct Targets {
     llvm::SmallVector<const clang::NamedDecl*, 4> decls;
-    const clang::syntax::Token* token = nullptr;
+    const Token* token = nullptr;
 };
 
 /// The declarations the hovered token refers to, straight from the semantic
@@ -1298,9 +1297,10 @@ struct Targets {
 /// separator — `:`, `=`, `&&`, `||`, `?` — leading to what it does not spell
 /// (a range-for's `begin`, a copy's constructor) gives way to the token it
 /// follows: `for(auto& x: xs)` hovered right after `x` is `x`.
-auto decls_at(CompilationUnit& unit, llvm::ArrayRef<clang::syntax::Token> touched) -> Targets {
+auto decls_at(CompilationUnit& unit, llvm::ArrayRef<Token> touched) -> Targets {
     const Semantics& semantics = unit.get<Semantics>();
     auto spelled = semantics.spelled_tokens();
+    auto focus = unit.focus_file();
     llvm::SmallVector<const clang::NamedDecl*, 4> decls;
     Targets separated;
 
@@ -1319,17 +1319,14 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<clang::syntax::Token> touche
     };
 
     for(const auto& token: llvm::reverse(touched)) {
-        if(should_ignore_token(token)) {
+        auto kind = focus.kind(token);
+        if(should_ignore_token(kind)) {
             continue;
         }
 
-        auto it = std::ranges::partition_point(spelled, [&](const clang::syntax::Token& t) {
-            return t.location() < token.location();
-        });
-        if(it == spelled.end() || it->location() != token.location()) {
-            continue;
-        }
-        auto index = static_cast<std::uint32_t>(it - spelled.begin());
+        assert(spelled.data() <= &token && &token < spelled.end() && "a token of the focus file");
+        auto index = static_cast<std::uint32_t>(&token - spelled.data());
+        auto location = focus.location(token.range.begin);
 
         llvm::DenseSet<std::uint32_t> visited;
         llvm::SmallPtrSet<const clang::NamedDecl*, 4> seen;
@@ -1349,11 +1346,11 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<clang::syntax::Token> touche
 
                 for(auto& occurrence:
                     resolve_occurrences(semantics, n, &unit.get<types::TemplateResolver>())) {
-                    if(unit.written_at(occurrence.location) == unit.written_at(token.location())) {
+                    if(unit.written_at(occurrence.location) == unit.written_at(location)) {
                         if(seen.insert(occurrence.decl).second) {
                             decls.push_back(occurrence.decl);
                         }
-                    } else if(inside(occurrence, token.location()) &&
+                    } else if(inside(occurrence, location) &&
                               !llvm::is_contained(named, occurrence.decl)) {
                         named.push_back(occurrence.decl);
                     }
@@ -1373,7 +1370,7 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<clang::syntax::Token> touche
                                clang::tok::ampamp,
                                clang::tok::pipepipe,
                                clang::tok::question},
-                              token.kind()) &&
+                              kind) &&
            llvm::none_of(decls, spells_operator)) {
             separated = {.decls = std::move(decls), .token = &token};
             decls.clear();
@@ -1872,32 +1869,27 @@ auto hover_info(CompilationUnit& unit,
     };
 
     auto focus = unit.focus_file();
-    auto& token_map = focus.tokens();
-    auto tokens = token_map.spelled_touching(focus.location(offset));
+    auto tokens = focus.tokens().spelled_touching(focus.location(offset));
 
     /// Early exit if there were no tokens around the cursor.
     if(tokens.empty()) {
         return std::nullopt;
     }
 
-    auto token_range = [&](const clang::syntax::Token& token) {
-        auto begin = token_map.offset(token);
-        return LocalSourceRange(begin, begin + token.length());
-    };
-
     /// To be used as a backup for highlighting the selected token, we use back
     /// as it aligns better with biases elsewhere (editors tend to send the
     /// position for the left of the hovered token).
-    LocalSourceRange highlight_range = token_range(tokens.back());
+    LocalSourceRange highlight_range = tokens.back().range;
     std::optional<HoverInfo> info;
 
     /// Deduced type only works on auto/decltype keywords.
     for(const auto& token: tokens) {
-        if(token.kind() == clang::tok::identifier) {
+        auto kind = focus.kind(token);
+        if(kind == clang::tok::identifier) {
             /// Prefer the identifier token as a fallback highlighting range.
-            highlight_range = token_range(token);
-        } else if(token.kind() == clang::tok::kw_auto || token.kind() == clang::tok::kw_decltype) {
-            auto tree = SelectionTree::create_right(unit, token_range(token));
+            highlight_range = token.range;
+        } else if(kind == clang::tok::kw_auto || kind == clang::tok::kw_decltype) {
+            auto tree = SelectionTree::create_right(unit, token.range);
             if(const auto* node = tree.common_ancestor()) {
                 auto deduced = types::deduced_type(node->data, node->owning_decl());
                 /// A placeholder of an expression, `new auto(1)` or `auto(x)`,
@@ -1919,10 +1911,10 @@ auto hover_info(CompilationUnit& unit,
                 }
                 if(!deduced.isNull()) {
                     info = deduced_hover(deduced,
-                                         token,
+                                         kind,
                                          node->owning_decl()->getDeclContext(),
                                          request);
-                    highlight_range = token_range(token);
+                    highlight_range = token.range;
                     break;
                 }
             }
@@ -1955,7 +1947,7 @@ auto hover_info(CompilationUnit& unit,
                 }
                 add_pass(*node, *info, display_options);
                 if(targets.token) {
-                    highlight_range = token_range(*targets.token);
+                    highlight_range = targets.token->range;
                 }
             } else if(const auto* expr = node->get<clang::Expr>()) {
                 info = expr_hover(*node, *expr, request);

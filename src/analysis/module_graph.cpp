@@ -1529,9 +1529,10 @@ std::expected<void, std::string> move_entities(Facts& facts,
 }
 
 bool is_keyword(llvm::StringRef word) {
-    static clang::IdentifierTable table(
-        raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx23));
-    return table.get(word).getTokenID() != clang::tok::identifier;
+    return keyword_kind(
+               word,
+               keywords(raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx23))) !=
+           clang::tok::identifier;
 }
 
 bool is_module_name(llvm::StringRef name) {

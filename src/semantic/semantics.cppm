@@ -46,7 +46,7 @@ public:
         /// A C++20 module declaration (any of its three lexical forms);
         /// neither the AST nor the preprocessor callbacks record it.
         Module,
-        /// A comment; the spelled token stream drops them.
+        /// A comment; it owns no token.
         Comment,
     };
 
@@ -183,9 +183,10 @@ private:
         storage;
 };
 
-/// Tokens the selection algorithm never counts: comments, semicolons and
-/// cvr-qualifiers (the AST does not model their locations).
-bool should_ignore_token(const clang::syntax::Token& token);
+/// Tokens the selection algorithm never counts, by what they lex as:
+/// comments and directive ends, semicolons and cvr-qualifiers (the AST
+/// does not model their locations).
+bool should_ignore_token(TokenKind kind);
 
 /// A declaration a node refers to: the decl, its role, and the location of
 /// the token spelling its name — invalid for a use no token spells (an
@@ -359,24 +360,24 @@ public:
         return roots;
     }
 
-    /// The spelled tokens of the focus file (a view into the unit's tokens,
+    /// The spelled tokens of the focus file, its lexical scan's (a view,
     /// not a copy); empty for the whole-TU shape. They cover the whole file
     /// even under a preamble PCH — what the PCH consumes is the preamble's
     /// AST and directives (those travel through the pch.idx index
     /// instead), not its spelling.
-    llvm::ArrayRef<clang::syntax::Token> spelled_tokens() const {
+    llvm::ArrayRef<Token> spelled_tokens() const {
         return tokens;
     }
 
     /// Byte offset of spelled token `index` in the focus file.
     std::uint32_t token_offset(std::uint32_t index) const {
-        return tokens[index].location().getRawEncoding() - file_begin.getRawEncoding();
+        return tokens[index].range.begin;
     }
 
     /// Whether spelled token `index` was preprocessed away to nothing
     /// (a disabled region or an empty expansion).
     bool token_preprocessed_away(std::uint32_t index) const {
-        return (*pp_ignored)[index];
+        return pp_ignored[index];
     }
 
     /// The nodes owning spelled token `index`. Almost always a single node;
@@ -384,12 +385,6 @@ public:
     llvm::ArrayRef<std::uint32_t> owners(std::uint32_t index) const {
         return llvm::ArrayRef(owner_nodes)
             .slice(owner_begin[index], owner_begin[index + 1] - owner_begin[index]);
-    }
-
-    /// The focus file's comments in source order (the spelled token
-    /// stream drops them). The same objects back the Comment nodes.
-    llvm::ArrayRef<LexicalInfo::Comment> comments() const {
-        return focus_comments;
     }
 
     /// The focus file's module declarations, already cross-checked
@@ -406,14 +401,11 @@ private:
 
     std::vector<InstantiationRoot> roots;
 
-    llvm::ArrayRef<clang::syntax::Token> tokens;
-
-    /// Start location of the focus file, for O(1) offset computation.
-    clang::SourceLocation file_begin;
+    llvm::ArrayRef<Token> tokens;
 
     /// Per spelled token, whether it was preprocessed to nothing (a view
     /// into the unit's tokens, like `tokens`).
-    const std::vector<bool>* pp_ignored = nullptr;
+    llvm::ArrayRef<bool> pp_ignored;
 
     /// CSR layout: the owners of token i are
     /// owner_nodes[owner_begin[i] .. owner_begin[i + 1]).
@@ -423,10 +415,6 @@ private:
     /// The focus file's module declarations the compile confirms; Module
     /// nodes point into this storage.
     std::vector<LexicalInfo::ModuleDeclaration> modules;
-
-    /// The unit's comments of the focus file (CompilationUnit::comments);
-    /// Comment nodes point into them.
-    llvm::ArrayRef<LexicalInfo::Comment> focus_comments;
 };
 
 /// resolve_references with tree context: a dependent name that is the

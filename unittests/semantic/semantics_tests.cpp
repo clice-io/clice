@@ -115,13 +115,13 @@ ZEST_CASE(CommentNodes) {
     ZASSERT(compile());
     auto& semantics = unit->get<Semantics>();
 
-    auto comments = semantics.comments();
+    const auto& comments = unit->focus_file().lexical().comments;
     ZASSERT(comments.size() == 2U);
     ZASSERT(comments[0].kind == LexicalInfo::Comment::Kind::Line);
     ZASSERT(comments[1].kind == LexicalInfo::Comment::Kind::Block);
 
-    // Each comment is also a node; it owns no spelled tokens (the stream
-    // drops comments) and carries only its payload.
+    // Each comment is also a node; it owns no token and carries only its
+    // payload.
     std::size_t comment_nodes = 0;
     for(auto& entry: semantics.node_entries()) {
         if(entry.node.kind() == SemanticNode::Kind::Comment) {

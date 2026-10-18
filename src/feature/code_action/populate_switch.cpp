@@ -91,12 +91,9 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
         if(!brace) {
             return;
         }
-        auto& token_map = unit.focus_file().tokens();
-        auto tokens = token_map.spelled();
-        auto after = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
-            return token_map.offset(token) <= brace->begin;
-        });
-        anchor_loc = after->location();
+        auto focus = unit.focus_file();
+        auto after = *focus.lexical().code_from(brace->begin + 1).begin();
+        anchor_loc = focus.location(after.range.begin);
     }
     auto anchor = editable_range(unit, anchor_loc);
     if(!anchor) {

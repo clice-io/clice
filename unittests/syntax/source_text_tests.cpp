@@ -17,7 +17,7 @@ ZEST_SUITE(SourceText) {
 llvm::StringRef content = "// lead\nint x; /* tail */\n";
 
 ZEST_CASE(PositionsKept) {
-    SourceText text(content, dialect_of());
+    SourceText text(content, dialect_of(), keywords(dialect_of()));
     auto first = text.positions();
     auto again = text.positions();
     auto position = first.position(content.find("x"), PositionEncoding::UTF16);
@@ -28,7 +28,7 @@ ZEST_CASE(PositionsKept) {
 }
 
 ZEST_CASE(CommentsAlone) {
-    SourceText text(content, dialect_of());
+    SourceText text(content, dialect_of(), keywords(dialect_of()));
     auto comments = text.comments();
     ZASSERT(comments.size() == 2U);
     ZEXPECT(content.substr(comments[1].range.begin, comments[1].range.length()) == "/* tail */");
@@ -37,11 +37,25 @@ ZEST_CASE(CommentsAlone) {
 
 ZEST_CASE(CommentsOfScan) {
     // Once the lexical scan ran, its comments are the text's.
-    SourceText text(content, dialect_of());
+    SourceText text(content, dialect_of(), keywords(dialect_of()));
     const auto& scan = text.lexical();
     ZEXPECT(&text.lexical() == &scan);
     ZEXPECT(text.comments().data() == scan.comments.data());
     ZEXPECT(text.comments().size() == 2U);
+}
+
+ZEST_CASE(KeywordKinds) {
+    // A keyword is told by its spelling, line splices folded away; an
+    // alternative operator name is the punctuator it spells.
+    llvm::StringRef code = R"(in\
+t x and y;)";
+    SourceText text(code, dialect_of(), keywords(dialect_of()));
+    const auto& tokens = text.lexical().tokens;
+    ZASSERT(tokens.size() == 5U);
+    ZEXPECT(text.kind(tokens[0]) == clang::tok::kw_int);
+    ZEXPECT(text.kind(tokens[1]) == clang::tok::identifier);
+    ZEXPECT(text.kind(tokens[2]) == clang::tok::ampamp);
+    ZEXPECT(text.kind(tokens[4]) == clang::tok::semi);
 }
 
 };  // ZEST_SUITE(SourceText)

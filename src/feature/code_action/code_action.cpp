@@ -845,8 +845,8 @@ llvm::StringRef line_indent(llvm::StringRef content, std::uint32_t offset) {
     return line.take_while([](char c) { return c == ' ' || c == '\t'; });
 }
 
-bool is_cv(const clang::syntax::Token& token) {
-    return token.kind() == clang::tok::kw_const || token.kind() == clang::tok::kw_volatile;
+bool is_cv(TokenKind kind) {
+    return kind == clang::tok::kw_const || kind == clang::tok::kw_volatile;
 }
 
 bool at_file_scope(const clang::DeclContext* context) {

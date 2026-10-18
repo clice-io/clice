@@ -215,6 +215,7 @@ std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& 
         named_tokens(feature::semantic_token_stream(focus.lexical().tokens,
                                                     content,
                                                     unit.lang_options(),
+                                                    unit.keywords(),
                                                     feature::semantic_token_facts(unit, {}, true),
                                                     config.semantic_tokens),
                      legend);

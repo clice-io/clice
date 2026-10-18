@@ -14,7 +14,7 @@ namespace {
 
 /// A declaration specifier spelled as a keyword, other than a type or a
 /// cv-qualifier.
-bool is_specifier(const clang::syntax::Token& token) {
+bool is_specifier(TokenKind kind) {
     using enum clang::tok::TokenKind;
     constexpr std::array specifiers = {kw_static,
                                        kw_extern,
@@ -25,7 +25,7 @@ bool is_specifier(const clang::syntax::Token& token) {
                                        kw_thread_local,
                                        kw_register,
                                        kw_friend};
-    return llvm::is_contained(specifiers, token.kind());
+    return llvm::is_contained(specifiers, kind);
 }
 
 }  // namespace
@@ -96,43 +96,61 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         declarator = declarator->getLocallyUnqualifiedSingleStepDesugaredType();
     }
     if(llvm::isa<clang::PointerType, clang::MemberPointerType>(declarator)) {
-        auto& token_map = unit.focus_file().tokens();
+        auto focus = unit.focus_file();
+        auto& token_map = focus.tokens();
         auto tokens = token_map.spelled();
-        const auto* at = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
-            return token_map.offset(token) < range->begin;
+        const auto* at = llvm::partition_point(tokens, [&](const Token& token) {
+            return token.range.begin < range->begin;
         });
+        auto comment = [](const Token& token) {
+            return token.kind == clang::tok::comment;
+        };
         const auto* first = at;
-        while(first != tokens.begin() && is_cv(*std::prev(first))) {
-            first -= 1;
+        for(const auto* it = at; it != tokens.begin();) {
+            it -= 1;
+            if(comment(*it)) {
+                continue;
+            }
+            if(!is_cv(focus.kind(*it))) {
+                break;
+            }
+            first = it;
         }
-        auto starts_expansion = [&](const clang::syntax::Token& token) {
+        auto starts_expansion = [&](const Token& token) {
             auto expansions = token_map.expansions_overlapping(llvm::ArrayRef(token));
             return !expansions.empty() && expansions.front().spelled.begin() == &token;
         };
         for(const auto* it = first; it != tokens.begin(); it -= 1) {
             const auto& token = *std::prev(it);
-            if(is_cv(token) || starts_expansion(token)) {
+            if(comment(token)) {
+                continue;
+            }
+            if(is_cv(focus.kind(token)) || starts_expansion(token)) {
                 return;
             }
-            if(!is_specifier(token)) {
+            if(!is_specifier(focus.kind(token))) {
                 break;
             }
         }
         for(const auto* it = first; it != at; it += 1) {
-            auto end = token_map.offset(*it) + it->length();
-            auto next = it + 1 == at ? range->begin : token_map.offset(*(it + 1));
+            if(comment(*it)) {
+                return;
+            }
+            auto end = it->range.end;
+            auto next = it + 1 == at ? range->begin : (it + 1)->range.begin;
             if(!content.substr(end, next - end).trim().empty()) {
                 return;
             }
             // decltype of a const pointer has the qualifier already.
-            bool has = it->kind() == clang::tok::kw_const ? deduced.isConstQualified()
-                                                          : deduced.isVolatileQualified();
+            auto kind = focus.kind(*it);
+            bool has = kind == clang::tok::kw_const ? deduced.isConstQualified()
+                                                    : deduced.isVolatileQualified();
             if(!has) {
                 printed += ' ';
-                printed += clang::tok::getKeywordSpelling(it->kind());
+                printed += clang::tok::getKeywordSpelling(kind);
             }
         }
-        range->begin = token_map.offset(*first);
+        range->begin = first->range.begin;
     }
     out.push_back(CodeAction{
         .title = std::format("Replace '{}' with '{}'",
