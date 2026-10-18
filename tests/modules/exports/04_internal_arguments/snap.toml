@@ -1,6 +1,6 @@
 [test."$ clice index"]
 stdout = '''
-Indexed 2 translation units in #s: 2 file shards (# KB), 5 symbols.
+Indexed 2 translation units in #s: 2 file shards (# KB), 7 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -54,6 +54,54 @@ stdout = '''
         "context": "    return 2 * shape.radius;",
         "function": "twice",
         "via": "instantiation"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query definition main.cpp:21:19"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#8851a59ad07546f0 path:${WS}/shapes.cppm",
+    "documentation": null,
+    "definition": {
+      "file": "${WS}/shapes.cppm",
+      "startLine": 10,
+      "endLine": 10,
+      "text": "double radius"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query references main.cpp:21:19 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#8851a59ad07546f0 path:${WS}/shapes.cppm",
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 21,
+        "context": "    return make().radius;",
+        "function": "made_radius"
+      },
+      {
+        "file": "${WS}/shapes.cppm",
+        "line": 10,
+        "context": "        double radius;",
+        "function": "make"
       }
     ],
     "total": 2
