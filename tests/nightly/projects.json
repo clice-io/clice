@@ -108,7 +108,7 @@
     },
     {
       "name": "mp-units",
-      "about": "v2.5.0 built as C++20 modules, with its tests against Catch2 v3.9.1",
+      "about": "v2.5.0 built as C++20 modules, with its tests against Catch2 v3.9.1; on Windows for MinGW, xclang's default, as clang rejects its std::format calls against MSVC's library",
       "repository": "https://github.com/mpusz/mp-units",
       "commit": "27d2def9082ce00d7eb4f75695dbead4a748f23f",
       "prepare": [
@@ -134,7 +134,6 @@
           "-G",
           "Ninja",
           "-DCMAKE_CXX_COMPILER=clang++",
-          "${CMAKE_TOOLCHAIN}",
           "-DCMAKE_INSTALL_PREFIX=${CHECKOUT}/catch2",
           "-DBUILD_TESTING=OFF"
         ],
@@ -149,7 +148,6 @@
           "-G",
           "Ninja",
           "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-          "${CMAKE_TOOLCHAIN}",
           "-DCMAKE_C_COMPILER=clang",
           "-DCMAKE_CXX_COMPILER=clang++",
           "-DCMAKE_CXX_STANDARD=20",
