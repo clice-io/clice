@@ -686,6 +686,9 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
     auto snapshot = f.project.database->read(index::BlobKind::CommandSnapshot, "cdb");
     ZASSERT(snapshot);
     ZASSERT(snapshot.buffer->getBuffer().contains("main.cpp"));
+    // Beside a project table, or the next load would find no index and
+    // never read the debt back.
+    ZASSERT(f.project.database->contains(index::BlobKind::ProjectTable, "global"));
 }
 
 ZEST_CASE(UnreadableTablePreserved) {
