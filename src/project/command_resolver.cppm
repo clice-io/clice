@@ -186,12 +186,12 @@ private:
                                                    const CommandRequest& request,
                                                    Resolution& resolution);
 
-    /// The header's context under the pinned host while it still includes
-    /// the header, else the default host. Fails with the host whose include
-    /// chain the synthesis cannot follow under its command — invalid when
-    /// no unit includes the header at all.
+    /// The header's context under the request's pinned host while it
+    /// still includes the header, else the default host. Fails with the
+    /// host whose include chain the synthesis cannot follow under its
+    /// command — invalid when no unit includes the header at all.
     std::expected<HeaderContext, Fid> resolve_header_context(Fid header_path_id,
-                                                             const Selection* choice,
+                                                             const CommandRequest& request,
                                                              bool synthesize);
 
     /// What dump_mode_slices would emit for this file (0 = nothing) — the

@@ -237,7 +237,7 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
 
     std::optional<HeaderContext> local_ctx;
     if(!ctx_ptr) {
-        auto resolved = resolve_header_context(path_id, choice, synthesize);
+        auto resolved = resolve_header_context(path_id, request, synthesize);
         if(!resolved) {
             resolution.unmatched_host = resolved.error();
             resolution.tree_wanted = resolved.error();
@@ -396,9 +396,11 @@ std::optional<CommandRef> CommandResolver::pch_unit(Fid path_id,
                                   request.extra_append);
 }
 
-std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid header_path_id,
-                                                                          const Selection* choice,
-                                                                          bool synthesize) {
+std::expected<HeaderContext, Fid>
+    CommandResolver::resolve_header_context(Fid header_path_id,
+                                            const CommandRequest& request,
+                                            bool synthesize) {
+    const Selection* choice = request.selection;
     // A pinned host (and its chosen include occurrence) wins while it
     // still compiles and still includes the header; otherwise the build's
     // default host.
@@ -452,8 +454,13 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
     // Include directives along the chain are resolved with the host's real
     // search configuration, so same-named headers in different directories
     // cannot be confused.
-    auto host_ref =
-        host_command(project, chain.back(), host_path_id, host_command_hash, host_base_hash);
+    auto host_ref = host_command(project,
+                                 chain.back(),
+                                 host_path_id,
+                                 host_command_hash,
+                                 host_base_hash,
+                                 request.extra_prepend,
+                                 request.extra_append);
     if(!host_ref) {
         return std::unexpected(host_path_id);
     }
