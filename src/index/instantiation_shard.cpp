@@ -93,7 +93,8 @@ struct SetTable {
     }
 
     static SetTable uses_of(BlobView root) {
-        auto resolutions = to_array_ref(root[&InstantiationShardBlob::resolutions]).size();
+        auto resolutions =
+            static_cast<std::uint32_t>(to_array_ref(root[&InstantiationShardBlob::resolutions]).size());
         return {
             .hashes = to_array_ref(root[&InstantiationShardBlob::uses]),
             .ends = to_array_ref(root[&InstantiationShardBlob::use_ends]),

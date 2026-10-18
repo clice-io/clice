@@ -198,7 +198,8 @@ struct RelationTable {
 
     Cursor cursor_at(std::uint32_t entry) const {
         if(entry == size()) {
-            return {targets.size(), extent_heads.size()};
+            return {static_cast<std::uint32_t>(targets.size()),
+                    static_cast<std::uint32_t>(extent_heads.size())};
         }
         auto block = entry / rank_block;
         Cursor cursor{target_ranks[block], extent_ranks[block]};

@@ -100,7 +100,7 @@ ZEST_CASE(VarintRoundTrip) {
     for(auto value: values) {
         index::write_varint(bytes, value);
     }
-    std::size_t at = 0;
+    std::uint32_t at = 0;
     for(auto value: values) {
         ZEXPECT(index::read_varint(bytes, at) == value);
     }
@@ -109,7 +109,7 @@ ZEST_CASE(VarintRoundTrip) {
 
 ZEST_CASE(VarintRejectsMalformed) {
     auto read = [](std::vector<std::uint8_t> bytes) {
-        std::size_t at = 0;
+        std::uint32_t at = 0;
         return index::read_varint(bytes, at);
     };
     // Cut short, a needless trailing zero byte, and a tenth byte past bit 63.
