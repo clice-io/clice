@@ -2,7 +2,7 @@ import { test } from "@clice/tools/testing";
 
 // The compile crashes, and again without clang-tidy: the second crash
 // acquits it, and the retry a save grants runs without clang-tidy too. The
-// index stays off, whose rows would answer what the crashed compile cannot
+// index stays off, whose entries would answer what the crashed compile cannot
 // and whose own run of the file would crash as well.
 test(async (t) => {
     const s = await t.start({

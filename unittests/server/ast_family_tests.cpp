@@ -18,6 +18,7 @@ import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;
+import :vfs.file_table;
 import :worker.probe;
 
 namespace clice::testing {
@@ -65,8 +66,7 @@ struct Stack {
     PCMFamily pcm{graph, project, commands, pool};
     PCHFamily pch{graph, project, pool};
     SessionStore sessions;
-    IndexStore index{loop, project, commands};
-    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions, index};
+    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions};
     Dispatcher dispatcher{project, contexts, ast, pool};
 
     Stack() {

@@ -10,39 +10,6 @@ import :index.tu_manifest;
 
 namespace clice::index {
 
-namespace {
-
-void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value) {
-    while(value >= 0x80) {
-        out.push_back(static_cast<std::uint8_t>(value) | 0x80);
-        value >>= 7;
-    }
-    out.push_back(static_cast<std::uint8_t>(value));
-}
-
-bool read_varint(std::span<const std::uint8_t> data, std::size_t& pos, std::uint64_t& value) {
-    value = 0;
-    for(std::uint32_t shift = 0; shift < 64; shift += 7) {
-        if(pos >= data.size()) {
-            return false;
-        }
-        auto byte = data[pos];
-        pos += 1;
-        // The tenth byte holds only value bit 63; greater payloads would
-        // shift out silently and decode to an unrelated small value.
-        if(shift == 63 && byte > 1) {
-            return false;
-        }
-        value |= static_cast<std::uint64_t>(byte & 0x7f) << shift;
-        if((byte & 0x80) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
-}  // namespace
-
 void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
     TUManifestBlob blob;
     blob.format_version = index_format_version;
@@ -117,17 +84,19 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     manifest.tu_version = VersionID{blob.tu_version};
 
     constexpr std::uint64_t id_max = std::numeric_limits<std::uint32_t>::max();
-    std::span<const std::uint8_t> nodes(blob.nodes);
-    std::size_t pos = 0;
+    llvm::ArrayRef<std::uint8_t> nodes(blob.nodes);
+    std::uint32_t pos = 0;
     manifest.nodes.reserve(blob.node_count);
     for(std::uint32_t i = 0; i < blob.node_count; i += 1) {
-        std::uint64_t version = 0;
-        std::uint64_t parent = 0;
-        std::uint64_t code = 0;
-        if(!read_varint(nodes, pos, version) || !read_varint(nodes, pos, parent) ||
-           !read_varint(nodes, pos, code)) {
+        auto read_version = read_varint(nodes, pos);
+        auto read_parent = read_version ? read_varint(nodes, pos) : std::nullopt;
+        auto read_code = read_parent ? read_varint(nodes, pos) : std::nullopt;
+        if(!read_code) {
             return std::nullopt;
         }
+        auto version = *read_version;
+        auto parent = *read_parent;
+        auto code = *read_code;
         // Parents may follow their children (the include tree resolves
         // parent chains after appending the child), so only bounds are
         // checked; consumers walking parents must carry their own visited
@@ -155,12 +124,12 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         return std::nullopt;
     }
 
-    std::span<const std::uint8_t> contributions(blob.contributions);
+    llvm::ArrayRef<std::uint8_t> contributions(blob.contributions);
     pos = 0;
     manifest.contributions.reserve(blob.contribution_count);
     for(std::uint32_t i = 0; i < blob.contribution_count; i += 1) {
-        std::uint64_t version = 0;
-        if(!read_varint(contributions, pos, version) || version > id_max) {
+        auto version = read_varint(contributions, pos);
+        if(!version || *version > id_max) {
             return std::nullopt;
         }
         if(pos + 8 > contributions.size()) {
@@ -169,7 +138,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         std::uint64_t hash = 0;
         std::memcpy(&hash, contributions.data() + pos, sizeof(hash));
         pos += 8;
-        manifest.contributions.emplace_back(VersionID{static_cast<std::uint32_t>(version)}, hash);
+        manifest.contributions.emplace_back(VersionID{static_cast<std::uint32_t>(*version)}, hash);
     }
     if(pos != contributions.size()) {
         return std::nullopt;
@@ -187,7 +156,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         return std::nullopt;
     }
     std::uint32_t begin = 0;
-    for(std::size_t i = 0; i < blob.local_symbols.size(); i += 1) {
+    for(std::uint32_t i = 0; i < blob.local_symbols.size(); i += 1) {
         if(reserved_key(blob.local_symbols[i]) ||
            (i > 0 && blob.local_symbols[i] <= blob.local_symbols[i - 1])) {
             return std::nullopt;
@@ -205,7 +174,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
        llvm::any_of(blob.instantiation_uses, [](std::uint64_t use) { return reserved_key(use); })) {
         return std::nullopt;
     }
-    for(std::size_t i = 0; i < blob.instantiation_files.size(); i += 1) {
+    for(std::uint32_t i = 0; i < blob.instantiation_files.size(); i += 1) {
         manifest.instantiations.push_back({
             .file = VersionID{blob.instantiation_files[i]},
             .use = blob.instantiation_uses[i],
@@ -213,12 +182,6 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     }
 
     return manifest;
-}
-
-void measure_manifest(llvm::StringRef data, FieldBytes& bytes) {
-    if(TUManifestBlob blob; deserialize_blob(data, blob)) {
-        measure_fields(blob, bytes);
-    }
 }
 
 }  // namespace clice::index

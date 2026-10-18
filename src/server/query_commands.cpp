@@ -8,7 +8,9 @@ import :command.toolchain;
 import :feature.feature;
 import :index.hierarchy;
 import :index.navigation;
+import :index.project_index;
 import :index.search;
+import :index.shard;
 import :index.text;
 import :project.build;
 import :server.query_commands;
@@ -392,13 +394,13 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
         result.files.push_back(std::move(info));
     }
     if(filter == "all" || filter == "header") {
-        for(auto path_id: llvm::make_first_range(ws.index.shards)) {
+        ws.index.for_each_shard([&](Fid path_id, const index::Shard&) {
             auto path = ws.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header_path(path)) {
                 seen.insert(path_id);
                 result.files.push_back({.path = ws.file_table.display(path_id), .kind = "header"});
             }
-        }
+        });
     }
     result.total = static_cast<int>(result.files.size());
     return result;
@@ -457,15 +459,14 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     auto readers = ws.dep_graph.find_readers(*file);
     // An importer reads the files its modules were built from without
     // including them.
-    if(auto it = ws.index.importers.find(*file); it != ws.index.importers.end()) {
-        llvm::SmallVector<Fid> importers(it->second.begin(), it->second.end());
-        llvm::sort(importers, [&](Fid lhs, Fid rhs) {
-            return ws.file_table.resolve(lhs) < ws.file_table.resolve(rhs);
-        });
-        for(auto importer: importers) {
-            if(!llvm::is_contained(readers, importer)) {
-                readers.push_back(importer);
-            }
+    llvm::SmallVector<Fid> importers;
+    ws.index.for_each_importer(*file, [&](Fid importer) { importers.push_back(importer); });
+    llvm::sort(importers, [&](Fid lhs, Fid rhs) {
+        return ws.file_table.resolve(lhs) < ws.file_table.resolve(rhs);
+    });
+    for(auto importer: importers) {
+        if(!llvm::is_contained(readers, importer)) {
+            readers.push_back(importer);
         }
     }
     for(auto reader: readers) {
@@ -515,7 +516,10 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto definition = index::definition_text(ctx.query, resolved->symbol.hash, resolved->site.file);
+    auto definition = index::declared_text(ctx.query,
+                                           resolved->symbol.hash,
+                                           resolved->site.file,
+                                           RelationKind::Definition);
     if(!definition) {
         return std::unexpected("definition not found");
     }
@@ -605,9 +609,12 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
     // editor's go-to-definition does.
     auto hash = resolved->symbol.hash;
     auto anchor = resolved->site.file;
-    auto definition = ctx.query.first_site(hash, anchor, RelationKind::Definition)
-                          ? index::definition_text(ctx.query, hash, anchor)
-                          : index::declaration_text(ctx.query, hash, anchor);
+    auto defined = ctx.query.first_site(hash, anchor, RelationKind::Definition).has_value();
+    auto definition =
+        index::declared_text(ctx.query,
+                             hash,
+                             anchor,
+                             defined ? RelationKind::Definition : RelationKind::Declaration);
     if(definition) {
         auto lines = lines_of(definition->extent);
         result.definition = LocationEntry{

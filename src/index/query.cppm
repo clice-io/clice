@@ -52,17 +52,7 @@ struct IndexSource {
 
     /// The site of an entry's range; nullopt for a range outside the text.
     std::optional<Site> site(LocalSourceRange range) const {
-        if(range.end > positions.size()) {
-            return std::nullopt;
-        }
-        return Site{
-            .file = file,
-            .path = path,
-            .range = range,
-            .begin = *line_column(positions, range.begin),
-            .end = *line_column(positions, range.end),
-            .origin = origin,
-        };
+        return site_of(file, path, positions, range, origin);
     }
 };
 
@@ -143,9 +133,6 @@ private:
 
     mutable llvm::DenseSet<Fid> withheld_files;
 };
-
-/// Whether the shard declares or defines the symbol, not only names it.
-bool declares(const Shard& shard, SymbolHash hash);
 
 /// Cross-source dedup: an entry present in both a disk shard and a PCH
 /// overlay (or in two overlays sharing a preamble, or in two projects'
@@ -288,9 +275,16 @@ public:
     /// `file` right now, with the coordinates it is expressed in.
     std::optional<IndexSource> serving(Fid file) const;
 
+    /// Visit the preamble index paired with an open buffer's source: the
+    /// PCH's overlay of the buffer's preamble region, in the buffer's
+    /// coordinates, which the per-edit index leaves out. It lives only as
+    /// long as the visit. False when the source has none.
+    bool with_preamble(const IndexSource& source,
+                       llvm::function_ref<void(const Shard&)> visit) const;
+
     /// Whether the project index holds a shard of `file`.
     bool indexes(Fid file) const {
-        return index.shards.contains(file);
+        return index.shard(file) != nullptr;
     }
 
     /// The file's shard when `text` is byte-identical to the content it
@@ -381,7 +375,7 @@ public:
 
     /// The text the index serving `file` was built from — the offsets of
     /// every site in it index this text; nullopt when no source serves the
-    /// file or its text is unavailable (see definition_text on the disk
+    /// file or its text is unavailable (see declared_text on the disk
     /// re-read).
     std::optional<std::string> serving_text(Fid file) const;
 

@@ -60,7 +60,7 @@ test("edit escalates to compile", async (t) => {
 
 // A restored unsaved buffer differs from what the index holds: the open
 // itself escalates, so the first read pulls a compile instead of answering
-// empty from rows that no longer fit the text.
+// empty from entries that no longer fit the text.
 test("diverged open buffer escalates", async (t) => {
     const s = await t.start(AUTO);
     s.open("main.cpp", { pull: false });
@@ -105,7 +105,7 @@ test("escalation upgrades inlay hints", async (t) => {
 });
 
 // Under "on" a diverged buffer cannot escalate: answers from the index
-// withdraw rather than map rows of the old text onto the new.
+// withdraw rather than map entries of the old text onto the new.
 test("diverged buffer serves no links", async (t) => {
     const s = await t.start(AUTO);
     s.open("main.cpp", { pull: false });
@@ -165,7 +165,7 @@ test("completion escalates", async (t) => {
 });
 
 // A header has no command of its own: read-only, it is answered from the
-// rows its includer's index holds.
+// entries its includer's index holds.
 test("header served read-only", async (t) => {
     const s = await t.start(AUTO);
     s.open("header.h", { pull: false });

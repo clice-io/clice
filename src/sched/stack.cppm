@@ -5,7 +5,6 @@ module;
 module clice:sched.stack;
 
 import :project.command_resolver;
-import :project.index_store;
 import :project.project;
 import :sched.families.pch;
 import :sched.families.pcm;
@@ -19,8 +18,8 @@ namespace clice {
 /// The scheduling stack of one project, shared by the server and the batch
 /// driver so the two assemble it the same way: the task graph with its
 /// artifact families (runners registered) over the process's worker pool,
-/// and the project's index store and pump, which a PCM commit that
-/// unblocks indexing kicks. The server layers its serving side — the AST
+/// and the project's indexing pump, which a PCM commit that unblocks
+/// indexing kicks. The server layers its serving side — the AST
 /// family, the pump's escalation hook — on top.
 struct SchedulingStack {
     SchedulingStack(kota::event_loop& loop,
@@ -33,7 +32,6 @@ struct SchedulingStack {
     TaskGraph graph;
     PCMFamily pcm;
     PCHFamily pch;
-    IndexStore store;
     TURunFamily turun;
     IndexPump pump;
 

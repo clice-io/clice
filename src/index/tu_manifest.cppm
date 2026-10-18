@@ -4,7 +4,6 @@ module;
 
 module clice:index.tu_manifest;
 
-import :index.format;
 import :index.symbol;
 import :vfs.file_table;
 
@@ -91,6 +90,36 @@ struct TUManifest {
     friend bool operator==(const TUManifest&, const TUManifest&) = default;
 };
 
+/// Visit the raw id of every version a manifest names — its TU's, its
+/// include tree's, its contributions', its failed lookups', its imports',
+/// its shared locals' and its instantiation uses' — by reference, const as
+/// `manifest` is.
+template <typename Manifest, typename Visit>
+    requires std::same_as<std::remove_const_t<Manifest>, TUManifest>
+void for_each_version(Manifest& manifest, Visit&& visit) {
+    visit(manifest.tu_version.raw);
+    for(auto& node: manifest.nodes) {
+        visit(node.file);
+    }
+    for(auto& version: llvm::make_first_range(manifest.contributions)) {
+        visit(version.raw);
+    }
+    for(auto& version: manifest.absent) {
+        visit(version.raw);
+    }
+    for(auto& version: manifest.imports) {
+        visit(version.raw);
+    }
+    for(auto& local: manifest.shared_locals) {
+        for(auto& version: local.files) {
+            visit(version.raw);
+        }
+    }
+    for(auto& use: manifest.instantiations) {
+        visit(use.file.raw);
+    }
+}
+
 /// Serialize a manifest (varint-packed nodes inside a small reflected
 /// wrapper).
 void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os);
@@ -99,8 +128,5 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os);
 /// old-format data. FileVersion ids are not resolved here — the loader
 /// drops manifests referencing ids the project table does not know.
 std::optional<TUManifest> deserialize_manifest(llvm::StringRef data);
-
-/// Add the fields of a manifest blob to `bytes`, for `clice index stats`.
-void measure_manifest(llvm::StringRef data, FieldBytes& bytes);
 
 }  // namespace clice::index

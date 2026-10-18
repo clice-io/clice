@@ -72,13 +72,6 @@ std::vector<CallEdge> located_edges(const IndexQuery& index,
     return result;
 }
 
-std::vector<CallEdge>
-    edges(const IndexQuery& index, SymbolHash hash, Fid anchor, RelationKind kind) {
-    llvm::DenseMap<SymbolHash, std::vector<Site>> by_target;
-    collect_by_target(index, hash, anchor, kind, by_target);
-    return located_edges(index, by_target);
-}
-
 std::vector<DefinedFunction> defined_functions(const IndexQuery& index, const IndexSource& source) {
     std::vector<DefinedFunction> functions;
     source.shard->for_each_relation([&](SymbolHash symbol, const Relation& defined) {
@@ -191,7 +184,9 @@ CallGraph
         }
     }
     if(options.callees) {
-        graph.callees = edges(index, root, anchor, RelationKind::Callee);
+        llvm::DenseMap<SymbolHash, std::vector<Site>> by_callee;
+        collect_by_target(index, root, anchor, RelationKind::Callee, by_callee);
+        graph.callees = located_edges(index, by_callee);
     }
     return graph;
 }

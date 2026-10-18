@@ -4,7 +4,9 @@ module;
 
 module clice:project.load;
 
-import :project.index_store;
+import :index.project_index;
+import :project.command_resolver;
+import :project.project;
 import :syntax.dependency_graph;
 import :vfs.file_table;
 
@@ -24,7 +26,7 @@ struct BuildLoad {
 /// databases the rules declare (existing or not; the tracker watches for
 /// them), else the ones discovered under `root` plus `nearby`, the ones
 /// discovery would only meet later: the persisted index's (see
-/// IndexStore::remembered) for the server, those above the inspected
+/// CommandSnapshot::remembered) for the server, those above the inspected
 /// files for `clice inspect` (see compile_commands_above) — record the
 /// `provisional` members the persisted index remembers, then enumerate
 /// the build's members and scan the dependency graph from them. The
@@ -41,6 +43,27 @@ BuildLoad load_build(Project& project,
 /// over (deeper_compile_commands). Empty when there is none, or the rules
 /// declare the build's sources.
 std::string deeper_databases_hint(const Project& project);
+
+/// What load_saved found.
+struct SavedLoad {
+    /// False when a project table blob existed but could not be decoded (old
+    /// format or corrupt): the server rebuilds from scratch, but a
+    /// read-only reader must report an unusable cache instead of an
+    /// empty index.
+    bool decoded = true;
+
+    /// The units the load found unservable, owed a reindex.
+    index::IndexReport report;
+};
+
+/// Load what the project's database holds: the index (ProjectIndex::load),
+/// the artifact records into the project and `commands`, the context
+/// choices; then, unless read-only, drop the index of the units a rule
+/// keeps out and of those whose command changed while no server ran
+/// (CommandSnapshot::reconcile). A database found corrupt is replaced by
+/// a fresh one; one whose project table cannot be read is left untouched,
+/// and persistence is off for the session.
+SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOptions options);
 
 /// What load_project found and did.
 struct ProjectLoad {
@@ -60,9 +83,8 @@ struct ProjectLoad {
     /// time.
     std::vector<Fid> members;
 
-    /// The persisted index's load: its report names the units the load
-    /// found unservable, owed a reindex.
-    IndexStore::LoadResult index;
+    /// The persisted index's load.
+    SavedLoad index;
 };
 
 /// Load a project from disk: resolve the build configuration
@@ -77,7 +99,7 @@ struct ProjectLoad {
 /// reconciliation or removal writes, so a later save commits nothing — for
 /// runs whose product must not touch the index (plain `clice lint`).
 ProjectLoad load_project(Project& project,
-                         IndexStore& store,
+                         CommandResolver& commands,
                          CanonicalRef root,
                          llvm::StringRef requested_configuration,
                          bool read_only_index = false);

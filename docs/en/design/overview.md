@@ -78,9 +78,9 @@ Semantic analysis capabilities beyond Clang's native APIs, over the AST of a com
 
 Symbol indexing system with cross-translation-unit query support. Layered as:
 
-- `TUIndex`: Index rows produced from a single compilation, projected from the semantic map
-- `ProjectIndex`: The global layer — externally visible symbols, plus the record of which translation units contributed which files
-- `Shard`: The per-file storage unit. Each compilation context that preprocesses the file differently contributes a variant, deduplicated by the content identity of its encoded rows; names local to the file live in the shard itself, only external names enter the `ProjectIndex`
+- `TUIndex`: Index entries produced from a single compilation, projected from the semantic map
+- `ProjectIndex`: The global layer — externally visible symbols, plus the record of which translation units contributed which files — in memory and on disk in one type: it merges translation units' indexes, judges their freshness, saves its changes to the index database and loads them back
+- `Shard`: The per-file storage unit. Each compilation context that preprocesses the file differently contributes a variant, deduplicated by the content identity of its encoded entries; names local to the file live in the shard itself, only external names enter the `ProjectIndex`
 - `BlobDatabase`: Persistence backend — all index blobs live in a single LMDB database
 
 See [Symbol Index](symbol-index.md).
@@ -99,7 +99,8 @@ A project is what one set of compilation databases and one cache directory descr
 
 - `Project`: The disk-truth aggregate — configuration, compilation database, build view, dependency graph, artifact records, persisted index. Core invariant: unsaved buffer contents of open files never modify a `Project`; it only reflects the state on disk
 - `CommandResolver`: Resolves the compile command a file is compiled under from the project alone — own entry, a host's command for a header, a default or borrowed command — and synthesizes the includer context a header needs, owning the header-context verdicts
-- `IndexStore`: Index persistence transactions — merge, save, reconcile with the CDB — and the metadata blobs the index database carries beside it
+- `CommandSnapshot`: The commands the index was built with, as the index database records them; loading diffs them against the build to drop the index of files whose command changed while no server ran
+- Saving and loading: one transaction writes the index's changes with what the database carries beside it — the command snapshot, the PCH and PCM records, the editor's context choices — and the load reads them back
 - `CDBWatcher`: Stat-polling of the project's compilation databases, judged against the reads their entries came from
 - Project loading: opens the cache store and index, loads the build, scans the dependency graph
 
@@ -110,7 +111,7 @@ The task-graph engine that decides what gets built, when, and shares the results
 - `TaskGraph`: The shared build graph. Every expensive product is a node; concurrent requests for the same node join one build round instead of duplicating work, cancellation is cooperative, and edges drive dependency-aware invalidation
 - `PCHFamily` / `PCMFamily` / `TURunFamily`: Node families for preamble PCHs (keyed by content), C++20 module PCMs (with import edges and provider tracking), and one-shot translation-unit runs shared by indexing and lint
 - `IndexPump`: The background scheduler that feeds stale files through workers with foreground-aware budgeting
-- `SchedulingStack`: The worker pool, the task graph with its families, and a project's index store and pump, assembled the same way for the server and the batch drivers
+- `SchedulingStack`: The worker pool, the task graph with its families, and a project's indexing pump, assembled the same way for the server and the batch drivers
 - Bootstrap and batch drivers: cold-start orchestration for the server, and the headless execution mode behind `clice index` / `clice lint`
 
 ### `src/worker/` — Worker Processes

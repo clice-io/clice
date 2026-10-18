@@ -262,7 +262,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                    })) {
                     return true;
                 }
-                auto definition = index::definition_text(query, hash, host);
+                auto definition = index::declared_text(query, hash, host, RelationKind::Definition);
                 if(!definition) {
                     return true;
                 }

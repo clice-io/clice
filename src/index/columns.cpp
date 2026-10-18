@@ -49,7 +49,7 @@ bool offsets_canonical(const std::uint8_t* image) {
     const std::uint8_t* offsets = at;
     at += count * sizeof(std::uint32_t);
     for(std::uint32_t i = 0; i < count; i += 1) {
-        if(read32(offsets + i * sizeof(std::uint32_t)) != static_cast<std::size_t>(at - image)) {
+        if(read32(offsets + i * sizeof(std::uint32_t)) != static_cast<std::uint32_t>(at - image)) {
             return false;
         }
         std::uint32_t cardinality = read16(headers + i * 2 * sizeof(std::uint16_t) + 2) + 1u;
@@ -97,7 +97,7 @@ struct BitWriter {
 /// Bits read in the order BitWriter appends them.
 struct BitReader {
     llvm::ArrayRef<std::uint8_t> bytes;
-    std::size_t at = 0;
+    std::uint32_t at = 0;
     std::uint64_t buffer = 0;
     std::uint32_t held = 0;
 
@@ -116,17 +116,43 @@ struct BitReader {
 
 }  // namespace
 
+void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value) {
+    while(value >= 0x80) {
+        out.push_back(static_cast<std::uint8_t>(value) | 0x80);
+        value >>= 7;
+    }
+    out.push_back(static_cast<std::uint8_t>(value));
+}
+
+std::optional<std::uint64_t> read_varint(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t& at) {
+    std::uint64_t value = 0;
+    auto first = at;
+    for(std::uint32_t shift = 0; shift < 64; shift += 7) {
+        if(at >= bytes.size()) {
+            return std::nullopt;
+        }
+        auto byte = bytes[at];
+        at += 1;
+        // The tenth byte holds only value bit 63; greater payloads would
+        // shift out silently and decode to an unrelated small value.
+        if(shift == 63 && byte > 1) {
+            return std::nullopt;
+        }
+        value |= static_cast<std::uint64_t>(byte & 0x7f) << shift;
+        if((byte & 0x80) == 0) {
+            if(byte == 0 && at - first > 1) {
+                return std::nullopt;
+            }
+            return value;
+        }
+    }
+    return std::nullopt;
+}
+
 std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t universe) {
     std::vector<std::uint8_t> out;
     auto count = ids.cardinality();
-    for(auto rest = count;;) {
-        auto byte = static_cast<std::uint8_t>(rest & 0x7f);
-        rest >>= 7;
-        out.push_back(rest == 0 ? byte : byte | 0x80);
-        if(rest == 0) {
-            break;
-        }
-    }
+    write_varint(out, count);
     auto low = low_bits(count, universe);
     BitWriter lows{.out = out};
     for(auto id: ids) {
@@ -152,25 +178,12 @@ std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t univer
 }
 
 std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t universe) {
-    std::uint64_t count = 0;
-    std::size_t at = 0;
-    for(std::uint32_t shift = 0;; shift += 7) {
-        if(at == bytes.size() || shift > 28) {
-            return std::nullopt;
-        }
-        auto byte = bytes[at];
-        at += 1;
-        count |= std::uint64_t(byte & 0x7f) << shift;
-        if((byte & 0x80) == 0) {
-            if(byte == 0 && at > 1) {
-                return std::nullopt;
-            }
-            break;
-        }
-    }
-    if(count > universe) {
+    std::uint32_t at = 0;
+    auto read = read_varint(bytes, at);
+    if(!read || *read > universe) {
         return std::nullopt;
     }
+    auto count = *read;
     auto low = low_bits(count, universe);
     auto low_bits_total = count * low;
     auto low_bytes = (low_bits_total + 7) / 8;
@@ -191,7 +204,7 @@ std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uin
     std::vector<std::uint32_t> ids;
     ids.reserve(count);
     BitReader reader{.bytes = lows};
-    for(std::size_t b = 0; b < highs.size(); b += 1) {
+    for(std::uint32_t b = 0; b < highs.size(); b += 1) {
         for(std::uint8_t byte = highs[b]; byte != 0; byte &= byte - 1) {
             if(ids.size() == count) {
                 return std::nullopt;
@@ -215,7 +228,7 @@ std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uin
     return result;
 }
 
-std::optional<Bitmap> read_bitmap(const void* data, std::size_t size) {
+std::optional<Bitmap> read_bitmap(const void* data, std::uint32_t size) {
     const auto* image = static_cast<const char*>(data);
     if(size == 0 || roaring::api::roaring_bitmap_portable_deserialize_size(image, size) != size ||
        !offsets_canonical(reinterpret_cast<const std::uint8_t*>(image))) {

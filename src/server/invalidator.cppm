@@ -4,7 +4,6 @@ module;
 
 module clice:server.invalidator;
 
-import :project.index_store;
 import :project.project;
 import :sched.families.pcm;
 import :server.ast_family;
@@ -199,8 +198,8 @@ public:
 ///
 /// Ownership charter:
 ///   - reads the session store, the editor context, the AST family's
-///     record of what open documents read and the index store's recorded
-///     header hosts, never mutates them;
+///     record of what open documents read and the command snapshot's
+///     recorded header hosts, never mutates them;
 ///   - directly updates the derived graphs Project owns (include graph,
 ///     module map, ...);
 ///   - anything touching Sessions, context-domain state (header results, choices,
@@ -224,8 +223,7 @@ public:
                 const SessionStore& store,
                 const EditorContext& contexts,
                 const ASTFamily& ast,
-                PCMFamily& pcm,
-                const IndexStore& index);
+                PCMFamily& pcm);
 
     /// Fold a batch of events into one deduplicated effect set.
     DirtySet apply(llvm::ArrayRef<FileEvent> events);
@@ -274,12 +272,16 @@ private:
     /// dependency invalidation.
     void mark_dependent(Fid path_id, DirtySet& dirty);
 
+private:
     Project& project;
+
     const SessionStore& store;
+
     const EditorContext& contexts;
+
     const ASTFamily& ast;
+
     PCMFamily& pcm;
-    const IndexStore& index;
 };
 
 }  // namespace clice

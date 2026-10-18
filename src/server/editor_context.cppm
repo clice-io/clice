@@ -5,7 +5,6 @@ module;
 module clice:server.editor_context;
 
 import :project.command_resolver;
-import :project.index_store;
 import :project.project;
 
 namespace clice {

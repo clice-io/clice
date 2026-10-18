@@ -83,16 +83,6 @@ bool in_anonymous_namespace(const clang::NamedDecl* decl) {
     return false;
 }
 
-/// What build_preamble_index adds on top of an ordinary build.
-struct PreambleExtras {
-    std::uint64_t hash = 0;
-    std::uint32_t size = 0;
-    llvm::ArrayRef<DocumentLink> links;
-    llvm::ArrayRef<std::uint32_t> inactive_regions;
-    llvm::ArrayRef<std::uint8_t> open_conditionals;
-    llvm::StringRef diagnostics;
-};
-
 NameForm name_form_of(clang::DeclarationName name) {
     switch(name.getNameKind()) {
         case clang::DeclarationName::Identifier: return NameForm::Identifier;
@@ -910,19 +900,9 @@ public:
                      clang::BindingDecl,
                      clang::NonTypeTemplateParmDecl,
                      clang::VarDecl>(D)) {
-            if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(D)) {
-                switch(VTSD->getSpecializationKind()) {
-                    case clang::TSK_ImplicitInstantiation:
-                    case clang::TSK_ExplicitInstantiationDeclaration:
-                    case clang::TSK_ExplicitInstantiationDefinition: {
-                        return;
-                    }
-
-                    case clang::TSK_Undeclared:
-                    case clang::TSK_ExplicitSpecialization: {
-                        break;
-                    }
-                }
+            if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(D);
+               VTSD && clang::isTemplateInstantiation(VTSD->getSpecializationKind())) {
+                return;
             }
 
             auto* VD = llvm::cast<clang::ValueDecl>(D);
@@ -947,19 +927,9 @@ public:
 
         // Base/derived edges, recorded at the defining declaration.
         if(auto* TD = llvm::dyn_cast<clang::TagDecl>(D)) {
-            if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(TD)) {
-                switch(CTSD->getSpecializationKind()) {
-                    case clang::TSK_Undeclared:
-                    case clang::TSK_ImplicitInstantiation:
-                    case clang::TSK_ExplicitInstantiationDeclaration:
-                    case clang::TSK_ExplicitInstantiationDefinition: {
-                        return;
-                    }
-
-                    case clang::TSK_ExplicitSpecialization: {
-                        break;
-                    }
-                }
+            if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(TD);
+               CTSD && CTSD->getSpecializationKind() != clang::TSK_ExplicitSpecialization) {
+                return;
             }
 
             if(auto* CRD = llvm::dyn_cast<clang::CXXRecordDecl>(TD)) {
@@ -988,17 +958,8 @@ public:
         }
 
         if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(D)) {
-            switch(FD->getTemplateSpecializationKind()) {
-                case clang::TSK_ImplicitInstantiation:
-                case clang::TSK_ExplicitInstantiationDeclaration:
-                case clang::TSK_ExplicitInstantiationDefinition: {
-                    return;
-                }
-
-                case clang::TSK_Undeclared:
-                case clang::TSK_ExplicitSpecialization: {
-                    break;
-                }
+            if(clang::isTemplateInstantiation(FD->getTemplateSpecializationKind())) {
+                return;
             }
 
             add_type_definitions(FD);
@@ -1682,7 +1643,9 @@ public:
         }
     }
 
-    std::string build(const PreambleExtras* extras) {
+    /// The TU index, into `blob`, which arrives holding what a preamble's
+    /// own index adds on top of an ordinary build when `preamble` is set.
+    std::string build(TUIndexBlob blob, bool preamble) {
         ScopedTimer semantics_timer;
         auto walked = walked_instantiations();
         // The focus-only shape is the one features share, cached on the
@@ -1718,7 +1681,7 @@ public:
         }
         // What a preamble instantiates and expands is the background
         // index's to resolve: the preamble's own index carries none of it.
-        if(!extras) {
+        if(!preamble) {
             project_expansions();
         }
         auto instantiations_ms = instantiations_timer.ms_f();
@@ -1947,7 +1910,6 @@ public:
         }
         auto encode_ms = encode_timer.ms_f();
 
-        TUIndexBlob blob;
         blob.format_version = index_format_version;
         blob.built_at = unit.build_at().count();
         blob.paths = std::move(tree.paths);
@@ -2001,14 +1963,6 @@ public:
         }
         blob.sections = std::move(sections);
         blob.instantiations = std::move(instantiation_sections);
-        if(extras) {
-            blob.preamble_hash = extras->hash;
-            blob.preamble_size = extras->size;
-            blob.links = extras->links;
-            blob.inactive_regions = extras->inactive_regions;
-            blob.open_conditionals = extras->open_conditionals;
-            blob.diagnostics = extras->diagnostics.str();
-        }
 
         ScopedTimer pack_timer;
         std::string bytes;
@@ -2121,7 +2075,7 @@ private:
 
 std::string build_tu_index(CompilationUnit& unit, const TUIndexOptions& options) {
     Indexer indexer(unit, options);
-    return indexer.build(nullptr);
+    return indexer.build({}, false);
 }
 
 std::string build_preamble_index(CompilationUnit& unit,
@@ -2133,16 +2087,16 @@ std::string build_preamble_index(CompilationUnit& unit,
     // the focus file's content is exactly the preamble text the PCH was
     // built from.
     auto preamble_text = unit.focus_file().content();
-    PreambleExtras extras{
-        .hash = llvm::xxh3_64bits(preamble_text),
-        .size = static_cast<std::uint32_t>(preamble_text.size()),
+    TUIndexBlob blob{
+        .preamble_hash = llvm::xxh3_64bits(preamble_text),
+        .preamble_size = static_cast<std::uint32_t>(preamble_text.size()),
         .links = links,
         .inactive_regions = inactive_regions,
         .open_conditionals = open_conditionals,
-        .diagnostics = diagnostics,
+        .diagnostics = diagnostics.str(),
     };
     Indexer indexer(unit, {});
-    return indexer.build(&extras);
+    return indexer.build(std::move(blob), true);
 }
 
 }  // namespace clice::index

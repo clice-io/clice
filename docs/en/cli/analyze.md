@@ -37,7 +37,7 @@ A move candidate is a header whose users all sit in one other module and that, t
 
 ### Obstacles
 
-- A header the index holds several row variants of reads differently depending on what includes it; compiled once as a module interface it would keep one reading. `declarationsDiffer` marks variants declaring different entities, a real configuration dependence, and only those count in the overview; `unstable` names what only some variants name, such as the overloads a template's dependent call finds where it is included.
+- A header the index holds several variants of reads differently depending on what includes it; compiled once as a module interface it would keep one reading. `declarationsDiffer` marks variants declaring different entities, a real configuration dependence, and only those count in the overview; `unstable` names what only some variants name, such as the overloads a template's dependent call finds where it is included.
 - A header testing a macro in a preprocessor condition without including its definition reads differently compiled alone, silently (`contextMacros`); one expanding such a macro fails to compile alone until it includes the definition (`borrowedMacros`).
 - A `static` or anonymous-namespace entity of a header that another file uses, or that the header's own inline code uses, is local to one translation unit once the header is a module interface.
 - A forward or friend declaration of an entity another module provides declares a different entity inside a module unit; one of a third-party entity attaches it to the wrong module. `unused` marks those the file never names, which can simply go.

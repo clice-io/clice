@@ -19,8 +19,10 @@ import :server.editor_context;
 import :support.anomaly;
 import :support.logging;
 import :support.timer;
+import :syntax.dependency_graph;
 import :syntax.preamble;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 import :worker.common;
 import :worker.protocol;
@@ -351,10 +353,9 @@ ASTFamily::ASTFamily(Project& project,
                      PCMFamily& pcm,
                      PCHFamily& pch,
                      WorkerPool& pool,
-                     SessionStore& sessions,
-                     IndexStore& index) :
+                     SessionStore& sessions) :
     project(project), contexts(contexts), graph(graph), pcm(pcm), pch(pch), pool(pool),
-    sessions(sessions), index(index) {}
+    sessions(sessions) {}
 
 void ASTFamily::register_runner() {
     graph.register_family(Family::AST, [this](RoundContext& ctx, NodeId id) {
@@ -877,7 +878,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // prefix. The trial's diagnostics are never published.
     bool artifact_retried = false;
     std::size_t trial_misses = 0;
-    auto known_instantiations = index.known_instantiations(path_id);
+    auto known_instantiations =
+        project.index.known_instantiations(path_id, project.dep_graph.include_closure(path_id));
     for(int attempt = 0; attempt < 2; attempt += 1) {
         worker::CompileParams params;
         params.known_instantiations = known_instantiations;

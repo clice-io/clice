@@ -26,7 +26,7 @@ for (const [phase, at] of [
         const { method, where } = request;
         const extra = "extra" in request ? request.extra : {};
         test(`${method} mid-${phase}`, async (t) => {
-            // Without an index the compile alone answers: rows of the disk
+            // Without an index the compile alone answers: entries of the disk
             // text would answer while the compile is in flight.
             const s = await t.start({ config: { project: { enable_indexing: false } } });
             const park = await s.park("compile", "main.cpp", { at });

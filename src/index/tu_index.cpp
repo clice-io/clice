@@ -20,10 +20,8 @@ namespace {
 
 using TUIndexView = kota::codec::fbs::table_view<TUIndexBlob>;
 
-/// The buffer was fully verified at TUIndex::from_bytes; per-accessor
-/// views skip that cost.
-TUIndexView blob_root(llvm::StringRef data) {
-    return TUIndexView::from_verified_bytes(blob_bytes(data));
+TUIndexView view_of(llvm::StringRef data) {
+    return verified_root<TUIndexBlob>(data);
 }
 
 /// The symbol table columns of a TU index blob, borrowing its bytes.
@@ -50,11 +48,11 @@ struct SymbolColumns {
     static SymbolColumns of(TUIndexView root) {
         return {
             .hashes = to_array_ref(root[&TUIndexBlob::symbol_hashes]),
-            .names = to_ref(root[&TUIndexBlob::symbol_names]),
+            .names = root[&TUIndexBlob::symbol_names],
             .name_ends = to_array_ref(root[&TUIndexBlob::symbol_name_ends]),
-            .args = to_ref(root[&TUIndexBlob::symbol_args]),
+            .args = root[&TUIndexBlob::symbol_args],
             .args_ends = to_array_ref(root[&TUIndexBlob::symbol_args_ends]),
-            .signatures = to_ref(root[&TUIndexBlob::symbol_signatures]),
+            .signatures = root[&TUIndexBlob::symbol_signatures],
             .signature_ends = to_array_ref(root[&TUIndexBlob::symbol_signature_ends]),
             .parents = to_array_ref(root[&TUIndexBlob::symbol_parents]),
             .kinds = to_array_ref(root[&TUIndexBlob::symbol_kinds]),
@@ -71,11 +69,7 @@ struct SymbolColumns {
     }
 
     std::optional<std::uint32_t> find(SymbolHash hash) const {
-        auto it = std::ranges::lower_bound(hashes, hash);
-        if(it == hashes.end() || *it != hash) {
-            return std::nullopt;
-        }
-        return static_cast<std::uint32_t>(it - hashes.begin());
+        return sorted_find(hashes, hash);
     }
 
     SymbolView view(std::uint32_t entry) const {
@@ -105,17 +99,11 @@ struct SymbolColumns {
 }  // namespace
 
 TUIndex TUIndex::from_bytes(llvm::StringRef data) {
-    auto root = TUIndexView::from_bytes(blob_bytes(data));
-    if(!root.valid()) {
-        LOG_DEBUG("Rejecting TU index: structural verification failed");
+    auto verified = verify_root<TUIndexBlob>(data, "TU index");
+    if(!verified) {
         return {};
     }
-    if(root[&TUIndexBlob::format_version] != index_format_version) {
-        LOG_DEBUG("Rejecting TU index: format version {}, this build reads {}",
-                  root[&TUIndexBlob::format_version],
-                  index_format_version);
-        return {};
-    }
+    auto root = *verified;
 
     // Structural verification does not constrain field values; every path
     // id the merge dereferences against the path table is bounded here so
@@ -130,7 +118,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // A parent names another node or the root; consumers index their
     // per-node tables with it unchecked.
     auto nodes = root[&TUIndexBlob::nodes];
-    for(std::size_t i = 0; i < nodes.size(); i += 1) {
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
         IncludeNode node = nodes.at(i);
         if(node.file >= count || (node.parent != no_node && node.parent >= nodes.size())) {
             LOG_DEBUG("Rejecting TU index: include node past the path or node table");
@@ -161,7 +149,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // one is corrupt. Merged reference files would persist behind versions
     // that match the disk, so a path id past the table must reject the
     // whole TU index rather than be dropped.
-    for(std::size_t i = 0; i < symbol_count; i += 1) {
+    for(std::uint32_t i = 0; i < symbol_count; i += 1) {
         if((i != 0 && symbols.hashes[i] <= symbols.hashes[i - 1]) ||
            reserved_key(symbols.hashes[i]) || reserved_key(symbols.parents[i])) {
             LOG_DEBUG("Rejecting TU index: unsorted or reserved symbol hash, or reserved parent");
@@ -185,7 +173,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // out-of-order id would attribute one file's index to another.
     auto sections = root[&TUIndexBlob::sections];
     std::uint32_t previous_path_id = 0;
-    for(std::size_t i = 0; i < sections.size(); i += 1) {
+    for(std::uint32_t i = 0; i < sections.size(); i += 1) {
         auto path_id = sections.at(i)[&FileSection::path_id];
         if(path_id >= count || (i != 0 && path_id <= previous_path_id)) {
             LOG_DEBUG("Rejecting TU index: section path ids are not strictly ascending");
@@ -196,12 +184,11 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // The merge maps skipped keys through their file's stored keys by
     // binary search.
     auto instantiations = root[&TUIndexBlob::instantiations];
-    for(std::size_t i = 0; i < instantiations.size(); i += 1) {
+    for(std::uint32_t i = 0; i < instantiations.size(); i += 1) {
         auto section = instantiations.at(i);
         auto path_id = section[&InstantiationSection::path_id];
         if(path_id >= count || (i != 0 && path_id <= previous_path_id) ||
-           !std::ranges::is_sorted(to_array_ref(section[&InstantiationSection::skipped]),
-                                   std::less_equal{})) {
+           !strictly_ascending(to_array_ref(section[&InstantiationSection::skipped]))) {
             LOG_DEBUG("Rejecting TU index: instantiation sections are not strictly ascending");
             return {};
         }
@@ -225,55 +212,54 @@ TUIndex TUIndex::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
 }
 
 std::int64_t TUIndex::built_at() const {
-    return loaded() ? blob_root(data)[&TUIndexBlob::built_at] : 0;
+    return loaded() ? view_of(data)[&TUIndexBlob::built_at] : 0;
 }
 
 std::uint32_t TUIndex::path_count() const {
-    return loaded() ? static_cast<std::uint32_t>(blob_root(data)[&TUIndexBlob::paths].size()) : 0;
+    return loaded() ? static_cast<std::uint32_t>(view_of(data)[&TUIndexBlob::paths].size()) : 0;
 }
 
 llvm::StringRef TUIndex::path(std::uint32_t id) const {
-    return to_ref(blob_root(data)[&TUIndexBlob::paths].at(id));
+    return view_of(data)[&TUIndexBlob::paths].at(id);
 }
 
 std::uint32_t TUIndex::absent_count() const {
-    return loaded() ? static_cast<std::uint32_t>(blob_root(data)[&TUIndexBlob::absent].size()) : 0;
+    return loaded() ? static_cast<std::uint32_t>(view_of(data)[&TUIndexBlob::absent].size()) : 0;
 }
 
 llvm::StringRef TUIndex::absent(std::uint32_t i) const {
-    return to_ref(blob_root(data)[&TUIndexBlob::absent].at(i));
+    return view_of(data)[&TUIndexBlob::absent].at(i);
 }
 
 std::uint64_t TUIndex::content_hash(std::uint32_t id) const {
     // The hash column may be shorter than the path table on a foreign
     // blob; an absent hash reads as 0, "unavailable".
-    auto hashes = blob_root(data)[&TUIndexBlob::content_hashes];
+    auto hashes = view_of(data)[&TUIndexBlob::content_hashes];
     return id < hashes.size() ? hashes.at(id) : 0;
 }
 
 std::uint32_t TUIndex::node_count() const {
-    return loaded() ? static_cast<std::uint32_t>(blob_root(data)[&TUIndexBlob::nodes].size()) : 0;
+    return loaded() ? static_cast<std::uint32_t>(view_of(data)[&TUIndexBlob::nodes].size()) : 0;
 }
 
 IncludeNode TUIndex::node(std::uint32_t i) const {
-    return blob_root(data)[&TUIndexBlob::nodes].at(i);
+    return view_of(data)[&TUIndexBlob::nodes].at(i);
 }
 
 std::uint32_t TUIndex::section_count() const {
-    return loaded() ? static_cast<std::uint32_t>(blob_root(data)[&TUIndexBlob::sections].size())
-                    : 0;
+    return loaded() ? static_cast<std::uint32_t>(view_of(data)[&TUIndexBlob::sections].size()) : 0;
 }
 
 std::uint32_t TUIndex::section_path(std::uint32_t i) const {
-    return blob_root(data)[&TUIndexBlob::sections].at(i)[&FileSection::path_id];
+    return view_of(data)[&TUIndexBlob::sections].at(i)[&FileSection::path_id];
 }
 
 std::uint64_t TUIndex::section_hash(std::uint32_t i) const {
-    return blob_root(data)[&TUIndexBlob::sections].at(i)[&FileSection::hash];
+    return view_of(data)[&TUIndexBlob::sections].at(i)[&FileSection::hash];
 }
 
 llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {
-    auto blob = to_array_ref(blob_root(data)[&TUIndexBlob::sections].at(i)[&FileSection::blob]);
+    auto blob = to_array_ref(view_of(data)[&TUIndexBlob::sections].at(i)[&FileSection::blob]);
     return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
 }
 
@@ -328,24 +314,23 @@ bool TUIndex::verify_shards() const {
 }
 
 std::uint32_t TUIndex::instantiation_count() const {
-    return loaded()
-               ? static_cast<std::uint32_t>(blob_root(data)[&TUIndexBlob::instantiations].size())
-               : 0;
+    return loaded() ? static_cast<std::uint32_t>(view_of(data)[&TUIndexBlob::instantiations].size())
+                    : 0;
 }
 
 std::uint32_t TUIndex::instantiation_path(std::uint32_t i) const {
-    return blob_root(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::path_id];
+    return view_of(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::path_id];
 }
 
 llvm::StringRef TUIndex::instantiation_blob(std::uint32_t i) const {
     auto blob = to_array_ref(
-        blob_root(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::blob]);
+        view_of(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::blob]);
     return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
 }
 
 llvm::ArrayRef<std::uint64_t> TUIndex::skipped_instantiations(std::uint32_t i) const {
     return to_array_ref(
-        blob_root(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::skipped]);
+        view_of(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::skipped]);
 }
 
 const InstantiationShard& TUIndex::instantiation_shard(std::uint32_t i) const {
@@ -375,7 +360,7 @@ void TUIndex::for_each_instantiation_file(
     if(!loaded()) {
         return;
     }
-    auto symbols = SymbolColumns::of(blob_root(data));
+    auto symbols = SymbolColumns::of(view_of(data));
     for(std::uint32_t entry = 0; entry < symbols.hashes.size(); entry += 1) {
         auto files = symbols.instantiations_of(entry);
         if(!files.empty() && !callback(symbols.hashes[entry], files)) {
@@ -390,7 +375,7 @@ void TUIndex::for_each_symbol(
     if(!loaded()) {
         return;
     }
-    auto symbols = SymbolColumns::of(blob_root(data));
+    auto symbols = SymbolColumns::of(view_of(data));
     for(std::uint32_t entry = 0; entry < symbols.hashes.size(); entry += 1) {
         if(!callback(symbols.hashes[entry], symbols.view(entry), symbols.references_of(entry))) {
             return;
@@ -402,7 +387,7 @@ std::optional<SymbolView> TUIndex::find_symbol(SymbolHash hash) const {
     if(!loaded()) {
         return std::nullopt;
     }
-    auto symbols = SymbolColumns::of(blob_root(data));
+    auto symbols = SymbolColumns::of(view_of(data));
     if(auto entry = symbols.find(hash)) {
         return symbols.view(*entry);
     }
@@ -443,7 +428,7 @@ bool TUIndex::matches_preamble(llvm::StringRef text) const {
     if(!loaded()) {
         return false;
     }
-    auto root = blob_root(data);
+    auto root = view_of(data);
     auto size = root[&TUIndexBlob::preamble_size];
     return text.size() >= size &&
            llvm::xxh3_64bits(text.take_front(size)) == root[&TUIndexBlob::preamble_hash];
@@ -453,11 +438,11 @@ std::vector<DocumentLink> TUIndex::links() const {
     if(!loaded()) {
         return {};
     }
-    auto entries = blob_root(data)[&TUIndexBlob::links];
+    auto entries = view_of(data)[&TUIndexBlob::links];
 
     std::vector<DocumentLink> links;
     links.reserve(entries.size());
-    for(std::size_t i = 0; i < entries.size(); i += 1) {
+    for(std::uint32_t i = 0; i < entries.size(); i += 1) {
         auto entry = entries[i];
         links.push_back(DocumentLink{
             .range = entry[&DocumentLink::range],
@@ -471,21 +456,21 @@ llvm::ArrayRef<std::uint32_t> TUIndex::inactive_regions() const {
     if(!loaded()) {
         return {};
     }
-    return to_array_ref(blob_root(data)[&TUIndexBlob::inactive_regions]);
+    return to_array_ref(view_of(data)[&TUIndexBlob::inactive_regions]);
 }
 
 llvm::ArrayRef<std::uint8_t> TUIndex::open_conditionals() const {
     if(!loaded()) {
         return {};
     }
-    return to_array_ref(blob_root(data)[&TUIndexBlob::open_conditionals]);
+    return to_array_ref(view_of(data)[&TUIndexBlob::open_conditionals]);
 }
 
 llvm::StringRef TUIndex::preamble_diagnostics() const {
     if(!loaded()) {
         return {};
     }
-    return to_ref(blob_root(data)[&TUIndexBlob::diagnostics]);
+    return view_of(data)[&TUIndexBlob::diagnostics];
 }
 
 }  // namespace clice::index

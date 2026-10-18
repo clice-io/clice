@@ -7,8 +7,10 @@ module clice;
 import :index.hierarchy;
 import :index.rename;
 import :index.search;
+import :index.site;
 import :index.symbol_query;
 import :syntax.lexer;
+import :syntax.source_text;
 
 namespace clice::index {
 
@@ -30,38 +32,20 @@ llvm::SmallVector<std::uint32_t, 1>
     return found;
 }
 
-/// Positions in one text, for the sites of tokens no relation spans.
-struct Lines {
-    llvm::StringRef text;
-    std::vector<std::uint32_t> starts;
+/// The site of the `length` bytes at `offset` in `text`, for a token no
+/// relation spans.
+Site token_site(SourceText& text,
+                Fid file,
+                llvm::StringRef path,
+                std::uint32_t offset,
+                std::uint32_t length) {
+    return *site_of(file, path, text.positions(), {offset, offset + length});
+}
 
-    explicit Lines(llvm::StringRef text) :
-        text(text), starts(kota::ipc::lsp::line_starts({text.data(), text.size()})) {}
-
-    PositionMap positions() const {
-        return {text, starts};
-    }
-
-    /// A token's position: never inside a newline.
-    LineColumn position(std::uint32_t offset) const {
-        return *line_column(positions(), offset);
-    }
-
-    std::string line_of(std::uint32_t offset) const {
-        auto bounds = *positions().line_bounds(kota::ipc::lsp::line_of(starts, offset));
-        return text.slice(bounds.begin, bounds.end).trim().str();
-    }
-
-    Site site(Fid file, std::string path, std::uint32_t offset, std::uint32_t length) const {
-        return {
-            .file = file,
-            .path = std::move(path),
-            .range = {offset, offset + length},
-            .begin = position(offset),
-            .end = position(offset + length)
-        };
-    }
-};
+/// The line holding `offset`, trimmed, for a preview.
+std::string preview_line(SourceText& text, std::uint32_t offset) {
+    return line_at(text.positions(), offset).trim().str();
+}
 
 bool class_like(SymbolKind kind) {
     return kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Union;
@@ -100,7 +84,7 @@ std::string where(const Site& site) {
 /// Every symbol named `name` exactly, however many.
 std::vector<IndexQuery::Located> all_named(const IndexQuery& query, llvm::StringRef name) {
     SymbolQuery exact{.mode = SymbolQuery::Mode::Exact, .pattern = name.str()};
-    for(std::size_t limit = 256;; limit *= 4) {
+    for(std::uint32_t limit = 256;; limit *= 4) {
         auto hits = search(query, exact, limit);
         if(hits.size() < limit) {
             return hits;
@@ -172,16 +156,19 @@ std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& 
         return std::nullopt;
     }
     ScannedText scanned;
-    bool directive = false;
-    Lexer lexer(text, cxx());
-    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
-        if(token.is_directive_hash()) {
-            directive = true;
-        } else if(token.is_eod()) {
-            directive = false;
-        }
-        if(auto name = token.text(text); token.is_identifier() && names.contains(name)) {
-            scanned.tokens[name].push_back({.offset = token.range.begin, .directive = directive});
+    {
+        SourceText source(text, cxx());
+        bool directive = false;
+        for(auto& token: source.lexical().tokens) {
+            if(token.is_directive_hash()) {
+                directive = true;
+            } else if(token.is_eod()) {
+                directive = false;
+            }
+            if(auto name = token.text(text); token.is_identifier() && names.contains(name)) {
+                scanned.tokens[name].push_back(
+                    {.offset = token.range.begin, .directive = directive});
+            }
         }
     }
     if(scanned.tokens.empty()) {
@@ -317,7 +304,8 @@ std::expected<CursorRename, std::string> rename_at(const IndexQuery& serving,
         return std::unexpected(
             std::format("no name of `{}` is written here", std::string_view(name)));
     }
-    auto token = Lines(*text).site(site.file, site.path, offsets.front(), name.size());
+    SourceText source(*text, cxx());
+    auto token = token_site(source, site.file, site.path, offsets.front(), name.size());
     return CursorRename{.target = std::move(*found), .token = std::move(token)};
 }
 
@@ -365,7 +353,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
     // The text every entry of a file indexes, and its positions.
     struct Text {
         std::optional<std::string> text;
-        std::optional<Lines> lines;
+        std::optional<SourceText> source;
     };
 
     llvm::DenseMap<Fid, std::unique_ptr<Text>> texts;
@@ -375,7 +363,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
             slot = std::make_unique<Text>();
             slot->text = query.serving_text(file);
             if(slot->text) {
-                slot->lines.emplace(*slot->text);
+                slot->source.emplace(*slot->text, cxx());
             }
         }
         return *slot;
@@ -411,7 +399,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
             if(!held.insert({file, offset}).second) {
                 return;
             }
-            auto site = text.lines->site(file, near.path, offset, old_name.size());
+            auto site = token_site(*text.source, file, near.path, offset, old_name.size());
             auto name = query.qualified_name(*other);
             if(auto renamed = batch.renamed.find(*other); renamed != batch.renamed.end()) {
                 plan.conflicts.push_back(
@@ -427,13 +415,13 @@ RenamePlan plan_rename(const IndexQuery& serving,
                 .reason = std::format("the name here also refers to `{}`, under another build "
                                       "configuration or as another candidate of a dependent call",
                                       name),
-                .line = text.lines->line_of(offset),
+                .line = preview_line(*text.source, offset),
             });
             return;
         }
         auto [it, inserted] = edits.try_emplace(
             {file, offset},
-            RenameEdit{.site = text.lines->site(file, near.path, offset, old_name.size()),
+            RenameEdit{.site = token_site(*text.source, file, near.path, offset, old_name.size()),
                        .heuristic = heuristic});
         if(!inserted) {
             it->second.heuristic &= heuristic;
@@ -465,7 +453,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
                             {.site = site,
                              .reason = std::format("the name is written here as `{}`",
                                                    std::string_view(written)),
-                             .line = text.lines->line_of(site.range.begin)});
+                             .line = preview_line(*text.source, site.range.begin)});
                     }
                     continue;
                 }
@@ -526,17 +514,17 @@ RenamePlan plan_rename(const IndexQuery& serving,
         if(spelled == current->tokens.end()) {
             continue;
         }
-        Lines lines(current->text);
+        SourceText source(current->text, cxx());
         for(auto [offset, directive]: spelled->second) {
             if(foreign && !directive) {
                 continue;
             }
             if(!indexed) {
                 plan.unconfirmed.push_back(
-                    {.site = lines.site(file, display, offset, old_name.size()),
-                     .reason = "the index holds no rows of this file: no unit it indexes "
+                    {.site = token_site(source, file, display, offset, old_name.size()),
+                     .reason = "the index holds nothing of this file: no unit it indexes "
                                "compiles or includes it",
-                     .line = lines.line_of(offset)});
+                     .line = preview_line(source, offset)});
                 continue;
             }
             if(edits.contains({file, offset})) {
@@ -551,13 +539,13 @@ RenamePlan plan_rename(const IndexQuery& serving,
                 continue;
             }
             plan.unconfirmed.push_back(
-                {.site = lines.site(file, display, offset, old_name.size()),
+                {.site = token_site(source, file, display, offset, old_name.size()),
                  .reason = directive ? "inside a preprocessor directive, which the index does not "
                                        "resolve"
                                      : "the index ties no symbol to it: a dependent name it "
                                        "could not resolve, an inactive #if branch, or code no "
                                        "unit compiles",
-                 .line = lines.line_of(offset)});
+                 .line = preview_line(source, offset)});
         }
     }
 

@@ -8,9 +8,16 @@ module;
 module clice;
 
 import :index.database;
+import :index.project_index;
+import :index.tu_manifest;
+import :project.artifact_records;
+import :project.build;
+import :project.command_resolver;
+import :project.command_snapshot;
 import :project.configuration;
 import :project.load;
 import :project.project;
+import :project.save;
 import :support.logging;
 import :support.timer;
 import :syntax.dependency_graph;
@@ -20,8 +27,137 @@ import :vfs.path;
 
 namespace clice {
 
+/// Drop the index of every TU a rule's `index = false` keeps out: an index
+/// built before the rule would otherwise serve on, since the pump never
+/// rebuilds an excluded unit.
+static void retire_excluded(Project& project, index::IndexReport& report) {
+    llvm::SmallVector<Fid> excluded;
+    project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
+        if(!project.build.indexed(project.file_table.resolve(tu))) {
+            excluded.push_back(tu);
+        }
+    });
+    for(auto tu: excluded) {
+        LOG_INFO("A rule keeps {} out of the index; dropping its entries",
+                 project.file_table.resolve(tu));
+        project.index.drop(tu, report);
+    }
+}
+
+SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOptions options) {
+    SavedLoad result;
+    auto& report = result.report;
+    if(!project.database) {
+        return result;
+    }
+    auto& db = *project.database;
+    auto& index = project.index;
+    bool read_only = options.read_only;
+    ScopedTimer timer;
+
+    // Artifact metadata and context choices are index-independent: they
+    // load (and self-validate) whatever happened to the project table.
+    auto load_metadata = [&] {
+        if(auto artifacts = db.read(index::BlobKind::ArtifactRecords, "artifacts")) {
+            load_artifact_records(project, commands, artifacts.buffer->getBuffer());
+        }
+        if(auto choices = db.read(index::BlobKind::ContextChoices, "contexts")) {
+            project.contexts.bytes = choices.buffer->getBuffer().str();
+        }
+    };
+
+    // Everything a read-only session keeps is deserialized or copied, so
+    // nothing borrows the opening snapshot; retiring it keeps a long
+    // read-only session (batch lint) from pinning a concurrent writer's
+    // page reclamation to session start. Every return path that leaves
+    // the database open owes this.
+    auto retire_snapshot = [&] {
+        if(read_only && !options.borrow && db.advance_read_snapshot()) {
+            db.retire_old_snapshot();
+        }
+    };
+
+    switch(index.load(db, options, report)) {
+        case index::LoadOutcome::Empty:
+            load_metadata();
+            retire_snapshot();
+            return result;
+        case index::LoadOutcome::Unreadable:
+            // Run this session memory-only — saving a fresh lineage over
+            // blobs whose anchor was never read could alias their version
+            // ids and generations — and leave everything for a healthier
+            // restart to load. Confirmed page corruption heals through
+            // rebuildability instead: the condemned database deletes
+            // itself and a fresh empty one opens in its place, so this
+            // session's rebuild persists instead of being redone at the
+            // next start.
+            if(!read_only && db.corrupted()) {
+                reopen_fresh_database(project);
+            } else {
+                // Best effort before detaching: the metadata blobs may
+                // still read while only the project table is unreadable.
+                load_metadata();
+                LOG_WARN(
+                    "Index project table unreadable; disabling index persistence this session");
+                project.database.reset();
+            }
+            return result;
+        case index::LoadOutcome::Undecodable:
+            load_metadata();
+            result.decoded = false;
+            retire_snapshot();
+            return result;
+        case index::LoadOutcome::Loaded: break;
+    }
+    load_metadata();
+    if(!read_only) {
+        retire_excluded(project, report);
+        project.command_snapshot.reconcile(project, report);
+    }
+
+    // The reads above touch every adopted manifest and shard, so page
+    // corruption anywhere in the database has latched by now; heal it like
+    // the unreadable-table case above instead of writing into a damaged
+    // tree every session. The adopted state unwinds wholesale: the shard
+    // views borrow from the condemned environment, and manifests kept
+    // without their views would read as fresh and gate the rebuild pass
+    // off exactly the files whose shards were lost. Standalone-indexed TUs
+    // re-enqueue first — the CDB pass that rebuilds everything else never
+    // covers them, and the condemned database is deleting their only
+    // persistent record. The dirtied snapshot carries them as debt from
+    // the fresh database's first save on, so even a crash before their
+    // rebuild finishes cannot lose them a second time.
+    if(!read_only && db.corrupted()) {
+        index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
+            if(project.build.entries(tu).empty()) {
+                report.add_reindex(tu);
+            }
+        });
+        index.clear();
+        project.command_snapshot.forget_persisted();
+        reopen_fresh_database(project);
+        return result;
+    }
+
+    retire_snapshot();
+
+    if(index.shard_count() != 0) {
+        LOG_INFO("Loaded {} index shards, {} manifests, {} symbols",
+                 index.shard_count(),
+                 index.manifest_count(),
+                 index.symbol_count());
+    }
+    LOG_PERF("startup",
+             "phase=index_load symbols={} shards={} manifests={} elapsed_ms={}",
+             index.symbol_count(),
+             index.shard_count(),
+             index.manifest_count(),
+             timer.ms());
+    return result;
+}
+
 ProjectLoad load_project(Project& project,
-                         IndexStore& store,
+                         CommandResolver& commands,
                          CanonicalRef root,
                          llvm::StringRef requested_configuration,
                          bool read_only_index) {
@@ -76,7 +212,7 @@ ProjectLoad load_project(Project& project,
         }
     }
 
-    auto remembered = store.remembered();
+    auto remembered = CommandSnapshot::remembered(project);
     auto load =
         load_build(project, root, configuration, remembered.sources, remembered.provisional);
     report.has_commands = !load.members.empty() || project.build.declares_sources();
@@ -84,11 +220,12 @@ ProjectLoad load_project(Project& project,
     // Persisted index shards are CDB-independent; they load even with no
     // member yet, so a database generated later (picked up by the CDB
     // poll) starts from the previous session's index.
-    report.index = store.load({.read_only = read_only_index});
+    report.index = load_saved(project, commands, {.read_only = read_only_index});
     // A unit deleted while no server ran keeps its index until a look finds
     // it missing (see FreshnessGate).
-    project.file_table.disk.find_missing(
-        llvm::to_vector(llvm::make_first_range(project.index.manifests)));
+    llvm::SmallVector<Fid> units;
+    project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) { units.push_back(tu); });
+    project.file_table.disk.find_missing(units);
     return report;
 }
 
@@ -142,12 +279,9 @@ BuildLoad load_build(Project& project,
             // root.
             return path::under(llvm::StringRef(source), llvm::StringRef(root));
         }));
-        auto key = [](const Spelling& source) {
-            return std::tuple(
-                llvm::count_if(source.str(), [](char c) { return path::is_separator(c); }),
-                llvm::StringRef(source));
-        };
-        std::ranges::sort(stable, {}, key);
+        std::ranges::sort(stable, {}, [](const Spelling& source) {
+            return discovery_rank(llvm::StringRef(source));
+        });
         paths.append(stable.begin(), stable.end());
     }
     // One source per database, however many of its spellings discovery

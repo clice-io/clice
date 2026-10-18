@@ -8,8 +8,11 @@ import :analysis.module_graph;
 import :analysis.text;
 import :command.command;
 import :config.config;
+import :index.project_index;
 import :index.query;
+import :index.shard;
 import :index.symbol_query;
+import :index.tu_manifest;
 import :project.command_resolver;
 import :project.configuration;
 import :project.open_index;
@@ -199,20 +202,18 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         facts.files.push_back({
             .path = path,
             // A header an editor indexed standalone has a manifest too.
-            .source = index.manifests.contains(fid) && !is_header_path(path),
+            .source = index.held_manifest(fid) && !is_header_path(path),
             .fragment = is_context_header_path(path),
         });
         fids.push_back(fid);
     };
-    for(auto& entry: index.shards) {
-        add(entry.first);
-    }
-    for(auto& [tu, manifest]: index.manifests) {
+    index.for_each_shard([&](Fid file, const index::Shard&) { add(file); });
+    index.for_each_manifest([&](Fid tu, const index::TUManifest& manifest) {
         add(tu);
         for(auto& node: manifest.nodes) {
             add(table.version(VersionID{node.file}).fid);
         }
-    }
+    });
     auto id_of = [&](Fid fid) {
         auto it = ids.find(fid);
         return it == ids.end() ? none : it->second;
@@ -238,7 +239,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, Fid> include_at;
     /// (scoped includer, scoped file) -> the first directive line naming it.
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> include_lines;
-    for(auto& [tu, manifest]: index.manifests) {
+    index.for_each_manifest([&](Fid tu, const index::TUManifest& manifest) {
         auto unit = id_of(tu);
         llvm::DenseSet<std::uint32_t> entered;
         if(unit != none) {
@@ -276,7 +277,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
             }
         }
-    }
+    });
     for(auto& file: facts.files) {
         std::ranges::sort(file.directives);
         file.directives.erase(std::ranges::unique(file.directives).begin(), file.directives.end());
@@ -443,19 +444,18 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     std::vector<std::tuple<index::SymbolHash, index::SymbolHash, std::uint32_t>>
         raw_specializations;
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
-        auto shard_it = index.shards.find(fids[id]);
-        if(shard_it == index.shards.end() || !shard_it->second.loaded()) {
+        auto* found = index.shard(fids[id]);
+        if(!found) {
             continue;
         }
-        auto& shard = shard_it->second;
-        auto names =
-            [&](llvm::function_ref<void(index::SymbolHash, const index::Relation&)> visit) {
-                shard.for_each_relation(
-                    [&](index::SymbolHash hash, const index::Relation& relation) {
-                        visit(hash, relation);
-                        return true;
-                    });
-            };
+        auto& shard = *found;
+        auto names = [](const index::Shard& from,
+                        llvm::function_ref<void(index::SymbolHash, const index::Relation&)> visit) {
+            from.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
+                visit(hash, relation);
+                return true;
+            });
+        };
         auto use_of = [](const index::Relation& relation) {
             return RelationKind(relation.kind)
                 .is_one_of(RelationKind::Reference,
@@ -475,10 +475,11 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         if(live.size() > 1) {
             llvm::DenseMap<index::SymbolHash, std::uint32_t> carried, declaring;
             std::optional<llvm::DenseSet<index::SymbolHash>> declared;
+            auto variant_view = index::Shard::from_bytes(shard.bytes());
             for(auto variant: live) {
-                shard.set_live({variant});
+                variant_view.set_live({variant});
                 llvm::DenseSet<index::SymbolHash> named, declares;
-                names([&](index::SymbolHash hash, const index::Relation& relation) {
+                names(variant_view, [&](index::SymbolHash hash, const index::Relation& relation) {
                     if(use_of(relation)) {
                         named.insert(hash);
                     } else if(declaration_of(relation)) {
@@ -498,7 +499,6 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
                 declared = std::move(declares);
             }
-            shard.set_live(live);
             for(auto& [hash, count]: declaring) {
                 if(count != live.size()) {
                     partially_declared.insert({id, hash});
@@ -514,7 +514,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             unstable.erase(std::ranges::unique(unstable).begin(), unstable.end());
         }
 
-        names([&](index::SymbolHash hash, const index::Relation& relation) {
+        names(shard, [&](index::SymbolHash hash, const index::Relation& relation) {
             if(declaration_of(relation)) {
                 sites[hash].push_back({
                     .file = id,
@@ -794,13 +794,13 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
             }
             bool implemented =
-                index.manifests.contains(canonical) && !llvm::is_contained({SymbolKind::Class,
-                                                                            SymbolKind::Struct,
-                                                                            SymbolKind::Union,
-                                                                            SymbolKind::Enum,
-                                                                            SymbolKind::Type,
-                                                                            SymbolKind::Concept},
-                                                                           kind);
+                index.held_manifest(canonical) && !llvm::is_contained({SymbolKind::Class,
+                                                                       SymbolKind::Struct,
+                                                                       SymbolKind::Union,
+                                                                       SymbolKind::Enum,
+                                                                       SymbolKind::Type,
+                                                                       SymbolKind::Concept},
+                                                                      kind);
             if(owner == none && !implemented) {
                 if(kind == SymbolKind::Macro) {
                     foreign_macros[hash] = {canonical, identity->name.str()};
@@ -1000,7 +1000,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(!facts.files[owner].source) {
                 ConfiguringMacro configuring{.entity = id};
                 index.for_each_reference_file(hash, [&](Fid file) {
-                    if(id_of(file) != none || index.manifests.contains(file)) {
+                    if(id_of(file) != none || index.held_manifest(file)) {
                         return;
                     }
                     auto path = display(file);
@@ -1377,11 +1377,11 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
     index::FreshnessGate gate(files, {.check_disk = true});
     LoadError stale{.message =
                         "some files changed since they were indexed; run `clice index` first"};
-    for(auto& [file, shard]: project.index.shards) {
+    project.index.for_each_shard([&](Fid file, const index::Shard& shard) {
         if(gate.stale(file, shard.content_hash())) {
             stale.dropped.emplace_back(files.display(file));
         }
-    }
+    });
     if(!stale.dropped.empty()) {
         std::ranges::sort(stale.dropped);
         return std::unexpected(std::move(stale));

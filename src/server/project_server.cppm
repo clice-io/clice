@@ -6,7 +6,6 @@ module clice:server.project_server;
 
 import :config.config;
 import :project.command_resolver;
-import :project.index_store;
 import :project.project;
 import :sched.stack;
 import :server.ast_family;
@@ -118,14 +117,13 @@ public:
 
     /// The scheduling core the batch driver runs too, its families
     /// registered at construction — nodes materialize on demand, so a
-    /// module-free project pays nothing. The store and the pump are
-    /// serving-neutral; the session-side policy — unservable escalation,
-    /// serving-index refresh — lives on this class and is installed into the
-    /// pump's hooks at construction. The AST family is assembled here in
-    /// the project's server: its rounds capture sessions, quarantine and
-    /// publishing.
+    /// module-free project pays nothing. The pump is serving-neutral; the
+    /// session-side policy — unservable escalation, serving-index refresh —
+    /// lives on this class and is installed into the pump's hooks at
+    /// construction. The AST family is assembled here in the project's
+    /// server: its rounds capture sessions, quarantine and publishing.
     SchedulingStack sched;
-    EditorContext contexts{project, commands, sched.store.contexts};
+    EditorContext contexts{project, commands, project.contexts};
     ASTFamily ast;
 
     Dispatcher dispatcher;
@@ -174,7 +172,7 @@ private:
     /// condition of MasterServer::on_serving_index_changed.
     bool session_served_by_shard(Fid path_id) const;
 
-    /// Filter a store index-change report down to the sessions actually
+    /// Filter an index-change report down to the sessions actually
     /// serving those shards and wake the transports.
     void on_index_changed(llvm::ArrayRef<Fid> path_ids);
 

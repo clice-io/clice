@@ -14,6 +14,7 @@ import :support.logging;
 import :syntax.header_context;
 import :syntax.include_resolver;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {
@@ -65,6 +66,49 @@ Candidate pick_pinned_config(Project& project,
         }
     }
     return candidates.front();
+}
+
+CommandRef lent_command(Project& project,
+                        Fid header,
+                        Fid host,
+                        ConfigID command,
+                        llvm::ArrayRef<std::string> extra_prepend,
+                        llvm::ArrayRef<std::string> extra_append) {
+    // The header inherits the host's world: the rules matching the host
+    // and the rules matching the header both edit the borrowed command,
+    // each once, in declaration order.
+    auto host_path = project.file_table.resolve(host);
+    CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
+    return project.build.resolve(header,
+                                 command,
+                                 CommandSource::IncludeGraph,
+                                 edit_paths,
+                                 host_path,
+                                 extra_prepend,
+                                 extra_append);
+}
+
+std::optional<CommandRef> host_command(Project& project,
+                                       Fid header,
+                                       Fid host,
+                                       llvm::StringRef pinned_hash,
+                                       llvm::StringRef pinned_base,
+                                       llvm::ArrayRef<std::string> extra_prepend,
+                                       llvm::ArrayRef<std::string> extra_append) {
+    auto commands = host_commands(project, header, host);
+    if(commands.empty()) {
+        return std::nullopt;
+    }
+    auto host_path = project.file_table.resolve(host);
+    CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
+    auto picked = pick_pinned_config(project,
+                                     header,
+                                     commands,
+                                     edit_paths,
+                                     host_path,
+                                     pinned_hash,
+                                     pinned_base);
+    return lent_command(project, header, host, picked.config, extra_prepend, extra_append);
 }
 
 HeaderMode CommandResolver::header_mode(Fid path_id) const {
@@ -151,11 +195,9 @@ void CommandResolver::load_mode_slices(
     }
 }
 
-bool CommandResolver::fill_header_context_args(Fid path_id,
-                                               std::string& directory,
-                                               std::vector<std::string>& arguments,
-                                               const CommandRequest& request,
-                                               Resolution& resolution) {
+std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
+                                                                const CommandRequest& request,
+                                                                Resolution& resolution) {
     // Self-containment routing: an Unknown or SelfContained header borrows
     // the host command without a prefix; NeedsContext synthesizes one.
     // ASTFamily::run() flips Unknown to NeedsContext when the trial compile's
@@ -195,11 +237,11 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
 
     std::optional<HeaderContext> local_ctx;
     if(!ctx_ptr) {
-        auto resolved = resolve_header_context(path_id, choice, synthesize);
+        auto resolved = resolve_header_context(path_id, request, synthesize);
         if(!resolved) {
             resolution.unmatched_host = resolved.error();
             resolution.tree_wanted = resolved.error();
-            return false;
+            return std::nullopt;
         }
         if(cache) {
             ctx_ptr = &((*cache)[path_id] = std::move(*resolved));
@@ -213,46 +255,25 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
     }
 
     auto host_path = project.file_table.resolve(ctx_ptr->host_path_id);
-    auto commands = host_commands(project, path_id, ctx_ptr->host_path_id);
-    if(commands.empty()) {
-        LOG_WARN("fill_header_context_args: host {} has no compile command", host_path);
-        return false;
+    auto ref = host_command(project,
+                            path_id,
+                            ctx_ptr->host_path_id,
+                            ctx_ptr->host_command_hash,
+                            ctx_ptr->host_base_hash,
+                            request.extra_prepend,
+                            request.extra_append);
+    if(!ref) {
+        LOG_WARN("resolve_through_host: host {} has no compile command", host_path);
+        return std::nullopt;
     }
-
-    // The header inherits the host's world: the rules matching the host
-    // and the rules matching the header both edit the borrowed command,
-    // each once, in declaration order.
-    CanonicalRef edit_paths[] = {host_path, path};
-    auto base = pick_pinned_config(project,
-                                   path_id,
-                                   commands,
-                                   edit_paths,
-                                   host_path,
-                                   ctx_ptr->host_command_hash,
-                                   ctx_ptr->host_base_hash)
-                    .config;
-
-    // The header compiles as the host's language, with the header injected
-    // as the input; the synthesized prefix lands after the host's own
-    // user-content flags (its -include runs first).
-    auto ref =
-        project.build.resolve(path_id, base, CommandSource::IncludeGraph, edit_paths, host_path);
-    RenderOptions opts;
-    if(ctx_ptr->synthesized) {
-        opts.preamble = ctx_ptr->synthesized->prefix.c_str();
-    }
-    directory = project.cdb.config(ref.config).directory;
-    auto argv = project.cdb.render(ref, opts);
-    arguments.assign(argv.begin(), argv.end());
     resolution.host = ctx_ptr->host_path_id;
-    resolution.ref = ref;
     resolution.synthesized = ctx_ptr->synthesized;
 
     LOG_INFO("resolve_command: header context for {} (host={}, synthesized={})",
              path,
              host_path,
              ctx_ptr->synthesized != nullptr);
-    return true;
+    return ref;
 }
 
 Resolution CommandResolver::resolve_command(Fid path_id,
@@ -263,29 +284,37 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     llvm::SmallVector<llvm::StringRef, 4> tried;
     Resolution resolution;
 
-    // Render `base` with the rule edits of `paths` applied: an entry, a
-    // default command, a borrowed or the builtin one alike.
-    auto fill = [&](ConfigID base,
-                    CommandSource source,
-                    llvm::ArrayRef<CanonicalRef> paths,
-                    llvm::StringRef language_path) {
-        auto ref = project.build.resolve(path_id,
-                                         base,
-                                         source,
-                                         paths,
-                                         language_path,
-                                         request.extra_prepend,
-                                         request.extra_append);
+    auto finish = [&](const CommandRef& ref) {
+        // A header borrowing its host's command compiles as the host's
+        // language, with the header injected as the input; the synthesized
+        // prefix lands after the host's own user-content flags (its
+        // -include runs first).
+        RenderOptions options;
+        if(resolution.synthesized) {
+            options.preamble = resolution.synthesized->prefix.c_str();
+        }
         directory = project.cdb.config(ref.config).directory;
-        auto argv = project.cdb.render(ref);
+        auto argv = project.cdb.render(ref, options);
         arguments.assign(argv.begin(), argv.end());
         resolution.ref = ref;
+        resolution.source = ref.source;
+        log_command_decision(path, tried, ref.source, arguments);
+        return std::move(resolution);
     };
 
-    auto finish = [&](CommandSource source) {
-        resolution.source = source;
-        log_command_decision(path, tried, source, arguments);
-        return std::move(resolution);
+    // `base` with the rule edits of `paths` and the run's extras applied:
+    // an entry, a default command, a borrowed or the builtin one alike.
+    auto finish_own = [&](ConfigID base,
+                          CommandSource source,
+                          llvm::ArrayRef<CanonicalRef> paths,
+                          llvm::StringRef language_path) {
+        return finish(project.build.resolve(path_id,
+                                            base,
+                                            source,
+                                            paths,
+                                            language_path,
+                                            request.extra_prepend,
+                                            request.extra_append));
     };
 
     const Selection* choice = request.selection;
@@ -295,8 +324,8 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     //    host source's CDB entry with file path replaced and preamble injected.
     if(has_host_choice) {
         tried.push_back("switch_context");
-        if(fill_header_context_args(path_id, directory, arguments, request, resolution)) {
-            return finish(CommandSource::IncludeGraph);
+        if(auto ref = resolve_through_host(path_id, request, resolution)) {
+            return finish(*ref);
         }
     }
 
@@ -316,15 +345,14 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         }
         auto picked =
             pick_pinned_config(project, path_id, commands, path, path, pinned_hash, pinned_base);
-        fill(picked.config, picked.source, path, path);
-        return finish(picked.source);
+        return finish_own(picked.config, picked.source, path, path);
     }
 
     // 3. No CDB entry — try automatic header context resolution.
     if(!has_host_choice) {
         tried.push_back("include_graph");
-        if(fill_header_context_args(path_id, directory, arguments, request, resolution)) {
-            return finish(CommandSource::IncludeGraph);
+        if(auto ref = resolve_through_host(path_id, request, resolution)) {
+            return finish(*ref);
         }
     }
 
@@ -332,8 +360,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     //    a unit (a header under a default-command rule).
     if(!commands.empty()) {
         tried.push_back("default");
-        fill(commands.front().config, CommandSource::Default, path, path);
-        return finish(CommandSource::Default);
+        return finish_own(commands.front().config, CommandSource::Default, path, path);
     }
 
     // 5. A nearby unit's command, edited for both files as a provisional
@@ -343,19 +370,17 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     tried.push_back("inferred");
     if(auto lender = command_lender(project, path_id)) {
         auto lender_path = project.file_table.resolve(lender->unit);
-        fill(project.build.lend(lender->config, lender_path, path),
-             CommandSource::Inferred,
-             path,
-             is_header_path(path) ? lender_path : path);
         LOG_INFO("resolve_command: {} borrows the command of {}", path, lender_path);
-        return finish(CommandSource::Inferred);
+        return finish_own(project.build.lend(lender->config, lender_path, path),
+                          CommandSource::Inferred,
+                          path,
+                          is_header_path(path) ? lender_path : path);
     }
 
     // 6. The builtin fallback, so the file still compiles and produces
     //    diagnostics instead of failing silently.
     tried.push_back("fallback");
-    fill(project.build.builtin(path), CommandSource::Fallback, path, path);
-    return finish(CommandSource::Fallback);
+    return finish_own(project.build.builtin(path), CommandSource::Fallback, path, path);
 }
 
 std::optional<CommandRef> CommandResolver::pch_unit(Fid path_id,
@@ -371,9 +396,11 @@ std::optional<CommandRef> CommandResolver::pch_unit(Fid path_id,
                                   request.extra_append);
 }
 
-std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid header_path_id,
-                                                                          const Selection* choice,
-                                                                          bool synthesize) {
+std::expected<HeaderContext, Fid>
+    CommandResolver::resolve_header_context(Fid header_path_id,
+                                            const CommandRequest& request,
+                                            bool synthesize) {
+    const Selection* choice = request.selection;
     // A pinned host (and its chosen include occurrence) wins while it
     // still compiles and still includes the header; otherwise the build's
     // default host.
@@ -427,24 +454,20 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
     // Include directives along the chain are resolved with the host's real
     // search configuration, so same-named headers in different directories
     // cannot be confused.
-    auto host_path = project.file_table.resolve(host_path_id);
-    auto commands = host_commands(project, chain.back(), host_path_id);
-    if(commands.empty()) {
+    auto host_ref = host_command(project,
+                                 chain.back(),
+                                 host_path_id,
+                                 host_command_hash,
+                                 host_base_hash,
+                                 request.extra_prepend,
+                                 request.extra_append);
+    if(!host_ref) {
         return std::unexpected(host_path_id);
     }
+    auto host_path = project.file_table.resolve(host_path_id);
     auto target_path = project.file_table.resolve(chain.back());
-    CanonicalRef edit_paths[] = {host_path, target_path};
-    auto picked = pick_pinned_config(project,
-                                     host_path_id,
-                                     commands,
-                                     edit_paths,
-                                     host_path,
-                                     host_command_hash,
-                                     host_base_hash);
-    auto host_ref =
-        project.build.resolve(host_path_id, picked.config, picked.source, edit_paths, host_path);
 
-    auto search_config = project.cdb.search_config(host_ref);
+    auto search_config = project.cdb.search_config(*host_ref);
     vfs::Scope scope(project.file_table.dirs);
     auto resolved_config = resolve_search_config(search_config, scope);
 

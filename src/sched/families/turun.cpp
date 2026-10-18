@@ -7,12 +7,16 @@ module;
 module clice;
 
 import :compile.tidy;
+import :index.project_index;
+import :project.command_snapshot;
 import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.families.turun;
 import :support.logging;
 import :support.timer;
+import :syntax.dependency_graph;
 import :vfs.file_system;
+import :vfs.file_table;
 import :worker.protocol;
 
 namespace clice {
@@ -22,10 +26,8 @@ TURunFamily::TURunFamily(TaskGraph& graph,
                          CommandResolver& commands,
                          PCMFamily& pcm,
                          PCHFamily& pch,
-                         IndexStore& store,
                          WorkerPool& pool) :
-    graph(graph), project(project), commands(commands), pcm(pcm), pch(pch), store(store),
-    pool(pool) {}
+    graph(graph), project(project), commands(commands), pcm(pcm), pch(pch), pool(pool) {}
 
 void TURunFamily::register_runner() {
     graph.register_family(Family::TURun, [this](RoundContext& ctx, NodeId id) {
@@ -91,7 +93,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         // loses nothing. One with neither (dropped or never built, read by
         // nothing) stays uncovered — count that as a failure so a batch run
         // reports the debt instead of exiting clean.
-        if(!project.index.manifests.contains(path_id) &&
+        if(!project.index.held_manifest(path_id) &&
            project.dep_graph.find_readers(path_id).empty()) {
             finished[path_id] = {.result = Result::Failed,
                                  .error = "no compile command found; the file stays uncovered"};
@@ -185,8 +187,10 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     auto imports = project.module_inputs(deps.resolved);
     merge_deps(imports, {&precompiled});
     if(plan.index && !send_in_full.erase(path_id)) {
-        params.known_variants = store.known_variants(path_id);
-        params.known_instantiations = store.known_instantiations(path_id);
+        auto include_closure = project.dep_graph.include_closure(path_id);
+        params.known_variants = project.index.known_variants(path_id, include_closure);
+        params.known_instantiations =
+            project.index.known_instantiations(path_id, std::move(include_closure));
     }
     params.standard_library_instantiations = project.config.project.standard_library_instantiations;
 
@@ -240,9 +244,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 co_return RoundOutcome::Stale;
             }
             ScopedTimer merge_timer;
-            auto report = store.merge(index_bytes.data(), index_bytes.size(), imports);
+            auto report = project.index.merge(index_bytes, imports);
             if(!report) {
-                if(report.error() == IndexStore::MergeError::Outdated) {
+                if(report.error() == index::MergeError::Outdated) {
                     send_in_full.insert(path_id);
                     finished[path_id] = {.result = Result::Preempted,
                                          .error =
@@ -261,9 +265,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             // built through the old one — an unchanged new host then pins
             // that stale index fresh across restarts.
             if(resolved.source == CommandSource::IncludeGraph) {
-                store.record_header_host(path_id, resolved.host);
+                project.command_snapshot.record_host(path_id, resolved.host);
             } else {
-                store.forget_header_host(path_id);
+                project.command_snapshot.forget_host(path_id);
             }
             outcome.report = std::move(*report);
             outcome.perf.merge_ms = merge_timer.ms();

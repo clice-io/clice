@@ -7,6 +7,7 @@ module clice:server.ast_projection;
 import :feature.feature;
 import :index.tu_index;
 import :project.project;
+import :vfs.file_table;
 
 namespace clice {
 

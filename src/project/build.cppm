@@ -279,6 +279,10 @@ private:
     llvm::DenseMap<Fid, ConfigID> provisional;
 };
 
+/// How discovered databases rank among themselves: shallower before
+/// deeper, then by path.
+std::pair<std::uint32_t, llvm::StringRef> discovery_rank(llvm::StringRef database);
+
 /// Every file under the walk's roots, version control metadata and the
 /// cache directory skipped. File system work only, so it can run off the
 /// event loop: a rule without patterns has the whole workspace walked.

@@ -12,7 +12,9 @@ import :unittests.utils.merge_unit;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
 import :unittests.utils;
+import :vfs.disk_state;
 import :vfs.file_system;
+import :vfs.file_table;
 
 namespace clice::testing {
 namespace {
@@ -58,6 +60,9 @@ void merge() {
             scope.push_back(path);
         }
     }
+    // The merge recorded what the unit read as the disk's first look: the
+    // writes above change it, as a tick would notice.
+    project.file_table.disk.look_all();
 }
 
 /// A workspace file no unit compiles.
@@ -806,7 +811,7 @@ ZEST_CASE(FilesOutsideTheIndex) {
     ZEXPECT(edits(*renamed) == marks());
     ZEXPECT(!renamed->blocked());
     ZASSERT(renamed->unconfirmed.size() == 1U);
-    ZEXPECT(renamed->unconfirmed.front().reason.contains("holds no rows"));
+    ZEXPECT(renamed->unconfirmed.front().reason.contains("holds nothing"));
 
     // A unit of the build the index has yet to reach may include it.
     units_pending = true;

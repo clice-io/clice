@@ -24,7 +24,7 @@ Master Process (MasterServer)
 ├── LSP / control protocol handling
 ├── State management (workspace, sessions, invalidation)
 ├── Compile scheduling (task graph: PCH / PCM / AST / TU-run families)
-├── Background indexing (index store + pump)
+├── Background indexing (project index + pump)
 │
 ├── Stateful Worker Processes × N
 │   ├── SF-0: holds AST, serves queries

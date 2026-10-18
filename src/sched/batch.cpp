@@ -11,12 +11,15 @@ import :command.command;
 import :compile.tidy;
 import :config.config;
 import :feature.feature;
+import :index.project_index;
+import :index.shard;
+import :index.tu_manifest;
 import :project.build;
 import :project.command_resolver;
 import :project.configuration;
-import :project.index_store;
 import :project.load;
 import :project.project;
+import :project.save;
 import :sched.batch;
 import :sched.bootstrap;
 import :sched.index.pump;
@@ -235,7 +238,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     stack.sched.pump.collect_errors();
 
     auto report = bootstrap_project(project,
-                                    stack.sched.store,
+                                    stack.commands,
                                     stack.sched.pump,
                                     project.config.workspace_root,
                                     options.configuration);
@@ -286,7 +289,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     auto interrupted = co_await lifetime.finish();
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
-    result.unsaved = stack.sched.store.has_unsaved_state();
+    result.unsaved = has_unsaved_state(project);
     if(interrupted) {
         result.interrupted = true;
         result.exit_code = 130;
@@ -295,15 +298,14 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
 
     result.completed = true;
     result.indexed_tus = stack.sched.pump.indexed_files();
-    for(auto tu: llvm::make_first_range(project.index.manifests)) {
+    project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
         if(!project.build.unit(tu)) {
             result.standalone_headers += 1;
         }
-    }
-    result.shard_count = project.index.shards.size();
-    for(auto& shard: llvm::make_second_range(project.index.shards)) {
-        result.shard_bytes += shard.bytes().size();
-    }
+    });
+    result.shard_count = project.index.shard_count();
+    project.index.for_each_shard(
+        [&](Fid, const index::Shard& shard) { result.shard_bytes += shard.bytes().size(); });
     result.symbol_count = project.index.symbol_count();
     for(auto file: stack.sched.pump.failed()) {
         result.failed.emplace_back(project.file_table.display(file));
@@ -499,7 +501,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     project.config.project.enable_indexing.value = false;
 
     auto report = bootstrap_project(project,
-                                    stack.sched.store,
+                                    stack.commands,
                                     stack.sched.pump,
                                     project.config.workspace_root,
                                     options.configuration,
@@ -571,7 +573,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     // The shutdown save was the last retry: with --index the persisted
     // index is part of the product, so unsaved state must fail the run
     // like the index-only batch does.
-    result.unsaved = options.with_index && stack.sched.store.has_unsaved_state();
+    result.unsaved = options.with_index && has_unsaved_state(project);
     if(!result.findings.empty()) {
         result.exit_code = 1;
     }

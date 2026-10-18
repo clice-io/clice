@@ -26,33 +26,44 @@ struct Ranked {
     Fid anchor;
 };
 
+bool ranked_before(const Ranked& lhs, const Ranked& rhs) {
+    return ranks_after(rhs.rank,
+                       rhs.symbol.name,
+                       rhs.symbol.args,
+                       rhs.symbol.hash,
+                       lhs.rank,
+                       lhs.symbol.name,
+                       lhs.symbol.args,
+                       lhs.symbol.hash);
+}
+
 struct RankedHits {
     std::vector<Ranked> hits;
     bool exhausted = true;
 };
 
-RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std::size_t limit) {
+RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std::uint32_t limit) {
     const auto& project = index.project();
     auto& files = index.file_table();
     std::vector<Ranked> hits;
     llvm::DenseSet<SymbolHash> seen;
-    auto indexed = project.search_index.search(query, limit, project.workspace);
+    auto indexed = project.search_index().search(query, limit, project.workspace);
     // A damaged index answers incompletely, a missing one not at all:
     // until the rebuild the whole table is judged symbol by symbol instead.
-    bool scan_table = project.search_index.damaged() || !project.search_index.loaded();
+    bool scan_table = project.search_index().damaged() || !project.search_index().loaded();
     bool exhausted = scan_table || indexed.exhausted;
     if(!scan_table) {
         for(auto& hit: indexed.hits) {
             // A symbol the table changed since the index was built is read
             // from the table below, not from the index's stale copy.
-            if(project.search_pending.contains(hit.hash)) {
+            if(project.search_pending().contains(hit.hash)) {
                 continue;
             }
             Fid anchor;
             if(!hit.file.empty()) {
                 anchor = files.find(project.local(hit.file)).value_or(Fid{});
                 // Read from the file's shard below.
-                if(project.search_pending_files.contains(anchor)) {
+                if(project.search_pending_files().contains(anchor)) {
                     continue;
                 }
             }
@@ -84,8 +95,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
                         llvm::StringRef path,
                         std::uint32_t reference_files,
                         Fid anchor) {
-        if(!is_searchable_kind(identity.kind) || identity.name.empty() ||
-           has_flag(identity.flags, SymbolFlags::Unnamed) || seen.contains(hash) ||
+        if(!searchable(identity.kind, identity.name, identity.flags) || seen.contains(hash) ||
            (query.external_only && identity.scope != SymbolScope::External)) {
             return;
         }
@@ -137,7 +147,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
                 return true;
             });
     } else {
-        for(auto hash: project.search_pending) {
+        for(auto hash: project.search_pending()) {
             if(auto symbol = project.find_symbol(hash)) {
                 consider_symbol(hash, *symbol, project.reference_count(hash));
             }
@@ -146,14 +156,14 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
     // The names of internal linkage of the files merged since the build
     // live in their shards alone.
     if(!query.external_only) {
-        for(auto file: project.search_pending_files) {
+        for(auto file: project.search_pending_files()) {
             auto* shard = index.declaring_shard(file);
             if(!shard) {
                 continue;
             }
             llvm::StringRef path = files.resolve(file);
             shard->for_each_local_symbol([&](SymbolHash hash, const SymbolView& identity) {
-                if(identity.scope == SymbolScope::Internal && declares(*shard, hash)) {
+                if(identity.scope == SymbolScope::Internal && shard->declares(hash)) {
                     consider(hash, identity, path, 0, file);
                 }
                 return true;
@@ -192,7 +202,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
                 continue;
             }
             shard->for_each_local_symbol([&](SymbolHash hash, const SymbolView& identity) {
-                if(declares(*shard, hash)) {
+                if(shard->declares(hash)) {
                     consider(hash, identity, path, 0, file);
                 }
                 return true;
@@ -200,16 +210,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         }
     }
 
-    std::ranges::sort(hits, [](const Ranked& lhs, const Ranked& rhs) {
-        return ranks_after(rhs.rank,
-                           rhs.symbol.name,
-                           rhs.symbol.args,
-                           rhs.symbol.hash,
-                           lhs.rank,
-                           lhs.symbol.name,
-                           lhs.symbol.args,
-                           lhs.symbol.hash);
-    });
+    std::ranges::sort(hits, ranked_before);
     if(hits.size() > limit) {
         hits.resize(limit);
         exhausted = false;
@@ -221,7 +222,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
 
 std::vector<IndexQuery::Located> search(const IndexQuery& index,
                                         const SymbolQuery& query,
-                                        std::size_t limit) {
+                                        std::uint32_t limit) {
     ScopedTimer timer;
     if(limit == 0 || !query.by_pattern()) {
         return {};
@@ -229,7 +230,7 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
     // A symbol no source places cedes its slot to the next one: the
     // ranking is fetched wider until the cut is filled or exhausted.
     std::vector<IndexQuery::Located> results;
-    for(std::size_t fetch = limit * 2;; fetch *= 4) {
+    for(std::uint32_t fetch = limit * 2;; fetch *= 4) {
         auto ranked = ranked_search(index, query, fetch);
         results.clear();
         for(auto& hit: ranked.hits) {
@@ -255,7 +256,7 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
 }
 
 Completables
-    completables(const IndexQuery& index, llvm::StringRef prefix, Fid file, std::size_t limit) {
+    completables(const IndexQuery& index, llvm::StringRef prefix, Fid file, std::uint32_t limit) {
     SymbolQuery query{.pattern = prefix.str(), .external_only = true};
     // Members outnumber the names of namespaces: the ranking is fetched
     // wider than the names wanted.
@@ -280,16 +281,7 @@ Completables
                 }
                 return true;
             });
-        std::ranges::sort(ranked.hits, [](const Ranked& lhs, const Ranked& rhs) {
-            return ranks_after(rhs.rank,
-                               rhs.symbol.name,
-                               rhs.symbol.args,
-                               rhs.symbol.hash,
-                               lhs.rank,
-                               lhs.symbol.name,
-                               lhs.symbol.args,
-                               lhs.symbol.hash);
-        });
+        std::ranges::sort(ranked.hits, ranked_before);
     }
 
     Completables result{.exhausted = ranked.exhausted};
@@ -382,7 +374,7 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
     // Every symbol spelling the name exactly is wanted, however many: the
     // ranking is fetched wider until a match of a lower tier ends it.
     RankedHits ranked;
-    for(std::size_t limit = 64;; limit *= 4) {
+    for(std::uint32_t limit = 64;; limit *= 4) {
         ranked = ranked_search(index, query, limit);
         if(ranked.exhausted || (!ranked.hits.empty() && ranked.hits.back().rank.tier > 1)) {
             break;

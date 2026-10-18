@@ -94,6 +94,31 @@ ZEST_CASE(ReadBitmapRejectsMalformed) {
     ZEXPECT(!view_of(unsorted).has_value());
 }
 
+ZEST_CASE(VarintRoundTrip) {
+    std::vector<std::uint8_t> bytes;
+    std::vector<std::uint64_t> values = {0, 1, 127, 128, 300, ~std::uint64_t(0)};
+    for(auto value: values) {
+        index::write_varint(bytes, value);
+    }
+    std::uint32_t at = 0;
+    for(auto value: values) {
+        ZEXPECT(index::read_varint(bytes, at) == value);
+    }
+    ZEXPECT(at == bytes.size());
+}
+
+ZEST_CASE(VarintRejectsMalformed) {
+    auto read = [](std::vector<std::uint8_t> bytes) {
+        std::uint32_t at = 0;
+        return index::read_varint(bytes, at);
+    };
+    // Cut short, a needless trailing zero byte, and a tenth byte past bit 63.
+    ZEXPECT(!read({0x80}).has_value());
+    ZEXPECT(!read({0x81, 0x00}).has_value());
+    ZEXPECT(!read({0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02}).has_value());
+    ZEXPECT(read({0x00}) == std::uint64_t(0));
+}
+
 };  // ZEST_SUITE(Columns)
 
 }  // namespace

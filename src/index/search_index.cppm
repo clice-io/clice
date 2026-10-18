@@ -16,7 +16,6 @@ module;
 
 module clice:index.search_index;
 
-import :index.format;
 import :index.symbol;
 import :index.symbol_query;
 import :support.bitmap;
@@ -27,6 +26,12 @@ namespace clice::index {
 
 /// Whether symbols of a kind are looked up by name at all.
 bool is_searchable_kind(SymbolKind kind);
+
+/// Whether the name search offers a symbol: of a searchable kind, and named
+/// by its declaration rather than unnamed.
+inline bool searchable(SymbolKind kind, llvm::StringRef name, SymbolFlags flags) {
+    return is_searchable_kind(kind) && !name.empty() && !has_flag(flags, SymbolFlags::Unnamed);
+}
 
 /// A symbol's standing among results, independent of the query, in
 /// (0, 2]: up with the number of files referencing it, down for
@@ -68,9 +73,6 @@ struct SearchSnapshot {
 /// Encode the search blob for a snapshot; symbols of other kinds or
 /// without a name are left out.
 std::string build_search_blob(const SearchSnapshot& snapshot);
-
-/// Add the fields of a search blob to `bytes`, for `clice index stats`.
-void measure_search(llvm::StringRef data, FieldBytes& bytes);
 
 /// How a symbol answers a query's name pattern.
 struct NameRank {
@@ -152,12 +154,10 @@ public:
     /// are not a search blob of this build's formats or are inconsistent.
     bool load(std::unique_ptr<llvm::MemoryBuffer> blob);
 
-    void clear();
-
     bool loaded() const;
 
     /// Number of symbols in the index.
-    std::size_t size() const;
+    std::uint32_t size() const;
 
     bool contains(SymbolHash hash) const;
 
@@ -172,7 +172,9 @@ public:
     /// At most `limit` hits, best first. Empty for a query by id or
     /// place. `workspace` is the root the index names files under
     /// relative to (ProjectIndex::workspace).
-    SearchOutcome search(const SymbolQuery& query, std::size_t limit, CanonicalRef workspace) const;
+    SearchOutcome search(const SymbolQuery& query,
+                         std::uint32_t limit,
+                         CanonicalRef workspace) const;
 
 private:
     struct View;

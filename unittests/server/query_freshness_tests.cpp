@@ -4,13 +4,11 @@ module;
 
 module clice;
 
-import :index.indexer;
 import :index.query;
 import :index.search;
 import :index.shard;
 import :index.tu_index;
 import :project.command_resolver;
-import :project.index_store;
 import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.families.turun;
@@ -19,6 +17,7 @@ import :sched.index.pump;
 import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
+import :unittests.utils.merge_unit;
 import :unittests.utils.tester;
 import :unittests.utils;
 import :worker.pool;
@@ -37,10 +36,9 @@ CommandResolver resolver{project};
 TaskGraph graph;
 PCMFamily pcm{graph, project, resolver, pool};
 ASTProjectionTable projections;
-IndexStore index_store{loop, project, resolver};
 PCHFamily pch{graph, project, pool};
-TURunFamily turun{graph, project, resolver, pcm, pch, index_store, pool};
-IndexPump indexer{loop, project, turun, index_store, pool};
+TURunFamily turun{graph, project, resolver, pcm, pch, pool};
+IndexPump indexer{loop, project, resolver, turun, pool};
 ServerLiveSources live{project, pch, store, projections};
 index::FreshnessGate gate{project.file_table};
 index::IndexQuery index_query{project.index, project.file_table, &gate, &live};
@@ -50,33 +48,16 @@ Fid focus_id;
 Fid header_id;
 
 /// Build a TU index from the added sources and merge it into the
-/// workspace, installing each section's blob verbatim as the file's shard.
+/// workspace.
 void merge_into_workspace() {
-    auto bytes = index::build_tu_index(*unit);
-    auto view = index::TUIndex::from_bytes(bytes);
-    ZASSERT(view.loaded());
-
-    llvm::SmallVector<Fid> file_ids_map;
-    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
-    }
-    project.index.merge_symbols(view, file_ids_map);
-    focus_id = file_ids_map[view.path_count() - 1];
-
-    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
-        auto local_id = view.section_path(section);
-        project.index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
-            llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
-        if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
-            header_id = file_ids_map[local_id];
-        }
-    }
+    merge_unit(project, *unit, focus_id);
+    header_id = project.file_table.intern(Spelling::absolute(TestVFS::path("header.h")));
 }
 
 /// The symbol hash at an offset in a file's merged shard.
 index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
     index::SymbolHash result = 0;
-    project.index.shards[path_id].occurrences_at(offset, [&](const index::Occurrence& o) {
+    project.index.shard(path_id)->occurrences_at(offset, [&](const index::Occurrence& o) {
         result = o.target;
         return false;
     });

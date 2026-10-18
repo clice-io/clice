@@ -10,7 +10,7 @@ const UNITS = generate.units(6);
 
 test(async (t) => {
     t.disk.write(UNITS);
-    // Without the index, whose rows would answer the hovers, only a compile
+    // Without the index, whose entries would answer the hovers, only a compile
     // can.
     const s = await t.start({
         config: { project: { enable_indexing: false } },

@@ -71,6 +71,16 @@ std::optional<DiskObservation> DiskState::observe_for(Fid fid, const Status& sta
     return read(fid);
 }
 
+std::uint64_t DiskState::unchanged_hash(Fid fid,
+                                        const Status& status,
+                                        std::int64_t baseline_before_ns) {
+    if(status.stamp.mtime_ns > baseline_before_ns) {
+        return 0;
+    }
+    auto observed = observe_for(fid, status);
+    return observed && observed->stamp == status.stamp ? observed->hash : 0;
+}
+
 std::optional<std::uint64_t> DiskState::cached_hash(Fid fid, const Stamp& stamp) {
     auto it = files.find(fid);
     if(it == files.end() || !it->second.pair || it->second.pair->stamp != stamp) {

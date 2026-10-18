@@ -95,6 +95,15 @@ public:
                       RelationKind kind,
                       llvm::function_ref<bool(const Relation&)> callback) const;
 
+    /// Whether some live `kind` relation of `symbol` is stored.
+    bool has_relation(SymbolHash symbol, RelationKind kind) const;
+
+    /// Whether the shard declares or defines the symbol, not only names it.
+    bool declares(SymbolHash symbol) const {
+        return has_relation(symbol, RelationKind::Definition) ||
+               has_relation(symbol, RelationKind::Declaration);
+    }
+
     /// Visit every live occurrence in stored order (sorted by range, then
     /// target hash).
     void for_each_occurrence(llvm::function_ref<bool(const Occurrence&)> callback) const;

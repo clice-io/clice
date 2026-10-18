@@ -6,7 +6,7 @@ module clice:sched.families.turun;
 
 import :compile.compilation;
 import :project.command_resolver;
-import :project.index_store;
+import :index.project_index;
 import :project.project;
 import :sched.families.pch;
 import :sched.families.pcm;
@@ -19,7 +19,7 @@ namespace clice {
 
 /// One-shot whole-TU runs as a task-graph family: one round = one parse on
 /// a stateless worker serving the products of the frozen plan — the full
-/// index merged into the IndexStore, a clang-tidy pass, or both from the
+/// index merged into the project's index, a clang-tidy pass, or both from the
 /// single parse. The pump requests {index}; the batch lint driver requests
 /// {tidy} or {index, tidy}. A plan (products and their configuration) is
 /// frozen at the request; today each process hosts one consumer, so a
@@ -28,7 +28,7 @@ namespace clice {
 ///
 /// The family owns the run policy: command resolution, edges to the
 /// module PCMs and to the precompiled header the build declares, the
-/// worker dispatch, and the store merge with its supersede gate. The
+/// worker dispatch, and the merge with its supersede gate. The
 /// pump owns the debt table, the queue and the requeue budget; it reads
 /// this family's per-attempt outcome to update them.
 class TURunFamily {
@@ -38,7 +38,6 @@ public:
                 CommandResolver& commands,
                 PCMFamily& pcm,
                 PCHFamily& pch,
-                IndexStore& store,
                 WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the pump against a
@@ -58,7 +57,7 @@ public:
 
     enum class Result : std::uint8_t {
         /// The run produced its planned products (the index merged into
-        /// the store, the tidy findings arrived in the outcome).
+        /// the project index, the tidy findings arrived in the outcome).
         Completed,
         /// Deliberately produced nothing: the result was superseded, or
         /// the TU has no real command but keeps its last-known index.
@@ -87,7 +86,7 @@ public:
 
         /// Merge debt and serving-index changes — the pump takes these
         /// before the attempt finishes and its waiters wake.
-        IndexStore::Report report;
+        index::IndexReport report;
 
         /// Findings of the tidy pass (plan product `tidy`).
         std::vector<worker::TidyDiagnostic> tidy_diagnostics;
@@ -101,7 +100,9 @@ public:
 
         struct Perf {
             std::size_t bytes = 0;
+
             long long index_ms = 0;
+
             long long merge_ms = 0;
         } perf;
     };
@@ -121,24 +122,30 @@ public:
     kota::task<Outcome> run(Fid path_id, Plan plan, Guards guards = {});
 
 private:
+    struct Inputs {
+        Plan plan;
+
+        Guards guards;
+    };
+
     kota::task<RoundOutcome> round(RoundContext& ctx, Fid path_id);
 
     static NodeId node(Fid path_id) {
         return {Family::TURun, path_id.raw};
     }
 
+private:
     TaskGraph& graph;
-    Project& project;
-    CommandResolver& commands;
-    PCMFamily& pcm;
-    PCHFamily& pch;
-    IndexStore& store;
-    WorkerPool& pool;
 
-    struct Inputs {
-        Plan plan;
-        Guards guards;
-    };
+    Project& project;
+
+    CommandResolver& commands;
+
+    PCMFamily& pcm;
+
+    PCHFamily& pch;
+
+    WorkerPool& pool;
 
     /// The stash-and-collect halves of run() around the graph join: the
     /// plan and guards go in before the request, the finished outcome comes
@@ -146,10 +153,11 @@ private:
     /// (the pump's pending table, the lint driver's pass), so at most one live
     /// entry per TU.
     llvm::DenseMap<Fid, Inputs> inputs;
+
     llvm::DenseMap<Fid, Outcome> finished;
 
-    /// TUs whose last result named a variant by hash that the store did
-    /// not hold for its file: the next run sends every section's bytes,
+    /// TUs whose last result named a variant by hash that the project
+    /// index did not hold for its file: the next run sends every section's bytes,
     /// so the rerun cannot fail the same way.
     llvm::DenseSet<Fid> send_in_full;
 };

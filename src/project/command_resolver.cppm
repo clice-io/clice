@@ -49,6 +49,27 @@ Candidate pick_pinned_config(Project& project,
                              llvm::StringRef pinned_hash,
                              llvm::StringRef pinned_base);
 
+/// `command`, one of `host`'s, as `host` lends it to `header`: edited by
+/// the rules of both files and a run's extras, compiled as the host's
+/// language.
+CommandRef lent_command(Project& project,
+                        Fid header,
+                        Fid host,
+                        ConfigID command,
+                        llvm::ArrayRef<std::string> extra_prepend = {},
+                        llvm::ArrayRef<std::string> extra_append = {});
+
+/// The command `host` lends `header`: of the host's commands fit for the
+/// header, the pinned one (else the first), as lent_command lends it;
+/// nullopt when no command fits.
+std::optional<CommandRef> host_command(Project& project,
+                                       Fid header,
+                                       Fid host,
+                                       llvm::StringRef pinned_hash,
+                                       llvm::StringRef pinned_base,
+                                       llvm::ArrayRef<std::string> extra_prepend = {},
+                                       llvm::ArrayRef<std::string> extra_append = {});
+
 /// How a file's command was resolved.
 struct Resolution {
     CommandSource source = CommandSource::Fallback;
@@ -153,30 +174,24 @@ private:
     /// which keeps the result session-local.
     struct HeaderResult {
         HeaderMode mode = HeaderMode::Unknown;
+
         std::uint64_t content_hash = 0;
     };
 
-    /// Self-containment results for headers, persisted in the artifacts
-    /// blob. Reset when a closed header or a file along its include chain
-    /// changes on disk.
-    llvm::DenseMap<Fid, HeaderResult> header_results;
+    /// A header's command borrowed from a host source found through the
+    /// include graph, with a synthesized preamble prefix when the header
+    /// needs includer context (in `resolution`); nullopt when no usable
+    /// host context exists.
+    std::optional<CommandRef> resolve_through_host(Fid path_id,
+                                                   const CommandRequest& request,
+                                                   Resolution& resolution);
 
-    /// Fill compile arguments for a header from a host source's command found
-    /// through the include graph, synthesizing a preamble prefix/suffix when
-    /// the header needs includer context. Returns false when no usable host
-    /// context exists.
-    bool fill_header_context_args(Fid path_id,
-                                  std::string& directory,
-                                  std::vector<std::string>& arguments,
-                                  const CommandRequest& request,
-                                  Resolution& resolution);
-
-    /// The header's context under the pinned host while it still includes
-    /// the header, else the default host. Fails with the host whose include
-    /// chain the synthesis cannot follow under its command — invalid when
-    /// no unit includes the header at all.
+    /// The header's context under the request's pinned host while it
+    /// still includes the header, else the default host. Fails with the
+    /// host whose include chain the synthesis cannot follow under its
+    /// command — invalid when no unit includes the header at all.
     std::expected<HeaderContext, Fid> resolve_header_context(Fid header_path_id,
-                                                             const Selection* choice,
+                                                             const CommandRequest& request,
                                                              bool synthesize);
 
     /// What dump_mode_slices would emit for this file (0 = nothing) — the
@@ -186,6 +201,12 @@ private:
     /// content hash still matches on restart even though a dependency
     /// change deliberately reset the result.
     std::uint64_t persisted_mode_hash(Fid path_id) const;
+
+private:
+    /// Self-containment results for headers, persisted in the artifacts
+    /// blob. Reset when a closed header or a file along its include chain
+    /// changes on disk.
+    llvm::DenseMap<Fid, HeaderResult> header_results;
 
     Project& project;
 };

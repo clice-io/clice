@@ -98,6 +98,16 @@ MDB_val to_val(llvm::StringRef bytes) {
     return {bytes.size(), const_cast<char*>(bytes.data())};
 }
 
+/// Readers are short-lived commands that may have been killed; a dead
+/// one's slot pins its snapshot and the map only grows until it is cleared.
+void clear_dead_readers(MDB_env* env) {
+    int dead = 0;
+    mdb_reader_check(env, &dead);
+    if(dead != 0) {
+        LOG_INFO("Cleared {} stale index database readers", dead);
+    }
+}
+
 // MDB_PAGE_NOTFOUND is not a key miss: a page the B-tree references is
 // absent from the file, which LMDB documents as corruption.
 bool is_corruption(int rc) {
@@ -232,28 +242,21 @@ public:
         return rc != MDB_NOTFOUND;
     }
 
-    llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                         llvm::ArrayRef<BlobKey> removes) override {
+    llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                           llvm::ArrayRef<BlobKey> removes) override {
         auto fail_all = [&](int rc, llvm::StringRef stage) {
             if(rc == MDB_MAP_FULL) {
                 map_full.store(true, std::memory_order_relaxed);
             }
             note_error(rc);
             LOG_WARN("Index database write failed ({}): {}", stage, mdb_strerror(rc));
-            llvm::SmallVector<std::size_t> failed;
+            llvm::SmallVector<std::uint32_t> failed;
             for(std::size_t i = 0; i < puts.size(); i += 1) {
                 failed.push_back(i);
             }
             return failed;
         };
-        // Readers are short-lived commands that may have been killed
-        // since the last batch; a dead one's slot pins its snapshot and the
-        // map only grows until it is cleared.
-        int dead = 0;
-        mdb_reader_check(env, &dead);
-        if(dead != 0) {
-            LOG_INFO("Cleared {} stale index database readers", dead);
-        }
+        clear_dead_readers(env);
         MDB_txn* wtxn = nullptr;
         if(int rc = mdb_txn_begin(env, nullptr, 0, &wtxn)) {
             return fail_all(rc, "begin");
@@ -605,11 +608,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             return nullptr;
         }
         if(!read_only) {
-            int dead = 0;
-            mdb_reader_check(env, &dead);
-            if(dead != 0) {
-                LOG_INFO("Cleared {} stale index database readers", dead);
-            }
+            clear_dead_readers(env);
         }
         MDB_txn* txn = nullptr;
         int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn);

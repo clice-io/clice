@@ -5,7 +5,6 @@ module;
 module clice:server.ast_family;
 
 import :feature.feature;
-import :project.index_store;
 import :project.project;
 import :sched.families.pch;
 import :sched.families.pcm;
@@ -15,6 +14,7 @@ import :server.editor_context;
 import :server.session;
 import :server.session_store;
 import :support.signal;
+import :vfs.file_table;
 import :worker.pool;
 
 namespace clice {
@@ -52,8 +52,7 @@ public:
               PCMFamily& pcm,
               PCHFamily& pch,
               WorkerPool& pool,
-              SessionStore& sessions,
-              IndexStore& index);
+              SessionStore& sessions);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic runner register their own under Family::AST.
@@ -209,6 +208,8 @@ public:
     kota::task<> stop();
 
 private:
+    friend struct testing::ASTFamilyFixture;
+
     static NodeId node(Fid path_id) {
         return {Family::AST, path_id.raw};
     }
@@ -251,6 +252,7 @@ private:
         enum class Decision : std::uint8_t { None, Acquire };
 
         Decision decision = Decision::None;
+
         PCHFamily::Request request;
     };
 
@@ -278,22 +280,24 @@ private:
                                                       const Resolution& resolution,
                                                       const PCMFamily::ModuleDeps& imports);
 
-    friend struct testing::ASTFamilyFixture;
-
     /// current=false + epoch bump: the shared prefix of every
     /// invalidation kind.
     void touch(Fid path_id);
 
+private:
     Project& project;
-    EditorContext& contexts;
-    TaskGraph& graph;
-    PCMFamily& pcm;
-    PCHFamily& pch;
-    WorkerPool& pool;
-    SessionStore& sessions;
 
-    /// The stored instantiations an open file's compile need not walk.
-    IndexStore& index;
+    EditorContext& contexts;
+
+    TaskGraph& graph;
+
+    PCMFamily& pcm;
+
+    PCHFamily& pch;
+
+    WorkerPool& pool;
+
+    SessionStore& sessions;
 
     /// Detached ensure_compiled joins from request_compile; the rounds
     /// live in the graph's task group.

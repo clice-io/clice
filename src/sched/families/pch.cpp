@@ -11,6 +11,7 @@ import :sched.families.build_common;
 import :sched.families.pch;
 import :support.anomaly;
 import :support.logging;
+import :vfs.file_table;
 import :worker.protocol;
 
 namespace clice {

@@ -6,29 +6,14 @@ module clice;
 
 import :index.query;
 import :index.search;
+import :index.site;
 import :index.text;
 import :syntax.doc_comment;
 import :syntax.documentation;
 import :syntax.lexer;
-import :syntax.lexical_scan;
+import :syntax.source_text;
 
 namespace clice::index {
-
-namespace {
-
-std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
-    if(content.empty() || offset >= content.size())
-        return {};
-    // StringRef::rfind looks strictly before its position.
-    std::size_t line_start = 0;
-    if(auto pos = content.rfind('\n', offset); pos != llvm::StringRef::npos) {
-        line_start = pos + 1;
-    }
-    auto line_end = content.find('\n', offset);
-    if(line_end == llvm::StringRef::npos)
-        line_end = content.size();
-    return content.slice(line_start, line_end).str();
-}
 
 std::optional<DeclaredText>
     declared_text(const IndexQuery& index, SymbolHash hash, Fid anchor, RelationKind kind) {
@@ -63,24 +48,30 @@ std::optional<DeclaredText>
     return found;
 }
 
-}  // namespace
-
-std::optional<DeclaredText> definition_text(const IndexQuery& index, SymbolHash hash, Fid anchor) {
-    return declared_text(index, hash, anchor, RelationKind::Definition);
-}
-
-std::optional<DeclaredText> declaration_text(const IndexQuery& index, SymbolHash hash, Fid anchor) {
-    return declared_text(index, hash, anchor, RelationKind::Declaration);
-}
-
 std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bool inherit) {
-    const static auto dialect = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
     auto info = index.symbol_info(hash, anchor);
     SymbolKind kind = info ? info->kind : SymbolKind(SymbolKind::Invalid);
     // As the compiled unit's doc_comment: a namespace has none.
     if(kind == SymbolKind::Namespace) {
         return {};
     }
+    // Each source's text is read and its comments scanned once, however
+    // many declarations it holds.
+    llvm::DenseMap<std::pair<const Shard*, Fid>, std::unique_ptr<SourceText>> texts;
+    auto text_of = [&](const IndexSource& source) -> SourceText* {
+        auto& text = texts[{source.shard, source.file}];
+        if(!text) {
+            std::unique_ptr<llvm::MemoryBuffer> kept;
+            auto read = index.source_text(source, kept);
+            if(!read) {
+                return nullptr;
+            }
+            // Owned: the lexer reads past the end of what it lexes.
+            text = std::make_unique<SourceText>(read->str());
+            text->set_dialect(raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26));
+        }
+        return text.get();
+    };
     DocCommentChoice choice;
     for(auto relation_kind: {RelationKind::Declaration, RelationKind::Definition}) {
         index.for_each_relation(
@@ -91,22 +82,19 @@ std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bo
             {},
             [&](const IndexSource& source, const Relation& relation) {
                 auto extent = relation.extent();
-                std::unique_ptr<llvm::MemoryBuffer> kept;
-                auto text =
-                    extent.begin < extent.end ? index.source_text(source, kept) : std::nullopt;
-                if(!text || extent.end > text->size()) {
+                auto* text = extent.begin < extent.end ? text_of(source) : nullptr;
+                if(!text || extent.end > text->text().size()) {
                     return true;
                 }
-                // The lexer reads past the end of what it lexes.
-                std::string content(*text);
+                auto content = text->text();
                 auto decl = kind == SymbolKind::Macro
                                 ? documented_macro(content, extent)
                                 : DocumentedDecl{.range = extent,
                                                  .trailing = kind == SymbolKind::Field ||
                                                              kind == SymbolKind::EnumMember ||
                                                              kind == SymbolKind::Variable};
-                auto comments = scan_comments(content, dialect);
-                return !choice.offer(content, documenting_comments(content, comments, decl));
+                return !choice.offer(content,
+                                     documenting_comments(content, text->comments(), decl));
             });
         if(choice.decided()) {
             break;
@@ -164,15 +152,8 @@ auto copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, ll
 
 std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<Site> sites) {
     struct Text {
-        std::optional<IndexSource> source;
         std::unique_ptr<llvm::MemoryBuffer> kept;
-
-        llvm::StringRef get() const {
-            if(source && !source->positions.text().empty()) {
-                return source->positions.text();
-            }
-            return kept ? kept->getBuffer() : llvm::StringRef();
-        }
+        std::optional<SourceText> source;
     };
 
     llvm::DenseMap<Fid, std::unique_ptr<Text>> texts;
@@ -186,14 +167,24 @@ std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<S
         auto& text = texts[site.file];
         if(!text) {
             text = std::make_unique<Text>();
-            text->source = index.serving(site.file);
-            if(text->get().empty()) {
-                if(auto* shard = index.project().shard(site.file)) {
-                    disk_text(site.path, *shard, text->kept);
-                }
+            std::optional<llvm::StringRef> content;
+            if(auto source = index.serving(site.file);
+               source && !source->positions.text().empty()) {
+                content = source->positions.text();
+            } else if(auto* shard = index.project().shard(site.file)) {
+                content = disk_text(site.path, *shard, text->kept);
+            }
+            if(content) {
+                text->source.emplace(
+                    *content,
+                    raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26));
             }
         }
-        lines.push_back(extract_line(text->get(), site.range.begin));
+        if(!text->source || site.range.begin >= text->source->text().size()) {
+            lines.emplace_back();
+            continue;
+        }
+        lines.push_back(line_at(text->source->positions(), site.range.begin).str());
     }
     return lines;
 }

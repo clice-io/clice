@@ -42,7 +42,7 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
     }
     Bitmap ids;
     std::optional<std::uint32_t> previous;
-    for(std::size_t i = 0; i < bytes.size(); i += sizeof(std::uint32_t)) {
+    for(std::uint32_t i = 0; i < bytes.size(); i += sizeof(std::uint32_t)) {
         std::uint32_t id;
         std::memcpy(&id, bytes.data() + i, sizeof(id));
         if(previous && id <= *previous) {
@@ -56,9 +56,6 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
 
 std::expected<void, llvm::StringRef>
     ProjectTable::bind(kota::codec::fbs::table_view<ProjectTableBlob> root) {
-    if(root[&ProjectTableBlob::format_version] != index_format_version) {
-        return std::unexpected("written by another index format version");
-    }
     generation = root[&ProjectTableBlob::generation];
     next_version_id = root[&ProjectTableBlob::next_version_id];
     version_ids = to_array_ref(root[&ProjectTableBlob::version_ids]);
@@ -66,12 +63,12 @@ std::expected<void, llvm::StringRef>
     version_hashes = to_array_ref(root[&ProjectTableBlob::version_hashes]);
     paths = root[&ProjectTableBlob::paths];
     hashes = to_array_ref(root[&ProjectTableBlob::symbol_hashes]);
-    names = to_ref(root[&ProjectTableBlob::symbol_names]);
+    names = root[&ProjectTableBlob::symbol_names];
     name_ends = to_array_ref(root[&ProjectTableBlob::symbol_name_ends]);
     args_entries = to_array_ref(root[&ProjectTableBlob::symbol_args_entries]);
-    args = to_ref(root[&ProjectTableBlob::symbol_args]);
+    args = root[&ProjectTableBlob::symbol_args];
     args_ends = to_array_ref(root[&ProjectTableBlob::symbol_args_ends]);
-    signatures = to_ref(root[&ProjectTableBlob::symbol_signatures]);
+    signatures = root[&ProjectTableBlob::symbol_signatures];
     signature_ends = to_array_ref(root[&ProjectTableBlob::symbol_signature_ends]);
     parents = ids_of(root[&ProjectTableBlob::symbol_parents], hashes.size() + 1);
     far_parents = to_array_ref(root[&ProjectTableBlob::symbol_far_parents]);
@@ -107,20 +104,14 @@ std::expected<void, llvm::StringRef>
     if(!std::ranges::is_sorted(version_ids)) {
         return std::unexpected("file version ids are not ascending");
     }
-    if(contributor_ends.size() != contributed_files.size() ||
+    if(!sparse_ok(contributed_files, contributor_ends.size(), paths.size()) ||
        !monotone_ends(contributor_ends, contributors.size())) {
         return std::unexpected("contributor columns do not line up");
-    }
-    for(std::size_t i = 0; i < contributed_files.size(); i += 1) {
-        if(contributed_files[i] >= paths.size() ||
-           (i > 0 && contributed_files[i] <= contributed_files[i - 1])) {
-            return std::unexpected("contributed files are not ascending path ids");
-        }
     }
     if(shared_local_set_ends.size() != shared_local_symbols.size() ||
        !covering_ends(shared_local_set_ends, shared_local_file_ends.size()) ||
        !covering_ends(shared_local_file_ends, shared_local_files.size()) ||
-       !std::ranges::is_sorted(shared_local_symbols, std::less_equal{})) {
+       !strictly_ascending(shared_local_symbols)) {
         return std::unexpected("shared local columns do not line up");
     }
     if(manifest_versions.size() != manifest_generations.size()) {
@@ -139,7 +130,7 @@ std::expected<void, llvm::StringRef>
        !ids_ok(reference_counts, count, paths.size() + 1)) {
         return std::unexpected("symbol id columns do not line up");
     }
-    auto sparse = [&](llvm::ArrayRef<std::uint32_t> entries, std::size_t values) {
+    auto sparse = [&](llvm::ArrayRef<std::uint32_t> entries, std::uint32_t values) {
         return sparse_ok(entries, values, count);
     };
     if(!sparse(args_entries, args_ends.size()) ||
@@ -156,19 +147,17 @@ std::expected<void, llvm::StringRef>
     // Hashes, parents and pending entries become table keys downstream, which
     // reserve two sentinel values; a repeated hash would let one entry shadow
     // another.
-    for(std::size_t i = 0; i < count; i += 1) {
-        if(reserved_key(hashes[i]) || (i > 0 && hashes[i] <= hashes[i - 1])) {
-            return std::unexpected("symbol hashes are not ascending");
-        }
+    if(!strictly_ascending(hashes) || llvm::any_of(hashes, reserved_key<SymbolHash>)) {
+        return std::unexpected("symbol hashes are not ascending");
     }
-    for(std::size_t k = 0; k < far_parents.size(); k += 1) {
+    for(std::uint32_t k = 0; k < far_parents.size(); k += 1) {
         if(parents[far_parents[k]] != 0 || reserved_key(far_parent_hashes[k])) {
             return std::unexpected("symbol parent outside the table is not canonical");
         }
     }
     for(auto hash: search_pending) {
         if(reserved_key(hash)) {
-            return std::unexpected("reserved pending search row");
+            return std::unexpected("reserved pending search entry");
         }
     }
     for(auto file: search_pending_files) {
@@ -185,12 +174,6 @@ std::expected<void, llvm::StringRef>
         }
     }
     return {};
-}
-
-void measure_table(llvm::StringRef data, FieldBytes& bytes) {
-    if(ProjectTableBlob blob; deserialize_blob(data, blob)) {
-        measure_fields(blob, bytes);
-    }
 }
 
 }  // namespace clice::index

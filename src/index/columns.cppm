@@ -26,7 +26,7 @@ namespace clice::index {
 /// invariants checked — plus the container offsets the image's header carries:
 /// the in-place reader follows them instead of walking the payload, so a
 /// corrupt one would send it outside the image.
-std::optional<Bitmap> read_bitmap(const void* data, std::size_t size);
+std::optional<Bitmap> read_bitmap(const void* data, std::uint32_t size);
 
 /// Encode a bitmap as its portable image — the only format with a bounded
 /// deserializer.
@@ -35,6 +35,15 @@ inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
     bitmap.write(reinterpret_cast<char*>(buffer.data()), true);
     return buffer;
 }
+
+/// Append `value` as a varint: seven bits a byte, low bits first, the high
+/// bit set on every byte but the last.
+void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value);
+
+/// The varint at `at` in `bytes`, moving `at` past it; nullopt for bytes
+/// write_varint would not have written — cut short, a needless trailing
+/// zero byte, more than 64 bits.
+std::optional<std::uint64_t> read_varint(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t& at);
 
 /// An ascending set of ids below `universe` as an Elias–Fano list, about
 /// 2 + log2(universe / count) bits an id: the count as a varint; then
@@ -48,10 +57,6 @@ std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t univer
 /// bytes it would not have written.
 std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t universe);
 
-inline llvm::StringRef to_ref(std::string_view text) {
-    return {text.data(), text.size()};
-}
-
 /// A scalar array view as an ArrayRef borrowing the mapped blob.
 template <typename T>
 llvm::ArrayRef<T> to_array_ref(kota::codec::fbs::array_view<T> view) {
@@ -63,7 +68,7 @@ llvm::ArrayRef<T> to_array_ref(kota::codec::fbs::array_view<T> view) {
 
 /// Whether an end-offset column stays within its arena and never moves
 /// back: the shape of every "entries back to back" column pair.
-inline bool monotone_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_size) {
+inline bool monotone_ends(llvm::ArrayRef<std::uint32_t> ends, std::uint32_t arena_size) {
     std::uint32_t last = 0;
     for(auto end: ends) {
         if(end < last || end > arena_size) {
@@ -75,7 +80,7 @@ inline bool monotone_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_
 }
 
 /// monotone_ends whose entries cover the whole arena.
-inline bool covering_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_size) {
+inline bool covering_ends(llvm::ArrayRef<std::uint32_t> ends, std::uint32_t arena_size) {
     return monotone_ends(ends, arena_size) &&
            (ends.empty() ? arena_size == 0 : ends.back() == arena_size);
 }
@@ -88,6 +93,22 @@ Arena slice(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
     return arena.drop_front(begin).take_front(ends[i] - begin);
 }
 
+/// The position of `value` in an ascending column; nullopt when it is absent.
+template <typename T>
+std::optional<std::uint32_t> sorted_find(llvm::ArrayRef<std::type_identity_t<T>> column, T value) {
+    auto it = std::ranges::lower_bound(column, value);
+    if(it == column.end() || *it != value) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint32_t>(it - column.begin());
+}
+
+/// Whether a column ascends strictly, which sorted_find relies on.
+template <std::ranges::forward_range Column>
+bool strictly_ascending(Column&& column) {
+    return std::ranges::adjacent_find(column, std::greater_equal{}) == std::ranges::end(column);
+}
+
 /// Load-time verification outcome: the violated invariant, spelled for the
 /// log, or success.
 using CheckResult = std::expected<void, llvm::StringRef>;
@@ -98,7 +119,7 @@ inline bool is_no_range(std::uint32_t begin, std::uint32_t end) {
 }
 
 /// The width in bytes of ids into a table of `table_size` entries.
-inline std::uint8_t id_width(std::size_t table_size) {
+inline std::uint8_t id_width(std::uint32_t table_size) {
     return table_size <= 0x100 ? 1 : table_size <= 0x10000 ? 2 : 4;
 }
 
@@ -107,11 +128,11 @@ struct IdColumnView {
     llvm::ArrayRef<std::uint8_t> bytes;
     std::uint8_t width = 1;
 
-    inline std::size_t size() const {
+    inline std::uint32_t size() const {
         return bytes.size() / width;
     }
 
-    inline std::uint32_t operator[](std::size_t i) const {
+    inline std::uint32_t operator[](std::uint32_t i) const {
         auto at = bytes.data() + i * width;
         switch(width) {
             case 1: return *at;
@@ -129,9 +150,9 @@ struct IdColumnView {
     }
 
     /// Whether an ascending column holds `id`, and where.
-    std::optional<std::size_t> find(std::uint32_t id) const {
-        auto positions = std::views::iota(std::size_t(0), size());
-        auto it = std::ranges::lower_bound(positions, id, {}, [&](std::size_t position) {
+    std::optional<std::uint32_t> find(std::uint32_t id) const {
+        auto positions = std::views::iota(std::uint32_t(0), size());
+        auto it = std::ranges::lower_bound(positions, id, {}, [&](std::uint32_t position) {
             return (*this)[position];
         });
         if(it == positions.end() || (*this)[*it] != id) {
@@ -142,7 +163,7 @@ struct IdColumnView {
 
     /// Entry `i` of a text whose entries end at the offsets of this column,
     /// back to back.
-    inline llvm::StringRef slice(llvm::StringRef text, std::size_t i) const {
+    inline llvm::StringRef slice(llvm::StringRef text, std::uint32_t i) const {
         auto begin = i == 0 ? 0 : (*this)[i - 1];
         return text.slice(begin, (*this)[i]);
     }
@@ -151,8 +172,8 @@ struct IdColumnView {
 /// The position of escaped `entry` in its sparse table's `entries`: the
 /// load-time pairing (escapes_ok) proves every escape owns exactly one entry
 /// there, so the search always finds it.
-inline std::size_t escape_position(llvm::ArrayRef<std::uint32_t> entries, std::size_t entry) {
-    return static_cast<std::size_t>(std::ranges::lower_bound(entries, entry) - entries.begin());
+inline std::uint32_t escape_position(llvm::ArrayRef<std::uint32_t> entries, std::uint32_t entry) {
+    return static_cast<std::uint32_t>(std::ranges::lower_bound(entries, entry) - entries.begin());
 }
 
 /// One side of a blob's entries as contiguous column refs,
@@ -175,7 +196,7 @@ struct RangeColumnsView {
     llvm::ArrayRef<std::uint32_t> roaring_offsets;
     llvm::ArrayRef<std::uint8_t> roaring;
 
-    inline std::size_t size() const {
+    inline std::uint32_t size() const {
         return packed.empty() ? lengths.size() : packed.size();
     }
 
@@ -305,7 +326,7 @@ inline RangeColumnsView columns_of(kota::codec::fbs::table_view<RangeColumns> vi
 
 /// The ids of a column into a table of `table_size` entries.
 inline IdColumnView ids_of(kota::codec::fbs::array_view<std::uint8_t> view,
-                           std::size_t table_size) {
+                           std::uint32_t table_size) {
     return {to_array_ref(view), id_width(table_size)};
 }
 
@@ -317,12 +338,12 @@ template <typename T, typename Escape, typename Projection = std::identity>
 bool escapes_ok(llvm::ArrayRef<T> column,
                 Escape escape,
                 llvm::ArrayRef<std::uint32_t> escaped,
-                std::size_t escape_values,
+                std::uint32_t escape_values,
                 Projection projection = {}) {
     if(escape_values != escaped.size()) {
         return false;
     }
-    std::size_t cursor = 0;
+    std::uint32_t cursor = 0;
     for(std::uint32_t entry = 0; entry < column.size(); entry += 1) {
         if(std::invoke(projection, column[entry]) != escape) {
             continue;
@@ -431,18 +452,18 @@ inline CheckResult range_encoding_ok(const RangeColumnsView& columns,
 /// A sparse entry table: one value per listed entry, entries strictly
 /// ascending and inside the entry count.
 inline bool sparse_ok(llvm::ArrayRef<std::uint32_t> entries,
-                      std::size_t values,
-                      std::size_t count) {
-    return entries.size() == values && std::ranges::is_sorted(entries, std::less_equal{}) &&
+                      std::uint32_t values,
+                      std::uint32_t count) {
+    return entries.size() == values && strictly_ascending(entries) &&
            (entries.empty() || entries.back() < count);
 }
 
 /// One id per entry, every id inside the table.
-inline CheckResult ids_ok(const IdColumnView& ids, std::size_t count, std::size_t table_size) {
+inline CheckResult ids_ok(const IdColumnView& ids, std::uint32_t count, std::uint32_t table_size) {
     if(ids.bytes.size() != count * ids.width) {
         return std::unexpected("id column does not match the entry count");
     }
-    for(std::size_t i = 0; i < count; i += 1) {
+    for(std::uint32_t i = 0; i < count; i += 1) {
         if(ids[i] >= table_size) {
             return std::unexpected("id past its table");
         }
@@ -453,13 +474,13 @@ inline CheckResult ids_ok(const IdColumnView& ids, std::size_t count, std::size_
 /// An ascending column of `count` ids into a table of `table_size`;
 /// `strict` forbids repeats.
 inline CheckResult ascending_ids_ok(const IdColumnView& ids,
-                                    std::size_t count,
-                                    std::size_t table_size,
+                                    std::uint32_t count,
+                                    std::uint32_t table_size,
                                     bool strict) {
     if(auto ok = ids_ok(ids, count, table_size); !ok) {
         return ok;
     }
-    for(std::size_t i = 1; i < count; i += 1) {
+    for(std::uint32_t i = 1; i < count; i += 1) {
         if(strict ? ids[i] <= ids[i - 1] : ids[i] < ids[i - 1]) {
             return std::unexpected("id column is not ascending");
         }
@@ -469,7 +490,7 @@ inline CheckResult ascending_ids_ok(const IdColumnView& ids,
 
 /// The end offsets of `count` entries of a text of `text_size` bytes, back
 /// to back.
-inline CheckResult ends_ok(const IdColumnView& ends, std::size_t count, std::size_t text_size) {
+inline CheckResult ends_ok(const IdColumnView& ends, std::uint32_t count, std::uint32_t text_size) {
     if(auto ok = ascending_ids_ok(ends, count, text_size + 1, false); !ok) {
         return ok;
     }
@@ -485,7 +506,7 @@ struct IdColumnWriter {
     IdColumn& column;
     std::uint8_t width;
 
-    std::size_t size() const {
+    std::uint32_t size() const {
         return column.size() / width;
     }
 
@@ -505,12 +526,14 @@ struct IdColumnWriter {
 };
 
 /// A writer of `column` for ids into a table of `table_size` entries.
-inline IdColumnWriter id_writer(IdColumn& column, std::size_t table_size) {
+inline IdColumnWriter id_writer(IdColumn& column, std::uint32_t table_size) {
     return {.column = column, .width = id_width(table_size)};
 }
 
 /// Fill `column` with `ids` into a table of `table_size` entries.
-inline void write_ids(IdColumn& column, llvm::ArrayRef<std::uint32_t> ids, std::size_t table_size) {
+inline void write_ids(IdColumn& column,
+                      llvm::ArrayRef<std::uint32_t> ids,
+                      std::uint32_t table_size) {
     auto writer = id_writer(column, table_size);
     for(auto id: ids) {
         writer.add(id);

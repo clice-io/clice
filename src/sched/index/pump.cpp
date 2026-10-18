@@ -6,6 +6,9 @@ module;
 
 module clice;
 
+import :index.project_index;
+import :project.project;
+import :project.save;
 import :sched.families.turun;
 import :sched.graph;
 import :sched.index.pump;
@@ -20,10 +23,10 @@ namespace clice {
 
 IndexPump::IndexPump(kota::event_loop& loop,
                      Project& project,
+                     CommandResolver& commands,
                      TURunFamily& turun,
-                     IndexStore& store,
                      WorkerPool& pool) :
-    loop(loop), project(project), turun(turun), store(store), pool(pool) {
+    loop(loop), project(project), commands(commands), turun(turun), pool(pool) {
     capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
 }
 
@@ -62,14 +65,14 @@ bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
     // after this recording must re-judge against the disk, or its skip
     // would finish the fresh ticket on a result memoized before the
     // change and the file would never re-index.
-    store.begin_round();
+    project.index.begin_round();
     if(pending_table.record(server_path_id, reason)) {
         index_queue.push_back(server_path_id);
     }
     return true;
 }
 
-void IndexPump::apply_report(const IndexStore::Report& report) {
+void IndexPump::apply_report(const index::IndexReport& report) {
     for(auto id: report.reindex()) {
         enqueue(id, ReindexReason::ContentChanged);
     }
@@ -85,10 +88,10 @@ llvm::SmallVector<Fid> IndexPump::save_debt() const {
     return debt;
 }
 
-kota::task<> IndexPump::persist(IndexStore::SearchRebuild search) {
+kota::task<> IndexPump::persist(index::SearchRebuild search) {
     bool retry = true;
     while(retry) {
-        auto report = co_await store.save(save_debt(), search);
+        auto report = co_await save_project(project, commands, loop, save_debt(), search);
         retry = report.owes_retry;
         apply_report(report);
     }
@@ -325,7 +328,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     bool content_changed =
         pending_table.pending_reason(server_path_id) == ReindexReason::ContentChanged;
     bool served = !content_changed && compiled_by_session && compiled_by_session(server_path_id);
-    if(!served && (content_changed || store.needs_reindex(server_path_id))) {
+    if(!served && (content_changed || project.index.needs_reindex(server_path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         auto outcome = co_await turun.run(
             server_path_id,
@@ -489,7 +492,7 @@ kota::task<> IndexPump::run_background_indexing() {
 
     // FileVersion results hold for one round: the disk can change under a
     // running round, but staleness is re-judged per round anyway.
-    store.begin_round();
+    project.index.begin_round();
 
     std::stable_partition(index_queue.begin() + index_queue_pos, index_queue.end(), [this](Fid id) {
         return !project.dep_graph.module_of(id).empty();
@@ -544,8 +547,8 @@ kota::task<> IndexPump::run_background_indexing() {
              total - dispatched,
              total,
              timer.ms());
-    co_await persist(index_queue_pos >= index_queue.size() ? IndexStore::SearchRebuild::Idle
-                                                           : IndexStore::SearchRebuild::Behind);
+    co_await persist(index_queue_pos >= index_queue.size() ? index::SearchRebuild::Idle
+                                                           : index::SearchRebuild::Behind);
     // The round's merge buffers are freed by now; glibc would keep their
     // pages, and the master its round's peak, for the rest of the session.
     co_await kota::queue([] { release_free_memory(); });

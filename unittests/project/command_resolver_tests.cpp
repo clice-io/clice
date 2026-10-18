@@ -48,6 +48,41 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     ZEXPECT(header_resolution.host == main);
 }
 
+ZEST_CASE(ExtrasReachBorrowedHeader) {
+    /// A lint run's extra args join the command a header borrows from its
+    /// host, as they join the host's own.
+    TempDir tmp;
+    tmp.touch("src/main.cpp", R"(#include "part.h")");
+    tmp.touch("src/part.h", "");
+    FileTable files;
+    Project project{files};
+    CommandResolver resolver(project);
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+
+    auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/part.h")));
+    project.dep_graph.set_includes(main, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+
+    std::vector<std::string> extras{"-DLINT_EXTRA"};
+    CommandRequest request{.extra_append = extras};
+    auto has_extra = [](llvm::ArrayRef<std::string> arguments) {
+        return llvm::any_of(arguments,
+                            [](llvm::StringRef arg) { return arg.contains("LINT_EXTRA"); });
+    };
+    std::string directory;
+    std::vector<std::string> arguments;
+    ZEXPECT(resolver.resolve_command(main, directory, arguments, request).source ==
+            CommandSource::Default);
+    ZEXPECT(has_extra(arguments));
+    auto header_resolution = resolver.resolve_command(header, directory, arguments, request);
+    ZEXPECT(header_resolution.source == CommandSource::IncludeGraph);
+    ZEXPECT(has_extra(arguments));
+}
+
 ZEST_CASE(UnboundModeStaysLocal) {
     // A NeedsContext result scored with no disk observation has no hash
     // to validate on load: it serves this session but must neither

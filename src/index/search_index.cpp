@@ -18,7 +18,7 @@ namespace {
 constexpr std::uint32_t no_entry = ~0u;
 
 /// Deeper parent chains than this only come from corrupt bytes.
-constexpr std::size_t max_chain = 64;
+constexpr std::uint32_t max_chain = 64;
 
 using Mode = SymbolQuery::Mode;
 
@@ -33,21 +33,8 @@ void append_postings(std::vector<std::uint8_t>& arena,
     ends.push_back(static_cast<std::uint32_t>(arena.size()));
 }
 
-std::string lowercase(llvm::StringRef text) {
-    return text.lower();
-}
-
 bool reserved_name(llvm::StringRef name) {
     return name.size() > 1 && name[0] == '_' && (name[1] == '_' || llvm::isUpper(name[1]));
-}
-
-bool strictly_ascending_entries(llvm::ArrayRef<std::uint32_t> entries, std::size_t count) {
-    for(std::size_t i = 0; i < entries.size(); i += 1) {
-        if(entries[i] >= count || (i > 0 && entries[i] <= entries[i - 1])) {
-            return false;
-        }
-    }
-    return true;
 }
 
 /// The hits held while a search runs: the worst on top of the heap, so
@@ -58,7 +45,7 @@ struct TopHits {
         std::uint32_t entry;
     };
 
-    std::size_t limit;
+    std::uint32_t limit;
     llvm::function_ref<llvm::StringRef(std::uint32_t)> name_of;
     llvm::function_ref<llvm::StringRef(std::uint32_t)> args_of;
     llvm::function_ref<SymbolHash(std::uint32_t)> hash_of;
@@ -189,8 +176,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     llvm::DenseSet<SymbolHash> seen;
     for(std::uint32_t i = 0; i < snapshot.entries.size(); i += 1) {
         auto& entry = snapshot.entries[i];
-        if(!is_searchable_kind(entry.kind) || entry.name.empty() ||
-           has_flag(entry.flags, SymbolFlags::Unnamed) || entry.hash == 0 ||
+        if(!searchable(entry.kind, entry.name, entry.flags) || entry.hash == 0 ||
            reserved_key(entry.hash) || !seen.insert(entry.hash).second) {
             continue;
         }
@@ -224,7 +210,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     }
     auto parent_of = [&](std::uint32_t id) {
         auto parent = entry_of(id).parent;
-        for(std::size_t depth = 0; parent != 0 && depth < max_chain; depth += 1) {
+        for(std::uint32_t depth = 0; parent != 0 && depth < max_chain; depth += 1) {
             if(auto anonymous = anonymous_parents.find(parent);
                anonymous != anonymous_parents.end()) {
                 parent = anonymous->second;
@@ -268,7 +254,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
         blob.args_ends.push_back(static_cast<std::uint32_t>(blob.args.size()));
         blob.parents.push_back(parent_of(id));
         blob.qualities.push_back(ranked[id].quality);
-        lower_names.push_back(lowercase(entry.name));
+        lower_names.push_back(llvm::StringRef(entry.name).lower());
     }
 
     blob.by_lower_name.resize(count);
@@ -411,7 +397,7 @@ bool ranks_after(const NameRank& lhs,
 }
 
 NameRanker::NameRanker(const SymbolQuery& query) :
-    query(query), lower_pattern(lowercase(query.pattern)),
+    query(query), lower_pattern(llvm::StringRef(query.pattern).lower()),
     exact(query.mode == Mode::Fuzzy ? llvm::StringRef(query.pattern) : llvm::StringRef(),
           MatchOptions{.inside_word = true}) {
     llvm::SmallVector<TypoAlternative> alternatives;
@@ -450,7 +436,7 @@ std::optional<NameRank>
     if(query.pattern.empty()) {
         return NameRank{.tier = 2, .score = quality};
     }
-    if(name.size() == lower_pattern.size() && lowercase(name) == lower_pattern) {
+    if(name.size() == lower_pattern.size() && name.lower() == lower_pattern) {
         return NameRank{.tier = static_cast<std::uint8_t>(name == query.pattern ? 0 : 1),
                         .score = quality};
     }
@@ -540,11 +526,11 @@ struct SearchIndex::View {
     /// The portable name of the file an entry of internal linkage lives in;
     /// empty for any other entry.
     llvm::StringRef local_file(std::uint32_t entry) const {
-        auto it = std::ranges::lower_bound(local_entries, entry);
-        if(it == local_entries.end() || *it != entry) {
+        auto position = sorted_find(local_entries, entry);
+        if(!position) {
             return {};
         }
-        return to_ref(paths[local_paths[it - local_entries.begin()]]);
+        return paths[local_paths[*position]];
     }
 
     /// A posting list decoded; a malformed one reads as empty and marks
@@ -576,12 +562,11 @@ struct SearchIndex::View {
 
     /// The entries carrying a token, null when none does.
     const Bitmap* token(NameToken key) const {
-        auto it = std::ranges::lower_bound(token_keys, key);
-        if(it == token_keys.end() || *it != key) {
+        auto i = sorted_find(token_keys, key);
+        if(!i) {
             return nullptr;
         }
-        auto i = static_cast<std::uint32_t>(it - token_keys.begin());
-        return &cached(token_cache, token_postings, token_ends, i);
+        return &cached(token_cache, token_postings, token_ends, *i);
     }
 
     /// The direct members of a container, the top level for no_entry.
@@ -593,13 +578,12 @@ struct SearchIndex::View {
             }
             return *top_level_cache;
         }
-        auto it = std::ranges::lower_bound(container_entries, container);
-        if(it == container_entries.end() || *it != container) {
+        auto i = sorted_find(container_entries, container);
+        if(!i) {
             const static Bitmap none;
             return none;
         }
-        auto i = static_cast<std::uint32_t>(it - container_entries.begin());
-        return cached(children_cache, children_postings, children_ends, i);
+        return cached(children_cache, children_postings, children_ends, *i);
     }
 
     /// The entries whose name outruns the token bound.
@@ -623,10 +607,8 @@ struct SearchIndex::View {
             all.addRange(0, count());
             return all;
         }
-        auto it = std::ranges::lower_bound(subtree_entries, container);
-        if(it != subtree_entries.end() && *it == container) {
-            auto i = static_cast<std::uint32_t>(it - subtree_entries.begin());
-            return cached(subtree_cache, subtree_postings, subtree_ends, i);
+        if(auto i = sorted_find(subtree_entries, container)) {
+            return cached(subtree_cache, subtree_postings, subtree_ends, *i);
         }
         Bitmap below = children(container);
         llvm::SmallVector<std::uint32_t> pending(below.begin(), below.end());
@@ -661,7 +643,7 @@ struct SearchIndex::View {
     llvm::SmallVector<ScopeEntry, 8> chain(std::uint32_t entry) const {
         llvm::SmallVector<ScopeEntry, 8> entries;
         auto parent = parents[entry];
-        for(std::size_t depth = 0; parent != no_entry && depth < max_chain; depth += 1) {
+        for(std::uint32_t depth = 0; parent != no_entry && depth < max_chain; depth += 1) {
             entries.push_back({.name = name(parent), .args = arguments(parent)});
             parent = parents[parent];
         }
@@ -672,7 +654,7 @@ struct SearchIndex::View {
     /// The entries whose lowercase name is `lower`, in by_lower_name order.
     llvm::ArrayRef<std::uint32_t> lower_range(llvm::StringRef lower) const {
         auto project = [&](std::uint32_t entry) {
-            return lowercase(name(entry));
+            return name(entry).lower();
         };
         auto range = std::ranges::equal_range(by_lower_name, lower.str(), {}, project);
         return {range.begin(), range.end()};
@@ -707,15 +689,14 @@ struct SearchIndex::View {
 
 std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     auto& view = *this;
-    if(root[&SearchIndexBlob::format_version] != index_format_version ||
-       root[&SearchIndexBlob::search_version] != search_format_version) {
-        return std::unexpected("written by another format version");
+    if(root[&SearchIndexBlob::search_version] != search_format_version) {
+        return std::unexpected("written by another search format version");
     }
     view.generation = root[&SearchIndexBlob::generation];
     view.hashes = to_array_ref(root[&SearchIndexBlob::hashes]);
-    view.names = to_ref(root[&SearchIndexBlob::names]);
+    view.names = root[&SearchIndexBlob::names];
     view.name_ends = to_array_ref(root[&SearchIndexBlob::name_ends]);
-    view.args = to_ref(root[&SearchIndexBlob::args]);
+    view.args = root[&SearchIndexBlob::args];
     view.args_ends = to_array_ref(root[&SearchIndexBlob::args_ends]);
     view.parents = to_array_ref(root[&SearchIndexBlob::parents]);
     view.qualities = to_array_ref(root[&SearchIndexBlob::qualities]);
@@ -744,7 +725,7 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     if(view.name_ends.size() != count || view.args_ends.size() != count ||
        view.parents.size() != count || view.qualities.size() != count ||
        view.by_lower_name.size() != count || view.by_hash.size() != count) {
-        return std::unexpected("row columns do not line up");
+        return std::unexpected("entry columns do not line up");
     }
     if(!monotone_ends(view.name_ends, view.names.size()) ||
        !monotone_ends(view.args_ends, view.args.size())) {
@@ -752,15 +733,15 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     }
     for(auto parent: view.parents) {
         if(parent != no_entry && parent >= count) {
-            return std::unexpected("parent outside the rows");
+            return std::unexpected("parent outside the entries");
         }
     }
     for(auto entry: view.by_lower_name) {
         if(entry >= count) {
-            return std::unexpected("name order outside the rows");
+            return std::unexpected("name order outside the entries");
         }
     }
-    for(std::size_t i = 0; i < count; i += 1) {
+    for(std::uint32_t i = 0; i < count; i += 1) {
         auto entry = view.by_hash[i];
         if(entry >= count || (i > 0 && view.hashes[entry] <= view.hashes[view.by_hash[i - 1]])) {
             return std::unexpected("hash order is not ascending");
@@ -775,17 +756,14 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     }
     if(view.token_keys.size() != view.token_ends.size() ||
        !monotone_ends(view.token_ends, view.token_postings.size()) ||
-       !std::ranges::is_sorted(view.token_keys, std::less<>{}) ||
-       std::ranges::adjacent_find(view.token_keys) != view.token_keys.end()) {
+       !strictly_ascending(view.token_keys)) {
         return std::unexpected("token columns do not line up");
     }
-    if(view.container_entries.size() != view.children_ends.size() ||
-       !strictly_ascending_entries(view.container_entries, count) ||
+    if(!sparse_ok(view.container_entries, view.children_ends.size(), count) ||
        !monotone_ends(view.children_ends, view.children_postings.size())) {
         return std::unexpected("container columns do not line up");
     }
-    if(view.subtree_entries.size() != view.subtree_ends.size() ||
-       !strictly_ascending_entries(view.subtree_entries, count) ||
+    if(!sparse_ok(view.subtree_entries, view.subtree_ends.size(), count) ||
        !monotone_ends(view.subtree_ends, view.subtree_postings.size())) {
         return std::unexpected("subtree columns do not line up");
     }
@@ -796,19 +774,12 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
        !monotone_ends(view.file_ends, view.file_postings.size())) {
         return std::unexpected("file columns do not line up");
     }
-    if(view.local_entries.size() != view.local_paths.size() ||
-       !strictly_ascending_entries(view.local_entries, count) ||
+    if(!sparse_ok(view.local_entries, view.local_paths.size(), count) ||
        llvm::any_of(view.local_paths,
                     [&](std::uint32_t path) { return path >= view.paths.size(); })) {
         return std::unexpected("local columns do not line up");
     }
     return {};
-}
-
-void measure_search(llvm::StringRef data, FieldBytes& bytes) {
-    if(SearchIndexBlob blob; deserialize_blob(data, blob)) {
-        measure_fields(blob, bytes);
-    }
 }
 
 SearchIndex::SearchIndex() = default;
@@ -817,17 +788,16 @@ SearchIndex::SearchIndex(SearchIndex&&) noexcept = default;
 SearchIndex& SearchIndex::operator=(SearchIndex&&) noexcept = default;
 
 bool SearchIndex::load(std::unique_ptr<llvm::MemoryBuffer> blob) {
-    clear();
+    view.reset();
     if(!blob) {
         return false;
     }
-    auto root = BlobView::from_bytes(blob_bytes(blob->getBuffer()));
-    if(!root.valid()) {
-        LOG_DEBUG("Rejecting search blob: structural verification failed");
+    auto root = verify_root<SearchIndexBlob>(blob->getBuffer(), "search blob");
+    if(!root) {
         return false;
     }
     auto bound = std::make_unique<View>();
-    if(auto ok = bound->bind(root); !ok) {
+    if(auto ok = bound->bind(*root); !ok) {
         LOG_DEBUG("Rejecting search blob: {}", std::string_view(ok.error()));
         return false;
     }
@@ -836,15 +806,11 @@ bool SearchIndex::load(std::unique_ptr<llvm::MemoryBuffer> blob) {
     return true;
 }
 
-void SearchIndex::clear() {
-    view.reset();
-}
-
 bool SearchIndex::loaded() const {
     return view != nullptr;
 }
 
-std::size_t SearchIndex::size() const {
+std::uint32_t SearchIndex::size() const {
     return view ? view->count() : 0;
 }
 
@@ -866,7 +832,7 @@ bool SearchIndex::contains(SymbolHash hash) const {
 }
 
 SearchOutcome SearchIndex::search(const SymbolQuery& query,
-                                  std::size_t limit,
+                                  std::uint32_t limit,
                                   CanonicalRef workspace) const {
     if(!view || limit == 0 || !query.by_pattern()) {
         return {};
@@ -894,7 +860,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         Bitmap allowed;
         for(std::uint32_t i = 0; i < index.paths.size(); i += 1) {
             llvm::SmallString<256> buffer;
-            auto file = path::local(to_ref(index.paths[i]), workspace, buffer);
+            auto file = path::local(index.paths[i], workspace, buffer);
             if(llvm::any_of(query.paths, [&](const std::string& wanted) {
                    return path_matches(wanted, file);
                })) {
@@ -922,7 +888,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
             auto& last = query.scope.back();
             llvm::ArrayRef<SymbolQuery::Segment> above = query.scope;
             above = above.drop_back();
-            for(auto entry: index.lower_range(lowercase(last.name))) {
+            for(auto entry: index.lower_range(llvm::StringRef(last.name).lower())) {
                 if(index.is_container(entry) && args_match(last.args, index.arguments(entry)) &&
                    segments_match(above, index.chain(entry), query.absolute)) {
                     containers.push_back(entry);
@@ -997,7 +963,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         case Mode::Members:
         case Mode::Subtree: scan(everything(), false); break;
         case Mode::Exact:
-            for(auto entry: index.lower_range(lowercase(query.pattern))) {
+            for(auto entry: index.lower_range(llvm::StringRef(query.pattern).lower())) {
                 if(allowed(entry)) {
                     consider(entry, false);
                 }
@@ -1028,7 +994,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
                 scan(everything(), false);
                 break;
             }
-            for(auto entry: index.lower_range(lowercase(query.pattern))) {
+            for(auto entry: index.lower_range(llvm::StringRef(query.pattern).lower())) {
                 if(allowed(entry)) {
                     consider(entry, false);
                 }

@@ -121,8 +121,8 @@ public:
     /// re-dirty them; removes are best-effort (load removes stale blobs by
     /// their generation pins). A full LMDB map fails the whole batch and
     /// latches the grow request `grow()` serves.
-    virtual llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                                 llvm::ArrayRef<BlobKey> removes) = 0;
+    virtual llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                                   llvm::ArrayRef<BlobKey> removes) = 0;
 
     virtual void for_each_key(BlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) = 0;
 

@@ -9,6 +9,7 @@ module;
 module clice;
 
 import :command.command;
+import :index.project_index;
 import :index.writer_lock;
 import :project.build;
 import :project.load;
@@ -28,12 +29,12 @@ namespace clice {
 ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     server(server), loop(server.loop), root(std::move(root)), project(server.files),
     sched(loop, project, commands, server.pool),
-    ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions, sched.store),
+    ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions),
     dispatcher(project, contexts, ast, server.pool),
     live_sources(project, sched.pch, sessions, ast.projections),
     index_query(project.index, project.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
-    invalidator(project, sessions, contexts, ast, sched.pcm, sched.store) {
+    invalidator(project, sessions, contexts, ast, sched.pcm) {
     ast.register_runner();
     // The loaded-state budget follows the open-document count; the PCH
     // family cannot see SessionStore, so the project connects the provider.
@@ -162,11 +163,8 @@ void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init
 void ProjectServer::start() {
     started = true;
     if(!root.empty()) {
-        auto report = bootstrap_project(project,
-                                        sched.store,
-                                        sched.pump,
-                                        root,
-                                        server.requested_configuration);
+        auto report =
+            bootstrap_project(project, commands, sched.pump, root, server.requested_configuration);
         contexts.load();
         if(report.opened_store) {
             bg_tasks.spawn(checkpoint_task());
@@ -288,12 +286,11 @@ void ProjectServer::decide_open_serving(std::shared_ptr<Session> session) {
     if(session->serving == ServingMode::Escalated) {
         return;
     }
-    auto it = project.index.shards.find(session->path_id);
-    if(it != project.index.shards.end()) {
+    if(auto* shard = project.index.shard(session->path_id)) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: escalate
         // now instead of answering empty until the first edit.
-        if(!it->second.matches_content(session->text().size(), session->hash)) {
+        if(!shard->matches_content(session->text().size(), session->hash)) {
             ast.escalate(*session);
         }
         return;
@@ -389,9 +386,8 @@ void ProjectServer::index_attempt_finished(Fid path_id) {
     if(!session || session->serving != ServingMode::IndexOnly) {
         return;
     }
-    auto it = project.index.shards.find(path_id);
-    if(it == project.index.shards.end() ||
-       !it->second.matches_content(session->text().size(), session->hash)) {
+    auto* shard = project.index.shard(path_id);
+    if(!shard || !shard->matches_content(session->text().size(), session->hash)) {
         ast.escalate(*session);
     }
 }
@@ -464,7 +460,9 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     for(auto path_id: dirty.drop_index) {
-        sched.pump.apply_report(sched.store.drop_index(path_id));
+        index::IndexReport report;
+        project.index.drop(path_id, report);
+        sched.pump.apply_report(report);
     }
 
     for(auto path_id: dirty.reindex_content_changed) {
@@ -522,7 +520,7 @@ kota::task<> ProjectServer::metadata_flush_task() {
     co_await kota::sleep(std::chrono::milliseconds(50));
     metadata_flush_scheduled = false;
     co_await sched.pump.persist();
-    if(project.artifacts_dirty || sched.store.contexts.dirty) {
+    if(project.artifacts_dirty || project.contexts.dirty) {
         // Time is the feature: the retry's backoff.
         co_await kota::sleep(std::chrono::seconds(5));
         schedule_metadata_flush();
@@ -534,7 +532,7 @@ kota::task<> ProjectServer::checkpoint_task() {
         // Time is the feature: the checkpoints' pace.
         co_await kota::sleep(SchedulingStack::checkpoint_interval());
         co_await sched.checkpoint();
-        if(sched.store.last_save_shards() > 0) {
+        if(project.index.last_save_shards() > 0) {
             server.probe.happened(LoopEvent::Checkpoint);
         }
         drain_store_evictions();
