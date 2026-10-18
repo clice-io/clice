@@ -309,6 +309,30 @@ struct LocalTable {
     }
 };
 
+/// The line table's lengths in line order: an escaped length is the next
+/// of the long line lengths.
+struct LineLengths {
+    llvm::ArrayRef<std::uint8_t> lengths;
+
+    llvm::ArrayRef<std::uint32_t> long_lengths;
+
+    std::uint32_t escaped = 0;
+
+    static LineLengths of(BlobView root) {
+        return {.lengths = to_array_ref(root[&ShardBlob::line_lengths]),
+                .long_lengths = to_array_ref(root[&ShardBlob::long_line_lengths])};
+    }
+
+    std::uint32_t next(std::uint32_t line) {
+        if(lengths[line] != length_escape) {
+            return lengths[line];
+        }
+        auto length = long_lengths[escaped];
+        escaped += 1;
+        return length;
+    }
+};
+
 // A variant is identified by its hash everywhere (set_live, the merge
 // keep filter), so stored hashes must be unique: occurrences and
 // relations owned only by a duplicated entry would serve and survive
@@ -330,18 +354,19 @@ CheckResult variants_ok(BlobView root) {
 // line: it must be exactly the line's text without its end, and hold a
 // non-ASCII byte — a pure-ASCII line is the absent entry's to spell.
 CheckResult line_table_ok(BlobView root) {
-    auto line_lengths = to_array_ref(root[&ShardBlob::line_lengths]);
+    auto line_lengths = LineLengths::of(root);
     auto long_lines = to_array_ref(root[&ShardBlob::long_lines]);
-    auto long_line_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
-    if(line_lengths.empty() ||
-       !escapes_ok(line_lengths, length_escape, long_lines, long_line_lengths.size())) {
+    if(line_lengths.lengths.empty() || !escapes_ok(line_lengths.lengths,
+                                                   length_escape,
+                                                   long_lines,
+                                                   line_lengths.long_lengths.size())) {
         return std::unexpected("line table does not pair with its escape table");
     }
     // A "\r\n" ending needs a line holding at least those two bytes and a
     // line after it.
     auto crlf_lines = to_array_ref(root[&ShardBlob::crlf_lines]);
     if(!crlf_lines.empty() &&
-       (crlf_lines.back() == 0 || crlf_lines.size() > (line_lengths.size() + 63) / 64)) {
+       (crlf_lines.back() == 0 || crlf_lines.size() > (line_lengths.lengths.size() + 63) / 64)) {
         return std::unexpected("CRLF line table is not canonical");
     }
     auto utf8_lines = to_array_ref(root[&ShardBlob::utf8_lines]);
@@ -351,18 +376,14 @@ CheckResult line_table_ok(BlobView root) {
         return std::unexpected("non-ASCII line columns do not line up");
     }
     std::uint64_t line_sum = 0;
-    std::uint32_t escape_cursor = 0;
     std::uint32_t utf8_cursor = 0;
-    for(std::uint32_t line = 0; line < line_lengths.size(); line += 1) {
-        std::uint32_t length = line_lengths[line];
-        if(length == length_escape) {
-            length = long_line_lengths[escape_cursor];
-            escape_cursor += 1;
-            if(length < length_escape) {
-                return std::unexpected("escaped line length below the escape threshold");
-            }
+    auto line_count = static_cast<std::uint32_t>(line_lengths.lengths.size());
+    for(std::uint32_t line = 0; line < line_count; line += 1) {
+        auto length = line_lengths.next(line);
+        if(line_lengths.lengths[line] == length_escape && length < length_escape) {
+            return std::unexpected("escaped line length below the escape threshold");
         }
-        auto last = line + 1 == line_lengths.size();
+        auto last = line + 1 == line_count;
         auto crlf = ends_crlf(crlf_lines, line);
         if(crlf && (length < 2 || last)) {
             return std::unexpected("CRLF bit on a line that cannot end in CRLF");
@@ -952,20 +973,13 @@ std::span<const std::uint32_t> Shard::line_starts() const {
         return {};
     }
     if(line_starts_cache.empty()) {
-        auto root = view_of(buffer->getBuffer());
-        auto lengths = to_array_ref(root[&ShardBlob::line_lengths]);
-        auto long_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
-        line_starts_cache.reserve(lengths.size());
+        auto lengths = LineLengths::of(view_of(buffer->getBuffer()));
+        auto line_count = static_cast<std::uint32_t>(lengths.lengths.size());
+        line_starts_cache.reserve(line_count);
         std::uint32_t start = 0;
-        std::uint32_t escape_cursor = 0;
-        for(auto length: lengths) {
+        for(std::uint32_t line = 0; line < line_count; line += 1) {
             line_starts_cache.push_back(start);
-            if(length == length_escape) {
-                start += long_lengths[escape_cursor];
-                escape_cursor += 1;
-            } else {
-                start += length;
-            }
+            start += lengths.next(line);
         }
     }
     return line_starts_cache;
