@@ -39,7 +39,7 @@ Distilled from real correction history — these mistakes keep recurring:
 - `src/index/` — symbol indexing: the indexer, the persisted format and its columns, shards, TU indexes and manifests, the project table and index, the database, name search, the queries (search, navigation, hierarchy, text), rename
 - `src/feature/` — LSP features: hover, completion, document links, semantic tokens, etc.
 - `src/config/` — the `clice.toml` configuration
-- `src/project/` — the loaded project: CDB loading and watching, command resolution, header hosting, the index store
+- `src/project/` — the loaded project: CDB loading and watching, command resolution, header hosting, the command snapshot and artifact records, saving and loading the project's database
 - `src/worker/` — the stateless and stateful worker processes, their pool and protocol
 - `src/sched/` — the task graph (PCH, PCM, AST and TU nodes), batch runs, the indexing pump
 - `src/server/` — the LSP server: master server, sessions, dispatch, the control channel
