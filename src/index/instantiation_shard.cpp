@@ -735,6 +735,12 @@ void decode_resolutions(const InstantiationShard& shard,
                         DecodedResolutions& out) {
     auto root = view_of(shard.bytes());
     auto records = RecordTable::of(root);
+    std::vector<LocalSourceRange> ranges;
+    ranges.reserve(records.size());
+    records.columns.for_each_range([&](std::uint32_t, LocalSourceRange range) {
+        ranges.push_back(range);
+        return true;
+    });
     auto table = ResolutionTable::of(root);
     for(std::uint32_t resolution = 0; resolution < table.hashes.size(); resolution += 1) {
         if(!keep(table.hashes[resolution])) {
@@ -743,7 +749,8 @@ void decode_resolutions(const InstantiationShard& shard,
         out.push_back({table.hashes[resolution], {}});
         auto& list = out.back().second;
         for(auto i = table.begin_of(resolution); i < table.ends[resolution]; i += 1) {
-            list.push_back(records.at(table.records[i]));
+            auto record = table.records[i];
+            list.push_back(records.at(record, ranges[record]));
         }
     }
 }
