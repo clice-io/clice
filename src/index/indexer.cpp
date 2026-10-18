@@ -910,19 +910,9 @@ public:
                      clang::BindingDecl,
                      clang::NonTypeTemplateParmDecl,
                      clang::VarDecl>(D)) {
-            if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(D)) {
-                switch(VTSD->getSpecializationKind()) {
-                    case clang::TSK_ImplicitInstantiation:
-                    case clang::TSK_ExplicitInstantiationDeclaration:
-                    case clang::TSK_ExplicitInstantiationDefinition: {
-                        return;
-                    }
-
-                    case clang::TSK_Undeclared:
-                    case clang::TSK_ExplicitSpecialization: {
-                        break;
-                    }
-                }
+            if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(D);
+               VTSD && clang::isTemplateInstantiation(VTSD->getSpecializationKind())) {
+                return;
             }
 
             auto* VD = llvm::cast<clang::ValueDecl>(D);
@@ -947,19 +937,9 @@ public:
 
         // Base/derived edges, recorded at the defining declaration.
         if(auto* TD = llvm::dyn_cast<clang::TagDecl>(D)) {
-            if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(TD)) {
-                switch(CTSD->getSpecializationKind()) {
-                    case clang::TSK_Undeclared:
-                    case clang::TSK_ImplicitInstantiation:
-                    case clang::TSK_ExplicitInstantiationDeclaration:
-                    case clang::TSK_ExplicitInstantiationDefinition: {
-                        return;
-                    }
-
-                    case clang::TSK_ExplicitSpecialization: {
-                        break;
-                    }
-                }
+            if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(TD);
+               CTSD && CTSD->getSpecializationKind() != clang::TSK_ExplicitSpecialization) {
+                return;
             }
 
             if(auto* CRD = llvm::dyn_cast<clang::CXXRecordDecl>(TD)) {
@@ -988,17 +968,8 @@ public:
         }
 
         if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(D)) {
-            switch(FD->getTemplateSpecializationKind()) {
-                case clang::TSK_ImplicitInstantiation:
-                case clang::TSK_ExplicitInstantiationDeclaration:
-                case clang::TSK_ExplicitInstantiationDefinition: {
-                    return;
-                }
-
-                case clang::TSK_Undeclared:
-                case clang::TSK_ExplicitSpecialization: {
-                    break;
-                }
+            if(clang::isTemplateInstantiation(FD->getTemplateSpecializationKind())) {
+                return;
             }
 
             add_type_definitions(FD);
