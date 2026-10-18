@@ -211,9 +211,13 @@ public:
     /// the numbers live here.
     struct Progress {
         enum class Stage : std::uint8_t { Begin, Report, End };
+
         Stage stage = Stage::Begin;
+
         std::size_t total = 0;
+
         std::size_t completed = 0;
+
         std::size_t dispatched = 0;
     };
 
@@ -228,34 +232,13 @@ public:
 private:
     friend struct testing::IndexerFixture;
 
-    kota::event_loop& loop;
-    kota::task_group<> bg_tasks;
-    Project& project;
-    CommandResolver& commands;
-    TURunFamily& turun;
-    WorkerPool& pool;
-
-    /// Background indexing queue and scheduling state. The pending table tracks
-    /// which files hold an un-consumed slot so enqueue can dedupe; the
-    /// queue is compacted once a round has fully drained.
-    std::vector<Fid> index_queue;
-    std::size_t index_queue_pos = 0;
-    /// Where the running round's slots end. A slot past it waits for the
-    /// next round and may be a file the running round has in flight.
-    std::size_t round_end = 0;
-
-    /// The pending-reindex debt: take/finish bookkeeping, tickets and
-    /// the crash-requeue budget live in the pending table. The pump-side rules
-    /// on top of it, each born from a concrete bug:
-    /// 1. The freshness check inside the index task is the ONLY place
-    ///    that decides to skip work. Duplicating it at the feeder
-    ///    reintroduces reason-blind skips.
-    /// 2. needs_reindex() may shortcut deps-only slots ONLY: the engine
-    ///    observed content changes itself, and the dep-hash check cannot
-    ///    see a file's own edit.
-    PendingTable pending_table{max_requeue_attempts};
-
     constexpr static unsigned max_requeue_attempts = 3;
+
+    struct AttemptWait {
+        std::uint64_t ticket;
+
+        std::shared_ptr<kota::event> event;
+    };
 
     /// Merge a failed dispatch's taken debt back through the table and apply
     /// the pump-side halves: a Requeued file gets its queue slot, an
@@ -273,45 +256,8 @@ private:
     /// index, with the errors its compile reported, or a failure for good.
     /// A file is in at most one of failed_ids and errors.
     void record_indexed(Fid file, std::vector<worker::LocatedMessage> compile_errors);
+
     void record_failed(Fid file);
-
-    llvm::DenseSet<Fid> failed_ids;
-    llvm::DenseMap<Fid, std::vector<worker::LocatedMessage>> errors;
-    bool errors_wanted = false;
-    std::size_t indexed_total = 0;
-
-    struct AttemptWait {
-        std::uint64_t ticket;
-        std::shared_ptr<kota::event> event;
-    };
-
-    /// The events await_attempt waiters park on, per file and per pending
-    /// ticket observed at wait time; each fires when an attempt covering
-    /// its ticket finishes (or wholesale at stop()). Keyed by ticket so a
-    /// requeue during an attempt's flight cannot extend earlier waits —
-    /// await_attempt promises one attempt, not an idle file.
-    llvm::DenseMap<Fid, llvm::SmallVector<AttemptWait, 2>> attempt_waits;
-    bool indexing_active = false;
-    bool indexing_scheduled = false;
-
-    /// Set whenever a round ends; wait_idle() waits on it.
-    kota::event round_ended{false};
-    std::shared_ptr<kota::timer> index_idle_timer;
-
-    /// Pause/resume: when paused, new index tasks wait on this event.
-    /// Uses a counter so nested pause/resume pairs work correctly.
-    std::size_t pause_depth = 0;
-    kota::event resume_event{true};
-
-    /// Dispatches left before pause_after() pauses; zero when none is due.
-    std::size_t dispatches_before_pause = 0;
-
-    /// Set by on_stateless_capacity: wakes a round parked on "no schedulable
-    /// stateless worker" the moment a slot (re)enters service.
-    kota::event capacity_event{false};
-    Signal<>::Connection capacity_conn;
-
-    Progress progress_data;
 
     /// A round's shared counters, living on run_background_indexing's frame,
     /// which outlives every spawned task (it joins them before returning).
@@ -343,6 +289,82 @@ private:
                                 std::size_t index,
                                 std::size_t total,
                                 RoundState& round);
+
+private:
+    kota::event_loop& loop;
+
+    kota::task_group<> bg_tasks;
+
+    Project& project;
+
+    CommandResolver& commands;
+
+    TURunFamily& turun;
+
+    WorkerPool& pool;
+
+    /// Background indexing queue and scheduling state. The pending table tracks
+    /// which files hold an un-consumed slot so enqueue can dedupe; the
+    /// queue is compacted once a round has fully drained.
+    std::vector<Fid> index_queue;
+
+    std::size_t index_queue_pos = 0;
+
+    /// Where the running round's slots end. A slot past it waits for the
+    /// next round and may be a file the running round has in flight.
+    std::size_t round_end = 0;
+
+    /// The pending-reindex debt: take/finish bookkeeping, tickets and
+    /// the crash-requeue budget live in the pending table. The pump-side rules
+    /// on top of it, each born from a concrete bug:
+    /// 1. The freshness check inside the index task is the ONLY place
+    ///    that decides to skip work. Duplicating it at the feeder
+    ///    reintroduces reason-blind skips.
+    /// 2. needs_reindex() may shortcut deps-only slots ONLY: the engine
+    ///    observed content changes itself, and the dep-hash check cannot
+    ///    see a file's own edit.
+    PendingTable pending_table{max_requeue_attempts};
+
+    llvm::DenseSet<Fid> failed_ids;
+
+    llvm::DenseMap<Fid, std::vector<worker::LocatedMessage>> errors;
+
+    bool errors_wanted = false;
+
+    std::size_t indexed_total = 0;
+
+    /// The events await_attempt waiters park on, per file and per pending
+    /// ticket observed at wait time; each fires when an attempt covering
+    /// its ticket finishes (or wholesale at stop()). Keyed by ticket so a
+    /// requeue during an attempt's flight cannot extend earlier waits —
+    /// await_attempt promises one attempt, not an idle file.
+    llvm::DenseMap<Fid, llvm::SmallVector<AttemptWait, 2>> attempt_waits;
+
+    bool indexing_active = false;
+
+    bool indexing_scheduled = false;
+
+    /// Set whenever a round ends; wait_idle() waits on it.
+    kota::event round_ended{false};
+
+    std::shared_ptr<kota::timer> index_idle_timer;
+
+    /// Pause/resume: when paused, new index tasks wait on this event.
+    /// Uses a counter so nested pause/resume pairs work correctly.
+    std::size_t pause_depth = 0;
+
+    kota::event resume_event{true};
+
+    /// Dispatches left before pause_after() pauses; zero when none is due.
+    std::size_t dispatches_before_pause = 0;
+
+    /// Set by on_stateless_capacity: wakes a round parked on "no schedulable
+    /// stateless worker" the moment a slot (re)enters service.
+    kota::event capacity_event{false};
+
+    Signal<>::Connection capacity_conn;
+
+    Progress progress_data;
 };
 
 }  // namespace clice

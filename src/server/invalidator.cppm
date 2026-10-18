@@ -198,8 +198,8 @@ public:
 ///
 /// Ownership charter:
 ///   - reads the session store, the editor context, the AST family's
-///     record of what open documents read and the index store's recorded
-///     header hosts, never mutates them;
+///     record of what open documents read and the command snapshot's
+///     recorded header hosts, never mutates them;
 ///   - directly updates the derived graphs Project owns (include graph,
 ///     module map, ...);
 ///   - anything touching Sessions, context-domain state (header results, choices,
@@ -272,10 +272,15 @@ private:
     /// dependency invalidation.
     void mark_dependent(Fid path_id, DirtySet& dirty);
 
+private:
     Project& project;
+
     const SessionStore& store;
+
     const EditorContext& contexts;
+
     const ASTFamily& ast;
+
     PCMFamily& pcm;
 };
 

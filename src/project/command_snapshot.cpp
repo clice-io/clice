@@ -32,14 +32,15 @@ std::string selected_hash(Project& project, Fid file) {
     return project.cdb.entry_hash_hex(commands.front().config);
 }
 
-/// JSON layout of the persisted CDB snapshot (blob kind CDB): per source
-/// file, the sorted canonical command hashes of its entries and a hash of
-/// its matched config rules when the index state was last saved. A
-/// standalone-indexed header gets an entry too (empty hashes): its own
-/// matched rules plus the host source whose command its index borrowed.
-/// Paths are the database's names (ProjectIndex::portable).
+/// JSON layout of the persisted command snapshot (blob kind
+/// CommandSnapshot): per source file, the sorted canonical command hashes of
+/// its entries and a hash of its matched config rules when the index state
+/// was last saved. A standalone-indexed header gets an entry too (empty
+/// hashes): its own matched rules plus the host source whose command its
+/// index borrowed. Paths are the database's names (ProjectIndex::portable).
 struct CDBSnapshotEntry {
     std::string file;
+
     std::vector<std::string> hashes;
 
     /// Entry hash of the file's default selection (the candidate-order
@@ -53,6 +54,7 @@ struct CDBSnapshotEntry {
     std::vector<std::string> sources;
 
     std::string rules;
+
     std::string host;
 
     /// Entry hash of the host's default selection. A host that is not

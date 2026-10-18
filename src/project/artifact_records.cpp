@@ -13,6 +13,7 @@ import :project.project;
 import :support.json;
 import :support.logging;
 import :vfs.cache_store;
+import :vfs.file_table;
 
 namespace clice {
 
@@ -26,43 +27,56 @@ namespace {
 /// the records reference no version ids and self-heal against any index
 /// state.
 struct CacheDepEntry {
-    std::uint32_t path;  // index into the blob's paths table
+    /// index into the blob's paths table
+    std::uint32_t path;
+
     std::uint64_t hash;
+
     bool missing;
 };
 
 struct CachePCHEntry {
     std::string key;
+
     /// CacheStore key in the "pch" namespace; absent in records written
     /// before pairs had names of their own.
     std::optional<std::string> blob;
+
     std::uint32_t bound;
+
     std::vector<CacheDepEntry> deps;
+
     /// See PCHState::base; absent for none.
     std::optional<std::string> base;
 };
 
 struct CachePCMEntry {
     std::string key;
+
     /// CacheStore key in the "pcm" namespace; absent in records written
     /// before PCMs had names of their own.
     std::optional<std::string> blob;
+
     std::uint32_t source_file;
+
     std::string module_name;
+
     std::vector<CacheDepEntry> deps;
 };
 
 struct ArtifactRecords {
     std::vector<std::string> paths;
 
-    // index_format_version the .pch.idx indexes were written with (one
-    // binary writes them all). A mismatch drops every PCH entry at load so
-    // the pairs rebuild immediately, instead of the mismatch showing up
-    // lazily on the first overlay query — which cannot trigger a rebuild.
+    /// index_format_version the .pch.idx indexes were written with (one
+    /// binary writes them all). A mismatch drops every PCH entry at load so
+    /// the pairs rebuild immediately, instead of the mismatch showing up
+    /// lazily on the first overlay query — which cannot trigger a rebuild.
     std::uint32_t pch_index_format = 0;
 
     std::vector<CachePCHEntry> pch;
+
     std::vector<CachePCMEntry> pcm;
+
     std::vector<CacheModeEntry> header_modes;
 };
 

@@ -57,7 +57,7 @@ public:
 
     enum class Result : std::uint8_t {
         /// The run produced its planned products (the index merged into
-        /// the store, the tidy findings arrived in the outcome).
+        /// the project index, the tidy findings arrived in the outcome).
         Completed,
         /// Deliberately produced nothing: the result was superseded, or
         /// the TU has no real command but keeps its last-known index.
@@ -100,7 +100,9 @@ public:
 
         struct Perf {
             std::size_t bytes = 0;
+
             long long index_ms = 0;
+
             long long merge_ms = 0;
         } perf;
     };
@@ -120,23 +122,30 @@ public:
     kota::task<Outcome> run(Fid path_id, Plan plan, Guards guards = {});
 
 private:
+    struct Inputs {
+        Plan plan;
+
+        Guards guards;
+    };
+
     kota::task<RoundOutcome> round(RoundContext& ctx, Fid path_id);
 
     static NodeId node(Fid path_id) {
         return {Family::TURun, path_id.raw};
     }
 
+private:
     TaskGraph& graph;
-    Project& project;
-    CommandResolver& commands;
-    PCMFamily& pcm;
-    PCHFamily& pch;
-    WorkerPool& pool;
 
-    struct Inputs {
-        Plan plan;
-        Guards guards;
-    };
+    Project& project;
+
+    CommandResolver& commands;
+
+    PCMFamily& pcm;
+
+    PCHFamily& pch;
+
+    WorkerPool& pool;
 
     /// The stash-and-collect halves of run() around the graph join: the
     /// plan and guards go in before the request, the finished outcome comes
@@ -144,10 +153,11 @@ private:
     /// (the pump's pending table, the lint driver's pass), so at most one live
     /// entry per TU.
     llvm::DenseMap<Fid, Inputs> inputs;
+
     llvm::DenseMap<Fid, Outcome> finished;
 
-    /// TUs whose last result named a variant by hash that the store did
-    /// not hold for its file: the next run sends every section's bytes,
+    /// TUs whose last result named a variant by hash that the project
+    /// index did not hold for its file: the next run sends every section's bytes,
     /// so the rerun cannot fail the same way.
     llvm::DenseSet<Fid> send_in_full;
 };

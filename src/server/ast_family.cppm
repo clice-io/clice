@@ -208,6 +208,8 @@ public:
     kota::task<> stop();
 
 private:
+    friend struct testing::ASTFamilyFixture;
+
     static NodeId node(Fid path_id) {
         return {Family::AST, path_id.raw};
     }
@@ -250,6 +252,7 @@ private:
         enum class Decision : std::uint8_t { None, Acquire };
 
         Decision decision = Decision::None;
+
         PCHFamily::Request request;
     };
 
@@ -277,18 +280,23 @@ private:
                                                       const Resolution& resolution,
                                                       const PCMFamily::ModuleDeps& imports);
 
-    friend struct testing::ASTFamilyFixture;
-
     /// current=false + epoch bump: the shared prefix of every
     /// invalidation kind.
     void touch(Fid path_id);
 
+private:
     Project& project;
+
     EditorContext& contexts;
+
     TaskGraph& graph;
+
     PCMFamily& pcm;
+
     PCHFamily& pch;
+
     WorkerPool& pool;
+
     SessionStore& sessions;
 
     /// Detached ensure_compiled joins from request_compile; the rounds
