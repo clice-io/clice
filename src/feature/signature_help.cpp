@@ -606,8 +606,6 @@ auto macro_call_at(CompilationUnit& unit, std::uint32_t offset) -> std::optional
         return std::nullopt;
     }
 
-    // Clang's copy of the buffer carries a NUL at the completion point:
-    // the tokens before it are the text as the user has it.
     auto focus = unit.focus_file();
     auto content = focus.content();
     const auto& lexical = focus.lexical();
@@ -736,8 +734,9 @@ auto signature_help(CompilationParams params,
 
     auto offset = params.completion.offset;
     std::vector<Documented> sources;
-    params.completion.consumer =
-        std::make_unique<SignatureCollector>(help, sources, complete_options);
+    params.completion.consumer = [&](CompilationUnit&) {
+        return std::make_unique<SignatureCollector>(help, sources, complete_options);
+    };
     auto unit = compile(std::move(params));
     if(!unit->completed()) {
         return help;

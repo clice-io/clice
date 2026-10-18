@@ -126,8 +126,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
             vfs = std::move(overlay);
         }
         // The compile reads the text gone on with the include of a header
-        // context's suffix (CompilationInput::add_synthesized), which may
-        // import.
+        // context's suffix (CompilationInput::suffix), which may import.
         std::string text;
         if(auto suffix = resolution.synthesized ? suffix_path(resolution.synthesized->files)
                                                 : llvm::StringRef();

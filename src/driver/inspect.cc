@@ -210,16 +210,14 @@ std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& 
                                                                const Config& config) {
     auto legend = feature::semantic_token_legend(config.semantic_tokens);
     auto focus = unit.focus_file();
+    auto content = focus.content();
     auto ast =
         named_tokens(feature::semantic_token_stream(focus.lexical().tokens,
-                                                    focus.content(),
+                                                    content,
                                                     unit.lang_options(),
                                                     feature::semantic_token_facts(unit, {}, true),
                                                     config.semantic_tokens),
                      legend);
-    // A copy: the lexer reads up to a NUL terminator, which a prefix lacks.
-    auto text = focus.content().take_front(unit.text_end(focus.file())).str();
-    llvm::StringRef content = text;
     auto bytes = index::build_tu_index(unit);
     auto tu = index::TUIndex::from_bytes(bytes);
     auto projected =
@@ -2478,9 +2476,9 @@ void run_feature(FileEntry& entry,
         .directory = command.directory,
         .workspace = command.workspace,
     };
-    input.add_remapped_file(file.path, file.content);
+    input.add_focus(file.path, file.content);
     if(command.synthesized) {
-        input.add_synthesized(command.synthesized->files, file.path);
+        input.add_synthesized(command.synthesized->files);
     }
 
     CompilationParams params{.kind = CompilationKind::Content, .input = input};

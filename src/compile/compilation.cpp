@@ -13,6 +13,8 @@ import :compile.diagnostic;
 import :compile.tidy;
 import :compile.tokens;
 import :support.logging;
+import :syntax.header_context;
+import :syntax.position;
 import :syntax.scan;
 import :vfs.file_system;
 
@@ -83,7 +85,14 @@ std::unique_ptr<clang::CompilerInvocation>
     pp_opts.RetainRemappedFileBuffers = true;
 
     for(auto& [file, text]: input.buffers) {
-        auto& buffer = remapped_buffers.emplace_back(llvm::MemoryBuffer::getMemBuffer(text));
+        auto& buffer = remapped_buffers.emplace_back();
+        if(file == input.focus && !input.suffix.empty()) {
+            std::string suffixed = text;
+            append_include(suffixed, input.suffix);
+            buffer = llvm::MemoryBuffer::getMemBufferCopy(suffixed);
+        } else {
+            buffer = llvm::MemoryBuffer::getMemBuffer(text);
+        }
         pp_opts.addRemappedFile(file, buffer.get());
     }
     if(params.kind != CompilationKind::Preamble) {
@@ -449,23 +458,6 @@ static std::unique_ptr<clang::FrontendAction> frontend_action(CompilationKind ki
     std::unreachable();
 }
 
-/// Point clang's code completion at `offset` in the focus file.
-static void complete_at(clang::CompilerInstance& instance, std::uint32_t offset) {
-    auto& SM = instance.getSourceManager();
-    auto focus = SM.getMainFileID();
-    auto content = SM.getBufferData(focus);
-    auto clamped = static_cast<std::uint32_t>(std::min<std::size_t>(offset, content.size()));
-    auto lines = kota::ipc::lsp::line_starts({content.data(), content.size()});
-    auto position = PositionMap(content, lines).position(clamped, PositionEncoding::UTF8);
-    assert(position && "clamped completion offset must be mappable");
-
-    /// Clang completion locations are 1-based.
-    auto& at = instance.getFrontendOpts().CodeCompletionAt;
-    at.FileName = SM.getFileEntryRefForID(focus)->getName().str();
-    at.Line = position->line + 1;
-    at.Column = position->character + 1;
-}
-
 CompilationStatus CompilationUnit::run() {
     auto diagnostic_consumer = diagnostic_collector();
     auto invocation = create_invocation(diagnostic_consumer.get());
@@ -498,12 +490,19 @@ CompilationStatus CompilationUnit::run() {
         return CompilationStatus::SetupFail;
     }
 
-    // Handed over only now: a compile that could not start keeps it for
-    // another try (see compile()).
     if(params.kind == CompilationKind::Completion) {
         assert(params.completion.consumer && "a completion needs its consumer");
-        instance->setCodeCompletionConsumer(params.completion.consumer.release());
-        complete_at(*instance, params.completion.offset);
+        auto focus = focus_file();
+        auto& point = params.completion.offset;
+        point = std::min(point, static_cast<std::uint32_t>(focus.content().size()));
+        auto position = focus.positions().position(point, PositionEncoding::UTF8);
+        assert(position && "clamped completion offset must be mappable");
+        /// Clang completion locations are 1-based.
+        auto& at = instance->getFrontendOpts().CodeCompletionAt;
+        at.FileName = SM().getFileEntryRefForID(focus.file())->getName().str();
+        at.Line = position->line + 1;
+        at.Column = position->character + 1;
+        instance->setCodeCompletionConsumer(params.completion.consumer(*this).release());
     }
 
     // The PCH files what its build learned of the focus file under the
@@ -512,11 +511,10 @@ CompilationStatus CompilationUnit::run() {
     // header past the preamble, through another header, enters it again.
     if(auto& [pch, bound] = params.input.pch;
        !pch.empty() && instance->getLangOpts().IsHeaderFile) {
-        auto& SM = instance->getSourceManager();
-        auto focus = SM.getMainFileID();
-        if(pragma_once(SM.getBufferData(focus), bound)) {
+        auto focus = focus_file();
+        if(pragma_once(focus.content(), bound)) {
             instance->getPreprocessor().getHeaderSearchInfo().MarkFileIncludeOnce(
-                *SM.getFileEntryRefForID(focus));
+                *SM().getFileEntryRefForID(focus.file()));
         }
     }
 

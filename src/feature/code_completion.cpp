@@ -911,7 +911,8 @@ public:
         return sema;
     }
 
-    CodeCompletionCollector(std::uint32_t offset,
+    CodeCompletionCollector(FocusFile focus,
+                            std::uint32_t offset,
                             PositionEncoding encoding,
                             std::vector<protocol::CompletionItem>& output,
                             std::vector<const clang::NamedDecl*>& documented,
@@ -920,8 +921,8 @@ public:
                             llvm::ArrayRef<ScopeCandidate> candidates,
                             bool& includes_pending,
                             WholeBuffer& whole) :
-        clang::CodeCompleteConsumer(sema_options(options)), offset(offset), encoding(encoding),
-        output(output), documented(documented), options(options),
+        clang::CodeCompleteConsumer(sema_options(options)), focus(focus), offset(offset),
+        encoding(encoding), output(output), documented(documented), options(options),
         argument_style(arguments_of(options.arguments)), client(client),
         scope_candidates(candidates), includes_pending(includes_pending),
         info(std::make_shared<clang::GlobalCodeCompletionAllocator>()), whole(whole) {}
@@ -947,10 +948,8 @@ public:
         }
         /// A call after the completion point names the function it calls;
         /// a template nothing calls yet goes without the second compile.
-        /// The completion buffer holds a NUL at the completion point.
         if(auto* name = function->getIdentifier();
-           name &&
-           !source_manager.getBufferData(file).substr(this->offset + 1).contains(name->getName())) {
+           name && !focus.content().substr(this->offset).contains(name->getName())) {
             return {};
         }
         auto& unit = whole.unit();
@@ -1273,24 +1272,19 @@ public:
             return;
         }
 
-        // Clang's copy of the buffer carries a NUL at the completion
-        // point; edits and look-ahead read the text as the user has it.
         auto& source_manager = sema.getSourceManager();
-        auto buffer = source_manager.getBufferData(source_manager.getMainFileID());
-        auto point = source_manager.getFileOffset(sema.getPreprocessor().getCodeCompletionLoc());
-        auto content = buffer.take_front(point).str() + buffer.drop_front(point + 1).str();
+        auto content = focus.content();
         auto prefix = CompletionPrefix::from(content, offset);
         FuzzyMatcher matcher(prefix.spelling);
 
-        auto lines = lsp::line_starts(content);
-        PositionMap map(content, lines);
+        auto map = focus.positions();
         auto typed = map.range(prefix.typed, encoding);
         auto whole = map.range(prefix.whole, encoding);
         if(!typed || !whole) {
             return;
         }
         // Call or template arguments already written after the name.
-        auto after = llvm::StringRef(content).drop_front(prefix.whole.end).ltrim();
+        auto after = content.drop_front(prefix.whole.end).ltrim();
         bool arguments_follow = after.starts_with("(") || after.starts_with("<");
 
         std::vector<CollectedItem> collected;
@@ -1671,11 +1665,14 @@ public:
                 auto range = clang::Lexer::makeFileCharRange(fix.RemoveRange,
                                                              source_manager,
                                                              sema.getLangOpts());
-                item.edits.push_back({
-                    .range = {source_manager.getFileOffset(range.getBegin()),
-                              source_manager.getFileOffset(range.getEnd())},
-                    .text = fix.CodeToInsert,
-                });
+                auto begin = focus.offset(range.getBegin());
+                auto end = focus.offset(range.getEnd());
+                if(begin && end) {
+                    item.edits.push_back({
+                        .range = {*begin, *end},
+                        .text = fix.CodeToInsert
+                    });
+                }
             }
             if(!item.edits.empty()) {
                 item.relevance *= 0.5F;
@@ -2214,6 +2211,7 @@ public:
     }
 
 private:
+    FocusFile focus;
     std::uint32_t offset;
     PositionEncoding encoding;
     std::vector<protocol::CompletionItem>& output;
@@ -2254,15 +2252,18 @@ auto code_complete(CompilationParams params,
     std::vector<const clang::NamedDecl*> documented;
     WholeBuffer whole(params);
     bool includes = false;
-    params.completion.consumer = std::make_unique<CodeCompletionCollector>(offset,
-                                                                           encoding,
-                                                                           items,
-                                                                           documented,
-                                                                           options,
-                                                                           client,
-                                                                           candidates,
-                                                                           includes,
-                                                                           whole);
+    params.completion.consumer = [&](CompilationUnit& unit) {
+        return std::make_unique<CodeCompletionCollector>(unit.focus_file(),
+                                                         offset,
+                                                         encoding,
+                                                         items,
+                                                         documented,
+                                                         options,
+                                                         client,
+                                                         candidates,
+                                                         includes,
+                                                         whole);
+    };
     auto unit = compile(std::move(params));
 
     for(auto [item, decl]: llvm::zip_equal(items, documented)) {
@@ -2284,15 +2285,8 @@ auto code_complete(CompilationParams params,
     Completion completion{
         .list = completion_list(std::move(items), includes ? 0U : options.limit.value)};
     if(includes) {
-        // Clang's copy of the buffer carries a NUL at the completion point.
-        auto buffer = unit->focus_file().content();
-        auto content = buffer.take_front(offset).str() + buffer.drop_front(offset + 1).str();
         auto insertion = action::include_insertion(*unit);
-        if(insertion.offset > offset) {
-            insertion.offset -= 1;
-        }
-        auto lines = lsp::line_starts(content);
-        if(auto position = PositionMap(content, lines).position(insertion.offset, encoding)) {
+        if(auto position = unit->focus_file().positions().position(insertion.offset, encoding)) {
             completion.include = IncludePlace{
                 .position = *position,
                 .opens_fragment = insertion.opens_fragment,

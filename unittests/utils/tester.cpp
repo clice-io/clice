@@ -111,7 +111,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     params.input.pch = {pch_path, bound};
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {
-            params.input.add_remapped_file(file, source.content);
+            params.input.add_focus(file, source.content);
         } else {
             std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
             params.input.add_remapped_file(path, source.content);
@@ -318,7 +318,7 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     Spelling focus(file_table.resolve(entry->file));
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {
-            params.input.add_remapped_file(focus, source.content);
+            params.input.add_focus(focus, source.content);
         } else {
             params.input.add_remapped_file(Spelling(file, focus.parent()), source.content);
         }

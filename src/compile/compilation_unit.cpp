@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :compile.tokens;
 import :syntax.lexical_scan;
+import :syntax.source_text;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -37,36 +38,37 @@ auto CompilationUnit::file_id(clang::SourceLocation location) -> clang::FileID {
     return SM().getFileID(location);
 }
 
-static auto decompose(clang::SourceManager& SM, clang::SourceLocation location) -> FileOffset {
-    auto [fid, offset] = SM.getDecomposedLoc(location);
+auto CompilationUnit::decompose(clang::SourceLocation location) -> FileOffset {
+    auto [fid, offset] = SM().getDecomposedLoc(location);
+    if(params.kind == CompilationKind::Completion && fid == SM().getMainFileID() &&
+       offset > params.completion.offset) {
+        offset -= 1;
+    }
     return {fid, offset};
 }
 
 auto CompilationUnit::written_at(clang::SourceLocation location) -> FileOffset {
-    return decompose(SM(), SM().getSpellingLoc(location));
+    return decompose(SM().getSpellingLoc(location));
 }
 
 auto CompilationUnit::seen_at(clang::SourceLocation location) -> FileOffset {
-    return decompose(SM(), SM().getFileLoc(location));
+    return decompose(SM().getFileLoc(location));
 }
 
 auto CompilationUnit::produced_at(clang::SourceLocation location) -> FileOffset {
-    return decompose(SM(), SM().getExpansionLoc(location));
+    return decompose(SM().getExpansionLoc(location));
 }
 
-/// The parser splits a `>>` closing two template argument lists in two:
-/// the first `>` becomes a macro location over its half of the token.
-static auto split_half(clang::SourceManager& SM, clang::SourceLocation location)
-    -> std::optional<FileRange> {
+auto CompilationUnit::split_half(clang::SourceLocation location) -> std::optional<FileRange> {
     if(!location.isMacroID()) {
         return std::nullopt;
     }
-    auto range = SM.getExpansionRange(location);
+    auto range = SM().getExpansionRange(location);
     if(range.isTokenRange()) {
         return std::nullopt;
     }
-    auto begin = decompose(SM, range.getBegin());
-    auto end = decompose(SM, range.getEnd());
+    auto begin = decompose(range.getBegin());
+    auto end = decompose(range.getEnd());
     return FileRange{
         begin.file,
         {begin.offset, end.offset}
@@ -78,7 +80,7 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
         return std::nullopt;
     }
     auto& SM = this->SM();
-    if(auto half = split_half(SM, range.getEnd())) {
+    if(auto half = split_half(range.getEnd())) {
         if(range.getBegin() == range.getEnd()) {
             return half;
         }
@@ -96,8 +98,8 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
 
     auto focus = SM.getMainFileID();
     if(range.getBegin().isFileID() && range.getEnd().isFileID()) {
-        auto begin = decompose(SM, range.getBegin());
-        auto end = decompose(SM, range.getEnd());
+        auto begin = decompose(range.getBegin());
+        auto end = decompose(range.getEnd());
         if(begin.file != end.file) {
             return std::nullopt;
         }
@@ -122,8 +124,8 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
         }
         return FileRange{
             focus,
-            {SM.getFileOffset(spelled.front().location()),
-              SM.getFileOffset(spelled.back().endLocation())}
+            {decompose(spelled.front().location()).offset,
+              decompose(spelled.back().endLocation()).offset}
         };
     }
 
@@ -133,8 +135,8 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
     if(chars.isInvalid()) {
         return std::nullopt;
     }
-    auto begin = decompose(SM, chars.getBegin());
-    auto end = decompose(SM, chars.getEnd());
+    auto begin = decompose(chars.getBegin());
+    auto end = decompose(chars.getEnd());
     return FileRange{
         begin.file,
         {begin.offset, end.offset}
@@ -143,10 +145,10 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
 
 auto CompilationUnit::produced_range(clang::SourceRange range) -> FileRange {
     auto& SM = this->SM();
-    auto begin = decompose(SM, SM.getExpansionLoc(range.getBegin()));
+    auto begin = decompose(SM.getExpansionLoc(range.getBegin()));
     auto last = SM.getExpansionRange(range.getEnd());
-    auto end = decompose(SM, last.getEnd());
-    auto text = text_end(begin.file);
+    auto end = decompose(last.getEnd());
+    auto text = static_cast<std::uint32_t>(file_content(begin.file).size());
     if(end.file != begin.file) {
         return {
             begin.file,
@@ -213,8 +215,24 @@ auto CompilationUnit::workspace() -> llvm::StringRef {
     return params.input.workspace;
 }
 
+auto CompilationUnit::text(clang::FileID fid) -> SourceText& {
+    auto& text = texts[fid];
+    if(!text) {
+        auto content = SM().getBufferData(fid);
+        if(auto& focus = params.input.focus; fid == SM().getMainFileID()) {
+            assert((!focus.empty() || params.kind != CompilationKind::Completion) &&
+                   "a completion serves the focus file's text");
+            if(!focus.empty()) {
+                content = params.input.buffers.find(focus)->second;
+            }
+        }
+        text = std::make_unique<SourceText>(content, lang_options());
+    }
+    return *text;
+}
+
 auto CompilationUnit::file_content(clang::FileID fid) -> llvm::StringRef {
-    return SM().getBufferData(fid);
+    return text(fid).text();
 }
 
 auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef> {
@@ -222,24 +240,15 @@ auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<ll
 }
 
 auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
-    auto content = file_content(fid);
-    auto [it, inserted] = line_tables.try_emplace(fid);
-    if(inserted) {
-        it->second.starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
-        it->second.non_ascii = kota::ipc::lsp::non_ascii_lines({content.data(), content.size()});
-    }
-    return {content, it->second.starts, it->second.non_ascii};
+    return text(fid).positions();
 }
 
 auto CompilationUnit::comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment> {
+    // Every feature reads the focus file's lexical scan anyway.
     if(fid == SM().getMainFileID()) {
-        return focus_file().lexical().comments;
+        return text(fid).lexical().comments;
     }
-    auto [it, inserted] = comment_cache.try_emplace(fid);
-    if(inserted) {
-        it->second = scan_comments(file_content(fid), lang_options());
-    }
-    return it->second;
+    return text(fid).comments();
 }
 
 bool CompilationUnit::is_builtin_file(clang::FileID fid) {
@@ -268,14 +277,6 @@ const SynthesizedOrigin* CompilationUnit::origin(clang::FileID fid) {
     }
     auto it = params.input.synthesized.find(file_path(*entry));
     return it != params.input.synthesized.end() ? &it->second : nullptr;
-}
-
-auto CompilationUnit::text_end(clang::FileID fid) -> std::uint32_t {
-    if(fid == SM().getMainFileID() && params.input.text_end) {
-        // Clang's copy of a completion's buffer carries a NUL at the point.
-        return *params.input.text_end + (params.kind == CompilationKind::Completion ? 1 : 0);
-    }
-    return static_cast<std::uint32_t>(file_content(fid).size());
 }
 
 bool CompilationUnit::synthesized(clang::FileID fid) {
@@ -351,6 +352,10 @@ auto CompilationUnit::presumed_location(clang::SourceLocation location) -> clang
 
 auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
     -> clang::SourceLocation {
+    if(params.kind == CompilationKind::Completion && fid == SM().getMainFileID() &&
+       offset > params.completion.offset) {
+        offset += 1;
+    }
     return SM().getComposedLoc(fid, offset);
 }
 
@@ -376,20 +381,11 @@ auto FocusFile::tokens() -> const TokenMap& {
 }
 
 auto FocusFile::lexical() -> const LexicalInfo& {
-    if(!unit.focus_lexical) {
-        auto text = content();
-        auto end = unit.text_end(file());
-        // A prefix is lexed off a copy: the lexer reads up to a NUL
-        // terminator, which a prefix lacks.
-        unit.focus_lexical = end == text.size()
-                                 ? lexical_scan(text, unit.lang_options())
-                                 : lexical_scan(text.take_front(end).str(), unit.lang_options());
-    }
-    return *unit.focus_lexical;
+    return unit.text(file()).lexical();
 }
 
 auto FocusFile::location(std::uint32_t offset) -> clang::SourceLocation {
-    return unit.SM().getComposedLoc(file(), offset);
+    return unit.create_location(file(), offset);
 }
 
 auto FocusFile::offset(clang::SourceLocation location) -> std::optional<std::uint32_t> {

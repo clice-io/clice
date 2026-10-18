@@ -10,6 +10,7 @@ import :compile.tokens;
 import :syntax.header_context;
 import :syntax.lexical_scan;
 import :syntax.position;
+import :syntax.source_text;
 import :syntax.token;
 import :vfs.file_system;
 import :vfs.path;
@@ -129,6 +130,16 @@ struct CompilationInput {
     /// The text of the files served from memory, by path.
     llvm::StringMap<std::string> buffers;
 
+    /// The path the focus file's text is served by, as the editor has it
+    /// (add_focus); empty when the compile reads the file on disk or only
+    /// a preamble's part of it.
+    std::string focus;
+
+    /// The suffix of a header context (add_synthesized). Clang's buffer of
+    /// the focus file goes on with its include past the text add_focus
+    /// serves.
+    std::string suffix;
+
     /// The files add_synthesized served, by path, with what their text
     /// was cut from; see CompilationUnit::synthesized.
     llvm::StringMap<SynthesizedOrigin> synthesized;
@@ -141,11 +152,6 @@ struct CompilationInput {
     /// add_synthesized and CompilationUnit::host_source).
     std::string host;
 
-    /// Where the focus file's text as the editor has it ends, when its
-    /// buffer goes on with the include of a header context's suffix (see
-    /// add_synthesized).
-    std::optional<std::uint32_t> text_end;
-
     /// The PCH to load, and how many bytes of the focus file it stands for:
     /// a preamble's, or with no bytes a precompiled header the build
     /// declares, which a preamble's PCH built over it chains onto.
@@ -154,12 +160,14 @@ struct CompilationInput {
     /// The PCMs to load, by module name.
     llvm::StringMap<std::string> pcms;
 
-    /// Serve a header context's synthesized files from memory. `focus` is
-    /// the path the focus file's text is already served by, when the
-    /// compile reads all of it: the text then goes on with the include of
-    /// the context's suffix. A preamble's build and a compile of the file on
-    /// disk pass none.
-    void add_synthesized(const SynthesizedFiles& files, llvm::StringRef focus = {}) {
+    /// Serve the focus file's text from memory, as the editor has it.
+    void add_focus(llvm::StringRef path, llvm::StringRef text) {
+        focus = path.str();
+        add_remapped_file(path, text);
+    }
+
+    /// Serve a header context's synthesized files from memory.
+    void add_synthesized(const SynthesizedFiles& files) {
         for(auto& file: files) {
             add_remapped_file(file.path, file.content);
             // Named the way CompilationUnit::file_path names it.
@@ -170,12 +178,7 @@ struct CompilationInput {
                 forced_includes.push_back(file.path);
             }
         }
-        if(auto suffix = suffix_path(files); !suffix.empty() && !focus.empty()) {
-            auto text = buffers.find(focus);
-            assert(text != buffers.end() && "the focus file is served before its context");
-            text_end = static_cast<std::uint32_t>(text->second.size());
-            append_include(text->second, suffix);
-        }
+        suffix = suffix_path(files).str();
     }
 
     void add_remapped_file(llvm::StringRef path,
@@ -188,6 +191,8 @@ struct CompilationInput {
         buffers.try_emplace(path, content.str());
     }
 };
+
+class CompilationUnit;
 
 /// One compile: what it reads, which kind it is, and what else runs over
 /// the parse.
@@ -204,8 +209,9 @@ struct CompilationParams {
         /// Where in the focus file.
         std::uint32_t offset = 0;
 
-        /// What clang hands the results to; the compile owns it.
-        std::unique_ptr<clang::CodeCompleteConsumer> consumer;
+        /// Makes what clang hands the results to, for the unit once it has
+        /// opened the focus file; the compile owns it.
+        std::function<std::unique_ptr<clang::CodeCompleteConsumer>(CompilationUnit&)> consumer;
     };
 
     /// Completion: the point and its consumer.
@@ -253,7 +259,6 @@ struct FileRange {
     LocalSourceRange range;
 };
 
-class CompilationUnit;
 class FocusFile;
 
 /// Run the compile `params` describes. The caller checks that the PCH and
@@ -350,7 +355,11 @@ public:
     /// See CompilationInput::workspace.
     auto workspace() -> llvm::StringRef;
 
-    /// Get the file content of the file ID.
+    /// The text of `fid`: the focus file's as the editor has it, any
+    /// other's as clang read it. In the focus file every offset the unit
+    /// reports or takes is one in this text, though clang's buffer of it
+    /// holds a NUL at a completion's point and goes on with the include of
+    /// a header context's suffix.
     auto file_content(clang::FileID fid) -> llvm::StringRef;
 
     /// The buffer this compilation read for `fid`, or nullopt when it was
@@ -358,11 +367,10 @@ public:
     /// file_content, never falls back to a fake buffer.
     auto loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef>;
 
-    /// A file's positions, over line tables computed on first use and
-    /// cached.
+    /// The positions of file_content(fid).
     auto positions(clang::FileID fid) -> PositionMap;
 
-    /// A file's comments, lexed on first use and cached.
+    /// The comments of file_content(fid).
     auto comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment>;
 
     /// Check if a file is a builtin file.
@@ -376,11 +384,6 @@ public:
     /// Whether the compile borrows an includer context: its focus file is
     /// a header, compiled as its host sees it.
     bool borrows_context();
-
-    /// Where the text of `fid` ends: the focus file's, where the editor's
-    /// ends, before the include of a header context's suffix
-    /// (CompilationInput::text_end).
-    auto text_end(clang::FileID fid) -> std::uint32_t;
 
     /// The path of the file `fid` stands for: its own, or for a synthesized
     /// file the one its text was cut from.
@@ -520,6 +523,15 @@ private:
         return instance->getSourceManager();
     }
 
+    auto text(clang::FileID fid) -> SourceText&;
+
+    /// Where the file location `location` lies (see file_content).
+    auto decompose(clang::SourceLocation location) -> FileOffset;
+
+    /// The parser splits a `>>` closing two template argument lists in two:
+    /// the first `>` becomes a macro location over its half of the token.
+    auto split_half(clang::SourceLocation location) -> std::optional<FileRange>;
+
     /// What the synthesized file `fid` was cut from; null for any other.
     const SynthesizedOrigin* origin(clang::FileID fid);
 
@@ -608,19 +620,8 @@ private:
     /// Cache for file path. It is used to avoid multiple file path lookup.
     llvm::DenseMap<clang::FileEntryRef, llvm::StringRef> path_cache;
 
-    struct LineTables {
-        std::vector<std::uint32_t> starts;
-        std::vector<std::uint64_t> non_ascii;
-    };
-
-    /// Each file's line tables, built together on first use.
-    llvm::DenseMap<clang::FileID, LineTables> line_tables;
-
-    /// Each file's comments but the focus file's, lexed on first use.
-    llvm::DenseMap<clang::FileID, std::vector<LexicalInfo::Comment>> comment_cache;
-
-    /// The focus file's lexical scan, run on first use.
-    std::optional<LexicalInfo> focus_lexical;
+    /// Each file's text (file_content), made on first use.
+    llvm::DenseMap<clang::FileID, std::unique_ptr<SourceText>> texts;
 
     llvm::BumpPtrAllocator path_storage;
 
@@ -654,9 +655,8 @@ public:
     /// them.
     auto tokens() -> const TokenMap&;
 
-    /// The lexical scan of the editor's text (CompilationUnit::text_end),
-    /// run on first use: the one every feature reads its raw tokens,
-    /// comments and directive lines from.
+    /// The lexical scan of the text, run on first use: the one every
+    /// feature reads its raw tokens, comments and directive lines from.
     auto lexical() -> const LexicalInfo&;
 
     /// The location at `offset`.

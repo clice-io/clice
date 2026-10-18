@@ -272,11 +272,10 @@ private:
     }
 
     /// Whether `offset` lies past the editor's text, on the include of a
-    /// header context's suffix the focus file's buffer goes on with.
+    /// header context's suffix clang's buffer of the focus file goes on
+    /// with.
     bool past_text(std::uint32_t offset) {
-        auto focus = unit.focus_file();
-        auto end = unit.text_end(focus.file());
-        return end < focus.content().size() && offset > end;
+        return offset > unit.focus_file().content().size();
     }
 
     /// The filename of the #include in the focus file that `fid` was

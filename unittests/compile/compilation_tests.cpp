@@ -171,65 +171,61 @@ int main() { return 0; }
 }
 
 ZEST_CASE(SuffixFollowsText) {
-    // The compile appends the include of a header context's suffix to the
-    // focus file's text, which still ends where the editor's does: the
-    // class the text sits in closes, and its member functions read the
-    // members declared after the text.
+    // Clang's buffer of the focus file goes on with the include of a header
+    // context's suffix: the class the text sits in closes, and its member
+    // functions read the members declared after the text. The unit's text
+    // is the editor's.
     llvm::StringRef text = "int sum() { return a + later; }\nint a;";
     add_focus("body.h", text);
     prepare();
-    auto focus = TestVFS::path("body.h");
-    params.input.add_remapped_file(focus, text);
-    params.input.add_synthesized(
-        {
-            {.path = TestVFS::path(".clice-open.h"),
-             .content = "struct S {\n",
-             .entry = SynthesizedFile::Entry::Forced  },
-            {.path = TestVFS::path(".clice-suffix.h"),
-             .content = "int later;\n};\n",
-             .entry = SynthesizedFile::Entry::Appended},
-    },
-        focus);
+    params.input.add_focus(TestVFS::path("body.h"), text);
+    params.input.add_synthesized({
+        {.path = TestVFS::path(".clice-open.h"),
+         .content = "struct S {\n",
+         .entry = SynthesizedFile::Entry::Forced  },
+        {.path = TestVFS::path(".clice-suffix.h"),
+         .content = "int later;\n};\n",
+         .entry = SynthesizedFile::Entry::Appended},
+    });
     ZASSERT(try_compile());
     ZEXPECT(unit->diagnostics().empty());
     auto file = unit->focus_file();
-    ZEXPECT(unit->text_end(file.file()) == text.size());
-    ZEXPECT(file.content().take_front(text.size()) == text);
-    ZEXPECT(file.content().drop_front(text.size()).starts_with("\n#include "));
+    ZEXPECT(file.content() == text);
+    auto buffer = unit->loaded_file_content(file.file());
+    ZASSERT(buffer);
+    ZEXPECT(buffer->starts_with(text));
+    ZEXPECT(buffer->drop_front(text.size()).starts_with("\n#include "));
 }
 
-ZEST_CASE(SuffixInCompletion) {
-    // Clang's copy of a completion's buffer carries a NUL at the point, so
-    // the editor's text ends a byte later in it.
+ZEST_CASE(CompletionOffsetsInText) {
+    // Clang's buffer of a completion holds a NUL at the point; the unit's
+    // offsets past it are the text's.
     llvm::StringRef text = "int sum() { return a + lat; }\nint a;";
-    add_focus("body.h", text);
+    add_focus("body.cpp", text);
     prepare();
+    params.input.add_focus(TestVFS::path("body.cpp"), text);
+    auto point = static_cast<std::uint32_t>(text.find("lat") + 3);
     params.kind = CompilationKind::Completion;
     params.completion = {
-        .offset = static_cast<std::uint32_t>(text.find("lat") + 3),
-        .consumer = std::make_unique<IgnoreCompletions>(),
+        .offset = point,
+        .consumer = [](CompilationUnit&) { return std::make_unique<IgnoreCompletions>(); },
     };
-    auto focus = TestVFS::path("body.h");
-    params.input.add_remapped_file(focus, text);
-    params.input.add_synthesized(
-        {
-            {.path = TestVFS::path(".clice-open.h"),
-             .content = "struct S {\n",
-             .entry = SynthesizedFile::Entry::Forced  },
-            {.path = TestVFS::path(".clice-suffix.h"),
-             .content = "int later;\n};\n",
-             .entry = SynthesizedFile::Entry::Appended},
-    },
-        focus);
     ZASSERT(try_compile());
     auto file = unit->focus_file();
-    ZEXPECT(unit->text_end(file.file()) == text.size() + 1);
-    ZEXPECT(file.content().drop_front(text.size() + 1).starts_with("\n#include "));
+    ZEXPECT(file.content() == text);
+    auto buffer = unit->loaded_file_content(file.file());
+    ZASSERT(buffer);
+    ZEXPECT(buffer->size() == text.size() + 1);
+    ZEXPECT((*buffer)[point] == '\0');
+    auto later = static_cast<std::uint32_t>(text.rfind("a;"));
+    ZEXPECT(unit->token_spelling(file.location(later)) == "a");
+    ZEXPECT(file.offset(file.location(later)) == later);
+    ZEXPECT(file.offset(file.location(point)) == point);
 }
 
 ZEST_CASE(SuffixNeedsFocus) {
-    // A compile given no focus file path — a preamble's build, a compile
-    // of the file on disk — takes no suffix.
+    // A compile not served the focus file's text — a preamble's build, a
+    // compile of the file on disk — takes no suffix.
     llvm::StringRef text = "int a;\n";
     add_focus("body.h", text);
     prepare();
@@ -241,7 +237,7 @@ ZEST_CASE(SuffixNeedsFocus) {
     ZASSERT(try_compile());
     auto file = unit->focus_file();
     ZEXPECT(file.content() == text);
-    ZEXPECT(unit->text_end(file.file()) == text.size());
+    ZEXPECT(unit->loaded_file_content(file.file()) == text);
 }
 
 ZEST_CASE(NoErrorLimit) {

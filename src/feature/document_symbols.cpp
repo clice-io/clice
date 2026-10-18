@@ -983,14 +983,12 @@ auto document_symbols(CompilationUnit& unit,
             marks.push_back(directive);
         }
     }
-    // The editor's text, without the line a header compiled in its
-    // includer's context gains.
     return outline(Collector(unit).collect(),
                    lexical,
                    macros,
                    semantics.module_declarations(),
                    marks,
-                   focus.content().take_front(unit.text_end(focus.file())),
+                   focus.content(),
                    unit.lang_options(),
                    options);
 }
