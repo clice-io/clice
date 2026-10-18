@@ -4292,7 +4292,7 @@ void a() {}
     ZEXPECT(!box());
 }
 
-ZEST_CASE(HeaderInternalKeyless) {
+ZEST_CASE(HeaderInternalUnkeyed) {
     // A type of a.h's anonymous namespace: what Box<A>::show resolves names
     // it outside box.h, which only a unit walking the instantiation lists
     // among the files naming `print`. No key is offered for it, so when
