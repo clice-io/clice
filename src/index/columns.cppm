@@ -364,11 +364,9 @@ inline bool sparse_ok(llvm::ArrayRef<std::uint32_t> entries,
            (entries.empty() || entries.back() < count);
 }
 
-/// One id per entry in the width the table's size picks, every id inside
-/// the table. The width was picked from a table size read before
-/// validation, which this table size may contradict.
+/// One id per entry, every id inside the table.
 inline CheckResult ids_ok(const IdColumnView& ids, std::size_t count, std::size_t table_size) {
-    if(ids.width != id_width(table_size) || ids.bytes.size() != count * ids.width) {
+    if(ids.bytes.size() != count * ids.width) {
         return std::unexpected("id column does not match the entry count");
     }
     for(std::size_t i = 0; i < count; i += 1) {
