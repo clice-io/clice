@@ -267,7 +267,7 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
     // What the TU's instantiations resolve in its other files, in the
     // coordinates of the text the TU read: the overlay's own entries of
     // the file, or the disk shard of that very text.
-    for(std::uint32_t i = 0; resolved && i < state.instantiation_count() && !stopped; i += 1) {
+    for(std::uint32_t i = 0; with_instantiations && i < state.instantiation_count() && !stopped; i += 1) {
         auto local_id = state.instantiation_path(i);
         auto& instantiations = state.instantiation_shard(i);
         if(local_id == focus_id || !instantiations.loaded()) {
@@ -352,7 +352,7 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             }
             return true;
         });
-        if(stopped || !resolved || source.instantiations.empty()) {
+        if(stopped || !with_instantiations || source.instantiations.empty()) {
             return !stopped;
         }
         auto instantiated = source;
@@ -520,7 +520,7 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     };
     auto hit = [&](const Shard& shard) {
         auto named = named_at(shard, offset, is_macro);
-        if(resolved && &shard == source->shard) {
+        if(with_instantiations && &shard == source->shard) {
             for(auto* instantiations: source->instantiations) {
                 add_resolved(*instantiations, offset, named);
             }
