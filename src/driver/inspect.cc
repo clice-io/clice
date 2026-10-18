@@ -16,6 +16,7 @@ import :feature.feature;
 import :feature.semantic_token_stream;
 import :index.indexer;
 import :index.instantiation_shard;
+import :index.navigation;
 import :index.query;
 import :index.shard;
 import :index.tu_index;

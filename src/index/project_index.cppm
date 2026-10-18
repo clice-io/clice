@@ -250,6 +250,15 @@ struct ProjectIndex {
     /// has none current.
     const TUManifest* tu_manifest(Fid tu) const;
 
+    /// The include edges of a document, the input of the document-link
+    /// projection: from its own TU manifest when it has one, else from the
+    /// contributing TUs' manifests (a header reached only through source
+    /// TUs — its directives are nodes hanging off the header's own node
+    /// there). Only manifests that entered the document at its shard's
+    /// content generation contribute; empty when the file was never
+    /// indexed.
+    std::vector<IncludeEdge> include_edges(const FileTable& files, Fid file) const;
+
     /// Per-file shard blobs keyed by project-level path_id: symbol
     /// occurrences, relations and stored content for position mapping,
     /// served zero-copy. The writer holds every persisted shard here; a

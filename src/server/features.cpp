@@ -5,7 +5,11 @@ module;
 module clice;
 
 import :command.search_config;
+import :index.hierarchy;
+import :index.navigation;
 import :index.rename;
+import :index.search;
+import :index.text;
 import :sched.index.pump;
 import :semantic.symbol;
 import :server.ast_family;
@@ -181,9 +185,9 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
         return module_hover_card(*cursor, *info);
     }
     std::string definition;
-    auto text = query.definition_text(symbol, cursor->site.file);
+    auto text = index::definition_text(query, symbol, cursor->site.file);
     if(!text) {
-        text = query.declaration_text(symbol, cursor->site.file);
+        text = index::declaration_text(query, symbol, cursor->site.file);
     }
     if(text) {
         definition = std::move(text->text);
@@ -298,7 +302,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             std::vector<protocol::DocumentLink> links;
             if(query.shard_matching(session->path_id, session->text())) {
                 auto raw = feature::index_document_links(text_of(*session),
-                                                         query.include_edges(session->path_id));
+                                                         query.project().include_edges(query.file_table(), session->path_id));
                 convert(raw, links);
             }
             session->index_served = true;
@@ -385,7 +389,7 @@ Features::RawResult Features::definition(Ticket ticket,
             auto defined = gather(symbol,
                                   path_id,
                                   [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                      return from.definition_sites(named, path_id);
+                                      return index::definition_sites(from, named, path_id);
                                   });
             if(defined.empty() || llvm::any_of(defined, [&](const index::Site& site) {
                    return index::covers(site, cursor->site);
@@ -394,7 +398,7 @@ Features::RawResult Features::definition(Ticket ticket,
                     gather(symbol,
                            path_id,
                            [&](const index::IndexQuery& from, index::SymbolHash named) {
-                               return from.definition({.symbols = {named}, .site = cursor->site});
+                               return index::definition(from, {.symbols = {named}, .site = cursor->site});
                            });
             }
             llvm::append_range(result, std::move(defined));
@@ -427,7 +431,7 @@ Features::RawResult Features::definition(Ticket ticket,
         }
         if(offset) {
             auto links = feature::index_document_links(text_of(*session),
-                                                       query.include_edges(session->path_id));
+                                                       query.project().include_edges(query.file_table(), session->path_id));
             if(auto* link = link_at(links, *offset)) {
                 co_return to_raw(directive_definition(*link));
             }
@@ -1052,7 +1056,7 @@ bool Features::scope_candidates(llvm::StringRef prefix,
             default: return Kind::Text;
         }
     };
-    auto found = query.completables(prefix, file, scope_candidate_limit);
+    auto found = index::completables(query, prefix, file, scope_candidate_limit);
     for(auto& [symbol, declared]: found.names) {
         // A macro belongs to no namespace.
         if(symbol.kind == SymbolKind::Macro) {
@@ -1132,7 +1136,7 @@ Features::RawResult Features::references(Ticket ticket,
     auto sites = gather(cursor->symbols,
                         path_id,
                         [&](const index::IndexQuery& from, index::SymbolHash named) {
-                            return from.references({.symbols = {named}, .site = cursor->site},
+                            return index::references(from, {.symbols = {named}, .site = cursor->site},
                                                    include_declaration);
                         });
     if(std::uint32_t limit = project.config.references.limit.value;
@@ -1157,7 +1161,7 @@ Features::RawResult Features::document_highlight(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::document_highlights(query.document_highlights(*cursor)));
+    co_return to_raw(to_lsp::document_highlights(index::document_highlights(query, *cursor)));
 }
 
 static kota::ipc::Error rename_refused(std::string message) {
@@ -1541,7 +1545,7 @@ Features::RawResult Features::declaration(Ticket ticket,
         gather(cursor->symbols,
                path_id,
                [&](const index::IndexQuery& from, index::SymbolHash named) {
-                   return from.declaration({.symbols = {named}, .site = cursor->site});
+                   return index::declaration(from, {.symbols = {named}, .site = cursor->site});
                })));
 }
 
@@ -1561,7 +1565,7 @@ Features::RawResult Features::type_definition(Ticket ticket,
         to_lsp::locations(gather(cursor->symbols,
                                  path_id,
                                  [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                     return from.type_definition(*cursor, named);
+                                     return index::type_definition(from, *cursor, named);
                                  })));
 }
 
@@ -1582,7 +1586,7 @@ Features::RawResult Features::implementation(Ticket ticket,
         // What a name may mean — a dependent name's resolution, an overload
         // set's candidates, a using-declaration's targets — implements it,
         // as an override implements a virtual function.
-        if(query.names_weakly(*cursor, symbol)) {
+        if(index::names_weakly(query, *cursor, symbol)) {
             llvm::append_range(
                 sites,
                 gather(symbol,
@@ -1595,7 +1599,7 @@ Features::RawResult Features::implementation(Ticket ticket,
             sites,
             gather(symbol, path_id, [&](const index::IndexQuery& from, index::SymbolHash named) {
                 std::vector<index::Site> placed;
-                for(auto& located: from.implementation(named, path_id)) {
+                for(auto& located: index::implementation(from, named, path_id)) {
                     placed.push_back(std::move(located.site));
                 }
                 return placed;
@@ -1673,7 +1677,7 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
         merge_edges(callers,
-                    from->call_graph(named, path_id, {.callees = false}).callers,
+                    index::call_graph(*from, named, path_id, {.callees = false}).callers,
                     [&](Fid file) { return answers_for(*from, file, asked); });
     }
     std::vector<protocol::CallHierarchyIncomingCall> results;
@@ -1699,7 +1703,7 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
         merge_edges(callees,
-                    from->call_graph(named, path_id, {.callers = false}).callees,
+                    index::call_graph(*from, named, path_id, {.callers = false}).callees,
                     [&](Fid file) { return answers_for(*from, file, asked); });
     }
     std::vector<protocol::CallHierarchyOutgoingCall> results;
@@ -1767,7 +1771,7 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
         merge_located(supertypes,
-                      from->type_hierarchy(named, path_id, {.subtypes = false}).supertypes,
+                      index::type_hierarchy(*from, named, path_id, {.subtypes = false}).supertypes,
                       [&](Fid file) { return answers_for(*from, file, asked); });
     }
     co_return to_raw(type_items(supertypes, [&](index::SymbolHash hash, Fid anchor) {
@@ -1785,7 +1789,7 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
         merge_located(subtypes,
-                      from->type_hierarchy(named, path_id, {.supertypes = false}).subtypes,
+                      index::type_hierarchy(*from, named, path_id, {.supertypes = false}).subtypes,
                       [&](Fid file) { return answers_for(*from, file, asked); });
     }
     co_return to_raw(type_items(subtypes, [&](index::SymbolHash hash, Fid anchor) {
@@ -1804,7 +1808,7 @@ std::vector<Features::WorkspaceSymbol> Features::workspace_symbol(llvm::StringRe
     // again, where a bare name would fail a qualified query: those
     // replies carry the qualified name.
     bool qualified = parsed->absolute || !parsed->scope.empty();
-    for(auto& located: query.search(*parsed, workspace_symbol_limit)) {
+    for(auto& located: index::search(query, *parsed, workspace_symbol_limit)) {
         // Every project answers workspace/symbol (MasterServer): an open
         // file only from the project serving its buffer.
         if(auto* serving = open_in(located.site.file); serving && serving != &query) {

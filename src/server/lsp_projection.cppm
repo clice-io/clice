@@ -4,6 +4,7 @@ module;
 
 module clice:server.lsp_projection;
 
+import :index.navigation;
 import :index.query;
 import :index.site;
 import :index.symbol;
@@ -26,7 +27,7 @@ std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites);
 std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites);
 
 std::vector<protocol::DocumentHighlight>
-    document_highlights(llvm::ArrayRef<index::IndexQuery::PlacedHighlight> highlights);
+    document_highlights(llvm::ArrayRef<index::PlacedHighlight> highlights);
 
 /// `container` is the qualified name of the symbol's parent, empty at the
 /// translation unit. A function is named with its signature, which tells

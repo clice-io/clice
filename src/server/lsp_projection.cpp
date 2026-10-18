@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :feature.feature;
+import :index.navigation;
 import :server.lsp_projection;
 
 namespace clice::to_lsp {
@@ -39,7 +40,7 @@ std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites) {
 }
 
 std::vector<protocol::DocumentHighlight>
-    document_highlights(llvm::ArrayRef<index::IndexQuery::PlacedHighlight> highlights) {
+    document_highlights(llvm::ArrayRef<index::PlacedHighlight> highlights) {
     auto kind_of = [](index::HighlightKind kind) {
         switch(kind) {
             case index::HighlightKind::Text: return protocol::DocumentHighlightKind::Text;

@@ -4,7 +4,9 @@ module;
 
 module clice;
 
+import :index.hierarchy;
 import :index.rename;
+import :index.search;
 import :index.symbol_query;
 import :syntax.lexer;
 
@@ -99,7 +101,7 @@ std::string where(const Site& site) {
 std::vector<IndexQuery::Located> all_named(const IndexQuery& query, llvm::StringRef name) {
     SymbolQuery exact{.mode = SymbolQuery::Mode::Exact, .pattern = name.str()};
     for(std::size_t limit = 256;; limit *= 4) {
-        auto hits = query.search(exact, limit);
+        auto hits = search(query, exact, limit);
         if(hits.size() < limit) {
             return hits;
         }
@@ -635,7 +637,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
                 while(!pending.empty()) {
                     auto next = std::move(pending.back());
                     pending.pop_back();
-                    auto types = query.type_hierarchy(next.symbol.hash, next.site.file, {});
+                    auto types = type_hierarchy(query, next.symbol.hash, next.site.file, {});
                     for(auto& type: up ? types.supertypes : types.subtypes) {
                         if(hierarchy.insert(type.symbol.hash).second) {
                             pending.push_back(std::move(type));

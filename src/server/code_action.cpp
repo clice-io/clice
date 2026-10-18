@@ -5,8 +5,10 @@ module;
 module clice;
 
 import :command.command;
+import :index.search;
 import :index.shard;
 import :index.symbol_query;
+import :index.text;
 import :server.editor_context;
 import :server.features;
 import :syntax.include_resolver;
@@ -260,7 +262,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                    })) {
                     return true;
                 }
-                auto definition = query.definition_text(hash, host);
+                auto definition = index::definition_text(query, hash, host);
                 if(!definition) {
                     return true;
                 }
@@ -316,7 +318,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         }
         llvm::StringSet<> seen;
         std::vector<CanonicalRef> headers;
-        for(const auto& located: query.locate(symbol_query)) {
+        for(const auto& located: index::locate(query, symbol_query)) {
             if(located.symbol.name != request.name) {
                 continue;
             }

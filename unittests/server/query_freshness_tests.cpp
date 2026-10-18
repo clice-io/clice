@@ -6,6 +6,7 @@ module clice;
 
 import :index.indexer;
 import :index.query;
+import :index.search;
 import :index.shard;
 import :index.tu_index;
 import :project.command_resolver;
@@ -139,7 +140,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     // Line-based resolution in the file works while its index is current.
     index::SymbolQuery by_line;
     by_line.position = {.path = project.file_table.resolve(focus_id).str(), .line = 3};
-    ZASSERT(!disk_query.locate(by_line).empty());
+    ZASSERT(!index::locate(disk_query, by_line).empty());
 
     // The disk was seen holding other text: the file's contribution is
     // skipped until its shard describes the disk again; other files' shards
@@ -150,7 +151,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
 
     // Cursor-style resolution against the stale index is unresolvable: the
     // line numbers describe text that no longer exists.
-    ZASSERT(disk_query.locate(by_line).empty());
+    ZASSERT(index::locate(disk_query, by_line).empty());
 
     // A changed definition file drops out of definition lookups.
     project.file_table.disk.observe(header_id, DiskObservation{.hash = 1});

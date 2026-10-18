@@ -1378,6 +1378,65 @@ const TUManifest* ProjectIndex::tu_manifest(Fid tu) const {
     return it->second ? &*it->second : nullptr;
 }
 
+std::vector<IncludeEdge> ProjectIndex::include_edges(const FileTable& files, Fid file) const {
+    // Every consumer projects the edges onto content the serving shard
+    // matches, so a manifest contributes only where the version it entered
+    // for this document carries that same content generation — a TU that
+    // indexed an older revision would place its lines in text that moved.
+    auto* shard = shard(file);
+    if(!shard) {
+        return {};
+    }
+    auto generation = shard->content_hash();
+
+    auto is_document = [&](VersionID fv) {
+        auto& version = files.version(fv);
+        return version.fid == file && version.content_hash == generation;
+    };
+
+    // A directive line of the document is a node whose parent node entered
+    // this file: the TU root (parent == no_node) when the document is the TU
+    // itself, or any node of the document's own file version otherwise
+    // (directives inside included headers hang off the node of the file
+    // that contains them).
+    std::vector<IncludeEdge> edges;
+    auto append = [&](const TUManifest& manifest) {
+        bool root_is_document = is_document(manifest.tu_fv);
+        llvm::SmallVector<bool> document_nodes(manifest.nodes.size());
+        for(auto [i, node]: llvm::enumerate(manifest.nodes)) {
+            document_nodes[i] = is_document(VersionID{node.file});
+        }
+        for(const auto& node: manifest.nodes) {
+            if(node.parent == no_node ? !root_is_document : !document_nodes[node.parent]) {
+                continue;
+            }
+            edges.push_back({
+                .line = node.line,
+                .target = std::string(files.resolve(files.version(VersionID{node.file}).fid)),
+            });
+        }
+    };
+
+    // The document's own manifest is its own context and answers alone; a
+    // header reached only through source TUs has none, and its directives
+    // live in the contributing TUs' manifests instead. The generation gate
+    // above dedups divergent revisions; agreeing TUs collapse in the
+    // projection's dedup.
+    if(auto manifest_it = manifests.find(file); manifest_it != manifests.end()) {
+        append(manifest_it->second);
+        return edges;
+    }
+    if(auto contribution_it = contributions.find(file);
+       contribution_it != contributions.end()) {
+        for(auto tu: llvm::make_first_range(contribution_it->second)) {
+            if(auto manifest_it = manifests.find(tu); manifest_it != manifests.end()) {
+                append(manifest_it->second);
+            }
+        }
+    }
+    return edges;
+}
+
 const Shard* ProjectIndex::shard(Fid file) const {
     auto it = shards.find(file);
     if(it != shards.end()) {

@@ -4,9 +4,11 @@ module;
 
 module clice;
 
+import :index.hierarchy;
 import :index.indexer;
 import :index.query;
 import :index.shard;
+import :index.text;
 import :index.tu_index;
 import :project.command_resolver;
 import :project.index_store;
@@ -242,7 +244,7 @@ int main() { return 0; }
 
     // The definition text comes from the same preamble entries, sliced from
     // the buffer: the hover card for a `#define` above the PCH bound.
-    auto definition = index_query.definition_text(cursor.symbols.front(), cursor.site.file);
+    auto definition = index::definition_text(index_query, cursor.symbols.front(), cursor.site.file);
     ZASSERT(definition);
     ZEXPECT(llvm::StringRef(definition->text).contains("FOO"));
 }
@@ -307,7 +309,7 @@ int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
     // overlay; each caller must report it exactly once.
     merge_disk_index();
 
-    auto callers = index_query.call_graph(hash_of("callee"), Fid{}, {.callees = false}).callers;
+    auto callers = index::call_graph(index_query, hash_of("callee"), Fid{}, {.callees = false}).callers;
     ZASSERT(callers.size() == 2);
     for(auto& edge: callers) {
         ZEXPECT(edge.sites.size() == 1);
@@ -329,14 +331,14 @@ Derived instance;
     open_with_overlay();
 
     auto derived = hash_of("Derived");
-    auto supertypes = index_query.type_hierarchy(derived, Fid{}, {.subtypes = false}).supertypes;
+    auto supertypes = index::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
     ZASSERT(supertypes.size() == 1);
     ZEXPECT(supertypes[0].symbol.name == "Base");
 
     // Once derived.h is open, its session owns the type relations spelled
     // there; the overlay's disk-snapshot relations must stop contributing.
     session_store.open(project.file_table.intern(Spelling::absolute(header_path("derived.h"))));
-    supertypes = index_query.type_hierarchy(derived, Fid{}, {.subtypes = false}).supertypes;
+    supertypes = index::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
     ZEXPECT(supertypes.size() == 0);
 }
 
@@ -376,7 +378,7 @@ int main() { return 0; }
     dir.touch("main.cpp", sources.all_files.find("main.cpp")->second.content);
     merge_disk_index(dir.path("main.cpp"));
 
-    auto text = disk_query.definition_text(hash_of("FOO"), Fid{});
+    auto text = index::definition_text(disk_query, hash_of("FOO"), Fid{});
     ZASSERT(text);
     ZEXPECT(llvm::StringRef(text->text).contains("FOO"));
 }
@@ -397,11 +399,11 @@ int main() { return 0; }
     merge_disk_index();
 
     auto foo = hash_of("FOO");
-    ZEXPECT(!disk_query.definition_text(foo, Fid{}).has_value());
+    ZEXPECT(!index::definition_text(disk_query, foo, Fid{}).has_value());
 
     auto references = disk_query.sites(foo, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
-    for(auto& line: disk_query.context_lines(references)) {
+    for(auto& line: index::context_lines(disk_query, references)) {
         ZEXPECT(line.empty());
     }
 }
@@ -444,19 +446,19 @@ ZEST_CASE(PreviewFromDisk) {
     symbol.name = "value";
     symbol.reference_files.add(path_id.raw);
 
-    auto definition = disk_query.definition_text(sym, Fid{});
+    auto definition = index::definition_text(disk_query, sym, Fid{});
     ZASSERT(definition);
     ZEXPECT(definition->text == "int value = 1;");
 
     auto references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
-    ZEXPECT(disk_query.context_lines(references) == std::vector<std::string>{"int other = value;"});
+    ZEXPECT(index::context_lines(disk_query, references) == std::vector<std::string>{"int other = value;"});
 
     dir.touch("preview.cpp", "int moved = 0;\n");
-    ZEXPECT(!disk_query.definition_text(sym, Fid{}).has_value());
+    ZEXPECT(!index::definition_text(disk_query, sym, Fid{}).has_value());
     references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
-    ZEXPECT(disk_query.context_lines(references) == std::vector<std::string>{""});
+    ZEXPECT(index::context_lines(disk_query, references) == std::vector<std::string>{""});
 }
 
 ZEST_CASE(SharedPreambleScoped) {

@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :feature.feature;
 import :index.query;
+import :index.text;
 import :semantic.display;
 import :semantic.documentation;
 import :support.markup;
@@ -72,10 +73,10 @@ Documentation symbol_documentation(const index::IndexQuery& query,
                                    const DocumentationOptions& options,
                                    unsigned depth) {
     return read_copying(
-        query.doc_comment(hash, anchor, options.inherit),
+        index::doc_comment(query, hash, anchor, options.inherit),
         options,
         depth,
-        [&](llvm::StringRef name) { return query.copied_doc_targets(hash, anchor, name); },
+        [&](llvm::StringRef name) { return index::copied_doc_targets(query, hash, anchor, name); },
         [&](const index::IndexQuery::Located& target, unsigned next) {
             return symbol_documentation(query, target.symbol.hash, target.site.file, options, next);
         });
