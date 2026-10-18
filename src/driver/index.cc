@@ -662,12 +662,12 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
     for(auto hash: matches) {
         auto info = query.symbol_info(hash);
         if(!info) {
-            driver::println("{}: no table knows this hash", format_hash(hash));
+            driver::println("{}: no table knows this hash", index::symbol_id(hash));
             rc = 1;
             continue;
         }
         driver::println("symbol {}  kind={}  name={}  args={}  qualified={}  flags={}  form={}",
-                        format_hash(hash),
+                        index::symbol_id(hash),
                         kind_name(info->kind),
                         info->name,
                         info->args,
@@ -680,11 +680,11 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
         for(auto parent = info->parent; parent != 0 && visited.insert(parent).second;) {
             auto scope = query.symbol_info(parent);
             if(!scope) {
-                driver::println("  parent {}: unknown", format_hash(parent));
+                driver::println("  parent {}: unknown", index::symbol_id(parent));
                 break;
             }
             driver::println("  parent {}  kind={}  name={}",
-                            format_hash(parent),
+                            index::symbol_id(parent),
                             kind_name(scope->kind),
                             scope->display_name());
             parent = scope->parent;
@@ -802,7 +802,7 @@ int run_show_file(Project& project, llvm::StringRef argument) {
     }
     for(auto& [hash, identity]: locals) {
         driver::println("    local {}  kind={}  name={}{}",
-                        format_hash(hash),
+                        index::symbol_id(hash),
                         kind_name(identity.kind),
                         identity.name,
                         identity.args);
