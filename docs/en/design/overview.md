@@ -78,9 +78,9 @@ Semantic analysis capabilities beyond Clang's native APIs, over the AST of a com
 
 Symbol indexing system with cross-translation-unit query support. Layered as:
 
-- `TUIndex`: Index rows produced from a single compilation, projected from the semantic map
+- `TUIndex`: Index entries produced from a single compilation, projected from the semantic map
 - `ProjectIndex`: The global layer — externally visible symbols, plus the record of which translation units contributed which files
-- `Shard`: The per-file storage unit. Each compilation context that preprocesses the file differently contributes a variant, deduplicated by the content identity of its encoded rows; names local to the file live in the shard itself, only external names enter the `ProjectIndex`
+- `Shard`: The per-file storage unit. Each compilation context that preprocesses the file differently contributes a variant, deduplicated by the content identity of its encoded entries; names local to the file live in the shard itself, only external names enter the `ProjectIndex`
 - `BlobDatabase`: Persistence backend — all index blobs live in a single LMDB database
 
 See [Symbol Index](symbol-index.md).
