@@ -11,6 +11,7 @@ import :index.serialization;
 import :index.shard;
 import :semantic.token_class;
 import :support.logging;
+import :syntax.position;
 
 namespace clice::index {
 
@@ -132,11 +133,6 @@ struct OccurrenceTable {
         return {columns.range_of(entry), sym_hashes[syms[entry]]};
     }
 };
-
-/// Whether line `line` ends in "\r\n" by a blob's CRLF bits.
-bool ends_crlf(llvm::ArrayRef<std::uint64_t> crlf_lines, std::size_t line) {
-    return line / 64 < crlf_lines.size() && ((crlf_lines[line / 64] >> (line % 64)) & 1) != 0;
-}
 
 /// Whether an extent fits the u16 extent columns beside its relation's range:
 /// as the distance back to its begin and its length.
@@ -347,13 +343,15 @@ CheckResult variants_ok(BlobView root) {
 // The line table reconstructs every line start by prefix sum, so it must
 // both pair with its escape table and add up to exactly the content size —
 // a drifted sum would shift every position mapping below the corruption.
+// Position mapping reads a listed non-ASCII line's text in place of the
+// line: it must be exactly the line's text without its end, and hold a
+// non-ASCII byte — a pure-ASCII line is the absent entry's to spell.
 CheckResult line_table_ok(BlobView root) {
     auto line_lengths = to_array_ref(root[&ShardBlob::line_lengths]);
     auto long_lines = to_array_ref(root[&ShardBlob::long_lines]);
     auto long_line_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
     if(line_lengths.empty() ||
-       !escapes_ok(line_lengths, length_escape, long_lines, long_line_lengths.size()) ||
-       !std::ranges::is_sorted(long_lines, std::less_equal{})) {
+       !escapes_ok(line_lengths, length_escape, long_lines, long_line_lengths.size())) {
         return std::unexpected("line table does not pair with its escape table");
     }
     // A "\r\n" ending needs a line holding at least those two bytes and a
@@ -363,8 +361,15 @@ CheckResult line_table_ok(BlobView root) {
        (crlf_lines.back() == 0 || crlf_lines.size() > (line_lengths.size() + 63) / 64)) {
         return std::unexpected("CRLF line table is not canonical");
     }
+    auto utf8_lines = to_array_ref(root[&ShardBlob::utf8_lines]);
+    auto utf8_text = to_ref(root[&ShardBlob::utf8_text]);
+    auto utf8_ends = to_array_ref(root[&ShardBlob::utf8_text_ends]);
+    if(utf8_ends.size() != utf8_lines.size() || !covering_ends(utf8_ends, utf8_text.size())) {
+        return std::unexpected("non-ASCII line columns do not line up");
+    }
     std::uint64_t line_sum = 0;
     std::size_t escape_cursor = 0;
+    std::uint32_t utf8_cursor = 0;
     for(std::size_t line = 0; line < line_lengths.size(); line += 1) {
         std::uint32_t length = line_lengths[line];
         if(length == length_escape) {
@@ -374,47 +379,26 @@ CheckResult line_table_ok(BlobView root) {
                 return std::unexpected("escaped line length below the escape threshold");
             }
         }
-        if(ends_crlf(crlf_lines, line) && (length < 2 || line + 1 == line_lengths.size())) {
+        auto last = line + 1 == line_lengths.size();
+        auto crlf = ends_crlf(crlf_lines, line);
+        if(crlf && (length < 2 || last)) {
             return std::unexpected("CRLF bit on a line that cannot end in CRLF");
+        }
+        if(utf8_cursor < utf8_lines.size() && utf8_lines[utf8_cursor] == line) {
+            auto text = back_to_back(utf8_text, utf8_ends, utf8_cursor);
+            if(text.size() != (last ? length : length - (crlf ? 2 : 1)) || text.contains('\n') ||
+               kota::ipc::lsp::is_ascii({text.data(), text.size()})) {
+                return std::unexpected("a non-ASCII line's text does not match its line");
+            }
+            utf8_cursor += 1;
         }
         line_sum += length;
     }
+    if(utf8_cursor != utf8_lines.size()) {
+        return std::unexpected("non-ASCII lines are not ascending lines of the table");
+    }
     if(line_sum != root[&ShardBlob::content_size]) {
         return std::unexpected("line lengths do not add up to the content size");
-    }
-    return {};
-}
-
-// Position mapping reads a listed line's text in place of the line: it must
-// be exactly the line's text without its end, and hold a non-ASCII byte — a
-// pure-ASCII line is the absent entry's to spell.
-CheckResult utf8_lines_ok(BlobView root) {
-    auto lines = to_array_ref(root[&ShardBlob::utf8_lines]);
-    auto text = to_ref(root[&ShardBlob::utf8_text]);
-    auto ends = to_array_ref(root[&ShardBlob::utf8_text_ends]);
-    auto line_lengths = to_array_ref(root[&ShardBlob::line_lengths]);
-    auto crlf_lines = to_array_ref(root[&ShardBlob::crlf_lines]);
-    if(ends.size() != lines.size() || !covering_ends(ends, text.size()) ||
-       !std::ranges::is_sorted(lines, std::less_equal{}) ||
-       (!lines.empty() && lines.back() >= line_lengths.size())) {
-        return std::unexpected("non-ASCII line columns do not line up");
-    }
-    auto long_lines = to_array_ref(root[&ShardBlob::long_lines]);
-    auto long_line_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
-    for(std::size_t i = 0; i < lines.size(); i += 1) {
-        auto line = lines[i];
-        std::uint32_t length = line_lengths[line];
-        if(length == length_escape) {
-            length = long_line_lengths[escape_position(long_lines, line)];
-        }
-        if(line + 1 != line_lengths.size()) {
-            length -= ends_crlf(crlf_lines, line) ? 2 : 1;
-        }
-        auto line_text = back_to_back(text, ends, static_cast<std::uint32_t>(i));
-        if(line_text.size() != length || line_text.contains('\n') ||
-           kota::ipc::lsp::is_ascii({line_text.data(), line_text.size()})) {
-            return std::unexpected("a non-ASCII line's text does not match its line");
-        }
     }
     return {};
 }
@@ -693,7 +677,6 @@ CheckResult validate(BlobView root) {
     constexpr std::array checks = {
         variants_ok,
         line_table_ok,
-        utf8_lines_ok,
         symbol_table_ok,
         range_encodings_ok,
         occurrences_ok,

@@ -13,6 +13,12 @@ namespace clice {
 
 using PositionEncoding = kota::ipc::lsp::PositionEncoding;
 
+/// Whether line `line` ends in "\r\n" by `crlf`, whose bit `n % 64` of word
+/// `n / 64` marks line `n`.
+inline bool ends_crlf(std::span<const std::uint64_t> crlf, std::size_t line) {
+    return line / 64 < crlf.size() && ((crlf[line / 64] >> (line % 64)) & 1) != 0;
+}
+
 /// The conversions between one text's byte offsets and its positions, over
 /// the line starts its owner keeps, in the encoding each call names.
 /// Borrows everything.
@@ -204,7 +210,7 @@ private:
         std::span<const std::uint64_t> bits;
 
         bool operator()(std::uint32_t line) const {
-            return line / 64 < bits.size() && ((bits[line / 64] >> (line % 64)) & 1) != 0;
+            return ends_crlf(bits, line);
         }
     };
 
