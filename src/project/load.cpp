@@ -110,8 +110,9 @@ std::string deeper_databases_hint(const Project& project) {
         return {};
     }
     return std::format(
-        " Deeper ones load only when clice.toml names them; to use those found, add "
-        "[[rules]] compile_commands = [{}] to clice.toml.",
+        " Deeper ones load only when clice.toml names them (the editor also loads one when it "
+        "opens a file below it); to use those found, give clice.toml a [[rules]] table with "
+        "compile_commands = [{}].",
         llvm::join(names, ", "));
 }
 
