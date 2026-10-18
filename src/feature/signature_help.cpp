@@ -246,7 +246,16 @@ public:
         policy = display::printing_policy(*context, options);
 
         bool ranked = object_written(sema, open_paren);
-        if(current_arg == 0 && !ranked) {
+        // A call on an object ranks its member functions by the object
+        // even before any argument: `pick(` takes the non-const overload
+        // of `operator()` on a non-const `pick`.
+        auto by_object = [](const OverloadCandidate& candidate) {
+            const auto* method =
+                llvm::dyn_cast_or_null<clang::CXXMethodDecl>(candidate.getFunction());
+            return method && method->isInstance() && !llvm::isa<clang::CXXConstructorDecl>(method);
+        };
+        if(current_arg == 0 && !ranked &&
+           llvm::none_of(llvm::ArrayRef(candidates, candidate_count), by_object)) {
             order_unranked({candidates, candidate_count}, sema.getSourceManager());
         }
         llvm::SmallVector<const clang::FunctionDecl*> listed;

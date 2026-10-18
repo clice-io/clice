@@ -5,3 +5,7 @@ active = 0
 [answers.const_object.signature_help]
 signatures = ["at(⟦int index⟧) const -> int"]
 active = 0
+
+[answers.call_operator.signature_help]
+signatures = ["pick() -> float", "pick() -> int"]
+active = 0

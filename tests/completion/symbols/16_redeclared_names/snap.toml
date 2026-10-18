@@ -7,3 +7,18 @@ items = [
 items = [
     { label = "attr", kind = "TypeParameter" },
 ]
+
+[answers.redeclared_function.completion]
+items = [
+    { label = "reset(int level = 0)", kind = "Function", detail = "void" },
+]
+
+[answers.enum_keyword.completion]
+items = [
+    { label = "Color", kind = "Enum" },
+]
+
+[answers.c_enum_keyword.completion]
+items = [
+    { label = "Color", kind = "Enum" },
+]

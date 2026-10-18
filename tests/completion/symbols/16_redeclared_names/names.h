@@ -23,3 +23,6 @@ typedef union attr attr;
 union attr {
     int flags;
 };
+
+void reset(int);
+void reset(int level = 0);

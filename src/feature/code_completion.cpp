@@ -128,16 +128,22 @@ bool rarely_accessed(const clang::NamedDecl* decl) {
 }
 
 /// The declaration an item shows of what Sema offers, whichever of its
-/// declarations Sema met first: the first one that is no friend's. A
-/// friend declaration names its template parameters, if at all, for
-/// itself, and gives them no defaults; under a preamble's PCH, the friend
-/// an instantiation of another class template declared before the class
-/// itself is the first declaration of the class template.
+/// declarations Sema met first, but never a friend's, which names the
+/// parameters for itself and gives them no defaults: a function's newest
+/// one, with the prototype and the defaults of those before it; the first
+/// one of anything else, as a variable's later one is its out-of-line
+/// definition, its type spelled through its class. Under a preamble's
+/// PCH, the friend an instantiation of another class template declared
+/// before the class itself is the first declaration of the class template.
 const clang::NamedDecl* shown_declaration(const clang::NamedDecl* decl) {
-    const clang::Decl* shown = decl->getCanonicalDecl();
+    bool newest = decl->getAsFunction() != nullptr;
+    const clang::Decl* shown = decl;
     for(const clang::Decl* each = decl->getMostRecentDecl(); each; each = each->getPreviousDecl()) {
         if(each->getFriendObjectKind() == clang::Decl::FOK_None) {
             shown = each;
+            if(newest) {
+                break;
+            }
         }
     }
     return llvm::cast<clang::NamedDecl>(shown);
@@ -221,8 +227,9 @@ const clang::CodeCompletionString&
 }
 
 /// Whether a typedef of the tag's own name in its scope names it, as C
-/// headers write `typedef union attr attr;`: Sema offers the tag only when
-/// it meets the tag before the typedef, and the typedef either way.
+/// headers write `typedef union attr attr;`: where names of both kinds
+/// complete, Sema offers the tag only when it meets the tag before the
+/// typedef, and the typedef either way.
 bool named_by_typedef(const clang::TagDecl* tag) {
     const auto* scope = tag->getDeclContext()->getRedeclContext();
     if(!tag->getDeclName() || !scope->isFileContext()) {
@@ -1725,10 +1732,15 @@ public:
         };
 
         llvm::DenseSet<const clang::Decl*> offered;
+        /// After `struct`, `union` or `enum`, where Sema offers only tags.
+        bool tags_only = llvm::is_contained({clang::CodeCompletionContext::CCC_ClassOrStructTag,
+                                             clang::CodeCompletionContext::CCC_UnionTag,
+                                             clang::CodeCompletionContext::CCC_EnumTag},
+                                            context.getKind());
         /// `relevance` scales what the context makes of the candidate.
         auto add_declaration = [&](clang::CodeCompletionResult& candidate, float relevance) {
             if(auto* tag = llvm::dyn_cast<clang::TagDecl>(candidate.Declaration);
-               tag && named_by_typedef(tag)) {
+               tag && !tags_only && named_by_typedef(tag)) {
                 return;
             }
             candidate.Declaration = shown_declaration(candidate.Declaration);
