@@ -866,6 +866,8 @@ ZEST_CASE(UnsortedRelationsRejected) {
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference),
                       static_cast<std::uint8_t>(RelationKind::Reference)};
     blob.rels.packed = {index::pack_range(0, 3), index::pack_range(4, 3)};
+    blob.rel_target_ranks.ids8 = {0};
+    blob.rel_extent_ranks.ids8 = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -922,6 +924,8 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     blob.rel_offsets.ids8 = {0, 1};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
     blob.rels.packed = {index::pack_range(0, index::length_escape)};
+    blob.rel_target_ranks.ids8 = {0};
+    blob.rel_extent_ranks.ids8 = {0};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
@@ -940,6 +944,8 @@ ZEST_CASE(RangesBeyondContentRejected) {
     blob.occ_syms.ids8 = {0};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
     blob.rels.packed = {index::pack_range(0, 3)};
+    blob.rel_target_ranks.ids8 = {0};
+    blob.rel_extent_ranks.ids8 = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -976,9 +982,9 @@ ZEST_CASE(RangesBeyondContentRejected) {
     blob.rels.packed = {index::pack_range(0, 3)};
 
     // And definition-range payloads.
-    blob.rel_def_entries = {0};
-    blob.rel_def_begins = {0};
-    blob.rel_def_ends = {600};
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) | index::payload_bit};
+    blob.rel_extent_heads = {0};
+    blob.rel_extent_lengths = {600};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
@@ -1077,10 +1083,11 @@ ZEST_CASE(StraySymbolIdRejected) {
     blob.rel_offsets.ids8 = {0, 1};
     blob.occs.packed = {index::pack_range(0, 3)};
     blob.occ_syms.ids8 = {0};
-    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base)};
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base) | index::payload_bit};
     blob.rels.packed = {index::pack_range(4, 3)};
-    blob.rel_sym_entries = {0};
-    blob.rel_sym8 = {0};
+    blob.rel_target_ranks.ids8 = {0};
+    blob.rel_extent_ranks.ids8 = {0};
+    blob.rel_targets.ids8 = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -1094,25 +1101,27 @@ ZEST_CASE(StraySymbolIdRejected) {
     ZASSERT(!make_shard(bytes_of()).loaded());
     blob.occ_syms.ids8 = {0};
 
-    blob.rel_sym8 = {5};
+    blob.rel_targets.ids8 = {5};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
-ZEST_CASE(MismatchedPayloadTableRejected) {
-    // Readers decode whichever sparse table holds a relation without consulting
-    // its kind: a decl/def relation in the symbol table (or the reverse) would
-    // serve one payload's bit pattern as the other.
+ZEST_CASE(RelationPayloadColumnsRejected) {
+    // Readers place a relation's payload by the payload count before its
+    // block and the payload bits inside it, and read an extent or a target
+    // by its kind: counts or columns out of step would serve another
+    // relation's payload, or one payload's bits as the other.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.rel_offsets.ids8 = {0, 1};
-    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Definition)};
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) | index::payload_bit};
     blob.rels.packed = {index::pack_range(4, 3)};
-    blob.rel_def_entries = {0};
-    blob.rel_def_begins = {0};
-    blob.rel_def_ends = {8};
+    blob.rel_target_ranks.ids8 = {0};
+    blob.rel_extent_ranks.ids8 = {0};
+    blob.rel_extent_heads = {4};
+    blob.rel_extent_lengths = {8};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -1120,24 +1129,41 @@ ZEST_CASE(MismatchedPayloadTableRejected) {
         index::serialize_blob(blob, os);
         return bytes;
     };
-    ZASSERT(make_shard(bytes_of()).loaded());
+    auto extent_of = [&](const index::Shard& shard) {
+        LocalSourceRange extent;
+        shard.lookup(111, RelationKind::Definition, [&](const index::Relation& relation) {
+            extent = relation.definition_range();
+            return false;
+        });
+        return extent;
+    };
+    auto shard = make_shard(bytes_of());
+    ZASSERT(shard.loaded());
+    ZASSERT(extent_of(shard) == LocalSourceRange{0, 8});
 
-    blob.rel_def_entries = {};
-    blob.rel_def_begins = {};
-    blob.rel_def_ends = {};
-    blob.rel_sym_entries = {0};
-    blob.rel_sym8 = {0};
+    blob.rel_extent_ranks.ids8 = {1};
     ZASSERT(!make_shard(bytes_of()).loaded());
+    blob.rel_extent_ranks.ids8 = {0};
 
-    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base)};
-    ZASSERT(make_shard(bytes_of()).loaded());
-
-    blob.rel_sym_entries = {};
-    blob.rel_sym8 = {};
-    blob.rel_def_entries = {0};
-    blob.rel_def_begins = {0};
-    blob.rel_def_ends = {8};
+    // An extent without the payload bit owning it, a target in its place.
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Definition)};
     ZASSERT(!make_shard(bytes_of()).loaded());
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base) | index::payload_bit};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) | index::payload_bit};
+
+    // An extent the u16 columns hold is not escaped; one beginning past
+    // its name is.
+    blob.rel_extent_heads = {index::extent_escape};
+    blob.rel_extent_lengths = {0};
+    blob.rel_far_extents = {0};
+    blob.rel_far_begins = {0};
+    blob.rel_far_ends = {8};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+    blob.rel_far_begins = {5};
+    shard = make_shard(bytes_of());
+    ZASSERT(shard.loaded());
+    ZASSERT(extent_of(shard) == LocalSourceRange{5, 8});
 }
 
 ZEST_CASE(OwnerlessMaskRejected) {

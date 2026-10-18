@@ -132,18 +132,29 @@ struct OccurrenceTable {
     }
 };
 
+/// Whether an extent fits the u16 extent columns beside its relation's range:
+/// as the distance back to its begin and its length.
+bool fits_extent_columns(LocalSourceRange range, LocalSourceRange extent) {
+    return extent.begin <= range.begin && range.begin - extent.begin < extent_escape &&
+           extent.end >= extent.begin && extent.end - extent.begin <= 0xffff;
+}
+
 /// The relation table: relations grouped per symbol, each with its kind,
-/// range and payload. Payloads live in two sparse tables — decl/def
-/// relations carry a definition range, symbol-pair relations the target's
-/// id — walked by a cursor in stored order.
+/// range and payload. The kinds carrying an extent hold one in the extent
+/// columns, the others a target symbol's id in the target column, each
+/// column listing the payloads in relation order — walked by a cursor in
+/// stored order, placed by the payload counts before each block.
 struct RelationTable {
     RangeColumnsView columns;
     llvm::ArrayRef<std::uint8_t> kinds;
-    llvm::ArrayRef<std::uint32_t> sym_entries;
-    SymIds syms;
-    llvm::ArrayRef<std::uint32_t> def_entries;
-    llvm::ArrayRef<std::uint32_t> def_begins;
-    llvm::ArrayRef<std::uint32_t> def_ends;
+    SymIds target_ranks;
+    SymIds extent_ranks;
+    SymIds targets;
+    llvm::ArrayRef<std::uint16_t> extent_heads;
+    llvm::ArrayRef<std::uint16_t> extent_lengths;
+    llvm::ArrayRef<std::uint32_t> far_extents;
+    llvm::ArrayRef<std::uint32_t> far_begins;
+    llvm::ArrayRef<std::uint32_t> far_ends;
     llvm::ArrayRef<std::uint64_t> sym_hashes;
     /// Entry i's relations occupy [offsets[i], offsets[i + 1]).
     SymIds offsets;
@@ -152,13 +163,14 @@ struct RelationTable {
         return {
             .columns = columns_of(root[&ShardBlob::rels]),
             .kinds = to_array_ref(root[&ShardBlob::rel_kinds]),
-            .sym_entries = to_array_ref(root[&ShardBlob::rel_sym_entries]),
-            .syms = {to_array_ref(root[&ShardBlob::rel_sym8]),
-                     to_array_ref(root[&ShardBlob::rel_sym16]),
-                     to_array_ref(root[&ShardBlob::rel_sym32])},
-            .def_entries = to_array_ref(root[&ShardBlob::rel_def_entries]),
-            .def_begins = to_array_ref(root[&ShardBlob::rel_def_begins]),
-            .def_ends = to_array_ref(root[&ShardBlob::rel_def_ends]),
+            .target_ranks = ids_of(root[&ShardBlob::rel_target_ranks]),
+            .extent_ranks = ids_of(root[&ShardBlob::rel_extent_ranks]),
+            .targets = ids_of(root[&ShardBlob::rel_targets]),
+            .extent_heads = to_array_ref(root[&ShardBlob::rel_extent_heads]),
+            .extent_lengths = to_array_ref(root[&ShardBlob::rel_extent_lengths]),
+            .far_extents = to_array_ref(root[&ShardBlob::rel_far_extents]),
+            .far_begins = to_array_ref(root[&ShardBlob::rel_far_begins]),
+            .far_ends = to_array_ref(root[&ShardBlob::rel_far_ends]),
             .sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]),
             .offsets = ids_of(root[&ShardBlob::rel_offsets]),
         };
@@ -169,43 +181,64 @@ struct RelationTable {
     }
 
     RelationKind kind_of(std::uint32_t entry) const {
-        return static_cast<RelationKind::Kind>(kinds[entry]);
+        return static_cast<RelationKind::Kind>(kinds[entry] & ~payload_bit);
     }
 
-    /// Positions in the two payload tables; decode() advances them, so
-    /// relations must be visited in ascending order from where the cursor was
-    /// seeked.
+    bool has_payload(std::uint32_t entry) const {
+        return (kinds[entry] & payload_bit) != 0;
+    }
+
+    /// Positions in the two payload columns; decode() advances them, so
+    /// relations must be decoded one after another from where the cursor
+    /// was placed.
     struct Cursor {
-        std::size_t sym = 0;
-        std::size_t def = 0;
+        std::size_t target = 0;
+        std::size_t extent = 0;
     };
 
+    void advance(Cursor& cursor, std::uint32_t entry) const {
+        if(has_payload(entry)) {
+            (kind_of(entry).carries_extent() ? cursor.extent : cursor.target) += 1;
+        }
+    }
+
     Cursor cursor_at(std::uint32_t entry) const {
-        return {
-            static_cast<std::size_t>(std::ranges::lower_bound(sym_entries, entry) -
-                                     sym_entries.begin()),
-            static_cast<std::size_t>(std::ranges::lower_bound(def_entries, entry) -
-                                     def_entries.begin()),
-        };
+        if(entry == size()) {
+            return {targets.size(), extent_heads.size()};
+        }
+        auto block = entry / rank_block;
+        Cursor cursor{target_ranks[block], extent_ranks[block]};
+        for(auto i = block * rank_block; i < entry; i += 1) {
+            advance(cursor, i);
+        }
+        return cursor;
+    }
+
+    /// Extent `k`, of a relation whose range begins at `name`.
+    LocalSourceRange extent_at(std::size_t k, std::uint32_t name) const {
+        if(extent_heads[k] == extent_escape) {
+            auto it = std::ranges::lower_bound(far_extents, k);
+            auto far = it - far_extents.begin();
+            return {far_begins[far], far_ends[far]};
+        }
+        auto begin = name - extent_heads[k];
+        return {begin, begin + extent_lengths[k]};
     }
 
     Relation decode(std::uint32_t entry, Cursor& cursor) const {
-        while(cursor.sym < sym_entries.size() && sym_entries[cursor.sym] < entry) {
-            cursor.sym += 1;
-        }
-        while(cursor.def < def_entries.size() && def_entries[cursor.def] < entry) {
-            cursor.def += 1;
-        }
         Relation relation{
             .kind = kind_of(entry),
             .range = columns.range_of(entry),
             .target_symbol = 0,
         };
-        if(cursor.def < def_entries.size() && def_entries[cursor.def] == entry) {
-            relation.set_definition_range({def_begins[cursor.def], def_ends[cursor.def]});
-        } else if(cursor.sym < sym_entries.size() && sym_entries[cursor.sym] == entry) {
-            relation.target_symbol = sym_hashes[syms[cursor.sym]];
+        if(has_payload(entry)) {
+            if(RelationKind(relation.kind).carries_extent()) {
+                relation.set_definition_range(extent_at(cursor.extent, relation.range.begin));
+            } else {
+                relation.target_symbol = sym_hashes[targets[cursor.target]];
+            }
         }
+        advance(cursor, entry);
         return relation;
     }
 };
@@ -467,37 +500,51 @@ CheckResult relations_ok(BlobView root) {
         }
     }
 
-    if(!sparse_ok(table.sym_entries, table.syms.size(), table.size())) {
-        return std::unexpected("relation target table is not sparse over the rows");
+    // The payload counts before every block, then the payload columns: a
+    // target per targeting payload, an extent per extent payload, each
+    // escape paired with its bounds and every extent inside the content.
+    RelationTable::Cursor counted;
+    auto blocks = (table.size() + rank_block - 1) / rank_block;
+    if(table.target_ranks.size() != blocks || table.extent_ranks.size() != blocks) {
+        return std::unexpected("relation payload counts do not match the blocks");
     }
-    if(auto ok = sym_ids_ok(table.syms, table.sym_entries.size(), table.sym_hashes.size()); !ok) {
+    for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
+        if(entry % rank_block == 0 && (table.target_ranks[entry / rank_block] != counted.target ||
+                                       table.extent_ranks[entry / rank_block] != counted.extent)) {
+            return std::unexpected("relation payload counts are wrong");
+        }
+        table.advance(counted, entry);
+    }
+    if(auto ok = sym_ids_ok(table.target_ranks, blocks, counted.target + 1); !ok) {
         return ok;
     }
-    if(!sparse_ok(table.def_entries, table.def_begins.size(), table.size()) ||
-       table.def_ends.size() != table.def_begins.size()) {
-        return std::unexpected("definition range table is not sparse over the rows");
+    if(auto ok = sym_ids_ok(table.extent_ranks, blocks, counted.extent + 1); !ok) {
+        return ok;
     }
-    for(std::uint32_t k = 0; k < table.def_begins.size(); k += 1) {
-        if(table.def_ends[k] < table.def_begins[k] || table.def_ends[k] > content_size) {
+    if(auto ok = sym_ids_ok(table.targets, counted.target, table.sym_hashes.size()); !ok) {
+        return ok;
+    }
+    if(table.extent_heads.size() != counted.extent ||
+       table.extent_lengths.size() != counted.extent ||
+       table.far_ends.size() != table.far_begins.size() ||
+       !escapes_ok(table.extent_heads, extent_escape, table.far_extents, table.far_begins.size())) {
+        return std::unexpected("relation extent columns do not line up");
+    }
+    RelationTable::Cursor cursor;
+    for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
+        auto k = cursor.extent;
+        auto relation = table.decode(entry, cursor);
+        if(k == cursor.extent) {
+            continue;
+        }
+        auto extent = relation.definition_range();
+        bool escaped = table.extent_heads[k] == extent_escape;
+        if(escaped ? table.extent_lengths[k] != 0 || fits_extent_columns(relation.range, extent)
+                   : table.extent_heads[k] > relation.range.begin) {
+            return std::unexpected("relation extent is not the canonical one");
+        }
+        if(extent.end < extent.begin || extent.end > content_size) {
             return std::unexpected("definition range past the content");
-        }
-    }
-
-    // The writer splits payloads by kind — decl/def and instantiation
-    // relations carry an extent, every other payload names a target symbol — and
-    // the readers decode whichever sparse table holds the relation without
-    // consulting its kind. A relation in the wrong table would serve one
-    // payload's bit pattern as the other (a source range as a symbol
-    // hash, or vice versa), so enforce the partition, which also keeps
-    // the tables disjoint.
-    for(auto entry: table.sym_entries) {
-        if(table.kind_of(entry).carries_extent()) {
-            return std::unexpected("declaration row in the target table");
-        }
-    }
-    for(auto entry: table.def_entries) {
-        if(!table.kind_of(entry).carries_extent()) {
-            return std::unexpected("non-declaration row in the definition range table");
         }
     }
 
@@ -505,12 +552,12 @@ CheckResult relations_ok(BlobView root) {
     // begin, end, payload) key with equal-key entries combined at write time,
     // so the key must ascend strictly within each group — out-of-order or
     // repeated entries would mis-merge silently instead of being rejected.
-    RelationTable::Cursor cursor;
+    cursor = {};
     for(std::size_t id = 0; id < table.sym_hashes.size(); id += 1) {
         std::tuple<std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t> prev{};
         for(auto entry = table.offsets[id]; entry < table.offsets[id + 1]; entry += 1) {
             auto relation = table.decode(entry, cursor);
-            std::tuple key{table.kinds[entry],
+            std::tuple key{static_cast<std::uint8_t>(relation.kind),
                            relation.range.begin,
                            relation.range.end,
                            relation.target_symbol};
@@ -1467,7 +1514,6 @@ void emit_blob(const MergedEntries<MaskT>& merged,
 
     auto encoding = encoding_of(blob.variants.empty() ? 1 : blob.variants.size());
     bool narrow = content.size <= packed_range_limit;
-    auto width = SymIdWriter::width_for(blob.sym_hashes.size());
 
     SideWriter occs{
         .ranges = {.side = blob.occs, .narrow = narrow},
@@ -1486,9 +1532,11 @@ void emit_blob(const MergedEntries<MaskT>& merged,
         .ranges = {.side = blob.rels, .narrow = narrow},
         .encoding = encoding,
     };
-    SymIdWriter rel_syms{width, blob.rel_sym8, blob.rel_sym16, blob.rel_sym32};
     std::vector<std::uint32_t> rel_offsets;
     rel_offsets.reserve(blob.sym_hashes.size() + 1);
+    std::vector<std::uint32_t> targets;
+    std::vector<std::uint32_t> target_ranks;
+    std::vector<std::uint32_t> extent_ranks;
     auto group = merged.relations.begin();
     for(auto hash: blob.sym_hashes) {
         rel_offsets.push_back(rels.count());
@@ -1497,18 +1545,33 @@ void emit_blob(const MergedEntries<MaskT>& merged,
         }
         for(auto& entry: group->entries) {
             auto& relation = entry.relation;
-            blob.rel_kinds.push_back(static_cast<std::uint8_t>(relation.kind));
+            if(rels.count() % rank_block == 0) {
+                target_ranks.push_back(static_cast<std::uint32_t>(targets.size()));
+                extent_ranks.push_back(static_cast<std::uint32_t>(blob.rel_extent_heads.size()));
+            }
+            auto kind = static_cast<std::uint8_t>(relation.kind);
             if(relation.target_symbol != 0) {
+                kind |= payload_bit;
                 if(RelationKind(relation.kind).carries_extent()) {
-                    auto range = std::bit_cast<LocalSourceRange>(relation.target_symbol);
-                    blob.rel_def_entries.push_back(rels.count());
-                    blob.rel_def_begins.push_back(range.begin);
-                    blob.rel_def_ends.push_back(range.end);
+                    auto extent = relation.definition_range();
+                    if(fits_extent_columns(relation.range, extent)) {
+                        blob.rel_extent_heads.push_back(
+                            static_cast<std::uint16_t>(relation.range.begin - extent.begin));
+                        blob.rel_extent_lengths.push_back(
+                            static_cast<std::uint16_t>(extent.end - extent.begin));
+                    } else {
+                        blob.rel_far_extents.push_back(
+                            static_cast<std::uint32_t>(blob.rel_extent_heads.size()));
+                        blob.rel_far_begins.push_back(extent.begin);
+                        blob.rel_far_ends.push_back(extent.end);
+                        blob.rel_extent_heads.push_back(extent_escape);
+                        blob.rel_extent_lengths.push_back(0);
+                    }
                 } else {
-                    blob.rel_sym_entries.push_back(rels.count());
-                    rel_syms.add(sym_id(relation.target_symbol));
+                    targets.push_back(sym_id(relation.target_symbol));
                 }
             }
+            blob.rel_kinds.push_back(kind);
             rels.add(relation.range, entry.mask);
         }
         group += 1;
@@ -1516,6 +1579,9 @@ void emit_blob(const MergedEntries<MaskT>& merged,
     rel_offsets.push_back(rels.count());
     rels.finish();
     write_ids(blob.rel_offsets, rel_offsets, rels.count() + 1);
+    write_ids(blob.rel_targets, targets, blob.sym_hashes.size());
+    write_ids(blob.rel_target_ranks, target_ranks, targets.size() + 1);
+    write_ids(blob.rel_extent_ranks, extent_ranks, blob.rel_extent_heads.size() + 1);
 
     serialize_blob(blob, os);
 }

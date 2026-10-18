@@ -175,6 +175,15 @@ struct RangeColumns {
     std::vector<std::uint8_t> roaring;
 };
 
+/// Relations per block of the payload counts (ShardBlob::rel_target_ranks).
+constexpr inline std::uint32_t rank_block = 64;
+
+/// The bit of a stored relation kind saying the relation carries a payload.
+constexpr inline std::uint8_t payload_bit = 0x80;
+
+/// The head of an extent that does not fit the u16 extent columns.
+constexpr inline std::uint16_t extent_escape = 0xffff;
+
 /// A file's index as one persisted blob.
 ///
 /// The worker encodes one blob per file per TU: single variant (an empty
@@ -264,14 +273,25 @@ struct ShardBlob {
     /// Relations in symbol-table order, sorted by (kind, begin, end,
     /// payload) within each group.
     RangeColumns rels;
+    /// The RelationKind, payload_bit set for a relation carrying a payload:
+    /// for the kinds carrying an extent the extent of what it declares,
+    /// for the others a target symbol.
     std::vector<std::uint8_t> rel_kinds;
-    std::vector<std::uint32_t> rel_sym_entries;
-    std::vector<std::uint8_t> rel_sym8;
-    std::vector<std::uint16_t> rel_sym16;
-    std::vector<std::uint32_t> rel_sym32;
-    std::vector<std::uint32_t> rel_def_entries;
-    std::vector<std::uint32_t> rel_def_begins;
-    std::vector<std::uint32_t> rel_def_ends;
+    /// Per block of rank_block relations, the target and the extent
+    /// payloads before it; with the payload bits inside the block they
+    /// place a relation's payload in its column.
+    IdColumn rel_target_ranks;
+    IdColumn rel_extent_ranks;
+    IdColumn rel_targets;
+    /// An extent as the distance from its begin back to the relation's
+    /// begin, and its length. One that does not fit has extent_escape for a
+    /// head, 0 for a length and its bounds in the sparse (extent, begin,
+    /// end) table.
+    std::vector<std::uint16_t> rel_extent_heads;
+    std::vector<std::uint16_t> rel_extent_lengths;
+    std::vector<std::uint32_t> rel_far_extents;
+    std::vector<std::uint32_t> rel_far_begins;
+    std::vector<std::uint32_t> rel_far_ends;
 };
 
 /// A file's instantiation shard as one persisted blob: what the template

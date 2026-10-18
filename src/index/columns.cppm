@@ -155,18 +155,20 @@ inline SymIds ids_of(kota::codec::fbs::table_view<IdColumn> view) {
 }
 
 /// The escape table must pair one-to-one, in column order, with the sentinel
-/// lengths: readers trust the pairing, and a sentinel missing its entry
-/// (or a stray entry masking one elsewhere) can pass every range bound
-/// while serving a wrong value forever.
-inline bool escapes_ok(llvm::ArrayRef<std::uint8_t> lengths,
-                       llvm::ArrayRef<std::uint32_t> escaped,
-                       std::size_t escape_values) {
+/// values: readers trust the pairing, and a sentinel missing its entry (or a
+/// stray entry masking one elsewhere) can pass every range bound while
+/// serving a wrong value forever.
+template <typename T>
+bool escapes_ok(llvm::ArrayRef<T> values,
+                T escape,
+                llvm::ArrayRef<std::uint32_t> escaped,
+                std::size_t escape_values) {
     if(escape_values != escaped.size()) {
         return false;
     }
     std::size_t cursor = 0;
-    for(std::uint32_t entry = 0; entry < lengths.size(); entry += 1) {
-        if(lengths[entry] != length_escape) {
+    for(std::uint32_t entry = 0; entry < values.size(); entry += 1) {
+        if(values[entry] != escape) {
             continue;
         }
         if(cursor == escaped.size() || escaped[cursor] != entry) {
@@ -175,6 +177,12 @@ inline bool escapes_ok(llvm::ArrayRef<std::uint8_t> lengths,
         cursor += 1;
     }
     return cursor == escaped.size();
+}
+
+inline bool escapes_ok(llvm::ArrayRef<std::uint8_t> lengths,
+                       llvm::ArrayRef<std::uint32_t> escaped,
+                       std::size_t escape_values) {
+    return escapes_ok(lengths, length_escape, escaped, escape_values);
 }
 
 /// Sentinel lengths inside the packed column, extracted for escapes_ok.
