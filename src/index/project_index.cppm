@@ -16,7 +16,7 @@ import :vfs.file_table;
 
 namespace clice::testing {
 
-struct IndexPlanter;
+struct IndexInternals;
 
 }
 
@@ -40,12 +40,6 @@ public:
         return index_ids;
     }
 
-    /// This save left state that an immediate retry commits: debt
-    /// that showed up after its CDB snapshot serialized (write-time
-    /// corruption recovery), or a batch a full map refused before the
-    /// map grew.
-    bool owes_retry = false;
-
     void add_reindex(Fid id) {
         if(reindex_seen.insert(id).second) {
             reindex_ids.push_back(id);
@@ -58,9 +52,11 @@ public:
         }
     }
 
-    bool empty() const {
-        return reindex_ids.empty() && index_ids.empty() && !owes_retry;
-    }
+    /// This save left state that an immediate retry commits: debt
+    /// that showed up after its command snapshot serialized (write-time
+    /// corruption recovery), or a batch a full map refused before the
+    /// map grew.
+    bool owes_retry = false;
 
 private:
     llvm::SmallVector<Fid> reindex_ids;
@@ -193,12 +189,6 @@ public:
     explicit ProjectIndex(FileTable& files);
     ~ProjectIndex();
     ProjectIndex(ProjectIndex&&) noexcept;
-
-    /// The root the database names the files under relative to, by their
-    /// portable names (path::portable), so a moved checkout keeps its
-    /// index; empty names every file by its identity. Set before a blob
-    /// is bound or written.
-    CanonicalPath workspace;
 
     /// The name the database keeps for `path`.
     std::string portable(llvm::StringRef path) const;
@@ -435,7 +425,7 @@ public:
     /// The batch was written; `failed` are the slots the database did not
     /// commit, which stay dirty for a later save. The project table
     /// written becomes the base.
-    void finish_save(SaveBatch& batch, llvm::ArrayRef<std::size_t> failed);
+    void finish_save(SaveBatch& batch, llvm::ArrayRef<std::uint32_t> failed);
 
     /// After a save committed, move the shards that borrow database
     /// memory onto a fresh read snapshot (growing the map first when the
@@ -577,14 +567,21 @@ public:
         return generation;
     }
 
+    /// The root the database names the files under relative to, by their
+    /// portable names (path::portable), so a moved checkout keeps its
+    /// index; empty names every file by its identity. Set before a blob
+    /// is bound or written.
+    CanonicalPath workspace;
+
 private:
-    friend struct testing::IndexPlanter;
+    friend struct testing::IndexInternals;
 
     /// Take the bound base's generation and search state.
     void adopt_base();
 
-    /// The changed entry, else the one held aside for a write, of a symbol.
-    const Symbol* held(SymbolHash hash) const;
+    /// A symbol's entry newer than the bound base's: the changed one, else
+    /// the one held aside for a write.
+    const Symbol* newer_entry(SymbolHash hash) const;
 
     std::uint32_t persisted_id(VersionID version);
 

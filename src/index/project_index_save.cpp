@@ -327,13 +327,12 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     // Puts run before removes inside write(), so the stale removal would
     // delete the fresh blob — the put wins.
     if(!batch.removals.empty()) {
-        llvm::DenseSet<std::pair<unsigned, llvm::StringRef>> putting;
+        llvm::DenseSet<std::pair<std::uint8_t, llvm::StringRef>> putting;
         for(auto& put: blobs) {
-            putting.insert({static_cast<unsigned>(put.kind), llvm::StringRef(put.key)});
+            putting.insert({std::to_underlying(put.kind), llvm::StringRef(put.key)});
         }
         llvm::erase_if(batch.removals, [&](const BlobKey& remove) {
-            return putting.contains(
-                {static_cast<unsigned>(remove.kind), llvm::StringRef(remove.key)});
+            return putting.contains({std::to_underlying(remove.kind), llvm::StringRef(remove.key)});
         });
     }
 
@@ -365,7 +364,7 @@ void ProjectIndex::abandon_save(SaveBatch& batch) {
     saving_shards = 0;
 }
 
-void ProjectIndex::finish_save(SaveBatch& batch, llvm::ArrayRef<std::size_t> failed) {
+void ProjectIndex::finish_save(SaveBatch& batch, llvm::ArrayRef<std::uint32_t> failed) {
     // An entry the database failed to commit is re-dirtied so a later save
     // retries it; discarded, the cache would trail the in-memory index
     // until an unrelated merge happens to dirty the same entry or a

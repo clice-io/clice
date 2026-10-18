@@ -5,7 +5,7 @@ module;
 module clice:project.command_snapshot;
 
 import :index.project_index;
-import :vfs.file_table;
+import :vfs.ids;
 import :vfs.path;
 
 namespace clice {

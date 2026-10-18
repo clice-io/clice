@@ -182,26 +182,11 @@ struct PCMBuild {
     std::optional<Failure> failure;
 };
 
-/// All persistent, project-wide state derived from files on disk.
-///
-/// Design principle: open files are never depended upon by other files.
-/// Dependencies always point to disk files.  This enforces a clean two-layer
-/// architecture:
-///   - Global layer (Project): tracks disk truth, shared by all files
-///   - Per-file layer (Session): tracks buffer truth, isolated per TU
-///
-/// Project is the single source of truth for:
-///   - dependency relationships (include graph, module DAG)
-///   - compilation artifacts shared across files (PCH/PCM caches)
-///   - symbol index (ProjectIndex + per-file Shard blobs)
-///   - compilation database and configuration
-///
-/// The context choices — the editor's context choices — as the index
-/// database carries them beside the index. A save moves bytes only: the
-/// editor state they encode serializes into them when it changes and
-/// parses them after a load (see EditorContext), so a process without that
-/// state writes back the bytes it loaded, and only into a database
-/// replacing a corrupt one. Only this blob has a durability waiter
+/// The editor's context choices as the index database carries them beside
+/// the index. A save moves bytes only: the editor state they encode
+/// serializes into them when it changes and parses them after a load (see
+/// EditorContext), so a process without that state writes back the bytes it
+/// loaded, and only into a database replacing a corrupt one. Only this blob has a durability waiter
 /// (switchContext), so only it hands out tickets: a ticket resolves once a
 /// save whose snapshot covers it commits the blob — independent of the
 /// artifact records, whose failures retry through the dirty flag alone and
@@ -223,6 +208,20 @@ struct ContextChoices {
     kota::event committed;
 };
 
+/// All persistent, project-wide state derived from files on disk.
+///
+/// Design principle: open files are never depended upon by other files.
+/// Dependencies always point to disk files.  This enforces a clean two-layer
+/// architecture:
+///   - Global layer (Project): tracks disk truth, shared by all files
+///   - Per-file layer (Session): tracks buffer truth, isolated per TU
+///
+/// Project is the single source of truth for:
+///   - dependency relationships (include graph, module DAG)
+///   - compilation artifacts shared across files (PCH/PCM caches)
+///   - symbol index (ProjectIndex + per-file Shard blobs)
+///   - compilation database and configuration
+///
 /// Project is NEVER modified by unsaved buffer content.  The only mutation
 /// paths are:
 ///   - Initialization  (load_project at startup)

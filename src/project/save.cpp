@@ -105,7 +105,7 @@ kota::task<index::IndexReport> save_project(Project& project,
     // discovered; anything showing up past this point is too late for
     // these bytes and returns in the report.
     std::optional<std::string> snapshot_bytes;
-    std::optional<std::size_t> snapshot_slot;
+    std::optional<std::uint32_t> snapshot_slot;
     if(!blobs.empty() || !batch.removals.empty() || snapshot.owes_save(project)) {
         debt.append(report.reindex().begin(), report.reindex().end());
         snapshot_bytes = snapshot.serialize(project, debt);
@@ -122,8 +122,8 @@ kota::task<index::IndexReport> save_project(Project& project,
     // is tracked on its own: failing artifact records must not park a
     // switchContext ack whose choice is already durable.
     auto flush_ticket = contexts.ticket;
-    std::optional<std::size_t> artifacts_slot;
-    std::optional<std::size_t> contexts_slot;
+    std::optional<std::uint32_t> artifacts_slot;
+    std::optional<std::uint32_t> contexts_slot;
     bool contexts_ok = true;
     if(project.artifacts_dirty) {
         if(auto bytes = serialize_artifact_records(project, commands); !bytes.empty()) {
@@ -157,7 +157,7 @@ kota::task<index::IndexReport> save_project(Project& project,
         co_return report;
     }
 
-    llvm::SmallVector<std::size_t> failed;
+    llvm::SmallVector<std::uint32_t> failed;
     // Cancellation while the write is still queued dequeues it (see
     // kota::queue): the batch dies with this frame, so what it carried must
     // be dirty again or the final shutdown save sees nothing to commit and

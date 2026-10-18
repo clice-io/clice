@@ -98,8 +98,6 @@ MDB_val to_val(llvm::StringRef bytes) {
     return {bytes.size(), const_cast<char*>(bytes.data())};
 }
 
-// MDB_PAGE_NOTFOUND is not a key miss: a page the B-tree references is
-// absent from the file, which LMDB documents as corruption.
 /// Readers are short-lived commands that may have been killed; a dead
 /// one's slot pins its snapshot and the map only grows until it is cleared.
 void clear_dead_readers(MDB_env* env) {
@@ -110,6 +108,8 @@ void clear_dead_readers(MDB_env* env) {
     }
 }
 
+// MDB_PAGE_NOTFOUND is not a key miss: a page the B-tree references is
+// absent from the file, which LMDB documents as corruption.
 bool is_corruption(int rc) {
     return rc == MDB_CORRUPTED || rc == MDB_INVALID || rc == MDB_VERSION_MISMATCH ||
            rc == MDB_PAGE_NOTFOUND;
@@ -242,15 +242,15 @@ public:
         return rc != MDB_NOTFOUND;
     }
 
-    llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                         llvm::ArrayRef<BlobKey> removes) override {
+    llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                           llvm::ArrayRef<BlobKey> removes) override {
         auto fail_all = [&](int rc, llvm::StringRef stage) {
             if(rc == MDB_MAP_FULL) {
                 map_full.store(true, std::memory_order_relaxed);
             }
             note_error(rc);
             LOG_WARN("Index database write failed ({}): {}", stage, mdb_strerror(rc));
-            llvm::SmallVector<std::size_t> failed;
+            llvm::SmallVector<std::uint32_t> failed;
             for(std::size_t i = 0; i < puts.size(); i += 1) {
                 failed.push_back(i);
             }

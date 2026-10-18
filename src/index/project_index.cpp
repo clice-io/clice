@@ -243,7 +243,7 @@ void ProjectIndex::adopt_base() {
     }
 }
 
-const Symbol* ProjectIndex::held(SymbolHash hash) const {
+const Symbol* ProjectIndex::newer_entry(SymbolHash hash) const {
     if(auto it = changed.find(hash); it != changed.end()) {
         return &it->second;
     }
@@ -254,7 +254,7 @@ const Symbol* ProjectIndex::held(SymbolHash hash) const {
 }
 
 std::optional<SymbolView> ProjectIndex::find_symbol(SymbolHash hash) const {
-    if(auto* symbol = held(hash)) {
+    if(auto* symbol = newer_entry(hash)) {
         return symbol->view();
     }
     if(base) {
@@ -266,7 +266,7 @@ std::optional<SymbolView> ProjectIndex::find_symbol(SymbolHash hash) const {
 }
 
 std::uint32_t ProjectIndex::reference_count(SymbolHash hash) const {
-    if(auto* symbol = held(hash)) {
+    if(auto* symbol = newer_entry(hash)) {
         return static_cast<std::uint32_t>(symbol->reference_files.cardinality());
     }
     if(base) {
@@ -279,7 +279,7 @@ std::uint32_t ProjectIndex::reference_count(SymbolHash hash) const {
 
 void ProjectIndex::for_each_reference_file(SymbolHash hash,
                                            llvm::function_ref<void(Fid)> visit) const {
-    if(auto* symbol = held(hash)) {
+    if(auto* symbol = newer_entry(hash)) {
         for(auto id: symbol->reference_files) {
             visit(Fid{id});
         }
@@ -299,7 +299,7 @@ void ProjectIndex::for_each_reference_file(SymbolHash hash,
 
 void ProjectIndex::for_each_instantiation_file(SymbolHash hash,
                                                llvm::function_ref<void(Fid)> visit) const {
-    if(auto* symbol = held(hash)) {
+    if(auto* symbol = newer_entry(hash)) {
         for(auto id: symbol->instantiation_files) {
             visit(Fid{id});
         }

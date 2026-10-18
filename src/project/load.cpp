@@ -26,12 +26,10 @@ import :vfs.path;
 
 namespace clice {
 
-namespace {
-
 /// Drop the index of every TU a rule's `index = false` keeps out: an index
 /// built before the rule would otherwise serve on, since the pump never
 /// rebuilds an excluded unit.
-void retire_excluded(Project& project, index::IndexReport& report) {
+static void retire_excluded(Project& project, index::IndexReport& report) {
     llvm::SmallVector<Fid> excluded;
     project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
         if(!project.build.indexed(project.file_table.resolve(tu))) {
@@ -44,8 +42,6 @@ void retire_excluded(Project& project, index::IndexReport& report) {
         project.index.drop(tu, report);
     }
 }
-
-}  // namespace
 
 SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOptions options) {
     SavedLoad result;

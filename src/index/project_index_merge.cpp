@@ -12,6 +12,7 @@ import :index.shard;
 import :index.tu_index;
 import :index.tu_manifest;
 import :support.logging;
+import :vfs.disk_state;
 import :vfs.file_system;
 import :vfs.file_table;
 
