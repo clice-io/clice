@@ -1,0 +1,41 @@
+[answers.constructor]
+definition = ["void ⟦tag⟧(Name name, int value);"]
+
+[answers.explicit_constructor]
+definition = ["void ⟦find⟧(long number, int value);"]
+
+[answers.rvalue_to_reference]
+definition = ["void ⟦bump⟧(long counter, int value);"]
+
+[answers.lvalue_to_reference]
+definition = ["void ⟦bump⟧(int& counter, int value);", "void ⟦bump⟧(long counter, int value);"]
+
+[answers.lvalue_to_rvalue_reference]
+definition = ["void ⟦take⟧(const Box& box, int value);"]
+
+[answers.scoped_enum]
+definition = ["void ⟦paint⟧(Color color, int value);"]
+
+[answers.integer_to_enum]
+definition = ["void ⟦paint⟧(int number, int value);"]
+
+[answers.derived_pointer]
+definition = ["void ⟦visit⟧(Base* base, int value);"]
+
+[answers.null_pointer]
+definition = ["void ⟦visit⟧(Base* base, int value);", "void ⟦visit⟧(int* number, int value);"]
+
+[answers.zero]
+definition = ["void ⟦visit⟧(Base* base, int value);", "void ⟦visit⟧(int* number, int value);"]
+
+[answers.conversion_function]
+definition = ["void ⟦store⟧(Box box, int value);"]
+
+[answers.conversion_template]
+definition = ["void ⟦use⟧(Base* base, int value);", "void ⟦use⟧(int number, int value);"]
+
+[answers.string_literal]
+definition = ["void ⟦write⟧(char* text, int value);"]
+
+[answers.explicit_object]
+definition = ["void ⟦draw⟧(this Canvas& self, int x, int y);"]
