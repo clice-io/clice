@@ -181,7 +181,6 @@ import std.compat;
 #include "kota/meta/repr.h"
 #include "kota/meta/struct.h"
 #include "kota/support/glob_pattern.h"
-#include "kota/support/ranges.h"
 #include "kota/zest/async.h"
 #include "kota/zest/zest.h"
 #include "lmdb.h"
