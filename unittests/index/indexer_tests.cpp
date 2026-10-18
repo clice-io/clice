@@ -2554,7 +2554,7 @@ std::string blob_of_version(std::uint32_t version) {
     auto blob = tu_index_blob();
     blob.format_version = version;
     blob.paths = {"/proj/main.cpp"};
-    return serialized(blob);
+    return tu_index_bytes(blob);
 }
 
 ZEST_SUITE(PreambleIndex, Tester) {

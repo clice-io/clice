@@ -147,7 +147,7 @@ index::TUIndex empty_session_index() {
     auto blob = tu_index_blob();
     blob.built_at = 1;
     blob.paths = {focus_path};
-    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(serialized(blob)));
+    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(tu_index_bytes(blob)));
 }
 
 void install_empty_index(std::source_location location = std::source_location::current()) {

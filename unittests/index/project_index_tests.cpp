@@ -172,8 +172,8 @@ ZEST_CASE(MergePicksOneSpelling) {
     auto spelled_signed = tu_index_blob();
     spelled_signed.paths = {"/proj/main.cpp"};
     add_symbol(spelled_signed, 42, {.name = "X", .args = "<signed int>"});
-    auto int_bytes = serialized(spelled_int);
-    auto signed_bytes = serialized(spelled_signed);
+    auto int_bytes = tu_index_bytes(spelled_int);
+    auto signed_bytes = tu_index_bytes(spelled_signed);
 
     clice::FileTable pool;
     for(auto [first, second]: {
@@ -198,8 +198,8 @@ ZEST_CASE(LatestSignatureStands) {
     auto after = tu_index_blob();
     after.paths = {"/proj/main.cpp"};
     add_symbol(after, 42, {.name = "scale", .signature = "(int count)"});
-    auto before_bytes = serialized(before);
-    auto after_bytes = serialized(after);
+    auto before_bytes = tu_index_bytes(before);
+    auto after_bytes = tu_index_bytes(after);
 
     clice::FileTable pool;
     index::ProjectIndex project;
@@ -226,8 +226,8 @@ ZEST_CASE(DefinitionDecidesSignature) {
                    .signature = "(int count)",
                    .flags = index::SymbolFlags::HasDefinition,
                });
-    auto declares_bytes = serialized(declares);
-    auto defines_bytes = serialized(defines);
+    auto declares_bytes = tu_index_bytes(declares);
+    auto defines_bytes = tu_index_bytes(defines);
 
     clice::FileTable pool;
     for(auto [first, second]: {
@@ -258,8 +258,8 @@ ZEST_CASE(DefinitionDecidesTokenKind) {
                    .flags = index::SymbolFlags::HasDefinition,
                    .token_class = {.kind = SemanticTokenKind::Class},
                });
-    auto declares_bytes = serialized(declares);
-    auto defines_bytes = serialized(defines);
+    auto declares_bytes = tu_index_bytes(declares);
+    auto defines_bytes = tu_index_bytes(defines);
 
     clice::FileTable pool;
     for(auto [first, second]: {

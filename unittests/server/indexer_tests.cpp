@@ -237,7 +237,7 @@ IndexedTU index_file(TempDir& tmp,
 std::string strip_content_hashes(llvm::StringRef data) {
     auto blob = tu_index_blob(index::TUIndex::from_bytes(data));
     blob.content_hashes.clear();
-    return serialized(blob);
+    return tu_index_bytes(blob);
 }
 
 /// A structurally valid blob of `text`'s content generation carrying an
@@ -344,7 +344,7 @@ int use() { return 1; }
                helper,
                {.name = "helper", .scope = index::SymbolScope::Internal},
                {header_id, focus_id});
-    auto planted = serialized(blob);
+    auto planted = tu_index_bytes(blob);
 
     ZEXPECT(!merge(planted.data(), planted.size()));
 

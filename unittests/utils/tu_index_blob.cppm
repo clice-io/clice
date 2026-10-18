@@ -87,7 +87,7 @@ inline index::TUIndexBlob tu_index_blob(const index::TUIndex& view) {
 }
 
 /// The blob's bytes, as a worker sends them.
-inline std::string serialized(const index::TUIndexBlob& blob) {
+inline std::string tu_index_bytes(const index::TUIndexBlob& blob) {
     auto encoded = kota::codec::fbs::to_bytes(blob);
     ZASSERT(encoded);
     return std::string(encoded->begin(), encoded->end());

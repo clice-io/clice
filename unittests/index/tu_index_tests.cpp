@@ -147,13 +147,13 @@ ZEST_CASE(FromRejectsStaleFormatVersion) {
     auto stale = tu_index_blob();
     stale.format_version = index::index_format_version + 1;
     stale.paths = {"/proj/main.cpp"};
-    ZASSERT(!index::TUIndex::from_bytes(serialized(stale)).loaded());
+    ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(stale)).loaded());
 
     // Positive control: the same shape carrying the current version loads,
     // so the rejection above comes from the value, not the blob's shape.
     auto current = stale;
     current.format_version = index::index_format_version;
-    ZASSERT(index::TUIndex::from_bytes(serialized(current)).loaded());
+    ZASSERT(index::TUIndex::from_bytes(tu_index_bytes(current)).loaded());
 }
 
 ZEST_CASE(FromRejectsReservedParents) {
@@ -162,13 +162,13 @@ ZEST_CASE(FromRejectsReservedParents) {
     auto honest = tu_index_blob();
     honest.paths = {"/proj/main.cpp"};
     add_symbol(honest, 42, {.name = "sym", .parent = 7});
-    ZASSERT(index::TUIndex::from_bytes(serialized(honest)).loaded());
+    ZASSERT(index::TUIndex::from_bytes(tu_index_bytes(honest)).loaded());
 
     auto hostile = honest;
     hostile.symbol_parents[0] = ~std::uint64_t(0);
-    ZASSERT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+    ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     hostile.symbol_parents[0] = ~std::uint64_t(0) - 1;
-    ZASSERT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+    ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
 }
 
 ZEST_CASE(FromRejectsSymbolColumns) {
@@ -179,7 +179,7 @@ ZEST_CASE(FromRejectsSymbolColumns) {
     honest.paths = {"/proj/a.h", "/proj/main.cpp"};
     add_symbol(honest, 42, {.name = "first", .file = 0}, {0, 1});
     add_symbol(honest, 43, {.name = "second"}, {1});
-    auto bytes = serialized(honest);
+    auto bytes = tu_index_bytes(honest);
     auto view = index::TUIndex::from_bytes(bytes);
     ZASSERT(view.loaded());
     auto second = view.find_symbol(43);
@@ -190,43 +190,43 @@ ZEST_CASE(FromRejectsSymbolColumns) {
         // Lookups binary-search the hashes.
         auto hostile = honest;
         std::swap(hostile.symbol_hashes[0], hostile.symbol_hashes[1]);
-        ZEXPECT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZEXPECT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
     {
         auto hostile = honest;
         hostile.symbol_hashes[1] = hostile.symbol_hashes[0];
-        ZEXPECT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZEXPECT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
     {
         auto hostile = honest;
         hostile.symbol_hashes[1] = ~std::uint64_t(0);
-        ZEXPECT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZEXPECT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
     {
         auto hostile = honest;
         hostile.symbol_references.back() = 2;
-        ZEXPECT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZEXPECT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
     {
         auto hostile = honest;
         hostile.symbol_files[1] = 2;
-        ZEXPECT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZEXPECT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
     {
         // Token kinds index the legend's tables.
         auto hostile = honest;
         hostile.symbol_token_kinds[1] = 200;
-        ZEXPECT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZEXPECT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
     {
         auto hostile = honest;
         hostile.symbol_name_ends[0] = 100;
-        ZEXPECT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZEXPECT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
     {
         auto hostile = honest;
         hostile.symbol_kinds.pop_back();
-        ZEXPECT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZEXPECT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
 }
 
@@ -237,11 +237,11 @@ ZEST_CASE(FromRejectsOutOfRangeParents) {
     honest.paths = {"/proj/main.cpp", "/proj/a.h"};
     honest.nodes.push_back({.file = 1, .parent = ~0u, .line = 1});
     honest.nodes.push_back({.file = 1, .parent = 0, .line = 2});
-    ZASSERT(index::TUIndex::from_bytes(serialized(honest)).loaded());
+    ZASSERT(index::TUIndex::from_bytes(tu_index_bytes(honest)).loaded());
 
     auto hostile = honest;
     hostile.nodes.back().parent = 2;
-    ZASSERT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+    ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
 }
 
 ZEST_CASE(FromRejectsOutOfRangePathIds) {
@@ -257,19 +257,19 @@ ZEST_CASE(FromRejectsOutOfRangePathIds) {
     honest.paths = {"/proj/main.cpp"};
     honest.nodes.push_back({.file = 0, .parent = 0, .line = 1});
     honest.sections.push_back({.path_id = 0});
-    ZASSERT(index::TUIndex::from_bytes(serialized(honest)).loaded());
+    ZASSERT(index::TUIndex::from_bytes(tu_index_bytes(honest)).loaded());
 
     {
         auto hostile = tu_index_blob();
         hostile.paths = {"/proj/main.cpp"};
         hostile.nodes.push_back({.file = 7, .parent = 0, .line = 1});
-        ZASSERT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
     {
         auto hostile = tu_index_blob();
         hostile.paths = {"/proj/main.cpp"};
         hostile.sections.push_back({.path_id = 7});  // Only path id 0 exists.
-        ZASSERT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
 }
 
@@ -278,7 +278,7 @@ ZEST_CASE(FromRejectsEmptyPathTable) {
     // consumers address path_count() - 1 unchecked — a TU index with no
     // paths at all is corrupt.
     auto hostile = tu_index_blob();
-    ZASSERT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+    ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
 }
 
 ZEST_CASE(FromRejectsUnsortedSections) {
@@ -290,21 +290,21 @@ ZEST_CASE(FromRejectsUnsortedSections) {
     honest.paths = {"/proj/a.h", "/proj/main.cpp"};
     honest.sections.push_back({.path_id = 0});
     honest.sections.push_back({.path_id = 1});
-    ZASSERT(index::TUIndex::from_bytes(serialized(honest)).loaded());
+    ZASSERT(index::TUIndex::from_bytes(tu_index_bytes(honest)).loaded());
 
     {
         auto hostile = tu_index_blob();
         hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
         hostile.sections.push_back({.path_id = 1});
         hostile.sections.push_back({.path_id = 0});
-        ZASSERT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
     {
         auto hostile = tu_index_blob();
         hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
         hostile.sections.push_back({.path_id = 1});
         hostile.sections.push_back({.path_id = 1});
-        ZASSERT(!index::TUIndex::from_bytes(serialized(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
     }
 }
 
@@ -315,7 +315,7 @@ ZEST_CASE(AbsentContentHashesReadZero) {
     auto blob = tu_index_blob();
     blob.paths = {"/proj/a.h", "/proj/main.cpp"};
     blob.content_hashes = {7};
-    auto bytes = serialized(blob);
+    auto bytes = tu_index_bytes(blob);
     auto view = index::TUIndex::from_bytes(bytes);
     ZASSERT(view.loaded());
     ZASSERT(view.content_hash(0) == 7u);
