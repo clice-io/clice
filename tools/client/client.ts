@@ -129,10 +129,9 @@ export interface InitializeOptions {
 /// the test defaults — one worker of each kind (halves the per-test spawn
 /// cost; tests needing more pass their own counts), background polling
 /// disabled (tests drive ticks deterministically through the
-/// clice/internal/poll hook), background
-/// indexing without the idle wait that batches an editor's keystrokes
-/// (tests wait through clice/internal/sync, not the clock), and the test
-/// hooks on.
+/// clice/internal/poll hook), background indexing without the idle wait
+/// that batches an editor's keystrokes (tests wait through
+/// clice/internal/sync, not the clock), and the test hooks on.
 export function initializationOptionsFor(
     ws: Workspace,
     options: InitializeOptions,
