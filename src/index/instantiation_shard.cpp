@@ -568,12 +568,6 @@ struct Draft {
     std::vector<std::pair<UseHash, std::vector<ResolutionHash>>> uses;
 };
 
-/// Sort and fold a resolution's records.
-void canonicalize(std::vector<InstantiationRecord>& records) {
-    std::ranges::sort(records, {}, record_key);
-    records.erase(std::ranges::unique(records).begin(), records.end());
-}
-
 /// The single writer of InstantiationShardBlob: every encoding choice is a
 /// function of the data.
 void emit(const Draft& draft, llvm::raw_ostream& os) {
@@ -733,7 +727,8 @@ void write_instantiations(const FileInstantiations& instantiations,
     Draft draft{.content_hash = content_hash, .content_size = content_size};
     std::vector<ResolutionHash> identities;
     for(auto records: instantiations.resolutions) {
-        canonicalize(records);
+        std::ranges::sort(records, {}, record_key);
+        records.erase(std::ranges::unique(records).begin(), records.end());
         identities.push_back(resolution_hash(content_hash, records));
         draft.resolutions.emplace_back(identities.back(), std::move(records));
     }

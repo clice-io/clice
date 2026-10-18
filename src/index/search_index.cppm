@@ -155,8 +155,6 @@ public:
     /// are not a search blob of this build's formats or are inconsistent.
     bool load(std::unique_ptr<llvm::MemoryBuffer> blob);
 
-    void clear();
-
     bool loaded() const;
 
     /// Number of symbols in the index.

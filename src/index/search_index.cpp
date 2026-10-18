@@ -33,10 +33,6 @@ void append_postings(std::vector<std::uint8_t>& arena,
     ends.push_back(static_cast<std::uint32_t>(arena.size()));
 }
 
-std::string lowercase(llvm::StringRef text) {
-    return text.lower();
-}
-
 bool reserved_name(llvm::StringRef name) {
     return name.size() > 1 && name[0] == '_' && (name[1] == '_' || llvm::isUpper(name[1]));
 }
@@ -262,7 +258,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
         blob.args_ends.push_back(static_cast<std::uint32_t>(blob.args.size()));
         blob.parents.push_back(parent_of(id));
         blob.qualities.push_back(ranked[id].quality);
-        lower_names.push_back(lowercase(entry.name));
+        lower_names.push_back(llvm::StringRef(entry.name).lower());
     }
 
     blob.by_lower_name.resize(count);
@@ -405,7 +401,7 @@ bool ranks_after(const NameRank& lhs,
 }
 
 NameRanker::NameRanker(const SymbolQuery& query) :
-    query(query), lower_pattern(lowercase(query.pattern)),
+    query(query), lower_pattern(llvm::StringRef(query.pattern).lower()),
     exact(query.mode == Mode::Fuzzy ? llvm::StringRef(query.pattern) : llvm::StringRef(),
           MatchOptions{.inside_word = true}) {
     llvm::SmallVector<TypoAlternative> alternatives;
@@ -444,7 +440,7 @@ std::optional<NameRank>
     if(query.pattern.empty()) {
         return NameRank{.tier = 2, .score = quality};
     }
-    if(name.size() == lower_pattern.size() && lowercase(name) == lower_pattern) {
+    if(name.size() == lower_pattern.size() && name.lower() == lower_pattern) {
         return NameRank{.tier = static_cast<std::uint8_t>(name == query.pattern ? 0 : 1),
                         .score = quality};
     }
@@ -662,7 +658,7 @@ struct SearchIndex::View {
     /// The entries whose lowercase name is `lower`, in by_lower_name order.
     llvm::ArrayRef<std::uint32_t> lower_range(llvm::StringRef lower) const {
         auto project = [&](std::uint32_t entry) {
-            return lowercase(name(entry));
+            return name(entry).lower();
         };
         auto range = std::ranges::equal_range(by_lower_name, lower.str(), {}, project);
         return {range.begin(), range.end()};
@@ -799,7 +795,7 @@ SearchIndex::SearchIndex(SearchIndex&&) noexcept = default;
 SearchIndex& SearchIndex::operator=(SearchIndex&&) noexcept = default;
 
 bool SearchIndex::load(std::unique_ptr<llvm::MemoryBuffer> blob) {
-    clear();
+    view.reset();
     if(!blob) {
         return false;
     }
@@ -815,10 +811,6 @@ bool SearchIndex::load(std::unique_ptr<llvm::MemoryBuffer> blob) {
     bound->buffer = std::move(blob);
     view = std::move(bound);
     return true;
-}
-
-void SearchIndex::clear() {
-    view.reset();
 }
 
 bool SearchIndex::loaded() const {
@@ -903,7 +895,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
             auto& last = query.scope.back();
             llvm::ArrayRef<SymbolQuery::Segment> above = query.scope;
             above = above.drop_back();
-            for(auto entry: index.lower_range(lowercase(last.name))) {
+            for(auto entry: index.lower_range(llvm::StringRef(last.name).lower())) {
                 if(index.is_container(entry) && args_match(last.args, index.arguments(entry)) &&
                    segments_match(above, index.chain(entry), query.absolute)) {
                     containers.push_back(entry);
@@ -978,7 +970,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         case Mode::Members:
         case Mode::Subtree: scan(everything(), false); break;
         case Mode::Exact:
-            for(auto entry: index.lower_range(lowercase(query.pattern))) {
+            for(auto entry: index.lower_range(llvm::StringRef(query.pattern).lower())) {
                 if(allowed(entry)) {
                     consider(entry, false);
                 }
@@ -1009,7 +1001,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
                 scan(everything(), false);
                 break;
             }
-            for(auto entry: index.lower_range(lowercase(query.pattern))) {
+            for(auto entry: index.lower_range(llvm::StringRef(query.pattern).lower())) {
                 if(allowed(entry)) {
                     consider(entry, false);
                 }
