@@ -1496,15 +1496,15 @@ static bool same_entity(const index::IndexQuery::Located& lhs,
 /// Fold one project's graph neighbours into `into`: the sites it may
 /// answer for (`keep`), one neighbour per symbol, a neighbour left with
 /// no site dropped.
-static void merge_edges(std::vector<index::IndexQuery::Edge>& into,
-                        std::vector<index::IndexQuery::Edge> edges,
+static void merge_edges(std::vector<index::CallEdge>& into,
+                        std::vector<index::CallEdge> edges,
                         llvm::function_ref<bool(Fid)> keep) {
     for(auto& edge: edges) {
         llvm::erase_if(edge.sites, [&](const index::Site& site) { return !keep(site.file); });
         if(edge.sites.empty()) {
             continue;
         }
-        auto known = llvm::find_if(into, [&](const index::IndexQuery::Edge& other) {
+        auto known = llvm::find_if(into, [&](const index::CallEdge& other) {
             return same_entity(other.symbol, edge.symbol);
         });
         if(known == into.end()) {
@@ -1673,7 +1673,7 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
     if(!symbol)
         co_await kota::fail(item_not_resolved("call hierarchy"));
 
-    std::vector<index::IndexQuery::Edge> callers;
+    std::vector<index::CallEdge> callers;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
         merge_edges(callers,
@@ -1699,7 +1699,7 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
     if(!symbol)
         co_await kota::fail(item_not_resolved("call hierarchy"));
 
-    std::vector<index::IndexQuery::Edge> callees;
+    std::vector<index::CallEdge> callees;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
         merge_edges(callees,

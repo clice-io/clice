@@ -9,6 +9,7 @@ module clice;
 import :compile.diagnostic;
 import :feature.feature;
 import :index.format;
+import :index.include_tree;
 import :index.indexer;
 import :index.shard;
 import :index.tu_index;

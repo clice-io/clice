@@ -314,7 +314,7 @@ std::string via_of(index::SiteOrigin origin) {
     std::unreachable();
 }
 
-std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Edge> edges) {
+std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::CallEdge> edges) {
     std::vector<GraphEntry> entries;
     entries.reserve(edges.size());
     for(auto& edge: edges) {
