@@ -452,6 +452,9 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
         auto path_of = [&](std::uint32_t id) {
             return table.resolve(Fid{id}).str();
         };
+        auto spelled = [](llvm::StringRef path) {
+            return llvm::StringRef(Spelling::absolute(path)).str();
+        };
         auto scope = index.identity_of(10);
         ZASSERT(scope);
         ZEXPECT(scope->parent == 0u);
@@ -461,7 +464,7 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
         ZASSERT(member);
         ZEXPECT(member->parent == 10u);
         ZEXPECT(member->args == "<int>");
-        ZEXPECT(path_of(member->file) == "/proj/1.h");
+        ZEXPECT(path_of(member->file) == spelled("/proj/1.h"));
         ZEXPECT(index.reference_count(20) == 2u);
         auto outsider = index.identity_of(30);
         ZASSERT(outsider);
@@ -471,13 +474,15 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
         std::vector<std::string> referencing;
         index.each_reference_file(30, [&](Fid file) { referencing.push_back(path_of(file.raw)); });
         std::ranges::sort(referencing);
-        ZEXPECT(referencing ==
-                std::vector<std::string>{"/proj/0.h", "/proj/1.h", "/proj/2.h", "/proj/3.h"});
+        ZEXPECT(referencing == std::vector{spelled("/proj/0.h"),
+                                           spelled("/proj/1.h"),
+                                           spelled("/proj/2.h"),
+                                           spelled("/proj/3.h")});
         std::vector<std::string> instantiating;
         index.each_instantiation_file(30, [&](Fid file) {
             instantiating.push_back(path_of(file.raw));
         });
-        ZEXPECT(instantiating == std::vector<std::string>{"/proj/3.h"});
+        ZEXPECT(instantiating == std::vector{spelled("/proj/3.h")});
         std::size_t none = 0;
         index.each_instantiation_file(20, [&](Fid) { none += 1; });
         ZEXPECT(none == 0u);
@@ -527,7 +532,7 @@ ZEST_CASE(WidePathIds) {
     ZASSERT(loaded.load_global(bytes.str(), fresh, pins));
     auto identity = loaded.identity_of(10);
     ZASSERT(identity);
-    ZEXPECT(fresh.resolve(Fid{identity->file}).str() == "/proj/0.h");
+    ZEXPECT(fresh.find(Spelling::absolute("/proj/0.h")) == Fid{identity->file});
     ZEXPECT(loaded.reference_count(10) == 1u);
 }
 
