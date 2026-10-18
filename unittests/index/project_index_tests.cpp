@@ -449,11 +449,8 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
     outsider.instantiation_files.add(files[3].raw);
 
     auto check = [&](const index::ProjectIndex& index, const clice::FileTable& table) {
-        auto path_of = [&](std::uint32_t id) {
-            return table.resolve(Fid{id}).str();
-        };
-        auto spelled = [](llvm::StringRef path) {
-            return llvm::StringRef(Spelling::absolute(path)).str();
+        auto id_of = [&](llvm::StringRef path) {
+            return table.find(Spelling::absolute(path))->raw;
         };
         auto scope = index.identity_of(10);
         ZASSERT(scope);
@@ -464,25 +461,25 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
         ZASSERT(member);
         ZEXPECT(member->parent == 10u);
         ZEXPECT(member->args == "<int>");
-        ZEXPECT(path_of(member->file) == spelled("/proj/1.h"));
+        ZEXPECT(member->file == id_of("/proj/1.h"));
         ZEXPECT(index.reference_count(20) == 2u);
         auto outsider = index.identity_of(30);
         ZASSERT(outsider);
         ZEXPECT(outsider->parent == 999u);
         ZEXPECT(index.reference_count(10) == 1u);
         ZEXPECT(index.reference_count(30) == 4u);
-        std::vector<std::string> referencing;
-        index.each_reference_file(30, [&](Fid file) { referencing.push_back(path_of(file.raw)); });
+        std::vector<std::uint32_t> referencing;
+        index.each_reference_file(30, [&](Fid file) { referencing.push_back(file.raw); });
         std::ranges::sort(referencing);
-        ZEXPECT(referencing == std::vector{spelled("/proj/0.h"),
-                                           spelled("/proj/1.h"),
-                                           spelled("/proj/2.h"),
-                                           spelled("/proj/3.h")});
-        std::vector<std::string> instantiating;
-        index.each_instantiation_file(30, [&](Fid file) {
-            instantiating.push_back(path_of(file.raw));
-        });
-        ZEXPECT(instantiating == std::vector{spelled("/proj/3.h")});
+        std::vector<std::uint32_t> expected{id_of("/proj/0.h"),
+                                            id_of("/proj/1.h"),
+                                            id_of("/proj/2.h"),
+                                            id_of("/proj/3.h")};
+        std::ranges::sort(expected);
+        ZEXPECT(referencing == expected);
+        std::vector<std::uint32_t> instantiating;
+        index.each_instantiation_file(30, [&](Fid file) { instantiating.push_back(file.raw); });
+        ZEXPECT(instantiating == std::vector{id_of("/proj/3.h")});
         std::size_t none = 0;
         index.each_instantiation_file(20, [&](Fid) { none += 1; });
         ZEXPECT(none == 0u);
