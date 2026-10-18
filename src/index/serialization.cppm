@@ -156,8 +156,8 @@ struct IdColumn {
 ///   - wide: begin u32 + length u8 columns
 /// Lengths >= 255 escape to the sparse (entry, end) table in either encoding.
 ///
-/// Variant masks are absent for a single variant, then u32 / u64 /
-/// concatenated roaring bitmaps by variant count.
+/// Variant masks are absent for a single variant, then u8 / u16 / u32 /
+/// u64 / concatenated roaring bitmaps by variant count.
 struct RangeColumns {
     std::vector<std::uint32_t> packed;
 
@@ -167,6 +167,8 @@ struct RangeColumns {
     std::vector<std::uint32_t> long_entries;
     std::vector<std::uint32_t> long_ends;
 
+    std::vector<std::uint8_t> masks8;
+    std::vector<std::uint16_t> masks16;
     std::vector<std::uint32_t> masks32;
     std::vector<std::uint64_t> masks64;
     std::vector<std::uint32_t> roaring_offsets;
@@ -229,8 +231,8 @@ struct ShardBlob {
     std::vector<std::uint64_t> sym_hashes;
 
     /// Relation slice per symbol: entry i's relations occupy positions
-    /// [sym_rel_offsets[i], sym_rel_offsets[i + 1]). Size is table size + 1.
-    std::vector<std::uint32_t> sym_rel_offsets;
+    /// [rel_offsets[i], rel_offsets[i + 1]). Size is table size + 1.
+    IdColumn rel_offsets;
 
     /// Symbols local to this file (FileLocal) or its TU (TULocal), whose
     /// names live nowhere else: sparse over the symbol table, ascending.
@@ -257,9 +259,7 @@ struct ShardBlob {
 
     /// Occurrences sorted by (begin, end, symbol hash).
     RangeColumns occs;
-    std::vector<std::uint8_t> occ_syms8;
-    std::vector<std::uint16_t> occ_syms16;
-    std::vector<std::uint32_t> occ_syms32;
+    IdColumn occ_syms;
 
     /// Relations in symbol-table order, sorted by (kind, begin, end,
     /// payload) within each group.

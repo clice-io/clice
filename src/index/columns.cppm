@@ -79,6 +79,8 @@ struct RangeColumnsView {
     llvm::ArrayRef<std::uint8_t> lengths;
     llvm::ArrayRef<std::uint32_t> long_entries;
     llvm::ArrayRef<std::uint32_t> long_ends;
+    llvm::ArrayRef<std::uint8_t> masks8;
+    llvm::ArrayRef<std::uint16_t> masks16;
     llvm::ArrayRef<std::uint32_t> masks32;
     llvm::ArrayRef<std::uint64_t> masks64;
     llvm::ArrayRef<std::uint32_t> roaring_offsets;
@@ -132,6 +134,8 @@ inline RangeColumnsView columns_of(kota::codec::fbs::table_view<RangeColumns> vi
         to_array_ref(view[&RangeColumns::lengths]),
         to_array_ref(view[&RangeColumns::long_entries]),
         to_array_ref(view[&RangeColumns::long_ends]),
+        to_array_ref(view[&RangeColumns::masks8]),
+        to_array_ref(view[&RangeColumns::masks16]),
         to_array_ref(view[&RangeColumns::masks32]),
         to_array_ref(view[&RangeColumns::masks64]),
         to_array_ref(view[&RangeColumns::roaring_offsets]),

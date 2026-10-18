@@ -153,7 +153,8 @@ CheckResult records_ok(BlobView root) {
     if(auto ok = range_encoding_ok(table.columns, content_size); !ok) {
         return ok;
     }
-    if(!table.columns.masks32.empty() || !table.columns.masks64.empty() ||
+    if(!table.columns.masks8.empty() || !table.columns.masks16.empty() ||
+       !table.columns.masks32.empty() || !table.columns.masks64.empty() ||
        !table.columns.roaring_offsets.empty() || !table.columns.roaring.empty()) {
         return std::unexpected("mask columns on instantiation records");
     }

@@ -253,7 +253,7 @@ std::string planted_blob(llvm::StringRef text, std::uint64_t variant) {
     }
     blob.variants = {variant};
     blob.sym_hashes = {111};
-    blob.sym_rel_offsets = {0, 0};
+    blob.rel_offsets.ids8 = {0, 0};
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::serialize_blob(blob, os);

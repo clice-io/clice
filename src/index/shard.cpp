@@ -19,6 +19,8 @@ namespace clice::index {
 enum class MaskEncoding : std::uint8_t {
     /// One variant: no mask columns at all.
     Single,
+    U8,
+    U16,
     U32,
     U64,
     Roaring,
@@ -31,6 +33,12 @@ using BlobView = kota::codec::fbs::table_view<ShardBlob>;
 MaskEncoding encoding_of(std::size_t variant_count) {
     if(variant_count <= 1) {
         return MaskEncoding::Single;
+    }
+    if(variant_count <= 8) {
+        return MaskEncoding::U8;
+    }
+    if(variant_count <= 16) {
+        return MaskEncoding::U16;
     }
     if(variant_count <= 32) {
         return MaskEncoding::U32;
@@ -62,6 +70,21 @@ MaskEncoding encoding_of(BlobView root) {
     return encoding_of(variant_count_of(root));
 }
 
+/// The mask of `entry` in an encoding of up to 64 variants.
+std::uint64_t mask_bits(MaskEncoding encoding,
+                        const RangeColumnsView& columns,
+                        std::uint32_t entry) {
+    switch(encoding) {
+        case MaskEncoding::Single: return 1;
+        case MaskEncoding::U8: return columns.masks8[entry];
+        case MaskEncoding::U16: return columns.masks16[entry];
+        case MaskEncoding::U32: return columns.masks32[entry];
+        case MaskEncoding::U64: return columns.masks64[entry];
+        case MaskEncoding::Roaring: break;
+    }
+    std::unreachable();
+}
+
 }  // namespace
 
 /// The live mask against one side's mask columns, resolved once per query.
@@ -77,21 +100,10 @@ struct LiveFilter {
         if(all) {
             return true;
         }
-        switch(encoding) {
-            case MaskEncoding::Single: {
-                return (bits & 1) != 0;
-            }
-            case MaskEncoding::U32: {
-                return (columns->masks32[entry] & static_cast<std::uint32_t>(bits)) != 0;
-            }
-            case MaskEncoding::U64: {
-                return (columns->masks64[entry] & bits) != 0;
-            }
-            case MaskEncoding::Roaring: {
-                return columns->bitmap_of(entry).intersect(*big);
-            }
+        if(encoding == MaskEncoding::Roaring) {
+            return columns->bitmap_of(entry).intersect(*big);
         }
-        std::unreachable();
+        return (mask_bits(encoding, *columns, entry) & bits) != 0;
     }
 };
 
@@ -106,9 +118,7 @@ struct OccurrenceTable {
     static OccurrenceTable of(BlobView root) {
         return {
             .columns = columns_of(root[&ShardBlob::occs]),
-            .syms = {to_array_ref(root[&ShardBlob::occ_syms8]),
-                     to_array_ref(root[&ShardBlob::occ_syms16]),
-                     to_array_ref(root[&ShardBlob::occ_syms32])},
+            .syms = ids_of(root[&ShardBlob::occ_syms]),
             .sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]),
         };
     }
@@ -136,7 +146,7 @@ struct RelationTable {
     llvm::ArrayRef<std::uint32_t> def_ends;
     llvm::ArrayRef<std::uint64_t> sym_hashes;
     /// Entry i's relations occupy [offsets[i], offsets[i + 1]).
-    llvm::ArrayRef<std::uint32_t> offsets;
+    SymIds offsets;
 
     static RelationTable of(BlobView root) {
         return {
@@ -150,7 +160,7 @@ struct RelationTable {
             .def_begins = to_array_ref(root[&ShardBlob::rel_def_begins]),
             .def_ends = to_array_ref(root[&ShardBlob::rel_def_ends]),
             .sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]),
-            .offsets = to_array_ref(root[&ShardBlob::sym_rel_offsets]),
+            .offsets = ids_of(root[&ShardBlob::rel_offsets]),
         };
     }
 
@@ -370,12 +380,13 @@ CheckResult line_table_ok(BlobView root) {
 // the later id's relations and local name unreachably.
 CheckResult symbol_table_ok(BlobView root) {
     auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
-    auto offsets = to_array_ref(root[&ShardBlob::sym_rel_offsets]);
-    if(offsets.size() != sym_hashes.size() + 1) {
-        return std::unexpected("relation offsets do not match the symbol table");
+    auto relations = RelationTable::of(root).size();
+    auto offsets = ids_of(root[&ShardBlob::rel_offsets]);
+    if(auto ok = ascending_ids_ok(offsets, sym_hashes.size() + 1, relations + 1, false); !ok) {
+        return ok;
     }
-    if(!std::ranges::is_sorted(offsets) || offsets.back() != RelationTable::of(root).size()) {
-        return std::unexpected("relation offsets are not a partition of the rows");
+    if(offsets[0] != 0 || offsets[sym_hashes.size()] != relations) {
+        return std::unexpected("relation offsets are not a partition of the relations");
     }
     if(!std::ranges::is_sorted(sym_hashes, std::less_equal{})) {
         return std::unexpected("symbol hashes are not strictly ascending");
@@ -573,62 +584,48 @@ CheckResult masks_ok(BlobView root) {
     auto encoding = encoding_of(variant_count);
     for(auto columns: {columns_of(root[&ShardBlob::occs]), columns_of(root[&ShardBlob::rels])}) {
         auto count = columns.size();
-        switch(encoding) {
-            case MaskEncoding::Single: {
-                if(!columns.masks32.empty() || !columns.masks64.empty() ||
-                   !columns.roaring_offsets.empty() || !columns.roaring.empty()) {
-                    return std::unexpected("mask columns on a single-variant blob");
-                }
-                break;
+        auto expected = [&](MaskEncoding column) -> std::size_t {
+            if(column != encoding) {
+                return 0;
             }
-            case MaskEncoding::U32: {
-                if(columns.masks32.size() != count || !columns.masks64.empty() ||
-                   !columns.roaring_offsets.empty()) {
-                    return std::unexpected("mask tier is not the canonical one");
+            return column == MaskEncoding::Roaring ? count + 1 : count;
+        };
+        if(columns.masks8.size() != expected(MaskEncoding::U8) ||
+           columns.masks16.size() != expected(MaskEncoding::U16) ||
+           columns.masks32.size() != expected(MaskEncoding::U32) ||
+           columns.masks64.size() != expected(MaskEncoding::U64) ||
+           columns.roaring_offsets.size() != expected(MaskEncoding::Roaring) ||
+           (encoding != MaskEncoding::Roaring && !columns.roaring.empty())) {
+            return std::unexpected("mask encoding is not the canonical one");
+        }
+        if(encoding == MaskEncoding::Single) {
+            continue;
+        }
+        if(encoding != MaskEncoding::Roaring) {
+            auto stray = variant_count < 64 ? ~std::uint64_t(0) << variant_count : 0;
+            for(std::uint32_t entry = 0; entry < count; entry += 1) {
+                auto mask = mask_bits(encoding, columns, entry);
+                if(mask == 0 || (mask & stray) != 0) {
+                    return std::unexpected("entry mask owns no stored variant");
                 }
-                auto stray = variant_count < 32 ? ~std::uint32_t(0) << variant_count : 0;
-                if(!llvm::all_of(columns.masks32, [&](std::uint32_t mask) {
-                       return mask != 0 && (mask & stray) == 0;
-                   })) {
-                    return std::unexpected("row mask owns no stored variant");
-                }
-                break;
             }
-            case MaskEncoding::U64: {
-                if(columns.masks64.size() != count || !columns.masks32.empty() ||
-                   !columns.roaring_offsets.empty()) {
-                    return std::unexpected("mask tier is not the canonical one");
-                }
-                auto stray = variant_count < 64 ? ~std::uint64_t(0) << variant_count : 0;
-                if(!llvm::all_of(columns.masks64, [&](std::uint64_t mask) {
-                       return mask != 0 && (mask & stray) == 0;
-                   })) {
-                    return std::unexpected("row mask owns no stored variant");
-                }
-                break;
-            }
-            case MaskEncoding::Roaring: {
-                if(!columns.masks32.empty() || !columns.masks64.empty() ||
-                   columns.roaring_offsets.size() != count + 1 ||
-                   !std::ranges::is_sorted(columns.roaring_offsets) ||
-                   columns.roaring_offsets.back() != columns.roaring.size() ||
-                   (count != 0 && columns.roaring_offsets.front() != 0)) {
-                    return std::unexpected("mask tier is not the canonical one");
-                }
-                // A slice failing decode would read as an empty mask — the
-                // ownerless-entry corruption above in another coat. Prove
-                // each slice decodes once here so queries stay check-free
-                // and the blob rebuilds instead.
-                for(std::uint32_t entry = 0; entry < count; entry += 1) {
-                    auto begin = columns.roaring_offsets[entry];
-                    auto mask = view_bitmap(columns.roaring.data() + begin,
-                                            columns.roaring_offsets[entry + 1] - begin);
-                    if(!mask || mask->isEmpty() || mask->maximum() >= variant_count) {
-                        return std::unexpected(
-                            "row mask does not decode or owns no stored variant");
-                    }
-                }
-                break;
+            continue;
+        }
+        if(!std::ranges::is_sorted(columns.roaring_offsets) ||
+           columns.roaring_offsets.back() != columns.roaring.size() ||
+           (count != 0 && columns.roaring_offsets.front() != 0)) {
+            return std::unexpected("mask encoding is not the canonical one");
+        }
+        // A slice failing decode would read as an empty mask — the
+        // ownerless-entry corruption above in another coat. Prove each
+        // slice decodes once here so queries stay check-free and the blob
+        // rebuilds instead.
+        for(std::uint32_t entry = 0; entry < count; entry += 1) {
+            auto begin = columns.roaring_offsets[entry];
+            auto mask = view_bitmap(columns.roaring.data() + begin,
+                                    columns.roaring_offsets[entry + 1] - begin);
+            if(!mask || mask->isEmpty() || mask->maximum() >= variant_count) {
+                return std::unexpected("entry mask does not decode or owns no stored variant");
             }
         }
     }
@@ -1080,25 +1077,12 @@ MaskT remap_mask(MaskEncoding encoding,
             bits &= bits - 1;
         }
     };
-    switch(encoding) {
-        case MaskEncoding::Single: {
-            apply(0);
-            break;
+    if(encoding == MaskEncoding::Roaring) {
+        for(auto id: columns.bitmap_of(entry)) {
+            apply(id);
         }
-        case MaskEncoding::U32: {
-            apply_bits(columns.masks32[entry]);
-            break;
-        }
-        case MaskEncoding::U64: {
-            apply_bits(columns.masks64[entry]);
-            break;
-        }
-        case MaskEncoding::Roaring: {
-            for(auto id: columns.bitmap_of(entry)) {
-                apply(id);
-            }
-            break;
-        }
+    } else {
+        apply_bits(mask_bits(encoding, columns, entry));
     }
     return result;
 }
@@ -1362,6 +1346,18 @@ struct SideWriter {
             case MaskEncoding::Single: {
                 break;
             }
+            case MaskEncoding::U8: {
+                if constexpr(std::same_as<MaskT, std::uint64_t>) {
+                    side.masks8.push_back(static_cast<std::uint8_t>(mask));
+                }
+                break;
+            }
+            case MaskEncoding::U16: {
+                if constexpr(std::same_as<MaskT, std::uint64_t>) {
+                    side.masks16.push_back(static_cast<std::uint16_t>(mask));
+                }
+                break;
+            }
             case MaskEncoding::U32: {
                 if constexpr(std::same_as<MaskT, std::uint64_t>) {
                     side.masks32.push_back(static_cast<std::uint32_t>(mask));
@@ -1477,7 +1473,7 @@ void emit_blob(const MergedEntries<MaskT>& merged,
         .ranges = {.side = blob.occs, .narrow = narrow},
         .encoding = encoding,
     };
-    SymIdWriter occ_syms{width, blob.occ_syms8, blob.occ_syms16, blob.occ_syms32};
+    auto occ_syms = id_writer(blob.occ_syms, blob.sym_hashes.size());
     for(auto& entry: merged.occurrences) {
         occs.add(entry.occurrence.range, entry.mask);
         occ_syms.add(sym_id(entry.occurrence.target));
@@ -1491,10 +1487,11 @@ void emit_blob(const MergedEntries<MaskT>& merged,
         .encoding = encoding,
     };
     SymIdWriter rel_syms{width, blob.rel_sym8, blob.rel_sym16, blob.rel_sym32};
-    blob.sym_rel_offsets.reserve(blob.sym_hashes.size() + 1);
+    std::vector<std::uint32_t> rel_offsets;
+    rel_offsets.reserve(blob.sym_hashes.size() + 1);
     auto group = merged.relations.begin();
     for(auto hash: blob.sym_hashes) {
-        blob.sym_rel_offsets.push_back(rels.count());
+        rel_offsets.push_back(rels.count());
         if(group == merged.relations.end() || group->symbol != hash) {
             continue;
         }
@@ -1516,8 +1513,9 @@ void emit_blob(const MergedEntries<MaskT>& merged,
         }
         group += 1;
     }
-    blob.sym_rel_offsets.push_back(rels.count());
+    rel_offsets.push_back(rels.count());
     rels.finish();
+    write_ids(blob.rel_offsets, rel_offsets, rels.count() + 1);
 
     serialize_blob(blob, os);
 }
