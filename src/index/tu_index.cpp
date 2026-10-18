@@ -2045,9 +2045,8 @@ public:
         blob.absent = unit.absent();
         llvm::SmallVector<SymbolHash> table;
         for(auto& [hash, symbol]: symbols) {
-            // A function's own name stays out but where an instantiation or
-            // an expansion names it in another file, which the merge lists
-            // (TUIndex::local_fanout).
+            // A function's own name stays out but where another file names
+            // it, which the merge lists (TUIndex::local_fanout).
             if(symbol.scope == SymbolScope::FileLocal &&
                (focus_only || symbol.reference_files.cardinality() < 2)) {
                 continue;

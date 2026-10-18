@@ -31,9 +31,9 @@ enum class SymbolScope : std::uint8_t {
     /// files list those files (TUManifest::local_fanout).
     TULocal = 1,
     /// Declared inside a function (local variables, parameters, labels,
-    /// local classes) and written only in its file. Stored in the defining
-    /// file's Shard blob; an instantiation or a macro expansion naming it in
-    /// another file is listed as for TULocal.
+    /// local classes). Stored in the defining file's Shard blob; one another
+    /// file names — through an instantiation, a macro expansion, or a local
+    /// class a function returns — is listed as for TULocal.
     FileLocal = 2,
 };
 
