@@ -335,8 +335,10 @@ struct IndexStats {
     std::uint64_t keys = 0;
     /// Keys whose instantiation resolves nothing in its file.
     std::uint64_t empty_keys = 0;
-    /// (file, resolution) pairs the manifests list, summed over the TUs.
-    std::uint64_t resolution_uses = 0;
+    /// (unit, file) pairs the manifests list, and the distinct uses the
+    /// instantiation shards store for them.
+    std::uint64_t unit_uses = 0;
+    std::uint64_t stored_uses = 0;
     /// Per template, how many of its instantiations the shards key.
     llvm::DenseMap<index::SymbolHash, std::uint32_t> keys_per_template;
 
@@ -391,6 +393,7 @@ IndexStats collect_stats(Project& project) {
             index::measure_fields(blob, stats.instantiation_fields);
         }
         stats.instantiation_bytes += stat.bytes;
+        stats.stored_uses += instantiations.uses().size();
         stats.resolutions += stat.resolutions;
         stats.records += stat.records;
         stats.keys += stat.keys;
@@ -406,9 +409,7 @@ IndexStats collect_stats(Project& project) {
         });
     for(auto& [tu, manifest]: project_index.manifests) {
         stats.local_fanout += manifest.local_fanout.size();
-        for(auto& use: manifest.instantiations) {
-            stats.resolution_uses += use.resolutions.size();
-        }
+        stats.unit_uses += manifest.instantiations.size();
         if(auto blob = project.index_db->read(index::IndexBlobKind::Manifest,
                                               project_index.key_of(project.file_table, tu))) {
             stats.manifest_bytes += blob.buffer->getBufferSize();
@@ -469,14 +470,15 @@ void print_stats(const Project& project,
                     stats.relations);
     driver::println(
         "Instantiation shards: {} ({}), {} resolutions, {} records, {} keys ({} resolve "
-        "nothing), {} uses of resolutions",
+        "nothing), {} uses by units ({} stored)",
         stats.instantiations.size(),
         format_bytes(stats.instantiation_bytes),
         stats.resolutions,
         stats.records,
         stats.keys,
         stats.empty_keys,
-        stats.resolution_uses);
+        stats.unit_uses,
+        stats.stored_uses);
     driver::println("Global symbols: {}, file versions: {}",
                     project_index.symbol_count(),
                     project.file_table.versions.size());
@@ -760,12 +762,18 @@ void answer_dump(Project& project) {
                 line += " " + std::to_string(i);
             out(line);
         }
+        std::vector<std::string> uses;
         for(auto& use: m.instantiations) {
             std::string line = " u " + fv_path(use.file);
-            for(auto r: use.resolutions)
-                line += std::format(" {:016x}", r);
-            out(line);
+            auto inst = pi.instantiations.find(files.version(use.file).fid);
+            if(inst != pi.instantiations.end())
+                for(auto r: inst->second.resolutions_of(use.use))
+                    line += std::format(" {:016x}", r);
+            uses.push_back(std::move(line));
         }
+        std::ranges::sort(uses);
+        for(auto& line: uses)
+            out(line);
     }
 }
 

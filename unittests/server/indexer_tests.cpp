@@ -3824,8 +3824,9 @@ void a() { Box<A>{}.show(); }
     auto* instantiations = f.project.project_index.instantiation_shard(box_id);
     ZASSERT(instantiations);
     ZEXPECT(std::ranges::equal(instantiations->resolutions(), stored));
-    ZEXPECT(f.project.project_index.live_resolutions(box_id) ==
-            llvm::SmallVector<std::uint64_t>(stored.begin(), stored.end()));
+    auto uses = f.project.project_index.live_uses(box_id);
+    ZASSERT(uses.size() == 1u);
+    ZEXPECT(instantiations->resolutions_of(uses.front()) == stored);
 }
 
 };  // ZEST_SUITE(IndexerPersist)
@@ -4109,7 +4110,8 @@ ZEST_CASE(ResolutionsSharedAndSkipped) {
     ZASSERT(index("a2.cpp"));
     auto& manifest = f.project.project_index.manifests.find(id("a2.cpp"))->second;
     ZASSERT(manifest.instantiations.size() == 1u);
-    ZEXPECT(llvm::ArrayRef(manifest.instantiations.front().resolutions) == box()->resolutions());
+    ZEXPECT(llvm::ArrayRef(box()->resolutions_of(manifest.instantiations.front().use)) ==
+            box()->resolutions());
 
     ZASSERT(index("b.cpp"));
     ZEXPECT(box()->resolutions().size() == 2u);

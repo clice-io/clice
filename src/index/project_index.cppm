@@ -169,12 +169,12 @@ struct ProjectIndex {
     /// loaded precompiled header -> the TUs reading it (TUManifest::imports).
     llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> importers;
 
-    /// Derived from `manifests`: file -> (instantiation resolution -> how many
-    /// TUs use it). Its resolutions are the file's live ones.
+    /// Derived from `manifests`: file -> (use -> how many TUs name it). Its
+    /// uses are the file's live ones.
     llvm::DenseMap<Fid, llvm::DenseMap<std::uint64_t, std::uint32_t>> instantiation_uses;
 
-    /// The live instantiation resolutions of `path_id`, ascending.
-    llvm::SmallVector<std::uint64_t> live_resolutions(Fid path_id) const;
+    /// The live instantiation uses of `path_id`, ascending.
+    llvm::SmallVector<std::uint64_t> live_uses(Fid path_id) const;
 
     /// What an instantiation shard names a TU by: the hash of its database
     /// key.

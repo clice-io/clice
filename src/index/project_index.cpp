@@ -1199,10 +1199,7 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
     }
     for(auto& use: manifest.instantiations) {
         auto path_id = files.version(use.file).fid;
-        auto& uses = instantiation_uses[path_id];
-        for(auto resolution: use.resolutions) {
-            uses[resolution] += 1;
-        }
+        instantiation_uses[path_id][use.use] += 1;
         affected.push_back(path_id);
     }
     units[unit_of(files, tu_path_id)] = tu_path_id;
@@ -1254,12 +1251,10 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
     for(auto& use: it->second.instantiations) {
         auto path_id = files.version(use.file).fid;
         auto& uses = instantiation_uses.find(path_id)->second;
-        for(auto resolution: use.resolutions) {
-            auto used = uses.find(resolution);
-            used->second -= 1;
-            if(used->second == 0) {
-                uses.erase(used);
-            }
+        auto used = uses.find(use.use);
+        used->second -= 1;
+        if(used->second == 0) {
+            uses.erase(used);
         }
         if(uses.empty()) {
             instantiation_uses.erase(path_id);
@@ -1288,14 +1283,14 @@ llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(Fid path_id) const 
     return variants;
 }
 
-llvm::SmallVector<std::uint64_t> ProjectIndex::live_resolutions(Fid path_id) const {
-    llvm::SmallVector<std::uint64_t> resolutions;
+llvm::SmallVector<std::uint64_t> ProjectIndex::live_uses(Fid path_id) const {
+    llvm::SmallVector<std::uint64_t> uses;
     if(auto it = instantiation_uses.find(path_id); it != instantiation_uses.end()) {
-        resolutions.assign(llvm::make_first_range(it->second).begin(),
-                           llvm::make_first_range(it->second).end());
+        uses.assign(llvm::make_first_range(it->second).begin(),
+                    llvm::make_first_range(it->second).end());
     }
-    llvm::sort(resolutions);
-    return resolutions;
+    llvm::sort(uses);
+    return uses;
 }
 
 void ProjectIndex::each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const {

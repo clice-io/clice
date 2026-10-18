@@ -28,7 +28,11 @@ struct ManifestBlob {
 
     std::uint32_t contribution_count = 0;
 
-    /// node_count × (varint fv, varint parent + 1 with 0 = root, varint line)
+    /// node_count × (varint fv, varint parent, varint line): the parent 0
+    /// for the previous node's, 1 for the root, else its index plus 2; the
+    /// line shifted left by two over a bit for a skipped node and a bit for
+    /// a line stored as its distance past the previous node's — only
+    /// beside the previous node's parent, at or past its line.
     std::vector<std::uint8_t> nodes;
 
     /// contribution_count × (varint fv, 8-byte little-endian variant hash —
@@ -45,11 +49,10 @@ struct ManifestBlob {
     std::vector<std::uint32_t> local_file_ends;
     std::vector<std::uint32_t> local_files;
 
-    /// TUManifest::instantiations as columns: per file its version, and its
-    /// resolutions back to back.
+    /// TUManifest::instantiations as columns: per file its version and its
+    /// use.
     std::vector<std::uint32_t> instantiation_files;
-    std::vector<std::uint32_t> instantiation_ends;
-    std::vector<std::uint64_t> instantiation_resolutions;
+    std::vector<std::uint64_t> instantiation_uses;
 };
 
 void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value) {
@@ -91,12 +94,17 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
     blob.tu_fv = manifest.tu_fv.raw;
 
     blob.node_count = static_cast<std::uint32_t>(manifest.nodes.size());
-    blob.nodes.reserve(manifest.nodes.size() * 7);
+    blob.nodes.reserve(manifest.nodes.size() * 5);
+    const IncludeNode* previous = nullptr;
     for(auto& node: manifest.nodes) {
         write_varint(blob.nodes, node.file);
-        write_varint(blob.nodes, node.parent + 1);
-        write_varint(blob.nodes, node.line);
-        write_varint(blob.nodes, node.skipped ? 1 : 0);
+        bool sibling = previous && previous->parent == node.parent;
+        write_varint(blob.nodes, sibling ? 0 : node.parent == no_node ? 1 : node.parent + 2);
+        bool delta = sibling && node.line >= previous->line;
+        auto line = delta ? node.line - previous->line : node.line;
+        write_varint(blob.nodes,
+                     (std::uint64_t(line) << 2) | (node.skipped ? 2 : 0) | (delta ? 1 : 0));
+        previous = &node;
     }
 
     blob.contribution_count = static_cast<std::uint32_t>(manifest.contributions.size());
@@ -123,9 +131,7 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
 
     for(auto& use: manifest.instantiations) {
         blob.instantiation_files.push_back(use.file.raw);
-        llvm::append_range(blob.instantiation_resolutions, use.resolutions);
-        blob.instantiation_ends.push_back(
-            static_cast<std::uint32_t>(blob.instantiation_resolutions.size()));
+        blob.instantiation_uses.push_back(use.use);
     }
 
     serialize_blob(blob, os);
@@ -138,10 +144,10 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     }
 
     // The counts size reserves below and are untrusted; a node occupies at
-    // least 4 payload bytes (four varints) and a contribution at least 9
+    // least 3 payload bytes (three varints) and a contribution at least 9
     // (varint + 8-byte hash), so a count beyond these bounds cannot be
     // honest and must not reach an allocator.
-    if(blob.node_count > blob.nodes.size() / 4 ||
+    if(blob.node_count > blob.nodes.size() / 3 ||
        blob.contribution_count > blob.contributions.size() / 9) {
         return std::nullopt;
     }
@@ -158,26 +164,33 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     for(std::uint32_t i = 0; i < blob.node_count; i += 1) {
         std::uint64_t fv = 0;
         std::uint64_t parent = 0;
-        std::uint64_t line = 0;
-        std::uint64_t skipped = 0;
+        std::uint64_t code = 0;
         if(!read_varint(nodes, pos, fv) || !read_varint(nodes, pos, parent) ||
-           !read_varint(nodes, pos, line) || !read_varint(nodes, pos, skipped)) {
-            return std::nullopt;
-        }
-        if(fv > id_max || line > id_max || skipped > 1) {
+           !read_varint(nodes, pos, code)) {
             return std::nullopt;
         }
         // Parents may follow their children (the include tree resolves
         // parent chains after appending the child), so only bounds are
         // checked; consumers walking parents must carry their own visited
         // set.
-        if(parent > blob.node_count) {
+        auto* previous = manifest.nodes.empty() ? nullptr : &manifest.nodes.back();
+        bool delta = (code & 1) != 0;
+        if(fv > id_max || parent > std::uint64_t(blob.node_count) + 1 ||
+           (parent == 0 && !previous) || (delta && parent != 0)) {
             return std::nullopt;
         }
-        manifest.nodes.push_back({.file = static_cast<std::uint32_t>(fv),
-                                  .parent = static_cast<std::uint32_t>(parent) - 1,
-                                  .line = static_cast<std::uint32_t>(line),
-                                  .skipped = skipped != 0});
+        auto line = (code >> 2) + (delta ? previous->line : 0);
+        if(line > id_max) {
+            return std::nullopt;
+        }
+        manifest.nodes.push_back({
+            .file = static_cast<std::uint32_t>(fv),
+            .parent = parent == 0   ? previous->parent
+                      : parent == 1 ? no_node
+                                    : static_cast<std::uint32_t>(parent - 2),
+            .line = static_cast<std::uint32_t>(line),
+            .skipped = (code & 2) != 0,
+        });
     }
     if(pos != nodes.size()) {
         return std::nullopt;
@@ -232,22 +245,14 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         begin = end;
     }
 
-    if(blob.instantiation_ends.size() != blob.instantiation_files.size() ||
-       !monotone_ends(blob.instantiation_ends, blob.instantiation_resolutions.size()) ||
-       (blob.instantiation_ends.empty()
-            ? !blob.instantiation_resolutions.empty()
-            : blob.instantiation_ends.back() != blob.instantiation_resolutions.size()) ||
-       llvm::any_of(blob.instantiation_resolutions,
-                    [](std::uint64_t resolution) { return reserved_key(resolution); })) {
+    if(blob.instantiation_uses.size() != blob.instantiation_files.size() ||
+       llvm::any_of(blob.instantiation_uses, [](std::uint64_t use) { return reserved_key(use); })) {
         return std::nullopt;
     }
-    llvm::ArrayRef<std::uint64_t> resolutions(blob.instantiation_resolutions);
     for(std::size_t i = 0; i < blob.instantiation_files.size(); i += 1) {
-        auto used =
-            back_to_back(resolutions, blob.instantiation_ends, static_cast<std::uint32_t>(i));
         manifest.instantiations.push_back({
             .file = VersionID{blob.instantiation_files[i]},
-            .resolutions = {used.begin(), used.end()},
+            .use = blob.instantiation_uses[i],
         });
     }
 

@@ -51,17 +51,25 @@ InstantiationShard write(const FileInstantiations& instantiations) {
 
 InstantiationShard merge(
     const InstantiationShard& old,
-    llvm::ArrayRef<ResolutionHash> keep,
+    llvm::ArrayRef<index::UseHash> keep,
     const InstantiationShard* fresh,
     Producer producer,
-    llvm::function_ref<bool(const Producer&)> keep_producer = [](const Producer&) {
-        return true;
-    }) {
+    llvm::function_ref<bool(const Producer&)> keep_producer = [](const Producer&) { return true; },
+    std::optional<index::AddedUse> added = std::nullopt) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
-    index::merge_instantiations(old, keep, keep_producer, fresh, producer, os);
+    index::merge_instantiations(old, keep, keep_producer, fresh, producer, added, os);
     return make(bytes);
 }
+
+/// The use of a unit using every resolution of `shard`.
+index::AddedUse use_of(const InstantiationShard& shard) {
+    return {.use = index::use_identity(shard.resolutions()), .resolutions = shard.resolutions()};
+}
+
+constexpr auto any_producer = [](const Producer&) {
+    return true;
+};
 
 std::vector<InstantiationRecord> records_of(const InstantiationShard& shard) {
     std::vector<InstantiationRecord> records;
@@ -156,27 +164,34 @@ ZEST_CASE(ResolutionsFoldAcrossRuns) {
     Producer one{.unit = 100, .run = 1};
     Producer two{.unit = 200, .run = 1};
 
-    auto stored = merge({}, {}, &a, one);
-    stored = merge(stored, stored.resolutions(), &b, two);
+    auto first_use = use_of(a);
+    auto stored = merge({}, {}, &a, one, any_producer, first_use);
+    auto stored_uses = std::vector(stored.uses().begin(), stored.uses().end());
+    stored = merge(stored, stored_uses, &b, two, any_producer, use_of(b));
     ZASSERT(stored.loaded());
     ZASSERT(stored.resolutions().size() == 2u);
     ZEXPECT(records_of(stored).size() == 3u);
+    ZASSERT(stored.uses().size() == 2u);
+    ZEXPECT(stored.resolutions_of(first_use.use) ==
+            std::vector(a.resolutions().begin(), a.resolutions().end()));
 
     // The later run walked key 1 again: it is the producer now.
     ZEXPECT(stored.find_key(1)->producer == std::optional(two));
     ZEXPECT(stored.find_key(2)->producer == std::optional(two));
 
-    // Only the resolution holding (30, 33) dies: the shared record stays.
-    auto first_resolution = a.resolutions().front();
-    stored.set_live({first_resolution});
-    ZEXPECT(stored.has_dead_resolutions());
+    // Only the second unit's use dies, and with it the resolution holding
+    // (30, 33): the shared record stays.
+    stored.set_live({first_use.use});
+    ZEXPECT(stored.has_dead_uses());
     ZEXPECT(at(stored, 11).size() == 1u);
     ZEXPECT(at(stored, 31).empty());
 
-    // Compaction drops the dead resolution, its records and its key.
-    auto compacted = merge(stored, {first_resolution}, nullptr, {});
+    // Compaction drops the dead use, the resolution only it held, its
+    // records and its key.
+    auto compacted = merge(stored, {first_use.use}, nullptr, {});
     ZASSERT(compacted.loaded());
     ZEXPECT(compacted.resolutions().size() == 1u);
+    ZEXPECT(compacted.uses().size() == 1u);
     ZEXPECT(records_of(compacted).size() == 2u);
     ZEXPECT(compacted.find_key(1).has_value());
     ZEXPECT(!compacted.find_key(2).has_value());
@@ -299,6 +314,19 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.key_producers.ids8 = {0};
     ZEXPECT(make(bytes_of()).loaded());
     blob.producer_units = {~0ull - 1};
+    ZEXPECT(!make(bytes_of()).loaded());
+    blob.producer_units = {100};
+
+    // A use names stored resolutions under the identity they hash to.
+    std::vector<ResolutionHash> used = {5};
+    blob.uses = {index::use_identity(used)};
+    blob.use_ends = {1};
+    blob.use_resolutions.ids8 = {0};
+    ZEXPECT(make(bytes_of()).loaded());
+    blob.uses = {index::use_identity(used) + 1};
+    ZEXPECT(!make(bytes_of()).loaded());
+    blob.uses = {index::use_identity(used)};
+    blob.use_resolutions.ids8 = {1};
     ZEXPECT(!make(bytes_of()).loaded());
 }
 

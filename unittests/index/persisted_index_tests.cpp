@@ -23,12 +23,24 @@ ZEST_CASE(ManifestRoundTrip) {
     manifest.global_gen = 7;
     manifest.built_at = 1234567;
     manifest.tu_fv = VersionID{300};
-    // A root node, a multi-byte-varint line, and a parent that FOLLOWS its
-    // child (the include tree resolves parent chains after appending).
+    // A root node, a multi-byte-varint line, a parent that FOLLOWS its child
+    // (the include tree resolves parent chains after appending), and runs of
+    // siblings — skipped or not, lines ascending or not, under a node or the
+    // root.
     manifest.nodes = {
-        {300, ~0u, 1    },
-        {301, 2,   70000},
-        {302, 0,   12   },
+        {300, ~0u, 1,     false},
+        {301, 2,   70000, false},
+        {302, 0,   12,    false},
+        {303, 0,   14,    true },
+        {304, 0,   14,    true },
+        {305, 0,   3,     true },
+        {306, 0,   90000, false},
+        {307, ~0u, 5,     true },
+        {308, ~0u, 2,     false},
+    };
+    manifest.instantiations = {
+        {.file = VersionID{301}, .use = 0x1234},
+        {.file = VersionID{302}, .use = 0x5678},
     };
     manifest.contributions = {
         {VersionID{300}, 0xdeadbeefdeadbeefull},
@@ -70,8 +82,7 @@ struct ManifestBlobMirror {
     std::vector<std::uint32_t> local_file_ends;
     std::vector<std::uint32_t> local_files;
     std::vector<std::uint32_t> instantiation_files;
-    std::vector<std::uint32_t> instantiation_ends;
-    std::vector<std::uint64_t> instantiation_resolutions;
+    std::vector<std::uint64_t> instantiation_uses;
 };
 
 ZEST_CASE(ManifestFanoutRejected) {
@@ -107,26 +118,44 @@ ZEST_CASE(ManifestFanoutRejected) {
     ZASSERT(!decodes(mirror));
 }
 
-ZEST_CASE(ManifestCorruptResolutionsRejected) {
-    // A resolution the manifest uses keys a DenseMap at load: a sentinel
-    // value must not decode, nor a resolution no file lists.
+ZEST_CASE(ManifestCorruptUsesRejected) {
+    // A use the manifest names keys a DenseMap at load: a sentinel value
+    // must not decode, nor a use no file lists.
     ManifestBlobMirror mirror;
     mirror.format_version = index::index_format_version;
     mirror.instantiation_files = {1};
-    mirror.instantiation_ends = {1};
-    mirror.instantiation_resolutions = {42};
+    mirror.instantiation_uses = {42};
     auto decodes = [&] {
         auto blob = kota::codec::fbs::to_bytes(mirror);
         return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
     };
     ZASSERT(decodes());
-    mirror.instantiation_resolutions = {~0ull};
+    mirror.instantiation_uses = {~0ull};
     ZEXPECT(!decodes());
-    mirror.instantiation_resolutions = {~0ull - 1};
+    mirror.instantiation_uses = {~0ull - 1};
     ZEXPECT(!decodes());
     mirror.instantiation_files = {};
-    mirror.instantiation_ends = {};
-    mirror.instantiation_resolutions = {42};
+    mirror.instantiation_uses = {42};
+    ZEXPECT(!decodes());
+}
+
+ZEST_CASE(ManifestNodeCodesRejected) {
+    // A node can stand beside the previous node's parent only after one, and
+    // only beside it can its line be a distance.
+    ManifestBlobMirror mirror;
+    mirror.format_version = index::index_format_version;
+    mirror.node_count = 1;
+    auto decodes = [&] {
+        auto blob = kota::codec::fbs::to_bytes(mirror);
+        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
+    };
+    mirror.nodes = {7, 1, 5 << 2};
+    ZASSERT(decodes());
+    mirror.nodes = {7, 0, 5 << 2};
+    ZEXPECT(!decodes());
+    mirror.nodes = {7, 1, (5 << 2) | 1};
+    ZEXPECT(!decodes());
+    mirror.nodes = {7, 3, 5 << 2};
     ZEXPECT(!decodes());
 }
 

@@ -28,13 +28,13 @@ struct LocalFanout {
     friend bool operator==(const LocalFanout&, const LocalFanout&) = default;
 };
 
-/// The instantiation resolutions a TU uses in one file: the ones it walked and
-/// the ones the known keys it skipped there stand for.
+/// The instantiation resolutions a TU uses in one file — the ones it walked
+/// and the ones the known keys it skipped there stand for — by the identity
+/// of their set (index::use_identity), which the file's instantiation blob
+/// stores.
 struct InstantiationUse {
     VersionID file;
-
-    /// Ascending.
-    std::vector<std::uint64_t> resolutions;
+    std::uint64_t use = 0;
 
     friend bool operator==(const InstantiationUse&, const InstantiationUse&) = default;
 };

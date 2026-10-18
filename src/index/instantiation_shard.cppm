@@ -68,6 +68,13 @@ using ResolutionHash = std::uint64_t;
 ResolutionHash resolution_identity(std::uint64_t content_hash,
                                    llvm::ArrayRef<InstantiationRecord> records);
 
+/// The identity of the resolutions a TU uses in one file — a hash over them,
+/// which must be sorted and unique. TUs using the same ones share it, and the
+/// file's blob stores them once.
+using UseHash = std::uint64_t;
+
+UseHash use_identity(llvm::ArrayRef<ResolutionHash> resolutions);
+
 /// What one run resolves in one file, as the worker builds it: the distinct
 /// resolutions, and the keys it walked, each pointing at its resolution or at
 /// none.
@@ -133,15 +140,21 @@ public:
     /// Every stored resolution, ascending.
     llvm::ArrayRef<ResolutionHash> resolutions() const;
 
-    bool has_resolution(ResolutionHash resolution) const;
+    /// Every stored use, ascending.
+    llvm::ArrayRef<UseHash> uses() const;
 
-    /// Restrict queries to the given resolutions (the ones some manifest
-    /// uses); resolutions the blob does not store are ignored.
-    void set_live(llvm::ArrayRef<ResolutionHash> live);
+    bool has_use(UseHash use) const;
 
-    /// Whether set_live masked out a stored resolution — the signal that the
-    /// next save should compact the blob.
-    bool has_dead_resolutions() const;
+    /// The resolutions of a stored use, ascending.
+    std::vector<ResolutionHash> resolutions_of(UseHash use) const;
+
+    /// Restrict queries to the resolutions of the given uses (the ones some
+    /// manifest names); uses the blob does not store are ignored.
+    void set_live(llvm::ArrayRef<UseHash> live);
+
+    /// Whether set_live masked out a stored use or resolution — the signal
+    /// that the next save should compact the blob.
+    bool has_dead_uses() const;
 
     struct Key {
         SymbolHash key = 0;
@@ -183,7 +196,7 @@ private:
     /// A bit per record some live resolution holds; empty while every resolution
     /// is live.
     std::vector<std::uint64_t> live_records;
-    bool dead_resolutions = false;
+    bool dead_uses = false;
 
     /// The length of the longest record, which bounds lookup(offset)'s scan.
     std::uint32_t longest = 0;
@@ -196,17 +209,27 @@ void write_instantiations(const FileInstantiations& instantiations,
                           std::uint32_t content_size,
                           llvm::raw_ostream& os);
 
-/// Merge into one blob of the same content generation: the resolutions of
-/// `old` in `keep`, the keys of `old` whose producer `keep_producer` accepts
-/// and whose resolution survives, then `fresh`'s resolutions and keys, walked by
-/// `producer` — a fresh key replaces a stored one. `old` may be empty (a
-/// first run) and `fresh` null (a compaction), but something must survive:
-/// a file left with nothing is retired by the caller.
+/// A use a merge adds: its identity and its resolutions, ascending, each one
+/// stored in the merged blob.
+struct AddedUse {
+    UseHash use = 0;
+    llvm::ArrayRef<ResolutionHash> resolutions;
+};
+
+/// Merge into one blob of the same content generation: the uses of `old` in
+/// `keep` with their resolutions, the keys of `old` whose producer
+/// `keep_producer` accepts and whose resolution survives, then `fresh`'s
+/// resolutions and keys, walked by `producer` — a fresh key replaces a
+/// stored one — and the `added` use. `old` may be empty (a first run) and
+/// `fresh` null (a compaction, or a TU adding the use of what others
+/// walked), but something must survive: a file left with nothing is
+/// retired by the caller.
 void merge_instantiations(const InstantiationShard& old,
-                          llvm::ArrayRef<ResolutionHash> keep,
+                          llvm::ArrayRef<UseHash> keep,
                           llvm::function_ref<bool(const Producer&)> keep_producer,
                           const InstantiationShard* fresh,
                           Producer producer,
+                          std::optional<AddedUse> added,
                           llvm::raw_ostream& os);
 
 }  // namespace clice::index

@@ -351,6 +351,14 @@ struct InstantiationBlob {
     std::vector<std::uint32_t> resolution_ends;
     IdColumn resolution_records;
 
+    /// The sets of resolutions the TUs use here, which manifests name by
+    /// identity (use_identity), ascending; use i's resolutions are
+    /// use_resolutions[use_ends[i - 1], use_ends[i]), ascending. A worker's
+    /// blob has none: the master knows what its TU uses.
+    std::vector<std::uint64_t> uses;
+    std::vector<std::uint32_t> use_ends;
+    IdColumn use_resolutions;
+
     /// The instantiation keys walked (the entity of the instantiated
     /// declaration), ascending: per key the template it instantiates, its
     /// resolution plus one (0: the instantiation resolves nothing here) and the
