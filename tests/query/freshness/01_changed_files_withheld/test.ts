@@ -1,6 +1,6 @@
 import { test } from "@clice/tools/testing";
 
-// `clice query` reads the persisted index as it is: rows of a file the
+// `clice query` reads the persisted index as it is: entries of a file the
 // disk moved on from would point at text that moved, so they are withheld
 // and the file is named in `stale`.
 test(async (t) => {

@@ -1,6 +1,6 @@
 import { test } from "@clice/tools/testing";
 
-test("deleted source withdraws its rows", async (t) => {
+test("deleted source withdraws its entries", async (t) => {
     const s = await t.start();
     await s.indexed();
     const call = t.at("app/main.cpp", "|registry_count()");
@@ -12,7 +12,7 @@ test("deleted source withdraws its rows", async (t) => {
         references: s.references(call),
         symbols: s.workspaceSymbols("registry_reset"),
     });
-    // The persisted index drops the rows as well.
+    // The persisted index drops the entries as well.
     await s.stop();
     await t.cli("query symbol-search registry_reset");
 });

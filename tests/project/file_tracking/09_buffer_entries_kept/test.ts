@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-test("dependency change keeps buffer rows", async (t) => {
+test("dependency change keeps buffer entries", async (t) => {
     t.disk.touch("h.h", new Date("2020-01-01T00:00:00Z"));
     const s = await t.start();
     await s.sync();
@@ -14,7 +14,7 @@ test("dependency change keeps buffer rows", async (t) => {
     await t.show("edited", s.references(use));
 
     // The header moves on disk: b.cpp's compile is stale, its buffer is
-    // not, so the rows it compiled from these very bytes keep serving
+    // not, so the entries it compiled from these very bytes keep serving
     // while the header is indexed again.
     const reindex = await s.park("index", "h.h", { at: "reply" });
     expect(await s.poll("workspace")).toBe(0);

@@ -3,7 +3,7 @@ import { test } from "@clice/tools/testing";
 // A static function in a header is a different symbol in every source
 // including it, and a local variable lives in one function: references
 // reach them all the same, and their locators name a file holding their
-// rows, any file seeing them, workspace-relative or absolute.
+// entries, any file seeing them, workspace-relative or absolute.
 test(async (t) => {
     await t.cli("index");
     await t.cli("query references util.h:2:12 --include-declaration");

@@ -18,7 +18,7 @@ answers("unindexed", { paths: SERVER }, async (a) => {
     await a.show("macro", a.definition(a.marker("macro")));
 });
 
-// The header's rows are in the index, from other.cpp, and in what main.cpp
+// The header's entries are in the index, from other.cpp, and in what main.cpp
 // precompiled: each shows once.
 answers("indexed", { indexing: true, paths: SERVER }, async (a) => {
     await a.show("call", a.references(a.marker("call")));

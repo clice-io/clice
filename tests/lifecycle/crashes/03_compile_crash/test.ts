@@ -1,6 +1,6 @@
 import { test } from "@clice/tools/testing";
 
-// clang-tidy's crash is retried without it, and the index's rows of the
+// clang-tidy's crash is retried without it, and the index's entries of the
 // disk text would answer what the crashed compile cannot: both stay off, so
 // every crash here is the compile's own.
 const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };

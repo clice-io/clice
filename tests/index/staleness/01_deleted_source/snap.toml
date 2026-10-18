@@ -1,12 +1,12 @@
-["deleted source withdraws its rows".before]
+["deleted source withdraws its entries".before]
 definition = ["src/registry.cpp │ int ⟦registry_count⟧() {"]
 
-["deleted source withdraws its rows".after]
+["deleted source withdraws its entries".after]
 definition = ["include/registry.h │ int ⟦registry_count⟧();"]
 references = ["return ⟦registry_count⟧();", "include/registry.h │ int ⟦registry_count⟧();"]
 symbols = []
 
-["deleted source withdraws its rows"."$ clice query symbol-search registry_reset"]
+["deleted source withdraws its entries"."$ clice query symbol-search registry_reset"]
 stdout = '''
 {
   "result": {
