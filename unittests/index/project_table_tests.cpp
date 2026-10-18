@@ -8,7 +8,7 @@ import :index.columns;
 import :index.format;
 import :index.project_index;
 import :index.tu_manifest;
-import :unittests.utils.index_planter;
+import :unittests.utils.index_internals;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -57,7 +57,7 @@ std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
 ZEST_CASE(TableRoundTripRemap) {
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
-    IndexPlanter::plant_generation(project, 9);
+    IndexInternals::plant_generation(project, 9);
     auto tu = pool.intern(Spelling::absolute("/proj/tu.cpp"));
     auto manifest = *project.held_manifest(tu);
     manifest.table_generation = 9;

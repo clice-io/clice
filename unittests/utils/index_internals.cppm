@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:unittests.utils.index_planter;
+module clice:unittests.utils.index_internals;
 
 import :index.project_index;
 import :index.shard;
@@ -10,9 +10,8 @@ import :vfs.ids;
 
 namespace clice::testing {
 
-/// Index state a test sets up by hand, without the merge that would
-/// produce it.
-struct IndexPlanter {
+/// Index state a test sets up or looks at by hand, past the public API.
+struct IndexInternals {
     /// Install `shard` as `file`'s, as a merge or a load would.
     static void plant_shard(index::ProjectIndex& index, Fid file, index::Shard shard) {
         index.shards[file] = std::move(shard);
@@ -22,6 +21,13 @@ struct IndexPlanter {
     /// reached.
     static void plant_generation(index::ProjectIndex& index, std::uint64_t generation) {
         index.generation = generation;
+    }
+
+    /// Whether the tables the manifests derive (contributions, absent
+    /// lookups, importers) hold no entry, not even an emptied one.
+    static bool derived_tables_empty(const index::ProjectIndex& index) {
+        return index.contributions.empty() && index.absent_lookups.empty() &&
+               index.importers.empty();
     }
 };
 

@@ -758,7 +758,7 @@ ZEST_CASE(UnreadableTablePreserved) {
     open_store(tmp, f.project);
     f.load();
     ZASSERT(f.project.index.manifest_count() != 0);
-    ZASSERT(!f.project.index.shard_count() == 0);
+    ZASSERT(f.project.index.shard_count() != 0);
 }
 
 ZEST_CASE(DropIndexEvictsPersisted) {

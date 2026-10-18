@@ -15,7 +15,7 @@ import :server.context_service;
 import :server.editor_context;
 import :server.invalidator;
 import :unittests.utils.cdb_helper;
-import :unittests.utils.index_planter;
+import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.file_table;
@@ -467,7 +467,7 @@ ZEST_CASE(RescanKeepsGuardedProvider) {
     ZASSERT(project.dep_graph.module_of(iface) == "m");
     tmp.touch("m.cpp", "#if 1\nexport module m;\n#endif\nexport int v;\n");
 
-    IndexPlanter::plant_shard(project.index, iface, shard_of(*read_file(tmp.path("m.cpp"))));
+    IndexInternals::plant_shard(project.index, iface, shard_of(*read_file(tmp.path("m.cpp"))));
 
     CommandResolver commands(project);
     ContextChoices blob;
@@ -872,8 +872,8 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     auto open_id = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
     auto closed_id = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     store.open(open_id);
-    IndexPlanter::plant_shard(project.index, open_id, shard_of(""));
-    IndexPlanter::plant_shard(project.index, closed_id, shard_of(""));
+    IndexInternals::plant_shard(project.index, open_id, shard_of(""));
+    IndexInternals::plant_shard(project.index, closed_id, shard_of(""));
 
     CommandResolver commands(project);
     ContextChoices blob;
@@ -940,7 +940,7 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     auto closed_header = project.file_table.intern(Spelling::absolute("/proj/closed.h"));
     auto other_header = project.file_table.intern(Spelling::absolute("/proj/other.h"));
     store.open(open_header);
-    IndexPlanter::plant_shard(project.index, closed_header, shard_of(""));
+    IndexInternals::plant_shard(project.index, closed_header, shard_of(""));
 
     CommandResolver commands(project);
     ContextChoices blob;

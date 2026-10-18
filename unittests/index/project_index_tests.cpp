@@ -9,6 +9,7 @@ import :index.indexer;
 import :index.project_index;
 import :index.shard;
 import :index.tu_index;
+import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
 import :unittests.utils.tu_index_blob;
@@ -345,6 +346,7 @@ ZEST_CASE(ManifestContributions) {
     project.remove_manifest(tu1);
     ZASSERT(project.live_variants(a).empty());
     ZASSERT(project.live_variants(b).empty());
+    ZASSERT(IndexInternals::derived_tables_empty(project));
 }
 
 ZEST_CASE(RepeatedAbsentPlace) {
@@ -369,6 +371,7 @@ ZEST_CASE(RepeatedAbsentPlace) {
     ZASSERT(lookups() == llvm::SmallVector<Fid>{tu});
     project.remove_manifest(tu);
     ZASSERT(lookups().empty());
+    ZASSERT(IndexInternals::derived_tables_empty(project));
 }
 
 ZEST_CASE(TwoImportedVersions) {
@@ -390,6 +393,7 @@ ZEST_CASE(TwoImportedVersions) {
     ZASSERT(importers() == llvm::SmallVector<Fid>{tu});
     project.remove_manifest(tu);
     ZASSERT(importers().empty());
+    ZASSERT(IndexInternals::derived_tables_empty(project));
 }
 
 ZEST_CASE(TableRoundTripWithRealMerge) {

@@ -19,7 +19,7 @@ import :sched.index.pump;
 import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
-import :unittests.utils.index_planter;
+import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
 import :unittests.utils.tu_index_blob;
@@ -436,7 +436,7 @@ ZEST_CASE(PreviewFromDisk) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(file_index, {}, text, os);
-    IndexPlanter::plant_shard(
+    IndexInternals::plant_shard(
         project.index,
         path_id,
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
@@ -479,7 +479,7 @@ ZEST_CASE(PreviewDropsLineEnd) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(file_index, {}, text, os);
-    IndexPlanter::plant_shard(
+    IndexInternals::plant_shard(
         project.index,
         path_id,
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
@@ -571,7 +571,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(fake, {}, "xxx\n", os);
-    IndexPlanter::plant_shard(
+    IndexInternals::plant_shard(
         project.index,
         header_id,
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
