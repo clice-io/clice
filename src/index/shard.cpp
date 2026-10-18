@@ -227,8 +227,7 @@ struct RelationTable {
     /// Extent `k`, of a relation whose range begins at `name`.
     LocalSourceRange extent_at(std::size_t k, std::uint32_t name) const {
         if(extent_heads[k] == extent_escape) {
-            auto it = std::ranges::lower_bound(far_extents, k);
-            auto far = it - far_extents.begin();
+            auto far = escape_position(far_extents, k);
             return {far_begins[far], far_ends[far]};
         }
         auto begin = name - extent_heads[k];
@@ -352,7 +351,8 @@ CheckResult line_table_ok(BlobView root) {
     auto line_lengths = to_array_ref(root[&ShardBlob::line_lengths]);
     auto long_lines = to_array_ref(root[&ShardBlob::long_lines]);
     auto long_line_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
-    if(line_lengths.empty() || !escapes_ok(line_lengths, long_lines, long_line_lengths.size()) ||
+    if(line_lengths.empty() ||
+       !escapes_ok(line_lengths, length_escape, long_lines, long_line_lengths.size()) ||
        !std::ranges::is_sorted(long_lines, std::less_equal{})) {
         return std::unexpected("line table does not pair with its escape table");
     }
@@ -405,8 +405,7 @@ CheckResult utf8_lines_ok(BlobView root) {
         auto line = lines[i];
         std::uint32_t length = line_lengths[line];
         if(length == length_escape) {
-            length =
-                long_line_lengths[std::ranges::lower_bound(long_lines, line) - long_lines.begin()];
+            length = long_line_lengths[escape_position(long_lines, line)];
         }
         if(line + 1 != line_lengths.size()) {
             length -= ends_crlf(crlf_lines, line) ? 2 : 1;

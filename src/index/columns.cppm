@@ -79,6 +79,13 @@ struct IdColumnView {
     }
 };
 
+/// The position of escaped `entry` in its sparse table's `entries`: the
+/// load-time pairing (escapes_ok) proves every escape owns exactly one entry
+/// there, so the search always finds it.
+inline std::size_t escape_position(llvm::ArrayRef<std::uint32_t> entries, std::size_t entry) {
+    return static_cast<std::size_t>(std::ranges::lower_bound(entries, entry) - entries.begin());
+}
+
 /// One side of a blob's entry storage as contiguous column refs,
 /// encoding-agnostic: the range accessors read whichever range encoding the
 /// side stores, the mask columns whichever mask encoding.
@@ -103,20 +110,14 @@ struct RangeColumnsView {
         return packed.empty() ? lengths.size() : packed.size();
     }
 
-    /// range_encoding_ok() proves every escape owns exactly one entry of its
-    /// sparse table, so the search always finds it.
-    std::uint32_t far_begin(std::uint32_t entry) const {
-        auto it = std::ranges::lower_bound(far_entries, entry);
-        return far_begins[it - far_entries.begin()];
-    }
-
     /// The begin of `entry` given the begin of the entry before it, in the
     /// delta encoding.
     std::uint32_t next_begin(std::uint32_t entry, std::uint32_t previous) const {
         if(entry % delta_block == 0) {
             return block_begins[entry / delta_block];
         }
-        return deltas[entry] == delta_escape ? far_begin(entry) : previous + deltas[entry];
+        return deltas[entry] == delta_escape ? far_begins[escape_position(far_entries, entry)]
+                                             : previous + deltas[entry];
     }
 
     std::uint32_t begin_of(std::uint32_t entry) const {
@@ -146,8 +147,7 @@ struct RangeColumnsView {
         }
         auto length = stored_length(entry);
         if(length == length_escape) {
-            auto it = std::ranges::lower_bound(long_entries, entry);
-            return long_ends[it - long_entries.begin()];
+            return long_ends[escape_position(long_entries, entry)];
         }
         return begin + length;
     }
@@ -240,17 +240,18 @@ inline IdColumnView ids_of(kota::codec::fbs::array_view<std::uint8_t> view,
 /// values: readers trust the pairing, and a sentinel missing its entry
 /// (or a stray entry masking one elsewhere) can pass every range bound
 /// while serving a wrong value forever.
-template <typename T>
-bool escapes_ok(llvm::ArrayRef<T> values,
-                T escape,
+template <typename T, typename Escape, typename Projection = std::identity>
+bool escapes_ok(llvm::ArrayRef<T> column,
+                Escape escape,
                 llvm::ArrayRef<std::uint32_t> escaped,
-                std::size_t escape_values) {
+                std::size_t escape_values,
+                Projection projection = {}) {
     if(escape_values != escaped.size()) {
         return false;
     }
     std::size_t cursor = 0;
-    for(std::uint32_t entry = 0; entry < values.size(); entry += 1) {
-        if(values[entry] != escape) {
+    for(std::uint32_t entry = 0; entry < column.size(); entry += 1) {
+        if(std::invoke(projection, column[entry]) != escape) {
             continue;
         }
         if(cursor == escaped.size() || escaped[cursor] != entry) {
@@ -259,24 +260,6 @@ bool escapes_ok(llvm::ArrayRef<T> values,
         cursor += 1;
     }
     return cursor == escaped.size();
-}
-
-inline bool escapes_ok(llvm::ArrayRef<std::uint8_t> lengths,
-                       llvm::ArrayRef<std::uint32_t> escaped,
-                       std::size_t escape_values) {
-    return escapes_ok(lengths, length_escape, escaped, escape_values);
-}
-
-/// Sentinel lengths inside the packed column, extracted for escapes_ok.
-/// The no-range sentinel word shares the escape byte pattern but owns no
-/// escape entry — report it as a plain length.
-inline llvm::SmallVector<std::uint8_t> packed_lengths(llvm::ArrayRef<std::uint32_t> packed) {
-    llvm::SmallVector<std::uint8_t> lengths;
-    lengths.reserve(packed.size());
-    for(auto value: packed) {
-        lengths.push_back(value == packed_sentinel ? 0 : static_cast<std::uint8_t>(value & 0xff));
-    }
-    return lengths;
 }
 
 /// How a side's ranges are stored (RangeColumns).
@@ -329,12 +312,20 @@ inline CheckResult range_encoding_ok(const RangeColumnsView& columns,
     if(!encoding_ok) {
         return std::unexpected("range encoding is not the canonical one");
     }
-    bool escaped_ok =
-        columns.packed.empty()
-            ? escapes_ok(columns.lengths, columns.long_entries, columns.long_ends.size())
-            : escapes_ok(packed_lengths(columns.packed),
-                         columns.long_entries,
-                         columns.long_ends.size());
+    // The no-range sentinel word shares the escape byte but owns no escape
+    // entry: it reads as a plain length.
+    auto packed_length = [](std::uint32_t word) {
+        return word == packed_sentinel ? std::uint8_t(0) : static_cast<std::uint8_t>(word & 0xff);
+    };
+    bool escaped_ok = columns.packed.empty() ? escapes_ok(columns.lengths,
+                                                          length_escape,
+                                                          columns.long_entries,
+                                                          columns.long_ends.size())
+                                             : escapes_ok(columns.packed,
+                                                          length_escape,
+                                                          columns.long_entries,
+                                                          columns.long_ends.size(),
+                                                          packed_length);
     if(!escaped_ok) {
         return std::unexpected("range escape table does not pair with its entries");
     }

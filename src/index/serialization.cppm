@@ -125,8 +125,8 @@ void serialize_blob(const T& value, llvm::raw_ostream& os) {
 /// Persisted blob layouts. Shared by writers, load-time validation and the
 /// hand-built blobs of corruption tests; everything else consumes blobs
 /// through their readers.
-/// Sentinel in a length column (entry ranges, line lengths): the real end
-/// lives in the sparse escape table.
+/// Sentinel in a length column: the sparse escape table holds an entry
+/// range's real end, a line's real length.
 constexpr inline std::uint8_t length_escape = 0xff;
 
 /// Files whose content fits 24-bit offsets use the packed range column;
