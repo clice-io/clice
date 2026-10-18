@@ -365,7 +365,9 @@ public:
     LoadOutcome load(BlobDatabase& db, LoadOptions options, IndexReport& report);
 
     /// Forget everything loaded and merged, as after a corrupt database:
-    /// the workspace stays.
+    /// the workspace stays, and the next save writes an empty project table
+    /// in place of the lost one, so the next load reads the command
+    /// snapshot's debt back.
     void clear();
 
     /// Merge a TUIndex result: intern FileVersions, replace the TU's

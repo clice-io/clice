@@ -253,6 +253,7 @@ void ProjectIndex::clear() {
     std::destroy_at(this);
     std::construct_at(this, table);
     workspace = std::move(root);
+    table_dirty = true;
 }
 
 }  // namespace clice::index
