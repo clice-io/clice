@@ -1,0 +1,7 @@
+["refused pch".main]
+wrong = "should name only the level() the unit's own flags select: the PCH clang refused still answers with the one it holds"
+definition = ["include/base.h │ constexpr int ⟦level⟧() { @4", "include/base.h │ constexpr int ⟦level⟧() { @8"]
+
+["refused pch".other]
+wrong = "should name only the level() the unit's own flags select: the PCH clang refused still answers with the one it holds"
+definition = ["include/base.h │ constexpr int ⟦level⟧() { @4", "include/base.h │ constexpr int ⟦level⟧() { @8"]

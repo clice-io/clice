@@ -215,7 +215,7 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
     files.spell_root(spelling);
     Project project{files};
     CommandResolver commands{project};
-    ContextsBlob saved;
+    ContextChoices saved;
     EditorContext contexts{project, commands, saved};
     auto loaded =
         load_index(project, commands, std::move(config), configuration, /*with_build=*/true);
@@ -227,7 +227,7 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
     contexts.load();
 
     index::FreshnessGate gate(files, {.check_disk = true});
-    index::IndexQuery index_query(project.project_index, files, &gate, nullptr);
+    index::IndexQuery index_query(project.index, files, &gate, nullptr);
     query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
 
     auto stale = [&](llvm::ArrayRef<std::string> listed) {

@@ -65,9 +65,14 @@ std::unique_ptr<clang::CompilerInvocation>
     }
 
     std::vector<const char*> arguments;
-    arguments.reserve(input.arguments.size());
+    arguments.reserve(input.arguments.size() + 1);
     for(auto& argument: input.arguments) {
         arguments.push_back(argument.c_str());
+    }
+    // A driver command (what a failed toolchain probe falls back to) gets
+    // the flag the probe gives every cc1 command, see Toolchain::query_one.
+    if(arguments.size() < 2 || llvm::StringRef(arguments[1]) != "-cc1") {
+        arguments.insert(arguments.begin() + 1, "-fno-delayed-template-parsing");
     }
     LOG_DEBUG("Compile command: {}", print_argv(arguments));
     auto invocation =
@@ -170,15 +175,6 @@ std::unique_ptr<clang::CompilerInvocation>
 
     auto& lang_opts = invocation->getLangOpts();
 
-    // MSVC targets defer template bodies by default so SDK headers written
-    // for MSVC's lookup rules still parse, but a deferred body has no AST and
-    // every feature inside it goes blind. Only PCH and PCM builds keep the
-    // default: an error there discards the PCH/PCM, so those headers must
-    // keep parsing the way clang meant them to.
-    if(!writes_output(params.kind)) {
-        lang_opts.DelayedTemplateParsing = false;
-    }
-
     // A header compiled under a source's command (`-x c++` buys a parse
     // instead of a precompiled-header job) is still a header: no "#pragma
     // once in main file", no unused warnings for its static functions.
@@ -226,6 +222,9 @@ std::unique_ptr<clang::CompilerInvocation>
             // analysis (-Wthread-safety, as abseil builds) crashes on what
             // is left.
             invocation->getDiagnosticOpts().IgnoreWarnings = true;
+            // The parse stops at the cursor, so a body the command defers
+            // would never be parsed and nothing in it would complete.
+            lang_opts.DelayedTemplateParsing = false;
             break;
         }
     }
@@ -393,6 +392,22 @@ public:
             auto& pp = unit.instance->getPreprocessor();
             for(auto* import: context.local_imports()) {
                 pp.makeModuleVisible(import->getImportedModule(), import->getLocation());
+            }
+        }
+        auto& deferred = unit.instance->getSema().LateParsedTemplateMap;
+        // Instantiating one deferred template of an imported PCH or module
+        // reads all of that file's deferred bodies into Sema, and the writer
+        // would store them again: clang reads such a copy back against the
+        // wrong file and crashes. The file they came from keeps them.
+        if(writes_output(unit.params.kind)) {
+            deferred.remove_if([](const auto& entry) { return entry.first->isFromASTFile(); });
+        }
+        // clang ends a deferred definition's range before its body, and
+        // moves the end only when it parses the body: an edit by that range
+        // would cut the body off.
+        for(auto& [function, late]: deferred) {
+            if(function->isLateTemplateParsed()) {
+                late->D->getAsFunction()->setRangeEnd(late->Toks.back().getLocation());
             }
         }
         clang::MultiplexConsumer::HandleTranslationUnit(context);

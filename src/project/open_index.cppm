@@ -13,7 +13,7 @@ namespace clice {
 /// Open a project's persisted index for reading: the configuration
 /// resolved (`requested_configuration` one `config` declares, see
 /// check_requested_configuration), the cache store and the blob database
-/// opened read-only, the global table and the search index bound in place
+/// opened read-only, the project table and the search index bound in place
 /// from the database's read snapshot (pinned for the project's lifetime),
 /// shards fetched on first use. Nothing is decoded or copied. False — with
 /// the cause logged — when there is no usable index.
@@ -25,7 +25,7 @@ bool open_index(Project& project, Config config, llvm::StringRef requested_confi
 struct LoadedIndex {
     llvm::SmallVector<Fid> dropped;
 
-    /// The contexts blob as loaded (see ContextsBlob).
+    /// The context choices as loaded (see ContextChoices).
     std::string contexts;
 };
 

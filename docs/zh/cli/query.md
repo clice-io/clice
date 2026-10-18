@@ -189,7 +189,7 @@ tests/query/names/06_path_filters
 对于建立索引后磁盘内容发生更改的文件，答案会略过索引中记录的相关信息，并在 `stale` 中列出这些文件
 
 ```case
-tests/query/freshness/01_withheld_rows
+tests/query/freshness/01_changed_files_withheld
 ```
 
 <!-- END CAPABILITY -->

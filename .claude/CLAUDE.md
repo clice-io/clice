@@ -36,7 +36,7 @@ Distilled from real correction history — these mistakes keep recurring:
 - `src/syntax/` — lexer, scanner, tokens, include resolution, dependency graph
 - `src/compile/` — compilation: compilation unit, tokens, directives, diagnostics, clang-tidy
 - `src/semantic/` — semantic analysis over the AST: symbol kinds, relations, template resolver, declaration, type and expression helpers; the per-unit semantic map (AST visitor), selection, entity identities and doc comments
-- `src/index/` — symbol indexing: TU index, project index, shards, the database, queries, rename
+- `src/index/` — symbol indexing: the indexer, the persisted format and its columns, shards, TU indexes and manifests, the project table and index, the database, name search, the queries (search, navigation, hierarchy, text), rename
 - `src/feature/` — LSP features: hover, completion, document links, semantic tokens, etc.
 - `src/config/` — the `clice.toml` configuration
 - `src/project/` — the loaded project: CDB loading and watching, command resolution, header hosting, the index store

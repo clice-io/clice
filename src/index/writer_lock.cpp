@@ -155,7 +155,7 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
                                                      lock_fd,
                                                      llvm::sys::fs::CD_OpenAlways,
                                                      llvm::sys::fs::OF_None)) {
-        // Whoever opens the library next reports the real cause.
+        // Whoever opens the database next reports the real cause.
         return probe;
     }
     if(try_lock(lock_fd)) {

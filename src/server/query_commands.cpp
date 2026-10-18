@@ -6,7 +6,10 @@ module clice;
 
 import :command.toolchain;
 import :feature.feature;
-import :index.serialization;
+import :index.hierarchy;
+import :index.navigation;
+import :index.search;
+import :index.text;
 import :project.build;
 import :server.query_commands;
 import :support.markup;
@@ -43,7 +46,7 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     // Interning only names the file; whether the index holds a shard for
     // it is the shard fetch's answer.
     auto file = ctx.project.file_table.intern(path);
-    if(!ctx.project.project_index.shard(file)) {
+    if(!ctx.project.index.shard(file)) {
         ctx.unindexed.emplace_back(ctx.project.file_table.display(file));
         return std::nullopt;
     }
@@ -74,7 +77,7 @@ Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
         }
         return true;
     }
-    query.anchor(Spelling(ctx.project.config.workspace_root));
+    query.resolve_paths(Spelling(ctx.project.config.workspace_root));
     return query.position ? anchor(query.position->path) : true;
 }
 
@@ -127,7 +130,7 @@ SymbolEntry symbol_entry(Context& ctx, const index::IndexQuery::Located& located
 /// names its symbols outright, which a pattern's lookup filters itself.
 /// An id's paths name the file holding its entries, no filter.
 std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::SymbolQuery& query) {
-    auto located = ctx.query.locate(query);
+    auto located = index::locate(ctx.query, query);
     if(query.by_pattern()) {
         return located;
     }
@@ -311,7 +314,7 @@ std::string via_of(index::SiteOrigin origin) {
     std::unreachable();
 }
 
-std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Edge> edges) {
+std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::CallEdge> edges) {
     std::vector<GraphEntry> entries;
     entries.reserve(edges.size());
     for(auto& edge: edges) {
@@ -389,7 +392,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
         result.files.push_back(std::move(info));
     }
     if(filter == "all" || filter == "header") {
-        for(auto path_id: llvm::make_first_range(ws.project_index.shards)) {
+        for(auto path_id: llvm::make_first_range(ws.index.shards)) {
             auto path = ws.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header_path(path)) {
                 seen.insert(path_id);
@@ -454,7 +457,7 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     auto readers = ws.dep_graph.find_readers(*file);
     // An importer reads the files its modules were built from without
     // including them.
-    if(auto it = ws.project_index.importers.find(*file); it != ws.project_index.importers.end()) {
+    if(auto it = ws.index.importers.find(*file); it != ws.index.importers.end()) {
         llvm::SmallVector<Fid> importers(it->second.begin(), it->second.end());
         llvm::sort(importers, [&](Fid lhs, Fid rhs) {
             return ws.file_table.resolve(lhs) < ws.file_table.resolve(rhs);
@@ -496,7 +499,8 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, st
     if(!*anchored) {
         return result;
     }
-    auto located = query->by_pattern() ? ctx.query.search(*query, limit) : located_by(ctx, *query);
+    auto located =
+        query->by_pattern() ? index::search(ctx.query, *query, limit) : located_by(ctx, *query);
     if(located.size() > limit) {
         located.resize(limit);
     }
@@ -511,7 +515,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file);
+    auto definition = index::definition_text(ctx.query, resolved->symbol.hash, resolved->site.file);
     if(!definition) {
         return std::unexpected("definition not found");
     }
@@ -602,8 +606,8 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
     auto hash = resolved->symbol.hash;
     auto anchor = resolved->site.file;
     auto definition = ctx.query.first_site(hash, anchor, RelationKind::Definition)
-                          ? ctx.query.definition_text(hash, anchor)
-                          : ctx.query.declaration_text(hash, anchor);
+                          ? index::definition_text(ctx.query, hash, anchor)
+                          : index::declaration_text(ctx.query, hash, anchor);
     if(definition) {
         auto lines = lines_of(definition->extent);
         result.definition = LocationEntry{
@@ -629,9 +633,9 @@ Outcome<ReferencesResult> references(Context& ctx,
         .symbol = symbol_of(*resolved),
     };
     index::IndexQuery::Cursor cursor{.symbols = {resolved->symbol.hash}, .site = resolved->site};
-    auto sites = ctx.query.references(cursor, include_declaration);
-    auto contexts = ctx.query.context_lines(sites);
-    auto functions = ctx.query.enclosing_functions(sites);
+    auto sites = index::references(ctx.query, cursor, include_declaration);
+    auto contexts = index::context_lines(ctx.query, sites);
+    auto functions = index::enclosing_functions(ctx.query, sites);
     for(auto [site, context, function]: llvm::zip_equal(sites, contexts, functions)) {
         ReferenceEntry entry{
             .file = std::string(site.path),
@@ -651,7 +655,7 @@ Outcome<ReferencesResult> references(Context& ctx,
 bool units_pending(Project& project) {
     return llvm::any_of(project.build.members(), [&](Fid unit) {
         return project.build.indexed(project.file_table.resolve(unit)) &&
-               !project.project_index.tu_manifest(unit);
+               !project.index.manifest(unit);
     });
 }
 
@@ -784,10 +788,11 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto graph = ctx.query.call_graph(
-        resolved->symbol.hash,
-        resolved->site.file,
-        {.callers = direction != "callees", .callees = direction != "callers"});
+    auto graph =
+        index::call_graph(ctx.query,
+                          resolved->symbol.hash,
+                          resolved->site.file,
+                          {.callers = direction != "callees", .callees = direction != "callers"});
     return CallGraphResult{
         .root = graph_entry<GraphEntry>(*resolved),
         .callers = graph_entries(graph.callers),
@@ -844,8 +849,8 @@ Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery lo
     }
     return ImplementationResult{
         .root = graph_entry<GraphEntry>(*resolved),
-        .implementations =
-            graph_entries(ctx.query.implementation(resolved->symbol.hash, resolved->site.file)),
+        .implementations = graph_entries(
+            index::implementation(ctx.query, resolved->symbol.hash, resolved->site.file)),
     };
 }
 
@@ -861,7 +866,8 @@ Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto hierarchy = ctx.query.type_hierarchy(
+    auto hierarchy = index::type_hierarchy(
+        ctx.query,
         resolved->symbol.hash,
         resolved->site.file,
         {.supertypes = direction != "subtypes", .subtypes = direction != "supertypes"});

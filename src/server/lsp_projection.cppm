@@ -4,9 +4,10 @@ module;
 
 module clice:server.lsp_projection;
 
+import :index.navigation;
 import :index.query;
 import :index.site;
-import :index.types;
+import :index.symbol;
 import :semantic.symbol;
 
 /// The LSP shapes of the index query's domain values: the one place that
@@ -26,12 +27,12 @@ std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites);
 std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites);
 
 std::vector<protocol::DocumentHighlight>
-    document_highlights(llvm::ArrayRef<index::IndexQuery::PlacedHighlight> highlights);
+    document_highlights(llvm::ArrayRef<index::PlacedHighlight> highlights);
 
 /// `container` is the qualified name of the symbol's parent, empty at the
 /// translation unit. A function is named with its signature, which tells
 /// its overloads apart.
-protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
+protocol::SymbolInformation symbol_information(const index::SymbolInfo& symbol,
                                                const index::Site& site,
                                                llvm::StringRef container);
 
@@ -40,11 +41,11 @@ protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
 /// namespace or a class, and a function's signature. They carry their symbol handle
 /// in `data` as a decimal string: a raw 64-bit integer would be parsed into
 /// a double by a JavaScript client and come back rounded.
-protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolRef& symbol,
+protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolInfo& symbol,
                                                 const index::Site& site,
                                                 const index::Site& extent,
                                                 llvm::StringRef qualified);
-protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolRef& symbol,
+protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolInfo& symbol,
                                                 const index::Site& site,
                                                 const index::Site& extent,
                                                 llvm::StringRef qualified);

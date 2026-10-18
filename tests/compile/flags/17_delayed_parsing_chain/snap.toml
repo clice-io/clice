@@ -1,0 +1,12 @@
+["late-parsed templates over the pch"."main.cpp"]
+diagnostics = []
+
+["late-parsed templates over the pch".hover.hover]
+markdown = '''
+**function** `base_template`
+
+```cpp
+template <> int base_template<Other>(Other t)
+```
+'''
+range = "return top_template(Other{2}) + ⟦base_template⟧(Other{3}) + use_base();"

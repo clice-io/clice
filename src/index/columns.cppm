@@ -5,7 +5,7 @@ module;
 /// The column encodings the blobs share: entry ranges in whichever
 /// encoding the side and the content size pick (shard and instantiation
 /// blobs), id columns in whichever width their table picks (those and the
-/// global blob), and the load-time checks that let readers trust them.
+/// project table), and the load-time checks that let readers trust them.
 ///
 /// The per-entry accessors are declared inline: in a named module a member
 /// defined in its class is not, and the readers in other partitions would
@@ -13,11 +13,80 @@ module;
 
 module clice:index.columns;
 
-import :index.serialization;
+import :index.format;
 import :support.bitmap;
 import :syntax.token;
 
 namespace clice::index {
+
+/// A bitmap over a portable image in place: the container payloads stay
+/// in `data`, which must outlive the bitmap, and the bitmap is read-only
+/// (croaring aborts on a write to a frozen one). Validated without
+/// trusting the bytes — bounded by the buffer, croaring's internal
+/// invariants checked — plus the container offsets the image's header carries:
+/// the in-place reader follows them instead of walking the payload, so a
+/// corrupt one would send it outside the image.
+std::optional<Bitmap> read_bitmap(const void* data, std::size_t size);
+
+/// Encode a bitmap as its portable image — the only format with a bounded
+/// deserializer.
+inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
+    std::vector<std::byte> buffer(bitmap.getSizeInBytes(true));
+    bitmap.write(reinterpret_cast<char*>(buffer.data()), true);
+    return buffer;
+}
+
+/// An ascending set of ids below `universe` as an Elias–Fano list, about
+/// 2 + log2(universe / count) bits an id: the count as a varint; then
+/// the low log2(universe / count) bits of each id, back to back; then a
+/// bit vector holding, for the i-th id, a one at its remaining high bits
+/// plus i. Every bit past the last of each part is zero, and the vector
+/// ends with the byte holding its last one.
+std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t universe);
+
+/// The ids of a list write_postings wrote for `universe`; nullopt for
+/// bytes it would not have written.
+std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t universe);
+
+inline llvm::StringRef to_ref(std::string_view text) {
+    return {text.data(), text.size()};
+}
+
+/// A scalar array view as an ArrayRef borrowing the mapped blob.
+template <typename T>
+llvm::ArrayRef<T> to_array_ref(kota::codec::fbs::array_view<T> view) {
+    if(!view.valid()) {
+        return {};
+    }
+    return {view.raw()->data(), view.raw()->size()};
+}
+
+/// Whether an end-offset column stays within its arena and never moves
+/// back: the shape of every "entries back to back" column pair.
+inline bool monotone_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_size) {
+    std::uint32_t last = 0;
+    for(auto end: ends) {
+        if(end < last || end > arena_size) {
+            return false;
+        }
+        last = end;
+    }
+    return true;
+}
+
+/// monotone_ends whose entries cover the whole arena.
+inline bool covering_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_size) {
+    return monotone_ends(ends, arena_size) &&
+           (ends.empty() ? arena_size == 0 : ends.back() == arena_size);
+}
+
+/// Entry `i` of an "entries back to back" column pair: the arena between
+/// the previous entry's end and its own.
+template <typename Arena>
+Arena slice(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
+    auto begin = i == 0 ? 0 : ends[i - 1];
+    return arena.drop_front(begin).take_front(ends[i] - begin);
+}
 
 /// Load-time verification outcome: the violated invariant, spelled for the
 /// log, or success.
@@ -86,7 +155,7 @@ inline std::size_t escape_position(llvm::ArrayRef<std::uint32_t> entries, std::s
     return static_cast<std::size_t>(std::ranges::lower_bound(entries, entry) - entries.begin());
 }
 
-/// One side of a blob's entry storage as contiguous column refs,
+/// One side of a blob's entries as contiguous column refs,
 /// encoding-agnostic: the range accessors read whichever range encoding the
 /// side stores, the mask columns whichever mask encoding.
 struct RangeColumnsView {
@@ -207,7 +276,7 @@ struct RangeColumnsView {
     /// every slice proven to decode, so this cannot fail.
     Bitmap bitmap_of(std::uint32_t entry) const {
         auto begin = roaring_offsets[entry];
-        return *view_bitmap(roaring.data() + begin, roaring_offsets[entry + 1] - begin);
+        return *read_bitmap(roaring.data() + begin, roaring_offsets[entry + 1] - begin);
     }
 };
 

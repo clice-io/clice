@@ -4,7 +4,7 @@ module;
 
 module clice:index.instantiation_shard;
 
-import :index.types;
+import :index.symbol;
 
 namespace clice::index {
 
@@ -60,20 +60,14 @@ constexpr auto record_key(const InstantiationRecord& record) {
                       record.from);
 }
 
-/// The identity of one resolution — the records one instantiated definition or
-/// macro expansion resolves in one file: a hash over the file's content
-/// generation and the records, which must be sorted and unique.
-using ResolutionHash = std::uint64_t;
+/// The identity of one resolution: a hash over the file's content generation
+/// and the records, which must be sorted and unique.
+ResolutionHash resolution_hash(std::uint64_t content_hash,
+                               llvm::ArrayRef<InstantiationRecord> records);
 
-ResolutionHash resolution_identity(std::uint64_t content_hash,
-                                   llvm::ArrayRef<InstantiationRecord> records);
-
-/// The identity of the resolutions a TU uses in one file — a hash over them,
-/// which must be sorted and unique. TUs using the same ones share it, and the
-/// file's blob stores them once.
-using UseHash = std::uint64_t;
-
-UseHash use_identity(llvm::ArrayRef<ResolutionHash> resolutions);
+/// The identity of the resolutions a TU uses in one file: a hash over them,
+/// which must be sorted and unique.
+UseHash use_hash(llvm::ArrayRef<ResolutionHash> resolutions);
 
 /// What one run resolves in one file, as the worker builds it: the distinct
 /// resolutions, and the keys it walked, each pointing at its resolution or at
@@ -123,7 +117,7 @@ public:
     /// or another format version load as an empty shard.
     static InstantiationShard from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
-    /// Swap the backing buffer for byte-identical storage, as Shard::rebind.
+    /// Swap the backing buffer for a byte-identical one, as Shard::rebind.
     bool rebind(std::unique_ptr<llvm::MemoryBuffer> replacement);
 
     bool loaded() const {
@@ -173,12 +167,12 @@ public:
     void for_each_key(llvm::function_ref<bool(const Key&)> callback) const;
 
     /// The live records whose range touches `offset`, in stored order.
-    void lookup(std::uint32_t offset,
-                llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
+    void records_at(std::uint32_t offset,
+                    llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 
     /// The live records naming `symbol` as their target or their `from`.
-    void lookup(SymbolHash symbol,
-                llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
+    void records_of(SymbolHash symbol,
+                    llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 
     /// Every live record, in stored order.
     void for_each_record(llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
@@ -191,13 +185,14 @@ private:
         return live_records.empty() || ((live_records[record / 64] >> (record % 64)) & 1) != 0;
     }
 
+private:
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
     /// A bit per record some live resolution holds; empty while every
     /// stored use and resolution is live.
     std::vector<std::uint64_t> live_records;
 
-    /// The length of the longest record, which bounds lookup(offset)'s scan.
+    /// The length of the longest record, which bounds records_at's scan.
     std::uint32_t longest = 0;
 };
 

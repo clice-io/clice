@@ -4,8 +4,8 @@ module;
 
 module clice;
 
+import :index.format;
 import :index.instantiation_shard;
-import :index.serialization;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -67,7 +67,7 @@ InstantiationShard merge(const InstantiationShard& old,
 
 /// The use of a unit using every resolution of `shard`.
 index::AddedUse use_of(const InstantiationShard& shard) {
-    return {.use = index::use_identity(shard.resolutions()), .resolutions = shard.resolutions()};
+    return {.use = index::use_hash(shard.resolutions()), .resolutions = shard.resolutions()};
 }
 
 std::vector<InstantiationRecord> records_of(const InstantiationShard& shard) {
@@ -81,7 +81,7 @@ std::vector<InstantiationRecord> records_of(const InstantiationShard& shard) {
 
 std::vector<InstantiationRecord> at(const InstantiationShard& shard, std::uint32_t offset) {
     std::vector<InstantiationRecord> records;
-    shard.lookup(offset, [&](const InstantiationRecord& record) {
+    shard.records_at(offset, [&](const InstantiationRecord& record) {
         records.push_back(record);
         return true;
     });
@@ -90,7 +90,7 @@ std::vector<InstantiationRecord> at(const InstantiationShard& shard, std::uint32
 
 std::vector<InstantiationRecord> naming(const InstantiationShard& shard, index::SymbolHash symbol) {
     std::vector<InstantiationRecord> records;
-    shard.lookup(symbol, [&](const InstantiationRecord& record) {
+    shard.records_of(symbol, [&](const InstantiationRecord& record) {
         records.push_back(record);
         return true;
     });
@@ -114,8 +114,8 @@ ZEST_CASE(Roundtrip) {
     ZEXPECT(shard.content_hash() == generation);
 
     auto identity =
-        index::resolution_identity(generation,
-                                   {reference(10, 11), call(10, 11, 50), reference(20, 22)});
+        index::resolution_hash(generation,
+                               {reference(10, 11), call(10, 11, 50), reference(20, 22)});
     ZASSERT(shard.resolutions().size() == 1u);
     ZEXPECT(shard.resolutions().front() == identity);
 
@@ -285,11 +285,11 @@ ZEST_CASE(ExpansionRecordsKeptApart) {
 ZEST_CASE(CorruptBlobRejected) {
     ZEXPECT(!InstantiationShard::from_bytes("not a flatbuffer").loaded());
 
-    index::InstantiationBlob blob;
+    index::InstantiationShardBlob blob;
     blob.format_version = index::index_format_version;
     blob.content_hash = generation;
     blob.content_size = size;
-    blob.sym_hashes = {11};
+    blob.symbol_hashes = {11};
     blob.records.block_begins = {10};
     blob.records.deltas = {0};
     blob.records.lengths = {3};
@@ -328,9 +328,9 @@ ZEST_CASE(CorruptBlobRejected) {
     ZEXPECT(make(bytes_of()).loaded());
 
     // Hashes that key DenseMaps once decoded.
-    blob.sym_hashes = {~0ull};
+    blob.symbol_hashes = {~0ull};
     ZEXPECT(!make(bytes_of()).loaded());
-    blob.sym_hashes = {11};
+    blob.symbol_hashes = {11};
     blob.resolutions = {~0ull};
     ZEXPECT(!make(bytes_of()).loaded());
     blob.resolutions = {5};
@@ -347,13 +347,13 @@ ZEST_CASE(CorruptBlobRejected) {
 
     // A use names stored resolutions under the identity they hash to.
     std::vector<ResolutionHash> used = {5};
-    blob.uses = {index::use_identity(used)};
+    blob.uses = {index::use_hash(used)};
     blob.use_ends = {1};
     blob.use_resolutions = {0};
     ZEXPECT(make(bytes_of()).loaded());
-    blob.uses = {index::use_identity(used) + 1};
+    blob.uses = {index::use_hash(used) + 1};
     ZEXPECT(!make(bytes_of()).loaded());
-    blob.uses = {index::use_identity(used)};
+    blob.uses = {index::use_hash(used)};
     blob.use_resolutions = {1};
     ZEXPECT(!make(bytes_of()).loaded());
     blob.use_resolutions = {0};

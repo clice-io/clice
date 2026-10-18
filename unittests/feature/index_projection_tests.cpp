@@ -6,12 +6,13 @@ module clice;
 
 import :feature.feature;
 import :feature.semantic_token_stream;
+import :index.indexer;
 import :index.tu_index;
 import :semantic.token_class;
 import :syntax.lexer;
 import :syntax.source_text;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 
 namespace clice::testing {
 
@@ -33,13 +34,13 @@ void extract_entries() {
     entries = feature::extract_index_entries(tu.shard_of(focus_id));
 }
 
-std::optional<index::SymbolRef> resolve(index::SymbolHash hash) {
+std::optional<index::SymbolInfo> resolve(index::SymbolHash hash) {
     if(auto identity = tu.find_symbol(hash)) {
-        return index::SymbolRef::from(hash, *identity);
+        return index::SymbolInfo::from(hash, *identity);
     }
     auto focus_id = tu.path_count() - 1;
     if(auto identity = tu.shard_of(focus_id).find_symbol(hash)) {
-        return index::SymbolRef::from(hash, *identity);
+        return index::SymbolInfo::from(hash, *identity);
     }
     return std::nullopt;
 }
@@ -85,11 +86,11 @@ auto project(llvm::StringRef content,
     return feature::index_semantic_tokens(
         text,
         synthetic,
-        [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
+        [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
             if(hash == 0 || hash > kinds.size()) {
                 return std::nullopt;
             }
-            return index::SymbolRef{.token_class = {.kind = kinds[hash - 1]}};
+            return index::SymbolInfo{.token_class = {.kind = kinds[hash - 1]}};
         },
         {});
 }
@@ -405,8 +406,8 @@ void g() {
          .symbol = 2,
          .definition = true                                                                        },
     };
-    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
-        return index::SymbolRef{.name = hash == 1 ? "f" : "g", .kind = SymbolKind::Function};
+    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
+        return index::SymbolInfo{.name = hash == 1 ? "f" : "g", .kind = SymbolKind::Function};
     };
 
     SourceText text(content, dialect_of("main.cpp", false));
@@ -547,7 +548,7 @@ ZEST_CASE(HoverDefinitionShape) {
     auto card = [](SymbolKind::Kind kind,
                    llvm::StringRef text,
                    index::SymbolFlags flags = index::SymbolFlags::None) {
-        index::SymbolRef info{.name = "name", .kind = kind, .flags = flags};
+        index::SymbolInfo info{.name = "name", .kind = kind, .flags = flags};
         return feature::index_hover(info, {}, text, {}).definition;
     };
     ZASSERT(card(SymbolKind::Function, "int twice(int x) {\n    return x * 2;\n}") ==

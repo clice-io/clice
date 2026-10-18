@@ -45,3 +45,13 @@ void setOffset(double value)
 ```
 '''
 range = "void ⟦setOffset⟧(double value) { offset = std::move(value); }"
+
+[answers.setter_deleted.hover]
+markdown = '''
+**method** `setDepth` · struct `accessors::Frozen`
+
+```cpp
+void setDepth(int value) = delete
+```
+'''
+range = "void ⟦setDepth⟧(int value) = delete;"

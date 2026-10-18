@@ -255,12 +255,11 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
 }
 
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header) {
-    if(auto it = project.project_index.manifests.find(host);
-       it != project.project_index.manifests.end()) {
+    if(auto it = project.index.manifests.find(host); it != project.index.manifests.end()) {
         if(auto found = tree_enterings(project,
                                        host,
                                        header,
-                                       it->second.tu_fv,
+                                       it->second.tu_version,
                                        it->second.nodes,
                                        it->second.absent)) {
             return found;
@@ -324,7 +323,7 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
     for(auto candidate: project.dep_graph.find_host_sources(header)) {
         add(candidate);
     }
-    project.project_index.each_contributor(header, add);
+    project.index.for_each_contributor(header, add);
 
     auto score =
         [&](Fid host) -> std::tuple<std::size_t, int, int, std::pair<std::size_t, std::size_t>> {

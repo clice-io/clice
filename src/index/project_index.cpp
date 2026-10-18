@@ -7,9 +7,10 @@ module;
 module clice;
 
 import :index.columns;
+import :index.format;
 import :index.instantiation_shard;
 import :index.project_index;
-import :index.serialization;
+import :index.project_table;
 import :semantic.token_class;
 import :support.logging;
 
@@ -25,139 +26,7 @@ namespace {
 /// better compacted by the rebuild the rejection triggers.
 constexpr inline std::uint32_t max_persisted_versions = 1u << 24;
 
-/// The global layer's persisted form, read in place: the FileVersion table
-/// as parallel columns, the symbol table as parallel columns in hash order
-/// with its names, arguments and reference bitmaps in arenas, and the path
-/// table those columns index.
-struct GlobalBlob {
-    std::uint32_t format_version = 0;
-
-    /// See ProjectIndex::global_generation.
-    std::uint64_t generation = 0;
-
-    std::uint32_t next_fv_id = 0;
-
-    std::vector<std::uint32_t> fv_ids;
-    std::vector<std::string> fv_paths;
-    std::vector<std::uint64_t> fv_hashes;
-
-    /// Path id -> path for every id the symbol columns reference. Ids
-    /// are dense and stable across writes: a path keeps its id for as
-    /// long as the blob lineage lives, so a base entry's bitmap image is
-    /// copied into the next blob verbatim.
-    std::vector<std::string> paths;
-
-    /// The external symbol table, sorted by hash. A symbol's reference
-    /// files are a file set (append_file_set) in the arena, one end offset
-    /// per symbol.
-    std::vector<std::uint64_t> sym_hashes;
-    std::string sym_names;
-    std::vector<std::uint32_t> sym_name_ends;
-    /// The arguments of the few symbols having them: those symbols,
-    /// ascending, and their text back to back.
-    std::vector<std::uint32_t> sym_args_docs;
-    std::string sym_args;
-    std::vector<std::uint32_t> sym_args_ends;
-    std::string sym_signatures;
-    std::vector<std::uint32_t> sym_signature_ends;
-    /// The parent's position in the table plus one; 0 for none, or for one
-    /// outside the table, which the sparse (symbol, parent hash) table names.
-    IdColumn sym_parents;
-    std::vector<std::uint32_t> sym_far_parents;
-    std::vector<std::uint64_t> sym_far_parent_hashes;
-    std::vector<std::uint8_t> sym_kinds;
-    std::vector<std::uint16_t> sym_flags;
-    std::vector<std::uint8_t> sym_token_kinds;
-    std::vector<std::uint32_t> sym_token_modifiers;
-    /// Path ids plus one, 0 for a symbol without a declaring relation.
-    IdColumn sym_files;
-    /// The files referencing each symbol, counted: at most the path count,
-    /// so they take the width of path ids.
-    IdColumn sym_reference_counts;
-    std::vector<std::uint32_t> sym_bitmap_ends;
-    std::vector<std::uint8_t> sym_bitmaps;
-    /// The files whose instantiation shards name a symbol, as file sets for
-    /// the few symbols some instantiation names, ascending.
-    std::vector<std::uint32_t> sym_instantiation_docs;
-    std::vector<std::uint32_t> sym_instantiation_ends;
-    std::vector<std::uint8_t> sym_instantiations;
-
-    /// tu_fv -> generation of every manifest current at this save.
-    /// The loader adopts a manifest blob only on an exact generation match, so
-    /// a manifest whose write failed while the global was persisted (or one that
-    /// outran a lost global write) reads as lost and its TU reindexes,
-    /// instead of an older on-disk manifest serving as current.
-    std::vector<std::uint32_t> manifest_fvs;
-    std::vector<std::uint64_t> manifest_gens;
-
-    /// The generation of the search blob this table was saved with, and
-    /// the entries and the files whose names of internal linkage (path
-    /// ids, ascending) changed since that blob was built.
-    std::uint64_t search_generation = 0;
-    std::vector<std::uint64_t> search_pending;
-    std::vector<std::uint32_t> search_pending_files;
-
-    /// The reverse include graph, for readers holding no manifests: every
-    /// file some TU contributed a variant to (path ids, ascending), and those
-    /// TUs' path ids as file sets back to back.
-    std::vector<std::uint32_t> contributed_files;
-    std::vector<std::uint32_t> contributor_ends;
-    std::vector<std::uint8_t> contributors;
-
-    /// The symbols below external scope some TU's local fanout lists
-    /// (TUManifest::local_fanout), ascending; the end of each symbol's run
-    /// of file sets; and the sets, file sets back to back.
-    std::vector<std::uint64_t> fanout_symbols;
-    std::vector<std::uint32_t> fanout_set_ends;
-    std::vector<std::uint32_t> fanout_file_ends;
-    std::vector<std::uint8_t> fanout_files;
-};
-
-using BlobView = kota::codec::fbs::table_view<GlobalBlob>;
-
-/// Most file sets hold one or two files: up to raw_file_set_limit path ids
-/// are stored raw as u32s, more as a portable roaring image — which is
-/// longer than any raw list, so a slice's length says which it is.
-constexpr std::size_t raw_file_set_limit = 2;
-
-void append_file_set(std::vector<std::uint8_t>& arena, const Bitmap& ids) {
-    if(ids.cardinality() <= raw_file_set_limit) {
-        for(std::uint32_t id: ids) {
-            auto* bytes = reinterpret_cast<const std::uint8_t*>(&id);
-            arena.insert(arena.end(), bytes, bytes + sizeof(id));
-        }
-        return;
-    }
-    auto image = write_bitmap(ids);
-    auto* bytes = reinterpret_cast<const std::uint8_t*>(image.data());
-    arena.insert(arena.end(), bytes, bytes + image.size());
-}
-
-/// The set a slice holds; nullopt when it is not one append_file_set writes.
-std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
-    if(bytes.size() > raw_file_set_limit * sizeof(std::uint32_t)) {
-        auto image = view_bitmap(bytes.data(), bytes.size());
-        if(!image || image->cardinality() <= raw_file_set_limit) {
-            return std::nullopt;
-        }
-        return image;
-    }
-    if(bytes.size() % sizeof(std::uint32_t) != 0) {
-        return std::nullopt;
-    }
-    Bitmap ids;
-    std::optional<std::uint32_t> previous;
-    for(std::size_t i = 0; i < bytes.size(); i += sizeof(std::uint32_t)) {
-        std::uint32_t id;
-        std::memcpy(&id, bytes.data() + i, sizeof(id));
-        if(previous && id <= *previous) {
-            return std::nullopt;
-        }
-        ids.add(id);
-        previous = id;
-    }
-    return ids;
-}
+using BlobView = kota::codec::fbs::table_view<ProjectTableBlob>;
 
 /// A table derived from the manifests: file -> (TU -> the hash it names there).
 using UnitHashes = llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>>;
@@ -186,12 +55,12 @@ llvm::SmallVector<std::uint64_t> distinct_hashes(const UnitHashes& table, Fid fi
     return hashes;
 }
 
-/// The files a local fanout lists, ascending, two versions of one file
+/// The files a shared local lists, ascending, two versions of one file
 /// once.
-std::vector<Fid> fanout_set(const FileTable& files, const LocalFanout& fanout) {
+std::vector<Fid> listed_files(const FileTable& files, const SharedLocal& local) {
     std::vector<Fid> set;
-    for(auto fv: fanout.files) {
-        set.push_back(files.version(fv).fid);
+    for(auto version: local.files) {
+        set.push_back(files.version(version).fid);
     }
     llvm::sort(set);
     set.erase(llvm::unique(set), set.end());
@@ -200,346 +69,37 @@ std::vector<Fid> fanout_set(const FileTable& files, const LocalFanout& fanout) {
 
 }  // namespace
 
-/// The bound global blob: its columns, and its path table mapped to the
-/// file table's ids.
-struct ProjectIndex::Base {
-    std::unique_ptr<llvm::MemoryBuffer> buffer;
-
-    std::uint64_t generation = 0;
-    std::uint32_t next_fv_id = 0;
-    llvm::ArrayRef<std::uint32_t> fv_ids;
-    kota::codec::fbs::array_view<std::string> fv_paths;
-    llvm::ArrayRef<std::uint64_t> fv_hashes;
-
-    kota::codec::fbs::array_view<std::string> paths;
-    llvm::ArrayRef<std::uint64_t> hashes;
-    llvm::StringRef names;
-    llvm::ArrayRef<std::uint32_t> name_ends;
-    llvm::ArrayRef<std::uint32_t> args_docs;
-    llvm::StringRef args;
-    llvm::ArrayRef<std::uint32_t> args_ends;
-    llvm::StringRef signatures;
-    llvm::ArrayRef<std::uint32_t> signature_ends;
-    IdColumnView parents;
-    llvm::ArrayRef<std::uint32_t> far_parents;
-    llvm::ArrayRef<std::uint64_t> far_parent_hashes;
-    llvm::ArrayRef<std::uint8_t> kinds;
-    llvm::ArrayRef<std::uint16_t> flags;
-    llvm::ArrayRef<std::uint8_t> token_kinds;
-    llvm::ArrayRef<std::uint32_t> token_modifiers;
-    IdColumnView files;
-    IdColumnView reference_counts;
-    llvm::ArrayRef<std::uint32_t> bitmap_ends;
-    llvm::ArrayRef<std::uint8_t> bitmaps;
-    llvm::ArrayRef<std::uint32_t> instantiation_docs;
-    llvm::ArrayRef<std::uint32_t> instantiation_ends;
-    llvm::ArrayRef<std::uint8_t> instantiation_images;
-
-    llvm::ArrayRef<std::uint32_t> manifest_fvs;
-    llvm::ArrayRef<std::uint64_t> manifest_gens;
-
-    std::uint64_t search_generation = 0;
-    llvm::ArrayRef<std::uint64_t> search_pending;
-    llvm::ArrayRef<std::uint32_t> search_pending_files;
-
-    llvm::ArrayRef<std::uint32_t> contributed_files;
-    llvm::ArrayRef<std::uint32_t> contributor_ends;
-    llvm::ArrayRef<std::uint8_t> contributors;
-
-    llvm::ArrayRef<std::uint64_t> fanout_symbols;
-    llvm::ArrayRef<std::uint32_t> fanout_set_ends;
-    llvm::ArrayRef<std::uint32_t> fanout_file_ends;
-    llvm::ArrayRef<std::uint8_t> fanout_files;
-
-    /// Blob path id -> file table id.
-    std::vector<Fid> remap;
-
-    /// File table id -> index into contributed_files, built on first use.
-    mutable llvm::DenseMap<Fid, std::uint32_t> contributed_index;
-
-    std::uint32_t count() const {
-        return static_cast<std::uint32_t>(hashes.size());
-    }
-
-    std::optional<std::uint32_t> find(SymbolHash hash) const {
-        auto it = std::ranges::lower_bound(hashes, hash);
-        if(it == hashes.end() || *it != hash) {
-            return std::nullopt;
-        }
-        return static_cast<std::uint32_t>(it - hashes.begin());
-    }
-
-    llvm::StringRef name(std::uint32_t doc) const {
-        return back_to_back(names, name_ends, doc);
-    }
-
-    llvm::StringRef arguments(std::uint32_t doc) const {
-        auto it = std::ranges::lower_bound(args_docs, doc);
-        if(it == args_docs.end() || *it != doc) {
-            return {};
-        }
-        return back_to_back(args, args_ends, static_cast<std::uint32_t>(it - args_docs.begin()));
-    }
-
-    SymbolHash parent(std::uint32_t doc) const {
-        if(parents[doc] != 0) {
-            return hashes[parents[doc] - 1];
-        }
-        auto it = std::ranges::lower_bound(far_parents, doc);
-        if(it == far_parents.end() || *it != doc) {
-            return 0;
-        }
-        return far_parent_hashes[it - far_parents.begin()];
-    }
-
-    /// The symbol's file as a path id of the blob, or no_file.
-    std::uint32_t file(std::uint32_t doc) const {
-        return files[doc] == 0 ? no_file : files[doc] - 1;
-    }
-
-    llvm::StringRef signature(std::uint32_t doc) const {
-        return back_to_back(signatures, signature_ends, doc);
-    }
-
-    llvm::ArrayRef<std::uint8_t> image(std::uint32_t doc) const {
-        return back_to_back(bitmaps, bitmap_ends, doc);
-    }
-
-    std::optional<Bitmap> bitmap(std::uint32_t doc) const {
-        return read_file_set(image(doc));
-    }
-
-    /// Empty for a symbol no instantiation names.
-    llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t doc) const {
-        auto it = std::ranges::lower_bound(instantiation_docs, doc);
-        if(it == instantiation_docs.end() || *it != doc) {
-            return {};
-        }
-        return back_to_back(instantiation_images,
-                            instantiation_ends,
-                            static_cast<std::uint32_t>(it - instantiation_docs.begin()));
-    }
-
-    std::optional<Bitmap> instantiation_bitmap(std::uint32_t doc) const {
-        return read_file_set(instantiation_image(doc));
-    }
-
-    /// The TUs that contributed a variant to `file`, as path ids; nullopt when
-    /// none did or the image fails to decode.
-    std::optional<Bitmap> contributors_of(Fid file) const {
-        if(contributed_index.empty()) {
-            for(std::uint32_t i = 0; i < contributed_files.size(); i += 1) {
-                contributed_index.try_emplace(remap[contributed_files[i]], i);
-            }
-        }
-        auto it = contributed_index.find(file);
-        if(it == contributed_index.end()) {
-            return std::nullopt;
-        }
-        return read_file_set(back_to_back(contributors, contributor_ends, it->second));
-    }
-
-    /// The file sets the local fanouts list for `symbol`, as path ids; a
-    /// corrupt one is left out.
-    llvm::SmallVector<Bitmap> fanout_sets_of(SymbolHash symbol) const {
-        llvm::SmallVector<Bitmap> sets;
-        auto it = std::ranges::lower_bound(fanout_symbols, symbol);
-        if(it == fanout_symbols.end() || *it != symbol) {
-            return sets;
-        }
-        auto entry = static_cast<std::uint32_t>(it - fanout_symbols.begin());
-        for(auto set = entry == 0 ? 0 : fanout_set_ends[entry - 1]; set < fanout_set_ends[entry];
-            set += 1) {
-            if(auto files = read_file_set(back_to_back(fanout_files, fanout_file_ends, set))) {
-                sets.push_back(std::move(*files));
-            }
-        }
-        return sets;
-    }
-
-    SymbolIdentity identity(std::uint32_t doc) const {
-        auto file = this->file(doc);
-        return {
-            .name = name(doc),
-            .args = arguments(doc),
-            .signature = signature(doc),
-            .parent = parent(doc),
-            .kind = SymbolKind(kinds[doc]),
-            .scope = SymbolScope::External,
-            .flags = static_cast<SymbolFlags>(flags[doc]),
-            .file = file == no_file ? no_file : remap[file].raw,
-            .token_class = {.kind = static_cast<SemanticTokenKind>(token_kinds[doc]),
-                            .modifiers = token_modifiers[doc]},
-        };
-    }
-
-    /// Bind the columns of a verified blob, checking they line up.
-    std::expected<void, llvm::StringRef> bind(BlobView root);
-};
-
-std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
-    if(root[&GlobalBlob::format_version] != index_format_version) {
-        return std::unexpected("written by another index format version");
-    }
-    generation = root[&GlobalBlob::generation];
-    next_fv_id = root[&GlobalBlob::next_fv_id];
-    fv_ids = to_array_ref(root[&GlobalBlob::fv_ids]);
-    fv_paths = root[&GlobalBlob::fv_paths];
-    fv_hashes = to_array_ref(root[&GlobalBlob::fv_hashes]);
-    paths = root[&GlobalBlob::paths];
-    hashes = to_array_ref(root[&GlobalBlob::sym_hashes]);
-    names = to_ref(root[&GlobalBlob::sym_names]);
-    name_ends = to_array_ref(root[&GlobalBlob::sym_name_ends]);
-    args_docs = to_array_ref(root[&GlobalBlob::sym_args_docs]);
-    args = to_ref(root[&GlobalBlob::sym_args]);
-    args_ends = to_array_ref(root[&GlobalBlob::sym_args_ends]);
-    signatures = to_ref(root[&GlobalBlob::sym_signatures]);
-    signature_ends = to_array_ref(root[&GlobalBlob::sym_signature_ends]);
-    parents = ids_of(root[&GlobalBlob::sym_parents], hashes.size() + 1);
-    far_parents = to_array_ref(root[&GlobalBlob::sym_far_parents]);
-    far_parent_hashes = to_array_ref(root[&GlobalBlob::sym_far_parent_hashes]);
-    kinds = to_array_ref(root[&GlobalBlob::sym_kinds]);
-    flags = to_array_ref(root[&GlobalBlob::sym_flags]);
-    token_kinds = to_array_ref(root[&GlobalBlob::sym_token_kinds]);
-    token_modifiers = to_array_ref(root[&GlobalBlob::sym_token_modifiers]);
-    files = ids_of(root[&GlobalBlob::sym_files], paths.size() + 1);
-    reference_counts = ids_of(root[&GlobalBlob::sym_reference_counts], paths.size() + 1);
-    bitmap_ends = to_array_ref(root[&GlobalBlob::sym_bitmap_ends]);
-    bitmaps = to_array_ref(root[&GlobalBlob::sym_bitmaps]);
-    instantiation_docs = to_array_ref(root[&GlobalBlob::sym_instantiation_docs]);
-    instantiation_ends = to_array_ref(root[&GlobalBlob::sym_instantiation_ends]);
-    instantiation_images = to_array_ref(root[&GlobalBlob::sym_instantiations]);
-    manifest_fvs = to_array_ref(root[&GlobalBlob::manifest_fvs]);
-    manifest_gens = to_array_ref(root[&GlobalBlob::manifest_gens]);
-    search_generation = root[&GlobalBlob::search_generation];
-    search_pending = to_array_ref(root[&GlobalBlob::search_pending]);
-    search_pending_files = to_array_ref(root[&GlobalBlob::search_pending_files]);
-    contributed_files = to_array_ref(root[&GlobalBlob::contributed_files]);
-    contributor_ends = to_array_ref(root[&GlobalBlob::contributor_ends]);
-    contributors = to_array_ref(root[&GlobalBlob::contributors]);
-    fanout_symbols = to_array_ref(root[&GlobalBlob::fanout_symbols]);
-    fanout_set_ends = to_array_ref(root[&GlobalBlob::fanout_set_ends]);
-    fanout_file_ends = to_array_ref(root[&GlobalBlob::fanout_file_ends]);
-    fanout_files = to_array_ref(root[&GlobalBlob::fanout_files]);
-
-    auto version_count = fv_ids.size();
-    if(fv_paths.size() != version_count || fv_hashes.size() != version_count) {
-        return std::unexpected("file version columns do not line up");
-    }
-    if(!std::ranges::is_sorted(fv_ids)) {
-        return std::unexpected("file version ids are not ascending");
-    }
-    if(contributor_ends.size() != contributed_files.size() ||
-       !monotone_ends(contributor_ends, contributors.size())) {
-        return std::unexpected("contributor columns do not line up");
-    }
-    for(std::size_t i = 0; i < contributed_files.size(); i += 1) {
-        if(contributed_files[i] >= paths.size() ||
-           (i > 0 && contributed_files[i] <= contributed_files[i - 1])) {
-            return std::unexpected("contributed files are not ascending path ids");
-        }
-    }
-    if(fanout_set_ends.size() != fanout_symbols.size() ||
-       !covering_ends(fanout_set_ends, fanout_file_ends.size()) ||
-       !covering_ends(fanout_file_ends, fanout_files.size()) ||
-       !std::ranges::is_sorted(fanout_symbols, std::less_equal{})) {
-        return std::unexpected("fanout columns do not line up");
-    }
-    if(manifest_fvs.size() != manifest_gens.size()) {
-        return std::unexpected("manifest pin columns do not line up");
-    }
-    auto count = hashes.size();
-    if(name_ends.size() != count || signature_ends.size() != count || kinds.size() != count ||
-       flags.size() != count || token_kinds.size() != count || token_modifiers.size() != count ||
-       bitmap_ends.size() != count) {
-        return std::unexpected("symbol columns do not line up");
-    }
-    if(!all_token_kinds(token_kinds)) {
-        return std::unexpected("a symbol's token kind is out of range");
-    }
-    if(!ids_ok(parents, count, count + 1) || !ids_ok(files, count, paths.size() + 1) ||
-       !ids_ok(reference_counts, count, paths.size() + 1)) {
-        return std::unexpected("symbol id columns do not line up");
-    }
-    auto sparse = [&](llvm::ArrayRef<std::uint32_t> docs, std::size_t values) {
-        return sparse_ok(docs, values, count);
-    };
-    if(!sparse(args_docs, args_ends.size()) ||
-       !sparse(instantiation_docs, instantiation_ends.size()) ||
-       !sparse(far_parents, far_parent_hashes.size())) {
-        return std::unexpected("sparse symbol columns do not line up");
-    }
-    if(!monotone_ends(name_ends, names.size()) || !monotone_ends(args_ends, args.size()) ||
-       !monotone_ends(signature_ends, signatures.size()) ||
-       !monotone_ends(bitmap_ends, bitmaps.size()) ||
-       !monotone_ends(instantiation_ends, instantiation_images.size())) {
-        return std::unexpected("symbol arenas do not line up");
-    }
-    // Hashes, parents and pending entries become table keys downstream, which
-    // reserve two sentinel values; a repeated hash would let one entry shadow
-    // another.
-    for(std::size_t i = 0; i < count; i += 1) {
-        if(reserved_key(hashes[i]) || (i > 0 && hashes[i] <= hashes[i - 1])) {
-            return std::unexpected("symbol hashes are not ascending");
-        }
-    }
-    for(std::size_t k = 0; k < far_parents.size(); k += 1) {
-        if(parents[far_parents[k]] != 0 || reserved_key(far_parent_hashes[k])) {
-            return std::unexpected("symbol parent outside the table is not canonical");
-        }
-    }
-    for(auto hash: search_pending) {
-        if(reserved_key(hash)) {
-            return std::unexpected("reserved pending search row");
-        }
-    }
-    for(auto file: search_pending_files) {
-        if(file >= paths.size()) {
-            return std::unexpected("pending search file outside the path table");
-        }
-    }
-    // The writer only emits interned paths, which are never empty; an
-    // empty entry marks a corrupt blob and must not become a real pool
-    // entry.
-    for(std::uint32_t i = 0; i < paths.size(); i += 1) {
-        if(paths[i].empty()) {
-            return std::unexpected("empty symbol path");
-        }
-    }
-    return {};
-}
-
 ProjectIndex::ProjectIndex() = default;
 ProjectIndex::~ProjectIndex() = default;
 ProjectIndex::ProjectIndex(ProjectIndex&&) noexcept = default;
 ProjectIndex& ProjectIndex::operator=(ProjectIndex&&) noexcept = default;
 
 std::string ProjectIndex::portable(llvm::StringRef path) const {
-    llvm::SmallString<256> storage;
-    return path::portable(path, workspace, storage).str();
+    llvm::SmallString<256> buffer;
+    return path::portable(path, workspace, buffer).str();
 }
 
 Spelling ProjectIndex::local(llvm::StringRef name) const {
-    llvm::SmallString<256> storage;
-    return Spelling::absolute(path::local(name, workspace, storage));
+    llvm::SmallString<256> buffer;
+    return Spelling::absolute(path::local(name, workspace, buffer));
 }
 
 std::string ProjectIndex::key_of(const FileTable& files, Fid file) const {
     return blob_key(portable(files.resolve(file)));
 }
 
-bool ProjectIndex::bind_global(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files) {
+bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files) {
     if(!blob) {
         return false;
     }
     auto root = BlobView::from_bytes(blob_bytes(blob->getBuffer()));
     if(!root.valid()) {
-        LOG_DEBUG("Rejecting global blob: structural verification failed");
+        LOG_DEBUG("Rejecting project table: structural verification failed");
         return false;
     }
-    auto bound = std::make_unique<Base>();
+    auto bound = std::make_unique<ProjectTable>();
     if(auto ok = bound->bind(root); !ok) {
-        LOG_DEBUG("Rejecting global blob: {}", std::string_view(ok.error()));
+        LOG_DEBUG("Rejecting project table: {}", std::string_view(ok.error()));
         return false;
     }
     // Interning only names the paths: ids left behind by a later reject
@@ -560,14 +120,14 @@ std::expected<void, llvm::StringRef>
         return {};
     }
     auto& blob = *base;
-    auto count = blob.fv_ids.size();
+    auto count = blob.version_ids.size();
 
     // Every value check runs before the first mutation: a blob rejected
     // halfway through would otherwise leave partial state behind — file
     // versions whose corrupt stat stamps feed the freshness fast path —
     // while the caller treats the failed load as "no index on disk".
     for(std::uint32_t i = 0; i < count; i += 1) {
-        if(blob.fv_paths[i].empty()) {
+        if(blob.version_paths[i].empty()) {
             return std::unexpected("empty file version path");
         }
     }
@@ -577,16 +137,16 @@ std::expected<void, llvm::StringRef>
     // the writer hands ids out from it, so ids must sit below it — a
     // bound that (with the sentinels at the top of the id space) also
     // keeps every id non-reserved.
-    if(reserved_key(blob.next_fv_id) || blob.next_fv_id > max_persisted_versions) {
+    if(reserved_key(blob.next_version_id) || blob.next_version_id > max_persisted_versions) {
         return std::unexpected("file version counter out of range");
     }
-    for(auto id: blob.fv_ids) {
-        if(id >= blob.next_fv_id) {
+    for(auto id: blob.version_ids) {
+        if(id >= blob.next_version_id) {
             return std::unexpected("file version id past the counter");
         }
     }
-    for(auto fv: blob.manifest_fvs) {
-        if(reserved_key(fv)) {
+    for(auto version: blob.manifest_versions) {
+        if(reserved_key(version)) {
             return std::unexpected("reserved manifest pin");
         }
     }
@@ -594,35 +154,37 @@ std::expected<void, llvm::StringRef>
     // repeat of either marks a corrupt blob: a repeated id in particular
     // would map to the earlier pair while its record names the later
     // path, attributing contributions to the wrong file.
-    llvm::DenseSet<std::uint32_t> blob_fvs(blob.fv_ids.begin(), blob.fv_ids.end());
-    if(blob_fvs.size() != count) {
+    llvm::DenseSet<std::uint32_t> blob_version_ids(blob.version_ids.begin(),
+                                                   blob.version_ids.end());
+    if(blob_version_ids.size() != count) {
         return std::unexpected("duplicate file version id");
     }
     llvm::DenseSet<std::pair<llvm::StringRef, std::uint64_t>> blob_versions;
     for(std::size_t i = 0; i < count; i += 1) {
-        if(!blob_versions.insert({to_ref(blob.fv_paths[i]), blob.fv_hashes[i]}).second) {
+        if(!blob_versions.insert({to_ref(blob.version_paths[i]), blob.version_hashes[i]}).second) {
             return std::unexpected("duplicate file version");
         }
     }
-    // The writer only pins manifests whose tu_fv survived the same save's
+    // The writer only pins manifests whose tu_version survived the same save's
     // garbage collection, so an unresolvable pin marks a corrupt blob.
-    for(auto fv: blob.manifest_fvs) {
-        if(!blob_fvs.contains(fv)) {
+    for(auto version: blob.manifest_versions) {
+        if(!blob_version_ids.contains(version)) {
             return std::unexpected("manifest pin names an unknown file version");
         }
     }
 
     // Two spellings of one file intern to the same version; the ids both
     // stay mapped to it.
-    next_persisted_id = blob.next_fv_id;
+    next_persisted_id = blob.next_version_id;
     for(std::size_t i = 0; i < count; i += 1) {
-        auto path_id = files.intern(local(to_ref(blob.fv_paths[i])));
-        auto id = files.intern_version(path_id, blob.fv_hashes[i]);
-        runtime_ids.try_emplace(blob.fv_ids[i], id);
-        persisted_ids.try_emplace(id, blob.fv_ids[i]);
+        auto path_id = files.intern(local(to_ref(blob.version_paths[i])));
+        auto id = files.intern_version(path_id, blob.version_hashes[i]);
+        runtime_ids.try_emplace(blob.version_ids[i], id);
+        persisted_ids.try_emplace(id, blob.version_ids[i]);
     }
-    for(std::size_t k = 0; k < blob.manifest_fvs.size(); k += 1) {
-        manifest_pins[runtime_ids.find(blob.manifest_fvs[k])->second] = blob.manifest_gens[k];
+    for(std::size_t k = 0; k < blob.manifest_versions.size(); k += 1) {
+        manifest_pins[runtime_ids.find(blob.manifest_versions[k])->second] =
+            blob.manifest_generations[k];
     }
     return {};
 }
@@ -634,8 +196,8 @@ bool ProjectIndex::verify_bitmaps() const {
     auto in_paths = [&](const std::optional<Bitmap>& decoded) {
         return decoded && (decoded->isEmpty() || decoded->maximum() < base->paths.size());
     };
-    for(std::uint32_t doc = 0; doc < base->count(); doc += 1) {
-        if(!in_paths(base->bitmap(doc)) || !in_paths(base->instantiation_bitmap(doc))) {
+    for(std::uint32_t entry = 0; entry < base->count(); entry += 1) {
+        if(!in_paths(base->bitmap(entry)) || !in_paths(base->instantiation_bitmap(entry))) {
             return false;
         }
     }
@@ -643,11 +205,11 @@ bool ProjectIndex::verify_bitmaps() const {
 }
 
 std::expected<void, llvm::StringRef>
-    ProjectIndex::load_global(llvm::StringRef data,
-                              FileTable& files,
-                              llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
-    if(!bind_global(llvm::MemoryBuffer::getMemBufferCopy(data), files)) {
-        return std::unexpected("not a readable global blob");
+    ProjectIndex::load_table(llvm::StringRef data,
+                             FileTable& files,
+                             llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
+    if(!bind_table(llvm::MemoryBuffer::getMemBufferCopy(data), files)) {
+        return std::unexpected("not a readable project table");
     }
     if(!verify_bitmaps()) {
         base.reset();
@@ -657,7 +219,7 @@ std::expected<void, llvm::StringRef>
         base.reset();
         return adopted;
     }
-    global_generation = base->generation;
+    table_generation = base->generation;
     search_generation = base->search_generation;
     search_pending.clear();
     search_pending.insert(base->search_pending.begin(), base->search_pending.end());
@@ -668,16 +230,16 @@ std::expected<void, llvm::StringRef>
     return {};
 }
 
-std::optional<SymbolIdentity> ProjectIndex::identity_of(SymbolHash hash) const {
+std::optional<SymbolView> ProjectIndex::find_symbol(SymbolHash hash) const {
     if(auto it = changed.find(hash); it != changed.end()) {
-        return it->second.identity();
+        return it->second.view();
     }
     if(auto it = written.find(hash); it != written.end()) {
-        return it->second.identity();
+        return it->second.view();
     }
     if(base) {
-        if(auto doc = base->find(hash)) {
-            return base->identity(*doc);
+        if(auto entry = base->find(hash)) {
+            return base->view(*entry);
         }
     }
     return std::nullopt;
@@ -691,14 +253,15 @@ std::uint32_t ProjectIndex::reference_count(SymbolHash hash) const {
         return static_cast<std::uint32_t>(it->second.reference_files.cardinality());
     }
     if(base) {
-        if(auto doc = base->find(hash)) {
-            return base->reference_counts[*doc];
+        if(auto entry = base->find(hash)) {
+            return base->reference_counts[*entry];
         }
     }
     return 0;
 }
 
-void ProjectIndex::each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const {
+void ProjectIndex::for_each_reference_file(SymbolHash hash,
+                                           llvm::function_ref<void(Fid)> visit) const {
     auto own = [&](const Symbol& symbol) {
         for(auto id: symbol.reference_files) {
             visit(Fid{id});
@@ -715,13 +278,13 @@ void ProjectIndex::each_reference_file(SymbolHash hash, llvm::function_ref<void(
     if(!base) {
         return;
     }
-    auto doc = base->find(hash);
-    if(!doc) {
+    auto entry = base->find(hash);
+    if(!entry) {
         return;
     }
     // A reader never proved the image; one that fails reads as no
     // references rather than crashing the query.
-    auto decoded = base->bitmap(*doc);
+    auto decoded = base->bitmap(*entry);
     if(!decoded) {
         return;
     }
@@ -732,8 +295,8 @@ void ProjectIndex::each_reference_file(SymbolHash hash, llvm::function_ref<void(
     }
 }
 
-void ProjectIndex::each_instantiation_file(SymbolHash hash,
-                                           llvm::function_ref<void(Fid)> visit) const {
+void ProjectIndex::for_each_instantiation_file(SymbolHash hash,
+                                               llvm::function_ref<void(Fid)> visit) const {
     auto own = [&](const Symbol& symbol) {
         for(auto id: symbol.instantiation_files) {
             visit(Fid{id});
@@ -750,11 +313,11 @@ void ProjectIndex::each_instantiation_file(SymbolHash hash,
     if(!base) {
         return;
     }
-    auto doc = base->find(hash);
-    if(!doc) {
+    auto entry = base->find(hash);
+    if(!entry) {
         return;
     }
-    auto decoded = base->instantiation_bitmap(*doc);
+    auto decoded = base->instantiation_bitmap(*entry);
     if(!decoded) {
         return;
     }
@@ -766,10 +329,10 @@ void ProjectIndex::each_instantiation_file(SymbolHash hash,
 }
 
 void ProjectIndex::for_each_symbol(
-    llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, std::uint32_t)> visit) const {
+    llvm::function_ref<bool(SymbolHash, const SymbolView&, std::uint32_t)> visit) const {
     for(auto& [hash, symbol]: changed) {
         if(!visit(hash,
-                  symbol.identity(),
+                  symbol.view(),
                   static_cast<std::uint32_t>(symbol.reference_files.cardinality()))) {
             return;
         }
@@ -779,7 +342,7 @@ void ProjectIndex::for_each_symbol(
             continue;
         }
         if(!visit(hash,
-                  symbol.identity(),
+                  symbol.view(),
                   static_cast<std::uint32_t>(symbol.reference_files.cardinality()))) {
             return;
         }
@@ -787,12 +350,12 @@ void ProjectIndex::for_each_symbol(
     if(!base) {
         return;
     }
-    for(std::uint32_t doc = 0; doc < base->count(); doc += 1) {
-        auto hash = base->hashes[doc];
+    for(std::uint32_t entry = 0; entry < base->count(); entry += 1) {
+        auto hash = base->hashes[entry];
         if(changed.contains(hash) || written.contains(hash)) {
             continue;
         }
-        if(!visit(hash, base->identity(doc), base->reference_counts[doc])) {
+        if(!visit(hash, base->view(entry), base->reference_counts[entry])) {
             return;
         }
     }
@@ -813,7 +376,7 @@ std::size_t ProjectIndex::symbol_count() const {
     return count;
 }
 
-Symbol& ProjectIndex::touch(SymbolHash hash) {
+Symbol& ProjectIndex::edit(SymbolHash hash) {
     auto [it, inserted] = changed.try_emplace(hash);
     if(!inserted) {
         return it->second;
@@ -826,11 +389,11 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
     if(!base) {
         return symbol;
     }
-    auto doc = base->find(hash);
-    if(!doc) {
+    auto entry = base->find(hash);
+    if(!entry) {
         return symbol;
     }
-    auto identity = base->identity(*doc);
+    auto identity = base->view(*entry);
     symbol.name = identity.name.str();
     symbol.args = identity.args.str();
     symbol.signature = identity.signature.str();
@@ -839,14 +402,14 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
     symbol.flags = identity.flags;
     symbol.token_class = identity.token_class;
     symbol.file = identity.file;
-    if(auto decoded = base->bitmap(*doc)) {
+    if(auto decoded = base->bitmap(*entry)) {
         for(auto id: *decoded) {
             if(id < base->remap.size()) {
                 symbol.reference_files.add(base->remap[id].raw);
             }
         }
     }
-    if(auto decoded = base->instantiation_bitmap(*doc)) {
+    if(auto decoded = base->instantiation_bitmap(*entry)) {
         for(auto id: *decoded) {
             if(id < base->remap.size()) {
                 symbol.instantiation_files.add(base->remap[id].raw);
@@ -856,9 +419,9 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
     return symbol;
 }
 
-void ProjectIndex::merge(const TUIndex& index,
-                         llvm::ArrayRef<Fid> file_ids_map,
-                         llvm::SmallVectorImpl<SymbolHash>* added) {
+void ProjectIndex::merge_symbols(const TUIndex& index,
+                                 llvm::ArrayRef<Fid> file_ids_map,
+                                 llvm::SmallVectorImpl<SymbolHash>* added) {
     // Units may spell one symbol differently (`X<int>` against
     // `X<signed int>`, a conversion to a typedef): the shortest spelling
     // wins, then the smaller one, so the table reads the same whatever the
@@ -881,62 +444,61 @@ void ProjectIndex::merge(const TUIndex& index,
         current = incoming.str();
         return true;
     };
-    index.iterate_symbols([&](SymbolHash hash,
-                              const SymbolIdentity& identity,
-                              llvm::ArrayRef<std::uint32_t> references) {
-        if(identity.scope != SymbolScope::External) {
+    index.for_each_symbol(
+        [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t> references) {
+            if(identity.scope != SymbolScope::External) {
+                return true;
+            }
+            bool known = find_symbol(hash).has_value();
+            auto& target = edit(hash);
+            bool symbol_changed = !known;
+            bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
+            if(target.name.empty() && !identity.name.empty()) {
+                target.parent = identity.parent;
+                target.kind = identity.kind;
+                target.token_class.kind = identity.token_class.kind;
+                symbol_changed = true;
+            } else if(defines && target.token_class.kind != identity.token_class.kind) {
+                // A declaration may say `struct` where the definition says
+                // `class`: the definition's word stands, whatever merges first.
+                target.token_class.kind = identity.token_class.kind;
+                symbol_changed = true;
+            }
+            symbol_changed = prefer(target.name, identity.name) || symbol_changed;
+            symbol_changed = prefer(target.args, identity.args) || symbol_changed;
+            // An edit to a function, a parameter renamed, keeps its hash: the
+            // unit merging last describes it — a unit defining it, when one
+            // does, which sees the names of every declaration.
+            if(!identity.signature.empty() && target.signature != identity.signature &&
+               (defines || !has_flag(target.flags, SymbolFlags::HasDefinition))) {
+                target.signature = identity.signature.str();
+                symbol_changed = true;
+            }
+            // A unit that defines the symbol always places it: the table never
+            // retracts a unit's earlier report, so an old definition bit must
+            // not pin the file after the definition moved. Declarations only
+            // fill an empty slot.
+            if(identity.file != no_file && (target.file == no_file || defines)) {
+                auto file = file_ids_map[identity.file].raw;
+                symbol_changed = symbol_changed || target.file != file;
+                target.file = file;
+            }
+            auto flags = target.flags | identity.flags;
+            symbol_changed = symbol_changed || flags != target.flags;
+            target.flags = flags;
+            auto modifiers = target.token_class.modifiers | identity.token_class.modifiers;
+            symbol_changed = symbol_changed || modifiers != target.token_class.modifiers;
+            target.token_class.modifiers = modifiers;
+            for(auto ref: references) {
+                target.reference_files.add(file_ids_map[ref].raw);
+            }
+            if(symbol_changed && added) {
+                added->push_back(hash);
+            }
             return true;
-        }
-        bool known = identity_of(hash).has_value();
-        auto& target = touch(hash);
-        bool symbol_changed = !known;
-        bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
-        if(target.name.empty() && !identity.name.empty()) {
-            target.parent = identity.parent;
-            target.kind = identity.kind;
-            target.token_class.kind = identity.token_class.kind;
-            symbol_changed = true;
-        } else if(defines && target.token_class.kind != identity.token_class.kind) {
-            // A declaration may say `struct` where the definition says
-            // `class`: the definition's word stands, whatever merges first.
-            target.token_class.kind = identity.token_class.kind;
-            symbol_changed = true;
-        }
-        symbol_changed = prefer(target.name, identity.name) || symbol_changed;
-        symbol_changed = prefer(target.args, identity.args) || symbol_changed;
-        // An edit to a function, a parameter renamed, keeps its hash: the
-        // unit merging last describes it — a unit defining it, when one
-        // does, which sees the names of every declaration.
-        if(!identity.signature.empty() && target.signature != identity.signature &&
-           (defines || !has_flag(target.flags, SymbolFlags::HasDefinition))) {
-            target.signature = identity.signature.str();
-            symbol_changed = true;
-        }
-        // A unit that defines the symbol always places it: the table never
-        // retracts a unit's earlier report, so an old definition bit must
-        // not pin the file after the definition moved. Declarations only
-        // fill an empty slot.
-        if(identity.file != no_file && (target.file == no_file || defines)) {
-            auto file = file_ids_map[identity.file].raw;
-            symbol_changed = symbol_changed || target.file != file;
-            target.file = file;
-        }
-        auto flags = target.flags | identity.flags;
-        symbol_changed = symbol_changed || flags != target.flags;
-        target.flags = flags;
-        auto modifiers = target.token_class.modifiers | identity.token_class.modifiers;
-        symbol_changed = symbol_changed || modifiers != target.token_class.modifiers;
-        target.token_class.modifiers = modifiers;
-        for(auto ref: references) {
-            target.reference_files.add(file_ids_map[ref].raw);
-        }
-        if(symbol_changed && added) {
-            added->push_back(hash);
-        }
-        return true;
-    });
-    index.iterate_instantiation_files([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
-        auto& target = touch(hash);
+        });
+    index.for_each_instantiation_file([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
+        auto& target = edit(hash);
         for(auto file: files) {
             target.instantiation_files.add(file_ids_map[file].raw);
         }
@@ -944,7 +506,7 @@ void ProjectIndex::merge(const TUIndex& index,
     });
 }
 
-void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& files) {
+void ProjectIndex::serialize_table(llvm::raw_ostream& os, const FileTable& files) {
     // The entries changed since the last write join the ones still held
     // aside from a write that was never persisted; the newer entry wins.
     for(auto& [hash, symbol]: changed) {
@@ -958,26 +520,26 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     // index dropped, and ids are never reused either way.
     llvm::DenseSet<VersionID> referenced;
     for(auto& manifest: llvm::make_second_range(manifests)) {
-        referenced.insert(manifest.tu_fv);
+        referenced.insert(manifest.tu_version);
         for(auto& node: manifest.nodes) {
             referenced.insert(VersionID{node.file});
         }
-        for(auto& [fv, hash]: manifest.contributions) {
-            referenced.insert(fv);
+        for(auto& [version, hash]: manifest.contributions) {
+            referenced.insert(version);
         }
         for(auto& use: manifest.instantiations) {
             referenced.insert(use.file);
         }
-        for(auto& fanout: manifest.local_fanout) {
-            referenced.insert(fanout.files.begin(), fanout.files.end());
+        for(auto& local: manifest.shared_locals) {
+            referenced.insert(local.files.begin(), local.files.end());
         }
         referenced.insert(manifest.absent.begin(), manifest.absent.end());
         referenced.insert(manifest.imports.begin(), manifest.imports.end());
     }
 
-    GlobalBlob blob;
+    ProjectTableBlob blob;
     blob.format_version = index_format_version;
-    blob.generation = global_generation;
+    blob.generation = table_generation;
 
     llvm::SmallVector<std::pair<std::uint32_t, VersionID>> ids;
     ids.reserve(referenced.size());
@@ -987,17 +549,17 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     llvm::sort(ids);
     for(auto [persisted, id]: ids) {
         auto& record = files.version(id);
-        blob.fv_ids.push_back(persisted);
-        blob.fv_paths.push_back(portable(files.resolve(record.fid)));
-        blob.fv_hashes.push_back(record.content_hash);
+        blob.version_ids.push_back(persisted);
+        blob.version_paths.push_back(portable(files.resolve(record.fid)));
+        blob.version_hashes.push_back(record.content_hash);
     }
-    blob.next_fv_id = next_persisted_id;
+    blob.next_version_id = next_persisted_id;
 
-    blob.manifest_fvs.reserve(manifests.size());
-    blob.manifest_gens.reserve(manifests.size());
+    blob.manifest_versions.reserve(manifests.size());
+    blob.manifest_generations.reserve(manifests.size());
     for(auto& manifest: llvm::make_second_range(manifests)) {
-        blob.manifest_fvs.push_back(persisted_ids.find(manifest.tu_fv)->second);
-        blob.manifest_gens.push_back(manifest.global_gen);
+        blob.manifest_versions.push_back(persisted_ids.find(manifest.tu_version)->second);
+        blob.manifest_generations.push_back(manifest.table_generation);
     }
 
     // The base's path table stays as it is, so its entries' bitmap images
@@ -1023,7 +585,7 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     // The table in hash order: base entries copied, written entries encoded.
     struct Entry {
         SymbolHash hash;
-        std::uint32_t doc;
+        std::uint32_t base_entry;
         const Symbol* symbol;
     };
 
@@ -1035,24 +597,24 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         keys.push_back(hash);
     }
     llvm::sort(keys);
-    std::uint32_t doc = 0;
+    std::uint32_t base_entry = 0;
     std::size_t k = 0;
     auto base_count = base ? base->count() : 0;
-    while(doc < base_count || k < keys.size()) {
-        if(k == keys.size() || (doc < base_count && base->hashes[doc] < keys[k])) {
-            entries.push_back({base->hashes[doc], doc, nullptr});
-            doc += 1;
+    while(base_entry < base_count || k < keys.size()) {
+        if(k == keys.size() || (base_entry < base_count && base->hashes[base_entry] < keys[k])) {
+            entries.push_back({base->hashes[base_entry], base_entry, nullptr});
+            base_entry += 1;
             continue;
         }
-        if(doc < base_count && base->hashes[doc] == keys[k]) {
-            doc += 1;
+        if(base_entry < base_count && base->hashes[base_entry] == keys[k]) {
+            base_entry += 1;
         }
         entries.push_back({keys[k], 0, &written.find(keys[k])->second});
         k += 1;
     }
-    blob.sym_hashes.reserve(entries.size());
+    blob.symbol_hashes.reserve(entries.size());
     for(auto& entry: entries) {
-        blob.sym_hashes.push_back(entry.hash);
+        blob.symbol_hashes.push_back(entry.hash);
     }
 
     std::vector<std::uint32_t> parents;
@@ -1062,46 +624,49 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     file_ids.reserve(entries.size());
     reference_counts.reserve(entries.size());
     for(std::uint32_t i = 0; i < entries.size(); i += 1) {
-        auto& [hash, doc, symbol] = entries[i];
-        auto identity = symbol ? symbol->identity() : base->identity(doc);
-        blob.sym_names += identity.name;
-        blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
+        auto& [hash, base_entry, symbol] = entries[i];
+        auto identity = symbol ? symbol->view() : base->view(base_entry);
+        blob.symbol_names += identity.name;
+        blob.symbol_name_ends.push_back(static_cast<std::uint32_t>(blob.symbol_names.size()));
         if(!identity.args.empty()) {
-            blob.sym_args_docs.push_back(i);
-            blob.sym_args += identity.args;
-            blob.sym_args_ends.push_back(static_cast<std::uint32_t>(blob.sym_args.size()));
+            blob.symbol_args_entries.push_back(i);
+            blob.symbol_args += identity.args;
+            blob.symbol_args_ends.push_back(static_cast<std::uint32_t>(blob.symbol_args.size()));
         }
-        blob.sym_signatures += identity.signature;
-        blob.sym_signature_ends.push_back(static_cast<std::uint32_t>(blob.sym_signatures.size()));
-        auto parent = std::ranges::lower_bound(blob.sym_hashes, identity.parent);
-        if(identity.parent != 0 && parent != blob.sym_hashes.end() && *parent == identity.parent) {
-            parents.push_back(static_cast<std::uint32_t>(parent - blob.sym_hashes.begin()) + 1);
+        blob.symbol_signatures += identity.signature;
+        blob.symbol_signature_ends.push_back(
+            static_cast<std::uint32_t>(blob.symbol_signatures.size()));
+        auto parent = std::ranges::lower_bound(blob.symbol_hashes, identity.parent);
+        if(identity.parent != 0 && parent != blob.symbol_hashes.end() &&
+           *parent == identity.parent) {
+            parents.push_back(static_cast<std::uint32_t>(parent - blob.symbol_hashes.begin()) + 1);
         } else {
             parents.push_back(0);
             if(identity.parent != 0) {
-                blob.sym_far_parents.push_back(i);
-                blob.sym_far_parent_hashes.push_back(identity.parent);
+                blob.symbol_far_parents.push_back(i);
+                blob.symbol_far_parent_hashes.push_back(identity.parent);
             }
         }
-        blob.sym_kinds.push_back(identity.kind.value());
-        blob.sym_flags.push_back(static_cast<std::uint16_t>(identity.flags));
-        blob.sym_token_kinds.push_back(static_cast<std::uint8_t>(identity.token_class.kind));
-        blob.sym_token_modifiers.push_back(identity.token_class.modifiers);
+        blob.symbol_kinds.push_back(identity.kind.value());
+        blob.symbol_flags.push_back(static_cast<std::uint16_t>(identity.flags));
+        blob.symbol_token_kinds.push_back(static_cast<std::uint8_t>(identity.token_class.kind));
+        blob.symbol_token_modifiers.push_back(identity.token_class.modifiers);
         if(!symbol) {
-            auto file = base->file(doc);
+            auto file = base->file(base_entry);
             file_ids.push_back(file == no_file ? 0 : file + 1);
-            reference_counts.push_back(base->reference_counts[doc]);
-            auto image = base->image(doc);
-            blob.sym_bitmaps.insert(blob.sym_bitmaps.end(), image.begin(), image.end());
-            blob.sym_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.sym_bitmaps.size()));
-            auto instantiations = base->instantiation_image(doc);
+            reference_counts.push_back(base->reference_counts[base_entry]);
+            auto image = base->image(base_entry);
+            blob.symbol_bitmaps.insert(blob.symbol_bitmaps.end(), image.begin(), image.end());
+            blob.symbol_bitmap_ends.push_back(
+                static_cast<std::uint32_t>(blob.symbol_bitmaps.size()));
+            auto instantiations = base->instantiation_image(base_entry);
             if(!instantiations.empty()) {
-                blob.sym_instantiation_docs.push_back(i);
-                blob.sym_instantiations.insert(blob.sym_instantiations.end(),
-                                               instantiations.begin(),
-                                               instantiations.end());
-                blob.sym_instantiation_ends.push_back(
-                    static_cast<std::uint32_t>(blob.sym_instantiations.size()));
+                blob.symbol_instantiation_entries.push_back(i);
+                blob.symbol_instantiations.insert(blob.symbol_instantiations.end(),
+                                                  instantiations.begin(),
+                                                  instantiations.end());
+                blob.symbol_instantiation_ends.push_back(
+                    static_cast<std::uint32_t>(blob.symbol_instantiations.size()));
             }
             continue;
         }
@@ -1112,20 +677,20 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         for(auto id: symbol->reference_files) {
             references.add(path_id(Fid{id}));
         }
-        append_file_set(blob.sym_bitmaps, references);
-        blob.sym_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.sym_bitmaps.size()));
+        append_file_set(blob.symbol_bitmaps, references);
+        blob.symbol_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.symbol_bitmaps.size()));
         if(!symbol->instantiation_files.isEmpty()) {
             Bitmap instantiations;
             for(auto id: symbol->instantiation_files) {
                 instantiations.add(path_id(Fid{id}));
             }
-            blob.sym_instantiation_docs.push_back(i);
-            append_file_set(blob.sym_instantiations, instantiations);
-            blob.sym_instantiation_ends.push_back(
-                static_cast<std::uint32_t>(blob.sym_instantiations.size()));
+            blob.symbol_instantiation_entries.push_back(i);
+            append_file_set(blob.symbol_instantiations, instantiations);
+            blob.symbol_instantiation_ends.push_back(
+                static_cast<std::uint32_t>(blob.symbol_instantiations.size()));
         }
     }
-    write_ids(blob.sym_parents, parents, entries.size() + 1);
+    write_ids(blob.symbol_parents, parents, entries.size() + 1);
 
     std::vector<std::pair<std::uint32_t, Bitmap>> reverse;
     reverse.reserve(contributions.size());
@@ -1143,19 +708,21 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         blob.contributor_ends.push_back(static_cast<std::uint32_t>(blob.contributors.size()));
     }
 
-    llvm::SmallVector<SymbolHash> fanout(llvm::make_first_range(fanout_sets));
-    llvm::sort(fanout);
-    for(auto symbol: fanout) {
-        for(auto& set: llvm::make_first_range(fanout_sets.find(symbol)->second)) {
+    llvm::SmallVector<SymbolHash> symbols(llvm::make_first_range(shared_local_sets));
+    llvm::sort(symbols);
+    for(auto symbol: symbols) {
+        for(auto& set: llvm::make_first_range(shared_local_sets.find(symbol)->second)) {
             Bitmap listed;
             for(auto file: set) {
                 listed.add(path_id(file));
             }
-            append_file_set(blob.fanout_files, listed);
-            blob.fanout_file_ends.push_back(static_cast<std::uint32_t>(blob.fanout_files.size()));
+            append_file_set(blob.shared_local_files, listed);
+            blob.shared_local_file_ends.push_back(
+                static_cast<std::uint32_t>(blob.shared_local_files.size()));
         }
-        blob.fanout_symbols.push_back(symbol);
-        blob.fanout_set_ends.push_back(static_cast<std::uint32_t>(blob.fanout_file_ends.size()));
+        blob.shared_local_symbols.push_back(symbol);
+        blob.shared_local_set_ends.push_back(
+            static_cast<std::uint32_t>(blob.shared_local_file_ends.size()));
     }
 
     blob.search_generation = search_generation;
@@ -1166,15 +733,15 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     }
     llvm::sort(blob.search_pending_files);
     // After every path id is handed out: the width follows the path table.
-    write_ids(blob.sym_files, file_ids, blob.paths.size() + 1);
-    write_ids(blob.sym_reference_counts, reference_counts, blob.paths.size() + 1);
+    write_ids(blob.symbol_files, file_ids, blob.paths.size() + 1);
+    write_ids(blob.symbol_reference_counts, reference_counts, blob.paths.size() + 1);
 
     serialize_blob(blob, os);
 }
 
 void ProjectIndex::rebase(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files) {
-    [[maybe_unused]] bool bound = bind_global(std::move(blob), files);
-    assert(bound && "a freshly serialized global blob must bind");
+    [[maybe_unused]] bool bound = bind_table(std::move(blob), files);
+    assert(bound && "a freshly serialized project table must bind");
     written.clear();
 }
 
@@ -1205,7 +772,7 @@ bool ProjectIndex::import_manifest(TUManifest& manifest) const {
         id = version->raw;
         return true;
     };
-    if(!import(manifest.tu_fv.raw)) {
+    if(!import(manifest.tu_version.raw)) {
         return false;
     }
     for(auto& node: manifest.nodes) {
@@ -1213,18 +780,18 @@ bool ProjectIndex::import_manifest(TUManifest& manifest) const {
             return false;
         }
     }
-    for(auto& fv: llvm::make_first_range(manifest.contributions)) {
-        if(!import(fv.raw)) {
+    for(auto& version: llvm::make_first_range(manifest.contributions)) {
+        if(!import(version.raw)) {
             return false;
         }
     }
-    for(auto& fv: manifest.absent) {
-        if(!import(fv.raw)) {
+    for(auto& version: manifest.absent) {
+        if(!import(version.raw)) {
             return false;
         }
     }
-    for(auto& fv: manifest.imports) {
-        if(!import(fv.raw)) {
+    for(auto& version: manifest.imports) {
+        if(!import(version.raw)) {
             return false;
         }
     }
@@ -1233,9 +800,9 @@ bool ProjectIndex::import_manifest(TUManifest& manifest) const {
             return false;
         }
     }
-    for(auto& fanout: manifest.local_fanout) {
-        for(auto& fv: fanout.files) {
-            if(!import(fv.raw)) {
+    for(auto& local: manifest.shared_locals) {
+        for(auto& version: local.files) {
+            if(!import(version.raw)) {
                 return false;
             }
         }
@@ -1245,25 +812,25 @@ bool ProjectIndex::import_manifest(TUManifest& manifest) const {
 
 TUManifest ProjectIndex::export_manifest(const TUManifest& manifest) {
     auto exported = manifest;
-    exported.tu_fv.raw = persisted_id(manifest.tu_fv);
+    exported.tu_version.raw = persisted_id(manifest.tu_version);
     for(auto& node: exported.nodes) {
         node.file = persisted_id(VersionID{node.file});
     }
-    for(auto& fv: llvm::make_first_range(exported.contributions)) {
-        fv.raw = persisted_id(fv);
+    for(auto& version: llvm::make_first_range(exported.contributions)) {
+        version.raw = persisted_id(version);
     }
-    for(auto& fv: exported.absent) {
-        fv.raw = persisted_id(fv);
+    for(auto& version: exported.absent) {
+        version.raw = persisted_id(version);
     }
-    for(auto& fv: exported.imports) {
-        fv.raw = persisted_id(fv);
+    for(auto& version: exported.imports) {
+        version.raw = persisted_id(version);
     }
     for(auto& use: exported.instantiations) {
         use.file.raw = persisted_id(use.file);
     }
-    for(auto& fanout: exported.local_fanout) {
-        for(auto& fv: fanout.files) {
-            fv.raw = persisted_id(fv);
+    for(auto& local: exported.shared_locals) {
+        for(auto& version: local.files) {
+            version.raw = persisted_id(version);
         }
     }
     return exported;
@@ -1282,8 +849,8 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
                                                     TUManifest manifest) {
     llvm::SmallVector<Fid> affected = remove_manifest(files, tu_path_id);
 
-    for(auto& [fv, hash]: manifest.contributions) {
-        auto path_id = files.version(fv).fid;
+    for(auto& [version, hash]: manifest.contributions) {
+        auto path_id = files.version(version).fid;
         contributions[path_id][tu_path_id] = hash;
         affected.push_back(path_id);
     }
@@ -1291,21 +858,21 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
     // file: remove_manifest erases each place once.
     llvm::sort(manifest.absent);
     manifest.absent.erase(llvm::unique(manifest.absent), manifest.absent.end());
-    for(auto fv: manifest.absent) {
-        probed[files.version(fv).fid].insert(tu_path_id);
+    for(auto version: manifest.absent) {
+        absent_lookups[files.version(version).fid].insert(tu_path_id);
     }
-    for(auto fv: manifest.imports) {
-        importers[files.version(fv).fid].insert(tu_path_id);
+    for(auto version: manifest.imports) {
+        importers[files.version(version).fid].insert(tu_path_id);
     }
-    for(auto& fanout: manifest.local_fanout) {
-        fanout_sets[fanout.symbol][fanout_set(files, fanout)] += 1;
+    for(auto& local: manifest.shared_locals) {
+        shared_local_sets[local.symbol][listed_files(files, local)] += 1;
     }
     for(auto& use: manifest.instantiations) {
         auto path_id = files.version(use.file).fid;
         instantiation_uses[path_id][tu_path_id] = use.use;
         affected.push_back(path_id);
     }
-    units[unit_of(files, tu_path_id)] = tu_path_id;
+    units[unit_hash(files, tu_path_id)] = tu_path_id;
     manifests[tu_path_id] = std::move(manifest);
 
     llvm::sort(affected);
@@ -1320,22 +887,22 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
         return affected;
     }
 
-    for(auto& [fv, hash]: it->second.contributions) {
-        auto path_id = files.version(fv).fid;
+    for(auto& [version, hash]: it->second.contributions) {
+        auto path_id = files.version(version).fid;
         erase_unit(contributions, path_id, tu_path_id);
         affected.push_back(path_id);
     }
-    for(auto fv: it->second.absent) {
-        auto probe_it = probed.find(files.version(fv).fid);
+    for(auto version: it->second.absent) {
+        auto probe_it = absent_lookups.find(files.version(version).fid);
         probe_it->second.erase(tu_path_id);
         if(probe_it->second.empty()) {
-            probed.erase(probe_it);
+            absent_lookups.erase(probe_it);
         }
     }
     // Modules built at different times may have read different versions
     // of one file: the first of them already erased it.
-    for(auto fv: it->second.imports) {
-        auto importer_it = importers.find(files.version(fv).fid);
+    for(auto version: it->second.imports) {
+        auto importer_it = importers.find(files.version(version).fid);
         if(importer_it == importers.end()) {
             continue;
         }
@@ -1344,15 +911,15 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
             importers.erase(importer_it);
         }
     }
-    for(auto& fanout: it->second.local_fanout) {
-        auto sets = fanout_sets.find(fanout.symbol);
-        auto set = sets->second.find(fanout_set(files, fanout));
+    for(auto& local: it->second.shared_locals) {
+        auto sets = shared_local_sets.find(local.symbol);
+        auto set = sets->second.find(listed_files(files, local));
         set->second -= 1;
         if(set->second == 0) {
             sets->second.erase(set);
         }
         if(sets->second.empty()) {
-            fanout_sets.erase(sets);
+            shared_local_sets.erase(sets);
         }
     }
     for(auto& use: it->second.instantiations) {
@@ -1360,7 +927,7 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
         erase_unit(instantiation_uses, path_id, tu_path_id);
         affected.push_back(path_id);
     }
-    units.erase(unit_of(files, tu_path_id));
+    units.erase(unit_hash(files, tu_path_id));
     manifests.erase(it);
 
     llvm::sort(affected);
@@ -1376,7 +943,7 @@ llvm::SmallVector<std::uint64_t> ProjectIndex::live_uses(Fid path_id) const {
     return distinct_hashes(instantiation_uses, path_id);
 }
 
-void ProjectIndex::each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const {
+void ProjectIndex::for_each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const {
     if(!db) {
         if(auto it = contributions.find(file); it != contributions.end()) {
             for(auto tu: llvm::make_first_range(it->second)) {
@@ -1399,18 +966,18 @@ void ProjectIndex::each_contributor(Fid file, llvm::function_ref<void(Fid)> visi
     }
 }
 
-void ProjectIndex::each_fanout_file(SymbolHash hash,
-                                    Fid anchor,
-                                    llvm::function_ref<void(Fid)> visit) const {
+void ProjectIndex::for_each_file_of_local(SymbolHash hash,
+                                          Fid anchor,
+                                          llvm::function_ref<void(Fid)> visit) const {
     llvm::SmallVector<llvm::SmallVector<Fid, 4>> sets;
     if(!db) {
-        if(auto it = fanout_sets.find(hash); it != fanout_sets.end()) {
+        if(auto it = shared_local_sets.find(hash); it != shared_local_sets.end()) {
             for(auto& set: llvm::make_first_range(it->second)) {
                 sets.emplace_back(set.begin(), set.end());
             }
         }
     } else if(base) {
-        for(auto& listed: base->fanout_sets_of(hash)) {
+        for(auto& listed: base->shared_local_sets_of(hash)) {
             auto& set = sets.emplace_back();
             for(auto id: listed) {
                 if(id < base->remap.size()) {
@@ -1441,22 +1008,23 @@ void ProjectIndex::each_fanout_file(SymbolHash hash,
     }
 }
 
-const TUManifest* ProjectIndex::tu_manifest(Fid tu) const {
+const TUManifest* ProjectIndex::manifest(Fid tu) const {
     if(!db) {
         auto it = manifests.find(tu);
         return it != manifests.end() ? &it->second : nullptr;
     }
     auto [it, inserted] = fetched_manifests.try_emplace(tu);
     if(inserted) {
-        // A reader adopts a manifest only under the generation the bound global
+        // A reader adopts a manifest only under the generation the bound project table
         // pins for it, as the writer's load does; the versions it names
         // stay persisted ids.
         auto pinned = [&](const TUManifest& manifest) {
-            auto pin = std::ranges::find(base->manifest_fvs, manifest.tu_fv.raw);
-            return pin != base->manifest_fvs.end() &&
-                   base->manifest_gens[pin - base->manifest_fvs.begin()] == manifest.global_gen;
+            auto pin = std::ranges::find(base->manifest_versions, manifest.tu_version.raw);
+            return pin != base->manifest_versions.end() &&
+                   base->manifest_generations[pin - base->manifest_versions.begin()] ==
+                       manifest.table_generation;
         };
-        if(auto blob = db->read(IndexBlobKind::Manifest, key_of(*files, tu))) {
+        if(auto blob = db->read(BlobKind::TUManifest, key_of(*files, tu))) {
             if(auto manifest = deserialize_manifest(blob.buffer->getBuffer());
                manifest && pinned(*manifest)) {
                 it->second = std::move(*manifest);
@@ -1464,6 +1032,64 @@ const TUManifest* ProjectIndex::tu_manifest(Fid tu) const {
         }
     }
     return it->second ? &*it->second : nullptr;
+}
+
+std::vector<IncludeEdge> ProjectIndex::include_edges(const FileTable& files, Fid file) const {
+    // Every consumer projects the edges onto content the serving shard
+    // matches, so a manifest contributes only where the version it entered
+    // for this document carries that same content generation — a TU that
+    // indexed an older revision would place its lines in text that moved.
+    auto* indexed = shard(file);
+    if(!indexed) {
+        return {};
+    }
+    auto generation = indexed->content_hash();
+
+    auto is_document = [&](VersionID version) {
+        auto& entered = files.version(version);
+        return entered.fid == file && entered.content_hash == generation;
+    };
+
+    // A directive line of the document is a node whose parent node entered
+    // this file: the TU root (parent == no_node) when the document is the TU
+    // itself, or any node of the document's own file version otherwise
+    // (directives inside included headers hang off the node of the file
+    // that contains them).
+    std::vector<IncludeEdge> edges;
+    auto append = [&](const TUManifest& manifest) {
+        bool root_is_document = is_document(manifest.tu_version);
+        llvm::SmallVector<bool> document_nodes(manifest.nodes.size());
+        for(auto [i, node]: llvm::enumerate(manifest.nodes)) {
+            document_nodes[i] = is_document(VersionID{node.file});
+        }
+        for(const auto& node: manifest.nodes) {
+            if(node.parent == no_node ? !root_is_document : !document_nodes[node.parent]) {
+                continue;
+            }
+            edges.push_back({
+                .line = node.line,
+                .target = std::string(files.resolve(files.version(VersionID{node.file}).fid)),
+            });
+        }
+    };
+
+    // The document's own manifest is its own context and answers alone; a
+    // header reached only through source TUs has none, and its directives
+    // live in the contributing TUs' manifests instead. The generation gate
+    // above dedups divergent revisions; agreeing TUs collapse in the
+    // projection's dedup.
+    if(auto manifest_it = manifests.find(file); manifest_it != manifests.end()) {
+        append(manifest_it->second);
+        return edges;
+    }
+    if(auto contribution_it = contributions.find(file); contribution_it != contributions.end()) {
+        for(auto tu: llvm::make_first_range(contribution_it->second)) {
+            if(auto manifest_it = manifests.find(tu); manifest_it != manifests.end()) {
+                append(manifest_it->second);
+            }
+        }
+    }
+    return edges;
 }
 
 const Shard* ProjectIndex::shard(Fid file) const {
@@ -1477,7 +1103,7 @@ const Shard* ProjectIndex::shard(Fid file) const {
     // A miss is remembered as an empty entry so the database is asked
     // once per file.
     auto& slot = shards[file];
-    if(auto blob = db->read(IndexBlobKind::Shard, key_of(*files, file))) {
+    if(auto blob = db->read(BlobKind::Shard, key_of(*files, file))) {
         slot = Shard::from_buffer(std::move(blob.buffer));
     }
     return slot.loaded() ? &slot : nullptr;
@@ -1492,7 +1118,7 @@ const InstantiationShard* ProjectIndex::instantiation_shard(Fid file) const {
         return nullptr;
     }
     auto& slot = instantiations[file];
-    if(auto blob = db->read(IndexBlobKind::Instantiations, key_of(*files, file))) {
+    if(auto blob = db->read(BlobKind::InstantiationShard, key_of(*files, file))) {
         slot = InstantiationShard::from_buffer(std::move(blob.buffer));
     }
     return slot.loaded() ? &slot : nullptr;
@@ -1508,11 +1134,11 @@ bool ProjectIndex::bind_search(std::unique_ptr<llvm::MemoryBuffer> blob) {
 }
 
 bool ProjectIndex::open(BlobDatabase& db, FileTable& files) {
-    auto global = db.read(IndexBlobKind::Global, "global");
-    if(!global || !bind_global(std::move(global.buffer), files)) {
+    auto table = db.read(BlobKind::ProjectTable, "global");
+    if(!table || !bind_table(std::move(table.buffer), files)) {
         return false;
     }
-    global_generation = base->generation;
+    table_generation = base->generation;
     search_generation = base->search_generation;
     search_pending.clear();
     search_pending.insert(base->search_pending.begin(), base->search_pending.end());
@@ -1520,18 +1146,12 @@ bool ProjectIndex::open(BlobDatabase& db, FileTable& files) {
     for(auto file: base->search_pending_files) {
         search_pending_files.insert(base->remap[file]);
     }
-    if(auto search = db.read(IndexBlobKind::Search, "search")) {
+    if(auto search = db.read(BlobKind::SearchIndex, "search")) {
         bind_search(std::move(search.buffer));
     }
     this->db = &db;
     this->files = &files;
     return true;
-}
-
-void measure_global(llvm::StringRef data, FieldBytes& bytes) {
-    if(GlobalBlob blob; deserialize_blob(data, blob)) {
-        measure_fields(blob, bytes);
-    }
 }
 
 }  // namespace clice::index

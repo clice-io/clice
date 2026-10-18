@@ -1473,7 +1473,7 @@ void LSPClient::register_extensions() {
                 auto& store = served->sched.store;
                 stats.index_inmemory_shards +=
                     static_cast<std::uint32_t>(store.pending_shard_writes());
-                for(auto& [path_id, shard]: project.project_index.shards) {
+                for(auto& [path_id, shard]: project.index.shards) {
                     stats.index_shard_content_bytes += shard.bytes().size();
                 }
                 stats.last_save_shards += static_cast<std::uint32_t>(store.last_save_shards());

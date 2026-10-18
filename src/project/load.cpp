@@ -26,7 +26,7 @@ ProjectLoad load_project(Project& project,
                          llvm::StringRef requested_configuration,
                          bool read_only_index) {
     ProjectLoad report;
-    project.project_index.workspace = root;
+    project.index.workspace = root;
     auto& cfg = project.config.project;
     auto configuration = resolve_configuration(project.config, requested_configuration);
 
@@ -52,7 +52,7 @@ ProjectLoad load_project(Project& project,
             // metadata still seed this session. Its own metadata stays in
             // memory and exits with it.
             if(read_only_index) {
-                project.index_db = index::open_database(*project.store, configuration, true);
+                project.database = index::open_database(*project.store, configuration, true);
             } else if((project.writer_lock = index::WriterLock::acquire(cfg.cache_dir))) {
                 // The owner is recorded, and checked again, under the lock:
                 // another project may have become the directory's owner since
@@ -65,8 +65,8 @@ ProjectLoad load_project(Project& project,
                     project.writer_lock.reset();
                 } else {
                     set_cache_dir_owner(cfg.cache_dir, root);
-                    project.index_db = index::open_database(*project.store, configuration);
-                    if(!project.index_db) {
+                    project.database = index::open_database(*project.store, configuration);
+                    if(!project.database) {
                         project.writer_lock.reset();
                     }
                 }
@@ -88,7 +88,7 @@ ProjectLoad load_project(Project& project,
     // A unit deleted while no server ran keeps its index until a look finds
     // it missing (see FreshnessGate).
     project.file_table.disk.find_missing(
-        llvm::to_vector(llvm::make_first_range(project.project_index.manifests)));
+        llvm::to_vector(llvm::make_first_range(project.index.manifests)));
     return report;
 }
 

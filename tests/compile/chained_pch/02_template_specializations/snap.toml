@@ -1,0 +1,1334 @@
+[features.get]
+highlights = [
+    { at = "int total = box.⟦get⟧() + other.get() + twice(pointer);", kind = "text" },
+    { at = "int total = box.get() + other.⟦get⟧() + twice(pointer);", kind = "text" },
+]
+
+[features.get.hover]
+markdown = '''
+**method** `get` · struct `Box<Widget>`
+
+```cpp
+int get() const
+```
+'''
+range = "int total = box.⟦get⟧() + other.get() + twice(pointer);"
+
+[features.get_base]
+highlights = [
+    { at = "int total = box.⟦get⟧() + other.get() + twice(pointer);", kind = "text" },
+    { at = "int total = box.get() + other.⟦get⟧() + twice(pointer);", kind = "text" },
+]
+
+[features.get_base.hover]
+markdown = '''
+**method** `get` · struct `Box<Inbase>`
+
+```cpp
+int get() const
+```
+'''
+range = "int total = box.get() + other.⟦get⟧() + twice(pointer);"
+
+[features.twice]
+highlights = [
+    { at = "int total = box.get() + other.get() + ⟦twice⟧(pointer);", kind = "text" },
+    { at = "total += weight<Widget> + base_use() + top_use() + ⟦twice⟧(Inbase{});", kind = "text" },
+]
+
+[features.twice.hover]
+markdown = '''
+**function** `twice`
+
+```cpp
+template <> int twice<int *>(int *)
+```
+'''
+range = "int total = box.get() + other.get() + ⟦twice⟧(pointer);"
+
+[features.describe]
+highlights = [
+    { at = "total += ⟦describe⟧(Widget{}) + Traits<Widget>::value + holder.size();", kind = "text" },
+]
+
+[features.describe.hover]
+markdown = '''
+**function** `describe<Widget>`
+
+```cpp
+template <> inline int describe<Widget>(Widget)
+```
+'''
+range = "total += ⟦describe⟧(Widget{}) + Traits<Widget>::value + holder.size();"
+
+[features.value]
+highlights = [
+    { at = "static_assert(Traits<Widget>::⟦value⟧ == 7);", kind = "read" },
+    { at = "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();", kind = "read" },
+]
+
+[features.value.hover]
+markdown = '''
+**variable** `value` · struct `Traits<Widget>`
+
+```cpp
+static constexpr int value = 7
+```
+Value: `7`
+'''
+range = "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();"
+
+[features.size]
+highlights = [
+    { at = "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();", kind = "text" },
+]
+
+[features.size.hover]
+markdown = '''
+**method** `size` · struct `Holder<Widget>`
+
+```cpp
+inline int size() const
+```
+'''
+range = "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();"
+
+[features.weight]
+highlights = [
+    { at = "static_assert(⟦weight⟧<Widget> == 9);", kind = "read" },
+    { at = "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});", kind = "read" },
+]
+
+[features.weight.hover]
+markdown = '''
+**variable** `weight<Widget>`
+
+```cpp
+constexpr int weight = 9
+```
+Value: `9`
+'''
+range = "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});"
+
+[features.partial]
+highlights = [
+    { at = "static_assert(Traits<int*>::⟦value⟧ == 3);", kind = "read" },
+    { at = "return total + Traits<int*>::⟦value⟧;", kind = "read" },
+]
+
+[features.partial.hover]
+markdown = '''
+**variable** `value` · struct `Traits<int *>`
+
+```cpp
+static constexpr int value = 3
+```
+Value: `3`
+'''
+range = "return total + Traits<int*>::⟦value⟧;"
+
+[features.symbols]
+document_symbols = [
+    {
+        name = "run",
+        kind = "Function",
+        at = "int ⟦run⟧() {",
+        children = [
+            { name = "box", kind = "Variable", at = "Box<Widget> ⟦box⟧{};" },
+            { name = "other", kind = "Variable", at = "Box<Inbase> ⟦other⟧{};" },
+            { name = "pointer", kind = "Variable", at = "int* ⟦pointer⟧ = nullptr;" },
+            { name = "holder", kind = "Variable", at = "Holder<Widget> ⟦holder⟧;" },
+            { name = "total", kind = "Variable", at = "int ⟦total⟧ = box.get() + other.get() + twice(pointer);" },
+        ],
+    },
+]
+
+[features.tokens]
+wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
+semantic_tokens = [
+    { at = '⟦#include⟧ "extra.h"', type = "directive" },
+    { at = '#include ⟦"extra.h"⟧', type = "header" },
+    { at = "⟦static_assert⟧(Traits<Widget>::value == 7);", type = "keyword" },
+    { at = "static_assert(⟦Traits⟧<Widget>::value == 7);", type = "struct", modifiers = ["global", "template"] },
+    { at = "static_assert(Traits⟦<⟧Widget>::value == 7);", type = "bracket" },
+    { at = "static_assert(Traits<⟦Widget⟧>::value == 7);", type = "struct", modifiers = ["global"] },
+    { at = "static_assert(Traits<Widget⟦>⟧::value == 7);", type = "bracket" },
+    {
+        at = "static_assert(Traits<Widget>::⟦value⟧ == 7);",
+        type = "variable",
+        modifiers = ["readonly", "static", "member", "constexpr"],
+    },
+    { at = "static_assert(Traits<Widget>::value ⟦==⟧ 7);", type = "operator" },
+    { at = "static_assert(Traits<Widget>::value == ⟦7⟧);", type = "number" },
+    { at = "⟦static_assert⟧(Traits<int*>::value == 3);", type = "keyword" },
+    { at = "static_assert(⟦Traits⟧<int*>::value == 3);", type = "struct", modifiers = ["global", "template"] },
+    { at = "static_assert(Traits⟦<⟧int*>::value == 3);", type = "bracket" },
+    { at = "static_assert(Traits<⟦int⟧*>::value == 3);", type = "primitive" },
+    { at = "static_assert(Traits<int⟦*⟧>::value == 3);", type = "operator", modifiers = ["declarator"] },
+    { at = "static_assert(Traits<int*⟦>⟧::value == 3);", type = "bracket" },
+    {
+        at = "static_assert(Traits<int*>::⟦value⟧ == 3);",
+        type = "variable",
+        modifiers = ["readonly", "static", "member", "constexpr"],
+    },
+    { at = "static_assert(Traits<int*>::value ⟦==⟧ 3);", type = "operator" },
+    { at = "static_assert(Traits<int*>::value == ⟦3⟧);", type = "number" },
+    { at = "⟦static_assert⟧(weight<Widget> == 9);", type = "keyword" },
+    {
+        at = "static_assert(⟦weight⟧<Widget> == 9);",
+        type = "variable",
+        modifiers = ["readonly", "global", "template", "constexpr"],
+    },
+    { at = "static_assert(weight⟦<⟧Widget> == 9);", type = "bracket" },
+    { at = "static_assert(weight<⟦Widget⟧> == 9);", type = "struct", modifiers = ["global"] },
+    { at = "static_assert(weight<Widget⟦>⟧ == 9);", type = "bracket" },
+    { at = "static_assert(weight<Widget> ⟦==⟧ 9);", type = "operator" },
+    { at = "static_assert(weight<Widget> == ⟦9⟧);", type = "number" },
+    { at = "⟦int⟧ run() {", type = "primitive" },
+    { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦Box⟧<Widget> box{};", type = "struct", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "Box⟦<⟧Widget> box{};", type = "bracket" },
+    { at = "Box<⟦Widget⟧> box{};", type = "struct", modifiers = ["global"] },
+    { at = "Box<Widget⟦>⟧ box{};", type = "bracket" },
+    { at = "Box<Widget> ⟦box⟧{};", type = "variable", modifiers = ["definition", "local"] },
+    { at = "⟦Box⟧<Inbase> other{};", type = "struct", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "Box⟦<⟧Inbase> other{};", type = "bracket" },
+    { at = "Box<⟦Inbase⟧> other{};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "Box<Inbase⟦>⟧ other{};", type = "bracket" },
+    { at = "Box<Inbase> ⟦other⟧{};", type = "variable", modifiers = ["definition", "local"] },
+    { at = "⟦int⟧* pointer = nullptr;", type = "primitive" },
+    { at = "int⟦*⟧ pointer = nullptr;", type = "operator", modifiers = ["declarator"] },
+    { at = "int* ⟦pointer⟧ = nullptr;", type = "variable", modifiers = ["definition", "local"] },
+    { at = "int* pointer ⟦=⟧ nullptr;", type = "operator" },
+    { at = "int* pointer = ⟦nullptr⟧;", type = "keyword", modifiers = ["literal"] },
+    { at = "⟦Holder⟧<Widget> holder;", type = "struct", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "Holder⟦<⟧Widget> holder;", type = "bracket" },
+    { at = "Holder<⟦Widget⟧> holder;", type = "struct", modifiers = ["global"] },
+    { at = "Holder<Widget⟦>⟧ holder;", type = "bracket" },
+    { at = "Holder<Widget> ⟦holder⟧;", type = "variable", modifiers = ["definition", "local"] },
+    { at = "⟦int⟧ total = box.get() + other.get() + twice(pointer);", type = "primitive" },
+    {
+        at = "int ⟦total⟧ = box.get() + other.get() + twice(pointer);",
+        type = "variable",
+        modifiers = ["definition", "local"],
+    },
+    { at = "int total ⟦=⟧ box.get() + other.get() + twice(pointer);", type = "operator" },
+    { at = "int total = ⟦box⟧.get() + other.get() + twice(pointer);", type = "variable", modifiers = ["local"] },
+    {
+        at = "int total = box.⟦get⟧() + other.get() + twice(pointer);",
+        type = "method",
+        modifiers = ["readonly", "defaultLibrary", "member"],
+    },
+    { at = "int total = box.get() ⟦+⟧ other.get() + twice(pointer);", type = "operator" },
+    { at = "int total = box.get() + ⟦other⟧.get() + twice(pointer);", type = "variable", modifiers = ["local"] },
+    {
+        at = "int total = box.get() + other.⟦get⟧() + twice(pointer);",
+        type = "method",
+        modifiers = ["readonly", "defaultLibrary", "member"],
+    },
+    { at = "int total = box.get() + other.get() ⟦+⟧ twice(pointer);", type = "operator" },
+    {
+        at = "int total = box.get() + other.get() + ⟦twice⟧(pointer);",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    { at = "int total = box.get() + other.get() + twice(⟦pointer⟧);", type = "variable", modifiers = ["local"] },
+    {
+        at = "⟦total⟧ += describe(Widget{}) + Traits<Widget>::value + holder.size();",
+        type = "variable",
+        modifiers = ["modification", "local"],
+    },
+    { at = "total ⟦+=⟧ describe(Widget{}) + Traits<Widget>::value + holder.size();", type = "operator" },
+    {
+        at = "total += ⟦describe⟧(Widget{}) + Traits<Widget>::value + holder.size();",
+        type = "function",
+        modifiers = ["global", "template"],
+    },
+    {
+        at = "total += describe(⟦Widget⟧{}) + Traits<Widget>::value + holder.size();",
+        type = "struct",
+        modifiers = ["global"],
+    },
+    { at = "total += describe(Widget{}) ⟦+⟧ Traits<Widget>::value + holder.size();", type = "operator" },
+    {
+        at = "total += describe(Widget{}) + ⟦Traits⟧<Widget>::value + holder.size();",
+        type = "struct",
+        modifiers = ["global", "template"],
+    },
+    { at = "total += describe(Widget{}) + Traits⟦<⟧Widget>::value + holder.size();", type = "bracket" },
+    {
+        at = "total += describe(Widget{}) + Traits<⟦Widget⟧>::value + holder.size();",
+        type = "struct",
+        modifiers = ["global"],
+    },
+    { at = "total += describe(Widget{}) + Traits<Widget⟦>⟧::value + holder.size();", type = "bracket" },
+    {
+        at = "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();",
+        type = "variable",
+        modifiers = ["readonly", "static", "member", "constexpr"],
+    },
+    { at = "total += describe(Widget{}) + Traits<Widget>::value ⟦+⟧ holder.size();", type = "operator" },
+    {
+        at = "total += describe(Widget{}) + Traits<Widget>::value + ⟦holder⟧.size();",
+        type = "variable",
+        modifiers = ["local"],
+    },
+    {
+        at = "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();",
+        type = "method",
+        modifiers = ["readonly", "member"],
+    },
+    {
+        at = "⟦total⟧ += weight<Widget> + base_use() + top_use() + twice(Inbase{});",
+        type = "variable",
+        modifiers = ["modification", "local"],
+    },
+    { at = "total ⟦+=⟧ weight<Widget> + base_use() + top_use() + twice(Inbase{});", type = "operator" },
+    {
+        at = "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});",
+        type = "variable",
+        modifiers = ["readonly", "global", "template", "constexpr"],
+    },
+    { at = "total += weight⟦<⟧Widget> + base_use() + top_use() + twice(Inbase{});", type = "bracket" },
+    {
+        at = "total += weight<⟦Widget⟧> + base_use() + top_use() + twice(Inbase{});",
+        type = "struct",
+        modifiers = ["global"],
+    },
+    { at = "total += weight<Widget⟦>⟧ + base_use() + top_use() + twice(Inbase{});", type = "bracket" },
+    { at = "total += weight<Widget> ⟦+⟧ base_use() + top_use() + twice(Inbase{});", type = "operator" },
+    {
+        at = "total += weight<Widget> + ⟦base_use⟧() + top_use() + twice(Inbase{});",
+        type = "function",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    { at = "total += weight<Widget> + base_use() ⟦+⟧ top_use() + twice(Inbase{});", type = "operator" },
+    {
+        at = "total += weight<Widget> + base_use() + ⟦top_use⟧() + twice(Inbase{});",
+        type = "function",
+        modifiers = ["global"],
+    },
+    { at = "total += weight<Widget> + base_use() + top_use() ⟦+⟧ twice(Inbase{});", type = "operator" },
+    {
+        at = "total += weight<Widget> + base_use() + top_use() + ⟦twice⟧(Inbase{});",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    {
+        at = "total += weight<Widget> + base_use() + top_use() + twice(⟦Inbase⟧{});",
+        type = "struct",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    { at = "⟦return⟧ total + Traits<int*>::value;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦total⟧ + Traits<int*>::value;", type = "variable", modifiers = ["local"] },
+    { at = "return total ⟦+⟧ Traits<int*>::value;", type = "operator" },
+    { at = "return total + ⟦Traits⟧<int*>::value;", type = "struct", modifiers = ["global", "template"] },
+    { at = "return total + Traits⟦<⟧int*>::value;", type = "bracket" },
+    { at = "return total + Traits<⟦int⟧*>::value;", type = "primitive" },
+    { at = "return total + Traits<int⟦*⟧>::value;", type = "operator", modifiers = ["declarator"] },
+    { at = "return total + Traits<int*⟦>⟧::value;", type = "bracket" },
+    {
+        at = "return total + Traits<int*>::⟦value⟧;",
+        type = "variable",
+        modifiers = ["readonly", "static", "member", "constexpr"],
+    },
+]
+
+[features.hints]
+inlay_hints = []
+
+[features.links]
+document_links = [
+    { at = '#include ⟦"extra.h"⟧', target = "include/extra.h" },
+]
+
+[locations."main.cpp"]
+diagnostics = []
+
+[locations.get]
+definition = ["include/base.h │ int ⟦get⟧() const {"]
+declaration = ["include/base.h │ int ⟦get⟧() const {"]
+references = [
+    "include/base.h │ int ⟦get⟧() const {",
+    "include/base.h │ return twice(Inbase{}) + Box<Inbase>{}.⟦get⟧() + describe(1) + weight<Inbase>;",
+    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.⟦get⟧() + Holder<Widget>{}.size();",
+    "int total = box.⟦get⟧() + other.get() + twice(pointer);",
+    "int total = box.get() + other.⟦get⟧() + twice(pointer);",
+]
+
+[locations.get.hover]
+markdown = '''
+**method** `get` · struct `Box<Widget>`
+
+```cpp
+int get() const
+```
+'''
+range = "int total = box.⟦get⟧() + other.get() + twice(pointer);"
+
+[locations.get_base]
+definition = ["include/base.h │ int ⟦get⟧() const {"]
+declaration = ["include/base.h │ int ⟦get⟧() const {"]
+references = [
+    "include/base.h │ int ⟦get⟧() const {",
+    "include/base.h │ return twice(Inbase{}) + Box<Inbase>{}.⟦get⟧() + describe(1) + weight<Inbase>;",
+    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.⟦get⟧() + Holder<Widget>{}.size();",
+    "int total = box.⟦get⟧() + other.get() + twice(pointer);",
+    "int total = box.get() + other.⟦get⟧() + twice(pointer);",
+]
+
+[locations.get_base.hover]
+markdown = '''
+**method** `get` · struct `Box<Inbase>`
+
+```cpp
+int get() const
+```
+'''
+range = "int total = box.get() + other.⟦get⟧() + twice(pointer);"
+
+[locations.twice]
+definition = ["include/base.h │ int ⟦twice⟧(T) {"]
+declaration = ["include/base.h │ int ⟦twice⟧(T) {"]
+references = [
+    "include/base.h │ int ⟦twice⟧(T) {",
+    "include/base.h │ return ⟦twice⟧(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
+    "include/extra.h │ return ⟦twice⟧(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
+    "int total = box.get() + other.get() + ⟦twice⟧(pointer);",
+    "total += weight<Widget> + base_use() + top_use() + ⟦twice⟧(Inbase{});",
+]
+
+[locations.twice.hover]
+markdown = '''
+**function** `twice`
+
+```cpp
+template <> int twice<int *>(int *)
+```
+'''
+range = "int total = box.get() + other.get() + ⟦twice⟧(pointer);"
+
+[locations.describe]
+definition = ["include/extra.h │ inline int ⟦describe⟧<Widget>(Widget) {"]
+declaration = ["include/extra.h │ inline int ⟦describe⟧<Widget>(Widget) {"]
+references = [
+    "include/extra.h │ inline int ⟦describe⟧<Widget>(Widget) {",
+    "total += ⟦describe⟧(Widget{}) + Traits<Widget>::value + holder.size();",
+]
+
+[locations.describe.hover]
+markdown = '''
+**function** `describe<Widget>`
+
+```cpp
+template <> inline int describe<Widget>(Widget)
+```
+'''
+range = "total += ⟦describe⟧(Widget{}) + Traits<Widget>::value + holder.size();"
+
+[locations.value]
+wrong = "should list where twice<Widget> and Box<Widget>::get() read it, as clice query references does: the preamble's PCH instantiates them and keeps no record"
+definition = ["include/extra.h │ static constexpr int ⟦value⟧ = 7;"]
+declaration = ["include/extra.h │ static constexpr int ⟦value⟧ = 7;"]
+references = [
+    "include/extra.h │ static constexpr int ⟦value⟧ = 7;",
+    "static_assert(Traits<Widget>::⟦value⟧ == 7);",
+    "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();",
+]
+
+[locations.value.hover]
+markdown = '''
+**variable** `value` · struct `Traits<Widget>`
+
+```cpp
+static constexpr int value = 7
+```
+Value: `7`
+'''
+range = "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();"
+
+[locations.size]
+definition = ["include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {"]
+declaration = ["include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {"]
+references = [
+    "include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {",
+    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.⟦size⟧();",
+    "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();",
+]
+
+[locations.size.hover]
+markdown = '''
+**method** `size` · struct `Holder<Widget>`
+
+```cpp
+inline int size() const
+```
+'''
+range = "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();"
+
+[locations.weight]
+definition = ["include/extra.h │ constexpr int ⟦weight⟧<Widget> = 9;"]
+declaration = ["include/extra.h │ constexpr int ⟦weight⟧<Widget> = 9;"]
+references = [
+    "include/extra.h │ constexpr int ⟦weight⟧<Widget> = 9;",
+    "static_assert(⟦weight⟧<Widget> == 9);",
+    "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});",
+]
+
+[locations.weight.hover]
+markdown = '''
+**variable** `weight<Widget>`
+
+```cpp
+constexpr int weight = 9
+```
+Value: `9`
+'''
+range = "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});"
+
+[locations.partial]
+wrong = "should list Traits<T>::value in base.h, which twice<int*> reads, as it does once the file is indexed"
+definition = ["include/extra.h │ static constexpr int ⟦value⟧ = 3;"]
+declaration = ["include/extra.h │ static constexpr int ⟦value⟧ = 3;"]
+references = [
+    "include/extra.h │ static constexpr int ⟦value⟧ = 3;",
+    "static_assert(Traits<int*>::⟦value⟧ == 3);",
+    "return total + Traits<int*>::⟦value⟧;",
+]
+
+[locations.partial.hover]
+markdown = '''
+**variable** `value` · struct `Traits<int *>`
+
+```cpp
+static constexpr int value = 3
+```
+Value: `3`
+'''
+range = "return total + Traits<int*>::⟦value⟧;"
+
+["indexed locations"."main.cpp"]
+diagnostics = []
+
+["indexed locations".get]
+definition = ["include/base.h │ int ⟦get⟧() const {"]
+declaration = ["include/base.h │ int ⟦get⟧() const {"]
+references = [
+    "include/base.h │ int ⟦get⟧() const {",
+    "include/base.h │ return twice(Inbase{}) + Box<Inbase>{}.⟦get⟧() + describe(1) + weight<Inbase>;",
+    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.⟦get⟧() + Holder<Widget>{}.size();",
+    "int total = box.⟦get⟧() + other.get() + twice(pointer);",
+    "int total = box.get() + other.⟦get⟧() + twice(pointer);",
+]
+
+["indexed locations".get.hover]
+markdown = '''
+**method** `get` · struct `Box<Widget>`
+
+```cpp
+int get() const
+```
+'''
+range = "int total = box.⟦get⟧() + other.get() + twice(pointer);"
+
+["indexed locations".get_base]
+definition = ["include/base.h │ int ⟦get⟧() const {"]
+declaration = ["include/base.h │ int ⟦get⟧() const {"]
+references = [
+    "include/base.h │ int ⟦get⟧() const {",
+    "include/base.h │ return twice(Inbase{}) + Box<Inbase>{}.⟦get⟧() + describe(1) + weight<Inbase>;",
+    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.⟦get⟧() + Holder<Widget>{}.size();",
+    "int total = box.⟦get⟧() + other.get() + twice(pointer);",
+    "int total = box.get() + other.⟦get⟧() + twice(pointer);",
+]
+
+["indexed locations".get_base.hover]
+markdown = '''
+**method** `get` · struct `Box<Inbase>`
+
+```cpp
+int get() const
+```
+'''
+range = "int total = box.get() + other.⟦get⟧() + twice(pointer);"
+
+["indexed locations".twice]
+definition = ["include/base.h │ int ⟦twice⟧(T) {"]
+declaration = ["include/base.h │ int ⟦twice⟧(T) {"]
+references = [
+    "include/base.h │ int ⟦twice⟧(T) {",
+    "include/base.h │ return ⟦twice⟧(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
+    "include/extra.h │ return ⟦twice⟧(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
+    "int total = box.get() + other.get() + ⟦twice⟧(pointer);",
+    "total += weight<Widget> + base_use() + top_use() + ⟦twice⟧(Inbase{});",
+]
+
+["indexed locations".twice.hover]
+markdown = '''
+**function** `twice`
+
+```cpp
+template <> int twice<int *>(int *)
+```
+'''
+range = "int total = box.get() + other.get() + ⟦twice⟧(pointer);"
+
+["indexed locations".describe]
+definition = ["include/extra.h │ inline int ⟦describe⟧<Widget>(Widget) {"]
+declaration = ["include/extra.h │ inline int ⟦describe⟧<Widget>(Widget) {"]
+references = [
+    "include/extra.h │ inline int ⟦describe⟧<Widget>(Widget) {",
+    "total += ⟦describe⟧(Widget{}) + Traits<Widget>::value + holder.size();",
+]
+
+["indexed locations".describe.hover]
+markdown = '''
+**function** `describe<Widget>`
+
+```cpp
+template <> inline int describe<Widget>(Widget)
+```
+'''
+range = "total += ⟦describe⟧(Widget{}) + Traits<Widget>::value + holder.size();"
+
+["indexed locations".value]
+definition = ["include/extra.h │ static constexpr int ⟦value⟧ = 7;"]
+declaration = ["include/extra.h │ static constexpr int ⟦value⟧ = 7;"]
+references = [
+    "include/base.h │ return Traits<T>::⟦value⟧;",
+    "include/base.h │ return 2 * Traits<T>::⟦value⟧;",
+    "include/extra.h │ static constexpr int ⟦value⟧ = 7;",
+    "static_assert(Traits<Widget>::⟦value⟧ == 7);",
+    "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();",
+]
+
+["indexed locations".value.hover]
+markdown = '''
+**variable** `value` · struct `Traits<Widget>`
+
+```cpp
+static constexpr int value = 7
+```
+Value: `7`
+'''
+range = "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();"
+
+["indexed locations".size]
+definition = ["include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {"]
+declaration = ["include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {"]
+references = [
+    "include/extra.h │ inline int Holder<Widget>::⟦size⟧() const {",
+    "include/extra.h │ return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.⟦size⟧();",
+    "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();",
+]
+
+["indexed locations".size.hover]
+markdown = '''
+**method** `size` · struct `Holder<Widget>`
+
+```cpp
+inline int size() const
+```
+'''
+range = "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();"
+
+["indexed locations".weight]
+definition = ["include/extra.h │ constexpr int ⟦weight⟧<Widget> = 9;"]
+declaration = ["include/extra.h │ constexpr int ⟦weight⟧<Widget> = 9;"]
+references = [
+    "include/extra.h │ constexpr int ⟦weight⟧<Widget> = 9;",
+    "static_assert(⟦weight⟧<Widget> == 9);",
+    "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});",
+]
+
+["indexed locations".weight.hover]
+markdown = '''
+**variable** `weight<Widget>`
+
+```cpp
+constexpr int weight = 9
+```
+Value: `9`
+'''
+range = "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});"
+
+["indexed locations".partial]
+definition = ["include/extra.h │ static constexpr int ⟦value⟧ = 3;"]
+declaration = ["include/extra.h │ static constexpr int ⟦value⟧ = 3;"]
+references = [
+    "include/base.h │ return 2 * Traits<T>::⟦value⟧;",
+    "include/extra.h │ static constexpr int ⟦value⟧ = 3;",
+    "static_assert(Traits<int*>::⟦value⟧ == 3);",
+    "return total + Traits<int*>::⟦value⟧;",
+]
+
+["indexed locations".partial.hover]
+markdown = '''
+**variable** `value` · struct `Traits<int *>`
+
+```cpp
+static constexpr int value = 3
+```
+Value: `3`
+'''
+range = "return total + Traits<int*>::⟦value⟧;"
+
+[index."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 23 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:12:21 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "get",
+    "kind": "Method",
+    "symbol": "#6002fc885fbc02fb",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 12,
+        "context": "    int get() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 40,
+        "context": "    return twice(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
+        "function": "base_use"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 31,
+        "context": "    return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = box.get() + other.get() + twice(pointer);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = box.get() + other.get() + twice(pointer);",
+        "function": "run"
+      }
+    ],
+    "total": 5
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:12:35 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "get",
+    "kind": "Method",
+    "symbol": "#6002fc885fbc02fb",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 12,
+        "context": "    int get() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 40,
+        "context": "    return twice(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
+        "function": "base_use"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 31,
+        "context": "    return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = box.get() + other.get() + twice(pointer);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = box.get() + other.get() + twice(pointer);",
+        "function": "run"
+      }
+    ],
+    "total": 5
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:12:43 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "twice",
+    "kind": "Function",
+    "symbol": "#ddba43252bfe42f0",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 18,
+        "context": "int twice(T) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 40,
+        "context": "    return twice(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
+        "function": "base_use"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 31,
+        "context": "    return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = box.get() + other.get() + twice(pointer);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += weight<Widget> + base_use() + top_use() + twice(Inbase{});",
+        "function": "run"
+      }
+    ],
+    "total": 5
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:14 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "describe<Widget>",
+    "kind": "Function",
+    "symbol": "#7703af2c167967d9",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 18,
+        "context": "inline int describe<Widget>(Widget) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    total += describe(Widget{}) + Traits<Widget>::value + holder.size();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:51 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Variable",
+    "symbol": "#e15b3edf3ec472e1",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 13,
+        "context": "        return Traits<T>::value;",
+        "function": "Box::get",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 19,
+        "context": "    return 2 * Traits<T>::value;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 9,
+        "context": "    static constexpr int value = 7;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "static_assert(Traits<Widget>::value == 7);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    total += describe(Widget{}) + Traits<Widget>::value + holder.size();",
+        "function": "run"
+      }
+    ],
+    "total": 5
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:66 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "size",
+    "kind": "Method",
+    "symbol": "#c0bcb42ca128d4c4",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 26,
+        "context": "inline int Holder<Widget>::size() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 31,
+        "context": "    return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    total += describe(Widget{}) + Traits<Widget>::value + holder.size();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:14 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "weight<Widget>",
+    "kind": "Variable",
+    "symbol": "#f5432d12e9cdbbf6",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 23,
+        "context": "constexpr int weight<Widget> = 9;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "static_assert(weight<Widget> == 9);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += weight<Widget> + base_use() + top_use() + twice(Inbase{});",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:34 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Variable",
+    "symbol": "#eed3d148c388bae5",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 19,
+        "context": "    return 2 * Traits<T>::value;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 14,
+        "context": "    static constexpr int value = 3;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "static_assert(Traits<int*>::value == 3);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + Traits<int*>::value;",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice index #2"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 23 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:12:21 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "get",
+    "kind": "Method",
+    "symbol": "#6002fc885fbc02fb",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 12,
+        "context": "    int get() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 40,
+        "context": "    return twice(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
+        "function": "base_use"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 31,
+        "context": "    return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = box.get() + other.get() + twice(pointer);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = box.get() + other.get() + twice(pointer);",
+        "function": "run"
+      }
+    ],
+    "total": 5
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:12:35 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "get",
+    "kind": "Method",
+    "symbol": "#6002fc885fbc02fb",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 12,
+        "context": "    int get() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 40,
+        "context": "    return twice(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
+        "function": "base_use"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 31,
+        "context": "    return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = box.get() + other.get() + twice(pointer);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = box.get() + other.get() + twice(pointer);",
+        "function": "run"
+      }
+    ],
+    "total": 5
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:12:43 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "twice",
+    "kind": "Function",
+    "symbol": "#ddba43252bfe42f0",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 18,
+        "context": "int twice(T) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 40,
+        "context": "    return twice(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
+        "function": "base_use"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 31,
+        "context": "    return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = box.get() + other.get() + twice(pointer);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += weight<Widget> + base_use() + top_use() + twice(Inbase{});",
+        "function": "run"
+      }
+    ],
+    "total": 5
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:14 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "describe<Widget>",
+    "kind": "Function",
+    "symbol": "#7703af2c167967d9",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 18,
+        "context": "inline int describe<Widget>(Widget) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    total += describe(Widget{}) + Traits<Widget>::value + holder.size();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:51 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Variable",
+    "symbol": "#e15b3edf3ec472e1",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 13,
+        "context": "        return Traits<T>::value;",
+        "function": "Box::get",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 19,
+        "context": "    return 2 * Traits<T>::value;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 9,
+        "context": "    static constexpr int value = 7;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "static_assert(Traits<Widget>::value == 7);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    total += describe(Widget{}) + Traits<Widget>::value + holder.size();",
+        "function": "run"
+      }
+    ],
+    "total": 5
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:66 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "size",
+    "kind": "Method",
+    "symbol": "#c0bcb42ca128d4c4",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 26,
+        "context": "inline int Holder<Widget>::size() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 31,
+        "context": "    return twice(Widget{}) + Box<Widget>{}.get() + Holder<Widget>{}.size();",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    total += describe(Widget{}) + Traits<Widget>::value + holder.size();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:14 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "weight<Widget>",
+    "kind": "Variable",
+    "symbol": "#f5432d12e9cdbbf6",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 23,
+        "context": "constexpr int weight<Widget> = 9;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "static_assert(weight<Widget> == 9);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += weight<Widget> + base_use() + top_use() + twice(Inbase{});",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:34 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Variable",
+    "symbol": "#eed3d148c388bae5",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 19,
+        "context": "    return 2 * Traits<T>::value;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 14,
+        "context": "    static constexpr int value = 3;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "static_assert(Traits<int*>::value == 3);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + Traits<int*>::value;",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0

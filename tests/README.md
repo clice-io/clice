@@ -126,7 +126,7 @@ A test names a position by text, never by line and column:
   were.
   A literal `§` never appears in case text. `t.marker(name)` holds while its
   file reads as the case wrote it; after an edit it fails, and `at` names the
-  place.
+  place. `t.markers()` lists them in path and source order.
 - An anchor in a test: `t.at("main.cpp", "shapes::|area(")`, the unique place
   the text occurs, the cursor at `|`. A missing or ambiguous anchor fails the
   test.

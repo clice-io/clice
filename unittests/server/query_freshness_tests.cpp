@@ -4,7 +4,9 @@ module;
 
 module clice;
 
+import :index.indexer;
 import :index.query;
+import :index.search;
 import :index.shard;
 import :index.tu_index;
 import :project.command_resolver;
@@ -17,8 +19,8 @@ import :sched.index.pump;
 import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 import :worker.pool;
 
 namespace clice::testing {
@@ -41,8 +43,8 @@ TURunFamily turun{graph, project, resolver, pcm, pch, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 ServerLiveSources live{project, pch, store, projections};
 index::FreshnessGate gate{project.file_table};
-index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
-index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
+index::IndexQuery index_query{project.index, project.file_table, &gate, &live};
+index::IndexQuery disk_query{project.index, project.file_table, &gate, nullptr};
 
 Fid focus_id;
 Fid header_id;
@@ -58,12 +60,12 @@ void merge_into_workspace() {
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
     }
-    project.project_index.merge(view, file_ids_map);
+    project.index.merge_symbols(view, file_ids_map);
     focus_id = file_ids_map[view.path_count() - 1];
 
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         auto local_id = view.section_path(section);
-        project.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+        project.index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
         if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
             header_id = file_ids_map[local_id];
@@ -74,7 +76,7 @@ void merge_into_workspace() {
 /// The symbol hash at an offset in a file's merged shard.
 index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
     index::SymbolHash result = 0;
-    project.project_index.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
+    project.index.shards[path_id].occurrences_at(offset, [&](const index::Occurrence& o) {
         result = o.target;
         return false;
     });
@@ -138,7 +140,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     // Line-based resolution in the file works while its index is current.
     index::SymbolQuery by_line;
     by_line.position = {.path = project.file_table.resolve(focus_id).str(), .line = 3};
-    ZASSERT(!disk_query.locate(by_line).empty());
+    ZASSERT(!index::locate(disk_query, by_line).empty());
 
     // The disk was seen holding other text: the file's contribution is
     // skipped until its shard describes the disk again; other files' shards
@@ -149,7 +151,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
 
     // Cursor-style resolution against the stale index is unresolvable: the
     // line numbers describe text that no longer exists.
-    ZASSERT(disk_query.locate(by_line).empty());
+    ZASSERT(index::locate(disk_query, by_line).empty());
 
     // A changed definition file drops out of definition lookups.
     project.file_table.disk.observe(header_id, DiskObservation{.hash = 1});

@@ -7,7 +7,7 @@ module clice:worker.protocol;
 import :compile.compilation;
 import :config.config;
 import :feature.feature;
-import :index.include_tree;
+import :index.symbol;
 import :syntax.header_context;
 import :syntax.token;
 
@@ -461,7 +461,7 @@ struct IncludeTreeResult {
     /// The files the run read, the unit's own last, with the hash of the
     /// bytes it read of each.
     std::vector<std::string> paths;
-    std::vector<std::uint64_t> path_hashes;
+    std::vector<std::uint64_t> content_hashes;
 
     /// The tree, each node's file an index into `paths`.
     std::vector<index::IncludeNode> nodes;

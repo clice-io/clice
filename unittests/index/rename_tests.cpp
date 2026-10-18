@@ -6,11 +6,12 @@ module clice;
 
 import :index.query;
 import :index.rename;
+import :index.search;
 import :index.symbol_query;
 import :unittests.utils.merge_unit;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 import :vfs.file_system;
 
 namespace clice::testing {
@@ -24,7 +25,7 @@ TempDir dir;
 FileTable files;
 Project project{files};
 index::FreshnessGate gate{project.file_table};
-index::IndexQuery query{project.project_index, project.file_table, &gate, nullptr};
+index::IndexQuery query{project.index, project.file_table, &gate, nullptr};
 
 Fid focus_id;
 
@@ -100,7 +101,7 @@ RenamePlan plan(const index::RenameTarget& target, llvm::StringRef new_name) {
 
 /// The rename target of the one symbol the query `name` finds.
 index::RenameTarget target(llvm::StringRef name) {
-    auto hits = query.locate(*index::SymbolQuery::parse(name));
+    auto hits = index::locate(query, *index::SymbolQuery::parse(name));
     ZASSERT(hits.size() == 1U);
     auto found = index::rename_target(query, hits.front());
     ZASSERT(found);
@@ -137,7 +138,7 @@ std::string applied(const index::BatchPlan& plan, llvm::StringRef path) {
 
 /// Rename the one symbol the query `name` finds.
 std::expected<RenamePlan, std::string> rename(llvm::StringRef name, llvm::StringRef new_name) {
-    auto hits = query.locate(*index::SymbolQuery::parse(name));
+    auto hits = index::locate(query, *index::SymbolQuery::parse(name));
     if(hits.size() != 1) {
         return std::unexpected(
             std::format("{} symbols match `{}`", hits.size(), std::string_view(name)));

@@ -194,9 +194,9 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
     auto move_declarations = [&](Project& project,
                                  CommandResolver& commands,
                                  analysis::Facts& facts) -> std::expected<void, std::string> {
-        ContextsBlob saved;
+        ContextChoices saved;
         EditorContext contexts{project, commands, saved};
-        index::IndexQuery index_query(project.project_index, project.file_table, nullptr, nullptr);
+        index::IndexQuery index_query(project.index, project.file_table, nullptr, nullptr);
         query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
         for(llvm::StringRef move: model.move_entity.value_or(std::vector<std::string>{})) {
             auto [text, path] = move.rsplit('=');

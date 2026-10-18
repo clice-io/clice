@@ -337,7 +337,7 @@ kota::task<ext::SwitchContextResult>
     auto& blob = editor.blob;
     auto ticket = blob.ticket;
     int failed_saves = 0;
-    while(ws.request_flush && ws.index_db && !ws.index_db->read_only() &&
+    while(ws.request_flush && ws.database && !ws.database->read_only() &&
           blob.committed_ticket < ticket) {
         auto seen = blob.committed_ticket;
         co_await blob.committed.wait();

@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :feature.feature;
+import :index.navigation;
 import :server.lsp_projection;
 
 namespace clice::to_lsp {
@@ -39,7 +40,7 @@ std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites) {
 }
 
 std::vector<protocol::DocumentHighlight>
-    document_highlights(llvm::ArrayRef<index::IndexQuery::PlacedHighlight> highlights) {
+    document_highlights(llvm::ArrayRef<index::PlacedHighlight> highlights) {
     auto kind_of = [](index::HighlightKind kind) {
         switch(kind) {
             case index::HighlightKind::Text: return protocol::DocumentHighlightKind::Text;
@@ -56,7 +57,7 @@ std::vector<protocol::DocumentHighlight>
     return result;
 }
 
-protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
+protocol::SymbolInformation symbol_information(const index::SymbolInfo& symbol,
                                                const index::Site& site,
                                                llvm::StringRef container) {
     protocol::SymbolInformation info;
@@ -70,7 +71,7 @@ protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
 }
 
 template <typename Item>
-static Item hierarchy_item(const index::SymbolRef& symbol,
+static Item hierarchy_item(const index::SymbolInfo& symbol,
                            const index::Site& site,
                            const index::Site& extent,
                            llvm::StringRef qualified) {
@@ -87,14 +88,14 @@ static Item hierarchy_item(const index::SymbolRef& symbol,
     return item;
 }
 
-protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolRef& symbol,
+protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolInfo& symbol,
                                                 const index::Site& site,
                                                 const index::Site& extent,
                                                 llvm::StringRef qualified) {
     return hierarchy_item<protocol::CallHierarchyItem>(symbol, site, extent, qualified);
 }
 
-protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolRef& symbol,
+protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolInfo& symbol,
                                                 const index::Site& site,
                                                 const index::Site& extent,
                                                 llvm::StringRef qualified) {

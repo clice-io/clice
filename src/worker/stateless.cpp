@@ -12,10 +12,11 @@ import :compile.compilation;
 import :compile.diagnostic;
 import :feature.feature;
 import :index.include_tree;
+import :index.indexer;
 import :index.tu_index;
 import :support.logging;
-import :syntax.position;
 import :support.process;
+import :syntax.position;
 import :vfs.file_system;
 import :worker.common;
 import :worker.crash_report;
@@ -381,7 +382,7 @@ static worker::IncludeTreeResult
              timer.ms());
     return {
         .paths = std::move(tree.paths),
-        .path_hashes = std::move(tree.path_hashes),
+        .content_hashes = std::move(tree.content_hashes),
         .nodes = std::move(tree.nodes),
         .absent = unit->absent(),
     };

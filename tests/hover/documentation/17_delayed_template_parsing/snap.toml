@@ -1,4 +1,4 @@
-[answers.inspect.dependent_getter.hover]
+[answers.dependent_getter.hover]
 markdown = '''
 **method** `getLevel` · struct `Gauge<T>`
 
@@ -10,34 +10,11 @@ T getLevel()
 '''
 range = "return gauge.⟦getLevel⟧();"
 
-[answers.inspect.dependent_setter.hover]
+[answers.dependent_setter.hover]
 markdown = '''
 **method** `setLevel` · struct `Gauge<T>`
 
 Trivial setter for `level`.
-
-```cpp
-void setLevel(T value)
-```
-'''
-range = "gauge.⟦setLevel⟧(value);"
-
-[answers.server]
-wrong = "the server never parses the deferred bodies, so the accessors get no description"
-
-[answers.server.dependent_getter.hover]
-markdown = '''
-**method** `getLevel` · struct `Gauge<T>`
-
-```cpp
-T getLevel()
-```
-'''
-range = "return gauge.⟦getLevel⟧();"
-
-[answers.server.dependent_setter.hover]
-markdown = '''
-**method** `setLevel` · struct `Gauge<T>`
 
 ```cpp
 void setLevel(T value)

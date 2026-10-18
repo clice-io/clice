@@ -14,7 +14,9 @@ import :config.config;
 import :driver.driver;
 import :feature.feature;
 import :feature.semantic_token_stream;
+import :index.indexer;
 import :index.instantiation_shard;
+import :index.navigation;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
@@ -224,12 +226,12 @@ std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& 
         named_tokens(feature::index_semantic_tokens(
                          served,
                          feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
-                         [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
+                         [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
                              auto identity = tu.find_symbol(hash);
                              if(!identity) {
                                  return std::nullopt;
                              }
-                             return index::SymbolRef::from(hash, *identity);
+                             return index::SymbolInfo::from(hash, *identity);
                          },
                          config.semantic_tokens),
                      legend);
@@ -332,12 +334,12 @@ std::optional<kota::codec::RawValue> run_document_symbol_check(CompilationUnit& 
     auto projected = feature::index_document_symbols(
         served,
         feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
-        [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
+        [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
             auto identity = tu.find_symbol(hash);
             if(!identity) {
                 return std::nullopt;
             }
-            return index::SymbolRef::from(hash, *identity);
+            return index::SymbolInfo::from(hash, *identity);
         },
         config.document_symbols);
 
@@ -518,7 +520,7 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnit& unit,
                 auto path_id = i == 0 ? focus : i - 1;
                 const auto& shard = tu.shard_of(path_id);
                 std::optional<LocalSourceRange> found;
-                shard.lookup(symbol, kind, [&](const index::Relation& relation) {
+                shard.relations_of(symbol, kind, [&](const index::Relation& relation) {
                     found = relation.range;
                     return false;
                 });

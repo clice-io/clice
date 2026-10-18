@@ -1,0 +1,5 @@
+{
+  // The command defers template bodies (deprecated from C++20 on): a
+  // deferred definition moves with its body.
+  "flags": ["-std=c++17", "-fdelayed-template-parsing"]
+}

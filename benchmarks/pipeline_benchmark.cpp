@@ -32,6 +32,8 @@ module clice;
 import :command.command;
 import :compile.compilation;
 import :feature.feature;
+import :index.indexer;
+import :index.symbol;
 import :index.tu_index;
 import :support.logging;
 import :support.timer;
@@ -205,7 +207,7 @@ FileResult profile_file(llvm::StringRef file,
 
         auto view = index::TUIndex::from_bytes(serialized);
         std::uint64_t symbols = 0;
-        view.iterate_symbols([&](auto, auto&, auto) {
+        view.for_each_symbol([&](auto, auto&, auto) {
             symbols += 1;
             return true;
         });

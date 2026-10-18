@@ -31,7 +31,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions, sched.store),
     dispatcher(project, contexts, ast, server.pool),
     live_sources(project, sched.pch, sessions, ast.projections),
-    index_query(project.project_index, project.file_table, &freshness, &live_sources),
+    index_query(project.index, project.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
     invalidator(project, sessions, contexts, ast, sched.pcm, sched.store) {
     ast.register_runner();
@@ -171,7 +171,7 @@ void ProjectServer::start() {
         if(report.opened_store) {
             bg_tasks.spawn(checkpoint_task());
         }
-        if(project.index_db && !project.index_db->read_only()) {
+        if(project.database && !project.database->read_only()) {
             start_control_listener();
         }
         if(!report.has_commands) {
@@ -288,8 +288,8 @@ void ProjectServer::decide_open_serving(std::shared_ptr<Session> session) {
     if(session->serving == ServingMode::Escalated) {
         return;
     }
-    auto it = project.project_index.shards.find(session->path_id);
-    if(it != project.project_index.shards.end()) {
+    auto it = project.index.shards.find(session->path_id);
+    if(it != project.index.shards.end()) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: escalate
         // now instead of answering empty until the first edit.
@@ -389,8 +389,8 @@ void ProjectServer::index_attempt_finished(Fid path_id) {
     if(!session || session->serving != ServingMode::IndexOnly) {
         return;
     }
-    auto it = project.project_index.shards.find(path_id);
-    if(it == project.project_index.shards.end() ||
+    auto it = project.index.shards.find(path_id);
+    if(it == project.index.shards.end() ||
        !it->second.matches_content(session->text().size(), session->hash)) {
         ast.escalate(*session);
     }

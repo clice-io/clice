@@ -46,7 +46,7 @@ struct ContextService {
     /// lists — as the file's compilation context and persist the choice
     /// across sessions. When persistence is available, success is
     /// acknowledged only once the choice is durably committed: the request
-    /// marks the contexts blob dirty and awaits the write pipeline's
+    /// marks the context choices dirty and awaits the write pipeline's
     /// ticket. Sessions without a writable database (read-only, caching
     /// disabled, open failure) apply the choice in memory and acknowledge
     /// immediately.

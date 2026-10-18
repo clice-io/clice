@@ -5,7 +5,7 @@ module;
 module clice:project.hosting;
 
 import :command.command;
-import :index.include_tree;
+import :index.symbol;
 import :project.build;
 import :vfs.file_table;
 

@@ -248,7 +248,7 @@ private:
     /// 1. The freshness check inside the index task is the ONLY place
     ///    that decides to skip work. Duplicating it at the feeder
     ///    reintroduces reason-blind skips.
-    /// 2. need_update() may shortcut deps-only slots ONLY: the engine
+    /// 2. needs_reindex() may shortcut deps-only slots ONLY: the engine
     ///    observed content changes itself, and the dep-hash check cannot
     ///    see a file's own edit.
     PendingTable pending_table{max_requeue_attempts};

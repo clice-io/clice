@@ -67,10 +67,10 @@ struct ProjectLoad {
 
 /// Load a project from disk: resolve the build configuration
 /// (`requested_configuration` is the command line's), open the cache
-/// store with its namespaces and the configuration's index library, load
+/// store with its namespaces and the configuration's index database, load
 /// the build (load_build) and restore the persisted index. The caller has
 /// already finalized project.config; a second call is safe and skips the
-/// store and library opens (live CDB reloads go through the invalidator
+/// store and database opens (live CDB reloads go through the invalidator
 /// instead).
 ///
 /// `read_only_index` loads the persisted index without queueing any

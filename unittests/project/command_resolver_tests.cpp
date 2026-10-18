@@ -106,7 +106,7 @@ ZEST_CASE(ModeSliceContentGate) {
 }
 
 ZEST_CASE(ModePersistenceMarksDirty) {
-    // The persisted mode slice and the artifacts blob move together: any
+    // The persisted mode slice and the artifact records move together: any
     // transition of a content-bound NeedsContext — earned, downgraded by
     // a trial, or reset by a dependency change — must rewrite the blob,
     // or a restart resurrects the dropped result (the header's own hash

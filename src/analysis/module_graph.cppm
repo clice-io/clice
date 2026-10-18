@@ -5,7 +5,7 @@ module;
 module clice:analysis.module_graph;
 
 import :analysis.annotation;
-import :index.types;
+import :index.symbol;
 import :project.command_resolver;
 import :project.project;
 import :semantic.symbol;

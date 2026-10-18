@@ -6,13 +6,13 @@ module clice:feature.feature;
 
 import :compile.compilation;
 import :compile.diagnostic;
-import :index.manifest;
 import :index.query;
 import :index.shard;
-import :index.types;
+import :index.symbol;
+import :index.tu_manifest;
 import :semantic.display;
-import :semantic.token_class;
 import :semantic.symbol;
+import :semantic.token_class;
 import :support.anomaly;
 import :support.markup;
 import :syntax.documentation;
@@ -161,7 +161,7 @@ auto documentation(CompilationUnit& unit,
                    const DocumentationOptions& options) -> Documentation;
 
 /// The same of an indexed symbol, from the comments in the text the index
-/// read (IndexQuery::doc_comment).
+/// read (index::doc_comment).
 auto documentation(const index::IndexQuery& query,
                    index::SymbolHash hash,
                    Fid anchor,
@@ -1187,7 +1187,7 @@ auto extract_index_entries(const index::Shard& shard) -> IndexEntries;
 
 using IndexIncludeEdge = index::IncludeEdge;
 
-using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolRef>(index::SymbolHash)>;
+using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolInfo>(index::SymbolHash)>;
 
 /// The tokens of `source` as the AST's would be, from what the index
 /// records: each symbol's classified from `resolve` at its occurrences, the
@@ -1230,8 +1230,8 @@ auto index_document_links(SourceText& source, llvm::ArrayRef<IndexIncludeEdge> e
 /// Assemble the read-only hover card: name, kind, where it is (`scopes`,
 /// the containers outermost first) and what the index can prove from
 /// stored text — no Sema products (type, value, size, aka).
-auto index_hover(const index::SymbolRef& info,
-                 llvm::ArrayRef<index::SymbolRef> scopes,
+auto index_hover(const index::SymbolInfo& info,
+                 llvm::ArrayRef<index::SymbolInfo> scopes,
                  llvm::StringRef definition_text,
                  Documentation documentation) -> HoverInfo;
 

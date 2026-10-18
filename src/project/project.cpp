@@ -6,7 +6,6 @@ module;
 
 module clice;
 
-import :index.serialization;
 import :project.hosting;
 import :project.project;
 import :support.logging;
@@ -324,7 +323,7 @@ std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
     // run unchecked. Anything failing reads as "pair missing" and the PCH
     // is rebuilt.
     auto tu_index = index::TUIndex::from_buffer(std::move(*buffer));
-    if(!tu_index.loaded() || !tu_index.shards_verify()) {
+    if(!tu_index.loaded() || !tu_index.verify_shards()) {
         return nullptr;
     }
     return std::make_shared<index::TUIndex>(std::move(tu_index));

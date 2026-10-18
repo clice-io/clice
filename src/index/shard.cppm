@@ -4,17 +4,11 @@ module;
 
 module clice:index.shard;
 
-import :index.types;
+import :index.symbol;
 import :support.bitmap;
 import :syntax.position;
 
 namespace clice::index {
-
-/// Identity of one variant of a file's index: xxh3_64 over the encoded
-/// single-variant blob bytes the worker produced. Encoding is canonical
-/// and deterministic, so two compilation contexts whose preprocessing of
-/// the file agrees produce byte-identical blobs and share one identity.
-using VariantHash = std::uint64_t;
 
 struct RangeColumnsView;
 struct LiveFilter;
@@ -36,13 +30,13 @@ public:
     /// format version differs.
     static Shard from_bytes(llvm::StringRef data);
 
-    /// Adopt an owning buffer of blob bytes (storage reads, freshly
+    /// Adopt an owning buffer of blob bytes (database reads, freshly
     /// written blobs). A null buffer, corrupt bytes or a different format
     /// version load as an empty shard; the caller treats that as "not on
     /// disk".
     static Shard from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
-    /// Swap the backing buffer for byte-identical storage (read-snapshot
+    /// Swap the backing buffer for a byte-identical one (read-snapshot
     /// migration after a save). Verification, the live mask and the
     /// line-start cache all describe the bytes, not the address, so they
     /// carry over. Byte identity is the caller's contract (the exclusive
@@ -94,11 +88,12 @@ public:
     /// that the next serialization of this file should compact.
     bool has_dead_variants() const;
 
-    void lookup(std::uint32_t offset, llvm::function_ref<bool(const Occurrence&)> callback) const;
+    void occurrences_at(std::uint32_t offset,
+                        llvm::function_ref<bool(const Occurrence&)> callback) const;
 
-    void lookup(SymbolHash symbol,
-                RelationKind kind,
-                llvm::function_ref<bool(const Relation&)> callback) const;
+    void relations_of(SymbolHash symbol,
+                      RelationKind kind,
+                      llvm::function_ref<bool(const Relation&)> callback) const;
 
     /// Visit every live occurrence in stored order (sorted by range, then
     /// target hash).
@@ -108,12 +103,12 @@ public:
     /// order, relations in (kind, range, payload) order within each group.
     void for_each_relation(llvm::function_ref<bool(SymbolHash, const Relation&)> callback) const;
 
-    /// Look up a local symbol's identity; the strings borrow the blob.
-    std::optional<SymbolIdentity> find_symbol(SymbolHash hash) const;
+    /// Look up a local symbol; the strings borrow the blob.
+    std::optional<SymbolView> find_symbol(SymbolHash hash) const;
 
     /// Visit every local symbol the blob names, with its identity.
     void for_each_local_symbol(
-        llvm::function_ref<bool(SymbolHash, const SymbolIdentity&)> callback) const;
+        llvm::function_ref<bool(SymbolHash, const SymbolView&)> callback) const;
 
     /// Line start offsets for position mapping, materialized from the
     /// blob's line-length columns on first use.
@@ -141,11 +136,15 @@ private:
     /// per query.
     LiveFilter live_filter(const RangeColumnsView& columns) const;
 
+private:
     std::unique_ptr<llvm::MemoryBuffer> buffer;
+
     Live live;
+
     /// Byte hash of the blob — the identity of a worker-emitted blob's
     /// single anonymous variant. Computed once at load.
     std::uint64_t blob_hash = 0;
+
     /// Lazily materialized from the line-length columns; the blob is
     /// immutable for the shard's lifetime, so the cache never invalidates.
     mutable std::vector<std::uint32_t> line_starts_cache;
@@ -161,7 +160,7 @@ private:
 /// consumed; the blob keeps its hash, size and line table, and the text of
 /// its non-ASCII lines only.
 void write_shard(const FileIndex& file_index,
-                 llvm::function_ref<std::optional<SymbolIdentity>(SymbolHash)> symbols,
+                 llvm::function_ref<std::optional<SymbolView>(SymbolHash)> symbols,
                  llvm::StringRef content,
                  llvm::raw_ostream& os);
 

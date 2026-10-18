@@ -6,8 +6,9 @@ module clice;
 
 import :compile.compilation;
 import :feature.feature;
+import :index.indexer;
+import :index.symbol;
 import :index.tu_index;
-import :index.types;
 import :semantic.decls;
 import :semantic.designators;
 import :semantic.display;
@@ -989,7 +990,7 @@ private:
         }
         const auto* symbol = decls::normalize(decl);
         InlayHintPart part{.value = text.str(), .symbol = unit.get<EntityTable>().entity(symbol)};
-        if(index::classify_scope(symbol) != index::SymbolScope::External) {
+        if(index::scope_of(symbol) != index::SymbolScope::External) {
             part.anchor = unit.file_path(unit.seen_at(symbol->getLocation()).file);
         }
         return part;

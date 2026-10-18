@@ -355,7 +355,7 @@ Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQ
 /// none is "symbol not found".
 Outcome<std::vector<index::SymbolHash>> named_symbols(Context& ctx, index::SymbolQuery locator);
 
-/// What implements the symbol (index::IndexQuery::implementation): the
+/// What implements the symbol (index::implementation): the
 /// classes deriving from a class, the overrides of a function, at any
 /// depth; a function nothing overrides, its definitions.
 Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator);

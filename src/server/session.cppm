@@ -55,7 +55,7 @@ enum class ServingMode : std::uint8_t {
 ///
 /// Created on didOpen, destroyed on didClose.  The session holds the
 /// buffer and its identity; the document's compilation products live in
-/// the AST family's projection (see server/ast_projection.h) and
+/// the AST family's projection (see server/ast_projection.cppm) and
 /// NEVER leak to Project or other Sessions.
 struct Session {
     /// Path ID of this file in FileTable.  Set on creation, never changes.
@@ -93,7 +93,7 @@ struct Session {
     std::uint64_t generation = 0;
 
     /// What this document's worker crashes bar it from, and when it may
-    /// try again. All transitions go through the type; see quarantine.h.
+    /// try again. All transitions go through the type; see server/quarantine.cppm.
     /// Shared with the store's parked table across a close, so work still
     /// in flight on a closed session books into the records a reopen
     /// restores.

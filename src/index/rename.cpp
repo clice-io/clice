@@ -4,7 +4,9 @@ module;
 
 module clice;
 
+import :index.hierarchy;
 import :index.rename;
+import :index.search;
 import :index.symbol_query;
 import :syntax.lexer;
 
@@ -99,7 +101,7 @@ std::string where(const Site& site) {
 std::vector<IndexQuery::Located> all_named(const IndexQuery& query, llvm::StringRef name) {
     SymbolQuery exact{.mode = SymbolQuery::Mode::Exact, .pattern = name.str()};
     for(std::size_t limit = 256;; limit *= 4) {
-        auto hits = query.search(exact, limit);
+        auto hits = search(query, exact, limit);
         if(hits.size() < limit) {
             return hits;
         }
@@ -511,7 +513,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
         // A local or a parameter is out of another file's reach but through
         // a macro it defines, and a file no indexed unit includes defines
         // none for it.
-        bool foreign = root.scope == SymbolScope::FileLocal && file != target.symbol.site.file;
+        bool foreign = root.scope == SymbolScope::FunctionLocal && file != target.symbol.site.file;
         if(indexed ? *served.text != current->text
                    : query.indexes(file) || (!foreign && scope.units_pending)) {
             stale.insert(display);
@@ -606,7 +608,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
 
     // The scope a name is looked up in: an unscoped enumerator's is its
     // enum's.
-    auto scope_of = [&](const SymbolRef& symbol, Fid anchor) {
+    auto scope_of = [&](const SymbolInfo& symbol, Fid anchor) {
         if(symbol.kind == SymbolKind::EnumMember &&
            has_flag(symbol.flags, SymbolFlags::Completable)) {
             if(auto owner = query.symbol_info(symbol.parent, anchor)) {
@@ -635,7 +637,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
                 while(!pending.empty()) {
                     auto next = std::move(pending.back());
                     pending.pop_back();
-                    auto types = query.type_hierarchy(next.symbol.hash, next.site.file, {});
+                    auto types = type_hierarchy(query, next.symbol.hash, next.site.file, {});
                     for(auto& type: up ? types.supertypes : types.subtypes) {
                         if(hierarchy.insert(type.symbol.hash).second) {
                             pending.push_back(std::move(type));

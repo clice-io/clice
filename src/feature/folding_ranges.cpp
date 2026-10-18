@@ -210,8 +210,11 @@ private:
             return;
         }
 
+        // A deferred template body (-fdelayed-template-parsing) counts as a
+        // body but is not there.
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
-           function && function->doesThisDeclarationHaveABody()) {
+           function && function->doesThisDeclarationHaveABody() &&
+           !function->isLateTemplateParsed()) {
             add_declaration_block(function->getBody()->getSourceRange(),
                                   function->getLocation(),
                                   *declaration_fold_kind(SymbolKind::from(function)));

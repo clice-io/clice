@@ -1,0 +1,72 @@
+["pch over a pch"."main.cpp"]
+wrong = "should be clean: beta.pch, which clang builds over alpha.pch, declares Beta and both functions"
+diagnostics = [
+    {
+        at = "⟦Beta⟧ beta{};",
+        severity = "error",
+        message = "unknown type name 'Beta'",
+        source = "clang",
+        code = "err_unknown_typename",
+    },
+    {
+        at = "return beta.alpha.a + ⟦beta_value⟧() + alpha_value();",
+        severity = "error",
+        message = "use of undeclared identifier 'beta_value'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+    {
+        at = "return beta.alpha.a + beta_value() + ⟦alpha_value⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'alpha_value'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]
+
+["pch over a pch".hover]
+wrong = "should describe Beta, which beta.pch declares"
+hover = {}
+
+["pch over a pch".definition]
+wrong = "should reach beta_value() in beta.h"
+definition = []
+
+[index."$ clice index"]
+wrong = "beta.h and main.cpp compile over the PCHs their commands read: clice builds beta.pch over no other"
+stdout = '''
+Indexed 3 translation units in #s: 3 file shards (# KB), 7 symbols.
+2 translation units compiled with errors; the index holds what parsed:
+  ${WS}/include/beta.h
+    ${WS}/include/beta.h:4:5: unknown type name 'Alpha'
+    and 1 more error
+  ${WS}/main.cpp
+    ${WS}/main.cpp:2:5: unknown type name 'Beta'
+    and 2 more errors
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = "warning: PCH build failed for ${WS}/include/beta.h: unknown type name 'Alpha'; use of undeclared identifier 'alpha_value'"
+exit = 0
+
+[index."$ clice query references Alpha::a --include-declaration"]
+wrong = "should list beta.alpha.a in main.cpp"
+stdout = '''
+{
+  "result": {
+    "name": "a",
+    "kind": "Field",
+    "symbol": "#994b43e0fe38145e",
+    "references": [
+      {
+        "file": "${WS}/include/alpha.h",
+        "line": 4,
+        "context": "    int a;",
+        "function": null
+      }
+    ],
+    "total": 1
+  },
+  "stale": []
+}
+'''
+exit = 0

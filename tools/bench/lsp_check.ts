@@ -379,6 +379,8 @@ export interface ServerOptions {
     /// The directory holding the compile_commands.json, the workspace by
     /// default.
     cdb?: string | undefined;
+    /// clice's cache directory, `.clice` in the workspace by default.
+    cacheDir?: string | undefined;
     /// The server indexes the workspace in the background: clice's
     /// `enable_indexing`, clangd's `--background-index`.
     indexing?: boolean | undefined;
@@ -410,6 +412,7 @@ export async function start(
     });
     await client.initialize(new Workspace(workspace), {
         testDefaults: false,
+        cacheDir: options.cacheDir,
         capabilities: options.capabilities,
         initializationOptions:
             kind === "clice"

@@ -1,0 +1,589 @@
+[features.stale]
+highlights = [
+    { at = "int a = ⟦stale⟧();", kind = "text" },
+]
+
+[features.stale.hover]
+markdown = '''
+**function** `stale`
+
+Deprecated: use fresh
+```cpp
+[[deprecated("use fresh")]]
+inline int stale()
+```
+'''
+range = "int a = ⟦stale⟧();"
+
+[features.take]
+highlights = [
+    { at = "⟦take⟧(1);", kind = "text" },
+]
+
+[features.take.hover]
+markdown = '''
+**function** `take`
+
+```cpp
+void take(int first, int second)
+```
+'''
+range = "⟦take⟧(1);"
+
+[features.secret]
+highlights = [
+    { at = "int b = closed.⟦secret⟧;", kind = "read" },
+]
+
+[features.secret.hover]
+markdown = '''
+**private field** `secret` · struct `Closed`
+
+```cpp
+int secret = 0
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "int b = closed.⟦secret⟧;"
+
+[features.needs]
+highlights = [
+    { at = "int c = ⟦needs_size⟧(1);", kind = "text" },
+]
+
+[features.needs.hover]
+markdown = '''
+**function** `needs_size`
+
+```cpp
+template <class T> int needs_size(T value) { return value.size(); }
+```
+'''
+range = "int c = ⟦needs_size⟧(1);"
+
+[features.symbols]
+document_symbols = [
+    {
+        name = "run",
+        kind = "Function",
+        at = "int ⟦run⟧() {",
+        children = [
+            { name = "a", kind = "Variable", at = "int ⟦a⟧ = stale();" },
+            { name = "closed", kind = "Variable", at = "Closed ⟦closed⟧;" },
+            { name = "b", kind = "Variable", at = "int ⟦b⟧ = closed.secret;" },
+            { name = "c", kind = "Variable", at = "int ⟦c⟧ = needs_size(1);" },
+        ],
+    },
+]
+
+[features.tokens]
+wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
+semantic_tokens = [
+    { at = '⟦#include⟧ "extra.h"', type = "directive" },
+    { at = '#include ⟦"extra.h"⟧', type = "header" },
+    { at = "⟦int⟧ run() {", type = "primitive" },
+    { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦int⟧ a = stale();", type = "primitive" },
+    { at = "int ⟦a⟧ = stale();", type = "variable", modifiers = ["definition", "local"] },
+    { at = "int a ⟦=⟧ stale();", type = "operator" },
+    { at = "int a = ⟦stale⟧();", type = "function", modifiers = ["deprecated", "defaultLibrary", "global"] },
+    { at = "⟦take⟧(1);", type = "function", modifiers = ["defaultLibrary", "global", "dependent"] },
+    { at = "take(⟦1⟧);", type = "number" },
+    { at = "⟦Closed⟧ closed;", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "Closed ⟦closed⟧;", type = "variable", modifiers = ["definition", "local"] },
+    { at = "⟦int⟧ b = closed.secret;", type = "primitive" },
+    { at = "int ⟦b⟧ = closed.secret;", type = "variable", modifiers = ["definition", "local"] },
+    { at = "int b ⟦=⟧ closed.secret;", type = "operator" },
+    { at = "int b = ⟦closed⟧.secret;", type = "variable", modifiers = ["local"] },
+    { at = "int b = closed.⟦secret⟧;", type = "field", modifiers = ["defaultLibrary", "member"] },
+    { at = "⟦int⟧ c = needs_size(1);", type = "primitive" },
+    { at = "int ⟦c⟧ = needs_size(1);", type = "variable", modifiers = ["definition", "local"] },
+    { at = "int c ⟦=⟧ needs_size(1);", type = "operator" },
+    { at = "int c = ⟦needs_size⟧(1);", type = "function", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "int c = needs_size(⟦1⟧);", type = "number" },
+    { at = "⟦return⟧ a + b + c + old_extra();", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦a⟧ + b + c + old_extra();", type = "variable", modifiers = ["local"] },
+    { at = "return a ⟦+⟧ b + c + old_extra();", type = "operator" },
+    { at = "return a + ⟦b⟧ + c + old_extra();", type = "variable", modifiers = ["local"] },
+    { at = "return a + b ⟦+⟧ c + old_extra();", type = "operator" },
+    { at = "return a + b + ⟦c⟧ + old_extra();", type = "variable", modifiers = ["local"] },
+    { at = "return a + b + c ⟦+⟧ old_extra();", type = "operator" },
+    { at = "return a + b + c + ⟦old_extra⟧();", type = "function", modifiers = ["deprecated", "global"] },
+]
+
+[features.hints]
+inlay_hints = [
+    { line = "int c = needs_size(⟨value:⟩1);" },
+]
+
+[features.links]
+document_links = [
+    { at = '#include ⟦"extra.h"⟧', target = "include/extra.h" },
+]
+
+[locations."main.cpp"]
+diagnostics = [
+    {
+        at = '#include ⟦"extra.h"⟧',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'undefined_in_preamble'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+    {
+        at = "int a = ⟦stale⟧();",
+        severity = "warning",
+        message = "'stale' is deprecated: use fresh",
+        source = "clang",
+        code = "-Wdeprecated-declarations",
+    },
+    {
+        at = "⟦take⟧(1);",
+        severity = "error",
+        message = "no matching function for call to 'take'",
+        source = "clang",
+        code = "err_ovl_no_viable_function_in_call",
+    },
+    {
+        at = "int b = closed.⟦secret⟧;",
+        severity = "error",
+        message = "'secret' is a private member of 'Closed'",
+        source = "clang",
+        code = "err_access",
+    },
+    {
+        at = "int c = ⟦needs_size⟧(1);",
+        severity = "error",
+        message = "In template: member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+    {
+        at = "return a + b + c + ⟦old_extra⟧();",
+        severity = "warning",
+        message = "'old_extra' is deprecated",
+        source = "clang",
+        code = "-Wdeprecated-declarations",
+    },
+]
+
+[locations.stale]
+definition = ['include/base.h │ [[deprecated("use fresh")]] inline int ⟦stale⟧() {']
+declaration = ['include/base.h │ [[deprecated("use fresh")]] inline int ⟦stale⟧() {']
+references = ['include/base.h │ [[deprecated("use fresh")]] inline int ⟦stale⟧() {', "int a = ⟦stale⟧();"]
+
+[locations.stale.hover]
+markdown = '''
+**function** `stale`
+
+Deprecated: use fresh
+```cpp
+[[deprecated("use fresh")]]
+inline int stale()
+```
+'''
+range = "int a = ⟦stale⟧();"
+
+[locations.take]
+definition = ["include/base.h │ void ⟦take⟧(int first, int second);"]
+declaration = ["include/base.h │ void ⟦take⟧(int first, int second);"]
+references = ["include/base.h │ void ⟦take⟧(int first, int second);", "⟦take⟧(1);"]
+
+[locations.take.hover]
+markdown = '''
+**function** `take`
+
+```cpp
+void take(int first, int second)
+```
+'''
+range = "⟦take⟧(1);"
+
+[locations.secret]
+definition = ["include/base.h │ int ⟦secret⟧ = 0;"]
+declaration = ["include/base.h │ int ⟦secret⟧ = 0;"]
+references = ["include/base.h │ int ⟦secret⟧ = 0;", "int b = closed.⟦secret⟧;"]
+
+[locations.secret.hover]
+markdown = '''
+**private field** `secret` · struct `Closed`
+
+```cpp
+int secret = 0
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "int b = closed.⟦secret⟧;"
+
+[locations.needs]
+definition = ["include/base.h │ int ⟦needs_size⟧(T value) {"]
+declaration = ["include/base.h │ int ⟦needs_size⟧(T value) {"]
+references = ["include/base.h │ int ⟦needs_size⟧(T value) {", "int c = ⟦needs_size⟧(1);"]
+
+[locations.needs.hover]
+markdown = '''
+**function** `needs_size`
+
+```cpp
+template <class T> int needs_size(T value) { return value.size(); }
+```
+'''
+range = "int c = ⟦needs_size⟧(1);"
+
+["indexed locations"."main.cpp"]
+diagnostics = [
+    {
+        at = '#include ⟦"extra.h"⟧',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'undefined_in_preamble'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+    {
+        at = "int a = ⟦stale⟧();",
+        severity = "warning",
+        message = "'stale' is deprecated: use fresh",
+        source = "clang",
+        code = "-Wdeprecated-declarations",
+    },
+    {
+        at = "⟦take⟧(1);",
+        severity = "error",
+        message = "no matching function for call to 'take'",
+        source = "clang",
+        code = "err_ovl_no_viable_function_in_call",
+    },
+    {
+        at = "int b = closed.⟦secret⟧;",
+        severity = "error",
+        message = "'secret' is a private member of 'Closed'",
+        source = "clang",
+        code = "err_access",
+    },
+    {
+        at = "int c = ⟦needs_size⟧(1);",
+        severity = "error",
+        message = "In template: member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+    {
+        at = "return a + b + c + ⟦old_extra⟧();",
+        severity = "warning",
+        message = "'old_extra' is deprecated",
+        source = "clang",
+        code = "-Wdeprecated-declarations",
+    },
+]
+
+["indexed locations".stale]
+definition = ['include/base.h │ [[deprecated("use fresh")]] inline int ⟦stale⟧() {']
+declaration = ['include/base.h │ [[deprecated("use fresh")]] inline int ⟦stale⟧() {']
+references = ['include/base.h │ [[deprecated("use fresh")]] inline int ⟦stale⟧() {', "int a = ⟦stale⟧();"]
+
+["indexed locations".stale.hover]
+markdown = '''
+**function** `stale`
+
+Deprecated: use fresh
+```cpp
+[[deprecated("use fresh")]]
+inline int stale()
+```
+'''
+range = "int a = ⟦stale⟧();"
+
+["indexed locations".take]
+definition = ["include/base.h │ void ⟦take⟧(int first, int second);"]
+declaration = ["include/base.h │ void ⟦take⟧(int first, int second);"]
+references = ["include/base.h │ void ⟦take⟧(int first, int second);", "⟦take⟧(1);"]
+
+["indexed locations".take.hover]
+markdown = '''
+**function** `take`
+
+```cpp
+void take(int first, int second)
+```
+'''
+range = "⟦take⟧(1);"
+
+["indexed locations".secret]
+definition = ["include/base.h │ int ⟦secret⟧ = 0;"]
+declaration = ["include/base.h │ int ⟦secret⟧ = 0;"]
+references = ["include/base.h │ int ⟦secret⟧ = 0;", "int b = closed.⟦secret⟧;"]
+
+["indexed locations".secret.hover]
+markdown = '''
+**private field** `secret` · struct `Closed`
+
+```cpp
+int secret = 0
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "int b = closed.⟦secret⟧;"
+
+["indexed locations".needs]
+definition = ["include/base.h │ int ⟦needs_size⟧(T value) {"]
+declaration = ["include/base.h │ int ⟦needs_size⟧(T value) {"]
+references = ["include/base.h │ int ⟦needs_size⟧(T value) {", "int c = ⟦needs_size⟧(1);"]
+
+["indexed locations".needs.hover]
+markdown = '''
+**function** `needs_size`
+
+```cpp
+template <class T> int needs_size(T value) { return value.size(); }
+```
+'''
+range = "int c = ⟦needs_size⟧(1);"
+
+[index."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 9 symbols.
+1 translation unit compiled with errors; the index holds what parsed:
+  ${WS}/main.cpp
+    ${WS}/include/extra.h:6:12: use of undeclared identifier 'undefined_in_preamble'
+    and 3 more errors
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:4:13 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "stale",
+    "kind": "Function",
+    "symbol": "#42ee35fe113c83fa",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 3,
+        "context": "[[deprecated(\"use fresh\")]] inline int stale() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "    int a = stale();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:5:5 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "take",
+    "kind": "Function",
+    "symbol": "#203f66e74a55e964",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 7,
+        "context": "void take(int first, int second);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    take(1);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:7:20 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "secret",
+    "kind": "Field",
+    "symbol": "#13372623af158c33",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 11,
+        "context": "    int secret = 0;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 7,
+        "context": "    int b = closed.secret;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:8:13 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "needs_size",
+    "kind": "Function",
+    "symbol": "#a18072c49b73c60a",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 15,
+        "context": "int needs_size(T value) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 8,
+        "context": "    int c = needs_size(1);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice index #2"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 9 symbols.
+1 translation unit compiled with errors; the index holds what parsed:
+  ${WS}/main.cpp
+    ${WS}/include/extra.h:6:12: use of undeclared identifier 'undefined_in_preamble'
+    and 3 more errors
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:4:13 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "stale",
+    "kind": "Function",
+    "symbol": "#42ee35fe113c83fa",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 3,
+        "context": "[[deprecated(\"use fresh\")]] inline int stale() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "    int a = stale();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:5:5 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "take",
+    "kind": "Function",
+    "symbol": "#203f66e74a55e964",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 7,
+        "context": "void take(int first, int second);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    take(1);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:7:20 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "secret",
+    "kind": "Field",
+    "symbol": "#13372623af158c33",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 11,
+        "context": "    int secret = 0;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 7,
+        "context": "    int b = closed.secret;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:8:13 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "needs_size",
+    "kind": "Function",
+    "symbol": "#a18072c49b73c60a",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 15,
+        "context": "int needs_size(T value) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 8,
+        "context": "    int c = needs_size(1);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

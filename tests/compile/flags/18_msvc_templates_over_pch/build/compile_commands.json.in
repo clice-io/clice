@@ -1,0 +1,14 @@
+[
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ --target=x86_64-pc-windows-msvc -I${WS}/include -std=c++17 -fpch-instantiate-templates -Xclang -emit-pch -Xclang -include -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx -x c++-header -o CMakeFiles/app.dir/cmake_pch.hxx.pch -c ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.cxx",
+    "file": "${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.cxx",
+    "output": "CMakeFiles/app.dir/cmake_pch.hxx.pch"
+  },
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ --target=x86_64-pc-windows-msvc -I${WS}/include -std=c++17 -Winvalid-pch -Xclang -include-pch -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.pch -Xclang -include -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx -o CMakeFiles/app.dir/src/main.cpp.obj -c ${WS}/src/main.cpp",
+    "file": "${WS}/src/main.cpp",
+    "output": "CMakeFiles/app.dir/src/main.cpp.obj"
+  }
+]

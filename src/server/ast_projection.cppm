@@ -57,7 +57,7 @@ struct ASTProjection {
     std::optional<std::string> failed_pch_key;
 
     /// The latest compilation's TU index; null until a compile
-    /// commits index data. NOT merged into Project.project_index — that
+    /// commits index data. NOT merged into Project.index — that
     /// only gets disk-derived data from background indexing.
     std::shared_ptr<index::TUIndex> index;
 

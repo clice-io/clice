@@ -16,9 +16,9 @@ module;
 
 module clice:index.search_index;
 
-import :index.serialization;
+import :index.format;
+import :index.symbol;
 import :index.symbol_query;
-import :index.types;
 import :support.bitmap;
 import :support.fuzzy_matcher;
 import :vfs.path;
@@ -59,7 +59,7 @@ struct SearchSnapshot {
     std::vector<SearchEntry> entries;
     /// Named the way the database names files (ProjectIndex::portable).
     std::vector<std::string> paths;
-    /// The generation of the global blob these entries will be persisted
+    /// The generation of the project table these entries will be persisted
     /// next to; a loader finding another generation knows entries may have
     /// changed under the index.
     std::uint64_t generation = 0;
@@ -113,9 +113,13 @@ public:
 
 private:
     const SymbolQuery& query;
+
     std::string lower_pattern;
+
     FuzzyMatcher exact;
+
     std::optional<FuzzyMatcher> typo;
+
     /// The query's tokens when it is too short for trigrams, else empty.
     llvm::SmallVector<NameToken, 2> short_tokens;
 };
@@ -157,7 +161,7 @@ public:
 
     bool contains(SymbolHash hash) const;
 
-    /// The global generation the entries were snapshotted for; 0 unloaded.
+    /// The table generation the entries were snapshotted for; 0 unloaded.
     std::uint64_t generation() const;
 
     /// Whether a posting list failed to decode since the load: the
@@ -172,6 +176,8 @@ public:
 
 private:
     struct View;
+
+private:
     std::unique_ptr<View> view;
 };
 

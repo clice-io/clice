@@ -4,8 +4,11 @@ module;
 
 module clice;
 
+import :index.hierarchy;
+import :index.indexer;
 import :index.query;
 import :index.shard;
+import :index.text;
 import :index.tu_index;
 import :project.command_resolver;
 import :project.index_store;
@@ -18,9 +21,9 @@ import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
 import :unittests.utils.temp_dir;
-import :unittests.utils.tu_index_mirror;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils.tu_index_blob;
+import :unittests.utils;
 import :vfs.file_system;
 import :vfs.path;
 import :worker.pool;
@@ -45,8 +48,8 @@ TURunFamily turun{graph, project, resolver, pcm, pch, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 ServerLiveSources live{project, pch, session_store, projections};
 index::FreshnessGate gate{project.file_table};
-index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
-index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
+index::IndexQuery index_query{project.index, project.file_table, &gate, &live};
+index::IndexQuery disk_query{project.index, project.file_table, &gate, nullptr};
 
 TempDir dir;
 index::TUIndex full_index;
@@ -97,8 +100,8 @@ index::SymbolHash hash_of(llvm::StringRef name,
                           std::source_location location = std::source_location::current()) {
     index::SymbolHash hash = 0;
     std::uint32_t count = 0;
-    full_index.iterate_symbols([&](index::SymbolHash symbol_id,
-                                   const index::SymbolIdentity& symbol,
+    full_index.for_each_symbol([&](index::SymbolHash symbol_id,
+                                   const index::SymbolView& symbol,
                                    llvm::ArrayRef<std::uint32_t>) {
         if(symbol.name == name) {
             hash = symbol_id;
@@ -128,11 +131,11 @@ void merge_disk_index(llvm::StringRef focus_on_disk = {}) {
         file_ids_map.push_back(project.file_table.intern(
             Spelling::absolute(focus ? focus_on_disk : full_index.path(i))));
     }
-    project.project_index.merge(full_index, file_ids_map);
+    project.index.merge_symbols(full_index, file_ids_map);
 
     for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
         auto local_id = full_index.section_path(section);
-        project.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+        project.index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(full_index.section_blob(section)));
     }
 }
@@ -141,10 +144,10 @@ void merge_disk_index(llvm::StringRef focus_on_disk = {}) {
 /// every entry of its buffer lives behind the PCH. `loaded` is what the
 /// freshness gate keys on; an unloaded index means "compile not finished".
 index::TUIndex empty_session_index() {
-    TUIndexMirror mirror;
-    mirror.built_at = 1;
-    mirror.paths = {focus_path};
-    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(mirror.bytes()));
+    auto blob = tu_index_blob();
+    blob.built_at = 1;
+    blob.paths = {focus_path};
+    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(tu_index_bytes(blob)));
 }
 
 void install_empty_index(std::source_location location = std::source_location::current()) {
@@ -241,7 +244,7 @@ int main() { return 0; }
 
     // The definition text comes from the same preamble entries, sliced from
     // the buffer: the hover card for a `#define` above the PCH bound.
-    auto definition = index_query.definition_text(cursor.symbols.front(), cursor.site.file);
+    auto definition = index::definition_text(index_query, cursor.symbols.front(), cursor.site.file);
     ZASSERT(definition);
     ZEXPECT(llvm::StringRef(definition->text).contains("FOO"));
 }
@@ -306,7 +309,8 @@ int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
     // overlay; each caller must report it exactly once.
     merge_disk_index();
 
-    auto callers = index_query.call_graph(hash_of("callee"), Fid{}, {.callees = false}).callers;
+    auto callers =
+        index::call_graph(index_query, hash_of("callee"), Fid{}, {.callees = false}).callers;
     ZASSERT(callers.size() == 2);
     for(auto& edge: callers) {
         ZEXPECT(edge.sites.size() == 1);
@@ -328,14 +332,15 @@ Derived instance;
     open_with_overlay();
 
     auto derived = hash_of("Derived");
-    auto supertypes = index_query.type_hierarchy(derived, Fid{}, {.subtypes = false}).supertypes;
+    auto supertypes =
+        index::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
     ZASSERT(supertypes.size() == 1);
     ZEXPECT(supertypes[0].symbol.name == "Base");
 
     // Once derived.h is open, its session owns the type relations spelled
     // there; the overlay's disk-snapshot relations must stop contributing.
     session_store.open(project.file_table.intern(Spelling::absolute(header_path("derived.h"))));
-    supertypes = index_query.type_hierarchy(derived, Fid{}, {.subtypes = false}).supertypes;
+    supertypes = index::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
     ZEXPECT(supertypes.size() == 0);
 }
 
@@ -375,7 +380,7 @@ int main() { return 0; }
     dir.touch("main.cpp", sources.all_files.find("main.cpp")->second.content);
     merge_disk_index(dir.path("main.cpp"));
 
-    auto text = disk_query.definition_text(hash_of("FOO"), Fid{});
+    auto text = index::definition_text(disk_query, hash_of("FOO"), Fid{});
     ZASSERT(text);
     ZEXPECT(llvm::StringRef(text->text).contains("FOO"));
 }
@@ -396,11 +401,11 @@ int main() { return 0; }
     merge_disk_index();
 
     auto foo = hash_of("FOO");
-    ZEXPECT(!disk_query.definition_text(foo, Fid{}).has_value());
+    ZEXPECT(!index::definition_text(disk_query, foo, Fid{}).has_value());
 
     auto references = disk_query.sites(foo, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
-    for(auto& line: disk_query.context_lines(references)) {
+    for(auto& line: index::context_lines(disk_query, references)) {
         ZEXPECT(line.empty());
     }
 }
@@ -415,47 +420,48 @@ ZEST_CASE(PreviewFromDisk) {
     auto path = dir.path("preview.cpp");
     auto path_id = project.file_table.intern(Spelling::absolute(path));
 
-    index::SymbolHash sym = 777;
+    index::SymbolHash symbol_hash = 777;
     index::FileIndex file_index;
     file_index.occurrences.push_back({
         {4, 9},
-        sym
+        symbol_hash
     });
     index::Relation def{
         .kind = RelationKind::Definition,
         .range = {4, 9}
     };
-    def.set_definition_range({0, 14});
-    file_index.relations[sym].push_back(def);
-    file_index.relations[sym].push_back({
+    def.set_extent({0, 14});
+    file_index.relations[symbol_hash].push_back(def);
+    file_index.relations[symbol_hash].push_back({
         .kind = RelationKind::Reference,
         .range = {27, 32},
-        .target_symbol = 0
+        .target = 0
     });
 
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(file_index, {}, text, os);
-    project.project_index.shards[path_id] =
+    project.index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    ZASSERT(project.project_index.shards[path_id].positions().text().empty());
-    auto& symbol = project.project_index.touch(sym);
+    ZASSERT(project.index.shards[path_id].positions().text().empty());
+    auto& symbol = project.index.edit(symbol_hash);
     symbol.name = "value";
     symbol.reference_files.add(path_id.raw);
 
-    auto definition = disk_query.definition_text(sym, Fid{});
+    auto definition = index::definition_text(disk_query, symbol_hash, Fid{});
     ZASSERT(definition);
     ZEXPECT(definition->text == "int value = 1;");
 
-    auto references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
+    auto references = disk_query.sites(symbol_hash, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
-    ZEXPECT(disk_query.context_lines(references) == std::vector<std::string>{"int other = value;"});
+    ZEXPECT(index::context_lines(disk_query, references) ==
+            std::vector<std::string>{"int other = value;"});
 
     dir.touch("preview.cpp", "int moved = 0;\n");
-    ZEXPECT(!disk_query.definition_text(sym, Fid{}).has_value());
-    references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
+    ZEXPECT(!index::definition_text(disk_query, symbol_hash, Fid{}).has_value());
+    references = disk_query.sites(symbol_hash, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
-    ZEXPECT(disk_query.context_lines(references) == std::vector<std::string>{""});
+    ZEXPECT(index::context_lines(disk_query, references) == std::vector<std::string>{""});
 }
 
 ZEST_CASE(SharedPreambleScoped) {
@@ -532,15 +538,15 @@ int main() { §(ref)⟦foo⟧(); return 0; }
         .kind = RelationKind::Definition,
         .range = {0, 3}
     };
-    relation.set_definition_range({0, 3});
+    relation.set_extent({0, 3});
     fake.relations[foo].push_back(relation);
     auto header_id = project.file_table.intern(Spelling::absolute(header_path("foo.h")));
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(fake, {}, "xxx\n", os);
-    project.project_index.shards[header_id] =
+    project.index.shards[header_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    project.project_index.touch(foo).reference_files.add(header_id.raw);
+    project.index.edit(foo).reference_files.add(header_id.raw);
 
     auto def = index_query.first_site(foo, Fid{}, RelationKind::Definition);
     ZASSERT(def);

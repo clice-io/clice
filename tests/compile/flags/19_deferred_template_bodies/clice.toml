@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["**"]
+append = ["-fdelayed-template-parsing"]

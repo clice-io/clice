@@ -1,0 +1,876 @@
+[features.limit]
+highlights = [
+    { at = "int value = ⟦LIMIT⟧ + MODE + SQUARE(2) + EXTRA_ONLY;", kind = "text" },
+    { at = "static_assert(⟦LIMIT⟧ == 10);", kind = "text" },
+    { at = "return guarded.g + once.o + value + counter_now + ⟦LIMIT⟧;", kind = "text" },
+]
+
+[features.limit.hover]
+markdown = '''
+**macro** `LIMIT`
+
+```cpp
+#define LIMIT 10
+```
+Expands to:
+```cpp
+10
+```
+'''
+range = "int value = ⟦LIMIT⟧ + MODE + SQUARE(2) + EXTRA_ONLY;"
+
+[features.mode]
+highlights = [
+    { at = "int value = LIMIT + ⟦MODE⟧ + SQUARE(2) + EXTRA_ONLY;", kind = "text" },
+    { at = "static_assert(⟦MODE⟧ == 2);", kind = "text" },
+]
+
+[features.mode.hover]
+markdown = '''
+**macro** `MODE`
+
+```cpp
+#define MODE 2
+```
+Expands to:
+```cpp
+2
+```
+'''
+range = "int value = LIMIT + ⟦MODE⟧ + SQUARE(2) + EXTRA_ONLY;"
+
+[features.square]
+highlights = [
+    { at = "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;", kind = "text" },
+]
+
+[features.square.hover]
+markdown = '''
+**macro** `SQUARE`
+
+```cpp
+#define SQUARE(x) ((x) * (x))
+```
+Expands to:
+```cpp
+((2) * (2))
+```
+'''
+range = "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;"
+
+[features.extra]
+highlights = [
+    { at = "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;", kind = "text" },
+]
+
+[features.extra.hover]
+markdown = '''
+**macro** `EXTRA_ONLY`
+
+```cpp
+#define EXTRA_ONLY 5
+```
+Expands to:
+```cpp
+5
+```
+'''
+range = "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;"
+
+[features.guard]
+highlights = [
+    { at = "return guarded.⟦g⟧ + once.o + value + counter_now + LIMIT;", kind = "read" },
+]
+
+[features.guard.hover]
+markdown = '''
+**field** `g` · struct `Guarded`
+
+```cpp
+int g
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return guarded.⟦g⟧ + once.o + value + counter_now + LIMIT;"
+
+[features.once]
+highlights = [
+    { at = "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;", kind = "read" },
+]
+
+[features.once.hover]
+markdown = '''
+**field** `o` · struct `Once`
+
+```cpp
+int o
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;"
+
+[features.symbols]
+document_symbols = [
+    { name = "value", kind = "Variable", at = "int ⟦value⟧ = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;" },
+    { name = "counter_now", kind = "Variable", at = "int ⟦counter_now⟧ = __COUNTER__;" },
+    { name = "guarded", kind = "Variable", at = "Guarded ⟦guarded⟧{1};" },
+    { name = "once", kind = "Variable", at = "Once ⟦once⟧{2};" },
+    { name = "run", kind = "Function", at = "int ⟦run⟧() {" },
+]
+
+[features.tokens]
+wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
+semantic_tokens = [
+    { at = '⟦#include⟧ "extra.h"', type = "directive" },
+    { at = '#include ⟦"extra.h"⟧', type = "header" },
+    { at = "⟦int⟧ value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;", type = "primitive" },
+    {
+        at = "int ⟦value⟧ = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        type = "variable",
+        modifiers = ["definition", "global"],
+    },
+    { at = "int value ⟦=⟧ LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;", type = "operator" },
+    { at = "int value = ⟦LIMIT⟧ + MODE + SQUARE(2) + EXTRA_ONLY;", type = "macro", modifiers = ["defaultLibrary"] },
+    { at = "int value = LIMIT ⟦+⟧ MODE + SQUARE(2) + EXTRA_ONLY;", type = "operator" },
+    { at = "int value = LIMIT + ⟦MODE⟧ + SQUARE(2) + EXTRA_ONLY;", type = "macro" },
+    { at = "int value = LIMIT + MODE ⟦+⟧ SQUARE(2) + EXTRA_ONLY;", type = "operator" },
+    {
+        at = "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;",
+        type = "macro",
+        modifiers = ["defaultLibrary", "callable"],
+    },
+    { at = "int value = LIMIT + MODE + SQUARE(⟦2⟧) + EXTRA_ONLY;", type = "number" },
+    { at = "int value = LIMIT + MODE + SQUARE(2) ⟦+⟧ EXTRA_ONLY;", type = "operator" },
+    { at = "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;", type = "macro" },
+    { at = '⟦#include⟧ "guarded.h"', type = "directive" },
+    { at = '#include ⟦"guarded.h"⟧', type = "header" },
+    { at = '⟦#include⟧ "once.h"', type = "directive" },
+    { at = '#include ⟦"once.h"⟧', type = "header" },
+    { at = "⟦static_assert⟧(LIMIT == 10);", type = "keyword" },
+    { at = "static_assert(⟦LIMIT⟧ == 10);", type = "macro", modifiers = ["defaultLibrary"] },
+    { at = "static_assert(LIMIT ⟦==⟧ 10);", type = "operator" },
+    { at = "static_assert(LIMIT == ⟦10⟧);", type = "number" },
+    { at = "⟦static_assert⟧(MODE == 2);", type = "keyword" },
+    { at = "static_assert(⟦MODE⟧ == 2);", type = "macro" },
+    { at = "static_assert(MODE ⟦==⟧ 2);", type = "operator" },
+    { at = "static_assert(MODE == ⟦2⟧);", type = "number" },
+    { at = "⟦static_assert⟧(HAS_FEATURE == 0);", type = "keyword" },
+    { at = "static_assert(⟦HAS_FEATURE⟧ == 0);", type = "macro", modifiers = ["defaultLibrary"] },
+    { at = "static_assert(HAS_FEATURE ⟦==⟧ 0);", type = "operator" },
+    { at = "static_assert(HAS_FEATURE == ⟦0⟧);", type = "number" },
+    { at = "⟦static_assert⟧(preamble_limit == 20);", type = "keyword" },
+    {
+        at = "static_assert(⟦preamble_limit⟧ == 20);",
+        type = "variable",
+        modifiers = ["readonly", "global", "constexpr"],
+    },
+    { at = "static_assert(preamble_limit ⟦==⟧ 20);", type = "operator" },
+    { at = "static_assert(preamble_limit == ⟦20⟧);", type = "number" },
+    { at = "⟦int⟧ counter_now = __COUNTER__;", type = "primitive" },
+    { at = "int ⟦counter_now⟧ = __COUNTER__;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int counter_now ⟦=⟧ __COUNTER__;", type = "operator" },
+    { at = "⟦static_assert⟧(__COUNTER__ == 4);", type = "keyword" },
+    { at = "static_assert(__COUNTER__ ⟦==⟧ 4);", type = "operator" },
+    { at = "static_assert(__COUNTER__ == ⟦4⟧);", type = "number" },
+    { at = "⟦Guarded⟧ guarded{1};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "Guarded ⟦guarded⟧{1};", type = "variable", modifiers = ["definition", "global"] },
+    { at = "Guarded guarded{⟦1⟧};", type = "number" },
+    { at = "⟦Once⟧ once{2};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "Once ⟦once⟧{2};", type = "variable", modifiers = ["definition", "global"] },
+    { at = "Once once{⟦2⟧};", type = "number" },
+    { at = "⟦int⟧ run() {", type = "primitive" },
+    { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
+    {
+        at = "⟦return⟧ guarded.g + once.o + value + counter_now + LIMIT;",
+        type = "keyword",
+        modifiers = ["controlFlow"],
+    },
+    { at = "return ⟦guarded⟧.g + once.o + value + counter_now + LIMIT;", type = "variable", modifiers = ["global"] },
+    {
+        at = "return guarded.⟦g⟧ + once.o + value + counter_now + LIMIT;",
+        type = "field",
+        modifiers = ["defaultLibrary", "member"],
+    },
+    { at = "return guarded.g ⟦+⟧ once.o + value + counter_now + LIMIT;", type = "operator" },
+    { at = "return guarded.g + ⟦once⟧.o + value + counter_now + LIMIT;", type = "variable", modifiers = ["global"] },
+    {
+        at = "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;",
+        type = "field",
+        modifiers = ["defaultLibrary", "member"],
+    },
+    { at = "return guarded.g + once.o ⟦+⟧ value + counter_now + LIMIT;", type = "operator" },
+    { at = "return guarded.g + once.o + ⟦value⟧ + counter_now + LIMIT;", type = "variable", modifiers = ["global"] },
+    { at = "return guarded.g + once.o + value ⟦+⟧ counter_now + LIMIT;", type = "operator" },
+    { at = "return guarded.g + once.o + value + ⟦counter_now⟧ + LIMIT;", type = "variable", modifiers = ["global"] },
+    { at = "return guarded.g + once.o + value + counter_now ⟦+⟧ LIMIT;", type = "operator" },
+    {
+        at = "return guarded.g + once.o + value + counter_now + ⟦LIMIT⟧;",
+        type = "macro",
+        modifiers = ["defaultLibrary"],
+    },
+]
+
+[features.hints]
+inlay_hints = [
+    { line = "Guarded guarded{⟨.g=⟩1};" },
+    { line = "Once once{⟨.o=⟩2};" },
+]
+
+[features.links]
+document_links = [
+    { at = '#include ⟦"extra.h"⟧', target = "include/extra.h" },
+    { at = '#include ⟦"guarded.h"⟧', target = "include/guarded.h" },
+    { at = '#include ⟦"once.h"⟧', target = "include/once.h" },
+]
+
+[locations."main.cpp"]
+diagnostics = []
+
+[locations.limit]
+definition = ["include/base.h │ #define ⟦LIMIT⟧ 10"]
+declaration = ["include/base.h │ #define ⟦LIMIT⟧ 10"]
+references = [
+    "include/base.h │ #define ⟦LIMIT⟧ 10",
+    "include/extra.h │ #undef ⟦LIMIT⟧",
+    "int value = ⟦LIMIT⟧ + MODE + SQUARE(2) + EXTRA_ONLY;",
+    "static_assert(⟦LIMIT⟧ == 10);",
+    "return guarded.g + once.o + value + counter_now + ⟦LIMIT⟧;",
+]
+
+[locations.limit.hover]
+markdown = '''
+**macro** `LIMIT`
+
+```cpp
+#define LIMIT 10
+```
+Expands to:
+```cpp
+10
+```
+'''
+range = "int value = ⟦LIMIT⟧ + MODE + SQUARE(2) + EXTRA_ONLY;"
+
+[locations.mode]
+definition = ["include/extra.h │ #define ⟦MODE⟧ 2"]
+declaration = ["include/extra.h │ #define ⟦MODE⟧ 2"]
+references = [
+    "include/extra.h │ #define ⟦MODE⟧ 2",
+    "int value = LIMIT + ⟦MODE⟧ + SQUARE(2) + EXTRA_ONLY;",
+    "static_assert(⟦MODE⟧ == 2);",
+]
+
+[locations.mode.hover]
+markdown = '''
+**macro** `MODE`
+
+```cpp
+#define MODE 2
+```
+Expands to:
+```cpp
+2
+```
+'''
+range = "int value = LIMIT + ⟦MODE⟧ + SQUARE(2) + EXTRA_ONLY;"
+
+[locations.square]
+definition = ["include/base.h │ #define ⟦SQUARE⟧(x) ((x) * (x))"]
+declaration = ["include/base.h │ #define ⟦SQUARE⟧(x) ((x) * (x))"]
+references = [
+    "include/base.h │ #define ⟦SQUARE⟧(x) ((x) * (x))",
+    "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;",
+]
+
+[locations.square.hover]
+markdown = '''
+**macro** `SQUARE`
+
+```cpp
+#define SQUARE(x) ((x) * (x))
+```
+Expands to:
+```cpp
+((2) * (2))
+```
+'''
+range = "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;"
+
+[locations.extra]
+definition = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5"]
+declaration = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5"]
+references = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5", "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;"]
+
+[locations.extra.hover]
+markdown = '''
+**macro** `EXTRA_ONLY`
+
+```cpp
+#define EXTRA_ONLY 5
+```
+Expands to:
+```cpp
+5
+```
+'''
+range = "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;"
+
+[locations.guard]
+definition = ["include/guarded.h │ int ⟦g⟧;"]
+declaration = ["include/guarded.h │ int ⟦g⟧;"]
+references = ["include/guarded.h │ int ⟦g⟧;", "return guarded.⟦g⟧ + once.o + value + counter_now + LIMIT;"]
+
+[locations.guard.hover]
+markdown = '''
+**field** `g` · struct `Guarded`
+
+```cpp
+int g
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return guarded.⟦g⟧ + once.o + value + counter_now + LIMIT;"
+
+[locations.once]
+definition = ["include/once.h │ int ⟦o⟧;"]
+declaration = ["include/once.h │ int ⟦o⟧;"]
+references = ["include/once.h │ int ⟦o⟧;", "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;"]
+
+[locations.once.hover]
+markdown = '''
+**field** `o` · struct `Once`
+
+```cpp
+int o
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;"
+
+["indexed locations"."main.cpp"]
+diagnostics = []
+
+["indexed locations".limit]
+definition = ["include/base.h │ #define ⟦LIMIT⟧ 10"]
+declaration = ["include/base.h │ #define ⟦LIMIT⟧ 10"]
+references = [
+    "include/base.h │ #define ⟦LIMIT⟧ 10",
+    "include/extra.h │ #undef ⟦LIMIT⟧",
+    "int value = ⟦LIMIT⟧ + MODE + SQUARE(2) + EXTRA_ONLY;",
+    "static_assert(⟦LIMIT⟧ == 10);",
+    "return guarded.g + once.o + value + counter_now + ⟦LIMIT⟧;",
+]
+
+["indexed locations".limit.hover]
+markdown = '''
+**macro** `LIMIT`
+
+```cpp
+#define LIMIT 10
+```
+Expands to:
+```cpp
+10
+```
+'''
+range = "int value = ⟦LIMIT⟧ + MODE + SQUARE(2) + EXTRA_ONLY;"
+
+["indexed locations".mode]
+definition = ["include/extra.h │ #define ⟦MODE⟧ 2"]
+declaration = ["include/extra.h │ #define ⟦MODE⟧ 2"]
+references = [
+    "include/extra.h │ #define ⟦MODE⟧ 2",
+    "int value = LIMIT + ⟦MODE⟧ + SQUARE(2) + EXTRA_ONLY;",
+    "static_assert(⟦MODE⟧ == 2);",
+]
+
+["indexed locations".mode.hover]
+markdown = '''
+**macro** `MODE`
+
+```cpp
+#define MODE 2
+```
+Expands to:
+```cpp
+2
+```
+'''
+range = "int value = LIMIT + ⟦MODE⟧ + SQUARE(2) + EXTRA_ONLY;"
+
+["indexed locations".square]
+definition = ["include/base.h │ #define ⟦SQUARE⟧(x) ((x) * (x))"]
+declaration = ["include/base.h │ #define ⟦SQUARE⟧(x) ((x) * (x))"]
+references = [
+    "include/base.h │ #define ⟦SQUARE⟧(x) ((x) * (x))",
+    "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;",
+]
+
+["indexed locations".square.hover]
+markdown = '''
+**macro** `SQUARE`
+
+```cpp
+#define SQUARE(x) ((x) * (x))
+```
+Expands to:
+```cpp
+((2) * (2))
+```
+'''
+range = "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;"
+
+["indexed locations".extra]
+definition = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5"]
+declaration = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5"]
+references = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5", "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;"]
+
+["indexed locations".extra.hover]
+markdown = '''
+**macro** `EXTRA_ONLY`
+
+```cpp
+#define EXTRA_ONLY 5
+```
+Expands to:
+```cpp
+5
+```
+'''
+range = "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;"
+
+["indexed locations".guard]
+definition = ["include/guarded.h │ int ⟦g⟧;"]
+declaration = ["include/guarded.h │ int ⟦g⟧;"]
+references = ["include/guarded.h │ int ⟦g⟧;", "return guarded.⟦g⟧ + once.o + value + counter_now + LIMIT;"]
+
+["indexed locations".guard.hover]
+markdown = '''
+**field** `g` · struct `Guarded`
+
+```cpp
+int g
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return guarded.⟦g⟧ + once.o + value + counter_now + LIMIT;"
+
+["indexed locations".once]
+definition = ["include/once.h │ int ⟦o⟧;"]
+declaration = ["include/once.h │ int ⟦o⟧;"]
+references = ["include/once.h │ int ⟦o⟧;", "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;"]
+
+["indexed locations".once.hover]
+markdown = '''
+**field** `o` · struct `Once`
+
+```cpp
+int o
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;"
+
+[index."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 6 file shards (# KB), 22 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:3:13 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "LIMIT",
+    "kind": "Macro",
+    "symbol": "#ea5cf972ba74672e",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 3,
+        "context": "#define LIMIT 10",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 11,
+        "context": "#undef LIMIT",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 8,
+        "context": "static_assert(LIMIT == 10);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 20,
+        "context": "    return guarded.g + once.o + value + counter_now + LIMIT;",
+        "function": "run"
+      }
+    ],
+    "total": 5
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:3:21 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "MODE",
+    "kind": "Macro",
+    "symbol": "#95be9293e11b3611",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 8,
+        "context": "#define MODE 2",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 9,
+        "context": "static_assert(MODE == 2);",
+        "function": null
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:3:28 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "SQUARE",
+    "kind": "Macro",
+    "symbol": "#65b8f161b31911ad",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 4,
+        "context": "#define SQUARE(x) ((x) * (x))",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:3:40 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "EXTRA_ONLY",
+    "kind": "Macro",
+    "symbol": "#ab6691b85478527d",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 18,
+        "context": "#define EXTRA_ONLY 5",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:20:20 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "g",
+    "kind": "Field",
+    "symbol": "#69251924040f6a2c",
+    "references": [
+      {
+        "file": "${WS}/include/guarded.h",
+        "line": 5,
+        "context": "    int g;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 20,
+        "context": "    return guarded.g + once.o + value + counter_now + LIMIT;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:20:29 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "o",
+    "kind": "Field",
+    "symbol": "#750cdeb0f13b80fb",
+    "references": [
+      {
+        "file": "${WS}/include/once.h",
+        "line": 4,
+        "context": "    int o;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 20,
+        "context": "    return guarded.g + once.o + value + counter_now + LIMIT;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice index #2"]
+stdout = '''
+Indexed 2 translation units in #s: 6 file shards (# KB), 22 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:3:13 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "LIMIT",
+    "kind": "Macro",
+    "symbol": "#ea5cf972ba74672e",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 3,
+        "context": "#define LIMIT 10",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 11,
+        "context": "#undef LIMIT",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 8,
+        "context": "static_assert(LIMIT == 10);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 20,
+        "context": "    return guarded.g + once.o + value + counter_now + LIMIT;",
+        "function": "run"
+      }
+    ],
+    "total": 5
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:3:21 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "MODE",
+    "kind": "Macro",
+    "symbol": "#95be9293e11b3611",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 8,
+        "context": "#define MODE 2",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 9,
+        "context": "static_assert(MODE == 2);",
+        "function": null
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:3:28 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "SQUARE",
+    "kind": "Macro",
+    "symbol": "#65b8f161b31911ad",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 4,
+        "context": "#define SQUARE(x) ((x) * (x))",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:3:40 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "EXTRA_ONLY",
+    "kind": "Macro",
+    "symbol": "#ab6691b85478527d",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 18,
+        "context": "#define EXTRA_ONLY 5",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:20:20 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "g",
+    "kind": "Field",
+    "symbol": "#69251924040f6a2c",
+    "references": [
+      {
+        "file": "${WS}/include/guarded.h",
+        "line": 5,
+        "context": "    int g;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 20,
+        "context": "    return guarded.g + once.o + value + counter_now + LIMIT;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:20:29 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "o",
+    "kind": "Field",
+    "symbol": "#750cdeb0f13b80fb",
+    "references": [
+      {
+        "file": "${WS}/include/once.h",
+        "line": 4,
+        "context": "    int o;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 20,
+        "context": "    return guarded.g + once.o + value + counter_now + LIMIT;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

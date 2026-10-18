@@ -18,7 +18,7 @@ namespace clice {
 
 namespace {
 
-/// The contexts blob: user context choices — never invalidated by content,
+/// The context choices: user context choices — never invalidated by content,
 /// only by the user or a vanished CDB anchor. Paths persist as spellings
 /// and are re-interned at load. The structs mirror the on-disk JSON layout
 /// field for field — changing them changes the format.
@@ -124,7 +124,7 @@ const clang::LangOptions& EditorContext::dialect(Fid path_id) {
         return dialect_of("", own->is_c, own->standard);
     }
 
-    auto& contributions = project.project_index.contributions;
+    auto& contributions = project.index.contributions;
     auto it = contributions.find(path_id);
     bool c_only = it != contributions.end() && !it->second.empty() &&
                   llvm::all_of(llvm::make_first_range(it->second), [&](Fid tu) {
@@ -175,7 +175,7 @@ std::string EditorContext::serialize() const {
     ContextsData data;
     llvm::StringMap<std::uint32_t> index_map;
     auto intern = [&](Fid fid) -> std::uint32_t {
-        auto path = project.project_index.portable(project.file_table.resolve(fid));
+        auto path = project.index.portable(project.file_table.resolve(fid));
         auto [it, inserted] =
             index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
         if(inserted) {
@@ -196,7 +196,7 @@ std::string EditorContext::serialize() const {
 
     auto json = kota::codec::json::to_string<PathJsonConfig>(data);
     if(!json) {
-        LOG_WARN("Failed to serialize the contexts blob");
+        LOG_WARN("Failed to serialize the context choices");
         return {};
     }
     return std::move(*json);
@@ -208,7 +208,7 @@ void EditorContext::load() {
     }
     ContextsData data;
     if(!kota::codec::json::from_string(blob.bytes, data)) {
-        LOG_WARN("Failed to parse the contexts blob");
+        LOG_WARN("Failed to parse the context choices");
         return;
     }
     auto resolve = [&](std::uint32_t idx) -> llvm::StringRef {
@@ -224,14 +224,14 @@ void EditorContext::load() {
             auto host = resolve(entry.host);
             if(host.empty())
                 continue;
-            saved.host_path_id = project.file_table.intern(project.project_index.local(host));
+            saved.host_path_id = project.file_table.intern(project.index.local(host));
         }
         if(entry.occurrence != ~0u) {
             saved.occurrence = entry.occurrence;
         }
         saved.command_hash = entry.command_hash;
         saved.base_hash = entry.base_hash;
-        selections[project.file_table.intern(project.project_index.local(file))] = std::move(saved);
+        selections[project.file_table.intern(project.index.local(file))] = std::move(saved);
     }
 }
 
@@ -288,7 +288,7 @@ void EditorContext::validate_saved_context(Fid path_id) {
         LOG_INFO("didOpen: dropping stale saved context for {}",
                  project.file_table.resolve(path_id));
         selections.erase(path_id);
-        // The drop must reach the contexts blob, or the stale choice
+        // The drop must reach the context choices, or the stale choice
         // resurrects from disk at the next start.
         mark_dirty();
     }

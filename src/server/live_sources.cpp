@@ -43,10 +43,9 @@ index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kin
             source.instantiations.push_back(&state.instantiation_shard(*section));
         }
     }
-    auto it = project.project_index.instantiations.find(file);
+    auto it = project.index.instantiations.find(file);
     if(kind != index::IndexSource::Kind::PreambleShard &&
-       it != project.project_index.instantiations.end() &&
-       it->second.content_hash() == session.hash) {
+       it != project.index.instantiations.end() && it->second.content_hash() == session.hash) {
         source.instantiations.push_back(&it->second);
     }
     return source;
@@ -74,15 +73,15 @@ std::optional<index::IndexSource> ServerLiveSources::buffer_index(Fid file) cons
     if(auto* shard = session_shard(file, *session)) {
         return buffer_source(index::IndexSource::Kind::SessionShard, file, *session, *shard);
     }
-    auto it = project.project_index.shards.find(file);
-    if(it == project.project_index.shards.end() ||
+    auto it = project.index.shards.find(file);
+    if(it == project.index.shards.end() ||
        !it->second.matches_content(session->text().size(), session->hash)) {
         return std::nullopt;
     }
     return buffer_source(index::IndexSource::Kind::Shard, file, *session, it->second);
 }
 
-void ServerLiveSources::each_session(
+void ServerLiveSources::for_each_session(
     llvm::function_ref<bool(const index::IndexSource&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
         auto* shard = session_shard(file, session);
@@ -91,7 +90,7 @@ void ServerLiveSources::each_session(
     });
 }
 
-void ServerLiveSources::each_session_index(
+void ServerLiveSources::for_each_session_index(
     llvm::function_ref<bool(const index::TUIndex&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
         return !session_shard(file, session) || visit(*projections.projection(file)->index);
@@ -108,7 +107,7 @@ std::shared_ptr<index::TUIndex> ServerLiveSources::overlay_of(Fid file) const {
     return pch.preamble_state(*projection->pch_key);
 }
 
-void ServerLiveSources::each_preamble(
+void ServerLiveSources::for_each_preamble(
     llvm::function_ref<bool(const index::IndexSource&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
         auto state = overlay_of(file);
@@ -123,7 +122,7 @@ void ServerLiveSources::each_preamble(
         // gating is needed on top.
         if(project.file_table.find(Spelling::absolute(state->path(state->path_count() - 1))) !=
                file ||
-           !state->matches_prefix(session.text())) {
+           !state->matches_preamble(session.text())) {
             return true;
         }
         return visit(buffer_source(index::IndexSource::Kind::PreambleShard,
@@ -133,7 +132,8 @@ void ServerLiveSources::each_preamble(
     });
 }
 
-void ServerLiveSources::each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const {
+void ServerLiveSources::for_each_overlay(
+    llvm::function_ref<bool(const index::TUIndex&)> visit) const {
     // Sessions with identical preambles share one blob; visit it once. A
     // preamble's PCH built over the build's precompiled header indexes
     // only what it adds: that header's blob is visited too.
@@ -158,13 +158,13 @@ void ServerLiveSources::each_overlay(llvm::function_ref<bool(const index::TUInde
     });
 }
 
-std::shared_ptr<index::TUIndex> ServerLiveSources::preamble_blob(Fid file) const {
+std::shared_ptr<index::TUIndex> ServerLiveSources::preamble_index(Fid file) const {
     auto session = sessions.find(file);
     if(!session) {
         return nullptr;
     }
     auto state = overlay_of(file);
-    if(!state || !state->matches_prefix(session->text())) {
+    if(!state || !state->matches_preamble(session->text())) {
         return nullptr;
     }
     return state;

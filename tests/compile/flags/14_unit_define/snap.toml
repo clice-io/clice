@@ -1,0 +1,5 @@
+["unit define"."main.cpp"]
+diagnostics = []
+
+["unit define".level]
+definition = ["include/base.h │ constexpr int ⟦level⟧() { @8"]

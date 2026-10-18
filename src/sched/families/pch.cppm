@@ -104,7 +104,7 @@ public:
         return it != build_crashes.end() ? &it->second : nullptr;
     }
 
-    /// A consumer holding a license to retry (see server/quarantine.h)
+    /// A consumer holding a license to retry (see server/quarantine.cppm)
     /// lifts the key's refusal.
     void forgive(llvm::StringRef pch_key) {
         build_crashes.erase(pch_key);
@@ -151,7 +151,7 @@ public:
     /// Open the pch.idx index of a cached PCH. The single consumption
     /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
     /// on-disk pair is retracted from the store as well — otherwise every
-    /// later session re-adopts the corrupt pair from the artifacts blob and
+    /// later session re-adopts the corrupt pair from the artifact records and
     /// silently degrades again. With the pair gone the next ensure_pch is
     /// a miss and rebuilds both halves. Loads count against the
     /// loaded-state budget (see enforce_loaded_budget).

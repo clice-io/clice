@@ -1,0 +1,6 @@
+{
+  // CMake's database for a target with precompiled headers, as it writes
+  // them for clang targeting MSVC. Clang defers template bodies there
+  // before C++20.
+  "databases": {}
+}

@@ -303,7 +303,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // file that built it, where a file sharing it would find its own.  The
     // clang version guards against reusing
     // blobs a newer bundled clang would reject, and the build configuration
-    // keeps the blob with the library that records its dependencies:
+    // keeps the blob with the database that records its dependencies:
     // shared across configurations, one could rebuild it while another's
     // records still confirmed the old content. A PCH built over the
     // build's precompiled header names the very build it chains onto:
@@ -794,7 +794,7 @@ kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
     llvm::SmallVector<VersionID> versions;
     for(std::size_t i = 0; i < tree.paths.size(); i += 1) {
         auto fid = files.intern(Spelling::absolute(tree.paths[i]));
-        auto hash = tree.path_hashes[i];
+        auto hash = tree.content_hashes[i];
         if(hash != 0) {
             files.disk.consumed(fid, hash);
         }
@@ -1264,7 +1264,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         auto& diagnostics = result.value().diagnostics;
-        if(preamble_state && preamble_state->matches_prefix(params.text)) {
+        if(preamble_state && preamble_state->matches_preamble(params.text)) {
             diagnostics = with_preamble(std::move(diagnostics), *preamble_state, file_path);
         }
         explain_failed_imports(diagnostics, imports->resolved, pcm, project.dep_graph);

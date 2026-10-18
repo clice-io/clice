@@ -240,12 +240,12 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
                                     project.config.workspace_root,
                                     options.configuration);
 
-    // The command's whole product is the persisted index: without storage
+    // The command's whole product is the persisted index: without a database
     // (cache failed to open, another process holds the index writer lock,
-    // or an unreadable global blob disabled persistence) the run would
+    // or an unreadable project table disabled persistence) the run would
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
-    if(!project.index_db) {
+    if(!project.database) {
         LOG_ERROR("Cannot persist the index at {}: the warning above says why; fix that and rerun",
                   std::string_view(project.config.project.cache_dir));
         result.exit_code = 1;
@@ -295,16 +295,16 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
 
     result.completed = true;
     result.indexed_tus = stack.sched.pump.indexed_files();
-    for(auto tu: llvm::make_first_range(project.project_index.manifests)) {
+    for(auto tu: llvm::make_first_range(project.index.manifests)) {
         if(!project.build.unit(tu)) {
             result.standalone_headers += 1;
         }
     }
-    result.shard_count = project.project_index.shards.size();
-    for(auto& shard: llvm::make_second_range(project.project_index.shards)) {
+    result.shard_count = project.index.shards.size();
+    for(auto& shard: llvm::make_second_range(project.index.shards)) {
         result.shard_bytes += shard.bytes().size();
     }
-    result.symbol_count = project.project_index.symbol_count();
+    result.symbol_count = project.index.symbol_count();
     for(auto file: stack.sched.pump.failed()) {
         result.failed.emplace_back(project.file_table.display(file));
     }
@@ -516,7 +516,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         co_await shutdown(stack);
         co_return;
     }
-    if(options.with_index && !project.index_db) {
+    if(options.with_index && !project.database) {
         LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
                   std::string_view(project.config.project.cache_dir));
         result.exit_code = 2;

@@ -26,7 +26,7 @@ index::Shard shard_of(llvm::StringRef content) {
     llvm::raw_string_ostream os(bytes);
     index::write_shard(
         {},
-        [](index::SymbolHash) -> std::optional<index::SymbolIdentity> { return std::nullopt; },
+        [](index::SymbolHash) -> std::optional<index::SymbolView> { return std::nullopt; },
         content,
         os);
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
@@ -56,7 +56,7 @@ ZEST_CASE(EmptyBatchNoEffects) {
     Project project{files};
     SessionStore store;
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -94,7 +94,7 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     store.open(open);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     ph.graph.declare({Family::TURun, closed.raw}, {PCMFamily::unresolved_node("m")});
@@ -135,7 +135,7 @@ ZEST_CASE(ReloadProviderCascades) {
     auto retired = project.file_table.intern(Spelling::absolute(tmp.path("old.cpp")));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     ph.graph.declare({Family::TURun, retired.raw}, {PCMFamily::unresolved_node("m")});
@@ -163,7 +163,7 @@ ZEST_CASE(DiskRemovedDropsProvider) {
     project.dep_graph.add_module("m", iface);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -188,7 +188,7 @@ ZEST_CASE(DiskChangeSparesSession) {
     project.file_table.disk.read(saved);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -218,7 +218,7 @@ ZEST_CASE(DiskChangeBesideBuffer) {
     project.file_table.disk.read(changed);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -237,7 +237,7 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
     auto closed_user = project.file_table.intern(Spelling::absolute("/proj/closed_user.cppm"));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     // The consumer edges build_deps declares in production — no rounds.
@@ -275,7 +275,7 @@ ZEST_CASE(ChainHitAndMiss) {
     store.open(miss);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     resolver.header_contexts[hit].chain = {saved};
     resolver.header_contexts[miss].chain = {other};
@@ -312,7 +312,7 @@ ZEST_CASE(SaveMarksDependents) {
     store.open(open_tu);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -338,7 +338,7 @@ ZEST_CASE(TransitiveDependentsEnqueue) {
     project.dep_graph.build_reverse_map();
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -367,7 +367,7 @@ ZEST_CASE(ForcedHeaderReachesUnits) {
     store.open(open);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -401,7 +401,7 @@ ZEST_CASE(BatchSeesEarlierEdges) {
     tmp.touch("b.cpp", R"(#include "h.h")");
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -429,7 +429,7 @@ ZEST_CASE(RemovalThenChangeKeepsClear) {
     project.dep_graph.build_reverse_map();
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -464,10 +464,10 @@ ZEST_CASE(RescanKeepsGuardedProvider) {
     ZASSERT(project.dep_graph.module_of(iface) == "m");
     tmp.touch("m.cpp", "#if 1\nexport module m;\n#endif\nexport int v;\n");
 
-    project.project_index.shards[iface] = shard_of(*read_file(tmp.path("m.cpp")));
+    project.index.shards[iface] = shard_of(*read_file(tmp.path("m.cpp")));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -488,7 +488,7 @@ ZEST_CASE(CrashMarksLostDirty) {
     store.open(second);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -511,7 +511,7 @@ ZEST_CASE(EvictionMarksLost) {
     store.open(file);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -531,7 +531,7 @@ ZEST_CASE(BatchChangesDeduplicate) {
     store.open(saved);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -554,7 +554,7 @@ ZEST_CASE(DiskChangeClosedCascades) {
     store.open(open_tu);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -588,7 +588,7 @@ ZEST_CASE(DiskChangeOpenCascades) {
     store.open(open_tu);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -611,10 +611,10 @@ ZEST_CASE(CompiledIncluderCascades) {
     project.dep_graph.set_includes(scanned, 0, {{header}});
     project.dep_graph.set_includes(compiled, 0, {});
     project.dep_graph.build_reverse_map();
-    project.project_index.contributions[header][compiled] = 1;
+    project.index.contributions[header][compiled] = 1;
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -636,7 +636,7 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     auto user = project.file_table.intern(Spelling::absolute("/proj/user.cpp"));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     ph.graph.declare(
@@ -663,7 +663,7 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     auto user = project.file_table.intern(Spelling::absolute("/proj/user.cpp"));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     ph.graph.declare(
@@ -694,11 +694,11 @@ ZEST_CASE(AppearedHeaderCascades) {
     auto header = project.file_table.intern(Spelling::absolute("/proj/gen.h"));
     auto closed = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     auto open = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
-    project.project_index.probed[header].insert(closed);
+    project.index.absent_lookups[header].insert(closed);
     store.open(open);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     ph.ast.projections.entries[open].deps = DepsSnapshot{
@@ -724,7 +724,7 @@ ZEST_CASE(DiskRemovedScrubsSourceRole) {
     auto epoch = project.context_epoch;
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -753,7 +753,7 @@ ZEST_CASE(RemoveRecreateBatchOrder) {
     project.dep_graph.set_includes(file, 0, {});
     project.dep_graph.build_reverse_map();
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -795,7 +795,7 @@ ZEST_CASE(EntryChangeThenRemoval) {
     auto file = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -829,7 +829,7 @@ ZEST_CASE(CDBAddedScansAndEnqueues) {
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("inc/header.h")));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -863,11 +863,11 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     auto open_id = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
     auto closed_id = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     store.open(open_id);
-    project.project_index.shards[open_id];
-    project.project_index.shards[closed_id];
+    project.index.shards[open_id];
+    project.index.shards[closed_id];
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -893,8 +893,8 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     auto dropped = dirty.drop_index;
     llvm::sort(dropped);
     ZASSERT(dropped == reindexed);
-    ZASSERT(project.project_index.shards.count(closed_id) == 1u);
-    ZASSERT(project.project_index.shards.count(open_id) == 1u);
+    ZASSERT(project.index.shards.count(closed_id) == 1u);
+    ZASSERT(project.index.shards.count(open_id) == 1u);
 }
 
 ZEST_CASE(CDBAddedOpenMarksDirty) {
@@ -905,7 +905,7 @@ ZEST_CASE(CDBAddedOpenMarksDirty) {
     store.open(file);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -931,10 +931,10 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     auto closed_header = project.file_table.intern(Spelling::absolute("/proj/closed.h"));
     auto other_header = project.file_table.intern(Spelling::absolute("/proj/other.h"));
     store.open(open_header);
-    project.project_index.shards[closed_header];
+    project.index.shards[closed_header];
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     resolver.header_contexts[open_header].host_path_id = host;
     resolver.header_contexts[closed_header].host_path_id = host;
@@ -959,7 +959,7 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     ZASSERT(drop == evicted);
     ZASSERT(llvm::is_contained(dirty.mark_ast_dirty, open_header));
     ZASSERT(llvm::is_contained(dirty.reindex_content_changed, closed_header));
-    ZASSERT(project.project_index.shards.count(closed_header) == 1u);
+    ZASSERT(project.index.shards.count(closed_header) == 1u);
 }
 
 ZEST_CASE(CDBDropsBorrowedIndex) {
@@ -973,7 +973,7 @@ ZEST_CASE(CDBDropsBorrowedIndex) {
     auto header = project.file_table.intern(Spelling::absolute("/proj/header.h"));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     ph.index.record_header_host(header, host);
@@ -1002,7 +1002,7 @@ ZEST_CASE(CDBBorrowersByServing) {
     store.open(compiled);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     ph.index.record_header_host(served, host);
@@ -1029,7 +1029,7 @@ ZEST_CASE(CDBChangedCascadesModule) {
     auto closed_user = project.file_table.intern(Spelling::absolute("/proj/closed_user.cppm"));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     // The consumer edges build_deps declares in production — no rounds.
@@ -1072,7 +1072,7 @@ ZEST_CASE(DiskRemovedReindexesIncluders) {
     store.open(open_tu);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -1108,7 +1108,7 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
     auto kept_id = project.file_table.intern(Spelling::absolute(tmp.path("kept.cpp")));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -1148,7 +1148,7 @@ ZEST_CASE(CDBRemovedStillCovered) {
     write_cdb(tmp, project.cdb, json);
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -1167,7 +1167,7 @@ ZEST_CASE(CDBEmptyDeltaNoEffects) {
     SessionStore store;
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -1184,7 +1184,7 @@ ZEST_CASE(BatchDiskEventsDeduplicate) {
     auto second = project.file_table.intern(Spelling::absolute("/proj/b.h"));
 
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm, ph.index);
@@ -1216,7 +1216,7 @@ ZEST_CASE(SurvivingEdgeKeepsChoice) {
                   {tmp.root, tmp.path("host.cpp"), {}}
     }));
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
@@ -1245,7 +1245,7 @@ ZEST_CASE(RemovedEdgeDropsChoice) {
                   {tmp.root, tmp.path("host.cpp"), {}}
     }));
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
@@ -1283,7 +1283,7 @@ ZEST_CASE(VanishedOccurrenceDropsChoice) {
                   {tmp.root, tmp.path("host.cpp"), {}}
     }));
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));

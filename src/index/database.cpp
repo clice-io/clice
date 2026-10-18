@@ -56,21 +56,21 @@ std::size_t default_mapsize() {
 #endif
 }
 
-char kind_prefix(IndexBlobKind kind) {
+char kind_prefix(BlobKind kind) {
     switch(kind) {
-        case IndexBlobKind::Shard: return 'S';
-        case IndexBlobKind::Instantiations: return 'I';
-        case IndexBlobKind::Manifest: return 'M';
-        case IndexBlobKind::Global: return 'G';
-        case IndexBlobKind::CDB: return 'C';
-        case IndexBlobKind::Artifacts: return 'A';
-        case IndexBlobKind::Contexts: return 'X';
-        case IndexBlobKind::Search: return 'N';
+        case BlobKind::Shard: return 'S';
+        case BlobKind::InstantiationShard: return 'I';
+        case BlobKind::TUManifest: return 'M';
+        case BlobKind::ProjectTable: return 'G';
+        case BlobKind::CommandSnapshot: return 'C';
+        case BlobKind::ArtifactRecords: return 'A';
+        case BlobKind::ContextChoices: return 'X';
+        case BlobKind::SearchIndex: return 'N';
     }
     std::unreachable();
 }
 
-llvm::SmallString<64> encode_key(IndexBlobKind kind, llvm::StringRef key) {
+llvm::SmallString<64> encode_key(BlobKind kind, llvm::StringRef key) {
     llvm::SmallString<64> encoded;
     encoded.push_back(kind_prefix(kind));
     encoded.append(key);
@@ -192,7 +192,7 @@ public:
         }
     }
 
-    ReadBlob read(IndexBlobKind kind, llvm::StringRef key) override {
+    ReadBlob read(BlobKind kind, llvm::StringRef key) override {
         if(!txn) {
             return {};
         }
@@ -218,7 +218,7 @@ public:
                 .generation = generation};
     }
 
-    bool contains(IndexBlobKind kind, llvm::StringRef key) override {
+    bool contains(BlobKind kind, llvm::StringRef key) override {
         if(!txn) {
             return false;
         }
@@ -284,7 +284,7 @@ public:
         return {};
     }
 
-    void for_each_key(IndexBlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
+    void for_each_key(BlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
         if(!txn) {
             return;
         }
@@ -379,7 +379,7 @@ public:
         condemned = true;
     }
 
-    std::optional<StorageUsage> usage() override {
+    std::optional<PageUsage> usage() override {
         if(!txn) {
             return std::nullopt;
         }
@@ -389,7 +389,7 @@ public:
         if(mdb_stat(txn, dbi, &tree)) {
             return std::nullopt;
         }
-        StorageUsage usage{
+        PageUsage usage{
             .page_size = tree.ms_psize,
             .pages = info.me_last_pgno + 1,
             .tree_pages = tree.ms_branch_pages + tree.ms_leaf_pages,
@@ -421,20 +421,30 @@ private:
         }
     }
 
+private:
     MDB_env* env;
+
     MDB_dbi dbi;
+
     /// Current read snapshot; owned by the opening (event-loop) thread.
     MDB_txn* txn;
+
     /// Pre-advance snapshots kept alive while their borrowers migrate; a
     /// migration cancelled mid-way leaves entries for the next one.
     llvm::SmallVector<MDB_txn*, 2> outstanding;
+
     std::uint64_t generation = 1;
+
     std::string path;
+
     /// Set by write() on the pool thread, consumed by grow() on the loop.
     std::atomic<bool> map_full = false;
+
     /// See note_error()/corrupted(); written on both loop and pool threads.
     std::atomic<bool> poisoned = false;
+
     bool condemned = false;
+
     bool read_only_ = false;
 };
 
@@ -508,10 +518,10 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     return mdb_txn_commit(wtxn) == 0 ? MetaCheck::Ok : MetaCheck::Transient;
 }
 
-std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
+std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
                                             std::size_t initial_mapsize,
                                             bool read_only) {
-    auto path = path::join(library, lmdb_file_name);
+    auto path = path::join(directory, lmdb_file_name);
 
     // LMDB takes an empty file for a new database and writes its first
     // pages, which a read-only open cannot.
@@ -529,7 +539,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
     // the writer lock guarantees no other live process is using it.
     // Transient errors (permissions, fd/memory pressure) must NOT delete
     // anything: persistence is disabled for this session instead, the
-    // same discipline the loader applies to an unreadable global blob.
+    // same discipline the loader applies to an unreadable project table.
     bool repaired = false;
     int reopens = 0;
     while(true) {
@@ -722,7 +732,7 @@ FsLocality filesystem_locality(llvm::StringRef dir) {
 
 }  // namespace
 
-std::string library_directory(const CacheStore& store, llvm::StringRef configuration) {
+std::string database_directory(const CacheStore& store, llvm::StringRef configuration) {
     std::string name = "default";
     if(!configuration.empty()) {
         name = configuration.take_front(32).lower();
@@ -736,8 +746,8 @@ std::string library_directory(const CacheStore& store, llvm::StringRef configura
     return path::join(store.base_dir(), "index", name);
 }
 
-bool library_exists(const CacheStore& store, llvm::StringRef configuration) {
-    return vfs::exists(path::join(library_directory(store, configuration), lmdb_file_name));
+bool database_exists(const CacheStore& store, llvm::StringRef configuration) {
+    return vfs::exists(path::join(database_directory(store, configuration), lmdb_file_name));
 }
 
 std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
@@ -745,20 +755,20 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
                                                  std::size_t initial_mapsize,
                                                  bool read_only) {
     read_only = read_only || store.read_only();
-    auto library = library_directory(store, configuration);
+    auto directory = database_directory(store, configuration);
     if(read_only) {
-        if(!library_exists(store, configuration)) {
+        if(!database_exists(store, configuration)) {
             return nullptr;
         }
-    } else if(auto ec = vfs::create_directories(library)) {
-        LOG_WARN("Cannot create the index library {}: {}", library, ec.message());
+    } else if(auto ec = vfs::create_directories(directory)) {
+        LOG_WARN("Cannot create the index database directory {}: {}", directory, ec.message());
         return nullptr;
     }
-    auto db = open_lmdb_env(library, initial_mapsize, read_only);
+    auto db = open_lmdb_env(directory, initial_mapsize, read_only);
     if(!db) {
         return nullptr;
     }
-    LOG_INFO("Index library: {}", library);
+    LOG_INFO("Index database: {}", directory);
     return db;
 }
 

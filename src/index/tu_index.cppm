@@ -4,70 +4,18 @@ module;
 
 module clice:index.tu_index;
 
-import :compile.compilation;
-import :index.include_tree;
 import :index.instantiation_shard;
 import :index.shard;
-import :index.types;
+import :index.symbol;
 
 namespace clice::index {
 
-/// Which level of the multi-level symbol table stores a declaration's
-/// symbol.
-SymbolScope classify_scope(const clang::NamedDecl* decl);
-
 /// A symbol below external scope more than one of a TU's files names,
 /// with those files as the TU index's path ids.
-struct PathFanout {
+struct TUSharedLocal {
     SymbolHash symbol = 0;
     llvm::SmallVector<std::uint32_t, 2> paths;
 };
-
-/// How build_tu_index shapes the TU index blob.
-struct TUIndexOptions {
-    /// Index every file a Content compile entered, not its focus file
-    /// alone: `clice inspect`'s stand-in for the server's project index.
-    /// A Whole compile always indexes every file.
-    bool all_files = false;
-
-    /// Variant identities the receiver already stores, sorted. A section
-    /// whose hash is among them travels as the bare hash, and an external
-    /// symbol only such sections name stays out of the table: the
-    /// receiver took both in with the variant.
-    llvm::ArrayRef<std::uint64_t> known_variants;
-
-    /// The keys of the instantiations the receiver already holds, sorted:
-    /// an instantiation whose key is among them is not walked, and its
-    /// file's section lists the key as skipped.
-    llvm::ArrayRef<std::uint64_t> known_instantiations;
-
-    /// Walk the standard library's own instantiations and macro expansions
-    /// too (decls::in_standard_library): what `std::sort` resolves in the
-    /// library's text. Without, they are neither walked nor keyed.
-    bool standard_library_instantiations = false;
-};
-
-/// Index one TU and encode the result as its TU index blob: the include
-/// tree (remapped into a manifest), the TU's symbol table with
-/// per-symbol reference files (merged into the project table), and one
-/// self-contained shard blob per file that received entries (stored or
-/// merged into the file's disk shard). Entries of a header entered several
-/// times are one union blob. The TU index blob travels worker→server over IPC
-/// and is dismantled into the three persistent layers on arrival.
-std::string build_tu_index(CompilationUnit& unit, const TUIndexOptions& options = {});
-
-/// The preamble variant: a preamble is a TU cut off at the preamble
-/// bound, and its index is the same TU index blob — persisted verbatim as
-/// the PCH's `.pch.idx` pair — plus the preamble-specific fields ordinary
-/// TU index blobs leave empty: the identity of the exact preamble text, and
-/// the PCH-derived feature state spliced into focus-file results
-/// (document links, inactive regions, the open conditional stack at the
-/// bound, the diagnostics as published).
-std::string build_preamble_index(CompilationUnit& unit,
-                                 llvm::ArrayRef<DocumentLink> links,
-                                 llvm::ArrayRef<std::uint32_t> inactive_regions,
-                                 llvm::ArrayRef<std::uint8_t> open_conditionals,
-                                 llvm::StringRef diagnostics);
 
 /// Zero-copy reader over a TU index blob: the tree, the per-file blob
 /// hashes and the blob bytes themselves are read straight off the
@@ -87,7 +35,7 @@ public:
     /// corrupt bytes load as an empty reader.
     /// Section blob bytes are verified per section: structurally by
     /// section_shard on first use, or hash-checked and wrapped by
-    /// shards_verify in one pass.
+    /// verify_shards in one pass.
     static TUIndex from_bytes(llvm::StringRef data);
 
     /// Adopt an owning buffer of TU index bytes (a mapped `.pch.idx`, a
@@ -112,7 +60,7 @@ public:
 
     llvm::StringRef path(std::uint32_t id) const;
 
-    std::uint64_t path_hash(std::uint32_t id) const;
+    std::uint64_t content_hash(std::uint32_t id) const;
 
     /// The places the parse's failed lookups looked that held no file.
     std::uint32_t absent_count() const;
@@ -153,7 +101,7 @@ public:
     /// load gate for persisted TU indexes, where a corrupt blob must read
     /// as "pair missing" and rebuild instead of silently serving wrong
     /// entries or nothing.
-    bool shards_verify() const;
+    bool verify_shards() const;
 
     /// The files the run's instantiations or macro expansions resolve
     /// something in or skipped a known key of, ascending by path id.
@@ -179,7 +127,7 @@ public:
     /// Visit every symbol of the table that instantiation sections name, in
     /// ascending hash order, with those sections' path ids. Return false
     /// to stop.
-    void iterate_instantiation_files(
+    void for_each_instantiation_file(
         llvm::function_ref<bool(SymbolHash, llvm::ArrayRef<std::uint32_t> files)> callback) const;
 
     /// Visit every symbol of the table in ascending hash order: hash,
@@ -188,27 +136,27 @@ public:
     /// external symbols only sections left empty name
     /// (TUIndexOptions::known_variants). Return false from the callback to
     /// stop.
-    void iterate_symbols(
+    void for_each_symbol(
         llvm::function_ref<bool(SymbolHash,
-                                const SymbolIdentity&,
+                                const SymbolView&,
                                 llvm::ArrayRef<std::uint32_t> reference_files)> callback) const;
 
-    /// Look up one symbol's identity by hash: in the table, else among the
+    /// Look up one symbol by hash: in the table, else among the
     /// sections' own symbols, which name the file-local ones (a
     /// function's locals, a template's parameters).
-    std::optional<SymbolIdentity> find_symbol(SymbolHash hash) const;
+    std::optional<SymbolView> find_symbol(SymbolHash hash) const;
 
     /// The symbols below external scope more than one of the TU's files
     /// names (Symbol::reference_files), sorted by symbol. Nullopt when a
     /// symbol's reference files are not all among the `held` path ids.
-    std::optional<std::vector<PathFanout>> local_fanout(const llvm::BitVector& held) const;
+    std::optional<std::vector<TUSharedLocal>> shared_locals(const llvm::BitVector& held) const;
 
     /// Whether `text` still begins with the exact preamble this TU index
     /// was built from — the gate for serving preamble-derived state
     /// against a live buffer (the entries are offsets into that prefix).
     /// Compared by hash: the text itself is not stored. Always false for
     /// an ordinary TU index.
-    bool matches_prefix(llvm::StringRef text) const;
+    bool matches_preamble(llvm::StringRef text) const;
 
     /// Document links of the preamble region, materialized from the
     /// TU index; empty for an ordinary one.
@@ -231,11 +179,13 @@ private:
     /// The verified TU index bytes (owned iff `owned` is set); accessors
     /// rebuild the (pointer-sized) fbs view from them on demand.
     std::unique_ptr<llvm::MemoryBuffer> owned;
+
     llvm::StringRef data;
 
     /// Lazily wrapped per-section readers; the TU index is immutable for
     /// the reader's lifetime, so the cache never invalidates.
     mutable std::vector<Shard> shards;
+
     mutable std::vector<InstantiationShard> instantiation_shards;
 };
 

@@ -26,7 +26,7 @@ module;
 
 module clice:index.symbol_query;
 
-import :index.types;
+import :index.symbol;
 import :semantic.symbol;
 import :vfs.path;
 
@@ -96,7 +96,7 @@ struct SymbolQuery {
 
     /// Take the path filters spelling a path as identities, relative ones
     /// from the workspace `root`; a bare file name stays a name.
-    void anchor(const Spelling& root);
+    void resolve_paths(const Spelling& root);
 
     /// Whether the query names symbols by pattern rather than by id or
     /// place.
@@ -111,6 +111,12 @@ struct SymbolQuery {
         return mode == Mode::Members || (mode != Mode::Subtree && absolute);
     }
 };
+
+/// A symbol's id on the command line and in JSON answers: `#<hex>`, which
+/// a JavaScript number would round.
+inline std::string symbol_id(SymbolHash hash) {
+    return std::format("#{:016x}", hash);
+}
 
 /// The locator naming a symbol back: its `#<hex>` id, followed by `path:`
 /// and `anchor` when there is one — for a symbol only some files see, a
@@ -128,7 +134,7 @@ bool glob_matches(llvm::StringRef pattern, llvm::StringRef name);
 /// The literal runs between a glob pattern's wildcards.
 llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern);
 
-/// Whether `file` satisfies an anchored `path:` term (SymbolQuery::anchor):
+/// Whether `file` satisfies an anchored `path:` term (SymbolQuery::resolve_paths):
 /// a bare file name by name, a path by being that file or lying under that
 /// directory.
 bool path_matches(llvm::StringRef wanted, llvm::StringRef file);
