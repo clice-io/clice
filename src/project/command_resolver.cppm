@@ -49,6 +49,18 @@ Candidate pick_pinned_config(Project& project,
                              llvm::StringRef pinned_hash,
                              llvm::StringRef pinned_base);
 
+/// The command `host` lends `header`: of the host's commands fit for the
+/// header, the pinned one (else the first), edited by the rules of both
+/// files and a run's extras, compiled as the host's language; nullopt when
+/// no command fits.
+std::optional<CommandRef> lent_command(Project& project,
+                                       Fid header,
+                                       Fid host,
+                                       llvm::StringRef pinned_hash,
+                                       llvm::StringRef pinned_base,
+                                       llvm::ArrayRef<std::string> extra_prepend = {},
+                                       llvm::ArrayRef<std::string> extra_append = {});
+
 /// How a file's command was resolved.
 struct Resolution {
     CommandSource source = CommandSource::Fallback;
@@ -161,15 +173,13 @@ private:
     /// changes on disk.
     llvm::DenseMap<Fid, HeaderResult> header_results;
 
-    /// Fill compile arguments for a header from a host source's command found
-    /// through the include graph, synthesizing a preamble prefix/suffix when
-    /// the header needs includer context. Returns false when no usable host
-    /// context exists.
-    bool fill_header_context_args(Fid path_id,
-                                  std::string& directory,
-                                  std::vector<std::string>& arguments,
-                                  const CommandRequest& request,
-                                  Resolution& resolution);
+    /// A header's command borrowed from a host source found through the
+    /// include graph, with a synthesized preamble prefix when the header
+    /// needs includer context (in `resolution`); nullopt when no usable
+    /// host context exists.
+    std::optional<CommandRef> resolve_through_host(Fid path_id,
+                                                   const CommandRequest& request,
+                                                   Resolution& resolution);
 
     /// The header's context under the pinned host while it still includes
     /// the header, else the default host. Fails with the host whose include

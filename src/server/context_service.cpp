@@ -232,20 +232,17 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
 
     auto lent =
         [&](Fid host, llvm::StringRef hash, llvm::StringRef base, std::uint32_t occurrence) {
-            auto commands = host_commands(ws, path_id, host);
-            if(commands.empty()) {
+            auto applied = lent_command(ws, path_id, host, hash, base);
+            if(!applied) {
                 return;
             }
-            auto host_path = ws.file_table.resolve(host);
-            CanonicalRef edit_paths[] = {host_path, path};
-            auto entry =
-                pick_pinned_config(ws, path_id, commands, edit_paths, host_path, hash, base);
             auto several = count_occurrences(ws, host, path_id) > 1;
-            result.context = host_item(ws,
-                                       host,
-                                       lent_config(ws, path_id, host, entry),
-                                       lent_configs(ws, path_id, host, commands),
-                                       several ? std::optional(occurrence) : std::nullopt);
+            result.context =
+                host_item(ws,
+                          host,
+                          applied->config,
+                          lent_configs(ws, path_id, host, host_commands(ws, path_id, host)),
+                          several ? std::optional(occurrence) : std::nullopt);
         };
     auto own = [&](llvm::StringRef hash, llvm::StringRef base) {
         auto commands = ws.build.commands(path_id);
