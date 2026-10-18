@@ -4,6 +4,8 @@ module;
 
 module clice;
 
+import :index.project_index;
+import :index.tu_manifest;
 import :project.hosting;
 import :project.project;
 import :unittests.utils.cdb_helper;
@@ -460,7 +462,7 @@ ZEST_CASE(EnteringsFollowTree) {
         {.file = p.version(bar, bar_text), .parent = 0, .line = 2},
         {.file = p.version(bar, bar_text), .line = 2, .skipped = true},
     };
-    p.project.index.manifests[main] = std::move(manifest);
+    p.project.index.apply_manifest(main, std::move(manifest));
 
     auto host = default_host(p.project, bar);
     ZASSERT(host);
@@ -491,7 +493,7 @@ ZEST_CASE(TreeRulesOutHost) {
         {.file = p.version(shared, shared_text), .line = 1},
         {.file = p.version(config_a, ""), .parent = 0, .line = 2},
     };
-    p.project.index.manifests[a] = std::move(manifest);
+    p.project.index.apply_manifest(a, std::move(manifest));
 
     ZEXPECT(count_occurrences(p.project, a, config_b) == 0u);
     auto host = default_host(p.project, config_b);
@@ -522,7 +524,7 @@ ZEST_CASE(EnteringsInCompileOrder) {
         {.file = p.version(mid, mid_text), .line = 1},
         {.file = p.version(list, "X(a)\n"), .parent = 1, .line = 1},
     };
-    p.project.index.manifests[main] = std::move(manifest);
+    p.project.index.apply_manifest(main, std::move(manifest));
 
     auto found = enterings(p.project, main, list);
     ZASSERT(found);
@@ -553,7 +555,7 @@ ZEST_CASE(ForcedIncludeFallsBack) {
         {.file = p.version(t, "#pragma once\n"), .parent = 0, .line = 2},
         {.file = p.version(t, "#pragma once\n"), .line = 1, .skipped = true},
     };
-    p.project.index.manifests[main] = std::move(manifest);
+    p.project.index.apply_manifest(main, std::move(manifest));
 
     auto found = enterings(p.project, main, t);
     ZASSERT(found);
@@ -577,8 +579,10 @@ ZEST_CASE(ContributorHosts) {
     manifest.nodes = {
         {.file = p.version(config_b, ""), .line = 1}
     };
-    p.project.index.manifests[b] = std::move(manifest);
-    p.project.index.contributions[config_b][b] = 1;
+    manifest.contributions = {
+        {VersionID{p.version(config_b, "")}, 1}
+    };
+    p.project.index.apply_manifest(b, std::move(manifest));
 
     auto host = default_host(p.project, config_b);
     ZASSERT(host);
@@ -603,7 +607,7 @@ ZEST_CASE(StaleTreeFallsBack) {
         {.file = p.version(foo, "#pragma once\n#include \"bar.h\"\n"), .line = 1},
         {.file = p.version(bar, "int b;\n"), .parent = 0, .line = 2},
     };
-    p.project.index.manifests[main] = std::move(manifest);
+    p.project.index.apply_manifest(main, std::move(manifest));
 
     ZEXPECT(!enterings(p.project, main, bar).has_value());
     auto host = default_host(p.project, bar);
@@ -626,7 +630,7 @@ ZEST_CASE(AppearedFileFallsBack) {
     index::TUManifest manifest;
     manifest.tu_version = root;
     manifest.absent = absent;
-    p.project.index.manifests[unity] = std::move(manifest);
+    p.project.index.apply_manifest(unity, std::move(manifest));
     auto before = enterings(p.project, unity, part);
     ZASSERT(before);
     ZEXPECT(before->empty());
@@ -641,7 +645,7 @@ ZEST_CASE(AppearedFileFallsBack) {
     ZEXPECT(host->chain == std::vector<Fid>{unity, part});
 
     /// A preprocess run's tree the same.
-    p.project.index.manifests.erase(unity);
+    p.project.index.remove_manifest(unity);
     p.project.include_trees[unity] = {
         .root = root,
         .absent = absent,
@@ -668,7 +672,7 @@ ZEST_CASE(RepeatedHeaderChangeStales) {
         {.file = p.version(t, "#pragma once\nint t;\n"), .line = 2, .skipped = true},
         {.file = p.version(u, "#pragma once\nint u;\n"), .line = 3},
     };
-    p.project.index.manifests[main] = std::move(manifest);
+    p.project.index.apply_manifest(main, std::move(manifest));
 
     ZEXPECT(!enterings(p.project, main, t).has_value());
     auto once = enterings(p.project, main, u);

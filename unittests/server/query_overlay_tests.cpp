@@ -11,7 +11,6 @@ import :index.shard;
 import :index.text;
 import :index.tu_index;
 import :project.command_resolver;
-import :project.index_store;
 import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.families.turun;
@@ -20,6 +19,7 @@ import :sched.index.pump;
 import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
+import :unittests.utils.index_planter;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
 import :unittests.utils.tu_index_blob;
@@ -42,10 +42,10 @@ CommandResolver resolver{project};
 TaskGraph graph;
 PCMFamily pcm{graph, project, resolver, pool};
 ASTProjectionTable projections;
-IndexStore index_store{loop, project, resolver};
+
 PCHFamily pch{graph, project, pool};
-TURunFamily turun{graph, project, resolver, pcm, pch, index_store, pool};
-IndexPump indexer{loop, project, turun, index_store, pool};
+TURunFamily turun{graph, project, resolver, pcm, pch, pool};
+IndexPump indexer{loop, project, resolver, turun, pool};
 ServerLiveSources live{project, pch, session_store, projections};
 index::FreshnessGate gate{project.file_table};
 index::IndexQuery index_query{project.index, project.file_table, &gate, &live};
@@ -125,19 +125,11 @@ std::string header_path(llvm::StringRef basename) {
 /// each section's blob verbatim as background indexing would;
 /// `focus_on_disk` names the focus file by a copy of it on disk instead.
 void merge_disk_index(llvm::StringRef focus_on_disk = {}) {
-    llvm::SmallVector<Fid> file_ids_map;
-    for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
-        auto focus = i + 1 == full_index.path_count() && !focus_on_disk.empty();
-        file_ids_map.push_back(project.file_table.intern(
-            Spelling::absolute(focus ? focus_on_disk : full_index.path(i))));
+    auto blob = tu_index_blob(full_index);
+    if(!focus_on_disk.empty()) {
+        blob.paths.back() = focus_on_disk.str();
     }
-    project.index.merge_symbols(full_index, file_ids_map);
-
-    for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
-        auto local_id = full_index.section_path(section);
-        project.index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
-            llvm::MemoryBuffer::getMemBufferCopy(full_index.section_blob(section)));
-    }
+    ZASSERT(project.index.merge(tu_index_bytes(blob), {}).has_value());
 }
 
 /// A finished per-edit index with no entries — what a session holds when
@@ -444,9 +436,11 @@ ZEST_CASE(PreviewFromDisk) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(file_index, {}, text, os);
-    project.index.shards[path_id] =
-        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    ZASSERT(project.index.shards[path_id].positions().text().empty());
+    IndexPlanter::plant_shard(
+        project.index,
+        path_id,
+        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
+    ZASSERT(project.index.shard(path_id)->positions().text().empty());
     auto& symbol = project.index.edit(symbol_hash);
     symbol.name = "value";
     symbol.reference_files.add(path_id.raw);
@@ -485,8 +479,10 @@ ZEST_CASE(PreviewDropsLineEnd) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(file_index, {}, text, os);
-    project.index.shards[path_id] =
-        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+    IndexPlanter::plant_shard(
+        project.index,
+        path_id,
+        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
     project.index.edit(symbol_hash).reference_files.add(path_id.raw);
 
     auto references = disk_query.sites(symbol_hash, Fid{}, RelationKind::Reference);
@@ -575,8 +571,10 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(fake, {}, "xxx\n", os);
-    project.index.shards[header_id] =
-        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+    IndexPlanter::plant_shard(
+        project.index,
+        header_id,
+        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
     project.index.edit(foo).reference_files.add(header_id.raw);
 
     auto def = index_query.first_site(foo, Fid{}, RelationKind::Definition);

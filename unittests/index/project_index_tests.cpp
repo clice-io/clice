@@ -72,7 +72,7 @@ ZEST_CASE(MergeCollectsExternalSymbols) {
     ZASSERT(compile());
 
     clice::FileTable pool;
-    index::ProjectIndex project;
+    index::ProjectIndex project{pool};
     auto view = build_view();
     ZASSERT(view.loaded());
     project.merge_symbols(view, intern_paths(view, pool));
@@ -98,7 +98,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     ZASSERT(compile());
 
     clice::FileTable pool;
-    index::ProjectIndex project;
+    index::ProjectIndex project{pool};
     auto view = build_view();
     ZASSERT(view.loaded());
     project.merge_symbols(view, intern_paths(view, pool));
@@ -180,7 +180,7 @@ ZEST_CASE(MergePicksOneSpelling) {
             std::pair{&int_bytes,    &signed_bytes},
             std::pair{&signed_bytes, &int_bytes   }
     }) {
-        index::ProjectIndex project;
+        index::ProjectIndex project{pool};
         auto first_view = index::TUIndex::from_bytes(*first);
         auto second_view = index::TUIndex::from_bytes(*second);
         project.merge_symbols(first_view, intern_paths(first_view, pool));
@@ -202,7 +202,7 @@ ZEST_CASE(LatestSignatureStands) {
     auto after_bytes = tu_index_bytes(after);
 
     clice::FileTable pool;
-    index::ProjectIndex project;
+    index::ProjectIndex project{pool};
     auto before_view = index::TUIndex::from_bytes(before_bytes);
     auto after_view = index::TUIndex::from_bytes(after_bytes);
     project.merge_symbols(before_view, intern_paths(before_view, pool));
@@ -234,7 +234,7 @@ ZEST_CASE(DefinitionDecidesSignature) {
             std::pair{&declares_bytes, &defines_bytes },
             std::pair{&defines_bytes,  &declares_bytes}
     }) {
-        index::ProjectIndex project;
+        index::ProjectIndex project{pool};
         auto first_view = index::TUIndex::from_bytes(*first);
         auto second_view = index::TUIndex::from_bytes(*second);
         project.merge_symbols(first_view, intern_paths(first_view, pool));
@@ -266,7 +266,7 @@ ZEST_CASE(DefinitionDecidesTokenKind) {
             std::pair{&declares_bytes, &defines_bytes },
             std::pair{&defines_bytes,  &declares_bytes}
     }) {
-        index::ProjectIndex project;
+        index::ProjectIndex project{pool};
         auto first_view = index::TUIndex::from_bytes(*first);
         auto second_view = index::TUIndex::from_bytes(*second);
         project.merge_symbols(first_view, intern_paths(first_view, pool));
@@ -288,7 +288,7 @@ ZEST_CASE(FileVersionInterning) {
 
 ZEST_CASE(ManifestContributions) {
     clice::FileTable pool;
-    index::ProjectIndex project;
+    index::ProjectIndex project{pool};
     auto a = pool.intern(Spelling::absolute("/proj/a.h"));
     auto b = pool.intern(Spelling::absolute("/proj/b.h"));
     auto tu1 = pool.intern(Spelling::absolute("/proj/tu1.cpp"));
@@ -309,8 +309,7 @@ ZEST_CASE(ManifestContributions) {
     auto tu2_version = pool.intern_version(tu2, 0x2);
 
     // TU 1 contributes h1 to file 1 and h2 to file 2.
-    auto affected = project.apply_manifest(pool,
-                                           tu1,
+    auto affected = project.apply_manifest(tu1,
                                            manifest_for(tu1_version,
                                                         {
                                                             {version_a, 100},
@@ -320,8 +319,7 @@ ZEST_CASE(ManifestContributions) {
     ZASSERT(project.live_variants(a).size() == std::size_t(1));
 
     // TU 2 shares file 1's variant: the live set does not grow.
-    project.apply_manifest(pool,
-                           tu2,
+    project.apply_manifest(tu2,
                            manifest_for(tu2_version,
                                         {
                                             {version_a, 100}
@@ -331,8 +329,7 @@ ZEST_CASE(ManifestContributions) {
     // TU 1 re-indexes with a new variant for file 1 and drops file 2: both
     // hashes stay live on file 1 (TU 2 still holds the old one), file 2
     // loses its only contribution.
-    project.apply_manifest(pool,
-                           tu1,
+    project.apply_manifest(tu1,
                            manifest_for(tu1_version,
                                         {
                                             {version_a, 300}
@@ -340,18 +337,19 @@ ZEST_CASE(ManifestContributions) {
     ZASSERT(project.live_variants(a).size() == std::size_t(2));
     ZASSERT(project.live_variants(b).empty());
 
-    project.remove_manifest(pool, tu2);
+    project.remove_manifest(tu2);
     auto live = project.live_variants(a);
     ZASSERT(live.size() == std::size_t(1));
     ZASSERT(live.front() == 300u);
 
-    project.remove_manifest(pool, tu1);
-    ZASSERT(project.contributions.empty());
+    project.remove_manifest(tu1);
+    ZASSERT(project.live_variants(a).empty());
+    ZASSERT(project.live_variants(b).empty());
 }
 
 ZEST_CASE(RepeatedAbsentPlace) {
     clice::FileTable pool;
-    index::ProjectIndex project;
+    index::ProjectIndex project{pool};
     auto header = pool.intern(Spelling::absolute("/proj/a.h"));
     auto tu = pool.intern(Spelling::absolute("/proj/tu.cpp"));
     auto place = pool.intern_version(header, 0);
@@ -359,26 +357,39 @@ ZEST_CASE(RepeatedAbsentPlace) {
     manifest.tu_version = pool.intern_version(tu, 0x1);
     manifest.absent = {place, place};
 
-    project.apply_manifest(pool, tu, std::move(manifest));
-    ZASSERT(project.manifests[tu].absent.size() == std::size_t(1));
-    project.remove_manifest(pool, tu);
-    ZASSERT(project.absent_lookups.empty());
+    project.apply_manifest(tu, std::move(manifest));
+    auto* held = project.held_manifest(tu);
+    ZASSERT(held);
+    ZASSERT(held->absent.size() == 1u);
+    auto lookups = [&] {
+        llvm::SmallVector<Fid> units;
+        project.for_each_absent_lookup(header, [&](Fid unit) { units.push_back(unit); });
+        return units;
+    };
+    ZASSERT(lookups() == llvm::SmallVector<Fid>{tu});
+    project.remove_manifest(tu);
+    ZASSERT(lookups().empty());
 }
 
 ZEST_CASE(TwoImportedVersions) {
     // Modules built at different times read two versions of one header.
     clice::FileTable pool;
-    index::ProjectIndex project;
+    index::ProjectIndex project{pool};
     auto header = pool.intern(Spelling::absolute("/proj/a.h"));
     auto tu = pool.intern(Spelling::absolute("/proj/tu.cpp"));
     index::TUManifest manifest;
     manifest.tu_version = pool.intern_version(tu, 0x1);
     manifest.imports = {pool.intern_version(header, 0x2), pool.intern_version(header, 0x3)};
 
-    project.apply_manifest(pool, tu, std::move(manifest));
-    ZASSERT(project.importers[header].contains(tu));
-    project.remove_manifest(pool, tu);
-    ZASSERT(project.importers.empty());
+    project.apply_manifest(tu, std::move(manifest));
+    auto importers = [&] {
+        llvm::SmallVector<Fid> units;
+        project.for_each_importer(header, [&](Fid unit) { units.push_back(unit); });
+        return units;
+    };
+    ZASSERT(importers() == llvm::SmallVector<Fid>{tu});
+    project.remove_manifest(tu);
+    ZASSERT(importers().empty());
 }
 
 ZEST_CASE(TableRoundTripWithRealMerge) {
@@ -390,7 +401,7 @@ ZEST_CASE(TableRoundTripWithRealMerge) {
     ZASSERT(compile());
 
     clice::FileTable pool;
-    index::ProjectIndex project;
+    index::ProjectIndex project{pool};
     auto view = build_view();
     ZASSERT(view.loaded());
     auto file_ids_map = intern_paths(view, pool);
@@ -402,16 +413,16 @@ ZEST_CASE(TableRoundTripWithRealMerge) {
                                              view.content_hash(view.path_count() - 1));
     index::TUManifest manifest;
     manifest.tu_version = focus_version;
-    project.apply_manifest(pool, file_ids_map[view.path_count() - 1], std::move(manifest));
+    project.apply_manifest(file_ids_map[view.path_count() - 1], std::move(manifest));
 
     llvm::SmallString<4096> buf;
     llvm::raw_svector_ostream os(buf);
-    project.serialize_table(os, pool);
+    project.serialize_table(os);
 
     clice::FileTable fresh;
-    index::ProjectIndex loaded;
+    index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(buf.str(), fresh, pins));
+    ZASSERT(loaded.load_table(buf.str(), pins));
 
     auto symbol = find_symbol(loaded, "global_value");
     ZASSERT(symbol != 0);
@@ -427,7 +438,7 @@ ZEST_CASE(TableColumnsRoundTrip) {
     // stores up to two ids raw and more as a roaring image. Every one reads
     // back as written, and again after a rewrite copies the entries over.
     clice::FileTable pool;
-    index::ProjectIndex project;
+    index::ProjectIndex project{pool};
     std::vector<Fid> files;
     for(int i = 0; i < 4; i += 1) {
         files.push_back(pool.intern(Spelling::absolute(std::format("/proj/{}.h", i))));
@@ -490,19 +501,19 @@ ZEST_CASE(TableColumnsRoundTrip) {
 
     llvm::SmallString<4096> first;
     llvm::raw_svector_ostream first_os(first);
-    project.serialize_table(first_os, pool);
+    project.serialize_table(first_os);
     clice::FileTable fresh;
-    index::ProjectIndex loaded;
+    index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(first.str(), fresh, pins));
+    ZASSERT(loaded.load_table(first.str(), pins));
     check(loaded, fresh);
 
     llvm::SmallString<4096> second;
     llvm::raw_svector_ostream second_os(second);
-    loaded.serialize_table(second_os, fresh);
+    loaded.serialize_table(second_os);
     clice::FileTable again;
-    index::ProjectIndex reloaded;
-    ZASSERT(reloaded.load_table(second.str(), again, pins));
+    index::ProjectIndex reloaded{again};
+    ZASSERT(reloaded.load_table(second.str(), pins));
     check(reloaded, again);
 }
 
@@ -510,7 +521,7 @@ ZEST_CASE(WidePathIds) {
     // File ids take the width of the path table, which the files only the
     // reverse include graph names grow after the symbols are written.
     clice::FileTable pool;
-    index::ProjectIndex project;
+    index::ProjectIndex project{pool};
     auto file_of = [&](int i) {
         return pool.intern(Spelling::absolute(std::format("/proj/{}.h", i)));
     };
@@ -519,17 +530,20 @@ ZEST_CASE(WidePathIds) {
     symbol.file = file_of(0).raw;
     symbol.reference_files.add(file_of(0).raw);
     auto unit = file_of(1000);
+    index::TUManifest manifest;
+    manifest.tu_version = pool.intern_version(unit, 0x1);
     for(int i = 1; i <= 300; i += 1) {
-        project.contributions[file_of(i)][unit] = 1;
+        manifest.contributions.emplace_back(pool.intern_version(file_of(i), 0x1), 1);
     }
+    project.apply_manifest(unit, std::move(manifest));
 
     llvm::SmallString<4096> bytes;
     llvm::raw_svector_ostream os(bytes);
-    project.serialize_table(os, pool);
+    project.serialize_table(os);
     clice::FileTable fresh;
-    index::ProjectIndex loaded;
+    index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(bytes.str(), fresh, pins));
+    ZASSERT(loaded.load_table(bytes.str(), pins));
     auto identity = loaded.find_symbol(10);
     ZASSERT(identity);
     ZEXPECT(fresh.find(Spelling::absolute("/proj/0.h")) == Fid{identity->file});
@@ -547,12 +561,12 @@ ZEST_CASE(LazyShardsStayPut) {
     ZASSERT(db != nullptr);
 
     clice::FileTable writer_files;
-    index::ProjectIndex writer;
+    index::ProjectIndex writer{writer_files};
     writer.edit(7).name = "x";
     std::vector<index::BlobDatabase::Blob> puts;
     std::string table;
     llvm::raw_string_ostream table_os(table);
-    writer.serialize_table(table_os, writer_files);
+    writer.serialize_table(table_os);
     puts.push_back({index::BlobKind::ProjectTable, "global", table});
 
     constexpr std::uint32_t count = 300;
@@ -566,15 +580,15 @@ ZEST_CASE(LazyShardsStayPut) {
     llvm::raw_string_ostream shard_os(shard);
     index::write_shard(file_index, {}, content, shard_os);
     clice::FileTable files;
-    index::ProjectIndex project;
+    index::ProjectIndex project{files};
     for(std::uint32_t i = 0; i < count; i += 1) {
         auto file = files.intern(Spelling::absolute(std::format("/proj/f{}.cpp", i)));
-        puts.push_back({index::BlobKind::Shard, project.key_of(files, file), shard});
+        puts.push_back({index::BlobKind::Shard, project.key_of(file), shard});
     }
     ZASSERT(db->write(puts, {}).empty());
     ZASSERT(db->advance_read_snapshot());
 
-    ZASSERT(project.open(*db, files));
+    ZASSERT(project.open(*db));
     auto first = files.intern(Spelling::absolute("/proj/f0.cpp"));
     const auto* held = project.shard(first);
     ZASSERT(held != nullptr);
@@ -604,8 +618,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
 
     constexpr index::SymbolHash helper = 99;
     clice::FileTable pool;
-    index::ProjectIndex writer;
-    writer.table_generation = 3;
+    index::ProjectIndex writer{pool};
     auto util = pool.intern_version(pool.intern(Spelling::absolute("/proj/util.h")), 0xaaaa);
     auto other = pool.intern_version(pool.intern(Spelling::absolute("/proj/other.h")), 0xbbbb);
     llvm::SmallVector<Fid> units;
@@ -613,7 +626,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         auto tu = pool.intern(Spelling::absolute(name));
         auto header = llvm::StringRef(name).ends_with("c.cpp") ? other : util;
         index::TUManifest manifest;
-        manifest.table_generation = 3;
+        manifest.table_generation = writer.table_generation();
         manifest.tu_version = pool.intern_version(tu, 0x1111);
         manifest.nodes = {
             {manifest.tu_version.raw, ~0u, 1},
@@ -630,7 +643,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         manifest.shared_locals = {
             {.symbol = helper, .files = {manifest.tu_version, header}}
         };
-        writer.apply_manifest(pool, tu, std::move(manifest));
+        writer.apply_manifest(tu, std::move(manifest));
         units.push_back(tu);
     }
 
@@ -659,35 +672,40 @@ ZEST_CASE(SharedLocalAcrossUnits) {
 
     std::vector<index::BlobDatabase::Blob> puts;
     for(auto tu: units) {
-        auto exported = writer.export_manifest(writer.manifests.find(tu)->second);
+        auto exported = writer.export_manifest(*writer.held_manifest(tu));
         // The shared local names its files by persisted ids, as the nodes do.
         ZEXPECT(exported.shared_locals[0].files ==
                 std::vector<VersionID>{exported.tu_version, VersionID{exported.nodes[1].file}});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(exported, os);
-        puts.push_back({index::BlobKind::TUManifest, writer.key_of(pool, tu), bytes});
+        puts.push_back({index::BlobKind::TUManifest, writer.key_of(tu), bytes});
     }
     std::string table_bytes;
     llvm::raw_string_ostream table_os(table_bytes);
-    writer.serialize_table(table_os, pool);
+    writer.serialize_table(table_os);
     puts.push_back({index::BlobKind::ProjectTable, "global", table_bytes});
     ZASSERT(db->write(puts, {}).empty());
     ZASSERT(db->advance_read_snapshot());
 
     clice::FileTable files;
-    index::ProjectIndex reader;
-    ZASSERT(reader.open(*db, files));
+    index::ProjectIndex reader{files};
+    ZASSERT(reader.open(*db));
     check(reader, files);
 
-    // A unit leaving takes its set along: c.cpp's files no longer answer.
-    writer.remove_manifest(pool, units[2]);
+    // A unit leaving takes its set along: c.cpp's files no longer answer,
+    // while the sets of a.cpp and b.cpp still join them through util.h.
+    writer.remove_manifest(units[2]);
     llvm::SmallVector<Fid> reached;
     writer.for_each_file_of_local(helper,
                                   pool.intern(Spelling::absolute("/proj/c.cpp")),
                                   [&](Fid file) { reached.push_back(file); });
     ZEXPECT(reached.size() == 1u);
-    ZEXPECT(writer.shared_local_sets.find(helper)->second.size() == 2u);
+    llvm::SmallVector<Fid> joined;
+    writer.for_each_file_of_local(helper,
+                                  pool.intern(Spelling::absolute("/proj/a.cpp")),
+                                  [&](Fid file) { joined.push_back(file); });
+    ZEXPECT(joined.size() == 3u);
 }
 
 ZEST_CASE(SharedLocalSetsCounted) {
@@ -695,7 +713,7 @@ ZEST_CASE(SharedLocalSetsCounted) {
     // the last of them leaves.
     constexpr index::SymbolHash helper = 99;
     clice::FileTable pool;
-    index::ProjectIndex index;
+    index::ProjectIndex index{pool};
     auto x = pool.intern(Spelling::absolute("/proj/x.h"));
     auto x_version = pool.intern_version(x, 0xaaaa);
     auto y_version = pool.intern_version(pool.intern(Spelling::absolute("/proj/y.h")), 0xbbbb);
@@ -717,7 +735,7 @@ ZEST_CASE(SharedLocalSetsCounted) {
         manifest.shared_locals = {
             {.symbol = helper, .files = {x_version, y_version}}
         };
-        index.apply_manifest(pool, tu, std::move(manifest));
+        index.apply_manifest(tu, std::move(manifest));
         units.push_back(tu);
     }
     auto reached = [&] {
@@ -726,9 +744,9 @@ ZEST_CASE(SharedLocalSetsCounted) {
         return count;
     };
     ZEXPECT(reached() == 2u);
-    index.remove_manifest(pool, units[0]);
+    index.remove_manifest(units[0]);
     ZEXPECT(reached() == 2u);
-    index.remove_manifest(pool, units[1]);
+    index.remove_manifest(units[1]);
     ZEXPECT(reached() == 1u);
 }
 

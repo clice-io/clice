@@ -11,7 +11,6 @@ import :index.query;
 import :index.search;
 import :index.tu_index;
 import :project.command_resolver;
-import :project.index_store;
 import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.families.turun;
@@ -74,10 +73,9 @@ CommandResolver resolver{project};
 TaskGraph graph;
 PCMFamily pcm{graph, project, resolver, pool};
 ASTProjectionTable projections;
-IndexStore index_store{loop, project, resolver};
 PCHFamily pch{graph, project, pool};
-TURunFamily turun{graph, project, resolver, pcm, pch, index_store, pool};
-IndexPump indexer{loop, project, turun, index_store, pool};
+TURunFamily turun{graph, project, resolver, pcm, pch, pool};
+IndexPump indexer{loop, project, resolver, turun, pool};
 ServerLiveSources live{project, pch, store, projections};
 index::FreshnessGate gate{project.file_table};
 index::IndexQuery query{project.index, project.file_table, &gate, &live};
@@ -116,7 +114,7 @@ ZEST_CASE(DefinitionAcrossFiles) {
 
     auto hit_offset = point("use");
     index::SymbolHash symbol = 0;
-    project.index.shards[focus_id].occurrences_at(hit_offset, [&](const index::Occurrence& o) {
+    project.index.shard(focus_id)->occurrences_at(hit_offset, [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -138,7 +136,7 @@ ZEST_CASE(ReferencesAcrossFiles) {
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.index.shards[focus_id].occurrences_at(point("use"), [&](const index::Occurrence& o) {
+    project.index.shard(focus_id)->occurrences_at(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -322,7 +320,7 @@ ZEST_CASE(UnnamedScopes) {
 
     auto at = [&](llvm::StringRef name) {
         index::SymbolHash found = 0;
-        project.index.shards[focus_id].occurrences_at(point(name), [&](const index::Occurrence& o) {
+        project.index.shard(focus_id)->occurrences_at(point(name), [&](const index::Occurrence& o) {
             found = o.target;
             return false;
         });
@@ -351,7 +349,7 @@ ZEST_CASE(QualifiedNames) {
     index_workspace();
 
     index::SymbolHash method = 0;
-    project.index.shards[focus_id].occurrences_at(point("method"), [&](const index::Occurrence& o) {
+    project.index.shard(focus_id)->occurrences_at(point("method"), [&](const index::Occurrence& o) {
         method = o.target;
         return false;
     });
@@ -386,7 +384,7 @@ ZEST_CASE(QualifiedNames) {
     ZASSERT(query.container_name(versioned.front().symbol.hash) == "outer");
     ZASSERT(query.qualified_name(versioned.front().symbol.hash) == "outer::versioned");
     index::SymbolHash hidden = 0;
-    project.index.shards[focus_id].occurrences_at(point("hidden"), [&](const index::Occurrence& o) {
+    project.index.shard(focus_id)->occurrences_at(point("hidden"), [&](const index::Occurrence& o) {
         hidden = o.target;
         return false;
     });
@@ -445,7 +443,7 @@ ZEST_CASE(LocalSymbolName) {
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.index.shards[focus_id].occurrences_at(point("local"), [&](const index::Occurrence& o) {
+    project.index.shard(focus_id)->occurrences_at(point("local"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -545,14 +543,14 @@ ZEST_CASE(HeaderEdgesFromHostManifest) {
     // the host TU's manifest hanging off the header's node.
     auto session = store.open(header_id);
     store.apply_open(*session, sources.all_files.lookup("header.h").content, 1);
-    auto edges = query.project().include_edges(query.file_table(), session->path_id);
+    auto edges = query.project().include_edges(session->path_id);
     ZASSERT(edges.size() == std::size_t(1));
     ZASSERT(llvm::StringRef(edges[0].target).ends_with("inner.h"));
 
     // The TU's own manifest still answers for the TU itself.
     auto focus_session = store.open(focus_id);
     store.apply_open(*focus_session, unit->focus_file().content().str(), 1);
-    auto focus_edges = query.project().include_edges(query.file_table(), focus_session->path_id);
+    auto focus_edges = query.project().include_edges(focus_session->path_id);
     ZASSERT(focus_edges.size() == std::size_t(1));
     ZASSERT(llvm::StringRef(focus_edges[0].target).ends_with("header.h"));
 }
@@ -565,7 +563,7 @@ ZEST_CASE(StaleContributionSuppressed) {
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.index.shards[focus_id].occurrences_at(point("use"), [&](const index::Occurrence& o) {
+    project.index.shard(focus_id)->occurrences_at(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });

@@ -449,14 +449,13 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             continue;
         }
         auto& shard = *found;
-        auto names =
-            [&](llvm::function_ref<void(index::SymbolHash, const index::Relation&)> visit) {
-                shard.for_each_relation(
-                    [&](index::SymbolHash hash, const index::Relation& relation) {
-                        visit(hash, relation);
-                        return true;
-                    });
-            };
+        auto names = [](const index::Shard& from,
+                        llvm::function_ref<void(index::SymbolHash, const index::Relation&)> visit) {
+            from.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
+                visit(hash, relation);
+                return true;
+            });
+        };
         auto use_of = [](const index::Relation& relation) {
             return RelationKind(relation.kind)
                 .is_one_of(RelationKind::Reference,
@@ -476,10 +475,11 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         if(live.size() > 1) {
             llvm::DenseMap<index::SymbolHash, std::uint32_t> carried, declaring;
             std::optional<llvm::DenseSet<index::SymbolHash>> declared;
+            auto variant_view = index::Shard::from_bytes(shard.bytes());
             for(auto variant: live) {
-                shard.set_live({variant});
+                variant_view.set_live({variant});
                 llvm::DenseSet<index::SymbolHash> named, declares;
-                names([&](index::SymbolHash hash, const index::Relation& relation) {
+                names(variant_view, [&](index::SymbolHash hash, const index::Relation& relation) {
                     if(use_of(relation)) {
                         named.insert(hash);
                     } else if(declaration_of(relation)) {
@@ -499,7 +499,6 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
                 declared = std::move(declares);
             }
-            shard.set_live(live);
             for(auto& [hash, count]: declaring) {
                 if(count != live.size()) {
                     partially_declared.insert({id, hash});
@@ -515,7 +514,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             unstable.erase(std::ranges::unique(unstable).begin(), unstable.end());
         }
 
-        names([&](index::SymbolHash hash, const index::Relation& relation) {
+        names(shard, [&](index::SymbolHash hash, const index::Relation& relation) {
             if(declaration_of(relation)) {
                 sites[hash].push_back({
                     .file = id,

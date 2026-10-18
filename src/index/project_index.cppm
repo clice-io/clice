@@ -14,6 +14,12 @@ import :index.tu_index;
 import :index.tu_manifest;
 import :vfs.file_table;
 
+namespace clice::testing {
+
+struct IndexPlanter;
+
+}
+
 namespace clice::index {
 
 /// What one index-changing call did to state others own. Collections are
@@ -571,6 +577,8 @@ public:
     }
 
 private:
+    friend struct testing::IndexPlanter;
+
     /// Take the bound base's generation and search state.
     void adopt_base();
 
