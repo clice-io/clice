@@ -54,7 +54,7 @@ stdout = '''
 file ${WS}/geo.h
   blob=# B  content size=65  content hash=#9dd4e54be8a63a99
   variants=1
-    #ef618b282e6bd8f5  contributed by 2 units
+    #69c9b6c5f310b3c4  contributed by 2 units
       ${WS}/geo.cpp
       ${WS}/main.cpp
   symbols=4  local symbols=2  occurrences=4  relations=4
@@ -70,8 +70,8 @@ stdout = '''
 translation unit ${WS}/main.cpp
   built at #time  generation=1  content hash=#f296566f561e8eb5
   contributions=2
-    #ef618b282e6bd8f5  ${WS}/geo.h
-    #aab31e922c3b4704  ${WS}/main.cpp
+    #69c9b6c5f310b3c4  ${WS}/geo.h
+    #2141cb0bb020bbe2  ${WS}/main.cpp
   include tree (1 node):
     ${WS}/geo.h  included at ${WS}/main.cpp:1
 '''
