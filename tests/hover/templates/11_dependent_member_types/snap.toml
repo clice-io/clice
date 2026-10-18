@@ -29,6 +29,16 @@ Type: `auto () -> decltype(this->value.size())`
 '''
 range = "wrapper.⟦size⟧();"
 
+[answers.assign.hover]
+markdown = '''
+**method** `assign` · struct `Tuple<T, int, T>`
+
+```cpp
+void assign(T first, Bs... rest)
+```
+'''
+range = "tuple.⟦assign⟧(T(), 1, T());"
+
 [answers.mapped_type.hover]
 markdown = '''
 **type** `mapped_type` · struct `lib::map<int, T>`

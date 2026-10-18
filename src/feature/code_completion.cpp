@@ -1298,10 +1298,6 @@ public:
                     return false;
                 }
                 object = resolver.member_object(base, arrow);
-                /// The members of a dependent specialization read its
-                /// template's parameters as its arguments.
-                display_options.specialization =
-                    object.isNull() ? nullptr : object->getAs<clang::TemplateSpecializationType>();
                 tag = object.isNull() ? nullptr : resolver.resolve_tag(object);
                 /// The code after the completion point instantiates the
                 /// template the completion is in, a generic lambda as the
@@ -1315,6 +1311,10 @@ public:
                         tag = object.isNull() ? nullptr : informed.resolve_tag(object);
                     }
                 }
+                /// The members of a dependent specialization read its
+                /// template's parameters as its arguments.
+                display_options.specialization =
+                    object.isNull() ? nullptr : object->getAs<clang::TemplateSpecializationType>();
                 if(auto* name = llvm::dyn_cast<clang::DeclRefExpr>(base->IgnoreParenImpCasts());
                    !tag && !arrow && name) {
                     if(auto* var = llvm::dyn_cast<clang::VarDecl>(name->getDecl());

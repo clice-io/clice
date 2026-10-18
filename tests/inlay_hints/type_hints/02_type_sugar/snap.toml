@@ -8,6 +8,7 @@ inlay_hints = [
     { line = "auto callback⟨: function<…>⟩ = make_callback();" },
     { line = "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();" },
     { line = "auto& small⟨: Small<int> &⟩ = boxes().front();" },
+    { line = "auto names⟨: Names<int>⟩ = make_names();" },
 ]
 
 [configured."main.cpp"]
@@ -21,4 +22,5 @@ inlay_hints = [
     { line = "auto callback⟨: function<auto (const char *) -> bool>⟩ = make_callback();" },
     { line = "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();" },
     { line = "auto& small⟨: Small<int> &⟩ = boxes().front();" },
+    { line = "auto names⟨: Names<int>⟩ = make_names();" },
 ]

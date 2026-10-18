@@ -2019,7 +2019,12 @@ struct DeclarationPrinter {
 
         std::string declarator;
         llvm::raw_string_ostream os(declarator);
-        function.getNameInfo().printName(os, policy);
+        if(const auto* conversion = llvm::dyn_cast<clang::CXXConversionDecl>(&function)) {
+            declarator +=
+                "operator " + display::type(context, conversion->getConversionType(), shown).text;
+        } else {
+            function.getNameInfo().printName(os, policy);
+        }
         if(const auto* written = function.getTemplateSpecializationArgsAsWritten()) {
             clang::printTemplateArgumentList(os, written->arguments(), policy);
         } else if(const auto* args = function.getTemplateSpecializationArgs()) {
@@ -2890,13 +2895,17 @@ bool computes(const clang::TypedefNameDecl& alias) {
 }
 
 /// Whether the alias template `alias` computes its type as a trait does:
-/// written as another computation (`enable_if_t`, `iterator_t`), not as the
-/// class it names (`pmr::vector`).
+/// written as a computation (`enable_if_t`), or as an alias template that
+/// computes or is the library's own (`iterator_t` over `__range_iter_t`);
+/// not as the class it names (`pmr::vector`) or another alias naming one.
 bool computes(const clang::TypeAliasTemplateDecl& alias) {
     const auto* pattern = alias.getTemplatedDecl()->getUnderlyingType().getTypePtr();
     if(const auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(pattern)) {
-        return llvm::isa_and_present<clang::TypeAliasTemplateDecl>(
+        const auto* target = llvm::dyn_cast_if_present<clang::TypeAliasTemplateDecl>(
             TST->getTemplateName().getAsTemplateDecl());
+        return target && (clang::isReservedInAllContexts(
+                              target->isReserved(alias.getASTContext().getLangOpts())) ||
+                          computes(*target));
     }
     return llvm::isa<clang::DependentNameType,
                      clang::DecltypeType,
@@ -3336,6 +3345,15 @@ auto ReadableTypes::argument_of(const clang::Type& type) const -> const clang::T
         return nullptr;
     }
     auto index = param->getIndex();
+    const auto arguments = substitution->template_arguments();
+    /// A pack's arguments are many, and an expansion among them stands for
+    /// many: the template's own name stays.
+    if(param->isParameterPack() ||
+       llvm::any_of(arguments.take_front(index + 1), [](const clang::TemplateArgument& argument) {
+           return argument.isPackExpansion();
+       })) {
+        return nullptr;
+    }
     /// The parameter of any of its declarations: libstdc++ declares `map`
     /// again after its definition, whose members name the definition's.
     auto declares = [&](const clang::TemplateDecl& decl) {
@@ -3349,10 +3367,10 @@ auto ReadableTypes::argument_of(const clang::Type& type) const -> const clang::T
                                                return declares(*redecl);
                                            })
                             : declares(*pattern);
-    if(!own || index >= substitution->template_arguments().size()) {
+    if(!own || index >= arguments.size()) {
         return nullptr;
     }
-    const auto& argument = substitution->template_arguments()[index];
+    const auto& argument = arguments[index];
     return argument.getKind() == clang::TemplateArgument::Type ? &argument : nullptr;
 }
 

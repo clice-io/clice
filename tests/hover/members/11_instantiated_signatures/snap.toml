@@ -53,6 +53,16 @@ auto at(unsigned int index) const -> const string &
 '''
 range = "names.⟦at⟧(0);"
 
+[answers.conversion.hover]
+markdown = '''
+**method** `operator std::basic_string<char>` · struct `std::vector<std::string>`
+
+```cpp
+operator string() const
+```
+'''
+range = "names.⟦operator⟧ std::string();"
+
 [answers.max.hover]
 markdown = '''
 **function** `max` · namespace `std`

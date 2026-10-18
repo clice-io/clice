@@ -51,6 +51,14 @@ struct Box {
 
 Box<Small<int>>& boxes();
 
+template <typename T>
+using List = tuple<T>;
+
+template <typename T>
+using Names = List<T>;
+
+Names<int> make_names();
+
 void use() {
     auto aliased = make_alias();
     auto shortened = make_compact();
@@ -61,4 +69,5 @@ void use() {
     auto callback = make_callback();
     auto defaulted = make_defaulted();
     auto& small = boxes().front();
+    auto names = make_names();
 }

@@ -12,6 +12,7 @@ struct vector {
     T& emplace_back(Args&&... args);
     static constexpr T* data(unsigned offset = 0) noexcept;
     auto at(unsigned index) const -> const T&;
+    operator T() const;
 };
 
 template <class T>
@@ -24,5 +25,6 @@ void use(std::vector<std::string>& names, std::string name) {
     names.§(emplace_back)emplace_back(name, 1);
     names.§(data)data();
     names.§(at)at(0);
+    names.§(conversion)operator std::string();
     std::§(max)max(name, name);
 }

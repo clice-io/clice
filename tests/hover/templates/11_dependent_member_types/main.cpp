@@ -27,6 +27,11 @@ struct Box {
     lib::decay_t<A> get();
 };
 
+template <class A, class... Bs>
+struct Tuple {
+    void assign(A first, Bs... rest);
+};
+
 template <class T>
 struct Wrapper {
     T value;
@@ -34,9 +39,13 @@ struct Wrapper {
 };
 
 template <class T>
-void use(Box<T&>& box, Box<T>& plain, Wrapper<lib::vector<T>>& wrapper) {
+void use(Box<T&>& box,
+         Box<T>& plain,
+         Wrapper<lib::vector<T>>& wrapper,
+         Tuple<T, int, T>& tuple) {
     box.§(field)field;
     plain.§(get)get();
     wrapper.§(size)size();
+    tuple.§(assign)assign(T(), 1, T());
     typename lib::map<int, T>::§(mapped_type)mapped_type value;
 }
