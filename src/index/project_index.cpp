@@ -6,6 +6,7 @@ module;
 
 module clice;
 
+import :index.columns;
 import :index.instantiation_shard;
 import :index.project_index;
 import :index.serialization;
@@ -46,27 +47,36 @@ struct GlobalBlob {
     /// copied into the next blob verbatim.
     std::vector<std::string> paths;
 
-    /// The external symbol table, sorted by hash. Reference bitmaps are
-    /// portable roaring images back to back, one end offset per symbol.
+    /// The external symbol table, sorted by hash. A symbol's reference
+    /// files are a file set (append_file_set) in the arena, one end offset
+    /// per symbol.
     std::vector<std::uint64_t> sym_hashes;
     std::string sym_names;
     std::vector<std::uint32_t> sym_name_ends;
+    /// The arguments of the few symbols having them: those symbols,
+    /// ascending, and their text back to back.
+    std::vector<std::uint32_t> sym_args_docs;
     std::string sym_args;
     std::vector<std::uint32_t> sym_args_ends;
     std::string sym_signatures;
     std::vector<std::uint32_t> sym_signature_ends;
-    std::vector<std::uint64_t> sym_parents;
+    /// The parent's position in the table plus one; 0 for none, or for one
+    /// outside the table, which the sparse (symbol, parent hash) table names.
+    IdColumn sym_parents;
+    std::vector<std::uint32_t> sym_far_parents;
+    std::vector<std::uint64_t> sym_far_parent_hashes;
     std::vector<std::uint8_t> sym_kinds;
     std::vector<std::uint16_t> sym_flags;
     std::vector<std::uint8_t> sym_token_kinds;
     std::vector<std::uint32_t> sym_token_modifiers;
-    /// Path ids, `no_file` for a symbol without a declaring relation.
-    std::vector<std::uint32_t> sym_files;
-    std::vector<std::uint32_t> sym_reference_counts;
+    /// Path ids plus one, 0 for a symbol without a declaring relation.
+    IdColumn sym_files;
+    IdColumn sym_reference_counts;
     std::vector<std::uint32_t> sym_bitmap_ends;
     std::vector<std::uint8_t> sym_bitmaps;
-    /// The files whose instantiation shards name each symbol, as portable
-    /// roaring images back to back; an empty slice for none.
+    /// The files whose instantiation shards name a symbol, as file sets for
+    /// the few symbols some instantiation names, ascending.
+    std::vector<std::uint32_t> sym_instantiation_docs;
     std::vector<std::uint32_t> sym_instantiation_ends;
     std::vector<std::uint8_t> sym_instantiations;
 
@@ -87,13 +97,57 @@ struct GlobalBlob {
 
     /// The reverse include graph, for readers holding no manifests: every
     /// file some TU contributed a variant to (path ids, ascending), and those
-    /// TUs' path ids as portable roaring images back to back.
+    /// TUs' path ids as file sets back to back.
     std::vector<std::uint32_t> contributed_files;
     std::vector<std::uint32_t> contributor_ends;
     std::vector<std::uint8_t> contributors;
 };
 
 using BlobView = kota::codec::fbs::table_view<GlobalBlob>;
+
+/// Most file sets hold one or two files: up to raw_file_set_limit path ids
+/// are stored raw as u32s, more as a portable roaring image — which is
+/// longer than any raw list, so a slice's length says which it is.
+constexpr std::size_t raw_file_set_limit = 2;
+
+void append_file_set(std::vector<std::uint8_t>& arena, const Bitmap& ids) {
+    if(ids.cardinality() <= raw_file_set_limit) {
+        for(std::uint32_t id: ids) {
+            auto* bytes = reinterpret_cast<const std::uint8_t*>(&id);
+            arena.insert(arena.end(), bytes, bytes + sizeof(id));
+        }
+        return;
+    }
+    auto image = write_bitmap(ids);
+    auto* bytes = reinterpret_cast<const std::uint8_t*>(image.data());
+    arena.insert(arena.end(), bytes, bytes + image.size());
+}
+
+/// The set a slice holds; nullopt when it is not one append_file_set writes.
+std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
+    if(bytes.size() > raw_file_set_limit * sizeof(std::uint32_t)) {
+        auto image = view_bitmap(bytes.data(), bytes.size());
+        if(!image || image->cardinality() <= raw_file_set_limit) {
+            return std::nullopt;
+        }
+        return image;
+    }
+    if(bytes.size() % sizeof(std::uint32_t) != 0) {
+        return std::nullopt;
+    }
+    Bitmap ids;
+    std::optional<std::uint32_t> previous;
+    for(std::size_t i = 0; i < bytes.size(); i += sizeof(std::uint32_t)) {
+        std::uint32_t id;
+        std::memcpy(&id, bytes.data() + i, sizeof(id));
+        if(previous && id <= *previous) {
+            return std::nullopt;
+        }
+        ids.add(id);
+        previous = id;
+    }
+    return ids;
+}
 
 }  // namespace
 
@@ -112,19 +166,23 @@ struct ProjectIndex::Base {
     llvm::ArrayRef<std::uint64_t> hashes;
     llvm::StringRef names;
     llvm::ArrayRef<std::uint32_t> name_ends;
+    llvm::ArrayRef<std::uint32_t> args_docs;
     llvm::StringRef args;
     llvm::ArrayRef<std::uint32_t> args_ends;
     llvm::StringRef signatures;
     llvm::ArrayRef<std::uint32_t> signature_ends;
-    llvm::ArrayRef<std::uint64_t> parents;
+    SymIds parents;
+    llvm::ArrayRef<std::uint32_t> far_parents;
+    llvm::ArrayRef<std::uint64_t> far_parent_hashes;
     llvm::ArrayRef<std::uint8_t> kinds;
     llvm::ArrayRef<std::uint16_t> flags;
     llvm::ArrayRef<std::uint8_t> token_kinds;
     llvm::ArrayRef<std::uint32_t> token_modifiers;
-    llvm::ArrayRef<std::uint32_t> files;
-    llvm::ArrayRef<std::uint32_t> reference_counts;
+    SymIds files;
+    SymIds reference_counts;
     llvm::ArrayRef<std::uint32_t> bitmap_ends;
     llvm::ArrayRef<std::uint8_t> bitmaps;
+    llvm::ArrayRef<std::uint32_t> instantiation_docs;
     llvm::ArrayRef<std::uint32_t> instantiation_ends;
     llvm::ArrayRef<std::uint8_t> instantiation_images;
 
@@ -162,7 +220,27 @@ struct ProjectIndex::Base {
     }
 
     llvm::StringRef arguments(std::uint32_t doc) const {
-        return back_to_back(args, args_ends, doc);
+        auto it = std::ranges::lower_bound(args_docs, doc);
+        if(it == args_docs.end() || *it != doc) {
+            return {};
+        }
+        return back_to_back(args, args_ends, static_cast<std::uint32_t>(it - args_docs.begin()));
+    }
+
+    SymbolHash parent(std::uint32_t doc) const {
+        if(parents[doc] != 0) {
+            return hashes[parents[doc] - 1];
+        }
+        auto it = std::ranges::lower_bound(far_parents, doc);
+        if(it == far_parents.end() || *it != doc) {
+            return 0;
+        }
+        return far_parent_hashes[it - far_parents.begin()];
+    }
+
+    /// The symbol's file as a path id of the blob, or no_file.
+    std::uint32_t file(std::uint32_t doc) const {
+        return files[doc] == 0 ? no_file : files[doc] - 1;
     }
 
     llvm::StringRef signature(std::uint32_t doc) const {
@@ -174,21 +252,22 @@ struct ProjectIndex::Base {
     }
 
     std::optional<Bitmap> bitmap(std::uint32_t doc) const {
-        auto bytes = image(doc);
-        return view_bitmap(bytes.data(), bytes.size());
-    }
-
-    llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t doc) const {
-        return back_to_back(instantiation_images, instantiation_ends, doc);
+        return read_file_set(image(doc));
     }
 
     /// Empty for a symbol no instantiation names.
-    std::optional<Bitmap> instantiation_bitmap(std::uint32_t doc) const {
-        auto bytes = instantiation_image(doc);
-        if(bytes.empty()) {
-            return Bitmap();
+    llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t doc) const {
+        auto it = std::ranges::lower_bound(instantiation_docs, doc);
+        if(it == instantiation_docs.end() || *it != doc) {
+            return {};
         }
-        return view_bitmap(bytes.data(), bytes.size());
+        return back_to_back(instantiation_images,
+                            instantiation_ends,
+                            static_cast<std::uint32_t>(it - instantiation_docs.begin()));
+    }
+
+    std::optional<Bitmap> instantiation_bitmap(std::uint32_t doc) const {
+        return read_file_set(instantiation_image(doc));
     }
 
     /// The TUs that contributed a variant to `file`, as path ids; nullopt when
@@ -203,8 +282,7 @@ struct ProjectIndex::Base {
         if(it == contributed_index.end()) {
             return std::nullopt;
         }
-        auto bytes = back_to_back(contributors, contributor_ends, it->second);
-        return view_bitmap(bytes.data(), bytes.size());
+        return read_file_set(back_to_back(contributors, contributor_ends, it->second));
     }
 
     /// The portable name of the file a persisted version id names.
@@ -217,12 +295,12 @@ struct ProjectIndex::Base {
     }
 
     SymbolIdentity identity(std::uint32_t doc) const {
-        auto file = files[doc];
+        auto file = this->file(doc);
         return {
             .name = name(doc),
             .args = arguments(doc),
             .signature = signature(doc),
-            .parent = parents[doc],
+            .parent = parent(doc),
             .kind = SymbolKind(kinds[doc]),
             .scope = SymbolScope::External,
             .flags = static_cast<SymbolFlags>(flags[doc]),
@@ -249,19 +327,23 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     hashes = to_array_ref(root[&GlobalBlob::sym_hashes]);
     names = to_ref(root[&GlobalBlob::sym_names]);
     name_ends = to_array_ref(root[&GlobalBlob::sym_name_ends]);
+    args_docs = to_array_ref(root[&GlobalBlob::sym_args_docs]);
     args = to_ref(root[&GlobalBlob::sym_args]);
     args_ends = to_array_ref(root[&GlobalBlob::sym_args_ends]);
     signatures = to_ref(root[&GlobalBlob::sym_signatures]);
     signature_ends = to_array_ref(root[&GlobalBlob::sym_signature_ends]);
-    parents = to_array_ref(root[&GlobalBlob::sym_parents]);
+    parents = ids_of(root[&GlobalBlob::sym_parents]);
+    far_parents = to_array_ref(root[&GlobalBlob::sym_far_parents]);
+    far_parent_hashes = to_array_ref(root[&GlobalBlob::sym_far_parent_hashes]);
     kinds = to_array_ref(root[&GlobalBlob::sym_kinds]);
     flags = to_array_ref(root[&GlobalBlob::sym_flags]);
     token_kinds = to_array_ref(root[&GlobalBlob::sym_token_kinds]);
     token_modifiers = to_array_ref(root[&GlobalBlob::sym_token_modifiers]);
-    files = to_array_ref(root[&GlobalBlob::sym_files]);
-    reference_counts = to_array_ref(root[&GlobalBlob::sym_reference_counts]);
+    files = ids_of(root[&GlobalBlob::sym_files]);
+    reference_counts = ids_of(root[&GlobalBlob::sym_reference_counts]);
     bitmap_ends = to_array_ref(root[&GlobalBlob::sym_bitmap_ends]);
     bitmaps = to_array_ref(root[&GlobalBlob::sym_bitmaps]);
+    instantiation_docs = to_array_ref(root[&GlobalBlob::sym_instantiation_docs]);
     instantiation_ends = to_array_ref(root[&GlobalBlob::sym_instantiation_ends]);
     instantiation_images = to_array_ref(root[&GlobalBlob::sym_instantiations]);
     manifest_fvs = to_array_ref(root[&GlobalBlob::manifest_fvs]);
@@ -294,15 +376,26 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
         return std::unexpected("manifest pin columns do not line up");
     }
     auto count = hashes.size();
-    if(name_ends.size() != count || args_ends.size() != count || signature_ends.size() != count ||
-       parents.size() != count || kinds.size() != count || flags.size() != count ||
-       token_kinds.size() != count || token_modifiers.size() != count || files.size() != count ||
-       reference_counts.size() != count || bitmap_ends.size() != count ||
-       instantiation_ends.size() != count) {
+    if(name_ends.size() != count || signature_ends.size() != count || kinds.size() != count ||
+       flags.size() != count || token_kinds.size() != count || token_modifiers.size() != count ||
+       bitmap_ends.size() != count) {
         return std::unexpected("symbol columns do not line up");
     }
     if(!all_token_kinds(token_kinds)) {
         return std::unexpected("a symbol's token kind is out of range");
+    }
+    if(!sym_ids_ok(parents, count, count + 1) || !sym_ids_ok(files, count, paths.size() + 1) ||
+       reference_counts.size() != count) {
+        return std::unexpected("symbol id columns do not line up");
+    }
+    // The sparse columns list symbols strictly ascending inside the table.
+    auto sparse = [&](llvm::ArrayRef<std::uint32_t> docs, std::size_t values) {
+        return sparse_ok(docs, values, count);
+    };
+    if(!sparse(args_docs, args_ends.size()) ||
+       !sparse(instantiation_docs, instantiation_ends.size()) ||
+       !sparse(far_parents, far_parent_hashes.size())) {
+        return std::unexpected("sparse symbol columns do not line up");
     }
     if(!monotone_ends(name_ends, names.size()) || !monotone_ends(args_ends, args.size()) ||
        !monotone_ends(signature_ends, signatures.size()) ||
@@ -317,11 +410,10 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
         if(reserved_key(hashes[i]) || (i > 0 && hashes[i] <= hashes[i - 1])) {
             return std::unexpected("symbol hashes are not ascending");
         }
-        if(reserved_key(parents[i])) {
-            return std::unexpected("reserved symbol parent");
-        }
-        if(files[i] != no_file && files[i] >= paths.size()) {
-            return std::unexpected("symbol file outside the path table");
+    }
+    for(std::size_t k = 0; k < far_parents.size(); k += 1) {
+        if(parents[far_parents[k]] != 0 || reserved_key(far_parent_hashes[k])) {
+            return std::unexpected("symbol parent outside the table is not canonical");
         }
     }
     for(auto hash: search_pending) {
@@ -853,82 +945,15 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         return it->second;
     };
 
-    auto count = (base ? base->count() : 0) + written.size();
-    blob.sym_hashes.reserve(count);
-    blob.sym_name_ends.reserve(count);
-    blob.sym_args_ends.reserve(count);
-    blob.sym_signature_ends.reserve(count);
-    blob.sym_parents.reserve(count);
-    blob.sym_kinds.reserve(count);
-    blob.sym_flags.reserve(count);
-    blob.sym_files.reserve(count);
-    blob.sym_reference_counts.reserve(count);
-    blob.sym_bitmap_ends.reserve(count);
-    blob.sym_instantiation_ends.reserve(count);
-    auto emit_base = [&](std::uint32_t doc) {
-        blob.sym_hashes.push_back(base->hashes[doc]);
-        blob.sym_names += base->name(doc);
-        blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
-        blob.sym_args += base->arguments(doc);
-        blob.sym_args_ends.push_back(static_cast<std::uint32_t>(blob.sym_args.size()));
-        blob.sym_signatures += base->signature(doc);
-        blob.sym_signature_ends.push_back(static_cast<std::uint32_t>(blob.sym_signatures.size()));
-        blob.sym_parents.push_back(base->parents[doc]);
-        blob.sym_kinds.push_back(base->kinds[doc]);
-        blob.sym_flags.push_back(base->flags[doc]);
-        blob.sym_token_kinds.push_back(base->token_kinds[doc]);
-        blob.sym_token_modifiers.push_back(base->token_modifiers[doc]);
-        blob.sym_files.push_back(base->files[doc]);
-        blob.sym_reference_counts.push_back(base->reference_counts[doc]);
-        auto image = base->image(doc);
-        blob.sym_bitmaps.insert(blob.sym_bitmaps.end(), image.begin(), image.end());
-        blob.sym_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.sym_bitmaps.size()));
-        auto instantiations = base->instantiation_image(doc);
-        blob.sym_instantiations.insert(blob.sym_instantiations.end(),
-                                       instantiations.begin(),
-                                       instantiations.end());
-        blob.sym_instantiation_ends.push_back(
-            static_cast<std::uint32_t>(blob.sym_instantiations.size()));
-    };
-    auto emit_symbol = [&](SymbolHash hash, const Symbol& symbol) {
-        blob.sym_hashes.push_back(hash);
-        blob.sym_names += symbol.name;
-        blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
-        blob.sym_args += symbol.args;
-        blob.sym_args_ends.push_back(static_cast<std::uint32_t>(blob.sym_args.size()));
-        blob.sym_signatures += symbol.signature;
-        blob.sym_signature_ends.push_back(static_cast<std::uint32_t>(blob.sym_signatures.size()));
-        blob.sym_parents.push_back(symbol.parent);
-        blob.sym_kinds.push_back(symbol.kind.value());
-        blob.sym_flags.push_back(static_cast<std::uint16_t>(symbol.flags));
-        blob.sym_token_kinds.push_back(static_cast<std::uint8_t>(symbol.token_class.kind));
-        blob.sym_token_modifiers.push_back(symbol.token_class.modifiers);
-        blob.sym_files.push_back(symbol.file == no_file ? no_file : path_id(Fid{symbol.file}));
-        blob.sym_reference_counts.push_back(
-            static_cast<std::uint32_t>(symbol.reference_files.cardinality()));
-        Bitmap references;
-        for(auto id: symbol.reference_files) {
-            references.add(path_id(Fid{id}));
-        }
-        auto image = write_bitmap(references);
-        auto* bytes = reinterpret_cast<const std::uint8_t*>(image.data());
-        blob.sym_bitmaps.insert(blob.sym_bitmaps.end(), bytes, bytes + image.size());
-        blob.sym_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.sym_bitmaps.size()));
-        if(!symbol.instantiation_files.isEmpty()) {
-            Bitmap instantiations;
-            for(auto id: symbol.instantiation_files) {
-                instantiations.add(path_id(Fid{id}));
-            }
-            auto encoded = write_bitmap(instantiations);
-            auto* encoded_bytes = reinterpret_cast<const std::uint8_t*>(encoded.data());
-            blob.sym_instantiations.insert(blob.sym_instantiations.end(),
-                                           encoded_bytes,
-                                           encoded_bytes + encoded.size());
-        }
-        blob.sym_instantiation_ends.push_back(
-            static_cast<std::uint32_t>(blob.sym_instantiations.size()));
+    // The table in hash order: base entries copied, written entries encoded.
+    struct Entry {
+        SymbolHash hash;
+        std::uint32_t doc;
+        const Symbol* symbol;
     };
 
+    std::vector<Entry> entries;
+    entries.reserve((base ? base->count() : 0) + written.size());
     llvm::SmallVector<SymbolHash> keys;
     keys.reserve(written.size());
     for(auto hash: llvm::make_first_range(written)) {
@@ -940,16 +965,95 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     auto base_count = base ? base->count() : 0;
     while(doc < base_count || k < keys.size()) {
         if(k == keys.size() || (doc < base_count && base->hashes[doc] < keys[k])) {
-            emit_base(doc);
+            entries.push_back({base->hashes[doc], doc, nullptr});
             doc += 1;
             continue;
         }
         if(doc < base_count && base->hashes[doc] == keys[k]) {
             doc += 1;
         }
-        emit_symbol(keys[k], written.find(keys[k])->second);
+        entries.push_back({keys[k], 0, &written.find(keys[k])->second});
         k += 1;
     }
+    blob.sym_hashes.reserve(entries.size());
+    for(auto& entry: entries) {
+        blob.sym_hashes.push_back(entry.hash);
+    }
+
+    std::vector<std::uint32_t> parents;
+    std::vector<std::uint32_t> file_ids;
+    std::vector<std::uint32_t> reference_counts;
+    parents.reserve(entries.size());
+    file_ids.reserve(entries.size());
+    reference_counts.reserve(entries.size());
+    for(std::uint32_t i = 0; i < entries.size(); i += 1) {
+        auto& [hash, doc, symbol] = entries[i];
+        auto identity = symbol ? symbol->identity() : base->identity(doc);
+        blob.sym_names += identity.name;
+        blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
+        if(!identity.args.empty()) {
+            blob.sym_args_docs.push_back(i);
+            blob.sym_args += identity.args;
+            blob.sym_args_ends.push_back(static_cast<std::uint32_t>(blob.sym_args.size()));
+        }
+        blob.sym_signatures += identity.signature;
+        blob.sym_signature_ends.push_back(static_cast<std::uint32_t>(blob.sym_signatures.size()));
+        auto parent = std::ranges::lower_bound(blob.sym_hashes, identity.parent);
+        if(identity.parent != 0 && parent != blob.sym_hashes.end() && *parent == identity.parent) {
+            parents.push_back(static_cast<std::uint32_t>(parent - blob.sym_hashes.begin()) + 1);
+        } else {
+            parents.push_back(0);
+            if(identity.parent != 0) {
+                blob.sym_far_parents.push_back(i);
+                blob.sym_far_parent_hashes.push_back(identity.parent);
+            }
+        }
+        blob.sym_kinds.push_back(identity.kind.value());
+        blob.sym_flags.push_back(static_cast<std::uint16_t>(identity.flags));
+        blob.sym_token_kinds.push_back(static_cast<std::uint8_t>(identity.token_class.kind));
+        blob.sym_token_modifiers.push_back(identity.token_class.modifiers);
+        if(!symbol) {
+            auto file = base->file(doc);
+            file_ids.push_back(file == no_file ? 0 : file + 1);
+            reference_counts.push_back(base->reference_counts[doc]);
+            auto image = base->image(doc);
+            blob.sym_bitmaps.insert(blob.sym_bitmaps.end(), image.begin(), image.end());
+            blob.sym_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.sym_bitmaps.size()));
+            auto instantiations = base->instantiation_image(doc);
+            if(!instantiations.empty()) {
+                blob.sym_instantiation_docs.push_back(i);
+                blob.sym_instantiations.insert(blob.sym_instantiations.end(),
+                                               instantiations.begin(),
+                                               instantiations.end());
+                blob.sym_instantiation_ends.push_back(
+                    static_cast<std::uint32_t>(blob.sym_instantiations.size()));
+            }
+            continue;
+        }
+        file_ids.push_back(symbol->file == no_file ? 0 : path_id(Fid{symbol->file}) + 1);
+        reference_counts.push_back(
+            static_cast<std::uint32_t>(symbol->reference_files.cardinality()));
+        Bitmap references;
+        for(auto id: symbol->reference_files) {
+            references.add(path_id(Fid{id}));
+        }
+        append_file_set(blob.sym_bitmaps, references);
+        blob.sym_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.sym_bitmaps.size()));
+        if(!symbol->instantiation_files.isEmpty()) {
+            Bitmap instantiations;
+            for(auto id: symbol->instantiation_files) {
+                instantiations.add(path_id(Fid{id}));
+            }
+            blob.sym_instantiation_docs.push_back(i);
+            append_file_set(blob.sym_instantiations, instantiations);
+            blob.sym_instantiation_ends.push_back(
+                static_cast<std::uint32_t>(blob.sym_instantiations.size()));
+        }
+    }
+    write_ids(blob.sym_parents, parents, entries.size() + 1);
+    write_ids(blob.sym_reference_counts,
+              reference_counts,
+              (reference_counts.empty() ? 0 : std::ranges::max(reference_counts)) + 1);
 
     std::vector<std::pair<std::uint32_t, Bitmap>> reverse;
     reverse.reserve(contributions.size());
@@ -963,9 +1067,7 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     std::ranges::sort(reverse, {}, [](const auto& entry) { return entry.first; });
     for(auto& [file, tus]: reverse) {
         blob.contributed_files.push_back(file);
-        auto image = write_bitmap(tus);
-        auto* bytes = reinterpret_cast<const std::uint8_t*>(image.data());
-        blob.contributors.insert(blob.contributors.end(), bytes, bytes + image.size());
+        append_file_set(blob.contributors, tus);
         blob.contributor_ends.push_back(static_cast<std::uint32_t>(blob.contributors.size()));
     }
 
@@ -976,6 +1078,8 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         blob.search_pending_files.push_back(path_id(file));
     }
     llvm::sort(blob.search_pending_files);
+    // After every path id is handed out: the width follows the path table.
+    write_ids(blob.sym_files, file_ids, blob.paths.size() + 1);
 
     serialize_blob(blob, os);
 }
