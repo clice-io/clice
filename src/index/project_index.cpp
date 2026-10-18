@@ -151,6 +151,33 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
     return ids;
 }
 
+/// A table derived from the manifests: file -> (TU -> the hash it names there).
+using UnitHashes = llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>>;
+
+/// Drop `unit`'s entry for `file`, and the file once no unit names it. One
+/// file's two persisted versions in a manifest reach here twice.
+void erase_unit(UnitHashes& table, Fid file, Fid unit) {
+    auto it = table.find(file);
+    if(it == table.end()) {
+        return;
+    }
+    it->second.erase(unit);
+    if(it->second.empty()) {
+        table.erase(it);
+    }
+}
+
+/// The distinct hashes the units name for `file`, ascending.
+llvm::SmallVector<std::uint64_t> distinct_hashes(const UnitHashes& table, Fid file) {
+    llvm::SmallVector<std::uint64_t> hashes;
+    if(auto it = table.find(file); it != table.end()) {
+        llvm::append_range(hashes, llvm::make_second_range(it->second));
+    }
+    llvm::sort(hashes);
+    hashes.erase(llvm::unique(hashes), hashes.end());
+    return hashes;
+}
+
 }  // namespace
 
 /// The bound global blob: its columns, and its path table mapped to the
@@ -1198,7 +1225,7 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
     }
     for(auto& use: manifest.instantiations) {
         auto path_id = files.version(use.file).fid;
-        instantiation_uses[path_id][use.use] += 1;
+        instantiation_uses[path_id][tu_path_id] = use.use;
         affected.push_back(path_id);
     }
     units[unit_of(files, tu_path_id)] = tu_path_id;
@@ -1218,14 +1245,7 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
 
     for(auto& [fv, hash]: it->second.contributions) {
         auto path_id = files.version(fv).fid;
-        auto contribution_it = contributions.find(path_id);
-        if(contribution_it == contributions.end()) {
-            continue;
-        }
-        contribution_it->second.erase(tu_path_id);
-        if(contribution_it->second.empty()) {
-            contributions.erase(contribution_it);
-        }
+        erase_unit(contributions, path_id, tu_path_id);
         affected.push_back(path_id);
     }
     for(auto fv: it->second.absent) {
@@ -1249,15 +1269,7 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
     }
     for(auto& use: it->second.instantiations) {
         auto path_id = files.version(use.file).fid;
-        auto& uses = instantiation_uses.find(path_id)->second;
-        auto used = uses.find(use.use);
-        used->second -= 1;
-        if(used->second == 0) {
-            uses.erase(used);
-        }
-        if(uses.empty()) {
-            instantiation_uses.erase(path_id);
-        }
+        erase_unit(instantiation_uses, path_id, tu_path_id);
         affected.push_back(path_id);
     }
     units.erase(unit_of(files, tu_path_id));
@@ -1269,27 +1281,11 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
 }
 
 llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(Fid path_id) const {
-    llvm::SmallVector<std::uint64_t> variants;
-    auto it = contributions.find(path_id);
-    if(it == contributions.end()) {
-        return variants;
-    }
-    for(auto hash: llvm::make_second_range(it->second)) {
-        variants.push_back(hash);
-    }
-    llvm::sort(variants);
-    variants.erase(llvm::unique(variants), variants.end());
-    return variants;
+    return distinct_hashes(contributions, path_id);
 }
 
 llvm::SmallVector<std::uint64_t> ProjectIndex::live_uses(Fid path_id) const {
-    llvm::SmallVector<std::uint64_t> uses;
-    if(auto it = instantiation_uses.find(path_id); it != instantiation_uses.end()) {
-        uses.assign(llvm::make_first_range(it->second).begin(),
-                    llvm::make_first_range(it->second).end());
-    }
-    llvm::sort(uses);
-    return uses;
+    return distinct_hashes(instantiation_uses, path_id);
 }
 
 void ProjectIndex::each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const {

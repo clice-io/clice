@@ -530,7 +530,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         .run = static_cast<std::uint64_t>(view.built_at()),
     };
     llvm::SmallVector<std::pair<Fid, index::InstantiationShard>> instantiation_replacements;
-    llvm::DenseMap<Fid, std::pair<std::uint32_t, index::UseHash>> instantiation_uses;
+    llvm::DenseMap<Fid, std::pair<std::uint32_t, index::UseHash>> unit_uses;
     for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
         auto local_id = view.instantiation_path(section);
         auto global_id = file_ids_map[local_id];
@@ -577,7 +577,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         std::optional<index::AddedUse> added;
         if(!used.empty()) {
             added = index::AddedUse{.use = index::use_identity(used), .resolutions = used};
-            instantiation_uses[global_id] = {local_id, added->use};
+            unit_uses[global_id] = {local_id, added->use};
         }
         // Walking nothing new, a unit naming a use the file stores already
         // changes nothing there.
@@ -585,11 +585,12 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
             continue;
         }
         const static index::InstantiationShard none;
+        const auto& old = stored ? *stored : none;
         std::string merged;
         llvm::raw_string_ostream os(merged);
         index::merge_instantiations(
-            stored ? *stored : none,
-            stored ? stored->uses() : llvm::ArrayRef<index::UseHash>(),
+            old,
+            old.uses(),
             [&](const index::Producer& run) { return project_index.current_run(run); },
             fresh ? &*fresh : nullptr,
             producer,
@@ -665,7 +666,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         manifest.contributions.emplace_back(fv_of[local_id], variant);
     }
     manifest.local_fanout = std::move(*local_fanout);
-    for(auto [local_id, use]: llvm::make_second_range(instantiation_uses)) {
+    for(auto [local_id, use]: llvm::make_second_range(unit_uses)) {
         manifest.instantiations.push_back({.file = fv_of[local_id], .use = use});
     }
 
@@ -951,35 +952,18 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         if(!instantiations.has_dead_uses() && !gone_runs) {
             continue;
         }
-        auto live = project_index.live_uses(path_id);
-        llvm::DenseSet<index::ResolutionHash> live_resolutions;
-        for(auto use: live) {
-            for(auto resolution: instantiations.resolutions_of(use)) {
-                live_resolutions.insert(resolution);
-            }
-        }
-        auto survives = [&](const std::optional<std::uint64_t>& resolution) {
-            return !resolution || live_resolutions.contains(*resolution);
-        };
-        bool kept =
-            llvm::any_of(live, [&](index::UseHash use) { return instantiations.has_use(use); });
-        instantiations.for_each_key([&](const index::InstantiationShard::Key& key) {
-            kept = kept || (current_run(*key.producer) && survives(key.resolution));
-            return !kept;
-        });
-        if(!kept) {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        if(!index::merge_instantiations(instantiations,
+                                        project_index.live_uses(path_id),
+                                        current_run,
+                                        nullptr,
+                                        {},
+                                        std::nullopt,
+                                        os)) {
             retired_files.push_back(path_id);
             continue;
         }
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::merge_instantiations(instantiations,
-                                    live,
-                                    current_run,
-                                    nullptr,
-                                    {},
-                                    std::nullopt,
-                                    os);
         auto replacement =
             index::InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         assert(replacement.loaded() && "a freshly written instantiation blob must verify");
@@ -1889,7 +1873,6 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     // instantiations resolved there: the TU reindexes, keeping its index
     // meanwhile.
     llvm::StringSet<> expected_instantiations;
-    llvm::DenseSet<Fid> lost_instantiations;
     for(auto& [path_id, shard]: project.project_index.shards) {
         auto key = project.project_index.key_of(project.file_table, path_id);
         auto blob = db.read(index::IndexBlobKind::Instantiations, key);
@@ -1912,21 +1895,13 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         instantiations.set_live(project_index.live_uses(path_id));
         project_index.instantiations[path_id] = std::move(instantiations);
     }
-    for(auto& [path_id, uses]: project_index.instantiation_uses) {
-        auto it = project_index.instantiations.find(path_id);
-        if(it == project_index.instantiations.end() ||
-           llvm::any_of(llvm::make_first_range(uses),
-                        [&](index::UseHash use) { return !it->second.has_use(use); })) {
-            lost_instantiations.insert(path_id);
-        }
-    }
-    if(!lost_instantiations.empty()) {
-        for(auto& [tu, manifest]: project_index.manifests) {
-            if(llvm::any_of(manifest.instantiations, [&](const index::InstantiationUse& use) {
-                   return lost_instantiations.contains(project.file_table.version(use.file).fid);
-               })) {
-                report.add_reindex(tu);
-            }
+    for(auto& [tu, manifest]: project_index.manifests) {
+        if(llvm::any_of(manifest.instantiations, [&](const index::InstantiationUse& use) {
+               auto it =
+                   project_index.instantiations.find(project.file_table.version(use.file).fid);
+               return it == project_index.instantiations.end() || !it->second.has_use(use.use);
+           })) {
+            report.add_reindex(tu);
         }
     }
 

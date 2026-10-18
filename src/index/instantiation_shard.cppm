@@ -109,8 +109,8 @@ struct Producer {
 };
 
 /// Zero-copy reader over an instantiation blob, plus the live-resolution set
-/// the indexer maintains: a resolution no manifest uses any more stops serving
-/// at once, and the next save's compaction erases it.
+/// the indexer maintains: a resolution no live use holds any more stops
+/// serving at once, and the next save's compaction erases it.
 class InstantiationShard {
 public:
     InstantiationShard() = default;
@@ -193,10 +193,9 @@ private:
 
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
-    /// A bit per record some live resolution holds; empty unless
-    /// has_dead_uses().
+    /// A bit per record some live resolution holds; empty while every
+    /// stored use and resolution is live.
     std::vector<std::uint64_t> live_records;
-    bool dead_uses = false;
 
     /// The length of the longest record, which bounds lookup(offset)'s scan.
     std::uint32_t longest = 0;
@@ -222,9 +221,9 @@ struct AddedUse {
 /// resolutions and keys, walked by `producer` — a fresh key replaces a
 /// stored one — and the `added` use. `old` may be empty (a first run) and
 /// `fresh` null (a compaction, or a TU adding the use of what others
-/// walked), but something must survive: a file left with nothing is
-/// retired by the caller.
-void merge_instantiations(const InstantiationShard& old,
+/// walked). Writes nothing and returns false when nothing survives: the
+/// caller retires the file.
+bool merge_instantiations(const InstantiationShard& old,
                           llvm::ArrayRef<UseHash> keep,
                           llvm::function_ref<bool(const Producer&)> keep_producer,
                           const InstantiationShard* fresh,

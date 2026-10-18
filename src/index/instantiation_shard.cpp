@@ -73,48 +73,45 @@ struct RecordTable {
     }
 };
 
-/// The resolution table: resolution i's records are records[ends[i - 1], ends[i]).
-struct ResolutionTable {
+/// Sets of another table's entries under their identities, ascending — the
+/// resolutions, sets of records, and the uses, sets of resolutions: set i's
+/// members are members[ends[i - 1], ends[i]), ascending.
+struct SetTable {
     llvm::ArrayRef<std::uint64_t> hashes;
     llvm::ArrayRef<std::uint32_t> ends;
-    IdColumnView records;
+    IdColumnView members;
+    /// The size of the table the members index.
+    std::size_t member_count;
 
-    static ResolutionTable of(BlobView root) {
+    static SetTable resolutions_of(BlobView root) {
+        auto records = columns_of(root[&InstantiationBlob::records]).size();
         return {
             .hashes = to_array_ref(root[&InstantiationBlob::resolutions]),
             .ends = to_array_ref(root[&InstantiationBlob::resolution_ends]),
-            .records = ids_of(root[&InstantiationBlob::resolution_records],
-                              columns_of(root[&InstantiationBlob::records]).size()),
+            .members = ids_of(root[&InstantiationBlob::resolution_records], records),
+            .member_count = records,
         };
     }
 
-    std::uint32_t begin_of(std::uint32_t resolution) const {
-        return resolution == 0 ? 0 : ends[resolution - 1];
-    }
-};
-
-/// The use table: use i's resolutions are resolutions[ends[i - 1], ends[i]).
-struct UseTable {
-    llvm::ArrayRef<std::uint64_t> hashes;
-    llvm::ArrayRef<std::uint32_t> ends;
-    IdColumnView resolutions;
-
-    static UseTable of(BlobView root) {
+    static SetTable uses_of(BlobView root) {
+        auto resolutions = to_array_ref(root[&InstantiationBlob::resolutions]).size();
         return {
             .hashes = to_array_ref(root[&InstantiationBlob::uses]),
             .ends = to_array_ref(root[&InstantiationBlob::use_ends]),
-            .resolutions = ids_of(root[&InstantiationBlob::use_resolutions],
-                                  to_array_ref(root[&InstantiationBlob::resolutions]).size()),
+            .members = ids_of(root[&InstantiationBlob::use_resolutions], resolutions),
+            .member_count = resolutions,
         };
     }
 
-    std::uint32_t begin_of(std::uint32_t use) const {
-        return use == 0 ? 0 : ends[use - 1];
+    /// The members of set `set`.
+    auto members_of(std::uint32_t set) const {
+        return std::views::iota(set == 0 ? 0 : ends[set - 1], ends[set]) |
+               std::views::transform([this](std::uint32_t i) { return members[i]; });
     }
 
-    std::optional<std::uint32_t> find(UseHash use) const {
-        auto it = std::ranges::lower_bound(hashes, use);
-        if(it == hashes.end() || *it != use) {
+    std::optional<std::uint32_t> find(std::uint64_t hash) const {
+        auto it = std::ranges::lower_bound(hashes, hash);
+        if(it == hashes.end() || *it != hash) {
             return std::nullopt;
         }
         return static_cast<std::uint32_t>(it - hashes.begin());
@@ -235,38 +232,39 @@ CheckResult records_ok(BlobView root) {
     return result;
 }
 
-// Every resolution holds records and every record a resolution: an ownerless
-// record would serve until the first dead resolution and then vanish, and an
-// empty resolution is a key's "nothing here" in disguise.
-CheckResult resolutions_ok(BlobView root) {
-    auto table = ResolutionTable::of(root);
-    auto record_count = RecordTable::of(root).size();
-    if(!std::ranges::is_sorted(table.hashes, std::less_equal{})) {
-        return std::unexpected("resolutions are not strictly ascending");
-    }
-    if(llvm::any_of(table.hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
-        return std::unexpected("a reserved resolution hash");
+// Identities key DenseMaps once decoded and are found by binary search; an
+// empty set is a key's "nothing here" in disguise.
+CheckResult sets_ok(const SetTable& table) {
+    if(!std::ranges::is_sorted(table.hashes, std::less_equal{}) ||
+       llvm::any_of(table.hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
+        return std::unexpected("set identities are not strictly ascending");
     }
     if(table.ends.size() != table.hashes.size() ||
-       !covering_ends(table.ends, table.records.size())) {
-        return std::unexpected("resolution record lists are not a partition");
+       !covering_ends(table.ends, table.members.size())) {
+        return std::unexpected("set member lists are not a partition");
     }
-    if(auto ok = ids_ok(table.records, table.records.size(), record_count); !ok) {
+    if(auto ok = ids_ok(table.members, table.members.size(), table.member_count); !ok) {
         return ok;
     }
-    std::vector<bool> owned(record_count);
-    for(std::uint32_t resolution = 0; resolution < table.hashes.size(); resolution += 1) {
-        auto begin = table.begin_of(resolution);
-        auto end = table.ends[resolution];
-        if(begin == end) {
-            return std::unexpected("a resolution without records");
+    for(std::uint32_t set = 0; set < table.hashes.size(); set += 1) {
+        auto members = table.members_of(set);
+        if(members.empty() || !std::ranges::is_sorted(members, std::less_equal{})) {
+            return std::unexpected("a set's members are not strictly ascending");
         }
-        for(auto i = begin; i < end; i += 1) {
-            if(i != begin && table.records[i] <= table.records[i - 1]) {
-                return std::unexpected("a resolution's records are not strictly ascending");
-            }
-            owned[table.records[i]] = true;
-        }
+    }
+    return {};
+}
+
+// Every record has a resolution: an ownerless record would serve until the
+// first dead resolution and then vanish.
+CheckResult resolutions_ok(BlobView root) {
+    auto table = SetTable::resolutions_of(root);
+    if(auto ok = sets_ok(table); !ok) {
+        return ok;
+    }
+    std::vector<bool> owned(table.member_count);
+    for(std::uint32_t i = 0; i < table.members.size(); i += 1) {
+        owned[table.members[i]] = true;
     }
     if(llvm::is_contained(owned, false)) {
         return std::unexpected("a record no resolution holds");
@@ -274,33 +272,20 @@ CheckResult resolutions_ok(BlobView root) {
     return {};
 }
 
-// Manifests name a use by its identity and liveness follows its resolutions,
-// so each lists stored resolutions, ascending, under the identity they hash
-// to.
+// Manifests name a use by its identity, so each must hash to it.
 CheckResult uses_ok(BlobView root) {
-    auto table = UseTable::of(root);
-    auto resolutions = to_array_ref(root[&InstantiationBlob::resolutions]);
-    if(!std::ranges::is_sorted(table.hashes, std::less_equal{}) ||
-       llvm::any_of(table.hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
-        return std::unexpected("uses are not strictly ascending");
-    }
-    if(table.ends.size() != table.hashes.size() ||
-       !covering_ends(table.ends, table.resolutions.size())) {
-        return std::unexpected("use resolution lists are not a partition");
-    }
-    if(auto ok = ids_ok(table.resolutions, table.resolutions.size(), resolutions.size()); !ok) {
+    auto table = SetTable::uses_of(root);
+    if(auto ok = sets_ok(table); !ok) {
         return ok;
     }
+    auto resolutions = to_array_ref(root[&InstantiationBlob::resolutions]);
     std::vector<ResolutionHash> members;
     for(std::uint32_t use = 0; use < table.hashes.size(); use += 1) {
         members.clear();
-        for(auto i = table.begin_of(use); i < table.ends[use]; i += 1) {
-            if(i != table.begin_of(use) && table.resolutions[i] <= table.resolutions[i - 1]) {
-                return std::unexpected("a use's resolutions are not strictly ascending");
-            }
-            members.push_back(resolutions[table.resolutions[i]]);
+        for(auto resolution: table.members_of(use)) {
+            members.push_back(resolutions[resolution]);
         }
-        if(members.empty() || use_identity(members) != table.hashes[use]) {
+        if(use_identity(members) != table.hashes[use]) {
             return std::unexpected("a use does not hash to its identity");
         }
     }
@@ -447,11 +432,11 @@ std::vector<ResolutionHash> InstantiationShard::resolutions_of(UseHash use) cons
         return resolutions;
     }
     auto root = view_of(bytes());
-    auto table = UseTable::of(root);
+    auto table = SetTable::uses_of(root);
     auto hashes = to_array_ref(root[&InstantiationBlob::resolutions]);
     if(auto found = table.find(use)) {
-        for(auto i = table.begin_of(*found); i < table.ends[*found]; i += 1) {
-            resolutions.push_back(hashes[table.resolutions[i]]);
+        for(auto resolution: table.members_of(*found)) {
+            resolutions.push_back(hashes[resolution]);
         }
     }
     return resolutions;
@@ -459,43 +444,42 @@ std::vector<ResolutionHash> InstantiationShard::resolutions_of(UseHash use) cons
 
 void InstantiationShard::set_live(llvm::ArrayRef<UseHash> live) {
     live_records.clear();
-    dead_uses = false;
     if(!buffer) {
         return;
     }
     llvm::SmallVector<UseHash> sorted(live);
     llvm::sort(sorted);
     auto root = view_of(bytes());
-    auto uses = UseTable::of(root);
-    auto resolutions = ResolutionTable::of(root);
+    auto uses = SetTable::uses_of(root);
+    auto resolutions = SetTable::resolutions_of(root);
+    bool dead = false;
     std::vector<bool> live_resolutions(resolutions.hashes.size());
     for(std::uint32_t use = 0; use < uses.hashes.size(); use += 1) {
         if(!std::ranges::binary_search(sorted, uses.hashes[use])) {
-            dead_uses = true;
+            dead = true;
             continue;
         }
-        for(auto i = uses.begin_of(use); i < uses.ends[use]; i += 1) {
-            live_resolutions[uses.resolutions[i]] = true;
+        for(auto resolution: uses.members_of(use)) {
+            live_resolutions[resolution] = true;
         }
     }
-    std::vector<std::uint64_t> bits((RecordTable::of(root).size() + 63) / 64);
+    std::vector<std::uint64_t> bits((resolutions.member_count + 63) / 64);
     for(std::uint32_t resolution = 0; resolution < resolutions.hashes.size(); resolution += 1) {
         if(!live_resolutions[resolution]) {
-            dead_uses = true;
+            dead = true;
             continue;
         }
-        for(auto i = resolutions.begin_of(resolution); i < resolutions.ends[resolution]; i += 1) {
-            auto record = resolutions.records[i];
+        for(auto record: resolutions.members_of(resolution)) {
             bits[record / 64] |= std::uint64_t(1) << (record % 64);
         }
     }
-    if(dead_uses) {
+    if(dead) {
         live_records = std::move(bits);
     }
 }
 
 bool InstantiationShard::has_dead_uses() const {
-    return dead_uses;
+    return !live_records.empty();
 }
 
 llvm::ArrayRef<SymbolHash> InstantiationShard::keys() const {
@@ -741,15 +725,14 @@ void decode_resolutions(const InstantiationShard& shard,
         ranges.push_back(range);
         return true;
     });
-    auto table = ResolutionTable::of(root);
+    auto table = SetTable::resolutions_of(root);
     for(std::uint32_t resolution = 0; resolution < table.hashes.size(); resolution += 1) {
         if(!keep(table.hashes[resolution])) {
             continue;
         }
         out.push_back({table.hashes[resolution], {}});
         auto& list = out.back().second;
-        for(auto i = table.begin_of(resolution); i < table.ends[resolution]; i += 1) {
-            auto record = table.records[i];
+        for(auto record: table.members_of(resolution)) {
             list.push_back(records.at(record, ranges[record]));
         }
     }
@@ -792,7 +775,7 @@ void write_instantiations(const FileInstantiations& instantiations,
     emit(draft, os);
 }
 
-void merge_instantiations(const InstantiationShard& old,
+bool merge_instantiations(const InstantiationShard& old,
                           llvm::ArrayRef<UseHash> keep,
                           llvm::function_ref<bool(const Producer&)> keep_producer,
                           const InstantiationShard* fresh,
@@ -875,9 +858,11 @@ void merge_instantiations(const InstantiationShard& old,
                        {},
                        &DraftKey::key,
                        &DraftKey::key);
-    assert((!draft.resolutions.empty() || !draft.keys.empty()) &&
-           "a file left with nothing is retired, not merged");
+    if(draft.resolutions.empty() && draft.keys.empty()) {
+        return false;
+    }
     emit(draft, os);
+    return true;
 }
 
 }  // namespace clice::index
