@@ -99,15 +99,30 @@ CDBDiff Project::refresh_provisional() {
     return diff;
 }
 
+namespace {
+
 constexpr llvm::StringLiteral database_name = "compile_commands.json";
 
-static std::optional<Spelling> database_in(const Spelling& dir) {
+std::optional<Spelling> database_in(const Spelling& dir) {
     Spelling candidate(database_name, dir);
     if(!vfs::exists(candidate)) {
         return std::nullopt;
     }
     return candidate;
 }
+
+/// The places that hold a database.
+llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
+    llvm::erase_if(places, [](const Spelling& place) { return !vfs::exists(place); });
+    return places;
+}
+
+bool configured(const Spelling& dir) {
+    return llvm::any_of(config_file_names,
+                        [&](llvm::StringRef name) { return vfs::exists(Spelling(name, dir)); });
+}
+
+}  // namespace
 
 llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     llvm::SmallVector<Spelling> places;
@@ -131,12 +146,6 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     for(auto& subdirectory: subdirectories) {
         places.emplace_back(database_name, subdirectory);
     }
-    return places;
-}
-
-/// The places that hold a database.
-static llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
-    llvm::erase_if(places, [](const Spelling& place) { return !vfs::exists(place); });
     return places;
 }
 
@@ -180,11 +189,6 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
     });
     std::ranges::sort(found, {}, &Spelling::str);
     return found;
-}
-
-static bool configured(const Spelling& dir) {
-    return llvm::any_of(config_file_names,
-                        [&](llvm::StringRef name) { return vfs::exists(Spelling(name, dir)); });
 }
 
 bool defines_project(CanonicalRef dir) {

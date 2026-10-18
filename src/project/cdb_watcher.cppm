@@ -62,12 +62,15 @@ private:
     /// One registered source's watch state.
     struct TrackedSource {
         SourceID id;
+
         /// What the watcher last adopted: the reads of the source's last
         /// load, or a deletion it acted on.
         Hashes applied;
+
         /// Half-write guard: what the previous tick saw while it differed
         /// from `applied`; a tick seeing it again reloads.
         std::optional<Hashes> pending;
+
         /// The source's inputs, in CompilationDatabase::inputs order. The
         /// database is watched by the path the source names: a symlinked
         /// one may be pointed elsewhere since its load.
@@ -102,20 +105,26 @@ private:
     /// now; none for a file the build no longer compiles.
     llvm::SmallVector<std::optional<SourceID>> default_sources(llvm::ArrayRef<Fid> files) const;
 
+private:
     Project& project;
+
     CanonicalPath root;
 
     llvm::SmallVector<TrackedSource> sources;
 
     /// The root directory, whose stamp moves when an entry appears or goes.
     std::shared_ptr<const vfs::Flag> root_flag;
+
     /// The root's stamp at the listing `listed` came from; nullopt while no
     /// listing can be trusted to hold.
     std::optional<vfs::Stamp> listed_at;
+
     /// The places database_places names under the root.
     llvm::SmallVector<Spelling> listed;
+
     /// The watched places with no source registered there yet.
     llvm::StringMap<std::shared_ptr<const vfs::Flag>> places;
+
     /// The places a registered source is known to stand at.
     llvm::StringSet<> registered;
 };
