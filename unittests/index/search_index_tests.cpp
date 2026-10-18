@@ -231,11 +231,18 @@ ZEST_CASE(PostingListRoundTrip) {
         dense.add(id);
     }
     ZEXPECT(index::read_postings(index::write_postings(dense, 50000), 50000) == dense);
+    // A gap of far more than 32 empty high parts.
+    Bitmap gapped;
+    for(std::uint32_t id = 0; id < 48; id += 1) {
+        gapped.add(id);
+    }
+    gapped.add(999999);
+    ZEXPECT(index::read_postings(index::write_postings(gapped, 1000000), 1000000) == gapped);
 }
 
 ZEST_CASE(PostingListRejected) {
-    // Every spelling but the one write_postings produces is refused:
-    // otherwise two byte strings would name one set.
+    // Every byte string but the one write_postings produces is refused:
+    // otherwise two would name one set.
     Bitmap set;
     set.add(5);
     set.add(40);
@@ -256,6 +263,8 @@ ZEST_CASE(PostingListRejected) {
     ZEXPECT(rejects(long_count, 100));
     ZEXPECT(rejects(list, 99));
     ZEXPECT(rejects({0x05}, 4));
+    ZEXPECT(rejects({0x00, 0x01}, 100));
+    ZEXPECT(rejects({0x80, 0x80, 0x80, 0x80, 0x80, 0x01}, 100));
 
     // 8 and 9 in a universe of 16: a count, three low bits each, then the
     // high parts.
@@ -268,6 +277,17 @@ ZEST_CASE(PostingListRejected) {
     low_parts[1] = 0x00;
     ZEXPECT(rejects(low_parts, 16));
     low_parts[1] = 0x48;
+    ZEXPECT(rejects(low_parts, 16));
+    low_parts[1] = 0x08;
+    // The high parts: a third one, a single one, a one past the universe.
+    low_parts[2] = 0x07;
+    ZEXPECT(rejects(low_parts, 16));
+    low_parts[2] = 0x02;
+    ZEXPECT(rejects(low_parts, 16));
+    low_parts[2] = 0x06;
+    ZASSERT(!rejects(low_parts, 16));
+    low_parts.push_back(0x01);
+    low_parts[2] = 0x02;
     ZEXPECT(rejects(low_parts, 16));
 }
 

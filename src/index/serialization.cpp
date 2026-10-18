@@ -64,13 +64,9 @@ bool offsets_canonical(const std::uint8_t* image) {
     return true;
 }
 
-}  // namespace
-
-namespace {
-
 /// The low bits each id of a posting list of `count` ids keeps.
 std::uint32_t low_bits(std::uint64_t count, std::uint32_t universe) {
-    return count == 0 || universe <= count ? 0 : std::bit_width(universe / count) - 1;
+    return count == 0 ? 0 : std::bit_width(universe / count) - 1;
 }
 
 /// Bits appended least significant first, a byte at a time.

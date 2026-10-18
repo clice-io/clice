@@ -58,11 +58,11 @@ struct SearchBlob {
     std::vector<std::uint32_t> container_docs;
     std::vector<std::uint32_t> children_ends;
     std::vector<std::uint8_t> children_postings;
-    /// The docs with no parent in the index, one image.
+    /// The docs with no parent in the index, one posting list.
     std::vector<std::uint8_t> top_level;
 
     /// The docs whose name runs past the token bound (name_bound), one
-    /// image: their tail carries no token, so every name lookup scans
+    /// posting list: their tail carries no token, so every name lookup scans
     /// them.
     std::vector<std::uint8_t> long_names;
 
@@ -540,8 +540,8 @@ std::optional<NameRank>
     return std::nullopt;
 }
 
-/// The mapped blob with its columns bound and its bitmaps viewed in
-/// place on first use.
+/// The mapped blob with its columns bound and its posting lists decoded
+/// on first use.
 struct SearchIndex::View {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
     std::uint64_t generation = 0;
@@ -561,8 +561,8 @@ struct SearchIndex::View {
     llvm::ArrayRef<std::uint32_t> container_docs;
     llvm::ArrayRef<std::uint32_t> children_ends;
     llvm::ArrayRef<std::uint8_t> children_postings;
-    llvm::ArrayRef<std::uint8_t> top_level_image;
-    llvm::ArrayRef<std::uint8_t> long_names_image;
+    llvm::ArrayRef<std::uint8_t> top_level_postings;
+    llvm::ArrayRef<std::uint8_t> long_names_postings;
     llvm::ArrayRef<std::uint32_t> subtree_docs;
     llvm::ArrayRef<std::uint32_t> subtree_ends;
     llvm::ArrayRef<std::uint8_t> subtree_postings;
@@ -582,7 +582,7 @@ struct SearchIndex::View {
     mutable std::optional<Bitmap> top_level_cache;
     mutable std::optional<Bitmap> long_names_cache;
 
-    /// Whether a posting image failed to decode: the answers since are
+    /// Whether a posting list failed to decode: the answers since are
     /// incomplete, and the owner rebuilds the index.
     mutable bool damaged = false;
 
@@ -652,8 +652,8 @@ struct SearchIndex::View {
     const Bitmap& children(std::uint32_t container) const {
         if(container == no_doc) {
             if(!top_level_cache) {
-                std::uint32_t ends[] = {static_cast<std::uint32_t>(top_level_image.size())};
-                top_level_cache = decode(top_level_image, ends, 0);
+                std::uint32_t ends[] = {static_cast<std::uint32_t>(top_level_postings.size())};
+                top_level_cache = decode(top_level_postings, ends, 0);
             }
             return *top_level_cache;
         }
@@ -669,8 +669,8 @@ struct SearchIndex::View {
     /// The docs whose name outruns the token bound.
     const Bitmap& long_names() const {
         if(!long_names_cache) {
-            std::uint32_t ends[] = {static_cast<std::uint32_t>(long_names_image.size())};
-            long_names_cache = decode(long_names_image, ends, 0);
+            std::uint32_t ends[] = {static_cast<std::uint32_t>(long_names_postings.size())};
+            long_names_cache = decode(long_names_postings, ends, 0);
         }
         return *long_names_cache;
     }
@@ -791,8 +791,8 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     view.container_docs = to_array_ref(root[&SearchBlob::container_docs]);
     view.children_ends = to_array_ref(root[&SearchBlob::children_ends]);
     view.children_postings = to_array_ref(root[&SearchBlob::children_postings]);
-    view.top_level_image = to_array_ref(root[&SearchBlob::top_level]);
-    view.long_names_image = to_array_ref(root[&SearchBlob::long_names]);
+    view.top_level_postings = to_array_ref(root[&SearchBlob::top_level]);
+    view.long_names_postings = to_array_ref(root[&SearchBlob::long_names]);
     view.subtree_docs = to_array_ref(root[&SearchBlob::subtree_docs]);
     view.subtree_ends = to_array_ref(root[&SearchBlob::subtree_ends]);
     view.subtree_postings = to_array_ref(root[&SearchBlob::subtree_postings]);
