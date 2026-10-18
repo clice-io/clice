@@ -236,8 +236,13 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
     // The header compiles as the host's language, with the header injected
     // as the input; the synthesized prefix lands after the host's own
     // user-content flags (its -include runs first).
-    auto ref =
-        project.build.resolve(path_id, base, CommandSource::IncludeGraph, edit_paths, host_path);
+    auto ref = project.build.resolve(path_id,
+                                     base,
+                                     CommandSource::IncludeGraph,
+                                     edit_paths,
+                                     host_path,
+                                     request.extra_prepend,
+                                     request.extra_append);
     RenderOptions opts;
     if(ctx_ptr->synthesized) {
         opts.preamble = ctx_ptr->synthesized->prefix.c_str();
