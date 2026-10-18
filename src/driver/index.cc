@@ -28,6 +28,7 @@ import :server.editor_context;
 import :server.query_commands;
 import :support.text;
 import :support.timer;
+import :syntax.position;
 
 namespace clice::driver {
 
@@ -590,7 +591,189 @@ void print_variants(const IndexStats& stats) {
     }
 }
 
+// TEMPORARY answer dump, not for commit: everything the stored index answers,
+// through the reading APIs, in a format-independent canonical text.
+void answer_dump(Project& project) {
+    auto& pi = project.project_index;
+    auto& files = project.file_table;
+    auto out = [](std::string line) {
+        driver::println("{}", line);
+    };
+    auto fv_path = [&](VersionID fv) {
+        return files.display(files.version(fv).fid);
+    };
+    auto ident = [](const index::SymbolIdentity& id) {
+        return std::format(
+            "name={} args={} sig={} parent={:016x} kind={} scope={} flags={} file={} tk={} tm={}",
+            id.name.str(),
+            id.args.str(),
+            id.signature.str(),
+            id.parent,
+            static_cast<int>(id.kind.value()),
+            static_cast<int>(id.scope),
+            static_cast<std::uint32_t>(id.flags),
+            id.file,
+            static_cast<int>(id.token_class.kind),
+            id.token_class.modifiers);
+    };
+    std::vector<std::pair<std::string, Fid>> shard_paths;
+    for(auto& [fid, shard]: pi.shards)
+        shard_paths.emplace_back(files.display(fid), fid);
+    std::ranges::sort(shard_paths);
+    for(auto& [path, fid]: shard_paths) {
+        auto& shard = pi.shards.find(fid)->second;
+        out(std::format("SHARD {} content={:016x} size={} variants={}",
+                        path,
+                        shard.content_hash(),
+                        shard.content_size(),
+                        shard.variants().size()));
+        auto map = shard.positions();
+        auto pos = [&](std::uint32_t offset) {
+            auto p16 = map.position(offset, PositionEncoding::UTF16);
+            auto p32 = map.position(offset, PositionEncoding::UTF32);
+            return std::format("{}:{}/{}",
+                               p16 ? p16->line : 99999999u,
+                               p16 ? p16->character : 99999999u,
+                               p32 ? p32->character : 99999999u);
+        };
+        shard.for_each_occurrence([&](const index::Occurrence& o) {
+            out(std::format(" O {}-{} {} {} {:016x}",
+                            o.range.begin,
+                            o.range.end,
+                            pos(o.range.begin),
+                            pos(o.range.end),
+                            o.target));
+            return true;
+        });
+        shard.for_each_relation([&](index::SymbolHash sym, const index::Relation& r) {
+            out(std::format(" R {:016x} {} {}-{} {:016x}",
+                            sym,
+                            static_cast<int>(r.kind),
+                            r.range.begin,
+                            r.range.end,
+                            r.target_symbol));
+            return true;
+        });
+        shard.for_each_local_symbol([&](index::SymbolHash h, const index::SymbolIdentity& id) {
+            out(std::format(" L {:016x} {}", h, ident(id)));
+            return true;
+        });
+        auto lines = shard.line_starts();
+        for(std::uint32_t line = 0; line < lines.size(); line += 1) {
+            auto end = map.line_bounds(line);
+            auto off16 = map.offset({.line = line, .character = 7}, PositionEncoding::UTF16);
+            out(std::format(" N {} {} {} {}",
+                            line,
+                            lines[line],
+                            end ? end->end : 0u,
+                            off16 ? *off16 : 99999999u));
+        }
+    }
+    std::vector<std::pair<std::string, Fid>> inst_paths;
+    for(auto& [fid, inst]: pi.instantiations)
+        inst_paths.emplace_back(files.display(fid), fid);
+    std::ranges::sort(inst_paths);
+    for(auto& [path, fid]: inst_paths) {
+        auto& inst = pi.instantiations.find(fid)->second;
+        out(std::format("INST {} content={:016x}", path, inst.content_hash()));
+        for(auto r: inst.resolutions())
+            out(std::format(" S {:016x}", r));
+        inst.for_each_key([&](const index::InstantiationShard::Key& k) {
+            out(std::format(" K {:016x} {:016x} {:016x} {}",
+                            k.key,
+                            k.pattern,
+                            k.resolution.value_or(0),
+                            k.producer ? "p" : "-"));
+            return true;
+        });
+        inst.for_each_record([&](const index::InstantiationRecord& r) {
+            out(std::format(" C {}-{} {} {} {:016x} {:016x}",
+                            r.range.begin,
+                            r.range.end,
+                            static_cast<int>(r.kind),
+                            r.expansion,
+                            r.target,
+                            r.from));
+            return true;
+        });
+    }
+    std::vector<std::pair<index::SymbolHash, std::string>> syms;
+    pi.for_each_symbol(
+        [&](index::SymbolHash h, const index::SymbolIdentity& id, std::uint32_t refs) {
+            std::vector<std::string> ref_files, inst_files;
+            pi.each_reference_file(h, [&](Fid f) { ref_files.push_back(files.display(f)); });
+            pi.each_instantiation_file(h, [&](Fid f) { inst_files.push_back(files.display(f)); });
+            std::ranges::sort(ref_files);
+            std::ranges::sort(inst_files);
+            auto copy = id;
+            auto file = id.file == index::no_file ? std::string("-") : files.display(Fid{id.file});
+            copy.file = 0;
+            syms.emplace_back(h,
+                              std::format("{} file={} refs={} [{}] inst=[{}]",
+                                          ident(copy),
+                                          file,
+                                          refs,
+                                          llvm::join(ref_files, ","),
+                                          llvm::join(inst_files, ",")));
+            return true;
+        });
+    std::ranges::sort(syms);
+    for(auto& [h, text]: syms)
+        out(std::format("SYM {:016x} {}", h, text));
+    std::vector<std::pair<std::string, Fid>> tus;
+    for(auto& [tu, m]: pi.manifests)
+        tus.emplace_back(files.display(tu), tu);
+    std::ranges::sort(tus);
+    // A variant by the first TU (by path) contributing it: independent of
+    // arrival order and of the blob bytes the identity hashes.
+    std::map<std::pair<Fid, std::uint64_t>, std::string> variant_names;
+    for(auto& [path, tu]: tus) {
+        for(auto& [fv, hash]: pi.manifests.find(tu)->second.contributions) {
+            variant_names.try_emplace({files.version(fv).fid, hash}, path);
+        }
+    }
+    for(auto& [path, tu]: tus) {
+        auto& m = pi.manifests.find(tu)->second;
+        out(std::format("TU {} self={}", path, fv_path(m.tu_fv)));
+        for(auto& n: m.nodes)
+            out(std::format(" n {} {} {} {}",
+                            fv_path(VersionID{n.file}),
+                            n.parent,
+                            n.line,
+                            n.skipped));
+        std::vector<std::string> contribs;
+        for(auto& [fv, hash]: m.contributions) {
+            contribs.push_back(
+                std::format("{}#{}",
+                            fv_path(fv),
+                            variant_names.find({files.version(fv).fid, hash})->second));
+        }
+        for(auto& c: contribs)
+            out(" c " + c);
+        for(auto fv: m.absent)
+            out(" a " + fv_path(fv));
+        for(auto fv: m.imports)
+            out(" i " + fv_path(fv));
+        for(auto& f: m.local_fanout) {
+            std::string line = std::format(" f {:016x}", f.symbol);
+            for(auto i: f.files)
+                line += " " + std::to_string(i);
+            out(line);
+        }
+        for(auto& use: m.instantiations) {
+            std::string line = " u " + fv_path(use.file);
+            for(auto r: use.resolutions)
+                line += std::format(" {:016x}", r);
+            out(line);
+        }
+    }
+}
+
 int run_stats(Project& project, llvm::ArrayRef<Fid> dropped, std::uint32_t top, bool variants) {
+    if(std::getenv("CLICE_SIZE_PROBE")) {
+        answer_dump(project);
+        return 0;
+    }
     if(project.project_index.manifests.empty() && project.project_index.shards.empty()) {
         driver::println("Index is empty; run `clice index` to build it.");
         return 0;
