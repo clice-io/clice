@@ -145,9 +145,9 @@ kota::codec::fbs::table_view<Blob> verified_root(llvm::StringRef bytes) {
 }
 
 /// Swap a reader's backing buffer for byte-identical bytes elsewhere (a
-/// newer read snapshot): what the reader verified and derived describes
-/// the bytes, not their address. False, keeping `buffer`, when the sizes
-/// differ.
+/// newer read snapshot) at an address in_place_buffer would borrow, as a
+/// database read gives: what the reader verified and derived describes the
+/// bytes, which carry over. False, keeping `buffer`, when the sizes differ.
 inline bool rebind_buffer(std::unique_ptr<llvm::MemoryBuffer>& buffer,
                           std::unique_ptr<llvm::MemoryBuffer> replacement) {
     if(!buffer || !replacement || replacement->getBufferSize() != buffer->getBufferSize()) {

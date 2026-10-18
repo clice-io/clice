@@ -109,7 +109,7 @@ class InstantiationShard {
 public:
     InstantiationShard() = default;
 
-    /// Wrap verified blob bytes without owning them. Corrupt bytes or
+    /// Read blob bytes in place, as Shard::from_bytes. Corrupt bytes or
     /// another format version load as an empty shard.
     static InstantiationShard from_bytes(llvm::StringRef data);
 

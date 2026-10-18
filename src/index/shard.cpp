@@ -1247,8 +1247,7 @@ struct ContentInfo {
 
 ContentInfo content_info_of(BlobView root) {
     auto copy = [](auto column) {
-        auto values = column;
-        return std::vector(values.begin(), values.end());
+        return std::vector(column.begin(), column.end());
     };
     return {
         .hash = root[&ShardBlob::content_hash],
