@@ -18,6 +18,9 @@ namespace clice::index {
 
 namespace {
 
+
+}  // namespace
+
 std::optional<DeclaredText>
     declared_text(const IndexQuery& index, SymbolHash hash, Fid anchor, RelationKind kind) {
     // Live sources first: buffer-true indexes also know symbols the project
@@ -49,16 +52,6 @@ std::optional<DeclaredText>
                                 return false;
                             });
     return found;
-}
-
-}  // namespace
-
-std::optional<DeclaredText> definition_text(const IndexQuery& index, SymbolHash hash, Fid anchor) {
-    return declared_text(index, hash, anchor, RelationKind::Definition);
-}
-
-std::optional<DeclaredText> declaration_text(const IndexQuery& index, SymbolHash hash, Fid anchor) {
-    return declared_text(index, hash, anchor, RelationKind::Declaration);
 }
 
 std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bool inherit) {

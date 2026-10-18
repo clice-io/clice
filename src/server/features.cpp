@@ -185,9 +185,9 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
         return module_hover_card(*cursor, *info);
     }
     std::string definition;
-    auto text = index::definition_text(query, symbol, cursor->site.file);
+    auto text = index::declared_text(query, symbol, cursor->site.file, RelationKind::Definition);
     if(!text) {
-        text = index::declaration_text(query, symbol, cursor->site.file);
+        text = index::declared_text(query, symbol, cursor->site.file, RelationKind::Declaration);
     }
     if(text) {
         definition = std::move(text->text);

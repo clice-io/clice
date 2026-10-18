@@ -375,7 +375,7 @@ public:
 
     /// The text the index serving `file` was built from — the offsets of
     /// every site in it index this text; nullopt when no source serves the
-    /// file or its text is unavailable (see definition_text on the disk
+    /// file or its text is unavailable (see declared_text on the disk
     /// re-read).
     std::optional<std::string> serving_text(Fid file) const;
 

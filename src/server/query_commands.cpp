@@ -515,7 +515,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto definition = index::definition_text(ctx.query, resolved->symbol.hash, resolved->site.file);
+    auto definition = index::declared_text(ctx.query, resolved->symbol.hash, resolved->site.file, RelationKind::Definition);
     if(!definition) {
         return std::unexpected("definition not found");
     }
@@ -605,9 +605,12 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
     // editor's go-to-definition does.
     auto hash = resolved->symbol.hash;
     auto anchor = resolved->site.file;
-    auto definition = ctx.query.first_site(hash, anchor, RelationKind::Definition)
-                          ? index::definition_text(ctx.query, hash, anchor)
-                          : index::declaration_text(ctx.query, hash, anchor);
+    auto defined = ctx.query.first_site(hash, anchor, RelationKind::Definition).has_value();
+    auto definition = index::declared_text(
+        ctx.query,
+        hash,
+        anchor,
+        defined ? RelationKind::Definition : RelationKind::Declaration);
     if(definition) {
         auto lines = lines_of(definition->extent);
         result.definition = LocationEntry{
