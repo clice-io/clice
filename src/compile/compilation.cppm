@@ -689,10 +689,11 @@ private:
 };
 
 /// How compile() builds a PCH: its inputs are checked by size alone when
-/// it is loaded, and the templates its preamble uses are instantiated in
-/// it unless that raises an error. Keys of cached PCHs include it, so a
-/// blob built under another rule is never reused.
-constexpr inline llvm::StringRef pch_build_rule = "size,instantiated";
+/// it is loaded, the templates its preamble uses are instantiated in it
+/// unless that raises an error, and template bodies are deferred only when
+/// the command asks. Keys of cached PCHs include it, so a blob built under
+/// another rule is never reused.
+constexpr inline llvm::StringRef pch_build_rule = "size,instantiated,undeferred";
 
 /// The messages of a finished compilation's error-level diagnostics, in
 /// the order clang raised them.

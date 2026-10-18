@@ -1,6 +1,6 @@
-// Clang defers template bodies on MSVC targets by default. The open file is
-// parsed eagerly regardless, so the constructor body still folds and the
-// request no longer crashes the worker (clice#693).
+// The command defers template bodies, so the constructor's body has no AST
+// and does not fold; the request no longer crashes the worker on it
+// (clice#693).
 template <typename T>
 union mini_variant_impl {
     T value;

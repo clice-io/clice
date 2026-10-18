@@ -1,0 +1,4 @@
+{
+  // Deferred template bodies are deprecated from C++20 on.
+  "flags": ["-std=c++17"]
+}

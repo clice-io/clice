@@ -1,4 +1,5 @@
 {
-  // Clang defers template bodies like this on MSVC targets by default.
+  // The command asks for deferred template bodies, as code written for
+  // MSVC's lookup rules does.
   "flags": ["-fdelayed-template-parsing"]
 }

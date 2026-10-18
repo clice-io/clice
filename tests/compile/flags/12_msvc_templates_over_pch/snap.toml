@@ -18,3 +18,19 @@ references = [
     "include/numbers.h │ return value + ⟦one⟧();",
     "return ⟦one⟧() + 1;",
 ]
+
+["deferral the command asks for"."main.cpp"]
+diagnostics = []
+
+["deferral the command asks for".call.hover]
+markdown = '''
+**function** `thrice`
+
+```cpp
+template <> int thrice<int>(int value)
+```
+'''
+range = "return ⟦thrice⟧(3);"
+
+["deferral the command asks for".one]
+references = ["include/numbers.h │ inline int ⟦one⟧() {", "return ⟦one⟧() + 1;"]

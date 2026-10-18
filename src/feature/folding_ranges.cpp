@@ -210,11 +210,13 @@ private:
             return;
         }
 
-        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
-           function && function->doesThisDeclarationHaveABody()) {
-            add_declaration_block(function->getBody()->getSourceRange(),
-                                  function->getLocation(),
-                                  *declaration_fold_kind(SymbolKind::from(function)));
+        // A deferred template body (-fdelayed-template-parsing) is not there.
+        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            if(const auto* body = function->getBody()) {
+                add_declaration_block(body->getSourceRange(),
+                                      function->getLocation(),
+                                      *declaration_fold_kind(SymbolKind::from(function)));
+            }
         }
     }
 

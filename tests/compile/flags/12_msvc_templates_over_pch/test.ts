@@ -19,3 +19,20 @@ test("the pchs index template bodies", async (t) => {
     await s.diagnostics("src/main.cpp");
     await t.show("one", s.references(t.marker("use")));
 });
+
+test("deferral the command asks for", async (t) => {
+    // A rule asks every compile to defer template bodies, the target's PCH
+    // included. The preamble still reads the PCH's deferred bodies when it
+    // instantiates twice(), and writing them again would crash the parse
+    // reading them back. Deferred bodies stay blind: neither use of one()
+    // in an uninstantiated template is found.
+    const s = await t.start({
+        config: {
+            project: { enable_indexing: false },
+            rules: [{ patterns: ["**"], append: ["-fdelayed-template-parsing"] }],
+        },
+    });
+    await t.show("main.cpp", s.diagnostics("src/main.cpp"));
+    await t.show("call", s.hover(t.marker("call")));
+    await t.show("one", s.references(t.marker("use")));
+});

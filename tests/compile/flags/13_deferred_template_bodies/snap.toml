@@ -1,0 +1,12 @@
+[answers.deferred]
+hover = {}
+
+[answers.call.hover]
+markdown = '''
+**function** `scaled`
+
+```cpp
+template <> int scaled<int>(int value)
+```
+'''
+range = "return ⟦scaled⟧(21);"

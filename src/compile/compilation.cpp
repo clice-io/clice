@@ -65,9 +65,14 @@ std::unique_ptr<clang::CompilerInvocation>
     }
 
     std::vector<const char*> arguments;
-    arguments.reserve(input.arguments.size());
+    arguments.reserve(input.arguments.size() + 1);
     for(auto& argument: input.arguments) {
         arguments.push_back(argument.c_str());
+    }
+    // A driver command (what a failed toolchain probe falls back to) gets
+    // the flag the probe gives every cc1 command, see Toolchain::probe_argv.
+    if(arguments.size() < 2 || llvm::StringRef(arguments[1]) != "-cc1") {
+        arguments.insert(arguments.begin() + 1, "-fno-delayed-template-parsing");
     }
     LOG_DEBUG("Compile command: {}", print_argv(arguments));
     auto invocation =
@@ -169,16 +174,6 @@ std::unique_ptr<clang::CompilerInvocation>
     deps_opts.ModuleDependencyOutputDir.clear();
 
     auto& lang_opts = invocation->getLangOpts();
-
-    // Before C++20, clang defers template bodies on MSVC targets so that
-    // code written for MSVC's lookup rules compiles, but a deferred body has
-    // no AST: every feature inside it goes blind. Nor can PCH builds keep
-    // the default: a chained PCH (a preamble over a CMake PCH) that
-    // instantiates a deferred template of the PCH below it copies that
-    // PCH's deferred bodies, and clang crashes reading the copies back.
-    // Every compile parses bodies eagerly, as clangd does, at the cost of
-    // the errors a conforming compiler reports in such code.
-    lang_opts.DelayedTemplateParsing = false;
 
     // A header compiled under a source's command (`-x c++` buys a parse
     // instead of a precompiled-header job) is still a header: no "#pragma
@@ -395,6 +390,14 @@ public:
             for(auto* import: context.local_imports()) {
                 pp.makeModuleVisible(import->getImportedModule(), import->getLocation());
             }
+        }
+        // Instantiating one deferred template of an imported PCH or module
+        // reads all of that file's deferred bodies into Sema, and the writer
+        // would store them again: clang reads such a copy back against the
+        // wrong file and crashes. The file they came from keeps them.
+        if(writes_output(unit.params.kind)) {
+            unit.instance->getSema().LateParsedTemplateMap.remove_if(
+                [](const auto& entry) { return entry.first->isFromASTFile(); });
         }
         clang::MultiplexConsumer::HandleTranslationUnit(context);
     }

@@ -23,7 +23,7 @@ namespace clice {
 /// Changes whenever a PCM build of the same command comes to write another
 /// BMI, or its key comes to name another build, so a blob or a record an
 /// older clice stored is not taken for the new one.
-constexpr llvm::StringRef pcm_version = "3";
+constexpr llvm::StringRef pcm_version = "4";
 
 /// The provider an import in `importer` resolves to among several of one
 /// name: the nearest — the fewest directories up from the importer to one
