@@ -204,9 +204,19 @@ std::unique_ptr<clang::CompilerInvocation>
 
         case CompilationKind::Preprocess:
         case CompilationKind::Content:
-        case CompilationKind::Whole:
+        case CompilationKind::Whole: {
+            front_opts.OutputFile.clear();
+            break;
+        }
+
         case CompilationKind::Completion: {
             front_opts.OutputFile.clear();
+            // A completion reports no diagnostics, and it cuts the body it
+            // completes in short without the error that keeps clang's
+            // analysis-based warnings off a broken body: the thread-safety
+            // analysis (-Wthread-safety, as abseil builds) crashes on what
+            // is left.
+            invocation->getDiagnosticOpts().IgnoreWarnings = true;
             break;
         }
     }

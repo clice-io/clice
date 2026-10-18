@@ -1,0 +1,4 @@
+{
+  // The build warns with clang's thread-safety analysis, as abseil's does.
+  "flags": ["-std=c++20", "-Wthread-safety"]
+}
