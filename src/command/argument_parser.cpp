@@ -379,7 +379,10 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
 
 bool is_c_family_type(clang::driver::types::ID type) {
     namespace types = clang::driver::types;
-    return type != types::TY_Asm && types::isAcceptedByClang(type);
+    return types::isAcceptedByClang(type) && type != types::TY_Asm && !types::isLLVMIR(type) &&
+           !llvm::is_contained(
+               {types::TY_AST, types::TY_ModuleFile, types::TY_PCH, types::TY_API_INFO},
+               type);
 }
 
 bool is_c_family_file(llvm::StringRef filename) {

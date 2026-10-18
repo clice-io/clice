@@ -97,12 +97,13 @@ llvm::StringRef resource_dir();
 std::string print_argv(llvm::ArrayRef<const char*> args);
 
 /// Whether clang parses a file of `type` as C-family code: what it accepts
-/// but assembler-with-cpp, which it only preprocesses for the assembler.
+/// but assembler-with-cpp, which it only preprocesses for the assembler,
+/// and the IR, ASTs and module files it reads back.
 bool is_c_family_type(clang::driver::types::ID type);
 
 /// Check if a filename has a C/C++/ObjC/CUDA/etc. extension clang parses.
-/// Returns false for .rc (Windows resource), .asm, .s and .S, .def, and other
-/// non-C-family files.
+/// Returns false for .rc (Windows resource), .asm, .s and .S, .ll, .pcm, .def,
+/// and other non-C-family files.
 bool is_c_family_file(llvm::StringRef filename);
 
 }  // namespace clice

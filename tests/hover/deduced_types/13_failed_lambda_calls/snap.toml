@@ -1,0 +1,10 @@
+[answers.parameter.hover]
+markdown = '''
+**parameter** `e` · lambda in function `payroll`
+
+```cpp
+auto &e
+```
+Type: `Employee &`
+'''
+range = "auto pay = [](auto& ⟦e⟧) {"

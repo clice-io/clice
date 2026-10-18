@@ -6,6 +6,8 @@ import { test } from "@clice/tools/testing";
 test("open", async (t) => {
     const s = await t.start();
     await t.show("preprocessed", s.diagnostics("entry.S"));
+    s.edit("entry.S", { replace: "SIZE 8", with: "SIZE 16" });
+    await t.show("edited", s.diagnostics("entry.S"));
     await t.show("plain", s.diagnostics("boot.s"));
 });
 

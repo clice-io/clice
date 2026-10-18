@@ -6,6 +6,11 @@ Lock* lockp(int rq);
 
 void unlock(int rq) releases(lockp(rq));
 
+#define UNLOCK_FN(name, arg) void name(int arg) __attribute__((release_capability(lockp(arg))))
+
+UNLOCK_FN(unlock_all, rq);
+
 void use() {
     §(call)unlock(1);
+    §(declared_by_macro)unlock_all(1);
 }

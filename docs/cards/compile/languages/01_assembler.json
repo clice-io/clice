@@ -15,7 +15,7 @@
     },
     {
       "path": "compile_commands.json",
-      "text": "[\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/entry.S\",\n    \"arguments\": [\"clang\", \"-D__ASSEMBLY__\", \"-c\", \"${WS}/entry.S\", \"-o\", \"entry.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/boot.s\",\n    \"arguments\": [\"clang\", \"-c\", \"${WS}/boot.s\", \"-o\", \"boot.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/main.c\",\n    \"arguments\": [\"clang\", \"-c\", \"${WS}/main.c\", \"-o\", \"main.o\"]\n  }\n]\n",
+      "text": "[\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/entry.S\",\n    \"arguments\": [\"clang\", \"-D__ASSEMBLY__\", \"-c\", \"${WS}/entry.S\", \"-o\", \"entry.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/boot.s\",\n    \"arguments\": [\"clang\", \"-c\", \"${WS}/boot.s\", \"-o\", \"boot.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/start.S\",\n    \"arguments\": [\"clang\", \"-x\", \"assembler-with-cpp\", \"-c\", \"${WS}/start.S\", \"-o\", \"start.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/main.c\",\n    \"arguments\": [\"clang\", \"-c\", \"${WS}/main.c\", \"-o\", \"main.o\"]\n  }\n]\n",
       "markers": []
     },
     {
@@ -27,6 +27,11 @@
       "path": "main.c",
       "text": "int main() { return 0; }\n",
       "markers": []
+    },
+    {
+      "path": "start.S",
+      "text": "#define ENTRY(name) .globl name; name:\nENTRY(start)\n    ret\n",
+      "markers": []
     }
   ],
   "tests": [
@@ -35,6 +40,12 @@
       "blocks": [
         {
           "label": "preprocessed",
+          "value": {
+            "diagnostics": []
+          }
+        },
+        {
+          "label": "edited",
           "value": {
             "diagnostics": []
           }

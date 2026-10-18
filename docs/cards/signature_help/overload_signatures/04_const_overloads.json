@@ -12,24 +12,18 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Buffer {\n    int at(int index);\n    int at(int index) const;\n};\n\nstruct Pick {\n    int operator()() const;\n    float operator()();\n};\n\nint main() {\n    Buffer b;\n    b.at(0);\n    const Buffer& view = b;\n    view.at(0);\n    Pick pick;\n    pick();\n}\n",
+      "text": "struct Buffer {\n    int at(int index);\n    int at(int index) const;\n};\n\nint main() {\n    Buffer b;\n    b.at(0);\n    const Buffer& view = b;\n    view.at(0);\n}\n",
       "markers": [
         {
           "name": "pos",
-          "begin": 178,
-          "end": 178,
+          "begin": 108,
+          "end": 108,
           "range": false
         },
         {
           "name": "const_object",
-          "begin": 222,
-          "end": 222,
-          "range": false
-        },
-        {
-          "name": "call_operator",
-          "begin": 250,
-          "end": 250,
+          "begin": 152,
+          "end": 152,
           "range": false
         }
       ]
@@ -58,19 +52,6 @@
             "signature_help": {
               "signatures": [
                 "at(⟦int index⟧) const -> int"
-              ],
-              "active": 0
-            }
-          }
-        },
-        {
-          "label": "call_operator",
-          "marker": "call_operator",
-          "value": {
-            "signature_help": {
-              "signatures": [
-                "pick() -> float",
-                "pick() -> int"
               ],
               "active": 0
             }

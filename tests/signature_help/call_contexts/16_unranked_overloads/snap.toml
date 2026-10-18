@@ -1,3 +1,7 @@
 [answers.implicit.signature_help]
 signatures = ["With()", "With(⟦const With<void> &⟧)", "With(⟦With<void> &&⟧)"]
 active = 0
+
+[answers.call_operator.signature_help]
+signatures = ["pick() -> float", "pick() -> int"]
+active = 0

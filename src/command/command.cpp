@@ -45,7 +45,7 @@ bool is_source_path(llvm::StringRef path) {
     return !is_header_path(path) && clang::driver::types::isDerivedFromC(suffix_type(path));
 }
 
-bool is_foreign_path(llvm::StringRef path) {
+bool is_other_language_path(llvm::StringRef path) {
     auto type = suffix_type(path);
     return type != clang::driver::types::TY_INVALID && !is_c_family_type(type);
 }

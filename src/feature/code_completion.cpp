@@ -158,6 +158,8 @@ const clang::CodeCompletionString&
                           const clang::ClassTemplateDecl& pattern,
                           clang::Sema& sema) {
     auto policy = sema.getPrintingPolicy();
+    policy.AnonymousTagNameStyle =
+        llvm::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
     policy.SuppressStrongLifetime = true;
     policy.SuppressUnwrittenScope = true;
     policy.CleanUglifiedParameters = true;

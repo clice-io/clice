@@ -606,7 +606,7 @@ void LSPClient::register_document_sync() {
             return;
         }
         auto& path = spelled->str();
-        if(is_foreign_path(path)) {
+        if(is_other_language_path(path)) {
             LOG_INFO("didOpen: {} is no C-family source; not served", path);
             return;
         }
@@ -652,7 +652,7 @@ void LSPClient::register_document_sync() {
         // The edit reaches a second name's buffer whether or not it still
         // agrees with the first name's.
         auto spelled = uri_to_path(params.text_document.uri);
-        if(!spelled || is_foreign_path(spelled->str())) {
+        if(!spelled || is_other_language_path(spelled->str())) {
             return;
         }
         auto& path = spelled->str();

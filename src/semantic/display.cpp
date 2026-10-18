@@ -1351,17 +1351,18 @@ bool declared_with(const clang::Decl& member, const clang::TagDecl& tag) {
 
 /// The members of `record` in the order its source writes them: a record
 /// read from an AST file whose fields were loaded first, as its layout loads
-/// them, lists them after the rest.
+/// them, lists them after the rest. Ordered by name, as the declarators of
+/// `volatile struct { ... } a, b;` begin before the struct they declare.
 llvm::SmallVector<const clang::Decl*> source_order(const clang::RecordDecl& record) {
     llvm::SmallVector<const clang::Decl*> decls;
     for(const auto* decl: record.decls()) {
-        if(decl->getBeginLoc().isValid()) {
+        if(decl->getLocation().isValid()) {
             decls.push_back(decl);
         }
     }
     auto& sources = record.getASTContext().getSourceManager();
     llvm::stable_sort(decls, [&](const clang::Decl* left, const clang::Decl* right) {
-        return sources.isBeforeInTranslationUnit(left->getBeginLoc(), right->getBeginLoc());
+        return sources.isBeforeInTranslationUnit(left->getLocation(), right->getLocation());
     });
     return decls;
 }

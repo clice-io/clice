@@ -11,6 +11,11 @@
   },
   {
     "directory": "${WS}",
+    "file": "${WS}/start.S",
+    "arguments": ["clang", "-x", "assembler-with-cpp", "-c", "${WS}/start.S", "-o", "start.o"]
+  },
+  {
+    "directory": "${WS}",
     "file": "${WS}/main.c",
     "arguments": ["clang", "-c", "${WS}/main.c", "-o", "main.o"]
   }
