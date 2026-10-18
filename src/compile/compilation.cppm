@@ -523,7 +523,7 @@ private:
         return instance->getSourceManager();
     }
 
-    auto text(clang::FileID fid) -> SourceText&;
+    auto file_text(clang::FileID fid) -> SourceText&;
 
     /// Where the file location `location` lies (see file_content).
     auto decompose(clang::SourceLocation location) -> FileOffset;

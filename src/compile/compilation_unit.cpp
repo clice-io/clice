@@ -215,7 +215,7 @@ auto CompilationUnit::workspace() -> llvm::StringRef {
     return params.input.workspace;
 }
 
-auto CompilationUnit::text(clang::FileID fid) -> SourceText& {
+auto CompilationUnit::file_text(clang::FileID fid) -> SourceText& {
     auto& text = texts[fid];
     if(!text) {
         auto content = SM().getBufferData(fid);
@@ -232,7 +232,7 @@ auto CompilationUnit::text(clang::FileID fid) -> SourceText& {
 }
 
 auto CompilationUnit::file_content(clang::FileID fid) -> llvm::StringRef {
-    return text(fid).text();
+    return file_text(fid).text();
 }
 
 auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef> {
@@ -240,15 +240,15 @@ auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<ll
 }
 
 auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
-    return text(fid).positions();
+    return file_text(fid).positions();
 }
 
 auto CompilationUnit::comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment> {
     // Every feature reads the focus file's lexical scan anyway.
     if(fid == SM().getMainFileID()) {
-        return text(fid).lexical().comments;
+        return file_text(fid).lexical().comments;
     }
-    return text(fid).comments();
+    return file_text(fid).comments();
 }
 
 bool CompilationUnit::is_builtin_file(clang::FileID fid) {
@@ -381,7 +381,7 @@ auto FocusFile::tokens() -> const TokenMap& {
 }
 
 auto FocusFile::lexical() -> const LexicalInfo& {
-    return unit.text(file()).lexical();
+    return unit.file_text(file()).lexical();
 }
 
 auto FocusFile::location(std::uint32_t offset) -> clang::SourceLocation {

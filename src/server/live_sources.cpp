@@ -58,9 +58,7 @@ const index::Shard* ServerLiveSources::session_shard(Fid file, const Session& se
         return nullptr;
     }
     // A shard compiled from exactly the buffer's bytes describes it however
-    // its dependencies moved since (the shard's DepsOnly contract); a
-    // header compiled with an appended suffix line never matches its
-    // buffer's bytes and serves only while its compile is current.
+    // its dependencies moved since (the shard's DepsOnly contract).
     auto& shard = projection->file_shard();
     if(projections.current(file) || shard.matches_content(session.text.size(), session.hash)) {
         return &shard;

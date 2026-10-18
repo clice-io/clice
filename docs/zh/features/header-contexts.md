@@ -63,7 +63,7 @@ tests/contexts/switching/01_two_hosts
 
 在类体内包含的文件会作为该类的一部分编译
 
-`body.inc` 中存放着一些成员，`rec.cpp` 将其包含在 `Record` 的大括号之间。单独打开 `body.inc` 时，它仍会在类内部编译，因此不会报错，成员也会列出，并且可以对这些成员使用悬停和跳转到定义功能。
+`body.inc` 中存放着一些成员，`rec.cpp` 将其包含在 `Record` 的大括号之间。单独打开 `body.inc` 时，它仍会在类内部编译，因此不会报错，成员也会列出，并且可以对这些成员使用悬停和跳转到定义功能；代码补全还会提供该类在此文件之后声明的成员。
 
 ```case
 tests/contexts/fragments/01_class_body

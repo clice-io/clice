@@ -4,7 +4,7 @@
   "subtopic": "fragments",
   "title": "Class body fragments",
   "summary": "A file included inside a class body compiles as part of that class",
-  "prose": "`body.inc` holds members that `rec.cpp` includes between the braces of `Record`. Opened on its own, it compiles inside the class, so it has no errors, lists its members, and hover and go-to-definition work on them.",
+  "prose": "`body.inc` holds members that `rec.cpp` includes between the braces of `Record`. Opened on its own, it compiles inside the class, so it has no errors, lists its members, and hover and go-to-definition work on them; completion offers the members the class declares after it too.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -20,7 +20,7 @@
     },
     {
       "path": "rec.cpp",
-      "text": "#include \"base.h\"\n\nstruct Record : Base {\n#include \"body.inc\"\n};\n\nint main() {\n    Record r;\n    return r.sum();\n}\n",
+      "text": "#include \"base.h\"\n\nstruct Record : Base {\n#include \"body.inc\"\n    int field_c;\n};\n\nint main() {\n    Record r;\n    return r.sum();\n}\n",
       "markers": []
     }
   ],
@@ -136,6 +136,30 @@
                 }
               }
             ]
+          }
+        },
+        {
+          "label": "completion",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "field_a",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "field_b",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "field_c",
+                  "kind": "Field",
+                  "detail": "int"
+                }
+              ]
+            }
           }
         }
       ]

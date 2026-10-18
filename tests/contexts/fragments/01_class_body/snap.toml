@@ -23,6 +23,13 @@ range = "int sum() const { return ⟦field_a⟧ + field_b; }"
 ["in the editor".definition]
 definition = ["int ⟦field_a⟧;"]
 
+["in the editor".completion.completion]
+items = [
+    { label = "field_a", kind = "Field", detail = "int" },
+    { label = "field_b", kind = "Field", detail = "int" },
+    { label = "field_c", kind = "Field", detail = "int" },
+]
+
 ["on the command line".symbols]
 document_symbols = [
     { name = "field_a", kind = "Field", at = "int ⟦field_a⟧;" },

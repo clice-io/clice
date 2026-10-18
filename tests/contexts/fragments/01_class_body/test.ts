@@ -8,6 +8,7 @@ test("in the editor", async (t) => {
     const use = t.at("body.inc", "return |field_a");
     await t.show("hover", s.hover(use));
     await t.show("definition", s.definition(use));
+    await t.show("completion", s.completion(t.at("body.inc", "return field_|a")));
     // What comes before the class the fragment sits in is a preamble.
     expect((await s.counts()).pch).toBe(1);
 });

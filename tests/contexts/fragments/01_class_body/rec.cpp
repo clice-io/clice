@@ -2,6 +2,7 @@
 
 struct Record : Base {
 #include "body.inc"
+    int field_c;
 };
 
 int main() {

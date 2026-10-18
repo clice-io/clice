@@ -198,12 +198,21 @@ ZEST_CASE(SuffixFollowsText) {
 }
 
 ZEST_CASE(CompletionOffsetsInText) {
-    // Clang's buffer of a completion holds a NUL at the point; the unit's
-    // offsets past it are the text's.
+    // Clang's buffer of a completion holds a NUL at the point, and goes on
+    // with the include of a header context's suffix; the unit's offsets
+    // past the point are the text's.
     llvm::StringRef text = "int sum() { return a + lat; }\nint a;";
-    add_focus("body.cpp", text);
+    add_focus("body.h", text);
     prepare();
-    params.input.add_focus(TestVFS::path("body.cpp"), text);
+    params.input.add_focus(TestVFS::path("body.h"), text);
+    params.input.add_synthesized({
+        {.path = TestVFS::path(".clice-open.h"),
+         .content = "struct S {\n",
+         .entry = SynthesizedFile::Entry::Forced  },
+        {.path = TestVFS::path(".clice-suffix.h"),
+         .content = "int later;\n};\n",
+         .entry = SynthesizedFile::Entry::Appended},
+    });
     auto point = static_cast<std::uint32_t>(text.find("lat") + 3);
     params.kind = CompilationKind::Completion;
     params.completion = {
@@ -215,8 +224,8 @@ ZEST_CASE(CompletionOffsetsInText) {
     ZEXPECT(file.content() == text);
     auto buffer = unit->loaded_file_content(file.file());
     ZASSERT(buffer);
-    ZEXPECT(buffer->size() == text.size() + 1);
     ZEXPECT((*buffer)[point] == '\0');
+    ZEXPECT(buffer->drop_front(text.size() + 1).starts_with("\n#include "));
     auto later = static_cast<std::uint32_t>(text.rfind("a;"));
     ZEXPECT(unit->token_spelling(file.location(later)) == "a");
     ZEXPECT(file.offset(file.location(later)) == later);
