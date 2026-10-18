@@ -158,14 +158,14 @@ ZEST_CASE(AnonymousVariantIdentity) {
     ZASSERT(shard.has_variant(variants.front()));
 }
 
-ZEST_CASE(AsciiContentOmitted) {
+ZEST_CASE(ContentNotStored) {
     std::string content = "int x;\nint y;\n";
     auto file_index = simple_index({
         {{4, 5}, 111}
     });
     auto shard = make_shard(write_fresh(file_index, content));
 
-    ZASSERT(shard.content().empty());
+    ZASSERT(shard.positions().text().empty());
     ZASSERT(shard.content_size() == static_cast<std::uint32_t>(content.size()));
     ZASSERT(shard.content_hash() == llvm::xxh3_64bits(content));
     ZASSERT(hash_at(shard, 4) == 111u);
@@ -176,14 +176,13 @@ ZEST_CASE(AsciiContentOmitted) {
 }
 
 ZEST_CASE(CRLFLinesMarked) {
-    // ASCII content is not stored: the shard marks the lines ending in
-    // "\r\n" so its coordinates place their ends without the text.
+    // Content is not stored: the shard marks the lines ending in "\r\n" so
+    // its coordinates place their ends without the text.
     std::string content = "int x;\r\nint y;\nint z;\r\n";
     auto file_index = simple_index({
         {{4, 5}, 111}
     });
     auto shard = make_shard(write_fresh(file_index, content));
-    ZASSERT(shard.content().empty());
     auto more = simple_index({
         {{12, 13}, 222}
     });
@@ -197,18 +196,49 @@ ZEST_CASE(CRLFLinesMarked) {
     }
 }
 
-ZEST_CASE(NonAsciiContentStored) {
-    std::string content = "int å;\nint y;\n";
+ZEST_CASE(NonAsciiLinesMapPositions) {
+    // Only the lines holding non-ASCII bytes keep their text, which is all
+    // UTF-16 and UTF-32 mapping reads: every conversion agrees with the map
+    // over the whole text — inside and past code points, in line ends, on
+    // ASCII and non-ASCII lines, past the last line.
+    std::string content = "int å;\r\nint y; // \xF0\x9F\x98\x80 ü\n\nx = \"é\";";
     auto file_index = simple_index({
         {{4, 6}, 111}
     });
     auto shard = make_shard(write_fresh(file_index, content));
-
-    ZASSERT(shard.content() == llvm::StringRef(content));
-
-    auto expected = kota::ipc::lsp::line_starts(content);
-    auto starts = shard.line_starts();
-    ZASSERT(std::vector<std::uint32_t>(starts.begin(), starts.end()) == expected);
+    auto starts = kota::ipc::lsp::line_starts(content);
+    PositionMap text(content, starts);
+    auto stored = shard.positions();
+    using Position = kota::ipc::protocol::Position;
+    auto point = [](const std::optional<Position>& position) {
+        return position ? std::optional(std::pair(position->line, position->character))
+                        : std::nullopt;
+    };
+    auto span = [&](const std::optional<kota::ipc::protocol::Range>& range) {
+        return range ? std::optional(std::pair(point(range->start), point(range->end)))
+                     : std::nullopt;
+    };
+    for(auto encoding: {PositionEncoding::UTF8, PositionEncoding::UTF16, PositionEncoding::UTF32}) {
+        for(std::uint32_t offset = 0; offset <= content.size(); offset += 1) {
+            ZEXPECT(point(stored.position(offset, encoding)) ==
+                    point(text.position(offset, encoding)));
+            ZEXPECT(span(stored.range({0, offset}, encoding)) ==
+                    span(text.range({0, offset}, encoding)));
+        }
+        for(std::uint32_t line = 0; line <= starts.size(); line += 1) {
+            for(std::uint32_t character = 0; character < 24; character += 1) {
+                Position position{.line = line, .character = character};
+                ZEXPECT(stored.offset(position, encoding) == text.offset(position, encoding));
+                ZEXPECT(stored.offset_clamped(position, encoding) ==
+                        text.offset_clamped(position, encoding));
+                kota::ipc::protocol::Range range{
+                    .start = {.line = 0, .character = 5},
+                    .end = position
+                };
+                ZEXPECT(stored.offset_range(range, encoding) == text.offset_range(range, encoding));
+            }
+        }
+    }
 }
 
 ZEST_CASE(LongLineEscape) {
@@ -595,24 +625,31 @@ ZEST_CASE(UnloadedShardNoops) {
     shard.lookup(0, [&](const index::Occurrence&) { return true; });
     shard.lookup(1, RelationKind::Reference, [&](const index::Relation&) { return true; });
     ZASSERT(!shard.find_symbol(1).has_value());
-    ZASSERT(shard.content().empty());
     ZASSERT(shard.line_starts().empty());
 }
 
-/// Fill the content identity and line table of a hand-built blob the way
-/// the writer would (ASCII omitted, non-ASCII stored).
+/// Fill the content identity, line table and non-ASCII lines of a hand-built
+/// blob the way the writer would.
 void fill_content(index::ShardBlob& blob, llvm::StringRef text) {
     blob.content_hash = llvm::xxh3_64bits(text);
     blob.content_size = static_cast<std::uint32_t>(text.size());
-    bool is_ascii = llvm::all_of(text, [](char c) { return static_cast<unsigned char>(c) < 0x80; });
-    blob.content = is_ascii ? std::string() : text.str();
     blob.line_lengths.clear();
     blob.long_lines.clear();
     blob.long_line_lengths.clear();
+    blob.utf8_lines.clear();
+    blob.utf8_text.clear();
+    blob.utf8_text_ends.clear();
     auto starts = kota::ipc::lsp::line_starts(std::string_view(text.data(), text.size()));
     for(std::size_t i = 0; i < starts.size(); i += 1) {
-        auto next = i + 1 < starts.size() ? starts[i + 1] : blob.content_size;
+        auto last = i + 1 == starts.size();
+        auto next = last ? blob.content_size : starts[i + 1];
         auto length = next - starts[i];
+        auto line = text.slice(starts[i], last ? next : next - 1);
+        if(llvm::any_of(line, [](char c) { return static_cast<unsigned char>(c) >= 0x80; })) {
+            blob.utf8_lines.push_back(static_cast<std::uint32_t>(i));
+            blob.utf8_text += line;
+            blob.utf8_text_ends.push_back(static_cast<std::uint32_t>(blob.utf8_text.size()));
+        }
         if(length >= index::length_escape) {
             blob.line_lengths.push_back(index::length_escape);
             blob.long_lines.push_back(static_cast<std::uint32_t>(i));
@@ -700,13 +737,13 @@ ZEST_CASE(ReservedLocalParentRejected) {
     ZASSERT(helper->parent == 0);
 }
 
-ZEST_CASE(ContentHashMismatchRejected) {
-    // Every freshness decision compares the advertised content hash, so
-    // content bytes corrupted under an intact structure would keep loading
-    // as fresh while position mapping reads the wrong text.
+ZEST_CASE(NonAsciiLineMismatchRejected) {
+    // Position mapping reads a listed line's text in place of the line, so
+    // it must be the line's text exactly; a pure-ASCII one is a second
+    // spelling of the unlisted line.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    fill_content(blob, "aaåå");
+    fill_content(blob, "aa\nåå\nbb");
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.rel_offsets.ids8 = {0, 0};
@@ -719,32 +756,19 @@ ZEST_CASE(ContentHashMismatchRejected) {
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
-    // Same byte length (ä is two UTF-8 bytes like å): only the hash
-    // differs, so the size check cannot be what rejects the blob.
-    blob.content = "aaåä";
+    blob.utf8_lines = {0};
     ZASSERT(!make_shard(bytes_of()).loaded());
-}
+    blob.utf8_lines = {3};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+    blob.utf8_lines = {1};
 
-ZEST_CASE(StoredAsciiContentRejected) {
-    // The encoding is canonical — one logical blob, one byte image — so
-    // pure-ASCII content stored in full is an invalid second spelling of
-    // the omitted form.
-    index::ShardBlob blob;
-    blob.format_version = index::index_format_version;
-    fill_content(blob, "aaaa");
-    blob.variants = {1};
-    blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
+    blob.utf8_text = "åå\n";
+    blob.utf8_text_ends = {5};
+    ZASSERT(!make_shard(bytes_of()).loaded());
 
-    auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
-    };
-    ZASSERT(make_shard(bytes_of()).loaded());
-
-    blob.content = "aaaa";
+    blob.utf8_lines = {1, 2};
+    blob.utf8_text = "ååbb";
+    blob.utf8_text_ends = {4, 6};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
@@ -770,14 +794,6 @@ ZEST_CASE(LineTableMismatchRejected) {
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     blob.line_lengths = {};
-    ZASSERT(!make_shard(bytes_of()).loaded());
-
-    // Redistributing bytes between lines preserves the sum; with stored
-    // content every line start must match the one the content derives.
-    fill_content(blob, "aå\nbb\n");
-    ZASSERT(make_shard(bytes_of()).loaded());
-
-    blob.line_lengths = {3, 4};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 

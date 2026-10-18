@@ -927,11 +927,10 @@ int run_show_file(Project& project, llvm::StringRef argument) {
     }
     auto& shard = shard_it->second;
     driver::println("file {}", project.file_table.display(*file));
-    driver::println("  blob={}  content size={}  content hash={}  text={}",
+    driver::println("  blob={}  content size={}  content hash={}",
                     format_bytes(shard.bytes().size()),
                     shard.content_size(),
-                    format_hash(shard.content_hash()),
-                    shard.content().empty() ? "not stored (ASCII)" : "stored");
+                    format_hash(shard.content_hash()));
 
     // Which unit contributed which variant, from the manifests.
     std::map<std::uint64_t, std::vector<std::string>> contributors;

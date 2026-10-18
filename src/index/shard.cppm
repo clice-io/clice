@@ -70,12 +70,6 @@ public:
     /// every stored range.
     std::uint32_t content_size() const;
 
-    /// The file's text. Empty for pure-ASCII content, which is not
-    /// stored: byte offsets are already UTF-16 column offsets, so
-    /// position mapping needs only line_starts(), and text previews
-    /// re-read the file from disk under a content_hash check.
-    llvm::StringRef content() const;
-
     /// Whether `text` is the exact content the shard was built from —
     /// the freshness comparison for disk state. Compares by size and
     /// hash, so it works for ASCII blobs, whose text is not stored.
@@ -128,8 +122,9 @@ public:
     /// Which lines end in "\r\n" (ShardBlob::crlf_lines), read in place.
     std::span<const std::uint64_t> crlf_lines() const;
 
-    /// The positions of the text the shard was built from: over its stored
-    /// text, or its line table alone when it is pure ASCII.
+    /// The positions of the text the shard was built from, over its line
+    /// table and the text of its lines holding non-ASCII bytes. Text
+    /// previews read the file from disk under a content_hash check.
     PositionMap positions() const;
 
 private:

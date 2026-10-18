@@ -1498,9 +1498,8 @@ std::vector<IndexQuery::Located> IndexQuery::implementation(SymbolHash hash, Fid
 std::optional<llvm::StringRef>
     IndexQuery::source_text(const IndexSource& source,
                             std::unique_ptr<llvm::MemoryBuffer>& storage) const {
-    // Buffer-backed sources and non-ASCII blobs carry their text; an
-    // open session served by its shard reads in buffer coordinates, so it
-    // ends up here too.
+    // Buffer-backed sources carry their text; an open session served by
+    // its shard reads in buffer coordinates, so it ends up here too.
     if(source.kind == IndexSource::Kind::SessionShard ||
        source.kind == IndexSource::Kind::PreambleShard || !source.positions.text().empty()) {
         return source.positions.text();

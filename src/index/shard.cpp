@@ -132,6 +132,11 @@ struct OccurrenceTable {
     }
 };
 
+/// Whether line `line` ends in "\r\n" by a blob's CRLF bits.
+bool ends_crlf(llvm::ArrayRef<std::uint64_t> crlf_lines, std::size_t line) {
+    return line / 64 < crlf_lines.size() && ((crlf_lines[line / 64] >> (line % 64)) & 1) != 0;
+}
+
 /// Whether an extent fits the u16 extent columns beside its relation's range:
 /// as the distance back to its begin and its length.
 bool fits_extent_columns(LocalSourceRange range, LocalSourceRange extent) {
@@ -330,35 +335,10 @@ CheckResult variants_ok(BlobView root) {
     return {};
 }
 
-CheckResult content_ok(BlobView root) {
-    auto content = to_ref(root[&ShardBlob::content]);
-    if(content.empty()) {
-        return {};
-    }
-    // Every freshness decision compares the advertised content hash
-    // (manifest FileVersions, the merge's generation checks), so content
-    // bytes corrupted under an intact structure would keep loading as
-    // fresh while position mapping reads text the shard was not built
-    // from.
-    if(content.size() != root[&ShardBlob::content_size] ||
-       llvm::xxh3_64bits(content) != root[&ShardBlob::content_hash]) {
-        return std::unexpected("stored content does not match its recorded size and hash");
-    }
-    // Pure-ASCII content must be omitted — the canonical form.
-    if(kota::ipc::lsp::is_ascii({content.data(), content.size()})) {
-        return std::unexpected("pure-ASCII content stored");
-    }
-    return {};
-}
-
 // The line table reconstructs every line start by prefix sum, so it must
-// both pair with its escape table and add up to exactly the content size
-// — a drifted sum would shift every position mapping below the
-// corruption. When the content is stored, the sum check is not enough: a
-// table redistributing bytes between lines keeps the sum intact, so every
-// start must match the one the content derives.
+// both pair with its escape table and add up to exactly the content size —
+// a drifted sum would shift every position mapping below the corruption.
 CheckResult line_table_ok(BlobView root) {
-    auto content = to_ref(root[&ShardBlob::content]);
     auto line_lengths = to_array_ref(root[&ShardBlob::line_lengths]);
     auto long_lines = to_array_ref(root[&ShardBlob::long_lines]);
     auto long_line_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
@@ -366,29 +346,16 @@ CheckResult line_table_ok(BlobView root) {
        !std::ranges::is_sorted(long_lines, std::less_equal{})) {
         return std::unexpected("line table does not pair with its escape table");
     }
-    std::vector<std::uint32_t> starts;
-    if(!content.empty()) {
-        starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
-        if(starts.size() != line_lengths.size()) {
-            return std::unexpected("line table does not match the stored content");
-        }
-    }
     // A "\r\n" ending needs a line holding at least those two bytes and a
-    // line after it; content that is stored says it itself.
+    // line after it.
     auto crlf_lines = to_array_ref(root[&ShardBlob::crlf_lines]);
-    if(!crlf_lines.empty() && (!content.empty() || crlf_lines.back() == 0 ||
-                               crlf_lines.size() > (line_lengths.size() + 63) / 64)) {
+    if(!crlf_lines.empty() &&
+       (crlf_lines.back() == 0 || crlf_lines.size() > (line_lengths.size() + 63) / 64)) {
         return std::unexpected("CRLF line table is not canonical");
     }
-    auto ends_crlf = [&](std::size_t line) {
-        return line / 64 < crlf_lines.size() && ((crlf_lines[line / 64] >> (line % 64)) & 1) != 0;
-    };
     std::uint64_t line_sum = 0;
     std::size_t escape_cursor = 0;
     for(std::size_t line = 0; line < line_lengths.size(); line += 1) {
-        if(!starts.empty() && starts[line] != line_sum) {
-            return std::unexpected("line table does not match the stored content");
-        }
         std::uint32_t length = line_lengths[line];
         if(length == length_escape) {
             length = long_line_lengths[escape_cursor];
@@ -397,13 +364,49 @@ CheckResult line_table_ok(BlobView root) {
                 return std::unexpected("escaped line length below the escape threshold");
             }
         }
-        if(ends_crlf(line) && (length < 2 || line + 1 == line_lengths.size())) {
+        if(ends_crlf(crlf_lines, line) && (length < 2 || line + 1 == line_lengths.size())) {
             return std::unexpected("CRLF bit on a line that cannot end in CRLF");
         }
         line_sum += length;
     }
     if(line_sum != root[&ShardBlob::content_size]) {
         return std::unexpected("line lengths do not add up to the content size");
+    }
+    return {};
+}
+
+// Position mapping reads a listed line's text in place of the line: it must
+// be exactly the line's text without its end, and hold a non-ASCII byte — a
+// pure-ASCII line is the absent entry's to spell.
+CheckResult utf8_lines_ok(BlobView root) {
+    auto lines = to_array_ref(root[&ShardBlob::utf8_lines]);
+    auto text = to_ref(root[&ShardBlob::utf8_text]);
+    auto ends = to_array_ref(root[&ShardBlob::utf8_text_ends]);
+    auto line_lengths = to_array_ref(root[&ShardBlob::line_lengths]);
+    auto crlf_lines = to_array_ref(root[&ShardBlob::crlf_lines]);
+    if(ends.size() != lines.size() || !monotone_ends(ends, text.size()) ||
+       (ends.empty() ? !text.empty() : ends.back() != text.size()) ||
+       !std::ranges::is_sorted(lines, std::less_equal{}) ||
+       (!lines.empty() && lines.back() >= line_lengths.size())) {
+        return std::unexpected("non-ASCII line columns do not line up");
+    }
+    auto long_lines = to_array_ref(root[&ShardBlob::long_lines]);
+    auto long_line_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
+    for(std::size_t i = 0; i < lines.size(); i += 1) {
+        auto line = lines[i];
+        std::uint32_t length = line_lengths[line];
+        if(length == length_escape) {
+            length =
+                long_line_lengths[std::ranges::lower_bound(long_lines, line) - long_lines.begin()];
+        }
+        if(line + 1 != line_lengths.size()) {
+            length -= ends_crlf(crlf_lines, line) ? 2 : 1;
+        }
+        auto line_text = back_to_back(text, ends, static_cast<std::uint32_t>(i));
+        if(line_text.size() != length || line_text.contains('\n') ||
+           kota::ipc::lsp::is_ascii({line_text.data(), line_text.size()})) {
+            return std::unexpected("a non-ASCII line's text does not match its line");
+        }
     }
     return {};
 }
@@ -683,15 +686,15 @@ CheckResult masks_ok(BlobView root) {
 /// readers dereference through raw column pointers or binary-search must be
 /// proven in-bounds and in order here, once, so queries stay check-free.
 /// The checks are also canonicality checks: every self-describing choice
-/// (range encoding, symbol-id width, content omission, mask encoding) is a strict
+/// (range encoding, id width, non-ASCII lines, mask encoding) is a strict
 /// function of the data, so one logical blob has exactly one encoding and
 /// its byte hash is a usable identity. Later checks decode through columns
 /// earlier ones bounded, so the order matters.
 CheckResult validate(BlobView root) {
     constexpr std::array checks = {
         variants_ok,
-        content_ok,
         line_table_ok,
+        utf8_lines_ok,
         symbol_table_ok,
         range_encodings_ok,
         occurrences_ok,
@@ -765,13 +768,6 @@ std::uint32_t Shard::content_size() const {
         return 0;
     }
     return root_of(*buffer)[&ShardBlob::content_size];
-}
-
-llvm::StringRef Shard::content() const {
-    if(!buffer) {
-        return {};
-    }
-    return to_ref(root_of(*buffer)[&ShardBlob::content]);
 }
 
 bool Shard::matches_content(llvm::StringRef text) const {
@@ -1028,10 +1024,16 @@ std::span<const std::uint64_t> Shard::crlf_lines() const {
 }
 
 PositionMap Shard::positions() const {
-    if(!content().empty()) {
-        return {content(), line_starts()};
+    if(!buffer) {
+        return {0, {}, {}};
     }
-    return {content_size(), line_starts(), crlf_lines()};
+    auto root = root_of(*buffer);
+    return {content_size(),
+            line_starts(),
+            crlf_lines(),
+            to_array_ref(root[&ShardBlob::utf8_lines]),
+            to_ref(root[&ShardBlob::utf8_text]),
+            to_array_ref(root[&ShardBlob::utf8_text_ends])};
 }
 
 namespace {
@@ -1265,46 +1267,54 @@ std::vector<GroupIndex> relation_groups(const RelationTable& table) {
 struct ContentInfo {
     std::uint64_t hash = 0;
     std::uint32_t size = 0;
-    llvm::StringRef content;
     std::vector<std::uint8_t> line_lengths;
     std::vector<std::uint32_t> long_lines;
     std::vector<std::uint32_t> long_line_lengths;
     std::vector<std::uint64_t> crlf_lines;
+    std::vector<std::uint32_t> utf8_lines;
+    std::string utf8_text;
+    std::vector<std::uint32_t> utf8_text_ends;
 };
 
 ContentInfo content_info_of(BlobView root) {
-    ContentInfo info;
-    info.hash = root[&ShardBlob::content_hash];
-    info.size = root[&ShardBlob::content_size];
-    info.content = to_ref(root[&ShardBlob::content]);
-    auto lengths = to_array_ref(root[&ShardBlob::line_lengths]);
-    auto long_lines = to_array_ref(root[&ShardBlob::long_lines]);
-    auto long_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
-    info.line_lengths.assign(lengths.begin(), lengths.end());
-    info.long_lines.assign(long_lines.begin(), long_lines.end());
-    info.long_line_lengths.assign(long_lengths.begin(), long_lengths.end());
-    auto crlf_lines = to_array_ref(root[&ShardBlob::crlf_lines]);
-    info.crlf_lines.assign(crlf_lines.begin(), crlf_lines.end());
-    return info;
+    auto copy = [](auto column) {
+        auto values = to_array_ref(column);
+        return std::vector(values.begin(), values.end());
+    };
+    return {
+        .hash = root[&ShardBlob::content_hash],
+        .size = root[&ShardBlob::content_size],
+        .line_lengths = copy(root[&ShardBlob::line_lengths]),
+        .long_lines = copy(root[&ShardBlob::long_lines]),
+        .long_line_lengths = copy(root[&ShardBlob::long_line_lengths]),
+        .crlf_lines = copy(root[&ShardBlob::crlf_lines]),
+        .utf8_lines = copy(root[&ShardBlob::utf8_lines]),
+        .utf8_text = to_ref(root[&ShardBlob::utf8_text]).str(),
+        .utf8_text_ends = copy(root[&ShardBlob::utf8_text_ends]),
+    };
 }
 
 ContentInfo content_info_of(llvm::StringRef content) {
     ContentInfo info;
     info.hash = llvm::xxh3_64bits(content);
     info.size = static_cast<std::uint32_t>(content.size());
-    bool ascii = kota::ipc::lsp::is_ascii({content.data(), content.size()});
-    if(!ascii) {
-        info.content = content;
-    }
 
     auto starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
     info.line_lengths.reserve(starts.size());
     for(std::size_t i = 0; i < starts.size(); i += 1) {
-        auto next = i + 1 < starts.size() ? starts[i + 1] : info.size;
+        auto last = i + 1 == starts.size();
+        auto next = last ? info.size : starts[i + 1];
         auto length = next - starts[i];
-        if(ascii && i + 1 < starts.size() && length >= 2 && content[next - 2] == '\r') {
+        auto crlf = !last && length >= 2 && content[next - 2] == '\r';
+        if(crlf) {
             info.crlf_lines.resize(i / 64 + 1);
             info.crlf_lines[i / 64] |= std::uint64_t(1) << (i % 64);
+        }
+        auto text = content.slice(starts[i], next - (last ? 0 : crlf ? 2 : 1));
+        if(!kota::ipc::lsp::is_ascii({text.data(), text.size()})) {
+            info.utf8_lines.push_back(static_cast<std::uint32_t>(i));
+            info.utf8_text += text;
+            info.utf8_text_ends.push_back(static_cast<std::uint32_t>(info.utf8_text.size()));
         }
         if(length >= length_escape) {
             info.line_lengths.push_back(length_escape);
@@ -1461,7 +1471,9 @@ void emit_blob(const MergedEntries<MaskT>& merged,
     blob.format_version = index_format_version;
     blob.content_hash = content.hash;
     blob.content_size = content.size;
-    blob.content = content.content.str();
+    blob.utf8_lines = content.utf8_lines;
+    blob.utf8_text = content.utf8_text;
+    blob.utf8_text_ends = content.utf8_text_ends;
     blob.line_lengths = content.line_lengths;
     blob.long_lines = content.long_lines;
     blob.long_line_lengths = content.long_line_lengths;

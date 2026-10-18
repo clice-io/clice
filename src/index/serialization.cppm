@@ -187,13 +187,12 @@ constexpr inline std::uint16_t extent_escape = 0xffff;
 /// A file's index as one persisted blob.
 ///
 /// The worker encodes one blob per file per TU: single variant (an empty
-/// `variants` table), self-contained (content, line table, local symbol
-/// names), canonical byte-for-byte — its identity is the hash of its
-/// bytes, computed by whoever holds them, never stored inside. The master
-/// stores first variants verbatim and merges only when a second distinct
-/// variant of the same content generation arrives; merged blobs list the
-/// original single-variant identities in `variants` (mask bit position ->
-/// identity) and deduplicate entries shared between variants via the masks.
+/// `variants` table), self-contained (line table, the text of the lines
+/// holding non-ASCII bytes, local symbol names), canonical byte-for-byte — its identity is the hash
+/// of its bytes, computed by whoever holds them, never stored inside. The master stores first
+/// variants verbatim and merges only when a second distinct variant of the same content generation
+/// arrives; merged blobs list the original single-variant identities in `variants` (mask bit
+/// position -> identity) and deduplicate entries shared between variants via the masks.
 ///
 /// Symbol ids used by the entry columns index `sym_hashes`; the id column
 /// width is chosen from the table size (u8 / u16 / u32).
@@ -210,11 +209,13 @@ struct ShardBlob {
     /// Size of the consumed content; bounds every stored range.
     std::uint32_t content_size = 0;
 
-    /// The file's text, for UTF-16 position mapping and text previews.
-    /// Empty when the content is pure ASCII: byte offsets are already
-    /// UTF-16 column offsets, so the text itself is dead weight. The form
-    /// is canonical — a blob storing pure-ASCII content is invalid.
-    std::string content;
+    /// The lines holding non-ASCII bytes, ascending, and their text without
+    /// the line end, back to back: all UTF-16 and UTF-32 position mapping
+    /// reads, since on every other line a byte is a unit. Text previews
+    /// read the file from disk under a content-hash check.
+    std::vector<std::uint32_t> utf8_lines;
+    std::string utf8_text;
+    std::vector<std::uint32_t> utf8_text_ends;
 
     /// Mask bit position -> variant identity. Empty for a worker-emitted
     /// blob (one anonymous variant, identified by its own byte hash).
@@ -229,9 +230,7 @@ struct ShardBlob {
     std::vector<std::uint32_t> long_line_lengths;
 
     /// A bit for each line ending in "\r\n" — line `n` is bit `n % 64` of
-    /// word `n / 64`, the words ending at the last set bit — for mapping
-    /// positions without the content. Empty when the content is stored,
-    /// whose bytes tell.
+    /// word `n / 64`, the words ending at the last set bit.
     std::vector<std::uint64_t> crlf_lines;
 
     /// Referenced symbols and the parents of the local ones, sorted by

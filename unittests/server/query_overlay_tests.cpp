@@ -121,10 +121,14 @@ std::string header_path(llvm::StringRef basename) {
 
 /// Merge the full TU index into the workspace's disk index, installing
 /// each section's blob verbatim as background indexing would.
-void merge_disk_index() {
+/// Merge the full index as the disk index; `focus_on_disk` names the focus
+/// file by a copy of it on disk instead.
+void merge_disk_index(llvm::StringRef focus_on_disk = {}) {
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
-        file_ids_map.push_back(project.file_table.intern(Spelling::absolute(full_index.path(i))));
+        auto focus = i + 1 == full_index.path_count() && !focus_on_disk.empty();
+        file_ids_map.push_back(project.file_table.intern(
+            Spelling::absolute(focus ? focus_on_disk : full_index.path(i))));
     }
     project.project_index.merge(full_index, file_ids_map);
 
@@ -359,8 +363,9 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 }
 
 ZEST_CASE(MacroDefinitionText) {
-    // The π comment keeps the file non-ASCII, so its content is stored in
-    // the blob and the text path serves without touching the disk.
+    // Macro Definition relations carry the full #define extent, so the
+    // disk text path previews macros — in a non-ASCII file too, whose blob
+    // keeps the text of its non-ASCII lines for position mapping alone.
     add_focus("main.cpp", R"(// π
 #define §(macro)⟦FOO⟧ 1
 int main() { return 0; }
@@ -369,10 +374,9 @@ int main() { return 0; }
     full_index = index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
     ZASSERT(full_index.loaded());
-    merge_disk_index();
+    dir.touch("main.cpp", sources.all_files.find("main.cpp")->second.content);
+    merge_disk_index(dir.path("main.cpp"));
 
-    // Macro Definition relations carry the full #define extent, so the
-    // disk text path works for macros.
     auto text = disk_query.definition_text(hash_of("FOO"), Fid{});
     ZASSERT(text);
     ZEXPECT(llvm::StringRef(text->text).contains("FOO"));
@@ -436,7 +440,7 @@ ZEST_CASE(AsciiPreviewFromDisk) {
     index::write_shard(file_index, {}, text, os);
     project.project_index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    ZASSERT(project.project_index.shards[path_id].content().empty());
+    ZASSERT(project.project_index.shards[path_id].positions().text().empty());
     auto& symbol = project.project_index.touch(sym);
     symbol.name = "value";
     symbol.reference_files.add(path_id.raw);

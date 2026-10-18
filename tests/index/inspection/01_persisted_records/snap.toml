@@ -52,7 +52,7 @@ exit = 0
 [records."$ clice index file geo.h"]
 stdout = '''
 file ${WS}/geo.h
-  blob=# B  content size=65  content hash=#9dd4e54be8a63a99  text=not stored (ASCII)
+  blob=# B  content size=65  content hash=#9dd4e54be8a63a99
   variants=1
     #3cbf9a25e5af2d89  contributed by 2 units
       ${WS}/geo.cpp
