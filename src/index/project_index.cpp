@@ -1031,11 +1031,11 @@ std::vector<IncludeEdge> ProjectIndex::include_edges(const FileTable& files, Fid
     // matches, so a manifest contributes only where the version it entered
     // for this document carries that same content generation — a TU that
     // indexed an older revision would place its lines in text that moved.
-    auto* shard = shard(file);
-    if(!shard) {
+    auto* indexed = shard(file);
+    if(!indexed) {
         return {};
     }
-    auto generation = shard->content_hash();
+    auto generation = indexed->content_hash();
 
     auto is_document = [&](VersionID fv) {
         auto& version = files.version(fv);
