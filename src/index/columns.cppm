@@ -6,6 +6,10 @@ module;
 /// encoding the side and the content size pick (shard and instantiation
 /// blobs), id columns in whichever width their table picks (those and the
 /// global blob), and the load-time checks that let readers trust them.
+///
+/// The per-entry accessors are declared inline: in a named module a member
+/// defined in its class is not, and the readers in other partitions would
+/// call them once per entry.
 
 module clice:index.columns;
 
@@ -34,11 +38,11 @@ struct IdColumnView {
     llvm::ArrayRef<std::uint8_t> bytes;
     std::uint8_t width = 1;
 
-    std::size_t size() const {
+    inline std::size_t size() const {
         return bytes.size() / width;
     }
 
-    std::uint32_t operator[](std::size_t i) const {
+    inline std::uint32_t operator[](std::size_t i) const {
         auto at = bytes.data() + i * width;
         switch(width) {
             case 1: return *at;
@@ -69,7 +73,7 @@ struct IdColumnView {
 
     /// Entry `i` of a text whose entries end at the offsets of this column,
     /// back to back.
-    llvm::StringRef slice(llvm::StringRef text, std::size_t i) const {
+    inline llvm::StringRef slice(llvm::StringRef text, std::size_t i) const {
         auto begin = i == 0 ? 0 : (*this)[i - 1];
         return text.slice(begin, (*this)[i]);
     }
@@ -102,13 +106,13 @@ struct RangeColumnsView {
     llvm::ArrayRef<std::uint32_t> roaring_offsets;
     llvm::ArrayRef<std::uint8_t> roaring;
 
-    std::size_t size() const {
+    inline std::size_t size() const {
         return packed.empty() ? lengths.size() : packed.size();
     }
 
     /// The begin of `entry` given the begin of the entry before it, in the
     /// delta encoding.
-    std::uint32_t next_begin(std::uint32_t entry, std::uint32_t previous) const {
+    inline std::uint32_t next_begin(std::uint32_t entry, std::uint32_t previous) const {
         if(entry % delta_block == 0) {
             return block_begins[entry / delta_block];
         }
@@ -118,7 +122,7 @@ struct RangeColumnsView {
 
     /// The begin of `entry` of an unsorted side; a delta-encoded one is
     /// walked (for_each_range).
-    std::uint32_t begin_of(std::uint32_t entry) const {
+    inline std::uint32_t begin_of(std::uint32_t entry) const {
         assert(deltas.empty() && "a delta-encoded side is walked");
         if(!packed.empty()) {
             return packed[entry] == packed_sentinel ? ~std::uint32_t(0) : packed[entry] >> 8;
@@ -128,12 +132,12 @@ struct RangeColumnsView {
 
     /// The length byte of `entry`: its length, or length_escape for one
     /// whose end the escape table holds.
-    std::uint8_t stored_length(std::uint32_t entry) const {
+    inline std::uint8_t stored_length(std::uint32_t entry) const {
         return packed.empty() ? lengths[entry] : static_cast<std::uint8_t>(packed[entry] & 0xff);
     }
 
     /// The end of `entry`, which begins at `begin`.
-    std::uint32_t end_of(std::uint32_t entry, std::uint32_t begin) const {
+    inline std::uint32_t end_of(std::uint32_t entry, std::uint32_t begin) const {
         if(!packed.empty() && packed[entry] == packed_sentinel) {
             return ~std::uint32_t(0);
         }
@@ -144,7 +148,7 @@ struct RangeColumnsView {
         return begin + length;
     }
 
-    LocalSourceRange range_of(std::uint32_t entry) const {
+    inline LocalSourceRange range_of(std::uint32_t entry) const {
         auto begin = begin_of(entry);
         return {begin, end_of(entry, begin)};
     }
