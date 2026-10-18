@@ -171,10 +171,12 @@ struct Pairing {
                 if(!other_shard) {
                     return;
                 }
-                other_shard->relations_of(hash, RelationKind::Declaration, [&](const index::Relation&) {
-                    declaring.insert(other);
-                    return false;
-                });
+                other_shard->relations_of(hash,
+                                          RelationKind::Declaration,
+                                          [&](const index::Relation&) {
+                                              declaring.insert(other);
+                                              return false;
+                                          });
             });
             for(auto other: declaring) {
                 found[other].overlap += 1;

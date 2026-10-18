@@ -385,16 +385,14 @@ void TUIndex::for_each_instantiation_file(
 }
 
 void TUIndex::for_each_symbol(
-    llvm::function_ref<bool(SymbolHash, const SymbolView&, llvm::ArrayRef<std::uint32_t>)>
-        callback) const {
+    llvm::function_ref<bool(SymbolHash, const SymbolView&, llvm::ArrayRef<std::uint32_t>)> callback)
+    const {
     if(!loaded()) {
         return;
     }
     auto symbols = SymbolColumns::of(blob_root(data));
     for(std::uint32_t entry = 0; entry < symbols.hashes.size(); entry += 1) {
-        if(!callback(symbols.hashes[entry],
-                     symbols.view(entry),
-                     symbols.references_of(entry))) {
+        if(!callback(symbols.hashes[entry], symbols.view(entry), symbols.references_of(entry))) {
             return;
         }
     }
@@ -416,7 +414,8 @@ std::optional<SymbolView> TUIndex::find_symbol(SymbolHash hash) const {
     return std::nullopt;
 }
 
-std::optional<std::vector<TUSharedLocal>> TUIndex::shared_locals(const llvm::BitVector& held) const {
+std::optional<std::vector<TUSharedLocal>>
+    TUIndex::shared_locals(const llvm::BitVector& held) const {
     std::vector<TUSharedLocal> result;
     bool valid = true;
     for_each_symbol(

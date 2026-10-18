@@ -127,8 +127,7 @@ bool resolved_relations(const InstantiationShard& shard,
                 if(names && kind.is_one_of(RelationKind::Reference)) {
                     relation = Relation{.kind = RelationKind::Reference, .range = record.range};
                 } else if(names && kind.is_one_of(RelationKind::Derived)) {
-                    relation =
-                        Relation{.kind = RelationKind::Derived, .target = record.from};
+                    relation = Relation{.kind = RelationKind::Derived, .target = record.from};
                 } else if(record.from == symbol && kind.is_one_of(RelationKind::Base)) {
                     relation = Relation{.kind = RelationKind::Base, .target = record.target};
                 }
@@ -138,8 +137,8 @@ bool resolved_relations(const InstantiationShard& shard,
                 // The type a declaration's placeholder takes, as the
                 // declared type's relation carries no range.
                 if(record.from == symbol && kind.is_one_of(RelationKind::TypeDefinition)) {
-                    relation = Relation{.kind = RelationKind::TypeDefinition,
-                                        .target = record.target};
+                    relation =
+                        Relation{.kind = RelationKind::TypeDefinition, .target = record.target};
                 }
                 break;
             }
@@ -267,7 +266,8 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
     // What the TU's instantiations resolve in its other files, in the
     // coordinates of the text the TU read: the overlay's own entries of
     // the file, or the disk shard of that very text.
-    for(std::uint32_t i = 0; with_instantiations && i < state.instantiation_count() && !stopped; i += 1) {
+    for(std::uint32_t i = 0; with_instantiations && i < state.instantiation_count() && !stopped;
+        i += 1) {
         auto local_id = state.instantiation_path(i);
         auto& instantiations = state.instantiation_shard(i);
         if(local_id == focus_id || !instantiations.loaded()) {
@@ -328,8 +328,8 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
 }
 
 void IndexQuery::for_each_disk_file(SymbolHash hash,
-                                Fid anchor,
-                                llvm::function_ref<void(Fid)> visit) const {
+                                    Fid anchor,
+                                    llvm::function_ref<void(Fid)> visit) const {
     if(index.find_symbol(hash)) {
         index.for_each_reference_file(hash, visit);
     } else if(anchor.valid()) {
@@ -445,8 +445,8 @@ const Shard* IndexQuery::declaring_shard(Fid file) const {
 }
 
 void IndexQuery::for_each_live_file(SymbolHash hash,
-                                RelationKind kind,
-                                llvm::function_ref<void(Fid)> visit) const {
+                                    RelationKind kind,
+                                    llvm::function_ref<void(Fid)> visit) const {
     // One source's relations arrive together.
     Fid last;
     for_each_relation(hash,
@@ -790,8 +790,7 @@ llvm::SmallVector<IndexQuery::Target> IndexQuery::targets(SymbolHash hash,
                       {.preamble = false},
                       [&](const IndexSource& source, const Relation& relation) {
                           if(seen.insert(relation.target).second) {
-                              result.push_back(
-                                  {.symbol = relation.target, .anchor = source.file});
+                              result.push_back({.symbol = relation.target, .anchor = source.file});
                           }
                           return true;
                       });

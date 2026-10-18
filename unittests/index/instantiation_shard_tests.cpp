@@ -115,7 +115,7 @@ ZEST_CASE(Roundtrip) {
 
     auto identity =
         index::resolution_hash(generation,
-                                   {reference(10, 11), call(10, 11, 50), reference(20, 22)});
+                               {reference(10, 11), call(10, 11, 50), reference(20, 22)});
     ZASSERT(shard.resolutions().size() == 1u);
     ZEXPECT(shard.resolutions().front() == identity);
 

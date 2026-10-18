@@ -372,8 +372,8 @@ public:
     /// the project table does — the table hears of the buffer only once it
     /// closes.
     void for_each_live_file(SymbolHash hash,
-                        RelationKind kind,
-                        llvm::function_ref<void(Fid)> visit) const;
+                            RelationKind kind,
+                            llvm::function_ref<void(Fid)> visit) const;
 
     /// The file defining an external symbol: an open buffer defining it
     /// (for_each_live_file) first, else the definition the project table

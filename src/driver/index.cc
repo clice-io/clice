@@ -293,14 +293,14 @@ struct InstantiationStat {
 };
 
 constexpr std::pair<index::BlobKind, llvm::StringLiteral> stored_kinds[] = {
-    {index::BlobKind::Shard,          "file shards"         },
+    {index::BlobKind::Shard,              "file shards"         },
     {index::BlobKind::InstantiationShard, "instantiation shards"},
-    {index::BlobKind::TUManifest,       "manifests"           },
-    {index::BlobKind::ProjectTable,         "global"              },
-    {index::BlobKind::SearchIndex,         "search"              },
-    {index::BlobKind::CommandSnapshot,            "cdb"                 },
-    {index::BlobKind::ArtifactRecords,      "artifacts"           },
-    {index::BlobKind::ContextChoices,       "contexts"            },
+    {index::BlobKind::TUManifest,         "manifests"           },
+    {index::BlobKind::ProjectTable,       "global"              },
+    {index::BlobKind::SearchIndex,        "search"              },
+    {index::BlobKind::CommandSnapshot,    "cdb"                 },
+    {index::BlobKind::ArtifactRecords,    "artifacts"           },
+    {index::BlobKind::ContextChoices,     "contexts"            },
 };
 
 /// The blobs of one kind stored in the database, whether the loaded index
@@ -389,7 +389,8 @@ IndexStats collect_stats(Project& project) {
             stats.keys_per_template[key.pattern] += 1;
             return true;
         });
-        if(index::InstantiationShardBlob blob; index::deserialize_blob(instantiations.bytes(), blob)) {
+        if(index::InstantiationShardBlob blob;
+           index::deserialize_blob(instantiations.bytes(), blob)) {
             index::measure_fields(blob, stats.instantiation_fields);
         }
         stats.instantiation_bytes += stat.bytes;
@@ -738,8 +739,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
 int run_show_file(Project& project, llvm::StringRef argument) {
     auto path = inspected_path(project, argument);
     auto file = project.file_table.find(path);
-    auto shard_it =
-        file ? project.index.shards.find(*file) : project.index.shards.end();
+    auto shard_it = file ? project.index.shards.find(*file) : project.index.shards.end();
     if(shard_it == project.index.shards.end()) {
         driver::println("No rows for {} in the index.",
                         project.file_table.display(CanonicalPath(path)));
@@ -754,8 +754,7 @@ int run_show_file(Project& project, llvm::StringRef argument) {
 
     // Which unit contributed which variant, from the manifests.
     std::map<std::uint64_t, std::vector<std::string>> contributors;
-    if(auto it = project.index.contributions.find(*file);
-       it != project.index.contributions.end()) {
+    if(auto it = project.index.contributions.find(*file); it != project.index.contributions.end()) {
         for(auto& [tu, hash]: it->second) {
             contributors[hash].push_back(project.file_table.display(tu));
         }

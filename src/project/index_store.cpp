@@ -80,8 +80,8 @@ struct CommandSnapshot {
 /// identity as its selection, so an offline edit of the command text is
 /// caught the same way.
 CommandSnapshot build_cdb_snapshot(Project& project,
-                               const llvm::DenseMap<Fid, Fid>& header_hosts,
-                               llvm::ArrayRef<Fid> standalone_debt) {
+                                   const llvm::DenseMap<Fid, Fid>& header_hosts,
+                                   llvm::ArrayRef<Fid> standalone_debt) {
     CommandSnapshot snapshot;
     for(auto& bucket: project.cdb.command_hash_snapshot()) {
         auto path_id = bucket.first;
@@ -157,8 +157,7 @@ CommandSnapshot build_cdb_snapshot(Project& project,
         add_standalone(tu);
     }
     for(auto file: project.build.recorded()) {
-        snapshot.provisional.push_back(
-            project.index.portable(project.file_table.resolve(file)));
+        snapshot.provisional.push_back(project.index.portable(project.file_table.resolve(file)));
     }
     // Deterministic bytes: save() decides "unchanged" by byte equality.
     std::ranges::sort(snapshot.entries, {}, &CDBSnapshotEntry::file);
@@ -534,8 +533,8 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
         auto local_id = view.instantiation_path(section);
         auto global_id = file_ids_map[local_id];
-        auto generation =
-            consumed_hashes[local_id] != 0 ? consumed_hashes[local_id] : view.content_hash(local_id);
+        auto generation = consumed_hashes[local_id] != 0 ? consumed_hashes[local_id]
+                                                         : view.content_hash(local_id);
         auto stored_it = project_index.instantiations.find(global_id);
         const index::InstantiationShard* stored =
             stored_it != project_index.instantiations.end() &&
@@ -822,7 +821,8 @@ std::vector<std::uint64_t> IndexStore::known_instantiations(Fid tu) {
         auto [it, inserted] = holds.try_emplace(std::pair(producer.unit, producer.run));
         if(inserted) {
             auto unit = index.find_unit(producer.unit);
-            it->second = unit && *unit != tu && index.current_run(producer) && !needs_reindex(*unit);
+            it->second =
+                unit && *unit != tu && index.current_run(producer) && !needs_reindex(*unit);
         }
         return it->second;
     };
@@ -1010,8 +1010,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     llvm::SmallVector<index::BlobKey> removals = std::move(startup_removes);
     startup_removes.clear();
     for(auto path_id: retired) {
-        removals.push_back({index::BlobKind::Shard,
-                            project.index.key_of(project.file_table, path_id)});
+        removals.push_back(
+            {index::BlobKind::Shard, project.index.key_of(project.file_table, path_id)});
     }
     llvm::SmallVector<Fid> retired_ids(retired_instantiations.begin(),
                                        retired_instantiations.end());
@@ -1022,8 +1022,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     }
     for(auto path_id: dirty_shards) {
         auto it = project.index.shards.find(path_id);
-        assert(it != project.index.shards.end() &&
-               "dirty shards stay resident until retirement");
+        assert(it != project.index.shards.end() && "dirty shards stay resident until retirement");
         batch.push_back({index::BlobKind::Shard,
                          project.index.key_of(project.file_table, path_id),
                          it->second.bytes().str()});
@@ -1359,8 +1358,8 @@ kota::task<> IndexStore::rebuild_search_index() {
                     path_index.try_emplace(symbol.file,
                                            static_cast<std::uint32_t>(snapshot.paths.size()));
                 if(inserted) {
-                    snapshot.paths.push_back(project.index.portable(
-                        project.file_table.resolve(Fid{symbol.file})));
+                    snapshot.paths.push_back(
+                        project.index.portable(project.file_table.resolve(Fid{symbol.file})));
                 }
                 file = it->second;
             }
@@ -1382,8 +1381,7 @@ kota::task<> IndexStore::rebuild_search_index() {
         if(!shard.loaded()) {
             continue;
         }
-        shard.for_each_local_symbol([&](index::SymbolHash hash,
-                                        const index::SymbolView& symbol) {
+        shard.for_each_local_symbol([&](index::SymbolHash hash, const index::SymbolView& symbol) {
             if(symbol.scope != index::SymbolScope::Internal ||
                !index::is_searchable_kind(symbol.kind) || symbol.name.empty() ||
                !index::declares(shard, hash)) {
@@ -1516,8 +1514,8 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
         if(it == project.index.shards.end() || dirty_shards.contains(path_id)) {
             continue;
         }
-        auto blob = db.read(index::BlobKind::Shard,
-                            project.index.key_of(project.file_table, path_id));
+        auto blob =
+            db.read(index::BlobKind::Shard, project.index.key_of(project.file_table, path_id));
         if(!blob || !it->second.rebind(std::move(blob.buffer))) {
             // Corruption can also show up first here (a damaged page only
             // this re-read reaches); the recovery below sheds the whole
@@ -1548,8 +1546,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
         }
         auto path_id = resident_instantiations[i];
         auto it = project.index.instantiations.find(path_id);
-        if(it == project.index.instantiations.end() ||
-           dirty_instantiations.contains(path_id)) {
+        if(it == project.index.instantiations.end() || dirty_instantiations.contains(path_id)) {
             continue;
         }
         auto blob = db.read(index::BlobKind::InstantiationShard,
@@ -1714,7 +1711,8 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
                 // Best effort before detaching: the metadata blobs may
                 // still read while only the project table is unreadable.
                 load_metadata();
-                LOG_WARN("Index project table unreadable; disabling index persistence this session");
+                LOG_WARN(
+                    "Index project table unreadable; disabling index persistence this session");
                 project.database.reset();
             }
             return result;
@@ -1883,8 +1881,8 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
             auto affected = project_index.remove_manifest(project.file_table, tu);
             mask_refresh.append(affected.begin(), affected.end());
             if(!read_only) {
-                startup_removes.push_back({index::BlobKind::TUManifest,
-                                           project.index.key_of(project.file_table, tu)});
+                startup_removes.push_back(
+                    {index::BlobKind::TUManifest, project.index.key_of(project.file_table, tu)});
             }
             report.add_reindex(tu);
         }
@@ -2308,7 +2306,8 @@ bool IndexStore::needs_reindex(Fid file) {
             return true;
         }
     }
-    if(llvm::any_of(manifest.imports, [&](VersionID version) { return file_version_stale(version); })) {
+    if(llvm::any_of(manifest.imports,
+                    [&](VersionID version) { return file_version_stale(version); })) {
         return true;
     }
     return llvm::any_of(manifest.absent, [&](VersionID version) {

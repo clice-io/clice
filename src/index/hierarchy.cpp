@@ -35,27 +35,28 @@ std::optional<SymbolHash> innermost_function(llvm::ArrayRef<DefinedFunction> fun
     return innermost->hash;
 }
 
-void collect_by_target(const IndexQuery& index, SymbolHash hash,
-                                   Fid anchor,
-                                   RelationKind kind,
-                                   llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) {
+void collect_by_target(const IndexQuery& index,
+                       SymbolHash hash,
+                       Fid anchor,
+                       RelationKind kind,
+                       llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) {
     // The focus-file preamble entry cannot contribute: the preamble region
     // holds only preprocessor directives, never call or type relations.
     index.for_each_relation(hash,
-                      anchor,
-                      kind,
-                      IndexQuery::Order::DiskFirst,
-                      {.preamble = false},
-                      [&](const IndexSource& source, const Relation& relation) {
-                          if(auto site = source.site(relation.range)) {
-                              by_target[relation.target].push_back(*site);
-                          }
-                          return true;
-                      });
+                            anchor,
+                            kind,
+                            IndexQuery::Order::DiskFirst,
+                            {.preamble = false},
+                            [&](const IndexSource& source, const Relation& relation) {
+                                if(auto site = source.site(relation.range)) {
+                                    by_target[relation.target].push_back(*site);
+                                }
+                                return true;
+                            });
 }
 
-std::vector<CallEdge>
-    located_edges(const IndexQuery& index, llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) {
+std::vector<CallEdge> located_edges(const IndexQuery& index,
+                                    llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) {
     std::vector<CallEdge> result;
     result.reserve(by_target.size());
     for(auto& [target, sites]: by_target) {
@@ -71,20 +72,17 @@ std::vector<CallEdge>
     return result;
 }
 
-std::vector<CallEdge> edges(const IndexQuery& index, SymbolHash hash,
-                                                Fid anchor,
-                                                RelationKind kind) {
+std::vector<CallEdge>
+    edges(const IndexQuery& index, SymbolHash hash, Fid anchor, RelationKind kind) {
     llvm::DenseMap<SymbolHash, std::vector<Site>> by_target;
     collect_by_target(index, hash, anchor, kind, by_target);
     return located_edges(index, by_target);
 }
 
-std::vector<DefinedFunction>
-    defined_functions(const IndexQuery& index, const IndexSource& source) {
+std::vector<DefinedFunction> defined_functions(const IndexQuery& index, const IndexSource& source) {
     std::vector<DefinedFunction> functions;
     source.shard->for_each_relation([&](SymbolHash symbol, const Relation& defined) {
-        if(defined.kind != RelationKind::Definition ||
-           !defined.extent().contains(defined.range)) {
+        if(defined.kind != RelationKind::Definition || !defined.extent().contains(defined.range)) {
             return true;
         }
         if(auto info = index.symbol_info(symbol, source.file); info && is_function(info->kind)) {
@@ -120,7 +118,12 @@ std::vector<CallEdge> referencing_functions(const IndexQuery& index, SymbolHash 
         return true;
     };
     for(auto kind: {RelationKind::Reference, RelationKind::WeakReference}) {
-        index.for_each_relation(hash, anchor, kind, IndexQuery::Order::DiskFirst, {.preamble = false}, visit);
+        index.for_each_relation(hash,
+                                anchor,
+                                kind,
+                                IndexQuery::Order::DiskFirst,
+                                {.preamble = false},
+                                visit);
     }
     return located_edges(index, by_function);
 }
@@ -144,9 +147,8 @@ std::vector<std::string> enclosing_functions(const IndexQuery& index, llvm::Arra
     return names;
 }
 
-CallGraph call_graph(const IndexQuery& index, SymbolHash root,
-                                             Fid anchor,
-                                             CallGraphOptions options) {
+CallGraph
+    call_graph(const IndexQuery& index, SymbolHash root, Fid anchor, CallGraphOptions options) {
     CallGraph graph;
     if(options.callers) {
         auto info = index.symbol_info(root, anchor);
@@ -166,7 +168,11 @@ CallGraph call_graph(const IndexQuery& index, SymbolHash root,
             if(info && is_function(info->kind)) {
                 for(auto base: index.transitive_targets(root, anchor, RelationKind::Interface)) {
                     llvm::DenseMap<SymbolHash, std::vector<Site>> through_base;
-                    collect_by_target(index, base.symbol, base.anchor, RelationKind::Caller, through_base);
+                    collect_by_target(index,
+                                      base.symbol,
+                                      base.anchor,
+                                      RelationKind::Caller,
+                                      through_base);
                     auto direct = index.sites(base.symbol, base.anchor, RelationKind::Direct);
                     for(auto& [caller, calls]: through_base) {
                         for(auto& call: calls) {
@@ -190,9 +196,10 @@ CallGraph call_graph(const IndexQuery& index, SymbolHash root,
     return graph;
 }
 
-TypeHierarchy type_hierarchy(const IndexQuery& index, SymbolHash root,
-                                                     Fid anchor,
-                                                     TypeHierarchyOptions options) {
+TypeHierarchy type_hierarchy(const IndexQuery& index,
+                             SymbolHash root,
+                             Fid anchor,
+                             TypeHierarchyOptions options) {
     TypeHierarchy hierarchy;
     if(options.supertypes) {
         hierarchy.supertypes = index.located_targets(root, anchor, RelationKind::Base);

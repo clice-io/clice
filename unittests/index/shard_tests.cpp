@@ -706,10 +706,10 @@ ZEST_CASE(MergedLocalFlagsUnion) {
             file_index,
             [&](index::SymbolHash) -> std::optional<index::SymbolView> {
                 return index::SymbolView{.name = "helper",
-                                             .kind = SymbolKind::Function,
-                                             .scope = index::SymbolScope::Internal,
-                                             .flags = flags,
-                                             .token_class = {.kind = token_kind}};
+                                         .kind = SymbolKind::Function,
+                                         .scope = index::SymbolScope::Internal,
+                                         .flags = flags,
+                                         .token_class = {.kind = token_kind}};
             },
             content,
             os);
@@ -1132,7 +1132,7 @@ ZEST_CASE(UnsortedRelationsRejected) {
     blob.symbol_hashes = {111};
     blob.relation_offsets = {0, 2};
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Reference),
-                      static_cast<std::uint8_t>(RelationKind::Reference)};
+                           static_cast<std::uint8_t>(RelationKind::Reference)};
     blob.relations.packed = {index::pack_range(0, 3), index::pack_range(4, 3)};
     blob.relation_target_ranks = {0};
     blob.relation_extent_ranks = {0};
@@ -1313,7 +1313,8 @@ ZEST_CASE(RangesBeyondContentRejected) {
     blob.relations.packed = {index::pack_range(0, 3)};
 
     // And definition-range payloads.
-    blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) | index::payload_bit};
+    blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) |
+                           index::payload_bit};
     blob.relation_extent_heads = {0};
     blob.relation_extent_lengths = {600};
     ZASSERT(!make_shard(bytes_of()).loaded());
@@ -1468,7 +1469,8 @@ ZEST_CASE(RelationPayloadColumnsRejected) {
     blob.variants = {1};
     blob.symbol_hashes = {111};
     blob.relation_offsets = {0, 1};
-    blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) | index::payload_bit};
+    blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) |
+                           index::payload_bit};
     blob.relations.packed = {index::pack_range(4, 3)};
     blob.relation_target_ranks = {0};
     blob.relation_extent_ranks = {0};
@@ -1502,7 +1504,8 @@ ZEST_CASE(RelationPayloadColumnsRejected) {
     ZASSERT(!make_shard(bytes_of()).loaded());
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Base) | index::payload_bit};
     ZASSERT(!make_shard(bytes_of()).loaded());
-    blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) | index::payload_bit};
+    blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) |
+                           index::payload_bit};
 
     // An extent the u16 columns hold is not escaped; one beginning past
     // its name is.
@@ -1583,7 +1586,9 @@ ZEST_CASE(OwnerlessMaskRejected) {
         for(auto byte: index::write_bitmap(mask)) {
             blob.occurrences.roaring.push_back(static_cast<std::uint8_t>(byte));
         }
-        blob.occurrences.roaring_offsets = {0, static_cast<std::uint32_t>(blob.occurrences.roaring.size())};
+        blob.occurrences.roaring_offsets = {
+            0,
+            static_cast<std::uint32_t>(blob.occurrences.roaring.size())};
         blob.relations.roaring_offsets = {0};
     };
     clice::Bitmap in_range;
@@ -1622,7 +1627,9 @@ ZEST_CASE(CorruptRoaringMaskRejected) {
     for(auto byte: index::write_bitmap(mask)) {
         blob.occurrences.roaring.push_back(static_cast<std::uint8_t>(byte));
     }
-    blob.occurrences.roaring_offsets = {0, static_cast<std::uint32_t>(blob.occurrences.roaring.size())};
+    blob.occurrences.roaring_offsets = {
+        0,
+        static_cast<std::uint32_t>(blob.occurrences.roaring.size())};
     blob.relations.roaring_offsets = {0};
 
     auto bytes_of = [&] {
@@ -1644,7 +1651,9 @@ ZEST_CASE(CorruptRoaringMaskRejected) {
         blob.occurrences.roaring.push_back(static_cast<std::uint8_t>(byte));
     }
     blob.occurrences.roaring[12] = 0xff;
-    blob.occurrences.roaring_offsets = {0, static_cast<std::uint32_t>(blob.occurrences.roaring.size())};
+    blob.occurrences.roaring_offsets = {
+        0,
+        static_cast<std::uint32_t>(blob.occurrences.roaring.size())};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 

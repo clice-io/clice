@@ -66,7 +66,6 @@ ZEST_CASE(ManifestJunkRejected) {
     ZASSERT(!index::deserialize_manifest("not a flatbuffer").has_value());
 }
 
-
 ZEST_CASE(ManifestSharedLocalRejected) {
     index::TUManifestBlob valid;
     valid.format_version = index::index_format_version;

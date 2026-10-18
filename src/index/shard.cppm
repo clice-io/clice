@@ -88,11 +88,12 @@ public:
     /// that the next serialization of this file should compact.
     bool has_dead_variants() const;
 
-    void occurrences_at(std::uint32_t offset, llvm::function_ref<bool(const Occurrence&)> callback) const;
+    void occurrences_at(std::uint32_t offset,
+                        llvm::function_ref<bool(const Occurrence&)> callback) const;
 
     void relations_of(SymbolHash symbol,
-                RelationKind kind,
-                llvm::function_ref<bool(const Relation&)> callback) const;
+                      RelationKind kind,
+                      llvm::function_ref<bool(const Relation&)> callback) const;
 
     /// Visit every live occurrence in stored order (sorted by range, then
     /// target hash).

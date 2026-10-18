@@ -135,9 +135,10 @@ struct KeyTable {
         return {
             .keys = to_array_ref(root[&InstantiationShardBlob::keys]),
             .patterns = ids_of(root[&InstantiationShardBlob::key_patterns], symbol_hashes.size()),
-            .resolutions =
-                ids_of(root[&InstantiationShardBlob::key_resolutions], resolution_hashes.size() + 1),
-            .producers = ids_of(root[&InstantiationShardBlob::key_producers], producer_units.size()),
+            .resolutions = ids_of(root[&InstantiationShardBlob::key_resolutions],
+                                  resolution_hashes.size() + 1),
+            .producers =
+                ids_of(root[&InstantiationShardBlob::key_producers], producer_units.size()),
             .symbol_hashes = symbol_hashes,
             .resolution_hashes = resolution_hashes,
             .producer_units = producer_units,
@@ -338,7 +339,7 @@ CheckResult validate(BlobView root) {
 }  // namespace
 
 ResolutionHash resolution_hash(std::uint64_t content_hash,
-                                   llvm::ArrayRef<InstantiationRecord> records) {
+                               llvm::ArrayRef<InstantiationRecord> records) {
     llvm::SmallVector<std::uint8_t, 256> bytes;
     auto append = [&](auto value) {
         auto* data = reinterpret_cast<const std::uint8_t*>(&value);

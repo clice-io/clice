@@ -162,7 +162,8 @@ struct RelationTable {
             .columns = columns,
             .kinds = to_array_ref(root[&ShardBlob::relation_kinds]),
             .target_ranks = ids_of(root[&ShardBlob::relation_target_ranks], targets.size() + 1),
-            .extent_ranks = ids_of(root[&ShardBlob::relation_extent_ranks], extent_heads.size() + 1),
+            .extent_ranks =
+                ids_of(root[&ShardBlob::relation_extent_ranks], extent_heads.size() + 1),
             .targets = targets,
             .extent_heads = extent_heads,
             .extent_lengths = to_array_ref(root[&ShardBlob::relation_extent_lengths]),
@@ -592,7 +593,8 @@ CheckResult locals_ok(BlobView root) {
 CheckResult masks_ok(BlobView root) {
     auto variant_count = to_array_ref(root[&ShardBlob::variants]).size();
     auto encoding = encoding_of(variant_count);
-    for(auto columns: {columns_of(root[&ShardBlob::occurrences]), columns_of(root[&ShardBlob::relations])}) {
+    for(auto columns:
+        {columns_of(root[&ShardBlob::occurrences]), columns_of(root[&ShardBlob::relations])}) {
         auto count = columns.size();
         auto expected = [&](MaskEncoding column) -> std::size_t {
             if(column != encoding) {
@@ -797,7 +799,7 @@ LiveFilter Shard::live_filter(const RangeColumnsView& columns) const {
 }
 
 void Shard::occurrences_at(std::uint32_t offset,
-                   llvm::function_ref<bool(const Occurrence&)> callback) const {
+                           llvm::function_ref<bool(const Occurrence&)> callback) const {
     if(!buffer) {
         return;
     }
@@ -864,8 +866,8 @@ bool visit_relation_entries(const RelationTable& table,
 }  // namespace
 
 void Shard::relations_of(SymbolHash symbol,
-                   RelationKind kind,
-                   llvm::function_ref<bool(const Relation&)> callback) const {
+                         RelationKind kind,
+                         llvm::function_ref<bool(const Relation&)> callback) const {
     if(!buffer) {
         return;
     }
@@ -1520,7 +1522,8 @@ void emit_blob(const MergedEntries<MaskT>& merged,
             auto& relation = entry.relation;
             if(relations.count() % rank_block == 0) {
                 target_ranks.push_back(static_cast<std::uint32_t>(targets.size()));
-                extent_ranks.push_back(static_cast<std::uint32_t>(blob.relation_extent_heads.size()));
+                extent_ranks.push_back(
+                    static_cast<std::uint32_t>(blob.relation_extent_heads.size()));
             }
             auto kind = static_cast<std::uint8_t>(relation.kind);
             if(relation.target != 0) {
@@ -1561,12 +1564,12 @@ void emit_blob(const MergedEntries<MaskT>& merged,
 
 template <typename MaskT>
 void write_merged(BlobView old_root,
-                       llvm::ArrayRef<std::int64_t> id_map,
-                       llvm::ArrayRef<Shard> fresh,
-                       std::uint32_t fresh_base,
-                       std::vector<VariantHash> variants,
-                       const ContentInfo& content,
-                       llvm::raw_ostream& os) {
+                  llvm::ArrayRef<std::int64_t> id_map,
+                  llvm::ArrayRef<Shard> fresh,
+                  std::uint32_t fresh_base,
+                  std::vector<VariantHash> variants,
+                  const ContentInfo& content,
+                  llvm::raw_ostream& os) {
     MergedEntries<MaskT> merged;
 
     // Occurrences: concatenate every fresh blob's entries (each marked with
@@ -1579,8 +1582,8 @@ void write_merged(BlobView old_root,
         auto entries = decode_occurrences<MaskT>(OccurrenceTable::of(view_of(fresh[i].bytes())),
                                                  [&](std::uint32_t) { return bit; });
         fresh_occurrences.insert(fresh_occurrences.end(),
-                          std::make_move_iterator(entries.begin()),
-                          std::make_move_iterator(entries.end()));
+                                 std::make_move_iterator(entries.begin()),
+                                 std::make_move_iterator(entries.end()));
     }
     canonicalize(fresh_occurrences, occurrence_key);
 
@@ -1592,7 +1595,10 @@ void write_merged(BlobView old_root,
             return remap_mask<MaskT>(encoding, table.columns, entry, id_map);
         });
     }
-    merge_sorted(std::move(old_occurrences), std::move(fresh_occurrences), occurrence_key, merged.occurrences);
+    merge_sorted(std::move(old_occurrences),
+                 std::move(fresh_occurrences),
+                 occurrence_key,
+                 merged.occurrences);
 
     // Relations: gather fresh groups per symbol across all fresh blobs,
     // then two-way merge with the old blob's groups in hash order.
@@ -1764,20 +1770,14 @@ void merge_shards(const Shard& old,
 
     if(variants.size() <= 64) {
         write_merged<std::uint64_t>(old_root,
-                                         id_map,
-                                         fresh,
-                                         fresh_base,
-                                         std::move(variants),
-                                         content,
-                                         os);
+                                    id_map,
+                                    fresh,
+                                    fresh_base,
+                                    std::move(variants),
+                                    content,
+                                    os);
     } else {
-        write_merged<Bitmap>(old_root,
-                                  id_map,
-                                  fresh,
-                                  fresh_base,
-                                  std::move(variants),
-                                  content,
-                                  os);
+        write_merged<Bitmap>(old_root, id_map, fresh, fresh_base, std::move(variants), content, os);
     }
 }
 

@@ -154,7 +154,8 @@ std::expected<void, llvm::StringRef>
     // repeat of either marks a corrupt blob: a repeated id in particular
     // would map to the earlier pair while its record names the later
     // path, attributing contributions to the wrong file.
-    llvm::DenseSet<std::uint32_t> blob_version_ids(blob.version_ids.begin(), blob.version_ids.end());
+    llvm::DenseSet<std::uint32_t> blob_version_ids(blob.version_ids.begin(),
+                                                   blob.version_ids.end());
     if(blob_version_ids.size() != count) {
         return std::unexpected("duplicate file version id");
     }
@@ -182,7 +183,8 @@ std::expected<void, llvm::StringRef>
         persisted_ids.try_emplace(id, blob.version_ids[i]);
     }
     for(std::size_t k = 0; k < blob.manifest_versions.size(); k += 1) {
-        manifest_pins[runtime_ids.find(blob.manifest_versions[k])->second] = blob.manifest_generations[k];
+        manifest_pins[runtime_ids.find(blob.manifest_versions[k])->second] =
+            blob.manifest_generations[k];
     }
     return {};
 }
@@ -204,8 +206,8 @@ bool ProjectIndex::verify_bitmaps() const {
 
 std::expected<void, llvm::StringRef>
     ProjectIndex::load_table(llvm::StringRef data,
-                              FileTable& files,
-                              llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
+                             FileTable& files,
+                             llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
     if(!bind_table(llvm::MemoryBuffer::getMemBufferCopy(data), files)) {
         return std::unexpected("not a readable project table");
     }
@@ -258,7 +260,8 @@ std::uint32_t ProjectIndex::reference_count(SymbolHash hash) const {
     return 0;
 }
 
-void ProjectIndex::for_each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const {
+void ProjectIndex::for_each_reference_file(SymbolHash hash,
+                                           llvm::function_ref<void(Fid)> visit) const {
     auto own = [&](const Symbol& symbol) {
         for(auto id: symbol.reference_files) {
             visit(Fid{id});
@@ -293,7 +296,7 @@ void ProjectIndex::for_each_reference_file(SymbolHash hash, llvm::function_ref<v
 }
 
 void ProjectIndex::for_each_instantiation_file(SymbolHash hash,
-                                           llvm::function_ref<void(Fid)> visit) const {
+                                               llvm::function_ref<void(Fid)> visit) const {
     auto own = [&](const Symbol& symbol) {
         for(auto id: symbol.instantiation_files) {
             visit(Fid{id});
@@ -417,8 +420,8 @@ Symbol& ProjectIndex::edit(SymbolHash hash) {
 }
 
 void ProjectIndex::merge_symbols(const TUIndex& index,
-                         llvm::ArrayRef<Fid> file_ids_map,
-                         llvm::SmallVectorImpl<SymbolHash>* added) {
+                                 llvm::ArrayRef<Fid> file_ids_map,
+                                 llvm::SmallVectorImpl<SymbolHash>* added) {
     // Units may spell one symbol differently (`X<int>` against
     // `X<signed int>`, a conversion to a typedef): the shortest spelling
     // wins, then the smaller one, so the table reads the same whatever the
@@ -441,60 +444,59 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
         current = incoming.str();
         return true;
     };
-    index.for_each_symbol([&](SymbolHash hash,
-                              const SymbolView& identity,
-                              llvm::ArrayRef<std::uint32_t> references) {
-        if(identity.scope != SymbolScope::External) {
+    index.for_each_symbol(
+        [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t> references) {
+            if(identity.scope != SymbolScope::External) {
+                return true;
+            }
+            bool known = find_symbol(hash).has_value();
+            auto& target = edit(hash);
+            bool symbol_changed = !known;
+            bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
+            if(target.name.empty() && !identity.name.empty()) {
+                target.parent = identity.parent;
+                target.kind = identity.kind;
+                target.token_class.kind = identity.token_class.kind;
+                symbol_changed = true;
+            } else if(defines && target.token_class.kind != identity.token_class.kind) {
+                // A declaration may say `struct` where the definition says
+                // `class`: the definition's word stands, whatever merges first.
+                target.token_class.kind = identity.token_class.kind;
+                symbol_changed = true;
+            }
+            symbol_changed = prefer(target.name, identity.name) || symbol_changed;
+            symbol_changed = prefer(target.args, identity.args) || symbol_changed;
+            // An edit to a function, a parameter renamed, keeps its hash: the
+            // unit merging last describes it — a unit defining it, when one
+            // does, which sees the names of every declaration.
+            if(!identity.signature.empty() && target.signature != identity.signature &&
+               (defines || !has_flag(target.flags, SymbolFlags::HasDefinition))) {
+                target.signature = identity.signature.str();
+                symbol_changed = true;
+            }
+            // A unit that defines the symbol always places it: the table never
+            // retracts a unit's earlier report, so an old definition bit must
+            // not pin the file after the definition moved. Declarations only
+            // fill an empty slot.
+            if(identity.file != no_file && (target.file == no_file || defines)) {
+                auto file = file_ids_map[identity.file].raw;
+                symbol_changed = symbol_changed || target.file != file;
+                target.file = file;
+            }
+            auto flags = target.flags | identity.flags;
+            symbol_changed = symbol_changed || flags != target.flags;
+            target.flags = flags;
+            auto modifiers = target.token_class.modifiers | identity.token_class.modifiers;
+            symbol_changed = symbol_changed || modifiers != target.token_class.modifiers;
+            target.token_class.modifiers = modifiers;
+            for(auto ref: references) {
+                target.reference_files.add(file_ids_map[ref].raw);
+            }
+            if(symbol_changed && added) {
+                added->push_back(hash);
+            }
             return true;
-        }
-        bool known = find_symbol(hash).has_value();
-        auto& target = edit(hash);
-        bool symbol_changed = !known;
-        bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
-        if(target.name.empty() && !identity.name.empty()) {
-            target.parent = identity.parent;
-            target.kind = identity.kind;
-            target.token_class.kind = identity.token_class.kind;
-            symbol_changed = true;
-        } else if(defines && target.token_class.kind != identity.token_class.kind) {
-            // A declaration may say `struct` where the definition says
-            // `class`: the definition's word stands, whatever merges first.
-            target.token_class.kind = identity.token_class.kind;
-            symbol_changed = true;
-        }
-        symbol_changed = prefer(target.name, identity.name) || symbol_changed;
-        symbol_changed = prefer(target.args, identity.args) || symbol_changed;
-        // An edit to a function, a parameter renamed, keeps its hash: the
-        // unit merging last describes it — a unit defining it, when one
-        // does, which sees the names of every declaration.
-        if(!identity.signature.empty() && target.signature != identity.signature &&
-           (defines || !has_flag(target.flags, SymbolFlags::HasDefinition))) {
-            target.signature = identity.signature.str();
-            symbol_changed = true;
-        }
-        // A unit that defines the symbol always places it: the table never
-        // retracts a unit's earlier report, so an old definition bit must
-        // not pin the file after the definition moved. Declarations only
-        // fill an empty slot.
-        if(identity.file != no_file && (target.file == no_file || defines)) {
-            auto file = file_ids_map[identity.file].raw;
-            symbol_changed = symbol_changed || target.file != file;
-            target.file = file;
-        }
-        auto flags = target.flags | identity.flags;
-        symbol_changed = symbol_changed || flags != target.flags;
-        target.flags = flags;
-        auto modifiers = target.token_class.modifiers | identity.token_class.modifiers;
-        symbol_changed = symbol_changed || modifiers != target.token_class.modifiers;
-        target.token_class.modifiers = modifiers;
-        for(auto ref: references) {
-            target.reference_files.add(file_ids_map[ref].raw);
-        }
-        if(symbol_changed && added) {
-            added->push_back(hash);
-        }
-        return true;
-    });
+        });
     index.for_each_instantiation_file([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
         auto& target = edit(hash);
         for(auto file: files) {
@@ -632,9 +634,11 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os, const FileTable& files
             blob.symbol_args_ends.push_back(static_cast<std::uint32_t>(blob.symbol_args.size()));
         }
         blob.symbol_signatures += identity.signature;
-        blob.symbol_signature_ends.push_back(static_cast<std::uint32_t>(blob.symbol_signatures.size()));
+        blob.symbol_signature_ends.push_back(
+            static_cast<std::uint32_t>(blob.symbol_signatures.size()));
         auto parent = std::ranges::lower_bound(blob.symbol_hashes, identity.parent);
-        if(identity.parent != 0 && parent != blob.symbol_hashes.end() && *parent == identity.parent) {
+        if(identity.parent != 0 && parent != blob.symbol_hashes.end() &&
+           *parent == identity.parent) {
             parents.push_back(static_cast<std::uint32_t>(parent - blob.symbol_hashes.begin()) + 1);
         } else {
             parents.push_back(0);
@@ -653,13 +657,14 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os, const FileTable& files
             reference_counts.push_back(base->reference_counts[base_entry]);
             auto image = base->image(base_entry);
             blob.symbol_bitmaps.insert(blob.symbol_bitmaps.end(), image.begin(), image.end());
-            blob.symbol_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.symbol_bitmaps.size()));
+            blob.symbol_bitmap_ends.push_back(
+                static_cast<std::uint32_t>(blob.symbol_bitmaps.size()));
             auto instantiations = base->instantiation_image(base_entry);
             if(!instantiations.empty()) {
                 blob.symbol_instantiation_entries.push_back(i);
                 blob.symbol_instantiations.insert(blob.symbol_instantiations.end(),
-                                               instantiations.begin(),
-                                               instantiations.end());
+                                                  instantiations.begin(),
+                                                  instantiations.end());
                 blob.symbol_instantiation_ends.push_back(
                     static_cast<std::uint32_t>(blob.symbol_instantiations.size()));
             }
@@ -712,10 +717,12 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os, const FileTable& files
                 listed.add(path_id(file));
             }
             append_file_set(blob.shared_local_files, listed);
-            blob.shared_local_file_ends.push_back(static_cast<std::uint32_t>(blob.shared_local_files.size()));
+            blob.shared_local_file_ends.push_back(
+                static_cast<std::uint32_t>(blob.shared_local_files.size()));
         }
         blob.shared_local_symbols.push_back(symbol);
-        blob.shared_local_set_ends.push_back(static_cast<std::uint32_t>(blob.shared_local_file_ends.size()));
+        blob.shared_local_set_ends.push_back(
+            static_cast<std::uint32_t>(blob.shared_local_file_ends.size()));
     }
 
     blob.search_generation = search_generation;
@@ -960,8 +967,8 @@ void ProjectIndex::for_each_contributor(Fid file, llvm::function_ref<void(Fid)> 
 }
 
 void ProjectIndex::for_each_file_of_local(SymbolHash hash,
-                                    Fid anchor,
-                                    llvm::function_ref<void(Fid)> visit) const {
+                                          Fid anchor,
+                                          llvm::function_ref<void(Fid)> visit) const {
     llvm::SmallVector<llvm::SmallVector<Fid, 4>> sets;
     if(!db) {
         if(auto it = shared_local_sets.find(hash); it != shared_local_sets.end()) {
@@ -1014,7 +1021,8 @@ const TUManifest* ProjectIndex::manifest(Fid tu) const {
         auto pinned = [&](const TUManifest& manifest) {
             auto pin = std::ranges::find(base->manifest_versions, manifest.tu_version.raw);
             return pin != base->manifest_versions.end() &&
-                   base->manifest_generations[pin - base->manifest_versions.begin()] == manifest.table_generation;
+                   base->manifest_generations[pin - base->manifest_versions.begin()] ==
+                       manifest.table_generation;
         };
         if(auto blob = db->read(BlobKind::TUManifest, key_of(*files, tu))) {
             if(auto manifest = deserialize_manifest(blob.buffer->getBuffer());
@@ -1074,8 +1082,7 @@ std::vector<IncludeEdge> ProjectIndex::include_edges(const FileTable& files, Fid
         append(manifest_it->second);
         return edges;
     }
-    if(auto contribution_it = contributions.find(file);
-       contribution_it != contributions.end()) {
+    if(auto contribution_it = contributions.find(file); contribution_it != contributions.end()) {
         for(auto tu: llvm::make_first_range(contribution_it->second)) {
             if(auto manifest_it = manifests.find(tu); manifest_it != manifests.end()) {
                 append(manifest_it->second);

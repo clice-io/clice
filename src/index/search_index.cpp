@@ -957,8 +957,10 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
     // again by the typo pass, which may accept it.
     Bitmap ranked;
     auto consider = [&](std::uint32_t entry, bool lenient) {
-        if(auto rank =
-               ranker.rank(index.name(entry), index.arguments(entry), index.qualities[entry], lenient)) {
+        if(auto rank = ranker.rank(index.name(entry),
+                                   index.arguments(entry),
+                                   index.qualities[entry],
+                                   lenient)) {
             ranked.add(entry);
             top.push({.rank = *rank, .entry = entry});
         }

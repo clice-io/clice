@@ -301,8 +301,9 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             // the old target, confidently wrong.
             std::vector<protocol::DocumentLink> links;
             if(query.shard_matching(session->path_id, session->text())) {
-                auto raw = feature::index_document_links(text_of(*session),
-                                                         query.project().include_edges(query.file_table(), session->path_id));
+                auto raw = feature::index_document_links(
+                    text_of(*session),
+                    query.project().include_edges(query.file_table(), session->path_id));
                 convert(raw, links);
             }
             session->index_served = true;
@@ -394,12 +395,12 @@ Features::RawResult Features::definition(Ticket ticket,
             if(defined.empty() || llvm::any_of(defined, [&](const index::Site& site) {
                    return index::covers(site, cursor->site);
                })) {
-                defined =
-                    gather(symbol,
-                           path_id,
-                           [&](const index::IndexQuery& from, index::SymbolHash named) {
-                               return index::definition(from, {.symbols = {named}, .site = cursor->site});
-                           });
+                defined = gather(
+                    symbol,
+                    path_id,
+                    [&](const index::IndexQuery& from, index::SymbolHash named) {
+                        return index::definition(from, {.symbols = {named}, .site = cursor->site});
+                    });
             }
             llvm::append_range(result, std::move(defined));
         }
@@ -430,8 +431,9 @@ Features::RawResult Features::definition(Ticket ticket,
             co_return serde_raw{"[]"};
         }
         if(offset) {
-            auto links = feature::index_document_links(text_of(*session),
-                                                       query.project().include_edges(query.file_table(), session->path_id));
+            auto links = feature::index_document_links(
+                text_of(*session),
+                query.project().include_edges(query.file_table(), session->path_id));
             if(auto* link = link_at(links, *offset)) {
                 co_return to_raw(directive_definition(*link));
             }
@@ -1136,8 +1138,9 @@ Features::RawResult Features::references(Ticket ticket,
     auto sites = gather(cursor->symbols,
                         path_id,
                         [&](const index::IndexQuery& from, index::SymbolHash named) {
-                            return index::references(from, {.symbols = {named}, .site = cursor->site},
-                                                   include_declaration);
+                            return index::references(from,
+                                                     {.symbols = {named}, .site = cursor->site},
+                                                     include_declaration);
                         });
     if(std::uint32_t limit = project.config.references.limit.value;
        limit != 0 && sites.size() > limit) {
@@ -1634,9 +1637,9 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
         auto kind = located.symbol.kind;
         bool function = kind == SymbolKind::Function || kind == SymbolKind::Method ||
                         kind == SymbolKind::Operator;
-        bool value =
-            kind == SymbolKind::Field || kind == SymbolKind::EnumMember ||
-            (kind == SymbolKind::Variable && located.symbol.scope != index::SymbolScope::FunctionLocal);
+        bool value = kind == SymbolKind::Field || kind == SymbolKind::EnumMember ||
+                     (kind == SymbolKind::Variable &&
+                      located.symbol.scope != index::SymbolScope::FunctionLocal);
         if(function || value) {
             items.push_back(to_lsp::call_hierarchy_item(
                 located.symbol,

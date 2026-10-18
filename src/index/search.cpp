@@ -31,8 +31,7 @@ struct RankedHits {
     bool exhausted = true;
 };
 
-RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
-                                                 std::size_t limit) {
+RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std::size_t limit) {
     const auto& project = index.project();
     auto& files = index.file_table();
     std::vector<Ranked> hits;
@@ -163,16 +162,15 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
     }
     if(index.live_sources()) {
         index.live_sources()->for_each_session_index([&](const TUIndex& state) {
-            state.for_each_symbol([&](SymbolHash hash,
-                                      const SymbolView& identity,
-                                      llvm::ArrayRef<std::uint32_t>) {
-                llvm::StringRef path;
-                if(identity.file != no_file) {
-                    path = state.path(identity.file);
-                }
-                consider(hash, identity, path, references_of(hash), {});
-                return true;
-            });
+            state.for_each_symbol(
+                [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t>) {
+                    llvm::StringRef path;
+                    if(identity.file != no_file) {
+                        path = state.path(identity.file);
+                    }
+                    consider(hash, identity, path, references_of(hash), {});
+                    return true;
+                });
             return true;
         });
     }
@@ -221,8 +219,9 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
 
 }  // namespace
 
-std::vector<IndexQuery::Located> search(const IndexQuery& index, const SymbolQuery& query,
-                                                    std::size_t limit) {
+std::vector<IndexQuery::Located> search(const IndexQuery& index,
+                                        const SymbolQuery& query,
+                                        std::size_t limit) {
     ScopedTimer timer;
     if(limit == 0 || !query.by_pattern()) {
         return {};
@@ -255,9 +254,8 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index, const SymbolQue
     return results;
 }
 
-Completables completables(const IndexQuery& index, llvm::StringRef prefix,
-                                                  Fid file,
-                                                  std::size_t limit) {
+Completables
+    completables(const IndexQuery& index, llvm::StringRef prefix, Fid file, std::size_t limit) {
     SymbolQuery query{.pattern = prefix.str(), .external_only = true};
     // Members outnumber the names of namespaces: the ranking is fetched
     // wider than the names wanted.
@@ -410,8 +408,9 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
             continue;
         }
         if(query.args.empty() && has_flag(hit.symbol.flags, SymbolFlags::Specialization) &&
-           llvm::any_of(index.targets(hit.symbol.hash, hit.anchor, RelationKind::Primary),
-                        [&](const IndexQuery::Target& primary) { return exact.contains(primary.symbol); })) {
+           llvm::any_of(
+               index.targets(hit.symbol.hash, hit.anchor, RelationKind::Primary),
+               [&](const IndexQuery::Target& primary) { return exact.contains(primary.symbol); })) {
             continue;
         }
         if(auto placed = index.canonical_placed(hit.symbol.hash, hit.anchor)) {

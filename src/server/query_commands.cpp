@@ -499,7 +499,8 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, st
     if(!*anchored) {
         return result;
     }
-    auto located = query->by_pattern() ? index::search(ctx.query, *query, limit) : located_by(ctx, *query);
+    auto located =
+        query->by_pattern() ? index::search(ctx.query, *query, limit) : located_by(ctx, *query);
     if(located.size() > limit) {
         located.resize(limit);
     }
@@ -787,10 +788,11 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto graph = index::call_graph(ctx.query, 
-        resolved->symbol.hash,
-        resolved->site.file,
-        {.callers = direction != "callees", .callees = direction != "callers"});
+    auto graph =
+        index::call_graph(ctx.query,
+                          resolved->symbol.hash,
+                          resolved->site.file,
+                          {.callers = direction != "callees", .callees = direction != "callers"});
     return CallGraphResult{
         .root = graph_entry<GraphEntry>(*resolved),
         .callers = graph_entries(graph.callers),
@@ -847,8 +849,8 @@ Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery lo
     }
     return ImplementationResult{
         .root = graph_entry<GraphEntry>(*resolved),
-        .implementations =
-            graph_entries(index::implementation(ctx.query, resolved->symbol.hash, resolved->site.file)),
+        .implementations = graph_entries(
+            index::implementation(ctx.query, resolved->symbol.hash, resolved->site.file)),
     };
 }
 
@@ -864,7 +866,8 @@ Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto hierarchy = index::type_hierarchy(ctx.query, 
+    auto hierarchy = index::type_hierarchy(
+        ctx.query,
         resolved->symbol.hash,
         resolved->site.file,
         {.supertypes = direction != "subtypes", .subtypes = direction != "supertypes"});

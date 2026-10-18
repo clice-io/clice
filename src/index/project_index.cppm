@@ -92,8 +92,8 @@ struct ProjectIndex {
     /// `data`, all or nothing: the loader's gate for a persisted project table.
     std::expected<void, llvm::StringRef>
         load_table(llvm::StringRef data,
-                    FileTable& files,
-                    llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
+                   FileTable& files,
+                   llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
 
     /// The symbol's stored facts; the strings borrow the base or the entry.
     std::optional<SymbolView> find_symbol(SymbolHash hash) const;
@@ -126,8 +126,8 @@ struct ProjectIndex {
     /// arguments, parent, file or flags the merge changed — what a name
     /// search keyed on the table's entries must re-read.
     void merge_symbols(const TUIndex& index,
-               llvm::ArrayRef<Fid> file_ids_map,
-               llvm::SmallVectorImpl<SymbolHash>* added = nullptr);
+                       llvm::ArrayRef<Fid> file_ids_map,
+                       llvm::SmallVectorImpl<SymbolHash>* added = nullptr);
 
     /// Serialize the project table: the versions some manifest still
     /// references (the shared table is not touched — a version the index
@@ -244,7 +244,9 @@ struct ProjectIndex {
     /// reader. A `static` in a header is thus reached in every unit
     /// including the header or reading it through a precompiled header.
     /// Each file once.
-    void for_each_file_of_local(SymbolHash hash, Fid anchor, llvm::function_ref<void(Fid)> visit) const;
+    void for_each_file_of_local(SymbolHash hash,
+                                Fid anchor,
+                                llvm::function_ref<void(Fid)> visit) const;
 
     /// A TU's manifest: held by a writer, fetched on first use by a reader
     /// — whose copy names its versions by persisted ids. Null when the TU

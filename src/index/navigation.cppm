@@ -75,7 +75,9 @@ std::vector<Site> declaration(const IndexQuery& index, const IndexQuery::Cursor&
 /// references of the methods it overrides, a call through which may
 /// dispatch to it, but not one naming that method by qualification
 /// (`Base::f()`); a class's the names of its constructors.
-std::vector<Site> references(const IndexQuery& index, const IndexQuery::Cursor& cursor, bool include_declaration);
+std::vector<Site> references(const IndexQuery& index,
+                             const IndexQuery::Cursor& cursor,
+                             bool include_declaration);
 
 struct PlacedHighlight {
     Site site;
@@ -85,7 +87,8 @@ struct PlacedHighlight {
 /// The highlights of the symbols under the cursor in the cursor's own
 /// file, from the index serving it — a session's preamble region
 /// included.
-std::vector<PlacedHighlight> document_highlights(const IndexQuery& index, const IndexQuery::Cursor& cursor);
+std::vector<PlacedHighlight> document_highlights(const IndexQuery& index,
+                                                 const IndexQuery::Cursor& cursor);
 
 /// Go-to-type-definition of a cursor's symbol: the declarations its
 /// type names — at a name of a member of a template's specialization,
@@ -94,7 +97,9 @@ std::vector<PlacedHighlight> document_highlights(const IndexQuery& index, const 
 /// type itself; elsewhere the type it is declared with (the relations
 /// without a range). An alias leads on to the type it names. The
 /// cursor's own site drops out unless it is the only one.
-std::vector<Site> type_definition(const IndexQuery& index, const IndexQuery::Cursor& cursor, SymbolHash symbol);
+std::vector<Site> type_definition(const IndexQuery& index,
+                                  const IndexQuery::Cursor& cursor,
+                                  SymbolHash symbol);
 
 /// Whether the name at the cursor may mean `symbol` without naming it
 /// for certain — a dependent name, an overload set's candidate, a
@@ -105,6 +110,8 @@ bool names_weakly(const IndexQuery& index, const IndexQuery::Cursor& cursor, Sym
 /// What implements the symbol, each at its canonical site: the types
 /// deriving from a class-like symbol, the overrides of a function, at
 /// any depth; for a function nothing overrides, its definitions.
-std::vector<IndexQuery::Located> implementation(const IndexQuery& index, SymbolHash hash, Fid anchor);
+std::vector<IndexQuery::Located> implementation(const IndexQuery& index,
+                                                SymbolHash hash,
+                                                Fid anchor);
 
 }  // namespace clice::index

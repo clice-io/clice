@@ -30,9 +30,8 @@ std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
     return content.slice(line_start, line_end).str();
 }
 
-std::optional<DeclaredText> declared_text(const IndexQuery& index, SymbolHash hash,
-                                                                  Fid anchor,
-                                                                  RelationKind kind) {
+std::optional<DeclaredText>
+    declared_text(const IndexQuery& index, SymbolHash hash, Fid anchor, RelationKind kind) {
     // Live sources first: buffer-true indexes also know symbols the project
     // table has never seen (an unsaved definition), the preamble region
     // holds the buffer's own macros, and an overlay is the only source for
@@ -40,39 +39,37 @@ std::optional<DeclaredText> declared_text(const IndexQuery& index, SymbolHash ha
     // whose text is available wins.
     std::optional<DeclaredText> found;
     index.for_each_relation(hash,
-                      anchor,
-                      kind,
-                      IndexQuery::Order::LiveFirst,
-                      {},
-                      [&](const IndexSource& source, const Relation& relation) {
-                          auto extent = extent_of(source, relation);
-                          if(!extent) {
-                              return true;
-                          }
-                          std::unique_ptr<llvm::MemoryBuffer> kept;
-                          auto text = index.source_text(source, kept);
-                          if(!text) {
-                              return true;
-                          }
-                          auto range = extent->range;
-                          found = DeclaredText{
-                              .extent = *extent,
-                              .text = std::string(text->substr(range.begin, range.length())),
-                          };
-                          return false;
-                      });
+                            anchor,
+                            kind,
+                            IndexQuery::Order::LiveFirst,
+                            {},
+                            [&](const IndexSource& source, const Relation& relation) {
+                                auto extent = extent_of(source, relation);
+                                if(!extent) {
+                                    return true;
+                                }
+                                std::unique_ptr<llvm::MemoryBuffer> kept;
+                                auto text = index.source_text(source, kept);
+                                if(!text) {
+                                    return true;
+                                }
+                                auto range = extent->range;
+                                found = DeclaredText{
+                                    .extent = *extent,
+                                    .text = std::string(text->substr(range.begin, range.length())),
+                                };
+                                return false;
+                            });
     return found;
 }
 
 }  // namespace
 
-std::optional<DeclaredText> definition_text(const IndexQuery& index, SymbolHash hash,
-                                                                    Fid anchor) {
+std::optional<DeclaredText> definition_text(const IndexQuery& index, SymbolHash hash, Fid anchor) {
     return declared_text(index, hash, anchor, RelationKind::Definition);
 }
 
-std::optional<DeclaredText> declaration_text(const IndexQuery& index, SymbolHash hash,
-                                                                     Fid anchor) {
+std::optional<DeclaredText> declaration_text(const IndexQuery& index, SymbolHash hash, Fid anchor) {
     return declared_text(index, hash, anchor, RelationKind::Declaration);
 }
 
@@ -95,7 +92,8 @@ std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bo
             [&](const IndexSource& source, const Relation& relation) {
                 auto extent = relation.extent();
                 std::unique_ptr<llvm::MemoryBuffer> kept;
-                auto text = extent.begin < extent.end ? index.source_text(source, kept) : std::nullopt;
+                auto text =
+                    extent.begin < extent.end ? index.source_text(source, kept) : std::nullopt;
                 if(!text || extent.end > text->size()) {
                     return true;
                 }
@@ -155,7 +153,9 @@ auto copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, ll
             continue;
         }
         if(copied->parameters && found.size() > 1) {
-            std::erase_if(found, [&](const IndexQuery::Located& candidate) { return !declares(candidate); });
+            std::erase_if(found, [&](const IndexQuery::Located& candidate) {
+                return !declares(candidate);
+            });
         }
         return found;
     }

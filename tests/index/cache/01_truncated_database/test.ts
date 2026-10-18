@@ -22,7 +22,10 @@ async function damaged(t: TestContext, cut: (database: string) => number): Promi
 // first meta page records it in its free database's pad, past the page
 // header, the magic, the version, the address and the map size.
 test("cut after the meta pages", async (t) => {
-    await damaged(t, (database) => 2 * fs.readFileSync(path.join(t.root, database)).readUInt32LE(40));
+    await damaged(
+        t,
+        (database) => 2 * fs.readFileSync(path.join(t.root, database)).readUInt32LE(40),
+    );
 });
 
 test("emptied", async (t) => {

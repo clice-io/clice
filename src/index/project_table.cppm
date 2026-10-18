@@ -136,8 +136,8 @@ struct ProjectTable {
             return {};
         }
         return slice(instantiation_images,
-                            instantiation_ends,
-                            static_cast<std::uint32_t>(it - instantiation_entries.begin()));
+                     instantiation_ends,
+                     static_cast<std::uint32_t>(it - instantiation_entries.begin()));
     }
 
     std::optional<Bitmap> instantiation_bitmap(std::uint32_t entry) const {
@@ -168,7 +168,8 @@ struct ProjectTable {
             return sets;
         }
         auto position = static_cast<std::uint32_t>(it - shared_local_symbols.begin());
-        for(auto set = position == 0 ? 0 : shared_local_set_ends[position - 1]; set < shared_local_set_ends[position];
+        for(auto set = position == 0 ? 0 : shared_local_set_ends[position - 1];
+            set < shared_local_set_ends[position];
             set += 1) {
             if(auto files = read_file_set(slice(shared_local_files, shared_local_file_ends, set))) {
                 sets.push_back(std::move(*files));

@@ -45,8 +45,7 @@ index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kin
     }
     auto it = project.index.instantiations.find(file);
     if(kind != index::IndexSource::Kind::PreambleShard &&
-       it != project.index.instantiations.end() &&
-       it->second.content_hash() == session.hash) {
+       it != project.index.instantiations.end() && it->second.content_hash() == session.hash) {
         source.instantiations.push_back(&it->second);
     }
     return source;
@@ -133,7 +132,8 @@ void ServerLiveSources::for_each_preamble(
     });
 }
 
-void ServerLiveSources::for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const {
+void ServerLiveSources::for_each_overlay(
+    llvm::function_ref<bool(const index::TUIndex&)> visit) const {
     // Sessions with identical preambles share one blob; visit it once. A
     // preamble's PCH built over the build's precompiled header indexes
     // only what it adds: that header's blob is visited too.

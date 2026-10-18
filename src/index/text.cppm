@@ -45,8 +45,7 @@ std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<S
 /// them: from the symbol's scope outward, or in the global scope; of
 /// several, the functions declaring the parameters it lists, when it
 /// lists them.
-std::vector<IndexQuery::Located> copied_doc_targets(const IndexQuery& index, SymbolHash hash,
-                                        Fid anchor,
-                                        llvm::StringRef name);
+std::vector<IndexQuery::Located>
+    copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, llvm::StringRef name);
 
 }  // namespace clice::index

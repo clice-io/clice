@@ -677,7 +677,8 @@ ZEST_CASE(SharedTableLineages) {
 
     auto imported = persisted;
     ZASSERT(second_loaded.import_manifest(imported));
-    ZASSERT(shared.version(imported.tu_version).fid == *shared.find(Spelling::absolute("/app/tu.cpp")));
+    ZASSERT(shared.version(imported.tu_version).fid ==
+            *shared.find(Spelling::absolute("/app/tu.cpp")));
     ZASSERT(imported.contributions[0].first == header->second);
     ZASSERT(second_pins.size() == std::size_t(1));
     ZASSERT(second_pins.contains(imported.tu_version));

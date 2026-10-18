@@ -340,9 +340,10 @@ int use() { return 1; }
     auto header_id = static_cast<std::uint32_t>(header_path - blob.paths.begin());
     auto focus_id = static_cast<std::uint32_t>(blob.paths.size() - 1);
     constexpr index::SymbolHash helper = ~0ull - 2;
-    add_symbol(blob, helper,
-                      {.name = "helper", .scope = index::SymbolScope::Internal},
-                      {header_id, focus_id});
+    add_symbol(blob,
+               helper,
+               {.name = "helper", .scope = index::SymbolScope::Internal},
+               {header_id, focus_id});
     auto planted = serialized(blob);
 
     ZEXPECT(!merge(planted.data(), planted.size()));
@@ -859,8 +860,7 @@ ZEST_CASE(KnownVariantByHash) {
     // Once the store holds it, the bare hash counts as the file's
     // contribution like the bytes would.
     ZASSERT(merge(a.data.data(), a.data.size()));
-    auto b =
-        index_file(tmp, tmp.path("b.cpp"), {}, project.index.shards[header_id].variants());
+    auto b = index_file(tmp, tmp.path("b.cpp"), {}, project.index.shards[header_id].variants());
     auto b_view = index::TUIndex::from_bytes(b.data);
     ZASSERT(b_view.section_blob(header_section(b_view)).empty());
     ZASSERT(merge(b.data.data(), b.data.size()));
@@ -1168,8 +1168,7 @@ ZEST_CASE(FailedWriteNotCounted) {
             return failed;
         }
 
-        void for_each_key(index::BlobKind,
-                          llvm::function_ref<void(llvm::StringRef)>) override {}
+        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
             return 0;
@@ -1247,8 +1246,7 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
             return failed;
         }
 
-        void for_each_key(index::BlobKind,
-                          llvm::function_ref<void(llvm::StringRef)>) override {}
+        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
             return 0;
@@ -1338,8 +1336,7 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
             return {};
         }
 
-        void for_each_key(index::BlobKind,
-                          llvm::function_ref<void(llvm::StringRef)>) override {}
+        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
             return 2;
@@ -1871,7 +1868,8 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
         // standalone index no CDB pass would ever rebuild.
         auto header_id = f.project.file_table.intern(Spelling::absolute(header));
         VersionID header_version;
-        for(std::uint32_t version = 0; version < f.project.file_table.versions.size(); version += 1) {
+        for(std::uint32_t version = 0; version < f.project.file_table.versions.size();
+            version += 1) {
             if(f.project.file_table.versions[version].fid == header_id) {
                 header_version = VersionID{version};
             }
@@ -2040,8 +2038,7 @@ ZEST_CASE(CorruptTableCondemnsDatabase) {
             return {};
         }
 
-        void for_each_key(index::BlobKind,
-                          llvm::function_ref<void(llvm::StringRef)>) override {}
+        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
             return 0;
@@ -2189,7 +2186,8 @@ ZEST_CASE(UnreadableTablePreserved) {
         std::unique_ptr<index::BlobDatabase> real;
 
         index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-            return kind == index::BlobKind::ProjectTable ? index::ReadBlob{} : real->read(kind, key);
+            return kind == index::BlobKind::ProjectTable ? index::ReadBlob{}
+                                                         : real->read(kind, key);
         }
 
         bool contains(index::BlobKind kind, llvm::StringRef key) override {
@@ -3607,8 +3605,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
             return failed;
         }
 
-        void for_each_key(index::BlobKind,
-                          llvm::function_ref<void(llvm::StringRef)>) override {}
+        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
             return 0;
@@ -3743,8 +3740,7 @@ struct WriteLog final : index::BlobDatabase {
         return failed;
     }
 
-    void for_each_key(index::BlobKind kind,
-                      llvm::function_ref<void(llvm::StringRef)> fn) override {
+    void for_each_key(index::BlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
         real->for_each_key(kind, fn);
     }
 
@@ -3855,8 +3851,7 @@ void a() { Box<A>{}.show(); }
         auto indexed = index_file(tmp, tmp.path("a.cpp"));
         ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
-        auto resolutions =
-            f.project.index.instantiations.find(box_id)->second.resolutions();
+        auto resolutions = f.project.index.instantiations.find(box_id)->second.resolutions();
         stored.assign(resolutions.begin(), resolutions.end());
         f.save();
     }
@@ -3900,10 +3895,7 @@ void a() { Box<A>{}.show(); }
         box_key = blob_key(f.project.file_table.resolve(
             f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")))));
     }
-    inject_blob(tmp,
-                index::BlobKind::InstantiationShard,
-                box_key,
-                "corrupted beyond verification");
+    inject_blob(tmp, index::BlobKind::InstantiationShard, box_key, "corrupted beyond verification");
 
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -4320,13 +4312,12 @@ void a() {}
     auto* header = f.project.index.shard(id("a.h"));
     ZASSERT(header);
     std::optional<index::SymbolHash> print;
-    header->for_each_local_symbol(
-        [&](index::SymbolHash hash, const index::SymbolView& identity) {
-            if(identity.name == "print") {
-                print = hash;
-            }
-            return true;
-        });
+    header->for_each_local_symbol([&](index::SymbolHash hash, const index::SymbolView& identity) {
+        if(identity.name == "print") {
+            print = hash;
+        }
+        return true;
+    });
     ZASSERT(print);
     llvm::SmallVector<Fid> reached;
     f.project.index.for_each_file_of_local(*print, id("a.h"), [&](Fid file) {

@@ -42,17 +42,18 @@ std::vector<Site> mismatched_declarations(const IndexQuery& index, SymbolHash ha
     if(auto parent = index.symbol_info(info->parent, anchor); parent && is_class(parent->kind)) {
         bool in_class = false;
         index.for_each_relation(info->parent,
-                          anchor,
-                          RelationKind::Definition,
-                          IndexQuery::Order::DiskFirst,
-                          {},
-                          [&](const IndexSource& source, const Relation& relation) {
-                              auto extent = extent_of(source, relation);
-                              in_class = extent && llvm::any_of(defined, [&](const Site& site) {
-                                             return covers(*extent, site);
-                                         });
-                              return !in_class;
-                          });
+                                anchor,
+                                RelationKind::Definition,
+                                IndexQuery::Order::DiskFirst,
+                                {},
+                                [&](const IndexSource& source, const Relation& relation) {
+                                    auto extent = extent_of(source, relation);
+                                    in_class =
+                                        extent && llvm::any_of(defined, [&](const Site& site) {
+                                            return covers(*extent, site);
+                                        });
+                                    return !in_class;
+                                });
         if(in_class) {
             return {};
         }
@@ -161,14 +162,17 @@ std::vector<Site> definition_sites(const IndexQuery& index, SymbolHash hash, Fid
     if(auto identity = index.project().find_symbol(hash); identity && identity->file != no_file) {
         if(auto source = index.serving(Fid{identity->file})) {
             std::optional<Site> first;
-            source->shard->relations_of(hash, RelationKind::Definition, [&](const Relation& relation) {
-                if(!first || relation.range.begin < first->range.begin) {
-                    if(auto site = source->site(relation.range)) {
-                        first = std::move(*site);
-                    }
-                }
-                return true;
-            });
+            source->shard->relations_of(hash,
+                                        RelationKind::Definition,
+                                        [&](const Relation& relation) {
+                                            if(!first ||
+                                               relation.range.begin < first->range.begin) {
+                                                if(auto site = source->site(relation.range)) {
+                                                    first = std::move(*site);
+                                                }
+                                            }
+                                            return true;
+                                        });
             if(first) {
                 return {std::move(*first)};
             }
@@ -200,7 +204,8 @@ std::vector<Site> definition(const IndexQuery& index, const IndexQuery::Cursor& 
                                        [&](const Site& site) { return covers(site, cursor.site); });
         };
         if(found.empty() && info && is_function(info->kind) && at_declaration()) {
-            for(auto target: index.transitive_targets(symbol, anchor, RelationKind::Implementation)) {
+            for(auto target:
+                index.transitive_targets(symbol, anchor, RelationKind::Implementation)) {
                 if(auto located = index.resolve(target.symbol, target.anchor)) {
                     found.push_back(std::move(located->site));
                 }
@@ -242,7 +247,8 @@ std::vector<Site> declaration(const IndexQuery& index, const IndexQuery::Cursor&
     if(llvm::all_of(result, [&](const Site& site) { return covers(site, cursor.site); })) {
         std::vector<Site> mismatched;
         for(auto symbol: cursor.symbols) {
-            llvm::append_range(mismatched, mismatched_declarations(index, symbol, cursor.site.file));
+            llvm::append_range(mismatched,
+                               mismatched_declarations(index, symbol, cursor.site.file));
         }
         if(!mismatched.empty()) {
             result = std::move(mismatched);
@@ -256,7 +262,9 @@ std::vector<Site> declaration(const IndexQuery& index, const IndexQuery::Cursor&
     return result;
 }
 
-std::vector<Site> references(const IndexQuery& index, const IndexQuery::Cursor& cursor, bool include_declaration) {
+std::vector<Site> references(const IndexQuery& index,
+                             const IndexQuery::Cursor& cursor,
+                             bool include_declaration) {
     ScopedTimer timer;
     llvm::SmallVector<RelationKind, 4> kinds{RelationKind::Reference, RelationKind::WeakReference};
     if(include_declaration) {
@@ -310,8 +318,8 @@ std::vector<Site> references(const IndexQuery& index, const IndexQuery::Cursor& 
     return result;
 }
 
-std::vector<PlacedHighlight>
-    document_highlights(const IndexQuery& index, const IndexQuery::Cursor& cursor) {
+std::vector<PlacedHighlight> document_highlights(const IndexQuery& index,
+                                                 const IndexQuery::Cursor& cursor) {
     auto source = index.serving(cursor.site.file);
     if(!source) {
         return {};
@@ -348,16 +356,21 @@ std::vector<PlacedHighlight>
     return result;
 }
 
-std::vector<Site> type_definition(const IndexQuery& index, const IndexQuery::Cursor& cursor, SymbolHash symbol) {
+std::vector<Site> type_definition(const IndexQuery& index,
+                                  const IndexQuery::Cursor& cursor,
+                                  SymbolHash symbol) {
     auto anchor = cursor.site.file;
     llvm::SmallVector<IndexQuery::Target> found;
     if(auto source = index.serving(anchor)) {
-        source->shard->relations_of(symbol, RelationKind::TypeDefinition, [&](const Relation& relation) {
-            if(relation.range.contains(cursor.site.range)) {
-                found.push_back({.symbol = relation.target, .anchor = anchor});
-            }
-            return true;
-        });
+        source->shard->relations_of(symbol,
+                                    RelationKind::TypeDefinition,
+                                    [&](const Relation& relation) {
+                                        if(relation.range.contains(cursor.site.range)) {
+                                            found.push_back(
+                                                {.symbol = relation.target, .anchor = anchor});
+                                        }
+                                        return true;
+                                    });
     }
     auto declared_type = [&](const IndexQuery::Target& of) {
         llvm::SmallVector<IndexQuery::Target> types;
@@ -434,7 +447,9 @@ bool names_weakly(const IndexQuery& index, const IndexQuery::Cursor& cursor, Sym
     return found;
 }
 
-std::vector<IndexQuery::Located> implementation(const IndexQuery& index, SymbolHash hash, Fid anchor) {
+std::vector<IndexQuery::Located> implementation(const IndexQuery& index,
+                                                SymbolHash hash,
+                                                Fid anchor) {
     auto info = index.symbol_info(hash, anchor);
     if(!info) {
         return {};
@@ -450,20 +465,20 @@ std::vector<IndexQuery::Located> implementation(const IndexQuery& index, SymbolH
     }
     // A function nothing overrides is implemented by its own definition.
     if(result.empty() && is_function(info->kind)) {
-        index.for_each_relation(hash,
-                          anchor,
-                          RelationKind::Definition,
-                          IndexQuery::Order::DiskFirst,
-                          {},
-                          [&](const IndexSource& source, const Relation& relation) {
-                              if(auto site = source.site(relation.range)) {
-                                  result.push_back(
-                                      {.symbol = *info,
-                                       .site = *site,
-                                       .extent = extent_of(source, relation).value_or(*site)});
-                              }
-                              return true;
-                          });
+        index.for_each_relation(
+            hash,
+            anchor,
+            RelationKind::Definition,
+            IndexQuery::Order::DiskFirst,
+            {},
+            [&](const IndexSource& source, const Relation& relation) {
+                if(auto site = source.site(relation.range)) {
+                    result.push_back({.symbol = *info,
+                                      .site = *site,
+                                      .extent = extent_of(source, relation).value_or(*site)});
+                }
+                return true;
+            });
     }
     return result;
 }

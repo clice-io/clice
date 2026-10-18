@@ -309,7 +309,8 @@ int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
     // overlay; each caller must report it exactly once.
     merge_disk_index();
 
-    auto callers = index::call_graph(index_query, hash_of("callee"), Fid{}, {.callees = false}).callers;
+    auto callers =
+        index::call_graph(index_query, hash_of("callee"), Fid{}, {.callees = false}).callers;
     ZASSERT(callers.size() == 2);
     for(auto& edge: callers) {
         ZEXPECT(edge.sites.size() == 1);
@@ -331,7 +332,8 @@ Derived instance;
     open_with_overlay();
 
     auto derived = hash_of("Derived");
-    auto supertypes = index::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
+    auto supertypes =
+        index::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
     ZASSERT(supertypes.size() == 1);
     ZEXPECT(supertypes[0].symbol.name == "Base");
 
@@ -452,7 +454,8 @@ ZEST_CASE(PreviewFromDisk) {
 
     auto references = disk_query.sites(symbol_hash, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
-    ZEXPECT(index::context_lines(disk_query, references) == std::vector<std::string>{"int other = value;"});
+    ZEXPECT(index::context_lines(disk_query, references) ==
+            std::vector<std::string>{"int other = value;"});
 
     dir.touch("preview.cpp", "int moved = 0;\n");
     ZEXPECT(!index::definition_text(disk_query, symbol_hash, Fid{}).has_value());

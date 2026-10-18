@@ -25,7 +25,6 @@ import :unittests.utils;
 
 namespace clice::testing {
 
-
 namespace lsp = kota::ipc::lsp;
 
 namespace {
@@ -2549,7 +2548,6 @@ ZEST_CASE(SynthesizedCallsKeepRelations) {
 
 };  // ZEST_SUITE(Indexer)
 
-
 /// A TU index blob holding only the minimal path table verification demands,
 /// under `version`.
 std::string blob_of_version(std::uint32_t version) {
@@ -2882,7 +2880,6 @@ int other = 1;
 }
 
 };  // ZEST_SUITE(PreambleIndex)
-
 
 /// One record of what a TU's instantiations resolve in its focus file, as
 /// text: what it spans, its kind, and the names it relates.

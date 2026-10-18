@@ -219,12 +219,13 @@ ZEST_CASE(DefinitionDecidesSignature) {
     add_symbol(declares, 42, {.name = "scale", .signature = "(int)"});
     auto defines = tu_index_blob();
     defines.paths = {"/proj/main.cpp"};
-    add_symbol(defines, 42,
-                       {
-                           .name = "scale",
-                           .signature = "(int count)",
-                           .flags = index::SymbolFlags::HasDefinition,
-                       });
+    add_symbol(defines,
+               42,
+               {
+                   .name = "scale",
+                   .signature = "(int count)",
+                   .flags = index::SymbolFlags::HasDefinition,
+               });
     auto declares_bytes = serialized(declares);
     auto defines_bytes = serialized(defines);
 
@@ -250,12 +251,13 @@ ZEST_CASE(DefinitionDecidesTokenKind) {
     add_symbol(declares, 42, {.name = "S", .token_class = {.kind = SemanticTokenKind::Struct}});
     auto defines = tu_index_blob();
     defines.paths = {"/proj/main.cpp"};
-    add_symbol(defines, 42,
-                       {
-                           .name = "S",
-                           .flags = index::SymbolFlags::HasDefinition,
-                           .token_class = {.kind = SemanticTokenKind::Class},
-                       });
+    add_symbol(defines,
+               42,
+               {
+                   .name = "S",
+                   .flags = index::SymbolFlags::HasDefinition,
+                   .token_class = {.kind = SemanticTokenKind::Class},
+               });
     auto declares_bytes = serialized(declares);
     auto defines_bytes = serialized(defines);
 
@@ -397,7 +399,7 @@ ZEST_CASE(TableRoundTripWithRealMerge) {
     // A manifest referencing the focus file keeps its FileVersion alive
     // through the write's garbage collection.
     auto focus_version = pool.intern_version(file_ids_map[view.path_count() - 1],
-                                        view.content_hash(view.path_count() - 1));
+                                             view.content_hash(view.path_count() - 1));
     index::TUManifest manifest;
     manifest.tu_version = focus_version;
     project.apply_manifest(pool, file_ids_map[view.path_count() - 1], std::move(manifest));
@@ -615,7 +617,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         manifest.tu_version = pool.intern_version(tu, 0x1111);
         manifest.nodes = {
             {manifest.tu_version.raw, ~0u, 1},
-            {header.raw,         0,   1},
+            {header.raw,              0,   1},
         };
         manifest.contributions = {
             {manifest.tu_version, 1}
@@ -645,7 +647,9 @@ ZEST_CASE(SharedLocalAcrossUnits) {
                          ids({"/proj/c.cpp", "/proj/other.h"})}) {
             for(auto start: group) {
                 llvm::SmallVector<Fid> reached;
-                index.for_each_file_of_local(helper, start, [&](Fid file) { reached.push_back(file); });
+                index.for_each_file_of_local(helper, start, [&](Fid file) {
+                    reached.push_back(file);
+                });
                 llvm::sort(reached);
                 ZEXPECT(reached == group);
             }
@@ -679,9 +683,9 @@ ZEST_CASE(SharedLocalAcrossUnits) {
     // A unit leaving takes its set along: c.cpp's files no longer answer.
     writer.remove_manifest(pool, units[2]);
     llvm::SmallVector<Fid> reached;
-    writer.for_each_file_of_local(helper, pool.intern(Spelling::absolute("/proj/c.cpp")), [&](Fid file) {
-        reached.push_back(file);
-    });
+    writer.for_each_file_of_local(helper,
+                                  pool.intern(Spelling::absolute("/proj/c.cpp")),
+                                  [&](Fid file) { reached.push_back(file); });
     ZEXPECT(reached.size() == 1u);
     ZEXPECT(writer.shared_local_sets.find(helper)->second.size() == 2u);
 }

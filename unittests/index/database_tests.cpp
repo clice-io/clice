@@ -183,7 +183,8 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
     auto store = open_store(tmp, "lmdb");
     {
         auto directory = index::database_directory(store, "");
-        require(!llvm::sys::fs::create_directories(directory), "creating the database directory failed");
+        require(!llvm::sys::fs::create_directories(directory),
+                "creating the database directory failed");
         std::error_code ec;
         llvm::raw_fd_ostream os(path::join(directory, "index.mdb"), ec);
         require(!ec, "writing garbage failed");
@@ -428,8 +429,8 @@ ZEST_CASE(DatabasePerConfiguration) {
     ZASSERT(!release->contains(index::BlobKind::ProjectTable, "global"));
     ZASSERT(
         llvm::sys::fs::exists(path::join(index::database_directory(store, "debug"), "index.mdb")));
-    ZASSERT(
-        llvm::sys::fs::exists(path::join(index::database_directory(store, "release"), "index.mdb")));
+    ZASSERT(llvm::sys::fs::exists(
+        path::join(index::database_directory(store, "release"), "index.mdb")));
 }
 
 ZEST_CASE(DatabaseNameSanitized) {

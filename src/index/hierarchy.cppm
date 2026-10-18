@@ -42,7 +42,8 @@ struct CallGraph {
     std::vector<CallEdge> callees;
 };
 
-CallGraph call_graph(const IndexQuery& index, SymbolHash root, Fid anchor, CallGraphOptions options);
+CallGraph
+    call_graph(const IndexQuery& index, SymbolHash root, Fid anchor, CallGraphOptions options);
 
 /// The types `root` derives from and the ones deriving from it, each
 /// at its canonical site; only the sides asked for are walked.
@@ -56,6 +57,9 @@ struct TypeHierarchy {
     std::vector<IndexQuery::Located> subtypes;
 };
 
-TypeHierarchy type_hierarchy(const IndexQuery& index, SymbolHash root, Fid anchor, TypeHierarchyOptions options);
+TypeHierarchy type_hierarchy(const IndexQuery& index,
+                             SymbolHash root,
+                             Fid anchor,
+                             TypeHierarchyOptions options);
 
 }  // namespace clice::index

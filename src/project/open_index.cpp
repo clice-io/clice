@@ -104,8 +104,7 @@ std::optional<LoadedIndex> load_index(Project& project,
     // With no pump attached the load report's debt can only be the
     // recovery drops: every TU's blobs were missing, stale, or corrupt — a
     // damaged cache, not a legitimately empty one.
-    if(project.index.manifests.empty() && project.index.shards.empty() &&
-       !result.dropped.empty()) {
+    if(project.index.manifests.empty() && project.index.shards.empty() && !result.dropped.empty()) {
         LOG_ERROR(
             "Index cache at {} has no servable data ({} translation units need "
             "reindexing); run `clice index` to rebuild",

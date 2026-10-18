@@ -44,7 +44,8 @@ struct CountingSessions : index::LiveSources {
 
     void for_each_session(llvm::function_ref<bool(const index::IndexSource&)>) const override {}
 
-    void for_each_session_index(llvm::function_ref<bool(const index::TUIndex&)> visit) const override {
+    void for_each_session_index(
+        llvm::function_ref<bool(const index::TUIndex&)> visit) const override {
         for(auto& table: tables) {
             visits += 1;
             if(!visit(table)) {
@@ -672,10 +673,7 @@ ZEST_CASE(ScopedSearchScalesLinearly) {
     auto visits_with = [&](int buffers) {
         CountingSessions sessions;
         open_buffers(sessions, buffers);
-        index::IndexQuery session_query{project.index,
-                                        project.file_table,
-                                        nullptr,
-                                        &sessions};
+        index::IndexQuery session_query{project.index, project.file_table, nullptr, &sessions};
         index::search(session_query, *index::SymbolQuery::parse("app::fn0_1"), 10);
         return sessions.visits;
     };

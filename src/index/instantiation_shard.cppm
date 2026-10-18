@@ -63,7 +63,7 @@ constexpr auto record_key(const InstantiationRecord& record) {
 /// The identity of one resolution: a hash over the file's content generation
 /// and the records, which must be sorted and unique.
 ResolutionHash resolution_hash(std::uint64_t content_hash,
-                                   llvm::ArrayRef<InstantiationRecord> records);
+                               llvm::ArrayRef<InstantiationRecord> records);
 
 /// The identity of the resolutions a TU uses in one file: a hash over them,
 /// which must be sorted and unique.
@@ -168,11 +168,11 @@ public:
 
     /// The live records whose range touches `offset`, in stored order.
     void records_at(std::uint32_t offset,
-                llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
+                    llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 
     /// The live records naming `symbol` as their target or their `from`.
     void records_of(SymbolHash symbol,
-                llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
+                    llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 
     /// Every live record, in stored order.
     void for_each_record(llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
