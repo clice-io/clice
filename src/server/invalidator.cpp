@@ -61,7 +61,7 @@ llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
             add(tu);
         }
     }
-    for(auto* tus: {&index.probed, &index.importers}) {
+    for(auto* tus: {&index.absent_lookups, &index.importers}) {
         if(auto it = tus->find(path_id); it != tus->end()) {
             for(auto tu: it->second) {
                 add(tu);

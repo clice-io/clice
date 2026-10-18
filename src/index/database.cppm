@@ -37,7 +37,7 @@ enum class BlobKind : std::uint8_t {
     /// artifact hosts), key "contexts" — sovereignty records, never
     /// garbage-collected by content.
     ContextChoices,
-    /// The single name search index (the search_index partition) derived
+    /// The single name search index (index/search_index.cppm) derived
     /// from the project table, key "search"; rebuilt from the table when
     /// missing.
     SearchIndex,
@@ -196,7 +196,7 @@ bool database_exists(const CacheStore& store, llvm::StringRef configuration);
 /// The configuration's database: a single `index.mdb` (plus its `-lock`
 /// file) in its database directory, created on demand. A writable open
 /// presumes the caller holds the cache directory's writer lock
-/// (index/writer_lock.h) — the project table and manifest blobs form one mutable
+/// (index/writer_lock.cppm) — the project table and manifest blobs form one mutable
 /// lineage that tolerates no second writer. Nullptr when the
 /// environment cannot be opened safely — only confirmed corruption
 /// (or a meta mismatch) is repaired by deleting and rebuilding the

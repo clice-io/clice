@@ -104,7 +104,7 @@ public:
         return it != build_crashes.end() ? &it->second : nullptr;
     }
 
-    /// A consumer holding a license to retry (see server/quarantine.h)
+    /// A consumer holding a license to retry (see server/quarantine.cppm)
     /// lifts the key's refusal.
     void forgive(llvm::StringRef pch_key) {
         build_crashes.erase(pch_key);

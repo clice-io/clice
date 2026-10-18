@@ -694,7 +694,7 @@ ZEST_CASE(AppearedHeaderCascades) {
     auto header = project.file_table.intern(Spelling::absolute("/proj/gen.h"));
     auto closed = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     auto open = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
-    project.index.probed[header].insert(closed);
+    project.index.absent_lookups[header].insert(closed);
     store.open(open);
 
     CommandResolver commands(project);

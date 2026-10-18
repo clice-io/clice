@@ -124,7 +124,7 @@ public:
     /// it against its own document instead of burning a worker of its own.
     const kota::ipc::Error* crashed(Fid module);
 
-    /// An importer holding a license to retry (see server/quarantine.h)
+    /// An importer holding a license to retry (see server/quarantine.cppm)
     /// lifts the module's refusal.
     void forgive(Fid module) {
         build_crashes.erase(module);

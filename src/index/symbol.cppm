@@ -112,7 +112,7 @@ struct Occurrence {
 };
 
 /// One file's index while a build accumulates it; encoded into a shard
-/// blob (index/shard.h) at build end and consumed as bytes from then on.
+/// blob (index/shard.cppm) at build end and consumed as bytes from then on.
 struct FileIndex {
     /// The braces matter: fbs decode value-constructs map entries with
     /// `FileIndex{}`, and without an initializer this member would be

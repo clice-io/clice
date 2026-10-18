@@ -206,7 +206,7 @@ public:
     RawResult type_hierarchy_supertypes(Fid path_id, const protocol::TypeHierarchyItem& item);
     RawResult type_hierarchy_subtypes(Fid path_id, const protocol::TypeHierarchyItem& item);
 
-    /// Rename from this project's index (see index/rename.h), never a
+    /// Rename from this project's index (see index/rename.cppm), never a
     /// recompile. prepare_rename answers the name token at the position,
     /// or an error saying why the symbol there cannot be renamed.
     RawResult prepare_rename(Ticket ticket, Fid path_id, const protocol::Position& position);

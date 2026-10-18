@@ -430,18 +430,18 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
     for(int i = 0; i < 4; i += 1) {
         files.push_back(pool.intern(Spelling::absolute(std::format("/proj/{}.h", i))));
     }
-    auto& scope = project.touch(10);
+    auto& scope = project.edit(10);
     scope.name = "ns";
     scope.kind = SymbolKind::Namespace;
     scope.reference_files.add(files[0].raw);
-    auto& member = project.touch(20);
+    auto& member = project.edit(20);
     member.name = "f";
     member.args = "<int>";
     member.parent = 10;
     member.file = files[1].raw;
     member.reference_files.add(files[1].raw);
     member.reference_files.add(files[2].raw);
-    auto& outsider = project.touch(30);
+    auto& outsider = project.edit(30);
     outsider.name = "g";
     outsider.parent = 999;
     for(auto file: files) {
@@ -512,7 +512,7 @@ ZEST_CASE(WidePathIds) {
     auto file_of = [&](int i) {
         return pool.intern(Spelling::absolute(std::format("/proj/{}.h", i)));
     };
-    auto& symbol = project.touch(10);
+    auto& symbol = project.edit(10);
     symbol.name = "x";
     symbol.file = file_of(0).raw;
     symbol.reference_files.add(file_of(0).raw);

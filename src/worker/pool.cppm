@@ -176,7 +176,7 @@ struct WorkerPoolOptions {
 ///     (priority, affinity). Its guarantee: capacity is never permanently
 ///     zero.
 ///   - The pool ATTRIBUTES every death. A dying worker names the request it
-///     was running (see worker/crash_report.h), or the deadline watchdog
+///     was running (see worker/crash_report.cppm), or the deadline watchdog
 ///     names the one it killed the worker for; each request in flight
 ///     learns whether it is that one. A death that names a request is that
 ///     request's content's doing and spends no slot budget; neither does a

@@ -188,7 +188,7 @@ private:
     /// When this project holds its cache directory's writer lock, the
     /// commands that find it taken ask this server to index for them:
     /// listen on a loopback port and record it next to the lock (see
-    /// index/writer_lock.h). The record is removed at shutdown.
+    /// index/writer_lock.cppm). The record is removed at shutdown.
     void start_control_listener();
     bool endpoint_recorded = false;
 

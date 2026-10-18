@@ -375,7 +375,7 @@ struct InstantiationShardBlob {
 };
 
 /// One file's index in the TU index blob: a self-contained single-variant shard
-/// blob (index/shard.h). `hash` is xxh3 of `blob` — the variant's
+/// blob (index/shard.cppm). `hash` is xxh3 of `blob` — the variant's
 /// identity — so the master can skip blobs it already stores without
 /// touching their bytes; the blob is left empty for a variant the master
 /// said it stores.
