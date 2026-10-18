@@ -77,6 +77,7 @@ document_symbols = [
 ]
 
 [features.tokens]
+wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
 semantic_tokens = [
     { at = '⟦#include⟧ "extra.h"', type = "directive" },
     { at = '#include ⟦"extra.h"⟧', type = "header" },
@@ -272,10 +273,13 @@ Type: `int (int)`
 range = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();"
 
 ["indexed locations".get]
-wrong = "should list where Lazy<int>::run() reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
 definition = ["include/extra.h │ static int ⟦get⟧() {"]
 declaration = ["include/extra.h │ static int ⟦get⟧() {"]
-references = ["include/extra.h │ static int ⟦get⟧() {", "return total + IntTraits::⟦get⟧() + Probe{}.later();"]
+references = [
+    "include/extra.h │ static int ⟦get⟧() {",
+    "include/extra.h │ return Pick<T>::type::⟦get⟧();",
+    "return total + IntTraits::⟦get⟧() + Probe{}.later();",
+]
 
 ["indexed locations".get.hover]
 markdown = '''
@@ -288,10 +292,13 @@ static int get()
 range = "return total + IntTraits::⟦get⟧() + Probe{}.later();"
 
 ["indexed locations".later]
-wrong = "should list where dependent<Probe> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
 definition = ["include/extra.h │ int ⟦later⟧() const {"]
 declaration = ["include/extra.h │ int ⟦later⟧() const {"]
-references = ["include/extra.h │ int ⟦later⟧() const {", "return total + IntTraits::get() + Probe{}.⟦later⟧();"]
+references = [
+    "include/base.h │ return value.⟦later⟧();",
+    "include/extra.h │ int ⟦later⟧() const {",
+    "return total + IntTraits::get() + Probe{}.⟦later⟧();",
+]
 
 ["indexed locations".later.hover]
 markdown = '''

@@ -144,6 +144,7 @@ document_symbols = [
 ]
 
 [features.tokens]
+wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
 semantic_tokens = [
     { at = '⟦#include⟧ "extra.h"', type = "directive" },
     { at = '#include ⟦"extra.h"⟧', type = "header" },
@@ -591,10 +592,11 @@ template <> inline int describe<Widget>(Widget)
 range = "total += ⟦describe⟧(Widget{}) + Traits<Widget>::value + holder.size();"
 
 ["indexed locations".value]
-wrong = "should list where twice<Widget> and Box<Widget>::get() read it, as clice query references does: the preamble's PCH instantiates them and keeps no record"
 definition = ["include/extra.h │ static constexpr int ⟦value⟧ = 7;"]
 declaration = ["include/extra.h │ static constexpr int ⟦value⟧ = 7;"]
 references = [
+    "include/base.h │ return Traits<T>::⟦value⟧;",
+    "include/base.h │ return 2 * Traits<T>::⟦value⟧;",
     "include/extra.h │ static constexpr int ⟦value⟧ = 7;",
     "static_assert(Traits<Widget>::⟦value⟧ == 7);",
     "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();",

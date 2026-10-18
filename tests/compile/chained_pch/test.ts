@@ -11,6 +11,7 @@ import { answers, test, type Serve, type TestContext } from "@clice/tools/testin
 
 const DATABASE = "build/compile_commands.json";
 const WRITER = "build/CMakeFiles/app.dir/cmake_pch.hxx.cxx";
+const PCH = ".clice/cache/*/pch/*.pch";
 
 interface Entry {
     directory: string;
@@ -81,16 +82,22 @@ async function locations(
 for (const indexing of [false, true]) {
     test(indexing ? "indexed locations" : "locations", async (t) => {
         const config = { project: { enable_indexing: indexing } };
-        const s = await t.start({ config });
+        // Indexed before main.cpp opens: an open file's own compile stands
+        // in for its index run, which a later open would race.
+        const start = async (): Promise<Serve> => {
+            const s = await t.start({ config });
+            if (indexing) {
+                await s.indexed();
+            }
+            return s;
+        };
+        const s = await start();
         const files = [...new Set(t.markers().map((m) => m.path))];
         const chained: Record<string, unknown> = {};
         for (const file of files) {
             const diagnostics = s.diagnostics(file);
             await t.show(file, diagnostics);
             chained[file] = await diagnostics;
-        }
-        if (indexing) {
-            await s.indexed();
         }
         const built = (await s.counts()).files;
         expect({ base: built[WRITER]?.pch, top: built["main.cpp"]?.pch }).toEqual({
@@ -100,13 +107,11 @@ for (const indexing of [false, true]) {
         const answered = await locations(t, s, true);
         await s.stop();
 
+        t.disk.rm(".clice");
         withoutPch(t);
-        const plain = await t.start({ config });
+        const plain = await start();
         for (const file of files) {
             expect(await plain.diagnostics(file), file).toEqual(chained[file]);
-        }
-        if (indexing) {
-            await plain.indexed();
         }
         expect(await locations(t, plain, false)).toEqual(answered);
     });
@@ -118,6 +123,7 @@ test("index", async (t) => {
         .filter((m) => located(m.name))
         .map((m) => `query references ${t.place(m)} --include-declaration`);
     await t.cli("index");
+    expect(t.disk.list(PCH)).toHaveLength(1);
     const chained: unknown[] = [];
     for (const question of questions) {
         chained.push((await t.cli(question)).json);
@@ -125,6 +131,7 @@ test("index", async (t) => {
     t.disk.rm(".clice");
     withoutPch(t);
     await t.cli("index");
+    expect(t.disk.list(PCH)).toHaveLength(0);
     for (const [i, question] of questions.entries()) {
         expect((await t.cli(question)).json, question).toEqual(chained[i]);
     }

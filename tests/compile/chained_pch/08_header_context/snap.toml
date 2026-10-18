@@ -2,7 +2,8 @@
 diagnostics = []
 
 ["header context".host]
-definition = ["include/extra.h │ struct ⟦Host⟧ {"]
+wrong = "should reach Host in extra.h, which main.cpp includes before widget.h: while main.cpp is closed and unindexed, nothing answers for the headers of its context"
+definition = []
 
 ["header context".host.hover]
 markdown = '''

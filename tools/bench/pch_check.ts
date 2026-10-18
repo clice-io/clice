@@ -59,8 +59,8 @@ function withoutPch(cdb: string): string {
     for (const entry of entries) {
         if (entry.command !== undefined) {
             entry.command = entry.command
-                .replace(/-Xclang -include-pch -Xclang \S+/g, "")
-                .replace(/-include-pch \S+/g, "");
+                .replace(/-Xclang -include-pch -Xclang ("[^"]*"|\S+)/g, "")
+                .replace(/-include-pch ("[^"]*"|\S+)/g, "");
         }
         if (entry.arguments !== undefined) {
             const kept: string[] = [];
@@ -97,10 +97,15 @@ async function pool<T>(items: T[], jobs: number, work: (item: T) => Promise<void
     );
 }
 
-async function safely<T>(promise: Promise<T>): Promise<T | string> {
+/// The requests that failed, by server and place: a failure on both
+/// sides would otherwise compare equal.
+const failures: string[] = [];
+
+async function safely<T>(promise: Promise<T>, what: string): Promise<T | string> {
     try {
         return await withTimeout(promise, 120_000, "request");
     } catch (error) {
+        failures.push(`${what}: ${String(error)}`);
         return `failed: ${String(error)}`;
     }
 }
@@ -184,18 +189,22 @@ function options() {
 async function main(): Promise<void> {
     const opts = options();
     const groups = new Groups<Example>();
-    const failures: string[] = [];
     let asked = 0;
     let completed = 0;
 
+    // Each server a cache of its own: they would share the workspace's,
+    // whose index only the first opens.
     const plainCdb = withoutPch(opts.cdb);
+    const caches = [0, 1].map(() => fs.mkdtempSync(path.join(os.tmpdir(), "pch-check-cache-")));
     const chained = await start("clice", opts.clice, opts.workspace, {
         name: "chained",
         cdb: opts.cdb,
+        cacheDir: caches[0],
     });
     const plain = await start("clice", opts.clice, opts.workspace, {
         name: "plain",
         cdb: plainCdb,
+        cacheDir: caches[1],
     });
     const servers: Server[] = [chained, plain];
 
@@ -250,7 +259,10 @@ async function main(): Promise<void> {
 
         const [tokensOurs, tokensTheirs] = await Promise.all(
             servers.map((server, index) =>
-                safely(server.client.semanticTokensFull(opened[index] ?? "")),
+                safely(
+                    server.client.semanticTokensFull(opened[index] ?? ""),
+                    `${server.name} ${name} semantic tokens`,
+                ),
             ),
         );
         const tokenText = (reply: proto.SemanticTokens | null | string | undefined) =>
@@ -273,8 +285,14 @@ async function main(): Promise<void> {
                 servers.map(async (server, index) => {
                     const uri = opened[index] ?? "";
                     const [hover, definition] = await Promise.all([
-                        safely(server.client.hoverAt(uri, line, character)),
-                        safely(server.client.definitionAt(uri, line, character)),
+                        safely(
+                            server.client.hoverAt(uri, line, character),
+                            `${server.name} ${at(token.begin)} hover`,
+                        ),
+                        safely(
+                            server.client.definitionAt(uri, line, character),
+                            `${server.name} ${at(token.begin)} definition`,
+                        ),
                     ]);
                     return {
                         hover: hoverText(hover),
@@ -325,6 +343,7 @@ async function main(): Promise<void> {
                 servers.map(async (server, index) => {
                     const reply = await safely(
                         server.client.completionAt(opened[index] ?? "", line, character),
+                        `${server.name} ${at(token.begin)} completion`,
                     );
                     if (typeof reply === "string" || reply === null) {
                         return { labels: String(reply), ranked: String(reply) };
@@ -374,7 +393,9 @@ async function main(): Promise<void> {
     for (const server of servers) {
         await stop(server);
     }
-    fs.rmSync(plainCdb, { recursive: true, force: true });
+    for (const dir of [plainCdb, ...caches]) {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
 
     console.log(
         `# PCH check: ${opts.files.length} files, ${asked} names asked, ${completed} completed\n`,

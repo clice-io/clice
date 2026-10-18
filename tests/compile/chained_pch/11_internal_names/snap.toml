@@ -173,6 +173,7 @@ document_symbols = [
 ]
 
 [features.tokens]
+wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
 semantic_tokens = [
     { at = '⟦#include⟧ "extra.h"', type = "directive" },
     { at = '#include ⟦"extra.h"⟧', type = "header" },
@@ -566,11 +567,11 @@ Passed as `value` by value
 range = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();"
 
 ["indexed locations".hidden]
-wrong = "should list where twice<Hidden> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
 definition = ["include/base.h │ double ⟦radius⟧;"]
 declaration = ["include/base.h │ double ⟦radius⟧;"]
 references = [
     "include/base.h │ double ⟦radius⟧;",
+    "include/base.h │ return 2 * shape.⟦radius⟧;",
     "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();",
 ]
 
@@ -588,10 +589,10 @@ Size: 8 bytes, alignment 8 bytes
 range = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();"
 
 ["indexed locations".ring]
-wrong = "should list where twice<Ring> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
 definition = ["include/extra.h │ double ⟦radius⟧;"]
 declaration = ["include/extra.h │ double ⟦radius⟧;"]
 references = [
+    "include/base.h │ return 2 * shape.⟦radius⟧;",
     "include/extra.h │ double ⟦radius⟧;",
     "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();",
 ]

@@ -121,6 +121,7 @@ document_symbols = [
 ]
 
 [features.tokens]
+wrong = "the names base.h declares are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
 semantic_tokens = [
     { at = '⟦#include⟧ "extra.h"', type = "directive" },
     { at = '#include ⟦"extra.h"⟧', type = "header" },
@@ -494,10 +495,13 @@ int helper(Early)
 range = "return ⟦helper⟧(early) + helper(gadget) + helper(later);"
 
 ["indexed locations".gadget]
-wrong = "should list where apply<Gadget> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
 definition = ["include/extra.h │ int ⟦helper⟧(Gadget);"]
 declaration = ["include/extra.h │ int ⟦helper⟧(Gadget);"]
-references = ["include/extra.h │ int ⟦helper⟧(Gadget);", "return helper(early) + ⟦helper⟧(gadget) + helper(later);"]
+references = [
+    "include/base.h │ return ⟦helper⟧(value);",
+    "include/extra.h │ int ⟦helper⟧(Gadget);",
+    "return helper(early) + ⟦helper⟧(gadget) + helper(later);",
+]
 
 ["indexed locations".gadget.hover]
 markdown = '''

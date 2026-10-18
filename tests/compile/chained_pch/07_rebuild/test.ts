@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { expect } from "vitest";
 import { test, type Serve, type TestContext } from "@clice/tools/testing";
 
@@ -14,11 +15,12 @@ async function builds(s: Serve): Promise<{ base: number; top: number }> {
     return { base: files[WRITER]?.pch ?? 0, top: files["main.cpp"]?.pch ?? 0 };
 }
 
-/// The target's PCH on disk: the older of the two.
+/// The target's PCH on disk: the one the other, chained onto it, names.
 function base(t: TestContext): string {
     const pchs = t.disk.list(PCH);
     expect(pchs).toHaveLength(2);
-    return [...pchs].sort((a, b) => t.disk.mtime(a).getTime() - t.disk.mtime(b).getTime())[0] ?? "";
+    const [first = "", second = ""] = pchs;
+    return t.disk.read(second).includes(path.basename(first)) ? first : second;
 }
 
 test("a header of the base changes", async (t) => {
@@ -63,6 +65,9 @@ test("the base is gone while the server runs", async (t) => {
     t.disk.rm(base(t));
     s.edit("main.cpp", { replace: "twice_area(2)", with: "twice_area(5)" });
     expect(await s.errors("main.cpp")).toEqual([]);
+    // The parse finds the base gone and retracts the top, whose build over
+    // it fails and retracts the base: both are built again.
+    expect(await builds(s)).toEqual({ base: 2, top: 3 });
     await t.show("definition", s.definition(t.at("main.cpp", "|area(3)")));
 });
 
