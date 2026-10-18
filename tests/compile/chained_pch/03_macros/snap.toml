@@ -58,20 +58,24 @@ Expands to:
 '''
 range = "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;"
 
-[features.c_extra.completion]
-items = [
-    { label = "preamble_limit", kind = "Variable", detail = "const int" },
-    { label = "third_counter", kind = "Variable", detail = "int" },
-    { label = "value", kind = "Variable", detail = "int" },
-    { label = "alignof", kind = "Keyword" },
-    { label = "co_await", kind = "Keyword" },
-    { label = "co_yield", kind = "Keyword" },
-    { label = "const_cast", kind = "Keyword" },
-    { label = "decltype", kind = "Keyword" },
-    { label = "delete", kind = "Keyword" },
-    { label = "dynamic_cast", kind = "Keyword" },
+[features.extra]
+highlights = [
+    { at = "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;", kind = "text" },
 ]
-more = 44
+
+[features.extra.hover]
+markdown = '''
+**macro** `EXTRA_ONLY`
+
+```cpp
+#define EXTRA_ONLY 5
+```
+Expands to:
+```cpp
+5
+```
+'''
+range = "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;"
 
 [features.guard]
 highlights = [
@@ -106,21 +110,6 @@ Offset: 0 bytes
 Size: 4 bytes, alignment 4 bytes
 '''
 range = "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;"
-
-[features.c_limit.completion]
-items = [
-    { label = "counter_now", kind = "Variable", detail = "int" },
-    { label = "preamble_limit", kind = "Variable", detail = "const int" },
-    { label = "run()", kind = "Function", detail = "int" },
-    { label = "third_counter", kind = "Variable", detail = "int" },
-    { label = "value", kind = "Variable", detail = "int" },
-    { label = "alignof", kind = "Keyword" },
-    { label = "co_await", kind = "Keyword" },
-    { label = "co_yield", kind = "Keyword" },
-    { label = "const_cast", kind = "Keyword" },
-    { label = "decltype", kind = "Keyword" },
-]
-more = 48
 
 [features.symbols]
 document_symbols = [
@@ -309,6 +298,25 @@ Expands to:
 '''
 range = "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;"
 
+[locations.extra]
+definition = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5"]
+declaration = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5"]
+references = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5", "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;"]
+
+[locations.extra.hover]
+markdown = '''
+**macro** `EXTRA_ONLY`
+
+```cpp
+#define EXTRA_ONLY 5
+```
+Expands to:
+```cpp
+5
+```
+'''
+range = "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;"
+
 [locations.guard]
 definition = ["include/guarded.h │ int ⟦g⟧;"]
 declaration = ["include/guarded.h │ int ⟦g⟧;"]
@@ -415,6 +423,25 @@ Expands to:
 ```
 '''
 range = "int value = LIMIT + MODE + ⟦SQUARE⟧(2) + EXTRA_ONLY;"
+
+["indexed locations".extra]
+definition = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5"]
+declaration = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5"]
+references = ["include/extra.h │ #define ⟦EXTRA_ONLY⟧ 5", "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;"]
+
+["indexed locations".extra.hover]
+markdown = '''
+**macro** `EXTRA_ONLY`
+
+```cpp
+#define EXTRA_ONLY 5
+```
+Expands to:
+```cpp
+5
+```
+'''
+range = "int value = LIMIT + MODE + SQUARE(2) + ⟦EXTRA_ONLY⟧;"
 
 ["indexed locations".guard]
 definition = ["include/guarded.h │ int ⟦g⟧;"]
@@ -549,6 +576,34 @@ stdout = '''
         "file": "${WS}/include/base.h",
         "line": 4,
         "context": "#define SQUARE(x) ((x) * (x))",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:3:40 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "EXTRA_ONLY",
+    "kind": "Macro",
+    "symbol": "#ab6691b85478527d",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 18,
+        "context": "#define EXTRA_ONLY 5",
         "function": null
       },
       {
@@ -720,6 +775,34 @@ stdout = '''
         "file": "${WS}/include/base.h",
         "line": 4,
         "context": "#define SQUARE(x) ((x) * (x))",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int value = LIMIT + MODE + SQUARE(2) + EXTRA_ONLY;",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:3:40 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "EXTRA_ONLY",
+    "kind": "Macro",
+    "symbol": "#ab6691b85478527d",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 18,
+        "context": "#define EXTRA_ONLY 5",
         "function": null
       },
       {

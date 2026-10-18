@@ -1,6 +1,6 @@
 #include "extra.h"
 
-int value = §(limit)LIMIT + §(mode)MODE + §(square)SQUARE(2) + §(c_extra)EXTRA_ONLY;
+int value = §(limit)LIMIT + §(mode)MODE + §(square)SQUARE(2) + §(extra)EXTRA_ONLY;
 
 #include "guarded.h"
 #include "once.h"
@@ -17,5 +17,5 @@ Guarded guarded{1};
 Once once{2};
 
 int run() {
-    return guarded.§(guard)g + once.§(once)o + value + counter_now + §(c_limit)LIMIT;
+    return guarded.§(guard)g + once.§(once)o + value + counter_now + LIMIT;
 }

@@ -204,205 +204,211 @@ async function main(): Promise<void> {
     // whose index only the first opens.
     const plainCdb = withoutPch(opts.cdb);
     const caches = [0, 1].map(() => fs.mkdtempSync(path.join(os.tmpdir(), "pch-check-cache-")));
-    const chained = await start("clice", opts.clice, opts.workspace, {
-        name: "chained",
-        cdb: opts.cdb,
-        cacheDir: caches[0],
-    });
-    const plain = await start("clice", opts.clice, opts.workspace, {
-        name: "plain",
-        cdb: plainCdb,
-        cacheDir: caches[1],
-    });
-    const servers: Server[] = [chained, plain];
-
-    for (const file of opts.files) {
-        const content = fs.readFileSync(file, "utf8");
-        const lines = new Lines(content);
-        const name = path.relative(opts.workspace, file);
-        const at = (offset: number) => {
-            const p = lines.position(offset);
-            return `${name}:${p.line + 1}:${p.character + 1}`;
-        };
-        const opened = await Promise.all(
-            servers.map(async (server) => {
-                try {
-                    const [uri] = await withTimeout(
-                        server.client.openAndWait(file, 900_000, { text: content }),
-                        900_000,
-                        `${server.name} open`,
-                    );
-                    return uri;
-                } catch (error) {
-                    failures.push(`${server.name} ${name}: ${String(error)}`);
-                    return null;
-                }
+    const servers: Server[] = [];
+    try {
+        servers.push(
+            await start("clice", opts.clice, opts.workspace, {
+                name: "chained",
+                cdb: opts.cdb,
+                cacheDir: caches[0],
             }),
         );
-        const [ours, theirs] = opened;
-        if (ours === null || ours === undefined || theirs === null || theirs === undefined) {
-            continue;
-        }
-
-        const diagnostics = servers.map(
-            (server, index) =>
-                new Set(
-                    (server.client.diagnostics.get(opened[index] ?? "") ?? []).map((d) =>
-                        diagnosticKey(opts.workspace, opened[index] ?? "", d),
-                    ),
-                ),
+        servers.push(
+            await start("clice", opts.clice, opts.workspace, {
+                name: "plain",
+                cdb: plainCdb,
+                cacheDir: caches[1],
+            }),
         );
-        for (const [index, own] of diagnostics.entries()) {
-            const other = diagnostics[1 - index] ?? new Set<string>();
-            for (const key of own) {
-                if (!other.has(key)) {
-                    groups.add(
-                        `diagnostic only ${servers[index]?.name ?? ""}`,
-                        `${name}:${key}`,
-                        () => ({ at: name, snippet: key }),
-                    );
+
+        for (const file of opts.files) {
+            const content = fs.readFileSync(file, "utf8");
+            const lines = new Lines(content);
+            const name = path.relative(opts.workspace, file);
+            const at = (offset: number) => {
+                const p = lines.position(offset);
+                return `${name}:${p.line + 1}:${p.character + 1}`;
+            };
+            const opened = await Promise.all(
+                servers.map(async (server) => {
+                    try {
+                        const [uri] = await withTimeout(
+                            server.client.openAndWait(file, 900_000, { text: content }),
+                            900_000,
+                            `${server.name} open`,
+                        );
+                        return uri;
+                    } catch (error) {
+                        failures.push(`${server.name} ${name}: ${String(error)}`);
+                        return null;
+                    }
+                }),
+            );
+            const [ours, theirs] = opened;
+            if (ours === null || ours === undefined || theirs === null || theirs === undefined) {
+                continue;
+            }
+
+            const diagnostics = servers.map(
+                (server, index) =>
+                    new Set(
+                        (server.client.diagnostics.get(opened[index] ?? "") ?? []).map((d) =>
+                            diagnosticKey(opts.workspace, opened[index] ?? "", d),
+                        ),
+                    ),
+            );
+            for (const [index, own] of diagnostics.entries()) {
+                const other = diagnostics[1 - index] ?? new Set<string>();
+                for (const key of own) {
+                    if (!other.has(key)) {
+                        groups.add(
+                            `diagnostic only ${servers[index]?.name ?? ""}`,
+                            `${name}:${key}`,
+                            () => ({ at: name, snippet: key }),
+                        );
+                    }
                 }
             }
-        }
 
-        const [tokensOurs, tokensTheirs] = await Promise.all(
-            servers.map((server, index) =>
-                safely(
-                    server.client.semanticTokensFull(opened[index] ?? ""),
-                    `${server.name} ${name} semantic tokens`,
-                ),
-            ),
-        );
-        const tokenText = (reply: proto.SemanticTokens | null | string | undefined) =>
-            typeof reply === "string" || reply === null || reply === undefined
-                ? String(reply)
-                : reply.data.join(",");
-        if (tokenText(tokensOurs) !== tokenText(tokensTheirs)) {
-            groups.add("semantic tokens differ", name, () => ({ at: name, snippet: "" }));
-        }
-
-        const tokens = lex(content).filter(
-            (token) =>
-                token.kind === "ident" &&
-                !token.directive &&
-                !KEYWORDS.has(content.slice(token.begin, token.end)),
-        );
-        await pool(sample(tokens, opts.positions), opts.jobs, async (token) => {
-            const { line, character } = lines.position(token.begin);
-            const answers = await Promise.all(
-                servers.map(async (server, index) => {
-                    const uri = opened[index] ?? "";
-                    const [hover, definition] = await Promise.all([
-                        safely(
-                            server.client.hoverAt(uri, line, character),
-                            `${server.name} ${at(token.begin)} hover`,
-                        ),
-                        safely(
-                            server.client.definitionAt(uri, line, character),
-                            `${server.name} ${at(token.begin)} definition`,
-                        ),
-                    ]);
-                    return {
-                        hover: hoverText(hover),
-                        definition: locations(opts.workspace, definition),
-                    };
-                }),
-            );
-            asked += 1;
-            const [mine, other] = answers;
-            if (mine === undefined || other === undefined) {
-                return;
-            }
-            const example = (detail: string) => () => ({
-                at: at(token.begin),
-                snippet: snippet(lines, token),
-                detail,
-            });
-            if (mine.definition !== other.definition) {
-                groups.add(
-                    `definition differs: ${content.slice(token.begin, token.end)}`,
-                    at(token.begin),
-                    example(`chained ${mine.definition} | plain ${other.definition}`),
-                );
-            }
-            if (mine.hover !== other.hover) {
-                groups.add(
-                    `hover differs: ${content.slice(token.begin, token.end)}`,
-                    at(token.begin),
-                    example(
-                        `chained ${JSON.stringify(mine.hover.slice(0, 300))} | plain ${JSON.stringify(other.hover.slice(0, 300))}`,
+            const [tokensOurs, tokensTheirs] = await Promise.all(
+                servers.map((server, index) =>
+                    safely(
+                        server.client.semanticTokensFull(opened[index] ?? ""),
+                        `${server.name} ${name} semantic tokens`,
                     ),
-                );
-            }
-        });
-        const lexed = lex(content);
-        const members = lexed.filter((token, i) => {
-            const before = lexed[i - 1];
-            return (
-                token.kind === "ident" &&
-                !token.directive &&
-                before !== undefined &&
-                [".", "->", "::"].includes(content.slice(before.begin, before.end))
+                ),
             );
-        });
-        await pool(sample(members, opts.completions), opts.jobs, async (token) => {
-            const { line, character } = lines.position(token.begin);
-            const [mine, other] = await Promise.all(
-                servers.map(async (server, index) => {
-                    const reply = await safely(
-                        server.client.completionAt(opened[index] ?? "", line, character),
-                        `${server.name} ${at(token.begin)} completion`,
-                    );
-                    if (typeof reply === "string" || reply === null) {
-                        return { labels: String(reply), ranked: String(reply) };
-                    }
-                    const items = Array.isArray(reply) ? reply : reply.items;
-                    // The editor orders the items by sortText, not as sent.
-                    const ranked = items
-                        .map((item) => `${item.sortText ?? ""} ${item.label}`)
-                        .sort()
-                        .join("\n");
-                    const labels = items
-                        .map((item) => item.label)
-                        .sort()
-                        .join("\n");
-                    return { labels, ranked };
-                }),
-            );
-            completed += 1;
-            if (mine === undefined || other === undefined) {
-                return;
+            const tokenText = (reply: proto.SemanticTokens | null | string | undefined) =>
+                typeof reply === "string" || reply === null || reply === undefined
+                    ? String(reply)
+                    : reply.data.join(",");
+            if (tokenText(tokensOurs) !== tokenText(tokensTheirs)) {
+                groups.add("semantic tokens differ", name, () => ({ at: name, snippet: "" }));
             }
-            const differ = (a: string, b: string) => {
-                const theirs = new Set(b.split("\n"));
-                const only = a.split("\n").filter((item) => !theirs.has(item));
-                return only.slice(0, 8).join(", ");
-            };
-            if (mine.labels !== other.labels) {
-                groups.add("completion items differ", at(token.begin), () => ({
-                    at: at(token.begin),
-                    snippet: snippet(lines, token),
-                    detail: `chained only ${differ(mine.labels, other.labels)} | plain only ${differ(other.labels, mine.labels)}`,
-                }));
-            } else if (mine.ranked !== other.ranked) {
-                groups.add("completion ranks differ", at(token.begin), () => ({
-                    at: at(token.begin),
-                    snippet: snippet(lines, token),
-                    detail: `chained ${differ(mine.ranked, other.ranked)} | plain ${differ(other.ranked, mine.ranked)}`,
-                }));
-            }
-        });
-        for (const [index, server] of servers.entries()) {
-            server.client.close(opened[index] ?? "");
-        }
-        console.error(`checked ${name}`);
-    }
 
-    for (const server of servers) {
-        await stop(server);
-    }
-    for (const dir of [plainCdb, ...caches]) {
-        fs.rmSync(dir, { recursive: true, force: true });
+            const tokens = lex(content).filter(
+                (token) =>
+                    token.kind === "ident" &&
+                    !token.directive &&
+                    !KEYWORDS.has(content.slice(token.begin, token.end)),
+            );
+            await pool(sample(tokens, opts.positions), opts.jobs, async (token) => {
+                const { line, character } = lines.position(token.begin);
+                const answers = await Promise.all(
+                    servers.map(async (server, index) => {
+                        const uri = opened[index] ?? "";
+                        const [hover, definition] = await Promise.all([
+                            safely(
+                                server.client.hoverAt(uri, line, character),
+                                `${server.name} ${at(token.begin)} hover`,
+                            ),
+                            safely(
+                                server.client.definitionAt(uri, line, character),
+                                `${server.name} ${at(token.begin)} definition`,
+                            ),
+                        ]);
+                        return {
+                            hover: hoverText(hover),
+                            definition: locations(opts.workspace, definition),
+                        };
+                    }),
+                );
+                asked += 1;
+                const [mine, other] = answers;
+                if (mine === undefined || other === undefined) {
+                    return;
+                }
+                const example = (detail: string) => () => ({
+                    at: at(token.begin),
+                    snippet: snippet(lines, token),
+                    detail,
+                });
+                if (mine.definition !== other.definition) {
+                    groups.add(
+                        `definition differs: ${content.slice(token.begin, token.end)}`,
+                        at(token.begin),
+                        example(`chained ${mine.definition} | plain ${other.definition}`),
+                    );
+                }
+                if (mine.hover !== other.hover) {
+                    groups.add(
+                        `hover differs: ${content.slice(token.begin, token.end)}`,
+                        at(token.begin),
+                        example(
+                            `chained ${JSON.stringify(mine.hover.slice(0, 300))} | plain ${JSON.stringify(other.hover.slice(0, 300))}`,
+                        ),
+                    );
+                }
+            });
+            const lexed = lex(content);
+            const members = lexed.filter((token, i) => {
+                const before = lexed[i - 1];
+                return (
+                    token.kind === "ident" &&
+                    !token.directive &&
+                    before !== undefined &&
+                    [".", "->", "::"].includes(content.slice(before.begin, before.end))
+                );
+            });
+            await pool(sample(members, opts.completions), opts.jobs, async (token) => {
+                const { line, character } = lines.position(token.begin);
+                const [mine, other] = await Promise.all(
+                    servers.map(async (server, index) => {
+                        const reply = await safely(
+                            server.client.completionAt(opened[index] ?? "", line, character),
+                            `${server.name} ${at(token.begin)} completion`,
+                        );
+                        if (typeof reply === "string" || reply === null) {
+                            return { labels: String(reply), ranked: String(reply) };
+                        }
+                        const items = Array.isArray(reply) ? reply : reply.items;
+                        // The editor orders the items by sortText, not as sent.
+                        const ranked = items
+                            .map((item) => `${item.sortText ?? ""} ${item.label}`)
+                            .sort()
+                            .join("\n");
+                        const labels = items
+                            .map((item) => item.label)
+                            .sort()
+                            .join("\n");
+                        return { labels, ranked };
+                    }),
+                );
+                completed += 1;
+                if (mine === undefined || other === undefined) {
+                    return;
+                }
+                const differ = (a: string, b: string) => {
+                    const theirs = new Set(b.split("\n"));
+                    const only = a.split("\n").filter((item) => !theirs.has(item));
+                    return only.slice(0, 8).join(", ");
+                };
+                if (mine.labels !== other.labels) {
+                    groups.add("completion items differ", at(token.begin), () => ({
+                        at: at(token.begin),
+                        snippet: snippet(lines, token),
+                        detail: `chained only ${differ(mine.labels, other.labels)} | plain only ${differ(other.labels, mine.labels)}`,
+                    }));
+                } else if (mine.ranked !== other.ranked) {
+                    groups.add("completion ranks differ", at(token.begin), () => ({
+                        at: at(token.begin),
+                        snippet: snippet(lines, token),
+                        detail: `chained ${differ(mine.ranked, other.ranked)} | plain ${differ(other.ranked, mine.ranked)}`,
+                    }));
+                }
+            });
+            for (const [index, server] of servers.entries()) {
+                server.client.close(opened[index] ?? "");
+            }
+            console.error(`checked ${name}`);
+        }
+    } finally {
+        for (const server of servers) {
+            await stop(server);
+        }
+        for (const dir of [plainCdb, ...caches]) {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     }
 
     console.log(
