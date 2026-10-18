@@ -19,6 +19,7 @@ import :syntax.completion;
 import :syntax.include_resolver;
 import :syntax.lexer;
 import :syntax.scan;
+import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_system;
 import :worker.protocol;

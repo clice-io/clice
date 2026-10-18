@@ -14,6 +14,7 @@ import :server.dispatcher;
 import :server.editor_context;
 import :server.session;
 import :server.session_store;
+import :syntax.source_text;
 import :vfs.dir_cache;
 
 namespace clice {

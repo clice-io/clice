@@ -36,8 +36,6 @@ struct ContextsData {
     std::vector<CacheContextEntry> contexts;
 };
 
-}  // namespace
-
 /// The command a file compiles with — among a multi-configuration
 /// file's or host's entries the pinned one, else the first, or the default
 /// command covering it — rules applied, like the resolve path's effective
@@ -51,10 +49,10 @@ struct CommandLang {
     std::string standard;
 };
 
-static std::optional<CommandLang> command_lang(Project& project,
-                                               Fid file,
-                                               llvm::ArrayRef<CanonicalRef> paths,
-                                               const Selection* pin) {
+std::optional<CommandLang> command_lang(Project& project,
+                                        Fid file,
+                                        llvm::ArrayRef<CanonicalRef> paths,
+                                        const Selection* pin) {
     auto path = project.file_table.resolve(file);
     auto commands = project.build.commands(file);
     if(commands.empty()) {
@@ -82,6 +80,8 @@ static std::optional<CommandLang> command_lang(Project& project,
     }
     return result;
 }
+
+}  // namespace
 
 Fid EditorContext::host_of(Fid path_id) const {
     if(auto it = selections.find(path_id); it != selections.end()) {

@@ -8,7 +8,6 @@ import :compile.compilation;
 import :feature.feature;
 import :semantic.token_class;
 import :syntax.source_text;
-import :syntax.token;
 
 namespace clice::feature {
 

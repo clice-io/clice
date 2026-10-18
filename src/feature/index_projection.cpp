@@ -120,7 +120,7 @@ std::optional<llvm::StringRef> before_body(const std::string& text) {
 
 }  // namespace
 
-auto index_semantic_tokens(SourceText& text,
+auto index_semantic_tokens(SourceText& source,
                            const IndexEntries& entries,
                            IndexSymbolResolver resolve,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
@@ -128,10 +128,10 @@ auto index_semantic_tokens(SourceText& text,
     using Modifier = SemanticTokenModifier;
 
     // The token kinds names_token reads.
-    auto content = text.text();
+    auto content = source.text();
     llvm::DenseMap<std::uint32_t, clang::tok::TokenKind> lexed;
-    for(const auto& token: text.lexical().tokens) {
-        lexed.try_emplace(token.range.begin, text.kind(token));
+    for(const auto& token: source.lexical().tokens) {
+        lexed.try_emplace(token.range.begin, source.kind(token));
     }
     auto anchors = [&](std::uint32_t offset, const TokenClass& token) {
         auto it = lexed.find(offset);
@@ -202,10 +202,10 @@ auto index_semantic_tokens(SourceText& text,
         }
     }
 
-    return semantic_token_stream(text, facts, options);
+    return semantic_token_stream(source, facts, options);
 }
 
-auto index_document_symbols(SourceText& text,
+auto index_document_symbols(SourceText& source,
                             const IndexEntries& entries,
                             IndexSymbolResolver resolve,
                             const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
@@ -264,7 +264,7 @@ auto index_document_symbols(SourceText& text,
     // The `#define`s the preprocessor read, the ones whose macro the index
     // knows.
     std::ranges::sort(macro_names);
-    const auto& lexical = text.lexical();
+    const auto& lexical = source.lexical();
     std::vector<LexicalInfo::Directive> macros;
     std::vector<LexicalInfo::Directive> marks;
     for(const auto& directive: lexical.directives) {
@@ -288,10 +288,10 @@ auto index_document_symbols(SourceText& text,
             modules.push_back(module);
         }
     }
-    return outline(std::move(declarations), text, macros, modules, marks, options);
+    return outline(std::move(declarations), source, macros, modules, marks, options);
 }
 
-auto index_folding_ranges(SourceText& text,
+auto index_folding_ranges(SourceText& source,
                           llvm::ArrayRef<IndexDecl> decls,
                           IndexSymbolResolver resolve) -> std::vector<FoldingRange> {
     // The braces outside comments, literals and directive lines, and the
@@ -304,8 +304,8 @@ auto index_folding_ranges(SourceText& text,
         std::int32_t depth;
     };
 
-    auto content = text.text();
-    const auto& lexical = text.lexical();
+    auto content = source.text();
+    const auto& lexical = source.lexical();
     auto braces = braces_of(lexical);
     std::vector<LocalSourceRange> ambiguous;
     std::vector<std::uint32_t> block_directives;
@@ -403,9 +403,9 @@ auto index_folding_ranges(SourceText& text,
     return ranges;
 }
 
-auto index_document_links(SourceText& text, llvm::ArrayRef<IndexIncludeEdge> edges)
+auto index_document_links(SourceText& source, llvm::ArrayRef<IndexIncludeEdge> edges)
     -> std::vector<index::DocumentLink> {
-    auto positions = text.positions();
+    auto positions = source.positions();
 
     std::vector<index::DocumentLink> links;
     for(const auto& edge: edges) {
@@ -413,7 +413,7 @@ auto index_document_links(SourceText& text, llvm::ArrayRef<IndexIncludeEdge> edg
         if(!line) {
             continue;
         }
-        auto range = find_directive_argument(text.lexical(), text.text(), line->begin);
+        auto range = find_directive_argument(source.lexical(), source.text(), line->begin);
         if(!range) {
             continue;
         }
