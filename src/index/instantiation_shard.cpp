@@ -522,14 +522,12 @@ void InstantiationShard::lookup(
     auto reach = offset - std::min(offset, longest);
     auto first =
         table.columns.partition_point([&](LocalSourceRange range) { return range.begin < reach; });
-    auto last = table.columns.partition_point(
-        [&](LocalSourceRange range) { return range.begin <= offset; });
-    for(auto record = first; record < last; record += 1) {
-        auto range = table.columns.range_of(record);
-        if(live(record) && range.touches(offset) && !callback(table.at(record, range))) {
-            return;
+    table.columns.for_each_range(first, [&](std::uint32_t record, LocalSourceRange range) {
+        if(range.begin > offset) {
+            return false;
         }
-    }
+        return !live(record) || !range.touches(offset) || callback(table.at(record, range));
+    });
 }
 
 void InstantiationShard::lookup(

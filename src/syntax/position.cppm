@@ -177,9 +177,6 @@ private:
 
     /// The text of `line` when the map knows it by line.
     std::optional<LineText> line_text(std::uint32_t line) const {
-        if(!by_line()) {
-            return std::nullopt;
-        }
         auto it = std::ranges::lower_bound(utf8_lines, line);
         if(it == utf8_lines.end() || *it != line) {
             return std::nullopt;

@@ -59,16 +59,8 @@ BlobView root_of(const llvm::MemoryBuffer& buffer) {
     return view_of(buffer.getBuffer());
 }
 
-/// The number of variants the blob's masks encode: the stored table's
-/// size, or one for a worker-emitted blob (empty table, one anonymous
-/// variant).
-std::size_t variant_count_of(BlobView root) {
-    auto stored = to_array_ref(root[&ShardBlob::variants]);
-    return stored.empty() ? 1 : stored.size();
-}
-
 MaskEncoding encoding_of(BlobView root) {
-    return encoding_of(variant_count_of(root));
+    return encoding_of(to_array_ref(root[&ShardBlob::variants]).size());
 }
 
 /// The mask of `entry` in an encoding of up to 64 variants.
@@ -129,8 +121,8 @@ struct OccurrenceTable {
         return columns.size();
     }
 
-    Occurrence at(std::uint32_t entry) const {
-        return {columns.range_of(entry), sym_hashes[syms[entry]]};
+    Occurrence at(std::uint32_t entry, LocalSourceRange range) const {
+        return {range, sym_hashes[syms[entry]]};
     }
 };
 
@@ -300,11 +292,6 @@ struct LocalTable {
 
     SymbolHash hash_of(std::size_t k) const {
         return sym_hashes[syms[k]];
-    }
-
-    /// The entry of symbol id `id`, if the symbol is local.
-    std::optional<std::size_t> find(std::uint32_t id) const {
-        return syms.find(id);
     }
 
     SymbolIdentity at(std::size_t k) const {
@@ -603,7 +590,7 @@ CheckResult locals_ok(BlobView root) {
 // and the next compaction erases it for real — every manifest still
 // fresh throughout.
 CheckResult masks_ok(BlobView root) {
-    auto variant_count = variant_count_of(root);
+    auto variant_count = to_array_ref(root[&ShardBlob::variants]).size();
     auto encoding = encoding_of(variant_count);
     for(auto columns: {columns_of(root[&ShardBlob::occs]), columns_of(root[&ShardBlob::rels])}) {
         auto count = columns.size();
@@ -829,25 +816,27 @@ void Shard::lookup(std::uint32_t offset,
     // occurrence it is properly inside — `a+b` with the cursor before `b` must
     // resolve to `b`, not `+`, while a cursor right after a lone token
     // still hits that token.
-    llvm::SmallVector<std::uint32_t, 2> edge_entries;
-    for(auto entry = first; entry < table.size(); entry += 1) {
-        auto range = table.columns.range_of(entry);
+    llvm::SmallVector<Occurrence, 2> edges;
+    bool stopped = false;
+    table.columns.for_each_range(first, [&](std::uint32_t entry, LocalSourceRange range) {
         if(!range.touches(offset)) {
-            break;
+            return false;
         }
         if(!is_live(entry)) {
-            continue;
+            return true;
         }
         if(range.end == offset && range.begin != offset) {
-            edge_entries.push_back(entry);
-            continue;
+            edges.push_back(table.at(entry, range));
+            return true;
         }
-        if(!callback(table.at(entry))) {
-            return;
-        }
+        stopped = !callback(table.at(entry, range));
+        return !stopped;
+    });
+    if(stopped) {
+        return;
     }
-    for(auto entry: edge_entries) {
-        if(!callback(table.at(entry))) {
+    for(auto& edge: edges) {
+        if(!callback(edge)) {
             return;
         }
     }
@@ -855,14 +844,14 @@ void Shard::lookup(std::uint32_t offset,
 
 namespace {
 
-/// Visit the relations [begin_entry, end_entry) that pass `is_live`;
-/// false when the callback stopped the walk.
+/// Visit the relations [begin_entry, end_entry) that pass `is_live`, `cursor`
+/// placed at the first; false when the callback stopped the walk.
 bool visit_relation_entries(const RelationTable& table,
                             std::uint32_t begin_entry,
                             std::uint32_t end_entry,
+                            RelationTable::Cursor& cursor,
                             const LiveFilter& is_live,
                             llvm::function_ref<bool(const Relation&)> callback) {
-    auto cursor = table.cursor_at(begin_entry);
     for(auto entry = begin_entry; entry < end_entry; entry += 1) {
         auto relation = table.decode(entry, cursor);
         if(is_live(entry) && !callback(relation)) {
@@ -886,9 +875,11 @@ void Shard::lookup(SymbolHash symbol,
         return;
     }
     auto id = static_cast<std::uint32_t>(it - table.sym_hashes.begin());
+    auto cursor = table.cursor_at(table.offsets[id]);
     visit_relation_entries(table,
                            table.offsets[id],
                            table.offsets[id + 1],
+                           cursor,
                            live_filter(table.columns),
                            [&](const Relation& relation) {
                                if(!(RelationKind(relation.kind) & kind)) {
@@ -905,7 +896,7 @@ void Shard::for_each_occurrence(llvm::function_ref<bool(const Occurrence&)> call
     auto table = OccurrenceTable::of(root_of(*buffer));
     auto is_live = live_filter(table.columns);
     table.columns.for_each_range([&](std::uint32_t entry, LocalSourceRange range) {
-        return !is_live(entry) || callback({range, table.sym_hashes[table.syms[entry]]});
+        return !is_live(entry) || callback(table.at(entry, range));
     });
 }
 
@@ -916,12 +907,14 @@ void
     }
     auto table = RelationTable::of(root_of(*buffer));
     auto is_live = live_filter(table.columns);
+    RelationTable::Cursor cursor;
     for(std::uint32_t id = 0; id < table.sym_hashes.size(); id += 1) {
         auto hash = table.sym_hashes[id];
         bool completed = visit_relation_entries(
             table,
             table.offsets[id],
             table.offsets[id + 1],
+            cursor,
             is_live,
             [&](const Relation& relation) { return callback(hash, relation); });
         if(!completed) {
@@ -939,7 +932,7 @@ std::optional<SymbolIdentity> Shard::find_symbol(SymbolHash hash) const {
     if(it == table.sym_hashes.end() || *it != hash) {
         return std::nullopt;
     }
-    auto local = table.find(static_cast<std::uint32_t>(it - table.sym_hashes.begin()));
+    auto local = table.syms.find(static_cast<std::uint32_t>(it - table.sym_hashes.begin()));
     if(!local) {
         return std::nullopt;
     }
@@ -1184,25 +1177,23 @@ std::vector<OccurrenceEntry<MaskT>> decode_occurrences(const OccurrenceTable& ta
     table.columns.for_each_range([&](std::uint32_t entry, LocalSourceRange range) {
         auto mask = mask_of(entry);
         if(!mask_empty(mask)) {
-            entries.push_back({
-                {range, table.sym_hashes[table.syms[entry]]},
-                std::move(mask)
-            });
+            entries.push_back({table.at(entry, range), std::move(mask)});
         }
         return true;
     });
     return entries;
 }
 
-/// Decode one symbol's relation slice of a blob into working form.
+/// Decode one symbol's relation slice of a blob into working form, `cursor`
+/// placed at its first relation.
 template <typename MaskT, typename MaskOf>
 std::vector<RelationEntry<MaskT>> decode_relation_group(const RelationTable& table,
                                                         std::uint32_t begin_entry,
                                                         std::uint32_t end_entry,
+                                                        RelationTable::Cursor& cursor,
                                                         MaskOf mask_of) {
     std::vector<RelationEntry<MaskT>> entries;
     entries.reserve(end_entry - begin_entry);
-    auto cursor = table.cursor_at(begin_entry);
     for(auto entry = begin_entry; entry < end_entry; entry += 1) {
         auto relation = table.decode(entry, cursor);
         auto mask = mask_of(entry);
@@ -1495,7 +1486,7 @@ void emit_blob(const MergedEntries<MaskT>& merged,
     write_ids(blob.local_signature_ends, signature_ends, blob.local_signatures.size() + 1);
     write_ids(blob.local_parents, parents, blob.sym_hashes.size() + 1);
 
-    auto encoding = encoding_of(blob.variants.empty() ? 1 : blob.variants.size());
+    auto encoding = encoding_of(blob.variants.size());
 
     SideWriter occs{
         .ranges = {.side = blob.occs, .encoding = RangeEncoding::Delta},
@@ -1609,10 +1600,12 @@ void merge_shards_impl(BlobView old_root,
     for(std::uint32_t i = 0; i < fresh.size(); i += 1) {
         auto table = RelationTable::of(view_of(fresh[i].bytes()));
         auto bit = single_bit<MaskT>(fresh_base + i);
+        RelationTable::Cursor cursor;
         for(auto& group: relation_groups(table)) {
             auto entries = decode_relation_group<MaskT>(table,
                                                         group.begin_entry,
                                                         group.end_entry,
+                                                        cursor,
                                                         [&](std::uint32_t) { return bit; });
             auto& into = fresh_group_map[group.hash];
             into.insert(into.end(),
@@ -1636,11 +1629,14 @@ void merge_shards_impl(BlobView old_root,
         old_encoding = encoding_of(old_root);
         old_groups = relation_groups(old_table);
     }
+    // The merge below decodes every old group once, in order.
+    RelationTable::Cursor old_cursor;
     auto decode_old = [&](const GroupIndex& group) {
         return decode_relation_group<MaskT>(
             old_table,
             group.begin_entry,
             group.end_entry,
+            old_cursor,
             [&](std::uint32_t entry) {
                 return remap_mask<MaskT>(old_encoding, old_table.columns, entry, id_map);
             });

@@ -24,10 +24,6 @@ inline bool is_no_range(std::uint32_t begin, std::uint32_t end) {
     return LocalSourceRange{begin, end} == LocalSourceRange{};
 }
 
-/// The delta of a delta-encoded begin that does not fit: the sparse table
-/// holds the begin.
-constexpr inline std::uint8_t delta_escape = 0xff;
-
 /// The width in bytes of ids into a table of `table_size` entries.
 inline std::uint8_t id_width(std::size_t table_size) {
     return table_size <= 0x100 ? 1 : table_size <= 0x10000 ? 2 : 4;
@@ -120,18 +116,14 @@ struct RangeColumnsView {
                                              : previous + deltas[entry];
     }
 
+    /// The begin of `entry` of an unsorted side; a delta-encoded one is
+    /// walked (for_each_range).
     std::uint32_t begin_of(std::uint32_t entry) const {
+        assert(deltas.empty() && "a delta-encoded side is walked");
         if(!packed.empty()) {
             return packed[entry] == packed_sentinel ? ~std::uint32_t(0) : packed[entry] >> 8;
         }
-        if(deltas.empty()) {
-            return begins[entry];
-        }
-        std::uint32_t begin = 0;
-        for(auto i = entry - entry % delta_block; i <= entry; i += 1) {
-            begin = next_begin(i, begin);
-        }
-        return begin;
+        return begins[entry];
     }
 
     /// The length byte of `entry`: its length, or length_escape for one
@@ -175,28 +167,36 @@ struct RangeColumnsView {
         if(block == 0) {
             return 0;
         }
-        auto last = std::min(block * delta_block, static_cast<std::uint32_t>(size()));
-        auto begin = block_begins[block - 1];
-        for(auto entry = (block - 1) * delta_block + 1; entry < last; entry += 1) {
-            begin = next_begin(entry, begin);
-            if(!below(LocalSourceRange{begin, end_of(entry, begin)})) {
-                return entry;
-            }
-        }
-        return last;
+        auto point = static_cast<std::uint32_t>(size());
+        for_each_range((block - 1) * delta_block + 1,
+                       [&](std::uint32_t entry, LocalSourceRange range) {
+                           if(below(range)) {
+                               return true;
+                           }
+                           point = entry;
+                           return false;
+                       });
+        return point;
     }
 
-    /// Visit every entry's range in entry order, the delta encoding decoded
-    /// in one pass; `visit` returns false to stop.
+    /// Visit the range of every entry from `first` on in entry order, the
+    /// delta encoding decoded in one pass from the start of `first`'s block;
+    /// `visit` returns false to stop.
     template <typename Visit>
-    void for_each_range(Visit&& visit) const {
+    void for_each_range(std::uint32_t first, Visit&& visit) const {
         std::uint32_t begin = 0;
-        for(std::uint32_t entry = 0; entry < size(); entry += 1) {
+        for(auto entry = deltas.empty() ? first : first - first % delta_block; entry < size();
+            entry += 1) {
             begin = deltas.empty() ? begin_of(entry) : next_begin(entry, begin);
-            if(!visit(entry, LocalSourceRange{begin, end_of(entry, begin)})) {
+            if(entry >= first && !visit(entry, LocalSourceRange{begin, end_of(entry, begin)})) {
                 return;
             }
         }
+    }
+
+    template <typename Visit>
+    void for_each_range(Visit&& visit) const {
+        for_each_range(0, std::forward<Visit>(visit));
     }
 
     /// The slice bounds were validated monotonic and in-bounds at load, and

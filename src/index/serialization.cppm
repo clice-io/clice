@@ -154,11 +154,15 @@ using IdColumn = std::vector<std::uint8_t>;
 /// Entries per block of a delta-encoded begin column.
 constexpr inline std::uint32_t delta_block = 16;
 
+/// The delta of a delta-encoded begin that does not fit: the sparse table
+/// holds the begin.
+constexpr inline std::uint8_t delta_escape = 0xff;
+
 /// One side of a blob's entry storage (occurrences, relations, records).
 ///
 /// Ranges use exactly one of three self-describing encodings:
-///   - delta, for a side sorted by begin (occurrences, records): the begin of every
-///     `delta_block`-th entry, then per entry the distance from the
+///   - delta, for a side sorted by begin (occurrences, records): the begin
+///     of every `delta_block`-th entry, then per entry the distance from the
 ///     previous entry's begin (0 at a block's start) as a u8 — 255
 ///     escaping to the sparse (entry, begin) table — and its length u8;
 ///   - packed, for an unsorted side of content < 16MB: `(begin << 8) |
@@ -204,14 +208,13 @@ constexpr inline std::uint16_t extent_escape = 0xffff;
 ///
 /// The worker encodes one blob per file per TU: single variant (an empty
 /// `variants` table), self-contained (line table, the text of the lines
-/// holding non-ASCII bytes, local symbol names), canonical byte-for-byte — its identity is the hash
-/// of its bytes, computed by whoever holds them, never stored inside. The master stores first
-/// variants verbatim and merges only when a second distinct variant of the same content generation
-/// arrives; merged blobs list the original single-variant identities in `variants` (mask bit
-/// position -> identity) and deduplicate entries shared between variants via the masks.
-///
-/// Symbol ids used by the entry columns index `sym_hashes`; the id column
-/// width is chosen from the table size (u8 / u16 / u32).
+/// holding non-ASCII bytes, local symbol names), canonical byte-for-byte —
+/// its identity is the hash of its bytes, computed by whoever holds them,
+/// never stored inside. The master stores first variants verbatim and
+/// merges only when a second distinct variant of the same content
+/// generation arrives; merged blobs list the original single-variant
+/// identities in `variants` (mask bit position -> identity) and deduplicate
+/// entries shared between variants via the masks.
 struct ShardBlob {
     /// Persisted-blob schema version (index_format_version), set by
     /// the writer and gated by Shard::from_bytes.
