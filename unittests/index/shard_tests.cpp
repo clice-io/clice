@@ -549,6 +549,54 @@ ZEST_CASE(PayloadsAcrossBlocks) {
     }
 }
 
+ZEST_CASE(MergedRelationPayloads) {
+    // Every relation group keeps its own payloads through a merge, in the
+    // stored blob and in the fresh one alike.
+    index::FileIndex first;
+    index::Relation definition{
+        .kind = RelationKind::Definition,
+        .range = {0, 3}
+    };
+    definition.set_definition_range({0, 50});
+    first.relations[111] = {
+        definition,
+        {.kind = RelationKind::Reference, .range = {10, 13}, .target_symbol = 0},
+    };
+    first.relations[333] = {
+        {.kind = RelationKind::Base, .range = {20, 23}, .target_symbol = 444},
+    };
+    first.relations[555] = {
+        {.kind = RelationKind::Base, .range = {30, 33}, .target_symbol = 666},
+    };
+    auto second = first;
+    second.relations[333].push_back({
+        .kind = RelationKind::Base,
+        .range = {40, 43},
+        .target_symbol = 777
+    });
+
+    using Entry =
+        std::tuple<index::SymbolHash, std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t>;
+    auto relations_of = [](const index::Shard& shard) {
+        std::vector<Entry> relations;
+        shard.for_each_relation([&](index::SymbolHash symbol, const index::Relation& relation) {
+            relations.emplace_back(symbol,
+                                   static_cast<std::uint8_t>(relation.kind),
+                                   relation.range.begin,
+                                   relation.range.end,
+                                   relation.target_symbol);
+            return true;
+        });
+        return relations;
+    };
+    std::string content(60, 'z');
+    auto expected = relations_of(make_shard(write_fresh(second, content)));
+    ZASSERT(expected.size() == std::size_t(5));
+    auto merged = append_variant(make_shard(write_fresh(first, content)), second, content);
+    ZASSERT(merged.variants().size() == std::size_t(2));
+    ZEXPECT(relations_of(merged) == expected);
+}
+
 ZEST_CASE(MergedNonAsciiLines) {
     // A merged blob carries the non-ASCII lines its variants were built
     // with: without them it would still load, mapping their UTF-16
