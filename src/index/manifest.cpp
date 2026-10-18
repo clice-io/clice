@@ -44,7 +44,7 @@ struct ManifestBlob {
     std::vector<std::uint32_t> imports;
 
     /// TUManifest::local_fanout as columns: the symbols ascending, each
-    /// one's contribution indices back to back.
+    /// one's file versions back to back.
     std::vector<std::uint64_t> local_symbols;
     std::vector<std::uint32_t> local_file_ends;
     std::vector<std::uint32_t> local_files;
@@ -125,7 +125,9 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
 
     for(auto& fanout: manifest.local_fanout) {
         blob.local_symbols.push_back(fanout.symbol);
-        blob.local_files.insert(blob.local_files.end(), fanout.files.begin(), fanout.files.end());
+        for(auto fv: fanout.files) {
+            blob.local_files.push_back(fv.raw);
+        }
         blob.local_file_ends.push_back(static_cast<std::uint32_t>(blob.local_files.size()));
     }
 
@@ -227,20 +229,17 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
        !covering_ends(blob.local_file_ends, blob.local_files.size())) {
         return std::nullopt;
     }
-    if(llvm::any_of(blob.local_files,
-                    [&](std::uint32_t index) { return index >= blob.contribution_count; })) {
-        return std::nullopt;
-    }
     std::uint32_t begin = 0;
     for(std::size_t i = 0; i < blob.local_symbols.size(); i += 1) {
         if(i > 0 && blob.local_symbols[i] <= blob.local_symbols[i - 1]) {
             return std::nullopt;
         }
         auto end = blob.local_file_ends[i];
-        manifest.local_fanout.push_back({
-            .symbol = blob.local_symbols[i],
-            .files = {blob.local_files.begin() + begin, blob.local_files.begin() + end},
-        });
+        auto& fanout = manifest.local_fanout.emplace_back();
+        fanout.symbol = blob.local_symbols[i];
+        for(auto fv: llvm::ArrayRef(blob.local_files).slice(begin, end - begin)) {
+            fanout.files.push_back(VersionID{fv});
+        }
         begin = end;
     }
 

@@ -473,18 +473,9 @@ void IndexQuery::each_disk_file(SymbolHash hash,
                                 llvm::function_ref<void(Fid)> visit) const {
     if(index.identity_of(hash)) {
         index.each_reference_file(hash, visit);
-        return;
+    } else if(anchor.valid()) {
+        index.each_fanout_file(hash, anchor, files, visit);
     }
-    auto* shard = anchor.valid() ? index.shard(anchor) : nullptr;
-    auto identity = shard ? shard->find_symbol(hash) : std::nullopt;
-    if(!identity) {
-        return;
-    }
-    if(identity->scope == SymbolScope::FileLocal) {
-        visit(anchor);
-        return;
-    }
-    index.each_fanout_file(hash, anchor, files, visit);
 }
 
 void IndexQuery::for_each_relation(SymbolHash hash,
@@ -773,6 +764,19 @@ std::optional<SymbolRef> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) co
     if(auto* shard = anchor.valid() ? index.shard(anchor) : nullptr) {
         if(auto identity = shard->find_symbol(hash)) {
             return SymbolRef::from(hash, *identity);
+        }
+    }
+    // An instantiation or an expansion names it in a file other than its
+    // own: the walk from there reaches the files declaring it.
+    if(anchor.valid()) {
+        index.each_fanout_file(hash, anchor, files, [&](Fid file) {
+            auto* shard = found ? nullptr : index.shard(file);
+            if(auto identity = shard ? shard->find_symbol(hash) : std::nullopt) {
+                adopt(*identity);
+            }
+        });
+        if(found) {
+            return found;
         }
     }
     for(auto& [path_id, shard]: index.shards) {

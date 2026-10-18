@@ -589,7 +589,9 @@ ZEST_CASE(LazyShardsStayPut) {
 ZEST_CASE(ReaderFanoutAcrossUnits) {
     // A `static` in a shared header: each unit's manifest names the files
     // its own copy reaches, and a reader steps from one unit to the other
-    // through the persisted reverse include graph.
+    // through the units the persisted table lists as naming the header —
+    // b.cpp among them, which reads the header through its precompiled
+    // header and contributes nothing there.
     TempDir tmp;
     auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
     ZASSERT(store);
@@ -613,11 +615,15 @@ ZEST_CASE(ReaderFanoutAcrossUnits) {
             {header_fv.raw,      0,   1},
         };
         manifest.contributions = {
-            {manifest.tu_fv, 1},
-            {header_fv,      2},
+            {manifest.tu_fv, 1}
         };
+        if(llvm::StringRef(name).ends_with("a.cpp")) {
+            manifest.contributions.emplace_back(header_fv, 2);
+        } else {
+            manifest.imports = {header_fv};
+        }
         manifest.local_fanout = {
-            {.symbol = helper, .files = {0, 1}}
+            {.symbol = helper, .files = {manifest.tu_fv, header_fv}}
         };
         writer.apply_manifest(pool, tu, std::move(manifest));
         units.push_back(tu);
@@ -640,16 +646,18 @@ ZEST_CASE(ReaderFanoutAcrossUnits) {
     clice::FileTable files;
     index::ProjectIndex reader;
     ZASSERT(reader.open(*db, files));
-    llvm::SmallVector<Fid> reached;
-    reader.each_fanout_file(helper,
-                            files.intern(Spelling::absolute("/proj/a.cpp")),
-                            files,
-                            [&](Fid file) { reached.push_back(file); });
-    ZASSERT(reached.size() == 3u);
-    for(auto name: {"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}) {
-        auto file = files.find(Spelling::absolute(name));
-        ZASSERT(file);
-        ZASSERT(llvm::is_contained(reached, *file));
+    for(auto start: {"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}) {
+        llvm::SmallVector<Fid> reached;
+        reader.each_fanout_file(helper,
+                                files.intern(Spelling::absolute(start)),
+                                files,
+                                [&](Fid file) { reached.push_back(file); });
+        ZEXPECT(reached.size() == 3u);
+        for(auto name: {"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}) {
+            auto file = files.find(Spelling::absolute(name));
+            ZASSERT(file);
+            ZEXPECT(llvm::is_contained(reached, *file));
+        }
     }
 }
 

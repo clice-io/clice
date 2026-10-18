@@ -103,6 +103,12 @@ struct GlobalBlob {
     std::vector<std::uint32_t> contributed_files;
     std::vector<std::uint32_t> contributor_ends;
     std::vector<std::uint8_t> contributors;
+
+    /// The units whose local fanout names a file (TUManifest::local_fanout),
+    /// laid out like the contributors: what a reader walks from a file.
+    std::vector<std::uint32_t> fanout_files;
+    std::vector<std::uint32_t> fanout_unit_ends;
+    std::vector<std::uint8_t> fanout_units;
 };
 
 using BlobView = kota::codec::fbs::table_view<GlobalBlob>;
@@ -156,7 +162,8 @@ using UnitHashes = llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2
 
 /// Drop `unit`'s entry for `file`, and the file once no unit names it. One
 /// file's two persisted versions in a manifest reach here twice.
-void erase_unit(UnitHashes& table, Fid file, Fid unit) {
+template <typename Table>
+void erase_unit(Table& table, Fid file, Fid unit) {
     auto it = table.find(file);
     if(it == table.end()) {
         return;
@@ -166,6 +173,45 @@ void erase_unit(UnitHashes& table, Fid file, Fid unit) {
         table.erase(it);
     }
 }
+
+/// A persisted map from files to units, GlobalBlob's contributors and
+/// fanout units: the files as path ids, ascending, and each one's units as
+/// a file set of path ids, back to back.
+struct FileUnits {
+    llvm::ArrayRef<std::uint32_t> files;
+    llvm::ArrayRef<std::uint32_t> ends;
+    llvm::ArrayRef<std::uint8_t> sets;
+
+    /// File table id -> index into `files`, built on first use.
+    mutable llvm::DenseMap<Fid, std::uint32_t> index;
+
+    bool lines_up(std::size_t path_count) const {
+        if(ends.size() != files.size() || !monotone_ends(ends, sets.size())) {
+            return false;
+        }
+        for(std::size_t i = 0; i < files.size(); i += 1) {
+            if(files[i] >= path_count || (i > 0 && files[i] <= files[i - 1])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// The units of `file` as path ids; nullopt when it has none or the set
+    /// fails to decode.
+    std::optional<Bitmap> of(Fid file, llvm::ArrayRef<Fid> remap) const {
+        if(index.empty()) {
+            for(std::uint32_t i = 0; i < files.size(); i += 1) {
+                index.try_emplace(remap[files[i]], i);
+            }
+        }
+        auto it = index.find(file);
+        if(it == index.end()) {
+            return std::nullopt;
+        }
+        return read_file_set(back_to_back(sets, ends, it->second));
+    }
+};
 
 /// The distinct hashes the units name for `file`, ascending.
 llvm::SmallVector<std::uint64_t> distinct_hashes(const UnitHashes& table, Fid file) {
@@ -222,15 +268,24 @@ struct ProjectIndex::Base {
     llvm::ArrayRef<std::uint64_t> search_pending;
     llvm::ArrayRef<std::uint32_t> search_pending_files;
 
-    llvm::ArrayRef<std::uint32_t> contributed_files;
-    llvm::ArrayRef<std::uint32_t> contributor_ends;
-    llvm::ArrayRef<std::uint8_t> contributors;
+    FileUnits contributors;
+    FileUnits fanout_units;
 
     /// Blob path id -> file table id.
     std::vector<Fid> remap;
 
-    /// File table id -> index into contributed_files, built on first use.
-    mutable llvm::DenseMap<Fid, std::uint32_t> contributed_index;
+    /// Visit the units `table` lists for `file`.
+    void each_unit(const FileUnits& table, Fid file, llvm::function_ref<void(Fid)> visit) const {
+        auto tus = table.of(file, remap);
+        if(!tus) {
+            return;
+        }
+        for(auto id: *tus) {
+            if(id < remap.size()) {
+                visit(remap[id]);
+            }
+        }
+    }
 
     std::uint32_t count() const {
         return static_cast<std::uint32_t>(hashes.size());
@@ -299,21 +354,6 @@ struct ProjectIndex::Base {
         return read_file_set(instantiation_image(doc));
     }
 
-    /// The TUs that contributed a variant to `file`, as path ids; nullopt when
-    /// none did or the image fails to decode.
-    std::optional<Bitmap> contributors_of(Fid file) const {
-        if(contributed_index.empty()) {
-            for(std::uint32_t i = 0; i < contributed_files.size(); i += 1) {
-                contributed_index.try_emplace(remap[contributed_files[i]], i);
-            }
-        }
-        auto it = contributed_index.find(file);
-        if(it == contributed_index.end()) {
-            return std::nullopt;
-        }
-        return read_file_set(back_to_back(contributors, contributor_ends, it->second));
-    }
-
     /// The portable name of the file a persisted version id names.
     std::optional<llvm::StringRef> version_path(std::uint32_t persisted) const {
         auto it = std::ranges::lower_bound(fv_ids, persisted);
@@ -380,9 +420,12 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     search_generation = root[&GlobalBlob::search_generation];
     search_pending = to_array_ref(root[&GlobalBlob::search_pending]);
     search_pending_files = to_array_ref(root[&GlobalBlob::search_pending_files]);
-    contributed_files = to_array_ref(root[&GlobalBlob::contributed_files]);
-    contributor_ends = to_array_ref(root[&GlobalBlob::contributor_ends]);
-    contributors = to_array_ref(root[&GlobalBlob::contributors]);
+    contributors.files = to_array_ref(root[&GlobalBlob::contributed_files]);
+    contributors.ends = to_array_ref(root[&GlobalBlob::contributor_ends]);
+    contributors.sets = to_array_ref(root[&GlobalBlob::contributors]);
+    fanout_units.files = to_array_ref(root[&GlobalBlob::fanout_files]);
+    fanout_units.ends = to_array_ref(root[&GlobalBlob::fanout_unit_ends]);
+    fanout_units.sets = to_array_ref(root[&GlobalBlob::fanout_units]);
 
     auto version_count = fv_ids.size();
     if(fv_paths.size() != version_count || fv_hashes.size() != version_count) {
@@ -391,15 +434,11 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     if(!std::ranges::is_sorted(fv_ids)) {
         return std::unexpected("file version ids are not ascending");
     }
-    if(contributor_ends.size() != contributed_files.size() ||
-       !monotone_ends(contributor_ends, contributors.size())) {
+    if(!contributors.lines_up(paths.size())) {
         return std::unexpected("contributor columns do not line up");
     }
-    for(std::size_t i = 0; i < contributed_files.size(); i += 1) {
-        if(contributed_files[i] >= paths.size() ||
-           (i > 0 && contributed_files[i] <= contributed_files[i - 1])) {
-            return std::unexpected("contributed files are not ascending path ids");
-        }
+    if(!fanout_units.lines_up(paths.size())) {
+        return std::unexpected("fanout unit columns do not line up");
     }
     if(manifest_fvs.size() != manifest_gens.size()) {
         return std::unexpected("manifest pin columns do not line up");
@@ -924,6 +963,9 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         for(auto& use: manifest.instantiations) {
             referenced.insert(use.file);
         }
+        for(auto& fanout: manifest.local_fanout) {
+            referenced.insert(fanout.files.begin(), fanout.files.end());
+        }
         referenced.insert(manifest.absent.begin(), manifest.absent.end());
         referenced.insert(manifest.imports.begin(), manifest.imports.end());
     }
@@ -1080,21 +1122,39 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     }
     write_ids(blob.sym_parents, parents, entries.size() + 1);
 
-    std::vector<std::pair<std::uint32_t, Bitmap>> reverse;
-    reverse.reserve(contributions.size());
-    for(auto& [file, units]: contributions) {
-        Bitmap tus;
-        for(auto tu: llvm::make_first_range(units)) {
-            tus.add(path_id(tu));
+    auto write_file_units = [&](const auto& table,
+                                auto units_of,
+                                std::vector<std::uint32_t>& files,
+                                std::vector<std::uint32_t>& ends,
+                                std::vector<std::uint8_t>& sets) {
+        std::vector<std::pair<std::uint32_t, Bitmap>> reverse;
+        reverse.reserve(table.size());
+        for(auto& [file, units]: table) {
+            Bitmap tus;
+            for(auto tu: units_of(units)) {
+                tus.add(path_id(tu));
+            }
+            reverse.emplace_back(path_id(file), std::move(tus));
         }
-        reverse.emplace_back(path_id(file), std::move(tus));
-    }
-    std::ranges::sort(reverse, {}, [](const auto& entry) { return entry.first; });
-    for(auto& [file, tus]: reverse) {
-        blob.contributed_files.push_back(file);
-        append_file_set(blob.contributors, tus);
-        blob.contributor_ends.push_back(static_cast<std::uint32_t>(blob.contributors.size()));
-    }
+        std::ranges::sort(reverse, {}, [](const auto& entry) { return entry.first; });
+        for(auto& [file, tus]: reverse) {
+            files.push_back(file);
+            append_file_set(sets, tus);
+            ends.push_back(static_cast<std::uint32_t>(sets.size()));
+        }
+    };
+    write_file_units(
+        contributions,
+        [](const auto& units) { return llvm::make_first_range(units); },
+        blob.contributed_files,
+        blob.contributor_ends,
+        blob.contributors);
+    write_file_units(
+        fanout_units,
+        [](const auto& units) { return llvm::make_range(units.begin(), units.end()); },
+        blob.fanout_files,
+        blob.fanout_unit_ends,
+        blob.fanout_units);
 
     blob.search_generation = search_generation;
     blob.search_pending.assign(search_pending.begin(), search_pending.end());
@@ -1171,6 +1231,13 @@ bool ProjectIndex::import_manifest(TUManifest& manifest) const {
             return false;
         }
     }
+    for(auto& fanout: manifest.local_fanout) {
+        for(auto& fv: fanout.files) {
+            if(!import(fv.raw)) {
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -1191,6 +1258,11 @@ TUManifest ProjectIndex::export_manifest(const TUManifest& manifest) {
     }
     for(auto& use: exported.instantiations) {
         use.file.raw = persisted_id(use.file);
+    }
+    for(auto& fanout: exported.local_fanout) {
+        for(auto& fv: fanout.files) {
+            fv.raw = persisted_id(fv);
+        }
     }
     return exported;
 }
@@ -1222,6 +1294,11 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
     }
     for(auto fv: manifest.imports) {
         importers[files.version(fv).fid].insert(tu_path_id);
+    }
+    for(auto& fanout: manifest.local_fanout) {
+        for(auto fv: fanout.files) {
+            fanout_units[files.version(fv).fid].insert(tu_path_id);
+        }
     }
     for(auto& use: manifest.instantiations) {
         auto path_id = files.version(use.file).fid;
@@ -1255,16 +1332,12 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
             probed.erase(probe_it);
         }
     }
-    // Modules built at different times may have read different versions
-    // of one file: the first of them already erased it.
     for(auto fv: it->second.imports) {
-        auto importer_it = importers.find(files.version(fv).fid);
-        if(importer_it == importers.end()) {
-            continue;
-        }
-        importer_it->second.erase(tu_path_id);
-        if(importer_it->second.empty()) {
-            importers.erase(importer_it);
+        erase_unit(importers, files.version(fv).fid, tu_path_id);
+    }
+    for(auto& fanout: it->second.local_fanout) {
+        for(auto fv: fanout.files) {
+            erase_unit(fanout_units, files.version(fv).fid, tu_path_id);
         }
     }
     for(auto& use: it->second.instantiations) {
@@ -1297,17 +1370,22 @@ void ProjectIndex::each_contributor(Fid file, llvm::function_ref<void(Fid)> visi
         }
         return;
     }
-    if(!base) {
-        return;
+    if(base) {
+        base->each_unit(base->contributors, file, visit);
     }
-    auto tus = base->contributors_of(file);
-    if(!tus) {
-        return;
-    }
-    for(auto id: *tus) {
-        if(id < base->remap.size()) {
-            visit(base->remap[id]);
+}
+
+void ProjectIndex::each_fanout_unit(Fid file, llvm::function_ref<void(Fid)> visit) const {
+    if(!db) {
+        if(auto it = fanout_units.find(file); it != fanout_units.end()) {
+            for(auto tu: it->second) {
+                visit(tu);
+            }
         }
+        return;
+    }
+    if(base) {
+        base->each_unit(base->fanout_units, file, visit);
     }
 }
 
@@ -1320,7 +1398,7 @@ void ProjectIndex::each_fanout_file(SymbolHash hash,
     llvm::SmallVector<Fid> pending{anchor};
     visit(anchor);
     while(!pending.empty()) {
-        each_contributor(pending.pop_back_val(), [&](Fid tu) {
+        each_fanout_unit(pending.pop_back_val(), [&](Fid tu) {
             auto* manifest = asked.insert(tu).second ? tu_manifest(tu) : nullptr;
             if(!manifest) {
                 return;
@@ -1330,8 +1408,7 @@ void ProjectIndex::each_fanout_file(SymbolHash hash,
             if(it == manifest->local_fanout.end() || it->symbol != hash) {
                 return;
             }
-            for(auto index: it->files) {
-                auto version = manifest->contributions[index].first;
+            for(auto version: it->files) {
                 std::optional<Fid> file;
                 if(!db) {
                     file = files.version(version).fid;

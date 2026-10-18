@@ -1,0 +1,64 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 2 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query references main.cpp:5:12 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#e713b5aad0f6b40b path:${WS}/main.cpp",
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    double radius;",
+        "function": null
+      },
+      {
+        "file": "${WS}/shapes.cppm",
+        "line": 5,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query references main.cpp:15:16 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#f8132c1e158f4ee4 path:${WS}/main.cpp",
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "        double radius = 0;",
+        "function": "scoped_twice"
+      },
+      {
+        "file": "${WS}/shapes.cppm",
+        "line": 5,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

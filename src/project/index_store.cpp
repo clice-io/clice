@@ -602,12 +602,33 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         instantiation_replacements.emplace_back(global_id, std::move(replacement));
     }
 
-    // The manifest's contributions follow section_contributions' order.
-    auto local_fanout =
-        view.local_fanout(llvm::to_vector(llvm::make_first_range(section_contributions)));
+    // The files the unit holds entries of: its own sections, the
+    // resolutions it uses, and what it reads through the precompiled header
+    // or its modules, whose own units wrote the entries there.
+    llvm::BitVector held(view.path_count());
+    for(auto local_id: llvm::make_first_range(section_contributions)) {
+        held.set(local_id);
+    }
+    for(auto local_id: llvm::make_first_range(llvm::make_second_range(unit_uses))) {
+        held.set(local_id);
+    }
+    llvm::DenseSet<Fid> read_precompiled;
+    for(auto& dep: imports) {
+        if(!dep.missing) {
+            read_precompiled.insert(dep.path_id);
+        }
+    }
+    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
+        if(read_precompiled.contains(file_ids_map[i])) {
+            held.set(i);
+        }
+    }
+    auto local_fanout = view.local_fanout(held);
     if(!local_fanout) {
-        LOG_WARN("Reject merge for {}: an internal symbol's reference files carry no rows",
-                 tu_path);
+        LOG_WARN(
+            "Reject merge for {}: a symbol below external scope names a file the unit holds "
+            "no entries of",
+            tu_path);
         return std::unexpected(MergeError::Invalid);
     }
 
@@ -665,7 +686,13 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     for(auto [local_id, variant]: section_contributions) {
         manifest.contributions.emplace_back(fv_of[local_id], variant);
     }
-    manifest.local_fanout = std::move(*local_fanout);
+    for(auto& fanout: *local_fanout) {
+        index::LocalFanout entry{.symbol = fanout.symbol};
+        for(auto path_id: fanout.paths) {
+            entry.files.push_back(fv_of[path_id]);
+        }
+        manifest.local_fanout.push_back(std::move(entry));
+    }
     for(auto [local_id, use]: llvm::make_second_range(unit_uses)) {
         manifest.instantiations.push_back({.file = fv_of[local_id], .use = use});
     }

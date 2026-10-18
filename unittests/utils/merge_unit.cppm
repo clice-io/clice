@@ -61,15 +61,24 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
                                   .line = node.line,
                                   .skipped = node.skipped});
     }
-    llvm::SmallVector<std::uint32_t> contribution_paths;
+    llvm::BitVector held(view.path_count());
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         manifest.contributions.emplace_back(fv_of[view.section_path(section)],
                                             view.section_hash(section));
-        contribution_paths.push_back(view.section_path(section));
+        held.set(view.section_path(section));
     }
-    auto local_fanout = view.local_fanout(contribution_paths);
+    for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
+        held.set(view.instantiation_path(section));
+    }
+    auto local_fanout = view.local_fanout(held);
     ZASSERT(local_fanout);
-    manifest.local_fanout = std::move(*local_fanout);
+    for(auto& fanout: *local_fanout) {
+        index::LocalFanout entry{.symbol = fanout.symbol};
+        for(auto path_id: fanout.paths) {
+            entry.files.push_back(fv_of[path_id]);
+        }
+        manifest.local_fanout.push_back(std::move(entry));
+    }
 
     for(auto path_id:
         project_index.apply_manifest(project.file_table, focus, std::move(manifest))) {

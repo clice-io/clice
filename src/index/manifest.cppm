@@ -17,13 +17,14 @@ struct IncludeEdge {
     std::string target;
 };
 
-/// An internal-linkage symbol more than one of a TU's files names, with
-/// those files as indices into the manifest's contributions. No
-/// project-wide table lists such a symbol: this is how a query reaches its
-/// entries in files other than the one it started from.
+/// A symbol below external scope more than one of a TU's files names, with
+/// those files: the TU's own, the ones its instantiations and expansions
+/// resolve in, and the ones declaring it behind the precompiled header or a
+/// module. No project-wide table lists such a symbol: this is how a query
+/// reaches its entries in files other than the one it started from.
 struct LocalFanout {
     std::uint64_t symbol = 0;
-    std::vector<std::uint32_t> files;
+    std::vector<VersionID> files;
 
     friend bool operator==(const LocalFanout&, const LocalFanout&) = default;
 };

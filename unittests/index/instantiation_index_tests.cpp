@@ -325,6 +325,54 @@ ZEST_CASE(MacroBodyNamesResolved) {
     ZEXPECT(keys().empty());
 }
 
+ZEST_CASE(ForeignInternalUnkeyed) {
+    add_file("run.h", R"(
+        template <typename T>
+        void run(T t) { t.go(); }
+    )");
+    build(R"(
+        #include "run.h"
+        namespace {
+        struct A { void go(); };
+        }
+        void use() { run(A{}); }
+    )");
+    auto section = section_of("run.h");
+    ZASSERT(section);
+    const auto& shard = view.instantiation_shard(*section);
+    // Only the units walking it list run.h among the files naming the
+    // internal `go`: a skipped key could not stand for it.
+    ZEXPECT(shard.keys().empty());
+    ZEXPECT(shard.resolutions().size() == 1u);
+}
+
+ZEST_CASE(LocalClassNamesHeader) {
+    add_file("run.h", R"(
+        template <typename T>
+        void run(T t) { t.go(); }
+    )");
+    build(R"(
+        #include "run.h"
+        void use() {
+            struct Local { void go() {} };
+            run(Local{});
+        }
+    )");
+    // A function's own class is named in the header the instantiation
+    // resolves in: the table lists it with both files.
+    std::optional<std::size_t> files;
+    view.iterate_symbols([&](index::SymbolHash hash,
+                             const index::SymbolIdentity& identity,
+                             llvm::ArrayRef<std::uint32_t> references) {
+        if(identity.name == "go") {
+            ZEXPECT(identity.scope == index::SymbolScope::FileLocal);
+            files = references.size();
+        }
+        return true;
+    });
+    ZEXPECT(files == 2u);
+}
+
 ZEST_CASE(SymbolsNameTheirFiles) {
     build(R"(
         struct A { void go(); };

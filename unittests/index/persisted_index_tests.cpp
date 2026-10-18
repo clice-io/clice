@@ -49,8 +49,8 @@ ZEST_CASE(ManifestRoundTrip) {
     manifest.absent = {VersionID{303}};
     manifest.imports = {VersionID{304}, VersionID{305}};
     manifest.local_fanout = {
-        {.symbol = 5, .files = {0, 1}},
-        {.symbol = 9, .files = {1, 0}},
+        {.symbol = 5, .files = {VersionID{300}, VersionID{302}}},
+        {.symbol = 9, .files = {VersionID{302}, VersionID{301}}},
     };
 
     llvm::SmallString<256> buf;
@@ -100,12 +100,7 @@ ZEST_CASE(ManifestFanoutRejected) {
     };
     ZASSERT(decodes(valid));
 
-    // A fanout file must name one of the manifest's contributions.
     auto mirror = valid;
-    mirror.local_files = {0, 1};
-    ZASSERT(!decodes(mirror));
-
-    mirror = valid;
     mirror.local_symbols = {7, 5};
     ZASSERT(!decodes(mirror));
 
