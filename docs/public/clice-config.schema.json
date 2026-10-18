@@ -119,6 +119,13 @@
                 "documentation": true
             }
         },
+        "references": {
+            "$ref": "#/$defs/ReferencesConfig",
+            "description": "The [references] section: what find references answers.",
+            "default": {
+                "limit": 1000
+            }
+        },
         "rules": {
             "type": "array",
             "items": {
@@ -509,6 +516,19 @@
                     "type": "boolean",
                     "description": "Show the called function's documentation comment.",
                     "default": true
+                }
+            },
+            "additionalProperties": false
+        },
+        "ReferencesConfig": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Maximum number of locations a references request answers with, those in the file it is asked from first; `0` means no limit. `clice query references` lists every one.",
+                    "default": 1000
                 }
             },
             "additionalProperties": false

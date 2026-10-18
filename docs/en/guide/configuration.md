@@ -691,6 +691,17 @@ Show the called function's documentation comment.
 The `[references]` section controls what find references answers.
 
 <!-- BEGIN GENERATED CONFIG: references -->
+
+<div class="config-option">
+
+| Option  | Type     | Default |
+| ------- | -------- | ------- |
+| `limit` | `uint32` | `1000`  |
+
+Maximum number of locations a references request answers with, those in the file it is asked from first; `0` means no limit. `clice query references` lists every one.
+
+</div>
+
 <!-- END GENERATED CONFIG -->
 
 ## `[[rules]]`
