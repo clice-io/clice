@@ -28,6 +28,8 @@ module clice;
 
 import :command.command;
 import :compile.compilation;
+import :index.indexer;
+import :index.symbol;
 import :index.tu_index;
 import :support.format;
 import :support.logging;
@@ -302,8 +304,8 @@ struct Stats {
             // Non-decl/def payloads are symbol hashes the shard's table
             // must also cover (decl/def payloads are definition ranges).
             for(auto& r: relations) {
-                if(r.target_symbol != 0 && !RelationKind(r.kind).isDeclOrDef()) {
-                    variant_symbols.insert(r.target_symbol);
+                if(r.target != 0 && !RelationKind(r.kind).isDeclOrDef()) {
+                    variant_symbols.insert(r.target);
                 }
             }
         }
@@ -350,7 +352,7 @@ struct Stats {
             if(parent_path_id >= tu.path_count()) {
                 continue;
             }
-            std::uint64_t parent_hash = tu.path_hash(parent_path_id);
+            std::uint64_t parent_hash = tu.content_hash(parent_path_id);
 
             std::ranges::sort(list, [&](auto& a, auto& b) {
                 if(a.first != b.first) {
@@ -383,8 +385,8 @@ struct Stats {
     void add_tu(const index::TUIndex& tu) {
         indexed += 1;
 
-        tu.iterate_symbols([&](index::SymbolHash hash,
-                               const index::SymbolIdentity& symbol,
+        tu.for_each_symbol([&](index::SymbolHash hash,
+                               const index::SymbolView& symbol,
                                llvm::ArrayRef<std::uint32_t>) {
             auto scope = static_cast<std::uint8_t>(symbol.scope);
             if(scope < scope_n.size()) {
@@ -815,14 +817,14 @@ std::string format_report_md(const Stats& stats, const Report& r, llvm::StringRe
     line("| scope | deduped by hash | per-TU sum |");
     line("|---|---|---|");
     constexpr static std::array<llvm::StringRef, 3> scope_labels = {"External",
-                                                                    "TULocal",
-                                                                    "FileLocal"};
+                                                                    "Internal",
+                                                                    "FunctionLocal"};
     for(std::size_t i = 0; i < 3; i += 1) {
         line(std::format("| {} | {} | {} |", scope_labels[i], r.scope_dedup[i], r.scope_n[i]));
     }
     std::uint64_t scope_total = r.scope_dedup[0] + r.scope_dedup[1] + r.scope_dedup[2];
     line("");
-    line(std::format("- deduped total {} → External {:.1f}%, TULocal {:.1f}%, FileLocal {:.1f}%",
+    line(std::format("- deduped total {} → External {:.1f}%, Internal {:.1f}%, FunctionLocal {:.1f}%",
                      scope_total,
                      frac(r.scope_dedup[0], scope_total),
                      frac(r.scope_dedup[1], scope_total),
@@ -998,12 +1000,12 @@ std::string format_stats_json(const Stats& stats, const Report& r, llvm::StringR
     kv("rel_per_variant_max", r.rel_dist.max());
 
     o += std::format(
-        "  \"scope_dedup\": {{\"External\": {}, \"TULocal\": {}, \"FileLocal\": {}}},\n",
+        "  \"scope_dedup\": {{\"External\": {}, \"Internal\": {}, \"FunctionLocal\": {}}},\n",
         r.scope_dedup[0],
         r.scope_dedup[1],
         r.scope_dedup[2]);
     o += std::format(
-        "  \"scope_per_tu\": {{\"External\": {}, \"TULocal\": {}, \"FileLocal\": {}}},\n",
+        "  \"scope_per_tu\": {{\"External\": {}, \"Internal\": {}, \"FunctionLocal\": {}}},\n",
         r.scope_n[0],
         r.scope_n[1],
         r.scope_n[2]);
