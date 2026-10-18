@@ -63,6 +63,16 @@ operator string() const
 '''
 range = "names.⟦operator⟧ std::string();"
 
+[answers.conversion_template.hover]
+markdown = '''
+**method** `operator int *` · struct `std::vector<std::string>`
+
+```cpp
+template <> operator int *() const
+```
+'''
+range = "names.⟦operator⟧ int*();"
+
 [answers.max.hover]
 markdown = '''
 **function** `max` · namespace `std`

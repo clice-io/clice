@@ -13,6 +13,8 @@ struct vector {
     static constexpr T* data(unsigned offset = 0) noexcept;
     auto at(unsigned index) const -> const T&;
     operator T() const;
+    template <class U>
+    operator U*() const;
 };
 
 template <class T>
@@ -26,5 +28,6 @@ void use(std::vector<std::string>& names, std::string name) {
     names.§(data)data();
     names.§(at)at(0);
     names.§(conversion)operator std::string();
+    names.§(conversion_template)operator int*();
     std::§(max)max(name, name);
 }

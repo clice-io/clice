@@ -33,6 +33,11 @@ struct Tuple {
 };
 
 template <class T>
+struct Flag {
+    explicit(sizeof(T) > 1) operator bool() const;
+};
+
+template <class T>
 struct Wrapper {
     T value;
     auto size() -> decltype(value.size());
@@ -42,10 +47,12 @@ template <class T>
 void use(Box<T&>& box,
          Box<T>& plain,
          Wrapper<lib::vector<T>>& wrapper,
-         Tuple<T, int, T>& tuple) {
+         Tuple<T, int, T>& tuple,
+         Flag<lib::vector<T>>& flag) {
     box.§(field)field;
     plain.§(get)get();
     wrapper.§(size)size();
     tuple.§(assign)assign(T(), 1, T());
+    flag.§(explicit_conversion)operator bool();
     typename lib::map<int, T>::§(mapped_type)mapped_type value;
 }

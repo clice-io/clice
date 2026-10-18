@@ -2013,37 +2013,47 @@ struct DeclarationPrinter {
         if(function.isConsteval()) {
             text += "consteval ";
         }
-        if(clang::ExplicitSpecifier::getFromDecl(&function).isExplicit()) {
+        /// A template's `explicit(condition)` shown through a dependent
+        /// specialization stays undecided.
+        if(auto specifier = clang::ExplicitSpecifier::getFromDecl(&function);
+           specifier.isExplicit()) {
             text += "explicit ";
+        } else if(specifier.getKind() == clang::ExplicitSpecKind::Unresolved) {
+            llvm::raw_string_ostream specifier_os(text);
+            specifier_os << "explicit(";
+            specifier.getExpr()->printPretty(specifier_os, nullptr, policy, 0, "\n", &context);
+            specifier_os << ") ";
         }
 
         std::string declarator;
         llvm::raw_string_ostream os(declarator);
+        /// A conversion function's name is its type, and takes no template
+        /// arguments.
         if(const auto* conversion = llvm::dyn_cast<clang::CXXConversionDecl>(&function)) {
             declarator +=
                 "operator " + display::type(context, conversion->getConversionType(), shown).text;
         } else {
             function.getNameInfo().printName(os, policy);
-        }
-        if(const auto* written = function.getTemplateSpecializationArgsAsWritten()) {
-            clang::printTemplateArgumentList(os, written->arguments(), policy);
-        } else if(const auto* args = function.getTemplateSpecializationArgs()) {
-            /// A pack's arguments flattened, as the arguments of a call.
-            llvm::SmallVector<std::string> arguments;
-            for(const auto& arg: args->asArray()) {
-                for(const auto& element: arg.getKind() == clang::TemplateArgument::Pack
-                                             ? arg.pack_elements()
-                                             : llvm::ArrayRef(arg)) {
-                    if(element.getKind() == clang::TemplateArgument::Type) {
-                        arguments.push_back(
-                            display::type(context, element.getAsType(), shown).text);
-                    } else {
-                        llvm::raw_string_ostream argument_os(arguments.emplace_back());
-                        element.print(policy, argument_os, /*IncludeType=*/true);
+            if(const auto* written = function.getTemplateSpecializationArgsAsWritten()) {
+                clang::printTemplateArgumentList(os, written->arguments(), policy);
+            } else if(const auto* args = function.getTemplateSpecializationArgs()) {
+                /// A pack's arguments flattened, as the arguments of a call.
+                llvm::SmallVector<std::string> arguments;
+                for(const auto& arg: args->asArray()) {
+                    for(const auto& element: arg.getKind() == clang::TemplateArgument::Pack
+                                                 ? arg.pack_elements()
+                                                 : llvm::ArrayRef(arg)) {
+                        if(element.getKind() == clang::TemplateArgument::Type) {
+                            arguments.push_back(
+                                display::type(context, element.getAsType(), shown).text);
+                        } else {
+                            llvm::raw_string_ostream argument_os(arguments.emplace_back());
+                            element.print(policy, argument_os, /*IncludeType=*/true);
+                        }
                     }
                 }
+                declarator += "<" + llvm::join(arguments, ", ") + ">";
             }
-            declarator += "<" + llvm::join(arguments, ", ") + ">";
         }
 
         llvm::SmallVector<std::string> parameters;

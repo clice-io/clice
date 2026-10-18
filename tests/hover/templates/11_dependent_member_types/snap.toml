@@ -39,6 +39,16 @@ void assign(T first, Bs... rest)
 '''
 range = "tuple.⟦assign⟧(T(), 1, T());"
 
+[answers.explicit_conversion.hover]
+markdown = '''
+**method** `operator bool` · struct `Flag<lib::vector<T>>`
+
+```cpp
+explicit(sizeof(T) > 1) operator bool() const
+```
+'''
+range = "flag.⟦operator⟧ bool();"
+
 [answers.mapped_type.hover]
 markdown = '''
 **type** `mapped_type` · struct `lib::map<int, T>`
