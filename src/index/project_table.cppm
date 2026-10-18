@@ -9,6 +9,7 @@ import :index.format;
 import :index.symbol;
 import :semantic.token_class;
 import :support.bitmap;
+import :vfs.ids;
 
 namespace clice::index {
 
