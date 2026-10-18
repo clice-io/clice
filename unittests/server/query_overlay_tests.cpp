@@ -464,6 +464,32 @@ ZEST_CASE(PreviewFromDisk) {
     ZEXPECT(index::context_lines(disk_query, references) == std::vector<std::string>{""});
 }
 
+ZEST_CASE(PreviewLineWithoutLineEnd) {
+    // A CRLF file's preview line ends before its "\r\n".
+    llvm::StringRef text = "int value = 1;\r\nint other = value;\r\n";
+    dir.touch("crlf.cpp", text);
+    auto path_id = project.file_table.intern(Spelling::absolute(dir.path("crlf.cpp")));
+
+    index::SymbolHash symbol_hash = 778;
+    index::FileIndex file_index;
+    file_index.relations[symbol_hash].push_back({
+        .kind = RelationKind::Reference,
+        .range = {28, 33},
+        .target = 0
+    });
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::write_shard(file_index, {}, text, os);
+    project.index.shards[path_id] =
+        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+    project.index.edit(symbol_hash).reference_files.add(path_id.raw);
+
+    auto references = disk_query.sites(symbol_hash, Fid{}, RelationKind::Reference);
+    ZASSERT(references.size() == 1U);
+    ZEXPECT(index::context_lines(disk_query, references) ==
+            std::vector<std::string>{"int other = value;"});
+}
+
 ZEST_CASE(SharedPreambleScoped) {
     add_focus("main.cpp", R"(#define §(macro)⟦§(macro)FOO⟧ 1
 #if FOO

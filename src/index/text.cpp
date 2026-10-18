@@ -6,6 +6,7 @@ module clice;
 
 import :index.query;
 import :index.search;
+import :index.site;
 import :index.text;
 import :syntax.doc_comment;
 import :syntax.documentation;
@@ -16,20 +17,6 @@ import :syntax.source_text;
 namespace clice::index {
 
 namespace {
-
-std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
-    if(content.empty() || offset >= content.size())
-        return {};
-    // StringRef::rfind looks strictly before its position.
-    std::size_t line_start = 0;
-    if(auto pos = content.rfind('\n', offset); pos != llvm::StringRef::npos) {
-        line_start = pos + 1;
-    }
-    auto line_end = content.find('\n', offset);
-    if(line_end == llvm::StringRef::npos)
-        line_end = content.size();
-    return content.slice(line_start, line_end).str();
-}
 
 std::optional<DeclaredText>
     declared_text(const IndexQuery& index, SymbolHash hash, Fid anchor, RelationKind kind) {
@@ -177,16 +164,11 @@ auto copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, ll
 }
 
 std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<Site> sites) {
+    // Each file's text, read once: the serving source's when it has it,
+    // else the file on disk while it still holds the indexed text.
     struct Text {
-        std::optional<IndexSource> source;
         std::unique_ptr<llvm::MemoryBuffer> kept;
-
-        llvm::StringRef get() const {
-            if(source && !source->positions.text().empty()) {
-                return source->positions.text();
-            }
-            return kept ? kept->getBuffer() : llvm::StringRef();
-        }
+        std::optional<SourceText> source;
     };
 
     llvm::DenseMap<Fid, std::unique_ptr<Text>> texts;
@@ -200,14 +182,23 @@ std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<S
         auto& text = texts[site.file];
         if(!text) {
             text = std::make_unique<Text>();
-            text->source = index.serving(site.file);
-            if(text->get().empty()) {
-                if(auto* shard = index.project().shard(site.file)) {
-                    disk_text(site.path, *shard, text->kept);
-                }
+            std::optional<llvm::StringRef> content;
+            if(auto source = index.serving(site.file); source && !source->positions.text().empty()) {
+                content = source->positions.text();
+            } else if(auto* shard = index.project().shard(site.file)) {
+                content = disk_text(site.path, *shard, text->kept);
+            }
+            if(content) {
+                text->source.emplace(*content,
+                                     raw_dialect(clang::Language::CXX,
+                                                 clang::LangStandard::lang_cxx26));
             }
         }
-        lines.push_back(extract_line(text->get(), site.range.begin));
+        if(!text->source || site.range.begin >= text->source->text().size()) {
+            lines.emplace_back();
+            continue;
+        }
+        lines.push_back(line_at(text->source->positions(), site.range.begin).str());
     }
     return lines;
 }
