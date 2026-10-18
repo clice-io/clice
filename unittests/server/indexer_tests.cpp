@@ -353,7 +353,7 @@ int use() { return 1; }
     pump.apply_report(*report);
     auto focus = project.file_table.intern(Spelling::absolute(mirror.paths.back()));
     llvm::SmallVector<Fid> reached;
-    project.project_index.each_fanout_file(helper, header, project.file_table, [&](Fid file) {
+    project.project_index.each_fanout_file(helper, header, [&](Fid file) {
         reached.push_back(file);
     });
     ZEXPECT(reached == llvm::SmallVector<Fid>{header, focus});
@@ -4324,10 +4324,9 @@ void a() {}
         });
     ZASSERT(print);
     llvm::SmallVector<Fid> reached;
-    f.project.project_index.each_fanout_file(*print,
-                                             id("a.h"),
-                                             f.project.file_table,
-                                             [&](Fid file) { reached.push_back(file); });
+    f.project.project_index.each_fanout_file(*print, id("a.h"), [&](Fid file) {
+        reached.push_back(file);
+    });
     ZEXPECT(llvm::is_contained(reached, id("box.h")));
 }
 

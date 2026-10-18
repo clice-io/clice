@@ -394,11 +394,9 @@ struct GlobalBlobMirror {
     std::vector<std::uint32_t> contributed_files;
     std::vector<std::uint32_t> contributor_ends;
     std::vector<std::uint8_t> contributors;
-    std::vector<std::uint32_t> fanout_files;
-    std::vector<std::uint32_t> fanout_symbol_ends;
     std::vector<std::uint64_t> fanout_symbols;
-    std::vector<std::uint32_t> fanout_unit_ends;
-    std::vector<std::uint8_t> fanout_units;
+    std::vector<std::uint32_t> fanout_file_ends;
+    std::vector<std::uint8_t> fanout_files;
 
     /// Append an entry, its parent outside the table; hashes must arrive
     /// ascending, at most 255 of them.
@@ -635,18 +633,14 @@ ZEST_CASE(UncoveredFileIdRejected) {
     ZASSERT(rejecting.symbol_count() == 0u);
 }
 
-ZEST_CASE(FanoutUnitsRejected) {
-    // A reader indexes the file table with the files the units are listed
-    // for and binary-searches each file's symbols: a file the path table
-    // does not cover, symbols out of order, or ends that misplace a set must
-    // not load.
+ZEST_CASE(FanoutFilesRejected) {
+    // A reader binary-searches the symbols for the files the fanouts list:
+    // symbols out of order, or ends that misplace a file set, must not load.
     GlobalBlobMirror mirror;
     mirror.paths = {"/proj/a.h", "/proj/a.cpp"};
-    mirror.fanout_files = {0};
-    mirror.fanout_symbol_ends = {2};
     mirror.fanout_symbols = {5, 9};
-    mirror.fanout_units = {1, 0, 0, 0, 1, 0, 0, 0};
-    mirror.fanout_unit_ends = {4, 8};
+    mirror.fanout_files = {0, 0, 0, 0, 1, 0, 0, 0};
+    mirror.fanout_file_ends = {4, 8};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -658,16 +652,12 @@ ZEST_CASE(FanoutUnitsRejected) {
     };
     ZASSERT(loads(mirror));
 
-    auto uncovered = mirror;
-    uncovered.fanout_files = {2};
-    ZEXPECT(!loads(uncovered));
-
     auto unordered = mirror;
     unordered.fanout_symbols = {9, 5};
     ZEXPECT(!loads(unordered));
 
     auto misplaced = mirror;
-    misplaced.fanout_unit_ends = {4, 7};
+    misplaced.fanout_file_ends = {4, 7};
     ZEXPECT(!loads(misplaced));
 }
 

@@ -262,9 +262,9 @@ std::vector<Highlight>
 /// and only an external one's: every question about a symbol's entries also
 /// takes an `anchor`, a file holding one of them — the cursor's file, the
 /// file a relation was read from, a located symbol's site. Any other
-/// symbol's entries are the anchor's and those in the files the TUs naming
-/// the anchor list for it (ProjectIndex::each_fanout_file). External
-/// symbols ignore the anchor.
+/// symbol's entries are the anchor's and those in the files the TUs' local
+/// fanouts list for it (ProjectIndex::each_fanout_file). External symbols
+/// ignore the anchor.
 class IndexQuery {
 public:
     /// A null gate never withholds; null live sources are the disk-only

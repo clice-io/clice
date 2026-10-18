@@ -652,10 +652,9 @@ ZEST_CASE(ReaderFanoutAcrossUnits) {
     ZASSERT(reader.open(*db, files));
     for(auto start: {"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}) {
         llvm::SmallVector<Fid> reached;
-        reader.each_fanout_file(helper,
-                                files.intern(Spelling::absolute(start)),
-                                files,
-                                [&](Fid file) { reached.push_back(file); });
+        reader.each_fanout_file(helper, files.intern(Spelling::absolute(start)), [&](Fid file) {
+            reached.push_back(file);
+        });
         ZEXPECT(reached.size() == 3u);
         for(auto name: {"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}) {
             auto file = files.find(Spelling::absolute(name));

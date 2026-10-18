@@ -474,7 +474,7 @@ void IndexQuery::each_disk_file(SymbolHash hash,
     if(index.identity_of(hash)) {
         index.each_reference_file(hash, visit);
     } else if(anchor.valid()) {
-        index.each_fanout_file(hash, anchor, files, visit);
+        index.each_fanout_file(hash, anchor, visit);
     }
 }
 
@@ -767,9 +767,9 @@ std::optional<SymbolRef> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) co
         }
     }
     // An instantiation or an expansion names it in a file other than its
-    // own: the walk from there reaches the files declaring it.
+    // own: the files the fanouts list for it hold its declaration.
     if(anchor.valid()) {
-        index.each_fanout_file(hash, anchor, files, [&](Fid file) {
+        index.each_fanout_file(hash, anchor, [&](Fid file) {
             auto* shard = found ? nullptr : index.shard(file);
             if(auto identity = shard ? shard->find_symbol(hash) : std::nullopt) {
                 adopt(*identity);

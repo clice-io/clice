@@ -125,8 +125,7 @@ inline std::string symbol_id(SymbolHash hash) {
 /// local fanout names its files by version, including files the unit reads
 /// through a precompiled header or a module, function-local symbols other
 /// files name join the TU index's table and the fanout, and the global
-/// table lists per file and symbol the units whose fanout names the file
-/// for it.
+/// table lists the files the fanouts name per symbol.
 constexpr inline std::uint32_t index_format_version = 40;
 
 /// Serialize a reflected index blob to `os` as a verified-readable

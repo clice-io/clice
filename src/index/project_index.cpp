@@ -104,15 +104,12 @@ struct GlobalBlob {
     std::vector<std::uint32_t> contributor_ends;
     std::vector<std::uint8_t> contributors;
 
-    /// What a reader walks from a file: the units whose local fanout names
-    /// it for a symbol (TUManifest::local_fanout). Every such file (path
-    /// ids, ascending), per file its symbols (ascending, back to back), and
-    /// per symbol those units' path ids as a file set.
-    std::vector<std::uint32_t> fanout_files;
-    std::vector<std::uint32_t> fanout_symbol_ends;
+    /// The symbols below external scope some TU's local fanout lists
+    /// (TUManifest::local_fanout), ascending, and the files listed for each
+    /// as file sets back to back.
     std::vector<std::uint64_t> fanout_symbols;
-    std::vector<std::uint32_t> fanout_unit_ends;
-    std::vector<std::uint8_t> fanout_units;
+    std::vector<std::uint32_t> fanout_file_ends;
+    std::vector<std::uint8_t> fanout_files;
 };
 
 using BlobView = kota::codec::fbs::table_view<GlobalBlob>;
@@ -164,11 +161,10 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
 /// A table derived from the manifests: file -> (TU -> the hash it names there).
 using UnitHashes = llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>>;
 
-/// Drop `unit`'s entry for `key`, and the key once no unit names it. One
+/// Drop `unit`'s entry for `file`, and the file once no unit names it. One
 /// file's two persisted versions in a manifest reach here twice.
-template <typename Table>
-void erase_unit(Table& table, const typename Table::key_type& key, Fid unit) {
-    auto it = table.find(key);
+void erase_unit(UnitHashes& table, Fid file, Fid unit) {
+    auto it = table.find(file);
     if(it == table.end()) {
         return;
     }
@@ -177,32 +173,6 @@ void erase_unit(Table& table, const typename Table::key_type& key, Fid unit) {
         table.erase(it);
     }
 }
-
-/// GlobalBlob's fanout units, bound in place.
-struct FanoutUnits {
-    llvm::ArrayRef<std::uint32_t> files;
-    llvm::ArrayRef<std::uint32_t> symbol_ends;
-    llvm::ArrayRef<std::uint64_t> symbols;
-    llvm::ArrayRef<std::uint32_t> unit_ends;
-    llvm::ArrayRef<std::uint8_t> units;
-
-    /// File table id -> index into `files`, built on first use.
-    mutable llvm::DenseMap<Fid, std::uint32_t> index;
-
-    bool lines_up(std::size_t path_count) const {
-        if(symbol_ends.size() != files.size() || !covering_ends(symbol_ends, symbols.size()) ||
-           unit_ends.size() != symbols.size() || !covering_ends(unit_ends, units.size())) {
-            return false;
-        }
-        for(std::uint32_t i = 0; i < files.size(); i += 1) {
-            if(files[i] >= path_count || (i > 0 && files[i] <= files[i - 1]) ||
-               !std::ranges::is_sorted(back_to_back(symbols, symbol_ends, i), std::less_equal{})) {
-                return false;
-            }
-        }
-        return true;
-    }
-};
 
 /// The distinct hashes the units name for `file`, ascending.
 llvm::SmallVector<std::uint64_t> distinct_hashes(const UnitHashes& table, Fid file) {
@@ -262,50 +232,16 @@ struct ProjectIndex::Base {
     llvm::ArrayRef<std::uint32_t> contributed_files;
     llvm::ArrayRef<std::uint32_t> contributor_ends;
     llvm::ArrayRef<std::uint8_t> contributors;
-    FanoutUnits fanout_units;
+
+    llvm::ArrayRef<std::uint64_t> fanout_symbols;
+    llvm::ArrayRef<std::uint32_t> fanout_file_ends;
+    llvm::ArrayRef<std::uint8_t> fanout_files;
 
     /// Blob path id -> file table id.
     std::vector<Fid> remap;
 
     /// File table id -> index into contributed_files, built on first use.
     mutable llvm::DenseMap<Fid, std::uint32_t> contributed_index;
-
-    /// The TUs that contributed a variant to `file`, as path ids; nullopt when
-    /// none did or the image fails to decode.
-    std::optional<Bitmap> contributors_of(Fid file) const {
-        if(contributed_index.empty()) {
-            for(std::uint32_t i = 0; i < contributed_files.size(); i += 1) {
-                contributed_index.try_emplace(remap[contributed_files[i]], i);
-            }
-        }
-        auto it = contributed_index.find(file);
-        if(it == contributed_index.end()) {
-            return std::nullopt;
-        }
-        return read_file_set(back_to_back(contributors, contributor_ends, it->second));
-    }
-
-    /// The TUs whose fanout names `file` for `symbol`, as path ids.
-    std::optional<Bitmap> fanout_units_of(Fid file, SymbolHash symbol) const {
-        auto& table = fanout_units;
-        if(table.index.empty()) {
-            for(std::uint32_t i = 0; i < table.files.size(); i += 1) {
-                table.index.try_emplace(remap[table.files[i]], i);
-            }
-        }
-        auto it = table.index.find(file);
-        if(it == table.index.end()) {
-            return std::nullopt;
-        }
-        auto begin = it->second == 0 ? 0 : table.symbol_ends[it->second - 1];
-        auto symbols = table.symbols.slice(begin, table.symbol_ends[it->second] - begin);
-        auto found = std::ranges::lower_bound(symbols, symbol);
-        if(found == symbols.end() || *found != symbol) {
-            return std::nullopt;
-        }
-        auto entry = static_cast<std::uint32_t>(begin + (found - symbols.begin()));
-        return read_file_set(back_to_back(table.units, table.unit_ends, entry));
-    }
 
     std::uint32_t count() const {
         return static_cast<std::uint32_t>(hashes.size());
@@ -372,6 +308,31 @@ struct ProjectIndex::Base {
 
     std::optional<Bitmap> instantiation_bitmap(std::uint32_t doc) const {
         return read_file_set(instantiation_image(doc));
+    }
+
+    /// The TUs that contributed a variant to `file`, as path ids; nullopt when
+    /// none did or the image fails to decode.
+    std::optional<Bitmap> contributors_of(Fid file) const {
+        if(contributed_index.empty()) {
+            for(std::uint32_t i = 0; i < contributed_files.size(); i += 1) {
+                contributed_index.try_emplace(remap[contributed_files[i]], i);
+            }
+        }
+        auto it = contributed_index.find(file);
+        if(it == contributed_index.end()) {
+            return std::nullopt;
+        }
+        return read_file_set(back_to_back(contributors, contributor_ends, it->second));
+    }
+
+    /// The files the local fanouts list for `symbol`, as path ids.
+    std::optional<Bitmap> fanout_files_of(SymbolHash symbol) const {
+        auto it = std::ranges::lower_bound(fanout_symbols, symbol);
+        if(it == fanout_symbols.end() || *it != symbol) {
+            return std::nullopt;
+        }
+        auto entry = static_cast<std::uint32_t>(it - fanout_symbols.begin());
+        return read_file_set(back_to_back(fanout_files, fanout_file_ends, entry));
     }
 
     /// The portable name of the file a persisted version id names.
@@ -443,11 +404,9 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     contributed_files = to_array_ref(root[&GlobalBlob::contributed_files]);
     contributor_ends = to_array_ref(root[&GlobalBlob::contributor_ends]);
     contributors = to_array_ref(root[&GlobalBlob::contributors]);
-    fanout_units.files = to_array_ref(root[&GlobalBlob::fanout_files]);
-    fanout_units.symbol_ends = to_array_ref(root[&GlobalBlob::fanout_symbol_ends]);
-    fanout_units.symbols = to_array_ref(root[&GlobalBlob::fanout_symbols]);
-    fanout_units.unit_ends = to_array_ref(root[&GlobalBlob::fanout_unit_ends]);
-    fanout_units.units = to_array_ref(root[&GlobalBlob::fanout_units]);
+    fanout_symbols = to_array_ref(root[&GlobalBlob::fanout_symbols]);
+    fanout_file_ends = to_array_ref(root[&GlobalBlob::fanout_file_ends]);
+    fanout_files = to_array_ref(root[&GlobalBlob::fanout_files]);
 
     auto version_count = fv_ids.size();
     if(fv_paths.size() != version_count || fv_hashes.size() != version_count) {
@@ -466,8 +425,10 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
             return std::unexpected("contributed files are not ascending path ids");
         }
     }
-    if(!fanout_units.lines_up(paths.size())) {
-        return std::unexpected("fanout unit columns do not line up");
+    if(fanout_file_ends.size() != fanout_symbols.size() ||
+       !covering_ends(fanout_file_ends, fanout_files.size()) ||
+       !std::ranges::is_sorted(fanout_symbols, std::less_equal{})) {
+        return std::unexpected("fanout columns do not line up");
     }
     if(manifest_fvs.size() != manifest_gens.size()) {
         return std::unexpected("manifest pin columns do not line up");
@@ -1167,28 +1128,16 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         blob.contributor_ends.push_back(static_cast<std::uint32_t>(blob.contributors.size()));
     }
 
-    std::vector<std::tuple<std::uint32_t, SymbolHash, Bitmap>> fanout;
-    fanout.reserve(fanout_units.size());
-    for(auto& [key, units]: fanout_units) {
-        Bitmap tus;
-        for(auto tu: units) {
-            tus.add(path_id(tu));
-        }
-        fanout.emplace_back(path_id(key.first), key.second, std::move(tus));
-    }
-    llvm::sort(fanout, [](const auto& lhs, const auto& rhs) {
-        return std::tie(std::get<0>(lhs), std::get<1>(lhs)) <
-               std::tie(std::get<0>(rhs), std::get<1>(rhs));
-    });
-    for(auto& [file, symbol, tus]: fanout) {
-        if(blob.fanout_files.empty() || blob.fanout_files.back() != file) {
-            blob.fanout_files.push_back(file);
-            blob.fanout_symbol_ends.emplace_back();
+    llvm::SmallVector<SymbolHash> fanout(llvm::make_first_range(fanout_files));
+    llvm::sort(fanout);
+    for(auto symbol: fanout) {
+        Bitmap listed;
+        for(auto file: llvm::make_first_range(fanout_files.find(symbol)->second)) {
+            listed.add(path_id(file));
         }
         blob.fanout_symbols.push_back(symbol);
-        blob.fanout_symbol_ends.back() = static_cast<std::uint32_t>(blob.fanout_symbols.size());
-        append_file_set(blob.fanout_units, tus);
-        blob.fanout_unit_ends.push_back(static_cast<std::uint32_t>(blob.fanout_units.size()));
+        append_file_set(blob.fanout_files, listed);
+        blob.fanout_file_ends.push_back(static_cast<std::uint32_t>(blob.fanout_files.size()));
     }
 
     blob.search_generation = search_generation;
@@ -1331,8 +1280,9 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
         importers[files.version(fv).fid].insert(tu_path_id);
     }
     for(auto& fanout: manifest.local_fanout) {
+        auto& listed = fanout_files[fanout.symbol];
         for(auto fv: fanout.files) {
-            fanout_units[{files.version(fv).fid, fanout.symbol}].insert(tu_path_id);
+            listed[files.version(fv).fid] += 1;
         }
     }
     for(auto& use: manifest.instantiations) {
@@ -1367,12 +1317,29 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
             probed.erase(probe_it);
         }
     }
+    // Modules built at different times may have read different versions
+    // of one file: the first of them already erased it.
     for(auto fv: it->second.imports) {
-        erase_unit(importers, files.version(fv).fid, tu_path_id);
+        auto importer_it = importers.find(files.version(fv).fid);
+        if(importer_it == importers.end()) {
+            continue;
+        }
+        importer_it->second.erase(tu_path_id);
+        if(importer_it->second.empty()) {
+            importers.erase(importer_it);
+        }
     }
     for(auto& fanout: it->second.local_fanout) {
+        auto listed = fanout_files.find(fanout.symbol);
         for(auto fv: fanout.files) {
-            erase_unit(fanout_units, std::pair(files.version(fv).fid, fanout.symbol), tu_path_id);
+            auto file = listed->second.find(files.version(fv).fid);
+            file->second -= 1;
+            if(file->second == 0) {
+                listed->second.erase(file);
+            }
+        }
+        if(listed->second.empty()) {
+            fanout_files.erase(listed);
         }
     }
     for(auto& use: it->second.instantiations) {
@@ -1421,49 +1388,25 @@ void ProjectIndex::each_contributor(Fid file, llvm::function_ref<void(Fid)> visi
 
 void ProjectIndex::each_fanout_file(SymbolHash hash,
                                     Fid anchor,
-                                    const FileTable& files,
                                     llvm::function_ref<void(Fid)> visit) const {
-    llvm::SmallDenseSet<Fid, 8> seen{anchor};
-    llvm::SmallDenseSet<Fid, 8> asked;
-    llvm::SmallVector<Fid> pending{anchor};
     visit(anchor);
-    auto ask = [&](Fid tu) {
-        auto* manifest = asked.insert(tu).second ? tu_manifest(tu) : nullptr;
-        if(!manifest) {
-            return;
-        }
-        auto it = std::ranges::lower_bound(manifest->local_fanout, hash, {}, &LocalFanout::symbol);
-        if(it == manifest->local_fanout.end() || it->symbol != hash) {
-            return;
-        }
-        for(auto version: it->files) {
-            std::optional<Fid> file;
-            if(!db) {
-                file = files.version(version).fid;
-            } else if(auto name = base->version_path(version.raw)) {
-                file = files.find(local(*name));
-            }
-            if(file && seen.insert(*file).second) {
-                visit(*file);
-                pending.push_back(*file);
-            }
-        }
-    };
-    while(!pending.empty()) {
-        auto file = pending.pop_back_val();
-        if(!db) {
-            auto it = fanout_units.find({file, hash});
-            if(it != fanout_units.end()) {
-                for(auto tu: it->second) {
-                    ask(tu);
+    if(!db) {
+        if(auto it = fanout_files.find(hash); it != fanout_files.end()) {
+            for(auto file: llvm::make_first_range(it->second)) {
+                if(file != anchor) {
+                    visit(file);
                 }
             }
-        } else if(auto tus = base ? base->fanout_units_of(file, hash) : std::nullopt) {
-            for(auto id: *tus) {
-                if(id < base->remap.size()) {
-                    ask(base->remap[id]);
-                }
-            }
+        }
+        return;
+    }
+    auto listed = base ? base->fanout_files_of(hash) : std::nullopt;
+    if(!listed) {
+        return;
+    }
+    for(auto id: *listed) {
+        if(id < base->remap.size() && base->remap[id] != anchor) {
+            visit(base->remap[id]);
         }
     }
 }
