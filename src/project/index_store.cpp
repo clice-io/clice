@@ -66,7 +66,7 @@ struct CDBSnapshotEntry {
     std::string host_selected;
 };
 
-struct CDBSnapshot {
+struct CommandSnapshot {
     std::vector<CDBSnapshotEntry> entries;
 
     /// The files recorded as provisional members (Build::recorded), sorted.
@@ -79,10 +79,10 @@ struct CDBSnapshot {
 /// candidates that a rule's default command covers records that command's
 /// identity as its selection, so an offline edit of the command text is
 /// caught the same way.
-CDBSnapshot build_cdb_snapshot(Project& project,
+CommandSnapshot build_cdb_snapshot(Project& project,
                                const llvm::DenseMap<Fid, Fid>& header_hosts,
                                llvm::ArrayRef<Fid> standalone_debt) {
-    CDBSnapshot snapshot;
+    CommandSnapshot snapshot;
     for(auto& bucket: project.cdb.command_hash_snapshot()) {
         auto path_id = bucket.first;
         auto candidates = project.build.entries(path_id);
@@ -213,7 +213,7 @@ struct CachePCMEntry {
     std::vector<CacheDepEntry> deps;
 };
 
-struct ArtifactsData {
+struct ArtifactRecords {
     std::vector<std::string> paths;
 
     // index_format_version the .pch.idx indexes were written with (one
@@ -233,7 +233,7 @@ IndexStore::IndexStore(kota::event_loop& loop, Project& project, CommandResolver
     loop(loop), project(project), commands(commands) {}
 
 std::string IndexStore::serialize_artifacts() {
-    ArtifactsData data;
+    ArtifactRecords data;
     data.pch_index_format = index::index_format_version;
     llvm::StringMap<std::uint32_t> index_map;
 
@@ -299,7 +299,7 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
     if(bytes.empty() || !project.store) {
         return;
     }
-    ArtifactsData data;
+    ArtifactRecords data;
     if(!kota::codec::json::from_string(bytes, data)) {
         LOG_WARN("Failed to parse the artifacts blob");
         return;
@@ -772,7 +772,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         }
     }
     dirty_manifests.insert(tu_path_id);
-    global_dirty = true;
+    table_dirty = true;
 
     LOG_INFO(
         "Merged TUIndex: {} paths, {} sections ({} hits, {} appended, {} rebuilt), "
@@ -891,7 +891,7 @@ void IndexStore::drop_index_into(Fid tu_path_id, Report& report) {
         report.add_index_changed(path_id);
     }
     dirty_manifests.insert(tu_path_id);
-    global_dirty = true;
+    table_dirty = true;
 }
 
 kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, SearchRebuild search) {
@@ -1017,7 +1017,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
                                        retired_instantiations.end());
     retired_instantiations.clear();
     for(auto path_id: retired_ids) {
-        removals.push_back({index::BlobKind::Instantiations,
+        removals.push_back({index::BlobKind::InstantiationShard,
                             project.index.key_of(project.file_table, path_id)});
     }
     for(auto path_id: dirty_shards) {
@@ -1035,22 +1035,22 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         auto it = project_index.instantiations.find(path_id);
         assert(it != project_index.instantiations.end() &&
                "dirty instantiation shards stay resident until retirement");
-        batch.push_back({index::BlobKind::Instantiations,
+        batch.push_back({index::BlobKind::InstantiationShard,
                          project.index.key_of(project.file_table, path_id),
                          it->second.bytes().str()});
         instantiation_ids.push_back(path_id);
     }
     auto instantiation_count = batch.size() - shard_count;
 
-    // One generation per persisted global blob, recorded in every
-    // manifest of the batch and pinned per TU inside the global blob
-    // (serialize_global): load() adopts a manifest only at its pinned
+    // One generation per persisted project table, recorded in every
+    // manifest of the batch and pinned per TU inside the project table
+    // (serialize_table): load() adopts a manifest only at its pinned
     // generation. Without the pin an ordering check alone cannot tell a
     // deliberately unchanged older manifest from one whose update failed
-    // while the global committed — both FileVersion sets can stay fully
+    // while the project table committed — both FileVersion sets can stay fully
     // resolvable (a reindex that changed entries or the include tree only).
-    if(global_dirty) {
-        project_index.global_generation += 1;
+    if(table_dirty) {
+        project_index.table_generation += 1;
     }
     for(auto tu_path_id: dirty_manifests) {
         auto it = project_index.manifests.find(tu_path_id);
@@ -1059,29 +1059,29 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         // persisted blob must go too, or a restart resurrects the TU's
         // index as fresh.
         if(it == project_index.manifests.end()) {
-            removals.push_back({index::BlobKind::Manifest, std::move(key)});
+            removals.push_back({index::BlobKind::TUManifest, std::move(key)});
             continue;
         }
-        it->second.global_gen = project_index.global_generation;
+        it->second.table_generation = project_index.table_generation;
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(project_index.export_manifest(it->second), os);
-        batch.push_back({index::BlobKind::Manifest, std::move(key), std::move(bytes)});
+        batch.push_back({index::BlobKind::TUManifest, std::move(key), std::move(bytes)});
         manifest_ids.push_back(tu_path_id);
     }
     auto manifest_count = batch.size() - shard_count - instantiation_count;
 
-    // The global blob follows the shards and manifests: a crash mid-batch
+    // The project table follows the shards and manifests: a crash mid-batch
     // then strands only manifests, which load() drops by their generation
-    // pin — the reverse order would strand a global reporting symbols in
+    // pin — the reverse order would strand a project table reporting symbols in
     // files whose shards never committed.
-    std::optional<std::size_t> global_slot;
-    if(global_dirty) {
+    std::optional<std::size_t> table_slot;
+    if(table_dirty) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
-        project_index.serialize_global(os, project.file_table);
-        global_slot = batch.size();
-        batch.push_back({index::BlobKind::Global, "global", std::move(bytes)});
+        project_index.serialize_table(os, project.file_table);
+        table_slot = batch.size();
+        batch.push_back({index::BlobKind::ProjectTable, "global", std::move(bytes)});
     }
     // The search blob moves into the batch and back out if the write
     // never commits: it is derived state, so nothing else would re-create
@@ -1089,13 +1089,13 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     std::optional<std::size_t> search_slot;
     if(!search_bytes.empty()) {
         search_slot = batch.size();
-        batch.push_back({index::BlobKind::Search, "search", std::move(search_bytes)});
+        batch.push_back({index::BlobKind::SearchIndex, "search", std::move(search_bytes)});
         search_bytes.clear();
     }
 
     // The CDB snapshot goes last, after the whole index state it
-    // describes: committed before the global, a crash between the two would
-    // leave the old global still pinning old-command manifests under a
+    // describes: committed before the project table, a crash between the two would
+    // leave the old project table still pinning old-command manifests under a
     // snapshot that already matches the live CDB — reconcile would then
     // never drop them. A save that commits nothing skips the recompute
     // (unless the snapshot itself is owed a rewrite): a pure CDB change
@@ -1113,7 +1113,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         serialized_records = records;
         if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
             cdb_index = batch.size();
-            batch.push_back({index::BlobKind::CDB, "cdb", cdb_bytes});
+            batch.push_back({index::BlobKind::CommandSnapshot, "cdb", cdb_bytes});
         } else {
             cdb_dirty = false;
         }
@@ -1132,23 +1132,23 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     if(project.artifacts_dirty) {
         if(auto bytes = serialize_artifacts(); !bytes.empty()) {
             artifacts_index = batch.size();
-            batch.push_back({index::BlobKind::Artifacts, "artifacts", std::move(bytes)});
+            batch.push_back({index::BlobKind::ArtifactRecords, "artifacts", std::move(bytes)});
         }
     }
     if(contexts.dirty) {
         if(!contexts.bytes.empty()) {
             contexts_index = batch.size();
-            batch.push_back({index::BlobKind::Contexts, "contexts", contexts.bytes});
+            batch.push_back({index::BlobKind::ContextChoices, "contexts", contexts.bytes});
         } else {
             contexts_ok = false;
         }
     }
 
-    bool had_global = global_dirty;
+    bool had_table = table_dirty;
     dirty_shards.clear();
     dirty_instantiations.clear();
     dirty_manifests.clear();
-    global_dirty = false;
+    table_dirty = false;
     // Serialization failures keep their dirty flag for the next attempt.
     if(artifacts_index) {
         project.artifacts_dirty = false;
@@ -1213,7 +1213,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
             }
         }
         dirty_manifests.insert(manifest_ids.begin(), manifest_ids.end());
-        global_dirty = global_dirty || had_global;
+        table_dirty = table_dirty || had_table;
         project_index.restore_unwritten();
         if(search_slot) {
             search_bytes = std::move(batch[*search_slot].bytes);
@@ -1255,16 +1255,16 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         } else if(search_slot && i == *search_slot) {
             search_bytes = std::move(batch[i].bytes);
         } else {
-            global_dirty = true;
-            global_slot.reset();
+            table_dirty = true;
+            table_slot.reset();
         }
     }
-    // The entries the committed blob holds now read from it; a failed global
+    // The entries the committed blob holds now read from it; a failed project table
     // write keeps them aside for the retry.
-    if(global_slot) {
-        project_index.rebase(llvm::MemoryBuffer::getMemBufferCopy(batch[*global_slot].bytes),
+    if(table_slot) {
+        project_index.rebase(llvm::MemoryBuffer::getMemBufferCopy(batch[*table_slot].bytes),
                              project.file_table);
-    } else if(had_global) {
+    } else if(had_table) {
         project_index.restore_unwritten();
     }
     if(cdb_index) {
@@ -1344,9 +1344,9 @@ kota::task<> IndexStore::rebuild_search_index() {
     ScopedTimer timer;
     index::SearchSnapshot snapshot;
     snapshot.entries.reserve(project_index.symbol_count());
-    // A rebuild dirties the table (below): the save writes the global blob
+    // A rebuild dirties the table (below): the save writes the project table
     // under its next generation, and the search blob is pinned to it.
-    snapshot.generation = project_index.global_generation + 1;
+    snapshot.generation = project_index.table_generation + 1;
     llvm::DenseMap<std::uint32_t, std::uint32_t> path_index;
     project_index.for_each_symbol(
         [&](index::SymbolHash hash, const index::SymbolView& symbol, std::uint32_t references) {
@@ -1428,7 +1428,7 @@ kota::task<> IndexStore::rebuild_search_index() {
     // The table pins the blob it was saved with: a reader adopts the
     // persisted search index only under this generation.
     project.index.search_generation = snapshot.generation;
-    global_dirty = true;
+    table_dirty = true;
     merges_since_search_build -= merges_in_snapshot;
     for(auto hash: pending_in_snapshot) {
         if(project_index.search_index.contains(hash) &&
@@ -1552,7 +1552,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
            dirty_instantiations.contains(path_id)) {
             continue;
         }
-        auto blob = db.read(index::BlobKind::Instantiations,
+        auto blob = db.read(index::BlobKind::InstantiationShard,
                             project.index.key_of(project.file_table, path_id));
         if(!blob || !it->second.rebind(std::move(blob.buffer))) {
             if(db.corrupted()) {
@@ -1619,7 +1619,7 @@ void IndexStore::recover_corrupt_database(Report& report) {
     for(auto tu_path_id: llvm::make_first_range(project.index.manifests)) {
         dirty_manifests.insert(tu_path_id);
     }
-    global_dirty = true;
+    table_dirty = true;
     cdb_dirty = true;
     // The snapshot just persisted (if any) predates this recovery's debt
     // and lives in a condemned database anyway: one metadata retry makes
@@ -1662,9 +1662,9 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
             return;
         }
         for(auto kind: {index::BlobKind::Shard,
-                        index::BlobKind::Instantiations,
-                        index::BlobKind::Manifest,
-                        index::BlobKind::Search}) {
+                        index::BlobKind::InstantiationShard,
+                        index::BlobKind::TUManifest,
+                        index::BlobKind::SearchIndex}) {
             db.for_each_key(kind, [&](llvm::StringRef key) {
                 startup_removes.push_back({kind, key.str()});
             });
@@ -1683,25 +1683,25 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     };
 
     // Artifact metadata and context choices are index-independent: they
-    // load (and self-validate) whatever happened to the global blob.
+    // load (and self-validate) whatever happened to the project table.
     auto load_metadata = [&] {
-        if(auto artifacts = db.read(index::BlobKind::Artifacts, "artifacts")) {
+        if(auto artifacts = db.read(index::BlobKind::ArtifactRecords, "artifacts")) {
             load_artifacts(artifacts.buffer->getBuffer());
         }
-        if(auto choices = db.read(index::BlobKind::Contexts, "contexts")) {
+        if(auto choices = db.read(index::BlobKind::ContextChoices, "contexts")) {
             contexts.bytes = choices.buffer->getBuffer().str();
         }
     };
 
-    auto global = db.read(index::BlobKind::Global, "global");
-    if(!global) {
-        // A global blob that exists but failed to open is a transient IO
+    auto table = db.read(index::BlobKind::ProjectTable, "global");
+    if(!table) {
+        // A project table blob that exists but failed to open is a transient IO
         // error, not absence: removal would destroy an intact index and
         // force a full rebuild. Run this session memory-only instead —
         // saving a fresh lineage over blobs whose anchor was never read
         // could alias their fv ids and generations — and leave
         // everything for a healthier restart to load.
-        if(db.contains(index::BlobKind::Global, "global")) {
+        if(db.contains(index::BlobKind::ProjectTable, "global")) {
             // Confirmed page corruption heals through rebuildability: the
             // condemned database deletes itself and a fresh empty one
             // opens in its place, so this session's rebuild persists
@@ -1712,14 +1712,14 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
                 reopen_fresh_database();
             } else {
                 // Best effort before detaching: the metadata blobs may
-                // still read while only the global is unreadable.
+                // still read while only the project table is unreadable.
                 load_metadata();
-                LOG_WARN("Index global blob unreadable; disabling index persistence this session");
+                LOG_WARN("Index project table unreadable; disabling index persistence this session");
                 project.database.reset();
             }
             return result;
         }
-        // No global table means no resolvable manifests: everything else
+        // No project table means no resolvable manifests: everything else
         // is unreachable data, removed so it cannot survive as orphans.
         remove_all();
         load_metadata();
@@ -1728,14 +1728,14 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     }
     llvm::DenseMap<VersionID, std::uint64_t> manifest_pins;
     if(auto loaded =
-           project_index.load_global(global.buffer->getBuffer(), project.file_table, manifest_pins);
+           project_index.load_table(table.buffer->getBuffer(), project.file_table, manifest_pins);
        !loaded) {
-        LOG_INFO("Discarding the index global blob: {}", loaded.error());
+        LOG_INFO("Discarding the index's project table: {}", loaded.error());
         remove_all();
         load_metadata();
         if(!read_only) {
-            startup_removes.push_back({index::BlobKind::Global, "global"});
-            startup_removes.push_back({index::BlobKind::Search, "search"});
+            startup_removes.push_back({index::BlobKind::ProjectTable, "global"});
+            startup_removes.push_back({index::BlobKind::SearchIndex, "search"});
         }
         result.decoded = false;
         retire_snapshot();
@@ -1748,24 +1748,24 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     // until the next save rebuilds it. A borrowed reader keeps the
     // snapshot bytes; a writer copies, since its own saves retire
     // snapshots.
-    if(auto search = db.read(index::BlobKind::Search, "search")) {
+    if(auto search = db.read(index::BlobKind::SearchIndex, "search")) {
         if(!options.borrow && search.generation != 0) {
             search.buffer = llvm::MemoryBuffer::getMemBufferCopy(search.buffer->getBuffer());
         }
         if(!project_index.bind_search(std::move(search.buffer)) && !read_only) {
-            startup_removes.push_back({index::BlobKind::Search, "search"});
+            startup_removes.push_back({index::BlobKind::SearchIndex, "search"});
         }
     }
 
-    // Adopt exactly the manifests the global blob pins, at exactly the
+    // Adopt exactly the manifests the project table pins, at exactly the
     // pinned generation and with every FileVersion resolvable. The
     // rest are stale residue — a crash between batch phases, a failed
-    // write under a committed global, a dropped TU whose removal was lost —
+    // write under a committed project table, a dropped TU whose removal was lost —
     // and are removed, with their TUs re-enqueued where recoverable.
     llvm::DenseSet<VersionID> adopted_pins;
     llvm::SmallVector<std::string> dead_manifests;
-    db.for_each_key(index::BlobKind::Manifest, [&](llvm::StringRef key) {
-        auto blob = db.read(index::BlobKind::Manifest, key);
+    db.for_each_key(index::BlobKind::TUManifest, [&](llvm::StringRef key) {
+        auto blob = db.read(index::BlobKind::TUManifest, key);
         auto manifest = blob ? index::deserialize_manifest(blob.buffer->getBuffer()) : std::nullopt;
         if(!manifest) {
             dead_manifests.push_back(key.str());
@@ -1774,9 +1774,9 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         auto tu_fv = project_index.runtime_version(manifest->tu_fv.raw);
         bool imported = project_index.import_manifest(*manifest);
         auto pin = imported ? manifest_pins.find(manifest->tu_fv) : manifest_pins.end();
-        if(pin == manifest_pins.end() || pin->second != manifest->global_gen) {
+        if(pin == manifest_pins.end() || pin->second != manifest->table_generation) {
             dead_manifests.push_back(key.str());
-            // The manifest raced a crash ahead of the global blob (its own
+            // The manifest raced a crash ahead of the project table (its own
             // pin never committed). When the TU's version is still resolvable,
             // re-enqueue it: the CDB pass never covers standalone-indexed
             // headers.
@@ -1791,13 +1791,13 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     });
     if(!read_only) {
         for(auto& key: dead_manifests) {
-            startup_removes.push_back({index::BlobKind::Manifest, std::move(key)});
+            startup_removes.push_back({index::BlobKind::TUManifest, std::move(key)});
         }
     }
     // A pinned TU without an adopted manifest lost it to a failed write
-    // that the committed global outran, or to a lost removal; re-enqueue it —
+    // that the committed project table outran, or to a lost removal; re-enqueue it —
     // its index is unservable until a reindex. Pinned fvs always resolve:
-    // load_global rejects a blob whose pins its own table cannot cover.
+    // load_table rejects a blob whose pins its own table cannot cover.
     for(auto fv: llvm::make_first_range(manifest_pins)) {
         if(!adopted_pins.contains(fv)) {
             report.add_reindex(project.file_table.version(fv).fid);
@@ -1883,7 +1883,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
             auto affected = project_index.remove_manifest(project.file_table, tu);
             mask_refresh.append(affected.begin(), affected.end());
             if(!read_only) {
-                startup_removes.push_back({index::BlobKind::Manifest,
+                startup_removes.push_back({index::BlobKind::TUManifest,
                                            project.index.key_of(project.file_table, tu)});
             }
             report.add_reindex(tu);
@@ -1900,7 +1900,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     llvm::StringSet<> expected_instantiations;
     for(auto& [path_id, shard]: project.index.shards) {
         auto key = project.index.key_of(project.file_table, path_id);
-        auto blob = db.read(index::BlobKind::Instantiations, key);
+        auto blob = db.read(index::BlobKind::InstantiationShard, key);
         if(!blob) {
             continue;
         }
@@ -1937,9 +1937,9 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
                 startup_removes.push_back({index::BlobKind::Shard, key.str()});
             }
         });
-        db.for_each_key(index::BlobKind::Instantiations, [&](llvm::StringRef key) {
+        db.for_each_key(index::BlobKind::InstantiationShard, [&](llvm::StringRef key) {
             if(!expected_instantiations.contains(key)) {
-                startup_removes.push_back({index::BlobKind::Instantiations, key.str()});
+                startup_removes.push_back({index::BlobKind::InstantiationShard, key.str()});
             }
         });
         retire_excluded(report);
@@ -1948,7 +1948,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
 
     // The reads above touch every adopted manifest and shard, so page
     // corruption anywhere in the database has latched by now; heal it like
-    // the unreadable-global case above instead of writing into a damaged
+    // the unreadable-table case above instead of writing into a damaged
     // tree every session. The adopted state unwinds wholesale: the shard
     // views borrow from the condemned environment, and manifests kept
     // without their views would read as fresh and gate the rebuild pass
@@ -2023,8 +2023,8 @@ IndexStore::PersistedBuild IndexStore::remembered() {
     if(!project.database) {
         return result;
     }
-    auto blob = project.database->read(index::BlobKind::CDB, "cdb");
-    CDBSnapshot persisted;
+    auto blob = project.database->read(index::BlobKind::CommandSnapshot, "cdb");
+    CommandSnapshot persisted;
     if(!blob ||
        !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
         return result;
@@ -2044,7 +2044,7 @@ IndexStore::PersistedBuild IndexStore::remembered() {
 }
 
 void IndexStore::reconcile_cdb_snapshot(Report& report) {
-    auto blob = project.database->read(index::BlobKind::CDB, "cdb");
+    auto blob = project.database->read(index::BlobKind::CommandSnapshot, "cdb");
     if(!blob) {
         // Unknown baseline: nothing to diff against. Dirty the snapshot so
         // the next save recreates it even when it commits nothing else —
@@ -2054,7 +2054,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         cdb_dirty = true;
         return;
     }
-    CDBSnapshot persisted;
+    CommandSnapshot persisted;
     if(!kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
         LOG_ERROR("Index cache at {} cannot tell which commands built it; reindexing every file",
                   std::string_view(project.config.project.cache_dir));

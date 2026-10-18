@@ -194,7 +194,7 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
     auto move_declarations = [&](Project& project,
                                  CommandResolver& commands,
                                  analysis::Facts& facts) -> std::expected<void, std::string> {
-        ContextsBlob saved;
+        ContextChoices saved;
         EditorContext contexts{project, commands, saved};
         index::IndexQuery index_query(project.index, project.file_table, nullptr, nullptr);
         query::Context ctx{.project = project, .contexts = contexts, .query = index_query};

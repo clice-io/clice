@@ -42,7 +42,7 @@ struct IndexLoadOptions {
 /// must not hold a context ack hostage. `committed` pulses after every
 /// attempt, failed ones included, so waiters can give up on a disk that
 /// cannot take the write.
-struct ContextsBlob {
+struct ContextChoices {
     /// The serialized blob; empty when there is none, or when serializing
     /// failed (it stays dirty then, and a save counts a failed attempt).
     std::string bytes;
@@ -124,7 +124,7 @@ public:
     };
 
     struct LoadResult {
-        /// False when a global blob existed but could not be decoded (old
+        /// False when a project table blob existed but could not be decoded (old
         /// format or corrupt): the server rebuilds from scratch, but a
         /// read-only reader must report an unusable cache instead of an
         /// empty index.
@@ -135,7 +135,7 @@ public:
     IndexStore(kota::event_loop& loop, Project& project, CommandResolver& commands);
 
     /// The contexts blob, filled by load() and written by save().
-    ContextsBlob contexts;
+    ContextChoices contexts;
 
     /// Why a merge committed nothing.
     enum class MergeError : std::uint8_t {
@@ -184,7 +184,7 @@ public:
     Report drop_index(Fid tu_path_id);
 
     /// Persist the dirty state (rewritten shards, replaced manifests, the
-    /// global blob) through the index storage. Serialization runs on the
+    /// project table) through the index storage. Serialization runs on the
     /// event loop from copies; the write batch is offloaded to the kota
     /// thread pool. Shards whose variant set shrank are compacted first.
     ///
@@ -211,7 +211,7 @@ public:
 
     PersistedBuild remembered();
 
-    /// Load the global blob, adopt every resolvable manifest, fetch the
+    /// Load the project table, adopt every resolvable manifest, fetch the
     /// shard blobs the contributions expect, and remove the rest.
     LoadResult load(IndexLoadOptions options = {});
 
@@ -274,7 +274,7 @@ public:
     /// `clice index` must not report a durable index from this.
     bool has_unsaved_state() const {
         return !dirty_shards.empty() || !dirty_instantiations.empty() || !dirty_manifests.empty() ||
-               global_dirty || cdb_dirty ||
+               table_dirty || cdb_dirty ||
                serialized_records != project.build.recorded_generation() || !search_bytes.empty();
     }
 
@@ -334,7 +334,7 @@ private:
     /// A rebuilt search blob no batch has committed yet.
     std::string search_bytes;
 
-    /// Blobs mutated since the last save, plus whether the global blob
+    /// Blobs mutated since the last save, plus whether the project table
     /// (symbols, FileVersion table) changed.
     llvm::DenseSet<Fid> dirty_shards;
     llvm::DenseSet<Fid> dirty_instantiations;
@@ -343,7 +343,7 @@ private:
     /// Instantiation shards retired since the last save, whose persisted
     /// blobs it removes.
     llvm::DenseSet<Fid> retired_instantiations;
-    bool global_dirty = false;
+    bool table_dirty = false;
 
     /// Blob removals discovered during load (stale manifests, orphan
     /// shards, removed layouts), deferred into the first save so startup
@@ -358,7 +358,7 @@ private:
     /// The persisted CDB snapshot needs a rewrite no dirty blob will
     /// trigger: its write failed while the rest of the batch may have
     /// committed, or load() found it missing or corrupt next to a valid
-    /// global. Without this flag the rewrite would wait for an unrelated
+    /// project table. Without this flag the rewrite would wait for an unrelated
     /// dirtying merge: a save with nothing else to commit skips the
     /// snapshot recompute entirely.
     bool cdb_dirty = false;
@@ -428,7 +428,7 @@ private:
     /// Runtime-corruption recovery, shared by the write-time and the
     /// snapshot-migration detection points: nothing in the condemned
     /// database survives, so borrowed shards are shed with their owners
-    /// requeued while every manifest, the global and the CDB snapshot
+    /// requeued while every manifest, the project table and the CDB snapshot
     /// re-dirty to re-persist into the freshly opened database.
     void recover_corrupt_database(Report& report);
 

@@ -26,7 +26,7 @@ namespace {
 /// better compacted by the rebuild the rejection triggers.
 constexpr inline std::uint32_t max_persisted_versions = 1u << 24;
 
-using BlobView = kota::codec::fbs::table_view<GlobalBlob>;
+using BlobView = kota::codec::fbs::table_view<ProjectTableBlob>;
 
 /// A table derived from the manifests: file -> (TU -> the hash it names there).
 using UnitHashes = llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>>;
@@ -88,18 +88,18 @@ std::string ProjectIndex::key_of(const FileTable& files, Fid file) const {
     return blob_key(portable(files.resolve(file)));
 }
 
-bool ProjectIndex::bind_global(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files) {
+bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files) {
     if(!blob) {
         return false;
     }
     auto root = BlobView::from_bytes(blob_bytes(blob->getBuffer()));
     if(!root.valid()) {
-        LOG_DEBUG("Rejecting global blob: structural verification failed");
+        LOG_DEBUG("Rejecting project table: structural verification failed");
         return false;
     }
     auto bound = std::make_unique<ProjectTable>();
     if(auto ok = bound->bind(root); !ok) {
-        LOG_DEBUG("Rejecting global blob: {}", std::string_view(ok.error()));
+        LOG_DEBUG("Rejecting project table: {}", std::string_view(ok.error()));
         return false;
     }
     // Interning only names the paths: ids left behind by a later reject
@@ -182,7 +182,7 @@ std::expected<void, llvm::StringRef>
         persisted_ids.try_emplace(id, blob.fv_ids[i]);
     }
     for(std::size_t k = 0; k < blob.manifest_fvs.size(); k += 1) {
-        manifest_pins[runtime_ids.find(blob.manifest_fvs[k])->second] = blob.manifest_gens[k];
+        manifest_pins[runtime_ids.find(blob.manifest_fvs[k])->second] = blob.manifest_generations[k];
     }
     return {};
 }
@@ -203,11 +203,11 @@ bool ProjectIndex::verify_bitmaps() const {
 }
 
 std::expected<void, llvm::StringRef>
-    ProjectIndex::load_global(llvm::StringRef data,
+    ProjectIndex::load_table(llvm::StringRef data,
                               FileTable& files,
                               llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
-    if(!bind_global(llvm::MemoryBuffer::getMemBufferCopy(data), files)) {
-        return std::unexpected("not a readable global blob");
+    if(!bind_table(llvm::MemoryBuffer::getMemBufferCopy(data), files)) {
+        return std::unexpected("not a readable project table");
     }
     if(!verify_bitmaps()) {
         base.reset();
@@ -217,7 +217,7 @@ std::expected<void, llvm::StringRef>
         base.reset();
         return adopted;
     }
-    global_generation = base->generation;
+    table_generation = base->generation;
     search_generation = base->search_generation;
     search_pending.clear();
     search_pending.insert(base->search_pending.begin(), base->search_pending.end());
@@ -504,7 +504,7 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
     });
 }
 
-void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& files) {
+void ProjectIndex::serialize_table(llvm::raw_ostream& os, const FileTable& files) {
     // The entries changed since the last write join the ones still held
     // aside from a write that was never persisted; the newer entry wins.
     for(auto& [hash, symbol]: changed) {
@@ -535,9 +535,9 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         referenced.insert(manifest.imports.begin(), manifest.imports.end());
     }
 
-    GlobalBlob blob;
+    ProjectTableBlob blob;
     blob.format_version = index_format_version;
-    blob.generation = global_generation;
+    blob.generation = table_generation;
 
     llvm::SmallVector<std::pair<std::uint32_t, VersionID>> ids;
     ids.reserve(referenced.size());
@@ -554,10 +554,10 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     blob.next_fv_id = next_persisted_id;
 
     blob.manifest_fvs.reserve(manifests.size());
-    blob.manifest_gens.reserve(manifests.size());
+    blob.manifest_generations.reserve(manifests.size());
     for(auto& manifest: llvm::make_second_range(manifests)) {
         blob.manifest_fvs.push_back(persisted_ids.find(manifest.tu_fv)->second);
-        blob.manifest_gens.push_back(manifest.global_gen);
+        blob.manifest_generations.push_back(manifest.table_generation);
     }
 
     // The base's path table stays as it is, so its entries' bitmap images
@@ -733,8 +733,8 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
 }
 
 void ProjectIndex::rebase(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files) {
-    [[maybe_unused]] bool bound = bind_global(std::move(blob), files);
-    assert(bound && "a freshly serialized global blob must bind");
+    [[maybe_unused]] bool bound = bind_table(std::move(blob), files);
+    assert(bound && "a freshly serialized project table must bind");
     written.clear();
 }
 
@@ -1008,15 +1008,15 @@ const TUManifest* ProjectIndex::manifest(Fid tu) const {
     }
     auto [it, inserted] = fetched_manifests.try_emplace(tu);
     if(inserted) {
-        // A reader adopts a manifest only under the generation the bound global
+        // A reader adopts a manifest only under the generation the bound project table
         // pins for it, as the writer's load does; the versions it names
         // stay persisted ids.
         auto pinned = [&](const TUManifest& manifest) {
             auto pin = std::ranges::find(base->manifest_fvs, manifest.tu_fv.raw);
             return pin != base->manifest_fvs.end() &&
-                   base->manifest_gens[pin - base->manifest_fvs.begin()] == manifest.global_gen;
+                   base->manifest_generations[pin - base->manifest_fvs.begin()] == manifest.table_generation;
         };
-        if(auto blob = db->read(BlobKind::Manifest, key_of(*files, tu))) {
+        if(auto blob = db->read(BlobKind::TUManifest, key_of(*files, tu))) {
             if(auto manifest = deserialize_manifest(blob.buffer->getBuffer());
                manifest && pinned(*manifest)) {
                 it->second = std::move(*manifest);
@@ -1111,7 +1111,7 @@ const InstantiationShard* ProjectIndex::instantiation_shard(Fid file) const {
         return nullptr;
     }
     auto& slot = instantiations[file];
-    if(auto blob = db->read(BlobKind::Instantiations, key_of(*files, file))) {
+    if(auto blob = db->read(BlobKind::InstantiationShard, key_of(*files, file))) {
         slot = InstantiationShard::from_buffer(std::move(blob.buffer));
     }
     return slot.loaded() ? &slot : nullptr;
@@ -1127,11 +1127,11 @@ bool ProjectIndex::bind_search(std::unique_ptr<llvm::MemoryBuffer> blob) {
 }
 
 bool ProjectIndex::open(BlobDatabase& db, FileTable& files) {
-    auto global = db.read(BlobKind::Global, "global");
-    if(!global || !bind_global(std::move(global.buffer), files)) {
+    auto table = db.read(BlobKind::ProjectTable, "global");
+    if(!table || !bind_table(std::move(table.buffer), files)) {
         return false;
     }
-    global_generation = base->generation;
+    table_generation = base->generation;
     search_generation = base->search_generation;
     search_pending.clear();
     search_pending.insert(base->search_pending.begin(), base->search_pending.end());
@@ -1139,7 +1139,7 @@ bool ProjectIndex::open(BlobDatabase& db, FileTable& files) {
     for(auto file: base->search_pending_files) {
         search_pending_files.insert(base->remap[file]);
     }
-    if(auto search = db.read(BlobKind::Search, "search")) {
+    if(auto search = db.read(BlobKind::SearchIndex, "search")) {
         bind_search(std::move(search.buffer));
     }
     this->db = &db;

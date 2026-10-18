@@ -44,9 +44,9 @@ bool read_varint(std::span<const std::uint8_t> data, std::size_t& pos, std::uint
 }  // namespace
 
 void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
-    ManifestBlob blob;
+    TUManifestBlob blob;
     blob.format_version = index_format_version;
-    blob.global_gen = manifest.global_gen;
+    blob.table_generation = manifest.table_generation;
     blob.built_at = manifest.built_at;
     blob.tu_fv = manifest.tu_fv.raw;
 
@@ -97,7 +97,7 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
 }
 
 std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
-    ManifestBlob blob;
+    TUManifestBlob blob;
     if(!deserialize_blob(data, blob) || blob.format_version != index_format_version) {
         return std::nullopt;
     }
@@ -112,7 +112,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     }
 
     TUManifest manifest;
-    manifest.global_gen = blob.global_gen;
+    manifest.table_generation = blob.table_generation;
     manifest.built_at = blob.built_at;
     manifest.tu_fv = VersionID{blob.tu_fv};
 
@@ -216,7 +216,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
 }
 
 void measure_manifest(llvm::StringRef data, FieldBytes& bytes) {
-    if(ManifestBlob blob; deserialize_blob(data, blob)) {
+    if(TUManifestBlob blob; deserialize_blob(data, blob)) {
         measure_fields(blob, bytes);
     }
 }

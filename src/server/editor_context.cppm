@@ -20,12 +20,12 @@ namespace clice {
 /// currentContext, switchContext) live in ContextService and drive this
 /// state through its public surface.
 struct EditorContext {
-    EditorContext(Project& project, CommandResolver& commands, ContextsBlob& blob) :
+    EditorContext(Project& project, CommandResolver& commands, ContextChoices& blob) :
         project(project), commands(commands), blob(blob) {}
 
     Project& project;
     CommandResolver& commands;
-    ContextsBlob& blob;
+    ContextChoices& blob;
 
     /// User context choices (clice/switchContext), persisted in the
     /// contexts blob and validated against the CDB and include graph on

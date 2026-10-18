@@ -285,7 +285,7 @@ ZEST_CASE(ExpansionRecordsKeptApart) {
 ZEST_CASE(CorruptBlobRejected) {
     ZEXPECT(!InstantiationShard::from_bytes("not a flatbuffer").loaded());
 
-    index::InstantiationBlob blob;
+    index::InstantiationShardBlob blob;
     blob.format_version = index::index_format_version;
     blob.content_hash = generation;
     blob.content_size = size;

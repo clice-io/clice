@@ -404,12 +404,12 @@ ZEST_CASE(GlobalRoundTripWithRealMerge) {
 
     llvm::SmallString<4096> buf;
     llvm::raw_svector_ostream os(buf);
-    project.serialize_global(os, pool);
+    project.serialize_table(os, pool);
 
     clice::FileTable fresh;
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_global(buf.str(), fresh, pins));
+    ZASSERT(loaded.load_table(buf.str(), fresh, pins));
 
     auto symbol = find_symbol(loaded, "global_value");
     ZASSERT(symbol != 0);
@@ -488,19 +488,19 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
 
     llvm::SmallString<4096> first;
     llvm::raw_svector_ostream first_os(first);
-    project.serialize_global(first_os, pool);
+    project.serialize_table(first_os, pool);
     clice::FileTable fresh;
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_global(first.str(), fresh, pins));
+    ZASSERT(loaded.load_table(first.str(), fresh, pins));
     check(loaded, fresh);
 
     llvm::SmallString<4096> second;
     llvm::raw_svector_ostream second_os(second);
-    loaded.serialize_global(second_os, fresh);
+    loaded.serialize_table(second_os, fresh);
     clice::FileTable again;
     index::ProjectIndex reloaded;
-    ZASSERT(reloaded.load_global(second.str(), again, pins));
+    ZASSERT(reloaded.load_table(second.str(), again, pins));
     check(reloaded, again);
 }
 
@@ -523,11 +523,11 @@ ZEST_CASE(WidePathIds) {
 
     llvm::SmallString<4096> bytes;
     llvm::raw_svector_ostream os(bytes);
-    project.serialize_global(os, pool);
+    project.serialize_table(os, pool);
     clice::FileTable fresh;
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_global(bytes.str(), fresh, pins));
+    ZASSERT(loaded.load_table(bytes.str(), fresh, pins));
     auto identity = loaded.find_symbol(10);
     ZASSERT(identity);
     ZEXPECT(fresh.find(Spelling::absolute("/proj/0.h")) == Fid{identity->file});
@@ -550,8 +550,8 @@ ZEST_CASE(LazyShardsStayPut) {
     std::vector<index::BlobDatabase::Blob> puts;
     std::string global;
     llvm::raw_string_ostream global_os(global);
-    writer.serialize_global(global_os, writer_files);
-    puts.push_back({index::BlobKind::Global, "global", global});
+    writer.serialize_table(global_os, writer_files);
+    puts.push_back({index::BlobKind::ProjectTable, "global", global});
 
     constexpr std::uint32_t count = 300;
     llvm::StringRef content = "int x = 1;\n";
@@ -603,7 +603,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
     constexpr index::SymbolHash helper = 99;
     clice::FileTable pool;
     index::ProjectIndex writer;
-    writer.global_generation = 3;
+    writer.table_generation = 3;
     auto util = pool.intern_version(pool.intern(Spelling::absolute("/proj/util.h")), 0xaaaa);
     auto other = pool.intern_version(pool.intern(Spelling::absolute("/proj/other.h")), 0xbbbb);
     llvm::SmallVector<Fid> units;
@@ -611,7 +611,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         auto tu = pool.intern(Spelling::absolute(name));
         auto header = llvm::StringRef(name).ends_with("c.cpp") ? other : util;
         index::TUManifest manifest;
-        manifest.global_gen = 3;
+        manifest.table_generation = 3;
         manifest.tu_fv = pool.intern_version(tu, 0x1111);
         manifest.nodes = {
             {manifest.tu_fv.raw, ~0u, 1},
@@ -662,12 +662,12 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(exported, os);
-        puts.push_back({index::BlobKind::Manifest, writer.key_of(pool, tu), bytes});
+        puts.push_back({index::BlobKind::TUManifest, writer.key_of(pool, tu), bytes});
     }
     std::string global;
     llvm::raw_string_ostream global_os(global);
-    writer.serialize_global(global_os, pool);
-    puts.push_back({index::BlobKind::Global, "global", global});
+    writer.serialize_table(global_os, pool);
+    puts.push_back({index::BlobKind::ProjectTable, "global", global});
     ZASSERT(db->write(puts, {}).empty());
     ZASSERT(db->advance_read_snapshot());
 

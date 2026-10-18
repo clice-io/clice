@@ -15,7 +15,7 @@ namespace clice::index {
 
 namespace {
 
-using BlobView = kota::codec::fbs::table_view<InstantiationBlob>;
+using BlobView = kota::codec::fbs::table_view<InstantiationShardBlob>;
 
 /// The blob was fully verified at load; per-query views skip that cost.
 BlobView view_of(llvm::StringRef bytes) {
@@ -39,12 +39,12 @@ struct RecordTable {
     llvm::ArrayRef<std::uint64_t> sym_hashes;
 
     static RecordTable of(BlobView root) {
-        auto sym_hashes = to_array_ref(root[&InstantiationBlob::sym_hashes]);
+        auto sym_hashes = to_array_ref(root[&InstantiationShardBlob::sym_hashes]);
         return {
-            .columns = columns_of(root[&InstantiationBlob::records]),
-            .kinds = to_array_ref(root[&InstantiationBlob::record_kinds]),
-            .targets = ids_of(root[&InstantiationBlob::record_targets], sym_hashes.size()),
-            .froms = ids_of(root[&InstantiationBlob::record_froms], sym_hashes.size()),
+            .columns = columns_of(root[&InstantiationShardBlob::records]),
+            .kinds = to_array_ref(root[&InstantiationShardBlob::record_kinds]),
+            .targets = ids_of(root[&InstantiationShardBlob::record_targets], sym_hashes.size()),
+            .froms = ids_of(root[&InstantiationShardBlob::record_froms], sym_hashes.size()),
             .sym_hashes = sym_hashes,
         };
     }
@@ -84,21 +84,21 @@ struct SetTable {
     std::size_t member_count;
 
     static SetTable resolutions_of(BlobView root) {
-        auto records = columns_of(root[&InstantiationBlob::records]).size();
+        auto records = columns_of(root[&InstantiationShardBlob::records]).size();
         return {
-            .hashes = to_array_ref(root[&InstantiationBlob::resolutions]),
-            .ends = to_array_ref(root[&InstantiationBlob::resolution_ends]),
-            .members = ids_of(root[&InstantiationBlob::resolution_records], records),
+            .hashes = to_array_ref(root[&InstantiationShardBlob::resolutions]),
+            .ends = to_array_ref(root[&InstantiationShardBlob::resolution_ends]),
+            .members = ids_of(root[&InstantiationShardBlob::resolution_records], records),
             .member_count = records,
         };
     }
 
     static SetTable uses_of(BlobView root) {
-        auto resolutions = to_array_ref(root[&InstantiationBlob::resolutions]).size();
+        auto resolutions = to_array_ref(root[&InstantiationShardBlob::resolutions]).size();
         return {
-            .hashes = to_array_ref(root[&InstantiationBlob::uses]),
-            .ends = to_array_ref(root[&InstantiationBlob::use_ends]),
-            .members = ids_of(root[&InstantiationBlob::use_resolutions], resolutions),
+            .hashes = to_array_ref(root[&InstantiationShardBlob::uses]),
+            .ends = to_array_ref(root[&InstantiationShardBlob::use_ends]),
+            .members = ids_of(root[&InstantiationShardBlob::use_resolutions], resolutions),
             .member_count = resolutions,
         };
     }
@@ -129,19 +129,19 @@ struct KeyTable {
     llvm::ArrayRef<std::uint64_t> producer_runs;
 
     static KeyTable of(BlobView root) {
-        auto sym_hashes = to_array_ref(root[&InstantiationBlob::sym_hashes]);
-        auto resolution_hashes = to_array_ref(root[&InstantiationBlob::resolutions]);
-        auto producer_units = to_array_ref(root[&InstantiationBlob::producer_units]);
+        auto sym_hashes = to_array_ref(root[&InstantiationShardBlob::sym_hashes]);
+        auto resolution_hashes = to_array_ref(root[&InstantiationShardBlob::resolutions]);
+        auto producer_units = to_array_ref(root[&InstantiationShardBlob::producer_units]);
         return {
-            .keys = to_array_ref(root[&InstantiationBlob::keys]),
-            .patterns = ids_of(root[&InstantiationBlob::key_patterns], sym_hashes.size()),
+            .keys = to_array_ref(root[&InstantiationShardBlob::keys]),
+            .patterns = ids_of(root[&InstantiationShardBlob::key_patterns], sym_hashes.size()),
             .resolutions =
-                ids_of(root[&InstantiationBlob::key_resolutions], resolution_hashes.size() + 1),
-            .producers = ids_of(root[&InstantiationBlob::key_producers], producer_units.size()),
+                ids_of(root[&InstantiationShardBlob::key_resolutions], resolution_hashes.size() + 1),
+            .producers = ids_of(root[&InstantiationShardBlob::key_producers], producer_units.size()),
             .sym_hashes = sym_hashes,
             .resolution_hashes = resolution_hashes,
             .producer_units = producer_units,
-            .producer_runs = to_array_ref(root[&InstantiationBlob::producer_runs]),
+            .producer_runs = to_array_ref(root[&InstantiationShardBlob::producer_runs]),
         };
     }
 
@@ -165,7 +165,7 @@ struct KeyTable {
 // Decoded symbol hashes, like resolution hashes and producer units, key
 // DenseMaps (reserved_key).
 CheckResult symbols_ok(BlobView root) {
-    auto hashes = to_array_ref(root[&InstantiationBlob::sym_hashes]);
+    auto hashes = to_array_ref(root[&InstantiationShardBlob::sym_hashes]);
     if(!std::ranges::is_sorted(hashes, std::less_equal{})) {
         return std::unexpected("symbol hashes are not strictly ascending");
     }
@@ -180,7 +180,7 @@ CheckResult symbols_ok(BlobView root) {
 CheckResult records_ok(BlobView root) {
     auto table = RecordTable::of(root);
     if(auto ok = range_encoding_ok(table.columns,
-                                   root[&InstantiationBlob::content_size],
+                                   root[&InstantiationShardBlob::content_size],
                                    RangeEncoding::Delta);
        !ok) {
         return ok;
@@ -274,7 +274,7 @@ CheckResult uses_ok(BlobView root) {
     if(auto ok = sets_ok(table); !ok) {
         return ok;
     }
-    auto resolutions = to_array_ref(root[&InstantiationBlob::resolutions]);
+    auto resolutions = to_array_ref(root[&InstantiationShardBlob::resolutions]);
     std::vector<ResolutionHash> members;
     for(std::uint32_t use = 0; use < table.hashes.size(); use += 1) {
         members.clear();
@@ -374,9 +374,9 @@ InstantiationShard InstantiationShard::from_buffer(std::unique_ptr<llvm::MemoryB
         LOG_DEBUG("Rejecting instantiation blob: structural verification failed");
         return {};
     }
-    if(root[&InstantiationBlob::format_version] != index_format_version) {
+    if(root[&InstantiationShardBlob::format_version] != index_format_version) {
         LOG_DEBUG("Rejecting instantiation blob: format version {}, this build reads {}",
-                  root[&InstantiationBlob::format_version],
+                  root[&InstantiationShardBlob::format_version],
                   index_format_version);
         return {};
     }
@@ -401,21 +401,21 @@ bool InstantiationShard::rebind(std::unique_ptr<llvm::MemoryBuffer> replacement)
 }
 
 std::uint64_t InstantiationShard::content_hash() const {
-    return buffer ? view_of(bytes())[&InstantiationBlob::content_hash] : 0;
+    return buffer ? view_of(bytes())[&InstantiationShardBlob::content_hash] : 0;
 }
 
 llvm::ArrayRef<ResolutionHash> InstantiationShard::resolutions() const {
     if(!buffer) {
         return {};
     }
-    return to_array_ref(view_of(bytes())[&InstantiationBlob::resolutions]);
+    return to_array_ref(view_of(bytes())[&InstantiationShardBlob::resolutions]);
 }
 
 llvm::ArrayRef<UseHash> InstantiationShard::uses() const {
     if(!buffer) {
         return {};
     }
-    return to_array_ref(view_of(bytes())[&InstantiationBlob::uses]);
+    return to_array_ref(view_of(bytes())[&InstantiationShardBlob::uses]);
 }
 
 bool InstantiationShard::has_use(UseHash use) const {
@@ -429,7 +429,7 @@ std::vector<ResolutionHash> InstantiationShard::resolutions_of(UseHash use) cons
     }
     auto root = view_of(bytes());
     auto table = SetTable::uses_of(root);
-    auto hashes = to_array_ref(root[&InstantiationBlob::resolutions]);
+    auto hashes = to_array_ref(root[&InstantiationShardBlob::resolutions]);
     if(auto found = table.find(use)) {
         for(auto resolution: table.members_of(*found)) {
             resolutions.push_back(hashes[resolution]);
@@ -482,7 +482,7 @@ llvm::ArrayRef<SymbolHash> InstantiationShard::keys() const {
     if(!buffer) {
         return {};
     }
-    return to_array_ref(view_of(bytes())[&InstantiationBlob::keys]);
+    return to_array_ref(view_of(bytes())[&InstantiationShardBlob::keys]);
 }
 
 std::optional<InstantiationShard::Key> InstantiationShard::find_key(SymbolHash key) const {
@@ -588,7 +588,7 @@ void canonicalize(std::vector<InstantiationRecord>& records) {
     records.erase(std::ranges::unique(records).begin(), records.end());
 }
 
-/// The single writer of InstantiationBlob: every encoding choice is a
+/// The single writer of InstantiationShardBlob: every encoding choice is a
 /// function of the data.
 void emit(const Draft& draft, llvm::raw_ostream& os) {
     // The records of every resolution, each stored once.
@@ -613,7 +613,7 @@ void emit(const Draft& draft, llvm::raw_ostream& os) {
         referenced.insert(key.pattern);
     }
 
-    InstantiationBlob blob;
+    InstantiationShardBlob blob;
     blob.format_version = index_format_version;
     blob.content_hash = draft.content_hash;
     blob.content_size = draft.content_size;
@@ -780,8 +780,8 @@ bool merge_instantiations(const InstantiationShard& old,
            "merge inputs must share one content generation");
     auto root = view_of((fresh ? *fresh : old).bytes());
     Draft draft{
-        .content_hash = root[&InstantiationBlob::content_hash],
-        .content_size = root[&InstantiationBlob::content_size],
+        .content_hash = root[&InstantiationShardBlob::content_hash],
+        .content_size = root[&InstantiationShardBlob::content_size],
     };
 
     // The uses kept, and the added one; their resolutions are the ones of

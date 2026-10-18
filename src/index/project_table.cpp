@@ -51,50 +51,50 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
     return ids;
 }
 
-std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_view<GlobalBlob> root) {
-    if(root[&GlobalBlob::format_version] != index_format_version) {
+std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_view<ProjectTableBlob> root) {
+    if(root[&ProjectTableBlob::format_version] != index_format_version) {
         return std::unexpected("written by another index format version");
     }
-    generation = root[&GlobalBlob::generation];
-    next_fv_id = root[&GlobalBlob::next_fv_id];
-    fv_ids = to_array_ref(root[&GlobalBlob::fv_ids]);
-    fv_paths = root[&GlobalBlob::fv_paths];
-    fv_hashes = to_array_ref(root[&GlobalBlob::fv_hashes]);
-    paths = root[&GlobalBlob::paths];
-    hashes = to_array_ref(root[&GlobalBlob::sym_hashes]);
-    names = to_ref(root[&GlobalBlob::sym_names]);
-    name_ends = to_array_ref(root[&GlobalBlob::sym_name_ends]);
-    args_docs = to_array_ref(root[&GlobalBlob::sym_args_docs]);
-    args = to_ref(root[&GlobalBlob::sym_args]);
-    args_ends = to_array_ref(root[&GlobalBlob::sym_args_ends]);
-    signatures = to_ref(root[&GlobalBlob::sym_signatures]);
-    signature_ends = to_array_ref(root[&GlobalBlob::sym_signature_ends]);
-    parents = ids_of(root[&GlobalBlob::sym_parents], hashes.size() + 1);
-    far_parents = to_array_ref(root[&GlobalBlob::sym_far_parents]);
-    far_parent_hashes = to_array_ref(root[&GlobalBlob::sym_far_parent_hashes]);
-    kinds = to_array_ref(root[&GlobalBlob::sym_kinds]);
-    flags = to_array_ref(root[&GlobalBlob::sym_flags]);
-    token_kinds = to_array_ref(root[&GlobalBlob::sym_token_kinds]);
-    token_modifiers = to_array_ref(root[&GlobalBlob::sym_token_modifiers]);
-    files = ids_of(root[&GlobalBlob::sym_files], paths.size() + 1);
-    reference_counts = ids_of(root[&GlobalBlob::sym_reference_counts], paths.size() + 1);
-    bitmap_ends = to_array_ref(root[&GlobalBlob::sym_bitmap_ends]);
-    bitmaps = to_array_ref(root[&GlobalBlob::sym_bitmaps]);
-    instantiation_docs = to_array_ref(root[&GlobalBlob::sym_instantiation_docs]);
-    instantiation_ends = to_array_ref(root[&GlobalBlob::sym_instantiation_ends]);
-    instantiation_images = to_array_ref(root[&GlobalBlob::sym_instantiations]);
-    manifest_fvs = to_array_ref(root[&GlobalBlob::manifest_fvs]);
-    manifest_gens = to_array_ref(root[&GlobalBlob::manifest_gens]);
-    search_generation = root[&GlobalBlob::search_generation];
-    search_pending = to_array_ref(root[&GlobalBlob::search_pending]);
-    search_pending_files = to_array_ref(root[&GlobalBlob::search_pending_files]);
-    contributed_files = to_array_ref(root[&GlobalBlob::contributed_files]);
-    contributor_ends = to_array_ref(root[&GlobalBlob::contributor_ends]);
-    contributors = to_array_ref(root[&GlobalBlob::contributors]);
-    shared_local_symbols = to_array_ref(root[&GlobalBlob::shared_local_symbols]);
-    shared_local_set_ends = to_array_ref(root[&GlobalBlob::shared_local_set_ends]);
-    shared_local_file_ends = to_array_ref(root[&GlobalBlob::shared_local_file_ends]);
-    shared_local_files = to_array_ref(root[&GlobalBlob::shared_local_files]);
+    generation = root[&ProjectTableBlob::generation];
+    next_fv_id = root[&ProjectTableBlob::next_fv_id];
+    fv_ids = to_array_ref(root[&ProjectTableBlob::fv_ids]);
+    fv_paths = root[&ProjectTableBlob::fv_paths];
+    fv_hashes = to_array_ref(root[&ProjectTableBlob::fv_hashes]);
+    paths = root[&ProjectTableBlob::paths];
+    hashes = to_array_ref(root[&ProjectTableBlob::sym_hashes]);
+    names = to_ref(root[&ProjectTableBlob::sym_names]);
+    name_ends = to_array_ref(root[&ProjectTableBlob::sym_name_ends]);
+    args_docs = to_array_ref(root[&ProjectTableBlob::sym_args_docs]);
+    args = to_ref(root[&ProjectTableBlob::sym_args]);
+    args_ends = to_array_ref(root[&ProjectTableBlob::sym_args_ends]);
+    signatures = to_ref(root[&ProjectTableBlob::sym_signatures]);
+    signature_ends = to_array_ref(root[&ProjectTableBlob::sym_signature_ends]);
+    parents = ids_of(root[&ProjectTableBlob::sym_parents], hashes.size() + 1);
+    far_parents = to_array_ref(root[&ProjectTableBlob::sym_far_parents]);
+    far_parent_hashes = to_array_ref(root[&ProjectTableBlob::sym_far_parent_hashes]);
+    kinds = to_array_ref(root[&ProjectTableBlob::sym_kinds]);
+    flags = to_array_ref(root[&ProjectTableBlob::sym_flags]);
+    token_kinds = to_array_ref(root[&ProjectTableBlob::sym_token_kinds]);
+    token_modifiers = to_array_ref(root[&ProjectTableBlob::sym_token_modifiers]);
+    files = ids_of(root[&ProjectTableBlob::sym_files], paths.size() + 1);
+    reference_counts = ids_of(root[&ProjectTableBlob::sym_reference_counts], paths.size() + 1);
+    bitmap_ends = to_array_ref(root[&ProjectTableBlob::sym_bitmap_ends]);
+    bitmaps = to_array_ref(root[&ProjectTableBlob::sym_bitmaps]);
+    instantiation_docs = to_array_ref(root[&ProjectTableBlob::sym_instantiation_docs]);
+    instantiation_ends = to_array_ref(root[&ProjectTableBlob::sym_instantiation_ends]);
+    instantiation_images = to_array_ref(root[&ProjectTableBlob::sym_instantiations]);
+    manifest_fvs = to_array_ref(root[&ProjectTableBlob::manifest_fvs]);
+    manifest_generations = to_array_ref(root[&ProjectTableBlob::manifest_generations]);
+    search_generation = root[&ProjectTableBlob::search_generation];
+    search_pending = to_array_ref(root[&ProjectTableBlob::search_pending]);
+    search_pending_files = to_array_ref(root[&ProjectTableBlob::search_pending_files]);
+    contributed_files = to_array_ref(root[&ProjectTableBlob::contributed_files]);
+    contributor_ends = to_array_ref(root[&ProjectTableBlob::contributor_ends]);
+    contributors = to_array_ref(root[&ProjectTableBlob::contributors]);
+    shared_local_symbols = to_array_ref(root[&ProjectTableBlob::shared_local_symbols]);
+    shared_local_set_ends = to_array_ref(root[&ProjectTableBlob::shared_local_set_ends]);
+    shared_local_file_ends = to_array_ref(root[&ProjectTableBlob::shared_local_file_ends]);
+    shared_local_files = to_array_ref(root[&ProjectTableBlob::shared_local_files]);
 
     auto version_count = fv_ids.size();
     if(fv_paths.size() != version_count || fv_hashes.size() != version_count) {
@@ -119,7 +119,7 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_
        !std::ranges::is_sorted(shared_local_symbols, std::less_equal{})) {
         return std::unexpected("shared local columns do not line up");
     }
-    if(manifest_fvs.size() != manifest_gens.size()) {
+    if(manifest_fvs.size() != manifest_generations.size()) {
         return std::unexpected("manifest pin columns do not line up");
     }
     auto count = hashes.size();
@@ -183,8 +183,8 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_
     return {};
 }
 
-void measure_global(llvm::StringRef data, FieldBytes& bytes) {
-    if(GlobalBlob blob; deserialize_blob(data, blob)) {
+void measure_table(llvm::StringRef data, FieldBytes& bytes) {
+    if(ProjectTableBlob blob; deserialize_blob(data, blob)) {
         measure_fields(blob, bytes);
     }
 }

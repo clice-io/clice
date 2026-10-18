@@ -294,13 +294,13 @@ struct InstantiationStat {
 
 constexpr std::pair<index::BlobKind, llvm::StringLiteral> stored_kinds[] = {
     {index::BlobKind::Shard,          "file shards"         },
-    {index::BlobKind::Instantiations, "instantiation shards"},
-    {index::BlobKind::Manifest,       "manifests"           },
-    {index::BlobKind::Global,         "global"              },
-    {index::BlobKind::Search,         "search"              },
-    {index::BlobKind::CDB,            "cdb"                 },
-    {index::BlobKind::Artifacts,      "artifacts"           },
-    {index::BlobKind::Contexts,       "contexts"            },
+    {index::BlobKind::InstantiationShard, "instantiation shards"},
+    {index::BlobKind::TUManifest,       "manifests"           },
+    {index::BlobKind::ProjectTable,         "global"              },
+    {index::BlobKind::SearchIndex,         "search"              },
+    {index::BlobKind::CommandSnapshot,            "cdb"                 },
+    {index::BlobKind::ArtifactRecords,      "artifacts"           },
+    {index::BlobKind::ContextChoices,       "contexts"            },
 };
 
 /// The blobs of one kind stored in the database, whether the loaded index
@@ -316,8 +316,8 @@ struct IndexStats {
     std::uint64_t shard_bytes = 0;
     std::uint64_t occurrences = 0;
     std::uint64_t relations = 0;
-    std::uint64_t global_bytes = 0;
-    index::FieldBytes global_fields;
+    std::uint64_t table_bytes = 0;
+    index::FieldBytes table_fields;
     std::uint64_t search_bytes = 0;
     index::FieldBytes search_fields;
     std::uint64_t manifest_bytes = 0;
@@ -389,7 +389,7 @@ IndexStats collect_stats(Project& project) {
             stats.keys_per_template[key.pattern] += 1;
             return true;
         });
-        if(index::InstantiationBlob blob; index::deserialize_blob(instantiations.bytes(), blob)) {
+        if(index::InstantiationShardBlob blob; index::deserialize_blob(instantiations.bytes(), blob)) {
             index::measure_fields(blob, stats.instantiation_fields);
         }
         stats.instantiation_bytes += stat.bytes;
@@ -410,18 +410,18 @@ IndexStats collect_stats(Project& project) {
     for(auto& [tu, manifest]: project_index.manifests) {
         stats.shared_locals += manifest.shared_locals.size();
         stats.unit_uses += manifest.instantiations.size();
-        if(auto blob = project.database->read(index::BlobKind::Manifest,
+        if(auto blob = project.database->read(index::BlobKind::TUManifest,
                                               project_index.key_of(project.file_table, tu))) {
             stats.manifest_bytes += blob.buffer->getBufferSize();
             index::measure_manifest(blob.buffer->getBuffer(), stats.manifest_fields);
         }
     }
     auto& db = *project.database;
-    if(auto blob = db.read(index::BlobKind::Global, "global")) {
-        stats.global_bytes = blob.buffer->getBufferSize();
-        index::measure_global(blob.buffer->getBuffer(), stats.global_fields);
+    if(auto blob = db.read(index::BlobKind::ProjectTable, "global")) {
+        stats.table_bytes = blob.buffer->getBufferSize();
+        index::measure_table(blob.buffer->getBuffer(), stats.table_fields);
     }
-    if(auto blob = db.read(index::BlobKind::Search, "search")) {
+    if(auto blob = db.read(index::BlobKind::SearchIndex, "search")) {
         stats.search_bytes = blob.buffer->getBufferSize();
         index::measure_search(blob.buffer->getBuffer(), stats.search_fields);
     }
@@ -531,7 +531,7 @@ void print_stats(const Project& project,
     fields("File shards", stats.shard_fields, stats.shard_bytes);
     fields("Instantiation shards", stats.instantiation_fields, stats.instantiation_bytes);
     fields("Manifests", stats.manifest_fields, stats.manifest_bytes);
-    fields("Global blob", stats.global_fields, stats.global_bytes);
+    fields("Project table", stats.table_fields, stats.table_bytes);
     fields("Search blob", stats.search_fields, stats.search_bytes);
 
     driver::println();
@@ -651,7 +651,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
     if(locator->handle) {
         matches.push_back(*locator->handle);
     } else {
-        ContextsBlob saved;
+        ContextChoices saved;
         EditorContext contexts{project, commands, saved};
         query::Context ctx{.project = project, .contexts = contexts, .query = query};
         auto named = query::named_symbols(ctx, std::move(*locator));
@@ -700,7 +700,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
                                 : project.file_table.display(Fid{symbol->file}),
                             project.index.reference_count(hash));
         } else {
-            driver::println("  scope=local (not in the global table)");
+            driver::println("  scope=local (not in the project table)");
         }
 
         struct Counts {
@@ -709,7 +709,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
             std::size_t references = 0;
         };
 
-        // Straight from every shard: the query's fan-out follows the global
+        // Straight from every shard: the query's fan-out follows the project
         // table's reference bitmaps, which a file-local symbol has no entry
         // in.
         std::map<std::string, Counts> per_file;
@@ -833,7 +833,7 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
     driver::println("translation unit {}", unit);
     driver::println("  built at {}  generation={}  content hash={}",
                     format_time(manifest.built_at),
-                    manifest.global_gen,
+                    manifest.table_generation,
                     format_hash(files.version(manifest.tu_fv).content_hash));
 
     driver::println("  contributions={}", manifest.contributions.size());

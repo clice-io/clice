@@ -59,13 +59,13 @@ std::size_t default_mapsize() {
 char kind_prefix(BlobKind kind) {
     switch(kind) {
         case BlobKind::Shard: return 'S';
-        case BlobKind::Instantiations: return 'I';
-        case BlobKind::Manifest: return 'M';
-        case BlobKind::Global: return 'G';
-        case BlobKind::CDB: return 'C';
-        case BlobKind::Artifacts: return 'A';
-        case BlobKind::Contexts: return 'X';
-        case BlobKind::Search: return 'N';
+        case BlobKind::InstantiationShard: return 'I';
+        case BlobKind::TUManifest: return 'M';
+        case BlobKind::ProjectTable: return 'G';
+        case BlobKind::CommandSnapshot: return 'C';
+        case BlobKind::ArtifactRecords: return 'A';
+        case BlobKind::ContextChoices: return 'X';
+        case BlobKind::SearchIndex: return 'N';
     }
     std::unreachable();
 }
@@ -529,7 +529,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     // the writer lock guarantees no other live process is using it.
     // Transient errors (permissions, fd/memory pressure) must NOT delete
     // anything: persistence is disabled for this session instead, the
-    // same discipline the loader applies to an unreadable global blob.
+    // same discipline the loader applies to an unreadable project table.
     bool repaired = false;
     int reopens = 0;
     while(true) {

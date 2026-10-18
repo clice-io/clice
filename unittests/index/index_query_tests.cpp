@@ -422,7 +422,7 @@ ZEST_CASE(LocalsAndCursors) {
     ZASSERT(!search("use").empty());
 
     // A cursor on the file's own static function resolves through the
-    // serving source, which the global table knows nothing about.
+    // serving source, which the project table knows nothing about.
     index::SymbolQuery at;
     at.position = {.path = project.file_table.resolve(focus_id).str(), .line = 3, .column = 21};
     auto located = index::locate(query, at);

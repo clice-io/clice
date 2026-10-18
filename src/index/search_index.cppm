@@ -59,7 +59,7 @@ struct SearchSnapshot {
     std::vector<SearchEntry> entries;
     /// Named the way the database names files (ProjectIndex::portable).
     std::vector<std::string> paths;
-    /// The generation of the global blob these entries will be persisted
+    /// The generation of the project table these entries will be persisted
     /// next to; a loader finding another generation knows entries may have
     /// changed under the index.
     std::uint64_t generation = 0;
@@ -157,7 +157,7 @@ public:
 
     bool contains(SymbolHash hash) const;
 
-    /// The global generation the entries were snapshotted for; 0 unloaded.
+    /// The table generation the entries were snapshotted for; 0 unloaded.
     std::uint64_t generation() const;
 
     /// Whether a posting list failed to decode since the load: the

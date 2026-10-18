@@ -51,7 +51,7 @@ ZEST_CASE(WriteReadRoundTrip) {
     ZASSERT(db != nullptr);
 
     auto rejected = db->write({blob(index::BlobKind::Shard, "a", large_value('a')),
-                               blob(index::BlobKind::Global, "global", "gg")},
+                               blob(index::BlobKind::ProjectTable, "global", "gg")},
                               {});
     ZASSERT(rejected.empty());
     // Reads serve the resident snapshot; committed writes become
@@ -62,7 +62,7 @@ ZEST_CASE(WriteReadRoundTrip) {
     auto shard = db->read(index::BlobKind::Shard, "a");
     ZASSERT(bool(shard));
     ZASSERT(shard.buffer->getBuffer() == large_value('a'));
-    ZASSERT(db->contains(index::BlobKind::Global, "global"));
+    ZASSERT(db->contains(index::BlobKind::ProjectTable, "global"));
     ZASSERT(!db->contains(index::BlobKind::Shard, "missing"));
     ZASSERT(!bool(db->read(index::BlobKind::Shard, "missing")));
 }
@@ -73,20 +73,20 @@ ZEST_CASE(WriteRemoves) {
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
 
-    ZASSERT(db->write({blob(index::BlobKind::Manifest, "m1", "one"),
-                       blob(index::BlobKind::Manifest, "m2", "two")},
+    ZASSERT(db->write({blob(index::BlobKind::TUManifest, "m1", "one"),
+                       blob(index::BlobKind::TUManifest, "m2", "two")},
                       {})
                 .empty());
     ZASSERT(db->write(
                   {
     },
-                  {{index::BlobKind::Manifest, "m1"}})
+                  {{index::BlobKind::TUManifest, "m1"}})
                 .empty());
     ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
-    ZASSERT(!db->contains(index::BlobKind::Manifest, "m1"));
-    ZASSERT(db->contains(index::BlobKind::Manifest, "m2"));
+    ZASSERT(!db->contains(index::BlobKind::TUManifest, "m1"));
+    ZASSERT(db->contains(index::BlobKind::TUManifest, "m2"));
 }
 
 ZEST_CASE(KindsAreIsolated) {
@@ -96,7 +96,7 @@ ZEST_CASE(KindsAreIsolated) {
     ZASSERT(db != nullptr);
 
     ZASSERT(db->write({blob(index::BlobKind::Shard, "same", "shard"),
-                       blob(index::BlobKind::Manifest, "same", "manifest")},
+                       blob(index::BlobKind::TUManifest, "same", "manifest")},
                       {})
                 .empty());
     ZASSERT(db->advance_read_snapshot());
@@ -107,8 +107,8 @@ ZEST_CASE(KindsAreIsolated) {
                      [&](llvm::StringRef key) { shard_keys.push_back(key.str()); });
     ZASSERT(shard_keys.size() == 1);
     ZASSERT(shard_keys.front() == "same");
-    ZASSERT(db->read(index::BlobKind::Manifest, "same").buffer->getBuffer() == "manifest");
-    ZASSERT(!db->contains(index::BlobKind::Global, "same"));
+    ZASSERT(db->read(index::BlobKind::TUManifest, "same").buffer->getBuffer() == "manifest");
+    ZASSERT(!db->contains(index::BlobKind::ProjectTable, "same"));
 }
 
 ZEST_CASE(SnapshotPinsUntilAdvance) {
@@ -146,7 +146,7 @@ ZEST_CASE(SmallValuesCopiedAligned) {
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
 
-    ZASSERT(db->write({blob(index::BlobKind::Manifest, "small", "tiny"),
+    ZASSERT(db->write({blob(index::BlobKind::TUManifest, "small", "tiny"),
                        blob(index::BlobKind::Shard, "big", large_value('b'))},
                       {})
                 .empty());
@@ -155,7 +155,7 @@ ZEST_CASE(SmallValuesCopiedAligned) {
 
     // Inline leaf values are only 2-aligned, so they must come back as an
     // owned copy (generation 0); overflow-page values are borrowed.
-    auto small = db->read(index::BlobKind::Manifest, "small");
+    auto small = db->read(index::BlobKind::TUManifest, "small");
     ZASSERT(bool(small));
     ZASSERT(small.generation == 0);
     ZASSERT(reinterpret_cast<std::uintptr_t>(small.buffer->getBufferStart()) % 8 == 0);
@@ -172,11 +172,11 @@ ZEST_CASE(ReopenServesPersistedBlobs) {
     {
         auto db = index::open_database(store, "");
         ZASSERT(db != nullptr);
-        ZASSERT(db->write({blob(index::BlobKind::CDB, "cdb", "snapshot")}, {}).empty());
+        ZASSERT(db->write({blob(index::BlobKind::CommandSnapshot, "cdb", "snapshot")}, {}).empty());
     }
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(db->read(index::BlobKind::CDB, "cdb").buffer->getBuffer() == "snapshot");
+    ZASSERT(db->read(index::BlobKind::CommandSnapshot, "cdb").buffer->getBuffer() == "snapshot");
 }
 
 ZEST_CASE(CorruptDatabaseRebuilds) {
@@ -192,8 +192,8 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
     }
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(!db->contains(index::BlobKind::CDB, "cdb"));
-    ZASSERT(db->write({blob(index::BlobKind::CDB, "cdb", "fresh")}, {}).empty());
+    ZASSERT(!db->contains(index::BlobKind::CommandSnapshot, "cdb"));
+    ZASSERT(db->write({blob(index::BlobKind::CommandSnapshot, "cdb", "fresh")}, {}).empty());
 }
 
 /// A database of `count` large blobs written over several commits, so
@@ -230,10 +230,10 @@ ZEST_CASE(TruncatedDatabaseRebuilds) {
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
     ZASSERT(!db->contains(index::BlobKind::Shard, "7"));
-    ZASSERT(db->write({blob(index::BlobKind::CDB, "cdb", "fresh")}, {}).empty());
+    ZASSERT(db->write({blob(index::BlobKind::CommandSnapshot, "cdb", "fresh")}, {}).empty());
     ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
-    ZASSERT(db->read(index::BlobKind::CDB, "cdb").buffer->getBuffer() == "fresh");
+    ZASSERT(db->read(index::BlobKind::CommandSnapshot, "cdb").buffer->getBuffer() == "fresh");
 }
 
 ZEST_CASE(ReadOnlyRefusesTruncated) {
@@ -292,7 +292,7 @@ ZEST_CASE(WritesCoverFreedTail) {
         advance_snapshot();
         ZASSERT(db->write(
                       {
-                          blob(index::BlobKind::CDB, "cdb", "small"),
+                          blob(index::BlobKind::CommandSnapshot, "cdb", "small"),
                           blob(index::BlobKind::Shard, "h", std::string(1 << 16, 'h'))
         },
                       {{index::BlobKind::Shard, "h"}})
@@ -314,7 +314,7 @@ ZEST_CASE(WritesCoverFreedTail) {
     auto store = open_store(tmp, "lmdb", /*read_only=*/true);
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(db->contains(index::BlobKind::CDB, "cdb"));
+    ZASSERT(db->contains(index::BlobKind::CommandSnapshot, "cdb"));
 }
 
 ZEST_CASE(DefaultOpenFileBounded) {
@@ -322,7 +322,7 @@ ZEST_CASE(DefaultOpenFileBounded) {
     auto store = open_store(tmp, "lmdb");
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(db->write({blob(index::BlobKind::CDB, "cdb", "x")}, {}).empty());
+    ZASSERT(db->write({blob(index::BlobKind::CommandSnapshot, "cdb", "x")}, {}).empty());
 
     // On Windows the mapping extends index.mdb to the whole mapsize, so
     // this pins the small default (a 64 GiB logical file is the bug the
@@ -385,13 +385,13 @@ ZEST_CASE(ReadOnlyServesExistingDatabase) {
         auto store = open_store(tmp, "ws");
         auto db = index::open_database(store, "");
         ZASSERT(db != nullptr);
-        ZASSERT(db->write({blob(index::BlobKind::Global, "global", "gg")}, {}).empty());
+        ZASSERT(db->write({blob(index::BlobKind::ProjectTable, "global", "gg")}, {}).empty());
     }
     auto store = open_store(tmp, "ws", /*read_only=*/true);
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(db->contains(index::BlobKind::Global, "global"));
-    ZASSERT(db->read(index::BlobKind::Global, "global").buffer->getBuffer() == "gg");
+    ZASSERT(db->contains(index::BlobKind::ProjectTable, "global"));
+    ZASSERT(db->read(index::BlobKind::ProjectTable, "global").buffer->getBuffer() == "gg");
 }
 
 ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
@@ -400,13 +400,13 @@ ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
     {
         auto db = index::open_database(store, "");
         ZASSERT(db != nullptr);
-        ZASSERT(db->write({blob(index::BlobKind::CDB, "cdb", "bytes")}, {}).empty());
+        ZASSERT(db->write({blob(index::BlobKind::CommandSnapshot, "cdb", "bytes")}, {}).empty());
         db->condemn();
     }
     ZASSERT(!llvm::sys::fs::exists(path::join(index::database_directory(store, ""), "index.mdb")));
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(!db->contains(index::BlobKind::CDB, "cdb"));
+    ZASSERT(!db->contains(index::BlobKind::CommandSnapshot, "cdb"));
 }
 
 ZEST_CASE(DatabasePerConfiguration) {
@@ -424,9 +424,9 @@ ZEST_CASE(DatabasePerConfiguration) {
     auto release = index::open_database(store, "release");
     ZASSERT(debug != nullptr);
     ZASSERT(release != nullptr);
-    ZASSERT(debug->write({blob(index::BlobKind::Global, "global", "d")}, {}).empty());
+    ZASSERT(debug->write({blob(index::BlobKind::ProjectTable, "global", "d")}, {}).empty());
     ZASSERT(release->advance_read_snapshot());
-    ZASSERT(!release->contains(index::BlobKind::Global, "global"));
+    ZASSERT(!release->contains(index::BlobKind::ProjectTable, "global"));
     ZASSERT(
         llvm::sys::fs::exists(path::join(index::database_directory(store, "debug"), "index.mdb")));
     ZASSERT(

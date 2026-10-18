@@ -5,7 +5,7 @@ module;
 /// The column encodings the blobs share: entry ranges in whichever
 /// encoding the side and the content size pick (shard and instantiation
 /// blobs), id columns in whichever width their table picks (those and the
-/// global blob), and the load-time checks that let readers trust them.
+/// project table), and the load-time checks that let readers trust them.
 ///
 /// The per-entry accessors are declared inline: in a named module a member
 /// defined in its class is not, and the readers in other partitions would

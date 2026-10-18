@@ -19,28 +19,28 @@ inline std::string blob_key(llvm::StringRef name) {
 enum class BlobKind : std::uint8_t {
     /// Per-file shard blobs (ShardBlob), keyed by a path hash.
     Shard,
-    /// Per-file instantiation blobs (InstantiationBlob), keyed like the
+    /// Per-file instantiation blobs (InstantiationShardBlob), keyed like the
     /// file's shard.
-    Instantiations,
+    InstantiationShard,
     /// Per-TU manifests, keyed by a path hash.
-    Manifest,
-    /// The single global blob (FileVersion table + symbols), key "global".
-    Global,
+    TUManifest,
+    /// The single project table (FileVersion table + symbols), key "global".
+    ProjectTable,
     /// The single CDB command-hash snapshot the persisted index was built
     /// against, key "cdb" — how a cold start detects compile-command
     /// changes that happened while no server was running.
-    CDB,
+    CommandSnapshot,
     /// The single artifact-validity blob (PCH/PCM records with their deps,
     /// header-mode results), key "artifacts".
-    Artifacts,
+    ArtifactRecords,
     /// The single user-context blob (saved context choices, synthesized
     /// artifact hosts), key "contexts" — sovereignty records, never
     /// garbage-collected by content.
-    Contexts,
-    /// The single name search index (index/search_index.h) derived from
-    /// the global symbol table, key "search"; rebuilt from the table when
+    ContextChoices,
+    /// The single name search index (the search_index partition) derived
+    /// from the project table, key "search"; rebuilt from the table when
     /// missing.
-    Search,
+    SearchIndex,
 };
 
 /// One blob read out of the database. `generation` says which lifetime
@@ -102,7 +102,7 @@ public:
     virtual ReadBlob read(BlobKind kind, llvm::StringRef key) = 0;
 
     /// Whether a blob exists under the key, even when unreadable — how the
-    /// loader tells a missing global blob (remove everything) from a
+    /// loader tells a missing project table (remove everything) from a
     /// transient read failure (touch nothing).
     virtual bool contains(BlobKind kind, llvm::StringRef key) = 0;
 
@@ -114,7 +114,7 @@ public:
 
     /// Persist `puts` in order, then delete `removes`. Atomicity is
     /// backend-defined but never weaker than a committed prefix of `puts`:
-    /// batch order encodes dependency (shards → manifests → global → CDB
+    /// batch order encodes dependency (shards → manifests → project table → CDB
     /// snapshot), load paths tolerate exactly a prefix, and the LMDB
     /// backend commits everything or nothing in one transaction, removes
     /// included. The failed put indices are returned so the caller can
@@ -196,7 +196,7 @@ bool database_exists(const CacheStore& store, llvm::StringRef configuration);
 /// The configuration's database: a single `index.mdb` (plus its `-lock`
 /// file) in its database directory, created on demand. A writable open
 /// presumes the caller holds the cache directory's writer lock
-/// (index/writer_lock.h) — the global/manifest blobs form one mutable
+/// (index/writer_lock.h) — the project table and manifest blobs form one mutable
 /// lineage that tolerates no second writer. Nullptr when the
 /// environment cannot be opened safely — only confirmed corruption
 /// (or a meta mismatch) is repaired by deleting and rebuilding the

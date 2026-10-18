@@ -48,14 +48,14 @@ struct InstantiationUse {
 /// touching any shard. In memory its versions are the file table's ids;
 /// persisted, the index's own (ProjectIndex::export_manifest).
 struct TUManifest {
-    /// ProjectIndex::global_generation recorded by the save that persisted
-    /// this manifest. The global blob pins the generation it expects per TU and
+    /// ProjectIndex::table_generation recorded by the save that persisted
+    /// this manifest. The project table pins the generation it expects per TU and
     /// the loader adopts a manifest only on an exact match: a manifest
-    /// that outran a lost global write would otherwise serve against a
+    /// that outran a lost project table write would otherwise serve against a
     /// symbol table that never learned its symbols, and a manifest whose
     /// own write failed would pass off the previous reindex's dependency
     /// set and variants as current.
-    std::uint64_t global_gen = 0;
+    std::uint64_t table_generation = 0;
 
     /// Milliseconds since epoch, sampled before the indexed build started.
     std::uint64_t built_at = 0;
@@ -97,7 +97,7 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os);
 
 /// Verify and decode a manifest blob; nullopt for corrupt, truncated or
 /// old-format data. FileVersion ids are not resolved here — the loader
-/// drops manifests referencing ids the global table does not know.
+/// drops manifests referencing ids the project table does not know.
 std::optional<TUManifest> deserialize_manifest(llvm::StringRef data);
 
 /// Add the fields of a manifest blob to `bytes`, for `clice index stats`.

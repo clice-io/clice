@@ -20,7 +20,7 @@ void append_file_set(std::vector<std::uint8_t>& arena, const Bitmap& ids);
 /// The set a slice holds; nullopt when it is not one append_file_set writes.
 std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes);
 
-/// The bound global blob: its columns, and its path table mapped to the
+/// The bound project table: its columns, and its path table mapped to the
 /// file table's ids.
 struct ProjectTable {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
@@ -56,7 +56,7 @@ struct ProjectTable {
     llvm::ArrayRef<std::uint8_t> instantiation_images;
 
     llvm::ArrayRef<std::uint32_t> manifest_fvs;
-    llvm::ArrayRef<std::uint64_t> manifest_gens;
+    llvm::ArrayRef<std::uint64_t> manifest_generations;
 
     std::uint64_t search_generation = 0;
     llvm::ArrayRef<std::uint64_t> search_pending;
@@ -194,10 +194,10 @@ struct ProjectTable {
     }
 
     /// Bind the columns of a verified blob, checking they line up.
-    std::expected<void, llvm::StringRef> bind(kota::codec::fbs::table_view<GlobalBlob> root);
+    std::expected<void, llvm::StringRef> bind(kota::codec::fbs::table_view<ProjectTableBlob> root);
 };
 
-/// Add the fields of a global blob to `bytes`, for `clice index stats`.
-void measure_global(llvm::StringRef data, FieldBytes& bytes);
+/// Add the fields of a project table blob to `bytes`, for `clice index stats`.
+void measure_table(llvm::StringRef data, FieldBytes& bytes);
 
 }  // namespace clice::index

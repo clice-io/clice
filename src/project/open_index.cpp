@@ -91,7 +91,7 @@ std::optional<LoadedIndex> load_index(Project& project,
                   std::string_view(project.config.project.cache_dir));
         return std::nullopt;
     }
-    // load() detaches the storage when the global blob exists but cannot
+    // load() detaches the storage when the project table exists but cannot
     // be read — a transient IO error, not an empty index.
     if(project.database == nullptr) {
         LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",

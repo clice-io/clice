@@ -19,7 +19,7 @@ namespace clice::index {
 /// The persisted index as loaded, in every part:
 ///
 /// - the project-wide external symbol table with per-symbol reference-file
-///   bitmaps (the cross-file query fan-out): the persisted global blob read
+///   bitmaps (the cross-file query fan-out): the persisted project table read
 ///   in place, plus the entries merged or changed since it was bound. A
 ///   reader never copies an entry; a writer copies only the entries it changes
 ///   and folds them into the next blob it writes,
@@ -36,7 +36,7 @@ namespace clice::index {
 ///
 /// The FileVersion table manifests reference lives in clice::FileTable,
 /// shared with every other freshness consumer — and, in a server running
-/// several projects, with every other project's index. The global blob
+/// several projects, with every other project's index. The project table
 /// persists the versions some manifest references under ids of its own
 /// (see persisted_ids), which adopt_file_versions maps into the table.
 ///
@@ -65,12 +65,12 @@ struct ProjectIndex {
     /// database.
     std::string key_of(const FileTable& files, Fid file) const;
 
-    /// Bind a global blob as the table's base, mapping its path table into
+    /// Bind a project table blob as the table's base, mapping its path table into
     /// `files`. False — and the index untouched — when the bytes are not
-    /// a global blob of this format or are inconsistent. The base's
+    /// a project table blob of this format or are inconsistent. The base's
     /// bitmaps are not decoded here: a reader decodes one when a query
     /// reaches it, a writer proves them all with verify_bitmaps.
-    bool bind_global(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files);
+    bool bind_table(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files);
 
     /// The writer's half of a bound blob: intern its file versions into
     /// `files` and read the per-TU manifest
@@ -88,10 +88,10 @@ struct ProjectIndex {
     /// ever rebuilding them, so the whole blob is rejected instead.
     bool verify_bitmaps() const;
 
-    /// bind_global, adopt_file_versions and verify_bitmaps over a copy of
-    /// `data`, all or nothing: the loader's gate for a persisted global.
+    /// bind_table, adopt_file_versions and verify_bitmaps over a copy of
+    /// `data`, all or nothing: the loader's gate for a persisted project table.
     std::expected<void, llvm::StringRef>
-        load_global(llvm::StringRef data,
+        load_table(llvm::StringRef data,
                     FileTable& files,
                     llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
 
@@ -129,7 +129,7 @@ struct ProjectIndex {
                llvm::ArrayRef<Fid> file_ids_map,
                llvm::SmallVectorImpl<SymbolHash>* added = nullptr);
 
-    /// Serialize the global blob: the versions some manifest still
+    /// Serialize the project table: the versions some manifest still
     /// references (the shared table is not touched — a version the index
     /// stops referencing can still anchor another consumer's check; ids
     /// are never reused either way), the symbol table — base entries copied,
@@ -137,24 +137,24 @@ struct ProjectIndex {
     /// pin of every manifest's generation, and the search index's
     /// generation and pending entries. The changed entries are held aside until
     /// rebase or restore_unwritten says whether the bytes were persisted.
-    void serialize_global(llvm::raw_ostream& os, const FileTable& files);
+    void serialize_table(llvm::raw_ostream& os, const FileTable& files);
 
-    /// The bytes serialize_global produced were persisted: they become the
+    /// The bytes serialize_table produced were persisted: they become the
     /// base, and the entries they hold leave the changed set. Entries changed
     /// since the serialization stay changed.
     void rebase(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files);
 
-    /// The bytes serialize_global produced were not persisted: the entries
+    /// The bytes serialize_table produced were not persisted: the entries
     /// held aside return to the changed set, under the entries changed since.
     void restore_unwritten();
 
-    /// Generation of the persisted global blob, bumped once per save that
+    /// Generation of the persisted project table, bumped once per save that
     /// writes it. Manifests record the generation they were
-    /// saved under (TUManifest::global_gen), and the global blob pins the
+    /// saved under (TUManifest::table_generation), and the project table pins the
     /// generation expected of every TU's manifest; the loader adopts a manifest
     /// only on an exact match, so a lost or failed manifest write cannot
     /// leave an older on-disk manifest serving as current.
-    std::uint64_t global_generation = 0;
+    std::uint64_t table_generation = 0;
 
     /// TU fid -> its manifest.
     llvm::DenseMap<Fid, TUManifest> manifests;
@@ -204,12 +204,12 @@ struct ProjectIndex {
         return tu && manifests.find(*tu)->second.built_at == producer.run;
     }
 
-    /// The file table's id for a version id the loaded global blob
+    /// The file table's id for a version id the loaded project table
     /// carries; nullopt for any other.
     std::optional<VersionID> runtime_version(std::uint32_t persisted) const;
 
     /// Rewrite a manifest read from disk into the file table's version
-    /// ids. False when it names a version the loaded global blob does not
+    /// ids. False when it names a version the loaded project table does not
     /// carry — the loader's staleness gate for manifests.
     bool import_manifest(TUManifest& manifest) const;
 
@@ -233,14 +233,14 @@ struct ProjectIndex {
     llvm::SmallVector<std::uint64_t> live_variants(Fid path_id) const;
 
     /// The TUs that contributed a variant to `file`: from `contributions` in a
-    /// writer, from the global blob's persisted copy in a reader, which
+    /// writer, from the project table's persisted copy in a reader, which
     /// holds no manifests to derive it from.
     void for_each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
 
     /// The files holding entries of a symbol below external scope: `anchor`,
     /// a file that holds some, and the files of every TU's shared local
     /// (TUManifest::shared_locals) for it that lists a file reached — from
-    /// `shared_local_sets` in a writer, from the global blob's persisted copy in a
+    /// `shared_local_sets` in a writer, from the project table's persisted copy in a
     /// reader. A `static` in a header is thus reached in every unit
     /// including the header or reading it through a precompiled header.
     /// Each file once.
@@ -282,8 +282,8 @@ struct ProjectIndex {
     /// The name search index over the symbol table as last built, and the
     /// entries it does not describe — merged or changed since — which a
     /// search reads from the table instead until the writer folds them
-    /// into a rebuilt index. Both persist next to the table: the global
-    /// blob pins the search blob's generation and carries the pending entries,
+    /// into a rebuilt index. Both persist next to the table: the table
+    /// pins the search blob's generation and carries the pending entries,
     /// so a reader adopts exactly the search index the table was saved
     /// with.
     SearchIndex search_index;
@@ -293,15 +293,15 @@ struct ProjectIndex {
     llvm::DenseSet<Fid> search_pending_files;
     std::uint64_t search_generation = 0;
 
-    /// Adopt a persisted search blob when the bound global pins its
+    /// Adopt a persisted search blob when the bound project table pins its
     /// generation; otherwise the index stays unloaded and searches scan
     /// the table.
     bool bind_search(std::unique_ptr<llvm::MemoryBuffer> blob);
 
-    /// Open the persisted index for reading: the global and search blobs
+    /// Open the persisted index for reading: the project table and search blobs
     /// bound in place from the database's read snapshot — which the
     /// caller keeps pinned for the index's lifetime — and shards fetched
-    /// from it on first use. False when there is no readable global blob.
+    /// from it on first use. False when there is no readable project table.
     bool open(BlobDatabase& db, FileTable& files);
 
 private:
@@ -310,7 +310,7 @@ private:
     /// Entries merged or changed since the base was bound, in file-table ids.
     llvm::DenseMap<SymbolHash, Symbol> changed;
 
-    /// Entries serialized by the last serialize_global and not yet known to
+    /// Entries serialized by the last serialize_table and not yet known to
     /// have been persisted; reads consult them after `changed`.
     llvm::DenseMap<SymbolHash, Symbol> written;
 
@@ -325,7 +325,7 @@ private:
     /// Derived from `manifests`: unit hash -> TU.
     llvm::DenseMap<std::uint64_t, Fid> units;
 
-    /// The persisted FileVersion id space: the global blob and the
+    /// The persisted FileVersion id space: the project table and the
     /// manifests name versions by ids private to this index's lineage,
     /// handed out from `next_persisted_id` and never reused, so one file
     /// table can hold the versions of several projects' indexes. Loading

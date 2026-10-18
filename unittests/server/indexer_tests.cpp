@@ -78,7 +78,7 @@ struct IndexerFixture {
     }
 
     /// Load and take the report, as the workspace load does. Returns the
-    /// decode result (false = old-format or corrupt global).
+    /// decode result (false = old-format or corrupt project table).
     bool load(bool read_only = false) {
         auto result = index_store.load({.read_only = read_only});
         pump.apply_report(result.report);
@@ -154,14 +154,14 @@ struct IndexerFixture {
         return index_store.needs_reindex(project.file_table.intern(Spelling::absolute(path)));
     }
 
-    bool global_dirty() {
-        return index_store.global_dirty;
+    bool table_dirty() {
+        return index_store.table_dirty;
     }
 
     /// Drop the merge's own dirty mark so a later assertion isolates what
     /// a check alone dirties.
     void reset_global_dirty() {
-        index_store.global_dirty = false;
+        index_store.table_dirty = false;
     }
 
     /// Record a standalone header's borrowed host, as the TURun round does
@@ -1478,7 +1478,7 @@ ZEST_CASE(TouchStaysFresh) {
     x.f.reset_global_dirty();
     x.f.begin_round();
     ZASSERT(!x.f.needs_reindex(x.src));
-    ZASSERT(!x.f.global_dirty());
+    ZASSERT(!x.f.table_dirty());
 }
 
 ZEST_CASE(PreservedMtimeEditStale) {
@@ -1564,7 +1564,7 @@ ZEST_CASE(IdleRebuildPinsSearch) {
         // The plain save persists the table; the idle one then rebuilds
         // the search index with no other change to write.
         f.save();
-        ZASSERT(!f.global_dirty());
+        ZASSERT(!f.table_dirty());
         ZASSERT(!f.project.index.search_index.loaded());
         f.save(IndexStore::SearchRebuild::Idle);
         ZASSERT(f.project.index.search_index.loaded());
@@ -1676,7 +1676,7 @@ ZEST_CASE(ReadOnlyLoadKeepsDisk) {
         header_alive |= key == header_key;
         orphan_alive |= key == "deadbeefdeadbeef";
     });
-    f.project.database->for_each_key(index::BlobKind::Manifest, [&](llvm::StringRef key) {
+    f.project.database->for_each_key(index::BlobKind::TUManifest, [&](llvm::StringRef key) {
         manifest_alive |= key == manifest_key;
     });
     ZASSERT(header_alive);
@@ -1773,14 +1773,14 @@ ZEST_CASE(LoadDropsNewerManifest) {
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
 
-        // Plant what a lost global write leaves behind: a manifest carrying
-        // a generation the persisted global never reached. Every
+        // Plant what a lost project table write leaves behind: a manifest carrying
+        // a generation the persisted project table never reached. Every
         // FileVersion it references is known and its shard variant stored
         // (a shard-only reindex), so only the generation can tell that the
         // global's symbols never committed.
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
         auto raced = f.project.index.manifests.find(tu_id)->second;
-        raced.global_gen = f.project.index.global_generation + 1;
+        raced.table_generation = f.project.index.table_generation + 1;
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(f.project.index.export_manifest(raced), os);
@@ -1788,7 +1788,7 @@ ZEST_CASE(LoadDropsNewerManifest) {
         // on Windows the raw TempDir spelling hashes to a different key.
         f.project.database->write(
             {
-                {index::BlobKind::Manifest,
+                {index::BlobKind::TUManifest,
                  blob_key(f.project.file_table.resolve(tu_id)),
                  std::move(bytes)}
         },
@@ -1826,13 +1826,13 @@ ZEST_CASE(LoadDropsLostManifest) {
         // global's pin can tell it is not the manifest the save meant.
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
         auto lost = f.project.index.manifests.find(tu_id)->second;
-        lost.global_gen = f.project.index.global_generation - 1;
+        lost.table_generation = f.project.index.table_generation - 1;
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(f.project.index.export_manifest(lost), os);
         f.project.database->write(
             {
-                {index::BlobKind::Manifest,
+                {index::BlobKind::TUManifest,
                  blob_key(f.project.file_table.resolve(tu_id)),
                  std::move(bytes)}
         },
@@ -1866,7 +1866,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
         f.save();
 
         // Plant what a crash between save phases leaves: a manifest whose
-        // dependency FileVersion the persisted global table never learned,
+        // dependency FileVersion the persisted project table never learned,
         // while the TU's own version is known — here for the header, whose
         // standalone index no CDB pass would ever rebuild.
         auto header_id = f.project.file_table.intern(Spelling::absolute(header));
@@ -1886,7 +1886,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
         index::serialize_manifest(stale, os);
         f.project.database->write(
             {
-                {index::BlobKind::Manifest, blob_key(header), std::move(bytes)}
+                {index::BlobKind::TUManifest, blob_key(header), std::move(bytes)}
         },
             {});
     }
@@ -1908,7 +1908,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
     f.loop.schedule(task);
     f.loop.run();
     bool stale_alive = false;
-    f.project.database->for_each_key(index::BlobKind::Manifest, [&](llvm::StringRef key) {
+    f.project.database->for_each_key(index::BlobKind::TUManifest, [&](llvm::StringRef key) {
         stale_alive |= key == blob_key(header);
     });
     ZASSERT(!stale_alive);
@@ -1946,7 +1946,7 @@ ZEST_CASE(DeferredRemovalYieldsToFreshWrite) {
         index::serialize_manifest(stale, os);
         f.project.database->write(
             {
-                {index::BlobKind::Manifest, key, std::move(bytes)}
+                {index::BlobKind::TUManifest, key, std::move(bytes)}
         },
             {});
     }
@@ -1966,7 +1966,7 @@ ZEST_CASE(DeferredRemovalYieldsToFreshWrite) {
     auto key = blob_key(f.project.file_table.resolve(
         f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
     bool manifest_alive = false;
-    f.project.database->for_each_key(index::BlobKind::Manifest,
+    f.project.database->for_each_key(index::BlobKind::TUManifest,
                                      [&](llvm::StringRef k) { manifest_alive |= k == key; });
     bool shard_alive = false;
     f.project.database->for_each_key(index::BlobKind::Shard,
@@ -2020,7 +2020,7 @@ ZEST_CASE(LmdbLoadServesAcrossSaves) {
 }
 
 ZEST_CASE(CorruptGlobalCondemnsDatabase) {
-    // Page corruption under the global blob: read fails, contains() still
+    // Page corruption under the project table: read fails, contains() still
     // says present, corrupted() confirms. load must condemn the database
     // (deleted on close) and continue on a fresh empty one instead of
     // parking in the disabled-persistence limbo forever.
@@ -2092,7 +2092,7 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
     }
 
     // Corruption latched past the global anchor: the shard read poisons
-    // the latch while the global stays readable. load must condemn here
+    // the latch while the project table stays readable. load must condemn here
     // too, and unwind everything it adopted — the views would otherwise
     // borrow from the condemned environment.
     struct CorruptShard final : index::BlobDatabase {
@@ -2161,7 +2161,7 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
             ReindexReason::ContentChanged);
     ZASSERT(f.project.database != nullptr);
     f.save();
-    auto snapshot = f.project.database->read(index::BlobKind::CDB, "cdb");
+    auto snapshot = f.project.database->read(index::BlobKind::CommandSnapshot, "cdb");
     ZASSERT(snapshot);
     ZASSERT(snapshot.buffer->getBuffer().contains("main.cpp"));
 }
@@ -2180,7 +2180,7 @@ ZEST_CASE(UnreadableGlobalPreserved) {
         f.save();
     }
 
-    // The global blob exists but fails to open — a transient IO error at
+    // The project table exists but fails to open — a transient IO error at
     // startup, not absence. Removing everything would destroy the intact
     // index; a fresh lineage saved over the unread one could alias its fv
     // ids and generations. The session must run memory-only and leave every
@@ -2189,7 +2189,7 @@ ZEST_CASE(UnreadableGlobalPreserved) {
         std::unique_ptr<index::BlobDatabase> real;
 
         index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-            return kind == index::BlobKind::Global ? index::ReadBlob{} : real->read(kind, key);
+            return kind == index::BlobKind::ProjectTable ? index::ReadBlob{} : real->read(kind, key);
         }
 
         bool contains(index::BlobKind kind, llvm::StringRef key) override {
@@ -2828,7 +2828,7 @@ ZEST_CASE(CDBWriteFailureRetried) {
             llvm::SmallVector<std::size_t> failed;
             for(std::size_t i = 0; i < puts.size(); i += 1) {
                 written.push_back(puts[i].kind);
-                if(fail_cdb && puts[i].kind == index::BlobKind::CDB) {
+                if(fail_cdb && puts[i].kind == index::BlobKind::CommandSnapshot) {
                     failed.push_back(i);
                 } else if(!real->write(llvm::ArrayRef(puts[i]), {}).empty()) {
                     failed.push_back(i);
@@ -2870,8 +2870,8 @@ ZEST_CASE(CDBWriteFailureRetried) {
     f.save();
 
     // The snapshot rides the batch behind the index state it describes.
-    ZASSERT(int(storage->written.back()) == int(index::BlobKind::CDB));
-    ZASSERT(!storage->real->contains(index::BlobKind::CDB, "cdb"));
+    ZASSERT(int(storage->written.back()) == int(index::BlobKind::CommandSnapshot));
+    ZASSERT(!storage->real->contains(index::BlobKind::CommandSnapshot, "cdb"));
 
     // Nothing else is dirty any more, yet the failed snapshot alone must
     // drive the next save until it commits — and until it does, the state
@@ -2879,7 +2879,7 @@ ZEST_CASE(CDBWriteFailureRetried) {
     ZASSERT(f.index_store.has_unsaved_state());
     storage->fail_cdb = false;
     f.save();
-    ZASSERT(storage->real->contains(index::BlobKind::CDB, "cdb"));
+    ZASSERT(storage->real->contains(index::BlobKind::CommandSnapshot, "cdb"));
     ZASSERT(!f.index_store.has_unsaved_state());
 }
 
@@ -2896,12 +2896,12 @@ ZEST_CASE(MissingSnapshotRewritten) {
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
-        // The global committed but the final CDB write never did: the rest of
+        // The project table committed but the final CDB write never did: the rest of
         // the index is intact.
         f.project.database->write(
             {
         },
-            {{index::BlobKind::CDB, "cdb"}});
+            {{index::BlobKind::CommandSnapshot, "cdb"}});
     }
 
     // A rerun that dirties nothing must still recreate the baseline —
@@ -2912,7 +2912,7 @@ ZEST_CASE(MissingSnapshotRewritten) {
     f.load();
     ZASSERT(f.index_store.has_unsaved_state());
     f.save();
-    ZASSERT(f.project.database->contains(index::BlobKind::CDB, "cdb"));
+    ZASSERT(f.project.database->contains(index::BlobKind::CommandSnapshot, "cdb"));
     ZASSERT(!f.index_store.has_unsaved_state());
 }
 
@@ -3034,7 +3034,7 @@ ZEST_CASE(StaleFormatDropsPch) {
         f.project.mark_artifacts_dirty();
         f.save();
 
-        auto blob = f.project.database->read(index::BlobKind::Artifacts, "artifacts");
+        auto blob = f.project.database->read(index::BlobKind::ArtifactRecords, "artifacts");
         ZASSERT(bool(blob));
         artifacts = blob.buffer->getBuffer().str();
     }
@@ -3052,7 +3052,7 @@ ZEST_CASE(StaleFormatDropsPch) {
         auto pos = artifacts.find(current);
         ZASSERT(pos != std::string::npos);
         artifacts.replace(pos, current.size(), stale);
-        index::BlobDatabase::Blob blob{index::BlobKind::Artifacts, "artifacts", artifacts};
+        index::BlobDatabase::Blob blob{index::BlobKind::ArtifactRecords, "artifacts", artifacts};
         ZASSERT(f.project.database->write(blob, {}).empty());
     }
 
@@ -3091,7 +3091,7 @@ ZEST_CASE(DeplessPcmDropped) {
 
         // The premise: the dep-less entry was persisted, so the tail
         // assertion exercises the load-side drop, not a write-side skip.
-        auto blob = f.project.database->read(index::BlobKind::Artifacts, "artifacts");
+        auto blob = f.project.database->read(index::BlobKind::ArtifactRecords, "artifacts");
         ZASSERT(bool(blob));
         ZASSERT(blob.buffer->getBuffer().contains("\"key\":\"k\""));
     }
@@ -3176,22 +3176,22 @@ ZEST_CASE(UnownedContextsPassThrough) {
     TempDir tmp;
     std::string bytes =
         R"({"paths":["/a.h"],"contexts":[{"file":0,"host":4294967295,"occurrence":4294967295,"command_hash":"c","base_hash":"b"}],"artifacts":[]})";
-    inject_blob(tmp, index::BlobKind::Contexts, "contexts", bytes);
+    inject_blob(tmp, index::BlobKind::ContextChoices, "contexts", bytes);
 
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
     f.project.mark_artifacts_dirty();
     f.save();
-    auto kept = f.project.database->read(index::BlobKind::Contexts, "contexts");
+    auto kept = f.project.database->read(index::BlobKind::ContextChoices, "contexts");
     ZASSERT(bool(kept));
     ZASSERT(kept.buffer->getBuffer() == bytes);
 
     f.reopen_database();
     ZASSERT(f.project.database != nullptr);
-    ZASSERT(!bool(f.project.database->read(index::BlobKind::Contexts, "contexts")));
+    ZASSERT(!bool(f.project.database->read(index::BlobKind::ContextChoices, "contexts")));
     f.save();
-    auto rewritten = f.project.database->read(index::BlobKind::Contexts, "contexts");
+    auto rewritten = f.project.database->read(index::BlobKind::ContextChoices, "contexts");
     ZASSERT(bool(rewritten));
     ZASSERT(rewritten.buffer->getBuffer() == bytes);
 }
@@ -3205,7 +3205,7 @@ ZEST_CASE(NoContextsNoRewrite) {
     f.load();
     f.reopen_database();
     f.save();
-    ZASSERT(!bool(f.project.database->read(index::BlobKind::Contexts, "contexts")));
+    ZASSERT(!bool(f.project.database->read(index::BlobKind::ContextChoices, "contexts")));
 }
 
 };  // ZEST_SUITE(IndexerLoad)
@@ -3653,7 +3653,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
     // The retry persists into the freshly reopened database, snapshot
     // included.
     f.save();
-    auto blob = f.project.database->read(index::BlobKind::CDB, "cdb");
+    auto blob = f.project.database->read(index::BlobKind::CommandSnapshot, "cdb");
     ZASSERT(bool(blob));
     ZASSERT(llvm::StringRef(blob.buffer->getBuffer()).contains("dep.h"));
 }
@@ -3830,8 +3830,8 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
 
     // The shards commit without the search index a cold round never built.
     ZASSERT(log.writes.size() == 1u);
-    ZASSERT(llvm::is_contained(log.writes[0], index::BlobKind::Manifest));
-    ZASSERT(!llvm::is_contained(log.writes[0], index::BlobKind::Search));
+    ZASSERT(llvm::is_contained(log.writes[0], index::BlobKind::TUManifest));
+    ZASSERT(!llvm::is_contained(log.writes[0], index::BlobKind::SearchIndex));
     ZASSERT(!project.index.search_index.loaded());
 }
 
@@ -3901,7 +3901,7 @@ void a() { Box<A>{}.show(); }
             f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")))));
     }
     inject_blob(tmp,
-                index::BlobKind::Instantiations,
+                index::BlobKind::InstantiationShard,
                 box_key,
                 "corrupted beyond verification");
 

@@ -138,7 +138,7 @@ std::vector<std::string> names(const Corpus& corpus,
 
 using Names = std::vector<std::string>;
 
-/// SearchBlob field for field, to damage a built blob's posting lists.
+/// SearchIndexBlob field for field, to damage a built blob's posting lists.
 struct SearchBlobMirror {
     std::uint32_t format_version = 0;
     std::uint32_t search_version = 0;

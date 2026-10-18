@@ -57,7 +57,7 @@ struct Stack {
     FileTable files;
     Project project{files};
     CommandResolver commands{project};
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext contexts{project, commands, blob};
     BuildProbe probe;
     WorkerPool pool{loop};

@@ -22,7 +22,7 @@ constexpr std::size_t max_chain = 64;
 
 using Mode = SymbolQuery::Mode;
 
-using BlobView = kota::codec::fbs::table_view<SearchBlob>;
+using BlobView = kota::codec::fbs::table_view<SearchIndexBlob>;
 
 void append_postings(std::vector<std::uint8_t>& arena,
                      std::vector<std::uint32_t>& ends,
@@ -243,7 +243,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
         return no_doc;
     };
 
-    SearchBlob blob;
+    SearchIndexBlob blob;
     blob.format_version = index_format_version;
     blob.search_version = search_format_version;
     blob.generation = snapshot.generation;
@@ -707,38 +707,38 @@ struct SearchIndex::View {
 
 std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     auto& view = *this;
-    if(root[&SearchBlob::format_version] != index_format_version ||
-       root[&SearchBlob::search_version] != search_format_version) {
+    if(root[&SearchIndexBlob::format_version] != index_format_version ||
+       root[&SearchIndexBlob::search_version] != search_format_version) {
         return std::unexpected("written by another format version");
     }
-    view.generation = root[&SearchBlob::generation];
-    view.hashes = to_array_ref(root[&SearchBlob::hashes]);
-    view.names = to_ref(root[&SearchBlob::names]);
-    view.name_ends = to_array_ref(root[&SearchBlob::name_ends]);
-    view.args = to_ref(root[&SearchBlob::args]);
-    view.args_ends = to_array_ref(root[&SearchBlob::args_ends]);
-    view.parents = to_array_ref(root[&SearchBlob::parents]);
-    view.qualities = to_array_ref(root[&SearchBlob::qualities]);
-    view.by_lower_name = to_array_ref(root[&SearchBlob::by_lower_name]);
-    view.by_hash = to_array_ref(root[&SearchBlob::by_hash]);
-    view.token_keys = to_array_ref(root[&SearchBlob::token_keys]);
-    view.token_ends = to_array_ref(root[&SearchBlob::token_ends]);
-    view.token_postings = to_array_ref(root[&SearchBlob::token_postings]);
-    view.container_docs = to_array_ref(root[&SearchBlob::container_docs]);
-    view.children_ends = to_array_ref(root[&SearchBlob::children_ends]);
-    view.children_postings = to_array_ref(root[&SearchBlob::children_postings]);
-    view.top_level_postings = to_array_ref(root[&SearchBlob::top_level]);
-    view.long_names_postings = to_array_ref(root[&SearchBlob::long_names]);
-    view.subtree_docs = to_array_ref(root[&SearchBlob::subtree_docs]);
-    view.subtree_ends = to_array_ref(root[&SearchBlob::subtree_ends]);
-    view.subtree_postings = to_array_ref(root[&SearchBlob::subtree_postings]);
-    view.kind_ends = to_array_ref(root[&SearchBlob::kind_ends]);
-    view.kind_postings = to_array_ref(root[&SearchBlob::kind_postings]);
-    view.paths = root[&SearchBlob::paths];
-    view.file_ends = to_array_ref(root[&SearchBlob::file_ends]);
-    view.file_postings = to_array_ref(root[&SearchBlob::file_postings]);
-    view.local_docs = to_array_ref(root[&SearchBlob::local_docs]);
-    view.local_paths = to_array_ref(root[&SearchBlob::local_paths]);
+    view.generation = root[&SearchIndexBlob::generation];
+    view.hashes = to_array_ref(root[&SearchIndexBlob::hashes]);
+    view.names = to_ref(root[&SearchIndexBlob::names]);
+    view.name_ends = to_array_ref(root[&SearchIndexBlob::name_ends]);
+    view.args = to_ref(root[&SearchIndexBlob::args]);
+    view.args_ends = to_array_ref(root[&SearchIndexBlob::args_ends]);
+    view.parents = to_array_ref(root[&SearchIndexBlob::parents]);
+    view.qualities = to_array_ref(root[&SearchIndexBlob::qualities]);
+    view.by_lower_name = to_array_ref(root[&SearchIndexBlob::by_lower_name]);
+    view.by_hash = to_array_ref(root[&SearchIndexBlob::by_hash]);
+    view.token_keys = to_array_ref(root[&SearchIndexBlob::token_keys]);
+    view.token_ends = to_array_ref(root[&SearchIndexBlob::token_ends]);
+    view.token_postings = to_array_ref(root[&SearchIndexBlob::token_postings]);
+    view.container_docs = to_array_ref(root[&SearchIndexBlob::container_docs]);
+    view.children_ends = to_array_ref(root[&SearchIndexBlob::children_ends]);
+    view.children_postings = to_array_ref(root[&SearchIndexBlob::children_postings]);
+    view.top_level_postings = to_array_ref(root[&SearchIndexBlob::top_level]);
+    view.long_names_postings = to_array_ref(root[&SearchIndexBlob::long_names]);
+    view.subtree_docs = to_array_ref(root[&SearchIndexBlob::subtree_docs]);
+    view.subtree_ends = to_array_ref(root[&SearchIndexBlob::subtree_ends]);
+    view.subtree_postings = to_array_ref(root[&SearchIndexBlob::subtree_postings]);
+    view.kind_ends = to_array_ref(root[&SearchIndexBlob::kind_ends]);
+    view.kind_postings = to_array_ref(root[&SearchIndexBlob::kind_postings]);
+    view.paths = root[&SearchIndexBlob::paths];
+    view.file_ends = to_array_ref(root[&SearchIndexBlob::file_ends]);
+    view.file_postings = to_array_ref(root[&SearchIndexBlob::file_postings]);
+    view.local_docs = to_array_ref(root[&SearchIndexBlob::local_docs]);
+    view.local_paths = to_array_ref(root[&SearchIndexBlob::local_paths]);
 
     auto count = view.hashes.size();
     if(view.name_ends.size() != count || view.args_ends.size() != count ||
@@ -806,7 +806,7 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
 }
 
 void measure_search(llvm::StringRef data, FieldBytes& bytes) {
-    if(SearchBlob blob; deserialize_blob(data, blob)) {
+    if(SearchIndexBlob blob; deserialize_blob(data, blob)) {
         measure_fields(blob, bytes);
     }
 }

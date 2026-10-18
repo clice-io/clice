@@ -138,7 +138,7 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
     files.spell_root(spelling);
     Project project{files};
     CommandResolver commands{project};
-    ContextsBlob saved;
+    ContextChoices saved;
     EditorContext contexts{project, commands, saved};
     llvm::SmallVector<Fid> dropped;
     bool opened = false;

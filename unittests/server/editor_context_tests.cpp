@@ -49,7 +49,7 @@ ZEST_CASE(EditorCachesContext) {
     // Both resolutions synthesize the context in memory; only an editor
     // resolution keeps it, and reuses it after.
     HostedHeader fx;
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext editor{fx.project, fx.commands, blob};
     std::string directory;
     std::vector<std::string> arguments;
@@ -81,7 +81,7 @@ ZEST_CASE(GuessedTracksEditorOnly) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext editor(project, commands, blob);
     auto path = tmp.path("lonely.cpp");
     auto file = project.file_table.intern(Spelling::absolute(path));
@@ -110,7 +110,7 @@ ZEST_CASE(PinSteersEditorOnly) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     tmp.touch("main.cpp");
     auto path = tmp.path("main.cpp");
@@ -150,7 +150,7 @@ ZEST_CASE(PinBaseSurvivesRules) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     tmp.touch("main.cpp");
     auto path = tmp.path("main.cpp");
@@ -191,7 +191,7 @@ ZEST_CASE(ValidateKeepsValidChoice) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     tmp.touch("host.cpp", R"(#include "h.h")");
     tmp.touch("h.h");
@@ -218,7 +218,7 @@ ZEST_CASE(ValidateDropsGoneOccurrence) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     tmp.touch("host.cpp", R"(#include "h.h")");
     tmp.touch("h.h");
@@ -243,7 +243,7 @@ ZEST_CASE(ValidateDropsStaleChoice) {
     FileTable files;
     Project project{files};
     CommandResolver commands(project);
-    ContextsBlob blob;
+    ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     tmp.touch("host.cpp");
     tmp.touch("h.h");

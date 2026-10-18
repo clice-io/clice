@@ -27,7 +27,7 @@ namespace clice::index {
 /// entities computed by semantic/identity; v13: symbol entries carry the bare
 /// name, parent, specialization arguments, flags and canonical file, the
 /// include tree is one node type in the TU index and in manifests, and module
-/// names are keyed by their entity; v15: the global blob is columnar in
+/// names are keyed by their entity; v15: the project table is columnar in
 /// hash order with a stable path table and pins its search blob, so it
 /// is read in place; v16: entity hashes follow clang 23's node kinds;
 /// v17: file versions carry no stat stamps; v18: files under the
@@ -37,7 +37,7 @@ namespace clice::index {
 /// scope are global symbols, and the entries cover weak call edges, implicit
 /// calls and the names the traversal used to skip; v22: specializations
 /// relate to their templates, manifests list the files their internal
-/// symbols span, the global blob carries the reverse include graph,
+/// symbols span, the project table carries the reverse include graph,
 /// module linkage is external, and C tags and C-linkage functions follow
 /// C's identity rules; v23: names without linkage outside a function reach
 /// as far as their scope, `defined` operands reference their macro,
@@ -68,7 +68,7 @@ namespace clice::index {
 /// their signature, a deduced type sees through a library's internal
 /// aliases, an abbreviated template's `auto` names no parameter, a virtual
 /// function named by qualification carries a Direct relation, and the
-/// global blob lists the files whose names of internal linkage the search
+/// project table lists the files whose names of internal linkage the search
 /// index misses; v37: what instantiations and macro expansions resolve
 /// lives in per-file instantiation blobs, manifests list the resolutions of
 /// those they use, symbols the files whose instantiation blobs name them,
@@ -77,12 +77,12 @@ namespace clice::index {
 /// v39: id and offset columns are as narrow as their tables allow, masks as
 /// their variant count, occurrences store their begins as deltas, relation
 /// payloads are placed by kind bits and block counts, shards keep only the
-/// text of their non-ASCII lines, the global table's file sets of one or two
+/// text of their non-ASCII lines, the project table's file sets of one or two
 /// files are raw ids, and manifests name the use set their unit shares in a
 /// file's instantiation blob and encode runs of include siblings; v40: a
 /// shared local names its files by version, including files the unit reads
 /// through a precompiled header or a module, function-local symbols other
-/// files name join the TU index's table and the shared locals, and the global
+/// files name join the TU index's table and the shared locals, and the project
 /// table lists the files the shared locals name per symbol.
 constexpr inline std::uint32_t index_format_version = 40;
 
@@ -320,7 +320,7 @@ struct ShardBlob {
 /// file with its TU's resolutions there and the keys it walked; the
 /// master merges them into the file's blob, which records who walked each
 /// key.
-struct InstantiationBlob {
+struct InstantiationShardBlob {
     /// index_format_version, gated by InstantiationShard::from_buffer.
     std::uint32_t format_version = 0;
 
@@ -474,14 +474,14 @@ struct TUIndexBlob {
     std::string diagnostics;
 };
 
-/// The global layer's persisted form, read in place: the FileVersion table
+/// The project table's persisted form, read in place: the FileVersion table
 /// as parallel columns, the symbol table as parallel columns in hash order
 /// with its names, arguments and reference bitmaps in arenas, and the path
 /// table those columns index.
-struct GlobalBlob {
+struct ProjectTableBlob {
     std::uint32_t format_version = 0;
 
-    /// See ProjectIndex::global_generation.
+    /// See ProjectIndex::table_generation.
     std::uint64_t generation = 0;
 
     std::uint32_t next_fv_id = 0;
@@ -533,11 +533,11 @@ struct GlobalBlob {
 
     /// tu_fv -> generation of every manifest current at this save.
     /// The loader adopts a manifest blob only on an exact generation match, so
-    /// a manifest whose write failed while the global was persisted (or one that
-    /// outran a lost global write) reads as lost and its TU reindexes,
+    /// a manifest whose write failed while the project table was persisted (or one that
+    /// outran a lost project table write) reads as lost and its TU reindexes,
     /// instead of an older on-disk manifest serving as current.
     std::vector<std::uint32_t> manifest_fvs;
-    std::vector<std::uint64_t> manifest_gens;
+    std::vector<std::uint64_t> manifest_generations;
 
     /// The generation of the search blob this table was saved with, and
     /// the entries and the files whose names of internal linkage (path
@@ -570,7 +570,7 @@ constexpr std::uint32_t search_format_version = 3;
 /// which is the doc id order every bitmap speaks; the arenas hold the
 /// names back to back with one end offset per entry; posting arenas hold
 /// posting lists over the docs (write_postings) the same way.
-struct SearchBlob {
+struct SearchIndexBlob {
     std::uint32_t format_version = 0;
     std::uint32_t search_version = 0;
     /// See SearchSnapshot::generation.
@@ -631,10 +631,10 @@ struct SearchBlob {
 /// varint-packed by hand: a big TU enters thousands of files, and LEB128
 /// on the small ids and lines roughly halves the blob against fixed-width
 /// columns.
-struct ManifestBlob {
+struct TUManifestBlob {
     std::uint32_t format_version = 0;
 
-    std::uint64_t global_gen = 0;
+    std::uint64_t table_generation = 0;
 
     std::uint64_t built_at = 0;
 
