@@ -480,6 +480,34 @@ ZEST_CASE(LocalSymbolNames) {
     ZASSERT(!shard.find_symbol(external).has_value());
 }
 
+ZEST_CASE(LocalSymbolParentsAndSignatures) {
+    // A local's parent is an id into the blob's own symbol table, so the
+    // parent joins the table even where no entry names it; signatures and
+    // arguments are stored for the few locals having them.
+    build_index(R"(
+        static int §(fn)⟦§(fn)twice⟧(int §(param)⟦§(param)value⟧) {
+            return §(use)⟦§(use)value⟧ * 2;
+        }
+        int visible() { return twice(1); }
+    )");
+
+    auto shard = make_shard(focus_blob());
+    auto function = hash_at(shard, point("fn"));
+    auto parameter = hash_at(shard, point("use"));
+    ZASSERT(function != 0);
+    ZASSERT(parameter != 0);
+    auto function_identity = shard.find_symbol(function);
+    ZASSERT(function_identity);
+    ZASSERT(function_identity->name == "twice");
+    ZASSERT(!function_identity->signature.empty());
+    auto parameter_identity = shard.find_symbol(parameter);
+    ZASSERT(parameter_identity);
+    ZASSERT(parameter_identity->name == "value");
+    ZASSERT(parameter_identity->parent == function);
+    ZASSERT(parameter_identity->signature.empty());
+    ZASSERT(parameter_identity->args.empty());
+}
+
 ZEST_CASE(MergedLocalFlagsUnion) {
     // Variants of one file can see different facts of a local symbol (a
     // definition behind `#ifdef`, `struct` declaring what `class` defines);
@@ -627,15 +655,14 @@ ZEST_CASE(ReservedLocalParentRejected) {
     blob.format_version = index::index_format_version;
     fill_content(blob, "aaåå");
     blob.variants = {1};
-    blob.sym_hashes = {111};
-    blob.sym_rel_offsets = {0, 0};
-    blob.local_syms = {0};
-    blob.local_names = {"helper"};
+    blob.sym_hashes = {111, ~std::uint64_t(0)};
+    blob.sym_rel_offsets = {0, 0, 0};
+    blob.local_syms.ids8 = {0};
+    blob.local_names = "helper";
+    blob.local_name_ends.ids8 = {6};
     blob.local_kinds = {0};
     blob.local_scopes = {1};
-    blob.local_args = {""};
-    blob.local_signatures = {""};
-    blob.local_parents = {0};
+    blob.local_parents.ids8 = {0};
     blob.local_flags = {0};
     blob.local_token_kinds = {0};
     blob.local_token_modifiers = {0};
@@ -648,13 +675,29 @@ ZEST_CASE(ReservedLocalParentRejected) {
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
-    blob.local_parents = {~std::uint64_t(0)};
+    blob.local_parents.ids8 = {2};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // So does a token kind past the enum: it indexes the legend's tables.
-    blob.local_parents = {0};
+    blob.local_parents.ids8 = {0};
     blob.local_token_kinds = {200};
     ZASSERT(!make_shard(bytes_of()).loaded());
+    blob.local_token_kinds = {0};
+
+    // An argument list stored empty is the absent entry's to spell.
+    blob.local_args_of.ids8 = {0};
+    blob.local_args_ends.ids8 = {0};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+    blob.local_args = "<int>";
+    blob.local_args_ends.ids8 = {5};
+    auto shard = make_shard(bytes_of());
+    ZASSERT(shard.loaded());
+    auto helper = shard.find_symbol(111);
+    ZASSERT(helper.has_value());
+    ZASSERT(helper->name == "helper");
+    ZASSERT(helper->args == "<int>");
+    ZASSERT(helper->signature.empty());
+    ZASSERT(helper->parent == 0);
 }
 
 ZEST_CASE(ContentHashMismatchRejected) {

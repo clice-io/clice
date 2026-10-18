@@ -24,8 +24,8 @@ inline bool is_no_range(std::uint32_t begin, std::uint32_t end) {
     return LocalSourceRange{begin, end} == LocalSourceRange{};
 }
 
-/// The symbol-id column of one entry table in whichever width the blob
-/// stores; validation proves exactly one width is present.
+/// An id column in whichever width the blob stores; validation proves
+/// exactly one width is present.
 struct SymIds {
     llvm::ArrayRef<std::uint8_t> ids8;
     llvm::ArrayRef<std::uint16_t> ids16;
@@ -43,6 +43,30 @@ struct SymIds {
             return ids16[i];
         }
         return ids32[i];
+    }
+
+    /// The first position whose id is not below `id`, in an ascending
+    /// column.
+    std::size_t lower_bound(std::uint32_t id) const {
+        auto positions = std::views::iota(std::size_t(0), size());
+        auto it =
+            std::ranges::lower_bound(positions, id, {}, [&](std::size_t i) { return (*this)[i]; });
+        return static_cast<std::size_t>(it - positions.begin());
+    }
+
+    /// Where an ascending column holds `id`.
+    std::optional<std::size_t> find(std::uint32_t id) const {
+        auto i = lower_bound(id);
+        if(i == size() || (*this)[i] != id) {
+            return std::nullopt;
+        }
+        return i;
+    }
+
+    /// Entry `i` of a text whose entries end at the offsets of this column,
+    /// back to back.
+    llvm::StringRef slice(llvm::StringRef text, std::size_t i) const {
+        return text.slice(i == 0 ? 0 : (*this)[i - 1], (*this)[i]);
     }
 };
 
@@ -192,23 +216,23 @@ inline bool sparse_ok(llvm::ArrayRef<std::uint32_t> entries,
            (entries.empty() || entries.back() < count);
 }
 
-/// Exactly one id width, chosen by the symbol table's size, one id per entry
-/// and every id inside the table.
+/// Exactly one id width, chosen by the table's size, one id per entry and
+/// every id inside the table.
 inline CheckResult sym_ids_ok(const SymIds& ids, std::size_t count, std::size_t table_size) {
     if(ids.size() != count) {
-        return std::unexpected("symbol id column does not match the row count");
+        return std::unexpected("id column does not match the entry count");
     }
     bool width_ok = table_size <= 0x100     ? ids.ids16.empty() && ids.ids32.empty()
                     : table_size <= 0x10000 ? ids.ids8.empty() && ids.ids32.empty()
                                             : ids.ids8.empty() && ids.ids16.empty();
     if(!width_ok) {
-        return std::unexpected("symbol id width is not the canonical one");
+        return std::unexpected("id width is not the canonical one");
     }
     auto in_table = [&](auto column) {
         return llvm::all_of(column, [&](std::uint32_t id) { return id < table_size; });
     };
     if(!in_table(ids.ids8) || !in_table(ids.ids16) || !in_table(ids.ids32)) {
-        return std::unexpected("symbol id past the symbol table");
+        return std::unexpected("id past its table");
     }
     return {};
 }
@@ -250,8 +274,35 @@ struct RangeWriter {
     }
 };
 
-/// Appends symbol ids in the width chosen for the whole blob from the
-/// symbol table's size.
+/// An ascending column of `count` ids into a table of `table_size`;
+/// `strict` forbids repeats.
+inline CheckResult
+    ascending_ids_ok(const SymIds& ids, std::size_t count, std::size_t table_size, bool strict) {
+    if(auto ok = sym_ids_ok(ids, count, table_size); !ok) {
+        return ok;
+    }
+    for(std::size_t i = 1; i < count; i += 1) {
+        if(strict ? ids[i] <= ids[i - 1] : ids[i] < ids[i - 1]) {
+            return std::unexpected("id column is not ascending");
+        }
+    }
+    return {};
+}
+
+/// The end offsets of `count` entries of a text of `text_size` bytes, back
+/// to back.
+inline CheckResult ends_ok(const SymIds& ends, std::size_t count, std::size_t text_size) {
+    if(auto ok = ascending_ids_ok(ends, count, text_size + 1, false); !ok) {
+        return ok;
+    }
+    if(count == 0 ? text_size != 0 : ends[count - 1] != text_size) {
+        return std::unexpected("end offsets do not cover their text");
+    }
+    return {};
+}
+
+/// Appends ids in the width chosen for the whole column from its table's
+/// size.
 struct SymIdWriter {
     enum class Width : std::uint8_t { U8, U16, U32 };
 
@@ -279,6 +330,14 @@ inline SymIdWriter id_writer(IdColumn& column, std::size_t table_size) {
             .ids8 = column.ids8,
             .ids16 = column.ids16,
             .ids32 = column.ids32};
+}
+
+/// Fill `column` with `ids` into a table of `table_size` entries.
+inline void write_ids(IdColumn& column, llvm::ArrayRef<std::uint32_t> ids, std::size_t table_size) {
+    auto writer = id_writer(column, table_size);
+    for(auto id: ids) {
+        writer.add(id);
+    }
 }
 
 }  // namespace clice::index

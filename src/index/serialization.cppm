@@ -139,6 +139,16 @@ constexpr inline std::uint32_t pack_range(std::uint32_t begin, std::uint8_t leng
 /// past a begin that already sits at the content limit.
 constexpr inline std::uint32_t packed_sentinel = 0xffffffff;
 
+/// A column of ids into a table, in the width the table's size picks: u8
+/// up to 256 entries, u16 up to 65536, u32 beyond. Exactly one width is
+/// present. End offsets into a text of `n` bytes are ids into a table of
+/// `n + 1`.
+struct IdColumn {
+    std::vector<std::uint8_t> ids8;
+    std::vector<std::uint16_t> ids16;
+    std::vector<std::uint32_t> ids32;
+};
+
 /// One side of the blob's entry storage (occurrences or relations).
 ///
 /// Ranges use exactly one of two self-describing encodings:
@@ -213,8 +223,9 @@ struct ShardBlob {
     /// whose bytes tell.
     std::vector<std::uint64_t> crlf_lines;
 
-    /// Referenced symbols, sorted by hash; the index into this table is
-    /// the symbol id the entry columns use.
+    /// Referenced symbols and the parents of the local ones, sorted by
+    /// hash; the index into this table is the symbol id the entry columns
+    /// use.
     std::vector<std::uint64_t> sym_hashes;
 
     /// Relation slice per symbol: entry i's relations occupy positions
@@ -223,13 +234,23 @@ struct ShardBlob {
 
     /// Symbols local to this file (FileLocal) or its TU (TULocal), whose
     /// names live nowhere else: sparse over the symbol table, ascending.
-    std::vector<std::uint32_t> local_syms;
-    std::vector<std::string> local_names;
+    IdColumn local_syms;
+    /// Names back to back, an end offset each.
+    std::string local_names;
+    IdColumn local_name_ends;
+    /// Arguments and signatures of the few locals having them: those
+    /// locals' positions in `local_syms`, ascending, and their text back
+    /// to back.
+    IdColumn local_args_of;
+    std::string local_args;
+    IdColumn local_args_ends;
+    IdColumn local_signatures_of;
+    std::string local_signatures;
+    IdColumn local_signature_ends;
     std::vector<std::uint8_t> local_kinds;
     std::vector<std::uint8_t> local_scopes;
-    std::vector<std::string> local_args;
-    std::vector<std::string> local_signatures;
-    std::vector<std::uint64_t> local_parents;
+    /// The parent's symbol id plus one; 0 for none.
+    IdColumn local_parents;
     std::vector<std::uint16_t> local_flags;
     std::vector<std::uint8_t> local_token_kinds;
     std::vector<std::uint32_t> local_token_modifiers;
@@ -251,15 +272,6 @@ struct ShardBlob {
     std::vector<std::uint32_t> rel_def_entries;
     std::vector<std::uint32_t> rel_def_begins;
     std::vector<std::uint32_t> rel_def_ends;
-};
-
-/// A column of ids into a table, in the width the table's size picks: u8
-/// up to 256 entries, u16 up to 65536, u32 beyond. Exactly one width is
-/// present.
-struct IdColumn {
-    std::vector<std::uint8_t> ids8;
-    std::vector<std::uint16_t> ids16;
-    std::vector<std::uint32_t> ids32;
 };
 
 /// A file's instantiation shard as one persisted blob: what the template

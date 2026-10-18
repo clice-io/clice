@@ -203,11 +203,18 @@ struct RelationTable {
 /// The local-name table: the symbols whose identities live in no other
 /// table, sparse over the symbol table in ascending id order.
 struct LocalTable {
-    BlobView root;
-    llvm::ArrayRef<std::uint32_t> syms;
+    SymIds syms;
+    llvm::StringRef names;
+    SymIds name_ends;
+    SymIds args_of;
+    llvm::StringRef args;
+    SymIds args_ends;
+    SymIds signatures_of;
+    llvm::StringRef signatures;
+    SymIds signature_ends;
     llvm::ArrayRef<std::uint8_t> kinds;
     llvm::ArrayRef<std::uint8_t> scopes;
-    llvm::ArrayRef<std::uint64_t> parents;
+    SymIds parents;
     llvm::ArrayRef<std::uint16_t> flags;
     llvm::ArrayRef<std::uint8_t> token_kinds;
     llvm::ArrayRef<std::uint32_t> token_modifiers;
@@ -215,11 +222,18 @@ struct LocalTable {
 
     static LocalTable of(BlobView root) {
         return {
-            .root = root,
-            .syms = to_array_ref(root[&ShardBlob::local_syms]),
+            .syms = ids_of(root[&ShardBlob::local_syms]),
+            .names = to_ref(root[&ShardBlob::local_names]),
+            .name_ends = ids_of(root[&ShardBlob::local_name_ends]),
+            .args_of = ids_of(root[&ShardBlob::local_args_of]),
+            .args = to_ref(root[&ShardBlob::local_args]),
+            .args_ends = ids_of(root[&ShardBlob::local_args_ends]),
+            .signatures_of = ids_of(root[&ShardBlob::local_signatures_of]),
+            .signatures = to_ref(root[&ShardBlob::local_signatures]),
+            .signature_ends = ids_of(root[&ShardBlob::local_signature_ends]),
             .kinds = to_array_ref(root[&ShardBlob::local_kinds]),
             .scopes = to_array_ref(root[&ShardBlob::local_scopes]),
-            .parents = to_array_ref(root[&ShardBlob::local_parents]),
+            .parents = ids_of(root[&ShardBlob::local_parents]),
             .flags = to_array_ref(root[&ShardBlob::local_flags]),
             .token_kinds = to_array_ref(root[&ShardBlob::local_token_kinds]),
             .token_modifiers = to_array_ref(root[&ShardBlob::local_token_modifiers]),
@@ -237,19 +251,19 @@ struct LocalTable {
 
     /// The entry of symbol id `id`, if the symbol is local.
     std::optional<std::size_t> find(std::uint32_t id) const {
-        auto it = std::ranges::lower_bound(syms, id);
-        if(it == syms.end() || *it != id) {
-            return std::nullopt;
-        }
-        return static_cast<std::size_t>(it - syms.begin());
+        return syms.find(id);
     }
 
     SymbolIdentity at(std::size_t k) const {
+        auto id = static_cast<std::uint32_t>(k);
+        auto args_at = args_of.find(id);
+        auto signature_at = signatures_of.find(id);
         return {
-            .name = to_ref(root[&ShardBlob::local_names].at(k)),
-            .args = to_ref(root[&ShardBlob::local_args].at(k)),
-            .signature = to_ref(root[&ShardBlob::local_signatures].at(k)),
-            .parent = parents[k],
+            .name = name_ends.slice(names, k),
+            .args = args_at ? args_ends.slice(args, *args_at) : llvm::StringRef(),
+            .signature =
+                signature_at ? signature_ends.slice(signatures, *signature_at) : llvm::StringRef(),
+            .parent = parents[k] == 0 ? 0 : sym_hashes[parents[k] - 1],
             .kind = SymbolKind(kinds[k]),
             .scope = static_cast<SymbolScope>(scopes[k]),
             .flags = static_cast<SymbolFlags>(flags[k]),
@@ -500,19 +514,48 @@ CheckResult relations_ok(BlobView root) {
 
 CheckResult locals_ok(BlobView root) {
     auto table = LocalTable::of(root);
-    if(!sparse_ok(table.syms, table.kinds.size(), table.sym_hashes.size()) ||
-       table.scopes.size() != table.size() || table.parents.size() != table.size() ||
-       table.flags.size() != table.size() || table.token_kinds.size() != table.size() ||
-       table.token_modifiers.size() != table.size() || !all_token_kinds(table.token_kinds) ||
-       root[&ShardBlob::local_names].size() != table.size() ||
-       root[&ShardBlob::local_args].size() != table.size() ||
-       root[&ShardBlob::local_signatures].size() != table.size()) {
+    auto count = table.size();
+    auto table_size = table.sym_hashes.size();
+    if(auto ok = ascending_ids_ok(table.syms, count, table_size, true); !ok) {
+        return ok;
+    }
+    if(table.kinds.size() != count || table.scopes.size() != count || table.flags.size() != count ||
+       table.token_kinds.size() != count || table.token_modifiers.size() != count ||
+       !all_token_kinds(table.token_kinds)) {
         return std::unexpected("local symbol columns do not line up");
+    }
+    if(auto ok = ends_ok(table.name_ends, count, table.names.size()); !ok) {
+        return ok;
+    }
+    // The few locals with arguments or a signature: ascending positions,
+    // each text non-empty — an empty one is the absent entry's to spell.
+    auto texts_ok = [&](const SymIds& of, llvm::StringRef text, const SymIds& ends) -> CheckResult {
+        if(auto ok = ascending_ids_ok(of, of.size(), count, true); !ok) {
+            return ok;
+        }
+        if(auto ok = ends_ok(ends, of.size(), text.size()); !ok) {
+            return ok;
+        }
+        for(std::size_t i = 0; i < of.size(); i += 1) {
+            if(ends.slice(text, i).empty()) {
+                return std::unexpected("an empty local argument or signature stored");
+            }
+        }
+        return {};
+    };
+    if(auto ok = texts_ok(table.args_of, table.args, table.args_ends); !ok) {
+        return ok;
+    }
+    if(auto ok = texts_ok(table.signatures_of, table.signatures, table.signature_ends); !ok) {
+        return ok;
+    }
+    if(auto ok = sym_ids_ok(table.parents, count, table_size + 1); !ok) {
+        return ok;
     }
     // A local symbol's parent becomes a DenseSet key in a query's container
     // walk, where the sentinel values corrupt or assert.
-    for(auto parent: table.parents) {
-        if(reserved_key(parent)) {
+    for(std::size_t k = 0; k < count; k += 1) {
+        if(table.parents[k] != 0 && reserved_key(table.sym_hashes[table.parents[k] - 1])) {
             return std::unexpected("reserved local parent hash");
         }
     }
@@ -1355,7 +1398,21 @@ void emit_blob(const MergedEntries<MaskT>& merged,
                std::vector<VariantHash> variants,
                const ContentInfo& content,
                llvm::raw_ostream& os) {
-    auto referenced = referenced_symbols(merged);
+    // The locals the entries name; their parents join the symbol table,
+    // which their parent column indexes.
+    auto symbols = referenced_symbols(merged);
+    llvm::SmallVector<std::pair<SymbolHash, const LocalSymbol*>> kept;
+    for(auto& [hash, info]: locals) {
+        if(symbols.contains(hash)) {
+            kept.emplace_back(hash, &info);
+        }
+    }
+    std::ranges::sort(kept, {}, [](const auto& entry) { return entry.first; });
+    for(auto& entry: kept) {
+        if(entry.second->parent != 0) {
+            symbols.insert(entry.second->parent);
+        }
+    }
 
     ShardBlob blob;
     blob.format_version = index_format_version;
@@ -1368,33 +1425,49 @@ void emit_blob(const MergedEntries<MaskT>& merged,
     blob.crlf_lines = content.crlf_lines;
     blob.variants = std::move(variants);
 
-    blob.sym_hashes.assign(referenced.begin(), referenced.end());
+    blob.sym_hashes.assign(symbols.begin(), symbols.end());
     std::ranges::sort(blob.sym_hashes);
     auto sym_id = [&](SymbolHash hash) {
         return static_cast<std::uint32_t>(std::ranges::lower_bound(blob.sym_hashes, hash) -
                                           blob.sym_hashes.begin());
     };
 
-    llvm::SmallVector<std::pair<std::uint32_t, const LocalSymbol*>> sorted_locals;
-    sorted_locals.reserve(locals.size());
-    for(auto& [hash, info]: locals) {
-        if(referenced.contains(hash)) {
-            sorted_locals.emplace_back(sym_id(hash), &info);
+    std::vector<std::uint32_t> local_ids;
+    std::vector<std::uint32_t> name_ends;
+    std::vector<std::uint32_t> args_of;
+    std::vector<std::uint32_t> args_ends;
+    std::vector<std::uint32_t> signatures_of;
+    std::vector<std::uint32_t> signature_ends;
+    std::vector<std::uint32_t> parents;
+    for(std::uint32_t k = 0; k < kept.size(); k += 1) {
+        auto& [hash, info] = kept[k];
+        local_ids.push_back(sym_id(hash));
+        blob.local_names += info->name;
+        name_ends.push_back(static_cast<std::uint32_t>(blob.local_names.size()));
+        if(!info->args.empty()) {
+            args_of.push_back(k);
+            blob.local_args += info->args;
+            args_ends.push_back(static_cast<std::uint32_t>(blob.local_args.size()));
         }
-    }
-    std::ranges::sort(sorted_locals, {}, [](const auto& entry) { return entry.first; });
-    for(auto& [id, info]: sorted_locals) {
-        blob.local_syms.push_back(id);
-        blob.local_names.push_back(info->name);
+        if(!info->signature.empty()) {
+            signatures_of.push_back(k);
+            blob.local_signatures += info->signature;
+            signature_ends.push_back(static_cast<std::uint32_t>(blob.local_signatures.size()));
+        }
+        parents.push_back(info->parent == 0 ? 0 : sym_id(info->parent) + 1);
         blob.local_kinds.push_back(info->kind.value());
         blob.local_scopes.push_back(static_cast<std::uint8_t>(info->scope));
-        blob.local_args.push_back(info->args);
-        blob.local_signatures.push_back(info->signature);
-        blob.local_parents.push_back(info->parent);
         blob.local_flags.push_back(static_cast<std::uint16_t>(info->flags));
         blob.local_token_kinds.push_back(static_cast<std::uint8_t>(info->token_class.kind));
         blob.local_token_modifiers.push_back(info->token_class.modifiers);
     }
+    write_ids(blob.local_syms, local_ids, blob.sym_hashes.size());
+    write_ids(blob.local_name_ends, name_ends, blob.local_names.size() + 1);
+    write_ids(blob.local_args_of, args_of, kept.size());
+    write_ids(blob.local_args_ends, args_ends, blob.local_args.size() + 1);
+    write_ids(blob.local_signatures_of, signatures_of, kept.size());
+    write_ids(blob.local_signature_ends, signature_ends, blob.local_signatures.size() + 1);
+    write_ids(blob.local_parents, parents, blob.sym_hashes.size() + 1);
 
     auto encoding = encoding_of(blob.variants.empty() ? 1 : blob.variants.size());
     bool narrow = content.size <= packed_range_limit;
