@@ -94,9 +94,6 @@ private:
     /// Tick one source, its reload's delta merged into `delta`.
     void tick_source(TrackedSource& tracked, bool force, CDBDiff& delta);
 
-    /// discover_around's work, its delta merged into `delta`.
-    void discover_into(Fid path_id, CDBDiff& delta);
-
     /// The files the source and another one both list: the ones whose
     /// default entry may move with the source's presence.
     llvm::SmallVector<Fid> shared_files(SourceID id) const;

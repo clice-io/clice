@@ -145,34 +145,6 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
     delta.append(*diff);
 }
 
-void CDBWatcher::discover_into(Fid path_id, CDBDiff& found) {
-    if(project.build.declares_sources() || !project.build.entries(path_id).empty()) {
-        return;
-    }
-    auto path = project.file_table.resolve(path_id);
-    if(!path::under(path, root)) {
-        return;
-    }
-    // A registered database whose load failed so far (absent at startup,
-    // unreadable at an earlier open) gets another try: with polling off
-    // nothing else would.
-    for(auto& database: compile_commands_above(path.parent(), root)) {
-        auto registered = project.cdb.find_source(database);
-        if((registered && project.cdb.loaded(*registered)) ||
-           (!registered && project.cdb.find_same_file(database))) {
-            continue;
-        }
-        auto id = registered ? *registered : project.cdb.add_source(database);
-        if(auto diff = project.cdb.reload_and_diff(id)) {
-            LOG_INFO("Found compilation database: {}", database);
-            found.append(*diff);
-        }
-        if(!registered) {
-            track(id);
-        }
-    }
-}
-
 void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     auto& disk = project.file_table.disk;
     if(!root_flag) {
@@ -263,7 +235,31 @@ CDBDiff CDBWatcher::tick(llvm::ArrayRef<Fid> open_files, bool force) {
 
 CDBDiff CDBWatcher::discover_around(Fid path_id) {
     CDBDiff found;
-    discover_into(path_id, found);
+    if(project.build.declares_sources() || !project.build.entries(path_id).empty()) {
+        return found;
+    }
+    auto path = project.file_table.resolve(path_id);
+    if(!path::under(path, root)) {
+        return found;
+    }
+    // A registered database whose load failed so far (absent at startup,
+    // unreadable at an earlier open) gets another try: with polling off
+    // nothing else would.
+    for(auto& database: compile_commands_above(path.parent(), root)) {
+        auto registered = project.cdb.find_source(database);
+        if((registered && project.cdb.loaded(*registered)) ||
+           (!registered && project.cdb.find_same_file(database))) {
+            continue;
+        }
+        auto id = registered ? *registered : project.cdb.add_source(database);
+        if(auto diff = project.cdb.reload_and_diff(id)) {
+            LOG_INFO("Found compilation database: {}", database);
+            found.append(*diff);
+        }
+        if(!registered) {
+            track(id);
+        }
+    }
     return found;
 }
 
