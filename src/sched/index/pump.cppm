@@ -4,7 +4,8 @@ module;
 
 module clice:sched.index.pump;
 
-import :project.index_store;
+import :index.project_index;
+import :project.command_resolver;
 import :project.project;
 import :sched.families.turun;
 import :sched.graph;
@@ -25,7 +26,8 @@ struct IndexerFixture;
 /// drives disk files through TURun rounds. It owns the queue, the debt
 /// table with its take/finish contract and requeue budget, the idle
 /// batching timer and the feeder window — and nothing about what a run
-/// produces (the TURun family) or where results live (the IndexStore).
+/// produces (the TURun family) or where results live (the project's
+/// index).
 ///
 /// The pump is serving-neutral: it never sees a SessionStore. The serving
 /// side injects its policy through `compiled_by_session` and
@@ -34,8 +36,8 @@ class IndexPump {
 public:
     IndexPump(kota::event_loop& loop,
               Project& project,
+              CommandResolver& commands,
               TURunFamily& turun,
-              IndexStore& store,
               WorkerPool& pool);
 
     /// Invoked when an index attempt finished with no retry pending, before
@@ -53,7 +55,7 @@ public:
     /// side enqueues the file again when the document closes.
     std::function<bool(Fid path_id)> compiled_by_session;
 
-    /// Emitted when store shards that may be index-served changed (merged,
+    /// Emitted when shards that may be index-served changed (merged,
     /// re-masked, dropped or shed). Carries the affected path_ids; the
     /// serving adapter checks which of them an open session serves and
     /// refreshes those clients.
@@ -144,19 +146,19 @@ public:
     /// previously scheduled idle window would starve the reader).
     void schedule(bool immediate = false);
 
-    /// Take a store report: book its reindex debt into the table — before
+    /// Take an index report: book its reindex debt into the table — before
     /// the current attempt finishes and its waiters wake, so a waker never
     /// observes an index as current that the report just declared stale —
     /// and report its serving-index changes through on_index_changed.
-    void apply_report(const IndexStore::Report& report);
+    void apply_report(const index::IndexReport& report);
 
-    /// The pump debt a save()'s CDB snapshot persists: files whose latest
+    /// The pump debt a save's command snapshot persists: files whose latest
     /// attempt failed for good plus everything still booked in the table.
     llvm::SmallVector<Fid> save_debt() const;
 
     /// Save the index with this pump's debt and take the report, again
     /// while a save owes a retry (a grown map can still be too small).
-    kota::task<> persist(IndexStore::SearchRebuild search = IndexStore::SearchRebuild::Behind);
+    kota::task<> persist(index::SearchRebuild search = index::SearchRebuild::Behind);
 
     /// Cancel background indexing and wait for all tasks to finish.
     kota::task<> stop();
@@ -229,8 +231,8 @@ private:
     kota::event_loop& loop;
     kota::task_group<> bg_tasks;
     Project& project;
+    CommandResolver& commands;
     TURunFamily& turun;
-    IndexStore& store;
     WorkerPool& pool;
 
     /// Background indexing queue and scheduling state. The pending table tracks

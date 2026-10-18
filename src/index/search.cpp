@@ -47,23 +47,23 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
     auto& files = index.file_table();
     std::vector<Ranked> hits;
     llvm::DenseSet<SymbolHash> seen;
-    auto indexed = project.search_index.search(query, limit, project.workspace);
+    auto indexed = project.search_index().search(query, limit, project.workspace);
     // A damaged index answers incompletely, a missing one not at all:
     // until the rebuild the whole table is judged symbol by symbol instead.
-    bool scan_table = project.search_index.damaged() || !project.search_index.loaded();
+    bool scan_table = project.search_index().damaged() || !project.search_index().loaded();
     bool exhausted = scan_table || indexed.exhausted;
     if(!scan_table) {
         for(auto& hit: indexed.hits) {
             // A symbol the table changed since the index was built is read
             // from the table below, not from the index's stale copy.
-            if(project.search_pending.contains(hit.hash)) {
+            if(project.search_pending().contains(hit.hash)) {
                 continue;
             }
             Fid anchor;
             if(!hit.file.empty()) {
                 anchor = files.find(project.local(hit.file)).value_or(Fid{});
                 // Read from the file's shard below.
-                if(project.search_pending_files.contains(anchor)) {
+                if(project.search_pending_files().contains(anchor)) {
                     continue;
                 }
             }
@@ -147,7 +147,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
                 return true;
             });
     } else {
-        for(auto hash: project.search_pending) {
+        for(auto hash: project.search_pending()) {
             if(auto symbol = project.find_symbol(hash)) {
                 consider_symbol(hash, *symbol, project.reference_count(hash));
             }
@@ -156,7 +156,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
     // The names of internal linkage of the files merged since the build
     // live in their shards alone.
     if(!query.external_only) {
-        for(auto file: project.search_pending_files) {
+        for(auto file: project.search_pending_files()) {
             auto* shard = index.declaring_shard(file);
             if(!shard) {
                 continue;

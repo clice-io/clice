@@ -7,8 +7,9 @@ module;
 module clice;
 
 import :index.database;
+import :index.project_index;
+import :project.command_snapshot;
 import :project.configuration;
-import :project.index_store;
 import :project.load;
 import :project.open_index;
 import :support.logging;
@@ -65,7 +66,7 @@ bool open_index(Project& project, Config config, llvm::StringRef requested_confi
     if(!open_database(project, std::move(config), requested_configuration)) {
         return false;
     }
-    if(!project.index.open(*project.database, project.file_table)) {
+    if(!project.index.open(*project.database)) {
         LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
                   std::string_view(project.config.project.cache_dir));
         return false;
@@ -81,11 +82,8 @@ std::optional<LoadedIndex> load_index(Project& project,
     if(!open_database(project, std::move(config), requested_configuration)) {
         return std::nullopt;
     }
-    // The store is the writer's engine; its load is the only reader of
-    // manifests, and never saves on a read-only database.
-    kota::event_loop loop;
-    IndexStore store{loop, project, commands};
-    auto loaded = store.load({.read_only = true, .borrow = true});
+    // The writer's load, read-only: it never saves on a read-only database.
+    auto loaded = load_saved(project, commands, {.read_only = true, .borrow = true});
     if(!loaded.decoded) {
         LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
                   std::string_view(project.config.project.cache_dir));
@@ -100,11 +98,12 @@ std::optional<LoadedIndex> load_index(Project& project,
     }
     LoadedIndex result;
     result.dropped.assign(loaded.report.reindex().begin(), loaded.report.reindex().end());
-    result.contexts = std::move(store.contexts.bytes);
+    result.contexts = std::move(project.contexts.bytes);
     // With no pump attached the load report's debt can only be the
     // recovery drops: every TU's blobs were missing, stale, or corrupt — a
     // damaged cache, not a legitimately empty one.
-    if(project.index.manifests.empty() && project.index.shards.empty() && !result.dropped.empty()) {
+    if(project.index.manifest_count() == 0 && project.index.shard_count() == 0 &&
+       !result.dropped.empty()) {
         LOG_ERROR(
             "Index cache at {} has no servable data ({} translation units need "
             "reindexing); run `clice index` to rebuild",
@@ -113,7 +112,7 @@ std::optional<LoadedIndex> load_index(Project& project,
         return std::nullopt;
     }
     if(with_build) {
-        auto remembered = store.remembered();
+        auto remembered = CommandSnapshot::remembered(project);
         load_build(project,
                    project.config.workspace_root,
                    project.build.active_configuration(),

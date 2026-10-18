@@ -624,16 +624,12 @@ std::optional<SymbolInfo> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) c
             return found;
         }
     }
-    for(auto& [path_id, shard]: index.shards) {
-        if(!shard.loaded()) {
-            continue;
-        }
-        if(auto identity = shard.find_symbol(hash)) {
+    index.for_each_shard([&](Fid, const Shard& shard) {
+        if(auto identity = found ? std::nullopt : shard.find_symbol(hash)) {
             adopt(*identity);
-            return found;
         }
-    }
-    return std::nullopt;
+    });
+    return found;
 }
 
 llvm::SmallVector<SymbolInfo, 4> IndexQuery::container_chain(SymbolHash hash, Fid anchor) const {

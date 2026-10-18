@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :index.instantiation_shard;
+import :index.project_index;
 import :server.live_sources;
 
 namespace clice {
@@ -43,10 +44,10 @@ index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kin
             source.instantiations.push_back(&state.instantiation_shard(*section));
         }
     }
-    auto it = project.index.instantiations.find(file);
-    if(kind != index::IndexSource::Kind::PreambleShard &&
-       it != project.index.instantiations.end() && it->second.content_hash() == session.hash) {
-        source.instantiations.push_back(&it->second);
+    auto* stored = project.index.instantiation_shard(file);
+    if(kind != index::IndexSource::Kind::PreambleShard && stored &&
+       stored->content_hash() == session.hash) {
+        source.instantiations.push_back(stored);
     }
     return source;
 }
@@ -73,12 +74,11 @@ std::optional<index::IndexSource> ServerLiveSources::buffer_index(Fid file) cons
     if(auto* shard = session_shard(file, *session)) {
         return buffer_source(index::IndexSource::Kind::SessionShard, file, *session, *shard);
     }
-    auto it = project.index.shards.find(file);
-    if(it == project.index.shards.end() ||
-       !it->second.matches_content(session->text().size(), session->hash)) {
+    auto* shard = project.index.shard(file);
+    if(!shard || !shard->matches_content(session->text().size(), session->hash)) {
         return std::nullopt;
     }
-    return buffer_source(index::IndexSource::Kind::Shard, file, *session, it->second);
+    return buffer_source(index::IndexSource::Kind::Shard, file, *session, *shard);
 }
 
 void ServerLiveSources::for_each_session(

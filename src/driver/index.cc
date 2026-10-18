@@ -14,12 +14,12 @@ import :index.instantiation_shard;
 import :index.project_index;
 import :index.query;
 import :index.search_index;
+import :index.shard;
 import :index.symbol_query;
 import :index.tu_manifest;
 import :index.writer_lock;
 import :project.command_resolver;
 import :project.configuration;
-import :project.index_store;
 import :project.open_index;
 import :project.project;
 import :sched.batch;
@@ -350,8 +350,8 @@ IndexStats collect_stats(Project& project) {
     IndexStats stats;
     auto& project_index = project.index;
 
-    stats.shards.reserve(project.index.shards.size());
-    for(auto& [path_id, shard]: project.index.shards) {
+    stats.shards.reserve(project_index.shard_count());
+    project_index.for_each_shard([&](Fid path_id, const index::Shard& shard) {
         ShardStat stat{.path = project.file_table.display(path_id),
                        .bytes = shard.bytes().size(),
                        .variants = shard.variants().size()};
@@ -369,32 +369,33 @@ IndexStats collect_stats(Project& project) {
         stats.variants_per_shard.add(stat.variants);
         index::measure_blob<index::ShardBlob>(shard.bytes(), stats.shard_fields);
         stats.shards.push_back(stat);
-    }
+    });
     std::ranges::sort(stats.shards, std::ranges::greater{}, &ShardStat::bytes);
 
-    for(auto& [path_id, instantiations]: project_index.instantiations) {
-        InstantiationStat stat{.path = project.file_table.display(path_id),
-                               .bytes = instantiations.bytes().size(),
-                               .resolutions = instantiations.resolutions().size(),
-                               .keys = instantiations.keys().size()};
-        instantiations.for_each_record([&](const index::InstantiationRecord&) {
-            stat.records += 1;
-            return true;
+    project_index.for_each_instantiation_shard(
+        [&](Fid path_id, const index::InstantiationShard& instantiations) {
+            InstantiationStat stat{.path = project.file_table.display(path_id),
+                                   .bytes = instantiations.bytes().size(),
+                                   .resolutions = instantiations.resolutions().size(),
+                                   .keys = instantiations.keys().size()};
+            instantiations.for_each_record([&](const index::InstantiationRecord&) {
+                stat.records += 1;
+                return true;
+            });
+            instantiations.for_each_key([&](const index::InstantiationShard::Key& key) {
+                stats.empty_keys += key.resolution ? 0 : 1;
+                stats.keys_per_template[key.pattern] += 1;
+                return true;
+            });
+            index::measure_blob<index::InstantiationShardBlob>(instantiations.bytes(),
+                                                               stats.instantiation_fields);
+            stats.instantiation_bytes += stat.bytes;
+            stats.stored_uses += instantiations.uses().size();
+            stats.resolutions += stat.resolutions;
+            stats.records += stat.records;
+            stats.keys += stat.keys;
+            stats.instantiations.push_back(std::move(stat));
         });
-        instantiations.for_each_key([&](const index::InstantiationShard::Key& key) {
-            stats.empty_keys += key.resolution ? 0 : 1;
-            stats.keys_per_template[key.pattern] += 1;
-            return true;
-        });
-        index::measure_blob<index::InstantiationShardBlob>(instantiations.bytes(),
-                                                           stats.instantiation_fields);
-        stats.instantiation_bytes += stat.bytes;
-        stats.stored_uses += instantiations.uses().size();
-        stats.resolutions += stat.resolutions;
-        stats.records += stat.records;
-        stats.keys += stat.keys;
-        stats.instantiations.push_back(std::move(stat));
-    }
     std::ranges::sort(stats.instantiations, std::ranges::greater{}, &InstantiationStat::bytes);
 
     project_index.for_each_symbol(
@@ -403,16 +404,16 @@ IndexStats collect_stats(Project& project) {
             stats.name_lengths.add(symbol.name.size());
             return true;
         });
-    for(auto& [tu, manifest]: project_index.manifests) {
+    project_index.for_each_manifest([&](Fid tu, const index::TUManifest& manifest) {
         stats.shared_locals += manifest.shared_locals.size();
         stats.unit_uses += manifest.instantiations.size();
-        if(auto blob = project.database->read(index::BlobKind::TUManifest,
-                                              project_index.key_of(project.file_table, tu))) {
+        if(auto blob =
+               project.database->read(index::BlobKind::TUManifest, project_index.key_of(tu))) {
             stats.manifest_bytes += blob.buffer->getBufferSize();
             index::measure_blob<index::TUManifestBlob>(blob.buffer->getBuffer(),
                                                        stats.manifest_fields);
         }
-    }
+    });
     auto& db = *project.database;
     if(auto blob = db.read(index::BlobKind::ProjectTable, "global")) {
         stats.table_bytes = blob.buffer->getBufferSize();
@@ -457,7 +458,7 @@ void print_stats(const Project& project,
         driver::println("Configuration: {}", configuration);
     }
     driver::println("Translation units: {} (manifests {}), {} internal symbols spanning files",
-                    project_index.manifests.size(),
+                    project_index.manifest_count(),
                     format_bytes(stats.manifest_bytes),
                     stats.shared_locals);
     driver::println("File shards: {} ({}), {} occurrences, {} relations",
@@ -480,9 +481,9 @@ void print_stats(const Project& project,
                     project_index.symbol_count(),
                     project.file_table.versions.size());
     driver::println("Search index: {} symbols ({}), {} merged since its build",
-                    project.index.search_index.size(),
+                    project.index.search_index().size(),
                     format_bytes(stats.search_bytes),
-                    project.index.search_pending.size());
+                    project.index.search_pending().size());
     if(!dropped.empty()) {
         driver::println(
             "Translation units pending reindex (stale or partially written): {}; "
@@ -591,7 +592,7 @@ void print_variants(const IndexStats& stats) {
 }
 
 int run_stats(Project& project, llvm::ArrayRef<Fid> dropped, std::uint32_t top, bool variants) {
-    if(project.index.manifests.empty() && project.index.shards.empty()) {
+    if(project.index.manifest_count() == 0 && project.index.shard_count() == 0) {
         driver::println("Index is empty; run `clice index` to build it.");
         return 0;
     }
@@ -710,7 +711,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
         // table's reference bitmaps, which a file-local symbol has no entry
         // in.
         std::map<std::string, Counts> per_file;
-        for(auto& [path_id, shard]: project.index.shards) {
+        project.index.for_each_shard([&](Fid path_id, const index::Shard& shard) {
             auto count = [&](RelationKind kind, std::size_t Counts::* field) {
                 shard.relations_of(hash, kind, [&](const index::Relation&) {
                     per_file[project.file_table.display(path_id)].*field += 1;
@@ -720,7 +721,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
             count(RelationKind::Definition, &Counts::definitions);
             count(RelationKind::Declaration, &Counts::declarations);
             count(RelationKind::Reference, &Counts::references);
-        }
+        });
         for(auto& [path, counts]: per_file) {
             driver::println("  {}: definitions={} declarations={} references={}",
                             path,
@@ -735,13 +736,13 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
 int run_show_file(Project& project, llvm::StringRef argument) {
     auto path = inspected_path(project, argument);
     auto file = project.file_table.find(path);
-    auto shard_it = file ? project.index.shards.find(*file) : project.index.shards.end();
-    if(shard_it == project.index.shards.end()) {
+    auto* found = file ? project.index.shard(*file) : nullptr;
+    if(!found) {
         driver::println("No entries for {} in the index.",
                         project.file_table.display(CanonicalPath(path)));
         return 1;
     }
-    auto& shard = shard_it->second;
+    auto& shard = *found;
     driver::println("file {}", project.file_table.display(*file));
     driver::println("  blob={}  content size={}  content hash={}",
                     format_bytes(shard.bytes().size()),
@@ -750,11 +751,9 @@ int run_show_file(Project& project, llvm::StringRef argument) {
 
     // Which unit contributed which variant, from the manifests.
     std::map<std::uint64_t, std::vector<std::string>> contributors;
-    if(auto it = project.index.contributions.find(*file); it != project.index.contributions.end()) {
-        for(auto& [tu, hash]: it->second) {
-            contributors[hash].push_back(project.file_table.display(tu));
-        }
-    }
+    project.index.for_each_contribution(*file, [&](Fid tu, std::uint64_t hash) {
+        contributors[hash].push_back(project.file_table.display(tu));
+    });
     auto variants = shard.variants();
     driver::println("  variants={}", variants.size());
     for(auto hash: variants) {
@@ -815,12 +814,12 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
     auto& files = project.file_table;
     auto tu = files.find(path);
     auto& project_index = project.index;
-    auto manifest_it = tu ? project_index.manifests.find(*tu) : project_index.manifests.end();
-    if(manifest_it == project_index.manifests.end()) {
+    auto* found = tu ? project_index.held_manifest(*tu) : nullptr;
+    if(!found) {
         driver::println("No manifest for {} in the index.", files.display(CanonicalPath(path)));
         return 1;
     }
-    auto& manifest = manifest_it->second;
+    auto& manifest = *found;
     auto version_path = [&](VersionID version) {
         return files.display(files.version(version).fid);
     };

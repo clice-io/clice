@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :command.argument_parser;
+import :index.project_index;
 import :project.command_resolver;
 import :project.hosting;
 import :server.editor_context;
@@ -124,12 +125,13 @@ const clang::LangOptions& EditorContext::dialect(Fid path_id) {
         return dialect_of("", own->is_c, own->standard);
     }
 
-    auto& contributions = project.index.contributions;
-    auto it = contributions.find(path_id);
-    bool c_only = it != contributions.end() && !it->second.empty() &&
-                  llvm::all_of(llvm::make_first_range(it->second), [&](Fid tu) {
-                      return llvm::StringRef(project.file_table.resolve(tu)).ends_with(".c");
-                  });
+    bool contributed = false;
+    bool c_only = true;
+    project.index.for_each_contribution(path_id, [&](Fid tu, std::uint64_t) {
+        contributed = true;
+        c_only = c_only && llvm::StringRef(project.file_table.resolve(tu)).ends_with(".c");
+    });
+    c_only = contributed && c_only;
     return dialect_of(path, c_only, own ? llvm::StringRef(own->standard) : llvm::StringRef());
 }
 

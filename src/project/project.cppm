@@ -13,6 +13,7 @@ import :index.shard;
 import :index.tu_index;
 import :index.writer_lock;
 import :project.build;
+import :project.command_snapshot;
 import :project.hosting;
 import :semantic.symbol;
 import :syntax.dependency_graph;
@@ -195,6 +196,33 @@ struct PCMBuild {
 ///   - symbol index (ProjectIndex + per-file Shard blobs)
 ///   - compilation database and configuration
 ///
+/// The context choices — the editor's context choices — as the index
+/// database carries them beside the index. A save moves bytes only: the
+/// editor state they encode serializes into them when it changes and
+/// parses them after a load (see EditorContext), so a process without that
+/// state writes back the bytes it loaded, and only into a database
+/// replacing a corrupt one. Only this blob has a durability waiter
+/// (switchContext), so only it hands out tickets: a ticket resolves once a
+/// save whose snapshot covers it commits the blob — independent of the
+/// artifact records, whose failures retry through the dirty flag alone and
+/// must not hold a context ack hostage. `committed` pulses after every
+/// attempt, failed ones included, so waiters can give up on a disk that
+/// cannot take the write.
+struct ContextChoices {
+    /// The serialized blob; empty when there is none, or when serializing
+    /// failed (it stays dirty then, and a save counts a failed attempt).
+    std::string bytes;
+
+    bool dirty = false;
+
+    /// The last ticket handed out, and the last one a save committed.
+    std::uint64_t ticket = 0;
+
+    std::uint64_t committed_ticket = 0;
+
+    kota::event committed;
+};
+
 /// Project is NEVER modified by unsaved buffer content.  The only mutation
 /// paths are:
 ///   - Initialization  (load_project at startup)
@@ -226,7 +254,7 @@ struct Project {
     /// load_project() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
     /// recovery); validity metadata (deps snapshots) lives in the index
-    /// database, written by IndexStore::save.
+    /// database, written by save_project.
     std::optional<CacheStore> store;
 
     /// The cache directory's writer lock, taken by a session that persists
@@ -254,7 +282,20 @@ struct Project {
 
     /// The persisted index as loaded: the project table, the per-TU
     /// manifests, the per-file shard blobs and the name search index.
-    index::ProjectIndex index;
+    index::ProjectIndex index{file_table};
+
+    /// The commands the index was built with, as the index database
+    /// records them.
+    CommandSnapshot command_snapshot;
+
+    /// The editor's context choices, as the index database carries them.
+    ContextChoices contexts;
+
+    /// Serializes concurrent saves (save_project): the pump's round-end
+    /// save, the master's metadata flush and the shutdown save may overlap
+    /// on the event loop, and a save moves the dirty state into its batch
+    /// assuming one save at a time.
+    kota::semaphore save_gate{1};
 
     /// Monotonic generation of context-affecting project state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext
@@ -321,7 +362,7 @@ struct Project {
 
     /// Persistence signal for the artifact validity metadata (PCH/PCM
     /// records, header modes) the index database carries beyond the index
-    /// itself: producers mark, the single write pipeline (IndexStore::save)
+    /// itself: producers mark, the single write pipeline (save_project)
     /// flushes it on its next run.
     bool artifacts_dirty = false;
 

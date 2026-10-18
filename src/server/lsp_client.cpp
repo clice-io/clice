@@ -11,6 +11,9 @@ module clice;
 import :command.argument_parser;
 import :command.command;
 import :feature.feature;
+import :index.project_index;
+import :index.shard;
+import :project.save;
 import :server.counterparts;
 import :server.editor_context;
 import :server.extension;
@@ -1357,7 +1360,7 @@ void LSPClient::register_extensions() {
                 for(auto id: project->sched.pump.failed()) {
                     result.failed.push_back(feature::to_uri(srv.files.display(id)));
                 }
-                result.unsaved = result.unsaved || project->sched.store.has_unsaved_state();
+                result.unsaved = result.unsaved || has_unsaved_state(project->project);
             }
             llvm::sort(result.failed);
             result.pending = srv.pending_work(this->peer);
@@ -1470,13 +1473,11 @@ void LSPClient::register_extensions() {
                 stats.pch_cache_entries += static_cast<std::uint32_t>(project.pch_cache.size());
                 stats.pch_stashed_bytes += served->sched.pch.stashed_bytes();
 
-                auto& store = served->sched.store;
-                stats.index_inmemory_shards +=
-                    static_cast<std::uint32_t>(store.pending_shard_writes());
-                for(auto& [path_id, shard]: project.index.shards) {
+                stats.index_inmemory_shards += project.index.pending_shard_writes();
+                project.index.for_each_shard([&](Fid, const index::Shard& shard) {
                     stats.index_shard_content_bytes += shard.bytes().size();
-                }
-                stats.last_save_shards += static_cast<std::uint32_t>(store.last_save_shards());
+                });
+                stats.last_save_shards += project.index.last_save_shards();
 
                 if(project.store) {
                     stats.pending_tmp_files +=

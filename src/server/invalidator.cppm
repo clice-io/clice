@@ -4,7 +4,6 @@ module;
 
 module clice:server.invalidator;
 
-import :project.index_store;
 import :project.project;
 import :sched.families.pcm;
 import :server.ast_family;
@@ -224,8 +223,7 @@ public:
                 const SessionStore& store,
                 const EditorContext& contexts,
                 const ASTFamily& ast,
-                PCMFamily& pcm,
-                const IndexStore& index);
+                PCMFamily& pcm);
 
     /// Fold a batch of events into one deduplicated effect set.
     DirtySet apply(llvm::ArrayRef<FileEvent> events);
@@ -279,7 +277,6 @@ private:
     const EditorContext& contexts;
     const ASTFamily& ast;
     PCMFamily& pcm;
-    const IndexStore& index;
 };
 
 }  // namespace clice

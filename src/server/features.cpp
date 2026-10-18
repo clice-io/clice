@@ -301,9 +301,9 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             // the old target, confidently wrong.
             std::vector<protocol::DocumentLink> links;
             if(query.shard_matching(session->path_id, session->text())) {
-                auto raw = feature::index_document_links(
-                    text_of(*session),
-                    query.project().include_edges(query.file_table(), session->path_id));
+                auto raw =
+                    feature::index_document_links(text_of(*session),
+                                                  query.project().include_edges(session->path_id));
                 convert(raw, links);
             }
             session->index_served = true;
@@ -431,9 +431,9 @@ Features::RawResult Features::definition(Ticket ticket,
             co_return serde_raw{"[]"};
         }
         if(offset) {
-            auto links = feature::index_document_links(
-                text_of(*session),
-                query.project().include_edges(query.file_table(), session->path_id));
+            auto links =
+                feature::index_document_links(text_of(*session),
+                                              query.project().include_edges(session->path_id));
             if(auto* link = link_at(links, *offset)) {
                 co_return to_raw(directive_definition(*link));
             }

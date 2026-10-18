@@ -6,7 +6,6 @@ module clice:server.project_server;
 
 import :config.config;
 import :project.command_resolver;
-import :project.index_store;
 import :project.project;
 import :sched.stack;
 import :server.ast_family;
@@ -125,7 +124,7 @@ public:
     /// the project's server: its rounds capture sessions, quarantine and
     /// publishing.
     SchedulingStack sched;
-    EditorContext contexts{project, commands, sched.store.contexts};
+    EditorContext contexts{project, commands, project.contexts};
     ASTFamily ast;
 
     Dispatcher dispatcher;

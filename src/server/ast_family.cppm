@@ -5,7 +5,6 @@ module;
 module clice:server.ast_family;
 
 import :feature.feature;
-import :project.index_store;
 import :project.project;
 import :sched.families.pch;
 import :sched.families.pcm;
@@ -53,8 +52,7 @@ public:
               PCMFamily& pcm,
               PCHFamily& pch,
               WorkerPool& pool,
-              SessionStore& sessions,
-              IndexStore& index);
+              SessionStore& sessions);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic runner register their own under Family::AST.
@@ -292,9 +290,6 @@ private:
     PCHFamily& pch;
     WorkerPool& pool;
     SessionStore& sessions;
-
-    /// The stored instantiations an open file's compile need not walk.
-    IndexStore& index;
 
     /// Detached ensure_compiled joins from request_compile; the rounds
     /// live in the graph's task group.

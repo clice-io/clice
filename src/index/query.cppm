@@ -284,7 +284,7 @@ public:
 
     /// Whether the project index holds a shard of `file`.
     bool indexes(Fid file) const {
-        return index.shards.contains(file);
+        return index.shard(file) != nullptr;
     }
 
     /// The file's shard when `text` is byte-identical to the content it

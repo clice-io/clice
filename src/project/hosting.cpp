@@ -4,6 +4,8 @@ module;
 
 module clice;
 
+import :index.project_index;
+import :index.tu_manifest;
 import :project.hosting;
 import :project.project;
 import :vfs.path;
@@ -255,13 +257,13 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
 }
 
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header) {
-    if(auto it = project.index.manifests.find(host); it != project.index.manifests.end()) {
+    if(auto* manifest = project.index.held_manifest(host)) {
         if(auto found = tree_enterings(project,
                                        host,
                                        header,
-                                       it->second.tu_version,
-                                       it->second.nodes,
-                                       it->second.absent)) {
+                                       manifest->tu_version,
+                                       manifest->nodes,
+                                       manifest->absent)) {
             return found;
         }
     }

@@ -6,6 +6,9 @@ module;
 
 module clice;
 
+import :index.project_index;
+import :index.shard;
+import :project.save;
 import :server.control;
 import :server.control_server;
 import :server.file_tracker;
@@ -65,7 +68,7 @@ void register_control(ProjectServer& srv, kota::ipc::JSONPeer& peer) {
         // The round persists at its end; the asker reads the disk, so its
         // index must be there before the answer.
         co_await srv.sched.pump.persist();
-        if(srv.sched.store.has_unsaved_state()) {
+        if(has_unsaved_state(srv.project)) {
             co_await kota::fail(
                 kota::ipc::Error{"part of the index could not be persisted; see the server log"});
         }
@@ -73,10 +76,9 @@ void register_control(ProjectServer& srv, kota::ipc::JSONPeer& peer) {
         // side vetoed it (an open buffer diverged from the disk) and the
         // shard still describes older bytes.
         for(auto file: files) {
-            auto shard = srv.project.index.shards.find(file);
+            auto* shard = srv.project.index.shard(file);
             auto disk = srv.project.file_table.disk.current(file);
-            bool current = shard != srv.project.index.shards.end() && disk &&
-                           shard->second.content_hash() == disk->hash;
+            bool current = shard && disk && shard->content_hash() == disk->hash;
             if(!current) {
                 result.failed.emplace_back(srv.project.file_table.display(file));
             }

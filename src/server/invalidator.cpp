@@ -4,6 +4,8 @@ module;
 
 module clice;
 
+import :index.project_index;
+import :project.command_snapshot;
 import :sched.families.pcm;
 import :server.invalidator;
 import :vfs.file_table;
@@ -14,9 +16,8 @@ Invalidator::Invalidator(Project& project,
                          const SessionStore& store,
                          const EditorContext& contexts,
                          const ASTFamily& ast,
-                         PCMFamily& pcm,
-                         const IndexStore& index) :
-    project(project), store(store), contexts(contexts), ast(ast), pcm(pcm), index(index) {}
+                         PCMFamily& pcm) :
+    project(project), store(store), contexts(contexts), ast(ast), pcm(pcm) {}
 
 llvm::SmallVector<FileEvent> take_disk_events(FileTable& files) {
     llvm::SmallVector<FileEvent> events;
@@ -56,19 +57,9 @@ llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
             result.push_back(reader);
         }
     };
-    auto& index = project.index;
-    if(auto it = index.contributions.find(path_id); it != index.contributions.end()) {
-        for(auto tu: llvm::make_first_range(it->second)) {
-            add(tu);
-        }
-    }
-    for(auto* tus: {&index.absent_lookups, &index.importers}) {
-        if(auto it = tus->find(path_id); it != tus->end()) {
-            for(auto tu: it->second) {
-                add(tu);
-            }
-        }
-    }
+    project.index.for_each_contribution(path_id, [&](Fid tu, std::uint64_t) { add(tu); });
+    project.index.for_each_absent_lookup(path_id, add);
+    project.index.for_each_importer(path_id, add);
     auto names = [&](const DepsSnapshot& deps) {
         return llvm::any_of(deps, [&](const DepState& dep) { return dep.path_id == path_id; });
     };
@@ -361,7 +352,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // A standalone-indexed header borrowed the changed
                     // command too, open or not: its manifest is as stale as
                     // the host's (no-op for headers indexed only via TUs).
-                    auto borrowers = index.headers_hosted_by(path_id);
+                    auto borrowers = project.command_snapshot.hosted_by(path_id);
                     for(auto& [header_id, context]: contexts.header_contexts) {
                         if(context.host_path_id != path_id) {
                             continue;

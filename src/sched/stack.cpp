@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :index.project_index;
 import :sched.stack;
 import :support.environment;
 
@@ -14,8 +15,7 @@ SchedulingStack::SchedulingStack(kota::event_loop& loop,
                                  CommandResolver& commands,
                                  WorkerPool& pool) :
     project(project), pool(pool), pcm(graph, project, commands, pool), pch(graph, project, pool),
-    store(loop, project, commands), turun(graph, project, commands, pcm, pch, store, pool),
-    pump(loop, project, turun, store, pool) {
+    turun(graph, project, commands, pcm, pch, pool), pump(loop, project, commands, turun, pool) {
     pcm.register_runner();
     pch.register_runner();
     turun.register_runner();
@@ -39,7 +39,7 @@ kota::task<> SchedulingStack::checkpoint() {
     // A search rebuild here could still be running on the thread pool when
     // a shutdown cancels the checkpoint, holding up the final save behind
     // seconds of derived work: the round end rebuilds it.
-    co_await pump.persist(IndexStore::SearchRebuild::Never);
+    co_await pump.persist(index::SearchRebuild::Never);
     // Repair debt the save's compaction discovered needs a round of its own
     // when none is running.
     pump.schedule();
@@ -50,7 +50,7 @@ kota::task<> SchedulingStack::shutdown() {
     // Editors kill a server that is slow to exit, and rebuilding the
     // search index dominates a cold round's save: the index commits alone,
     // and the next session's first idle save rebuilds the index.
-    co_await pump.persist(IndexStore::SearchRebuild::Never);
+    co_await pump.persist(index::SearchRebuild::Never);
 }
 
 void SchedulingStack::close() {
