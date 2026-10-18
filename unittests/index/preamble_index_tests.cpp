@@ -62,7 +62,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
     index::SymbolHash hash = 0;
     std::uint32_t count = 0;
     state->iterate_symbols([&](index::SymbolHash symbol_id,
-                               const index::SymbolIdentity& symbol,
+                               const index::SymbolView& symbol,
                                llvm::ArrayRef<std::uint32_t>) {
         if(symbol.name == name) {
             hash = symbol_id;

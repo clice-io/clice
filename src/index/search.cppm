@@ -27,7 +27,7 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index, const SymbolQue
 /// file of its canonical declaration: invalid for one of a preamble,
 /// which the file reaches already.
 struct Completable {
-    SymbolRef symbol;
+    SymbolInfo symbol;
     Fid file;
 };
 

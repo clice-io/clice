@@ -26,7 +26,7 @@ index::Shard shard_of(llvm::StringRef content) {
     llvm::raw_string_ostream os(bytes);
     index::write_shard(
         {},
-        [](index::SymbolHash) -> std::optional<index::SymbolIdentity> { return std::nullopt; },
+        [](index::SymbolHash) -> std::optional<index::SymbolView> { return std::nullopt; },
         content,
         os);
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));

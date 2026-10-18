@@ -78,7 +78,7 @@ struct SymbolColumns {
         return static_cast<std::uint32_t>(it - hashes.begin());
     }
 
-    SymbolIdentity identity(std::uint32_t entry) const {
+    SymbolView view(std::uint32_t entry) const {
         return {
             .name = back_to_back(names, name_ends, entry),
             .args = back_to_back(args, args_ends, entry),
@@ -244,10 +244,10 @@ llvm::StringRef TUIndex::absent(std::uint32_t i) const {
     return to_ref(blob_root(data)[&TUIndexBlob::absent].at(i));
 }
 
-std::uint64_t TUIndex::path_hash(std::uint32_t id) const {
+std::uint64_t TUIndex::content_hash(std::uint32_t id) const {
     // The hash column may be shorter than the path table on a foreign
     // blob; an absent hash reads as 0, "unavailable".
-    auto hashes = blob_root(data)[&TUIndexBlob::path_hashes];
+    auto hashes = blob_root(data)[&TUIndexBlob::content_hashes];
     return id < hashes.size() ? hashes.at(id) : 0;
 }
 
@@ -385,7 +385,7 @@ void TUIndex::iterate_instantiation_files(
 }
 
 void TUIndex::iterate_symbols(
-    llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, llvm::ArrayRef<std::uint32_t>)>
+    llvm::function_ref<bool(SymbolHash, const SymbolView&, llvm::ArrayRef<std::uint32_t>)>
         callback) const {
     if(!loaded()) {
         return;
@@ -393,20 +393,20 @@ void TUIndex::iterate_symbols(
     auto symbols = SymbolColumns::of(blob_root(data));
     for(std::uint32_t entry = 0; entry < symbols.hashes.size(); entry += 1) {
         if(!callback(symbols.hashes[entry],
-                     symbols.identity(entry),
+                     symbols.view(entry),
                      symbols.references_of(entry))) {
             return;
         }
     }
 }
 
-std::optional<SymbolIdentity> TUIndex::find_symbol(SymbolHash hash) const {
+std::optional<SymbolView> TUIndex::find_symbol(SymbolHash hash) const {
     if(!loaded()) {
         return std::nullopt;
     }
     auto symbols = SymbolColumns::of(blob_root(data));
     if(auto entry = symbols.find(hash)) {
-        return symbols.identity(*entry);
+        return symbols.view(*entry);
     }
     for(std::uint32_t section = 0; section < section_count(); section += 1) {
         if(auto identity = section_shard(section).find_symbol(hash)) {
@@ -420,7 +420,7 @@ std::optional<std::vector<PathFanout>> TUIndex::local_fanout(const llvm::BitVect
     std::vector<PathFanout> result;
     bool valid = true;
     iterate_symbols(
-        [&](SymbolHash hash, const SymbolIdentity& identity, llvm::ArrayRef<std::uint32_t> files) {
+        [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t> files) {
             if(identity.scope == SymbolScope::External || files.size() < 2) {
                 return true;
             }

@@ -93,7 +93,7 @@ std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bo
             IndexQuery::Order::LiveFirst,
             {},
             [&](const IndexSource& source, const Relation& relation) {
-                auto extent = relation.definition_range();
+                auto extent = relation.extent();
                 std::unique_ptr<llvm::MemoryBuffer> storage;
                 auto text = extent.begin < extent.end ? index.source_text(source, storage) : std::nullopt;
                 if(!text || extent.end > text->size()) {

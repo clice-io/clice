@@ -234,9 +234,9 @@ IndexedTU index_file(TempDir& tmp,
 
 /// Re-encode a TU index with its consumed-content hash column dropped,
 /// as a file behind a PCM ships it.
-std::string strip_path_hashes(llvm::StringRef data) {
+std::string strip_content_hashes(llvm::StringRef data) {
     auto mirror = TUIndexMirror::of(index::TUIndex::from_bytes(data));
-    mirror.path_hashes.clear();
+    mirror.content_hashes.clear();
     return mirror.bytes();
 }
 
@@ -341,7 +341,7 @@ int use() { return 1; }
     auto focus_id = static_cast<std::uint32_t>(mirror.paths.size() - 1);
     constexpr index::SymbolHash helper = ~0ull - 2;
     mirror.add_symbol(helper,
-                      {.name = "helper", .scope = index::SymbolScope::TULocal},
+                      {.name = "helper", .scope = index::SymbolScope::Internal},
                       {header_id, focus_id});
     auto planted = mirror.bytes();
 
@@ -1129,7 +1129,7 @@ ZEST_CASE(HashlessRemergeHits) {
     // A file behind a PCM ships no consumed-content hash; the variant
     // identity is the blob's own byte hash, so membership needs no
     // content confirmation at all.
-    auto stripped = strip_path_hashes(indexed.data);
+    auto stripped = strip_content_hashes(indexed.data);
     ZASSERT(!stripped.empty());
 
     merge(stripped.data(), stripped.size());
@@ -4321,7 +4321,7 @@ void a() {}
     ZASSERT(header);
     std::optional<index::SymbolHash> print;
     header->for_each_local_symbol(
-        [&](index::SymbolHash hash, const index::SymbolIdentity& identity) {
+        [&](index::SymbolHash hash, const index::SymbolView& identity) {
             if(identity.name == "print") {
                 print = hash;
             }

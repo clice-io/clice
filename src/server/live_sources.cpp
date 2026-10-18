@@ -158,7 +158,7 @@ void ServerLiveSources::each_overlay(llvm::function_ref<bool(const index::TUInde
     });
 }
 
-std::shared_ptr<index::TUIndex> ServerLiveSources::preamble_blob(Fid file) const {
+std::shared_ptr<index::TUIndex> ServerLiveSources::preamble_index(Fid file) const {
     auto session = sessions.find(file);
     if(!session) {
         return nullptr;

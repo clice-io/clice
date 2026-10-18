@@ -202,7 +202,7 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
 }
 
 feature::HoverInfo Features::module_hover_card(const index::IndexQuery::Cursor& cursor,
-                                               const index::SymbolRef& module) {
+                                               const index::SymbolInfo& module) {
     feature::HoverInfo hover;
     hover.name = module.name;
     hover.kind = SymbolKind::Module;
@@ -219,7 +219,7 @@ feature::HoverInfo Features::module_hover_card(const index::IndexQuery::Cursor& 
 }
 
 std::vector<index::DocumentLink> Features::find_preamble_links(const Session& session) {
-    auto state = query.preamble_blob(session.path_id);
+    auto state = query.preamble_index(session.path_id);
     return state ? state->links() : std::vector<index::DocumentLink>{};
 }
 
@@ -560,7 +560,7 @@ Features::RawResult Features::hover(Ticket ticket,
 
 void Features::merge_preamble_macros(const Session& session,
                                      std::vector<feature::SemanticToken>& tokens) {
-    auto state = query.preamble_blob(session.path_id);
+    auto state = query.preamble_index(session.path_id);
     if(!state) {
         return;
     }
@@ -1077,7 +1077,7 @@ bool Features::scope_candidates(llvm::StringRef prefix,
         if(!namespaces.empty() && namespaces.back().kind == SymbolKind::Enum) {
             namespaces = namespaces.drop_back();
         }
-        if(llvm::any_of(namespaces, [](const index::SymbolRef& container) {
+        if(llvm::any_of(namespaces, [](const index::SymbolInfo& container) {
                return container.kind != SymbolKind::Namespace;
            })) {
             continue;
@@ -1636,7 +1636,7 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
                         kind == SymbolKind::Operator;
         bool value =
             kind == SymbolKind::Field || kind == SymbolKind::EnumMember ||
-            (kind == SymbolKind::Variable && located.symbol.scope != index::SymbolScope::FileLocal);
+            (kind == SymbolKind::Variable && located.symbol.scope != index::SymbolScope::FunctionLocal);
         if(function || value) {
             items.push_back(to_lsp::call_hierarchy_item(
                 located.symbol,

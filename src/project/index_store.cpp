@@ -435,8 +435,8 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     // fresh while queries serve another generation's index.
     llvm::SmallVector<std::uint64_t> consumed_hashes(view.path_count(), 0);
     auto record_consumed = [&](std::uint32_t local_id, std::uint64_t content_hash) {
-        auto path_hash = view.path_hash(local_id);
-        if(path_hash != 0 && path_hash != content_hash) {
+        auto compiled_hash = view.content_hash(local_id);
+        if(compiled_hash != 0 && compiled_hash != content_hash) {
             LOG_WARN("Reject merge for {}: rows for {} consumed other content than the compiler",
                      tu_path,
                      project.file_table.resolve(file_ids_map[local_id]));
@@ -535,7 +535,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         auto local_id = view.instantiation_path(section);
         auto global_id = file_ids_map[local_id];
         auto generation =
-            consumed_hashes[local_id] != 0 ? consumed_hashes[local_id] : view.path_hash(local_id);
+            consumed_hashes[local_id] != 0 ? consumed_hashes[local_id] : view.content_hash(local_id);
         auto stored_it = project_index.instantiations.find(global_id);
         const index::InstantiationShard* stored =
             stored_it != project_index.instantiations.end() &&
@@ -576,7 +576,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         used.erase(llvm::unique(used), used.end());
         std::optional<index::AddedUse> added;
         if(!used.empty()) {
-            added = index::AddedUse{.use = index::use_identity(used), .resolutions = used};
+            added = index::AddedUse{.use = index::use_hash(used), .resolutions = used};
             unit_uses[global_id] = {local_id, added->use};
         }
         // Walking nothing new, a unit naming a use the file stores already
@@ -632,7 +632,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
 
     // The first commit.
     llvm::SmallVector<index::SymbolHash> added;
-    project_index.merge(view, file_ids_map, &added);
+    project_index.merge_symbols(view, file_ids_map, &added);
     project.project_index.search_pending.insert(added.begin(), added.end());
     if(changed_during_search_build) {
         changed_during_search_build->symbols.insert(added.begin(), added.end());
@@ -649,7 +649,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         llvm::StringRef path = view.path(i);
         // The section's own record wins: for a hashless path (behind a
         // PCM) it is the only hash naming the bytes the index describes.
-        auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.path_hash(i);
+        auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.content_hash(i);
 
         if(hash != 0) {
             project.file_table.disk.consumed(file_ids_map[i], hash);
@@ -1349,7 +1349,7 @@ kota::task<> IndexStore::rebuild_search_index() {
     snapshot.generation = project_index.global_generation + 1;
     llvm::DenseMap<std::uint32_t, std::uint32_t> path_index;
     project_index.for_each_symbol(
-        [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, std::uint32_t references) {
+        [&](index::SymbolHash hash, const index::SymbolView& symbol, std::uint32_t references) {
             if(!index::is_searchable_kind(symbol.kind) || symbol.name.empty()) {
                 return true;
             }
@@ -1383,8 +1383,8 @@ kota::task<> IndexStore::rebuild_search_index() {
             continue;
         }
         shard.for_each_local_symbol([&](index::SymbolHash hash,
-                                        const index::SymbolIdentity& symbol) {
-            if(symbol.scope != index::SymbolScope::TULocal ||
+                                        const index::SymbolView& symbol) {
+            if(symbol.scope != index::SymbolScope::Internal ||
                !index::is_searchable_kind(symbol.kind) || symbol.name.empty() ||
                !index::declares(shard, hash)) {
                 return true;

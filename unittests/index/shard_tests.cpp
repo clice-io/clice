@@ -129,11 +129,11 @@ ZEST_CASE(DeterministicEncoding) {
         {{20, 23}, 111},
     };
     file_index.relations[111] = {
-        {.kind = RelationKind::Definition, .range = {0, 3},   .target_symbol = 0},
-        {.kind = RelationKind::Reference,  .range = {20, 23}, .target_symbol = 0},
+        {.kind = RelationKind::Definition, .range = {0, 3},   .target = 0},
+        {.kind = RelationKind::Reference,  .range = {20, 23}, .target = 0},
     };
     file_index.relations[333] = {
-        {.kind = RelationKind::Base, .range = {10, 13}, .target_symbol = 444},
+        {.kind = RelationKind::Base, .range = {10, 13}, .target = 444},
     };
 
     index::FileIndex shuffled;
@@ -360,8 +360,8 @@ index::Shard grow_variants(std::uint32_t count) {
             {{i * 16, i * 16 + 3}, 1000 + i}
         });
         file_index.relations[999] = {
-            {.kind = RelationKind::Reference, .range = {0, 3},               .target_symbol = 0},
-            {.kind = RelationKind::Reference, .range = {i * 16, i * 16 + 3}, .target_symbol = 0},
+            {.kind = RelationKind::Reference, .range = {0, 3},               .target = 0},
+            {.kind = RelationKind::Reference, .range = {i * 16, i * 16 + 3}, .target = 0},
         };
         auto fresh = make_shard(write_fresh(file_index, content));
         if(!shard.loaded()) {
@@ -449,13 +449,13 @@ ZEST_CASE(RelationPayloadRoundtrip) {
         .kind = RelationKind::Definition,
         .range = {0, 3}
     };
-    definition.set_definition_range({0, 50});
+    definition.set_extent({0, 50});
     file_index.relations[111] = {
         definition,
-        {.kind = RelationKind::Reference, .range = {10, 13}, .target_symbol = 0},
+        {.kind = RelationKind::Reference, .range = {10, 13}, .target = 0},
     };
     file_index.relations[333] = {
-        {.kind = RelationKind::Base, .range = {20, 23}, .target_symbol = 444},
+        {.kind = RelationKind::Base, .range = {20, 23}, .target = 444},
     };
 
     auto shard = make_shard(write_fresh(file_index, std::string(60, 'z')));
@@ -463,7 +463,7 @@ ZEST_CASE(RelationPayloadRoundtrip) {
     bool checked_definition = false;
     shard.lookup(111, RelationKind::Definition, [&](const index::Relation& r) {
         checked_definition = true;
-        auto extent = index::Relation(r).definition_range();
+        auto extent = index::Relation(r).extent();
         ZEXPECT(extent.begin == 0u);
         ZEXPECT(extent.end == 50u);
         return false;
@@ -473,7 +473,7 @@ ZEST_CASE(RelationPayloadRoundtrip) {
     bool checked_reference = false;
     shard.lookup(111, RelationKind::Reference, [&](const index::Relation& r) {
         checked_reference = true;
-        ZEXPECT(r.target_symbol == 0u);
+        ZEXPECT(r.target == 0u);
         return false;
     });
     ZASSERT(checked_reference);
@@ -481,7 +481,7 @@ ZEST_CASE(RelationPayloadRoundtrip) {
     bool checked_pair = false;
     shard.lookup(333, RelationKind::Base, [&](const index::Relation& r) {
         checked_pair = true;
-        ZEXPECT(r.target_symbol == 444u);
+        ZEXPECT(r.target == 444u);
         return false;
     });
     ZASSERT(checked_pair);
@@ -505,23 +505,23 @@ ZEST_CASE(PayloadsAcrossBlocks) {
         file_index.relations[50].push_back({
             .kind = RelationKind::Base,
             .range = {i * 100 + 70, i * 100 + 73},
-            .target_symbol = 500 + i
+            .target = 500 + i
         });
         index::Relation definition{
             .kind = RelationKind::Definition,
             .range = {i * 100, i * 100 + 3}
         };
-        definition.set_definition_range(extent_of(i));
+        definition.set_extent(extent_of(i));
         file_index.relations[111].push_back(definition);
         file_index.relations[111].push_back({
             .kind = RelationKind::Reference,
             .range = {i * 100 + 50, i * 100 + 53},
-            .target_symbol = 0
+            .target = 0
         });
         file_index.relations[333].push_back({
             .kind = RelationKind::Base,
             .range = {i * 100 + 60, i * 100 + 63},
-            .target_symbol = 1000 + i
+            .target = 1000 + i
         });
     }
     auto shard = make_shard(write_fresh(file_index, std::string(count * 100 + 0x10010, 'z')));
@@ -530,7 +530,7 @@ ZEST_CASE(PayloadsAcrossBlocks) {
     std::uint32_t seen = 0;
     shard.lookup(111, RelationKind::Definition, [&](const index::Relation& r) {
         auto i = r.range.begin / 100;
-        auto extent = index::Relation(r).definition_range();
+        auto extent = index::Relation(r).extent();
         ZEXPECT(extent.begin == extent_of(i).begin);
         ZEXPECT(extent.end == extent_of(i).end);
         seen += 1;
@@ -543,7 +543,7 @@ ZEST_CASE(PayloadsAcrossBlocks) {
     }) {
         seen = 0;
         shard.lookup(symbol, RelationKind::Base, [&](const index::Relation& r) {
-            ZEXPECT(r.target_symbol == first + r.range.begin / 100);
+            ZEXPECT(r.target == first + r.range.begin / 100);
             seen += 1;
             return true;
         });
@@ -559,22 +559,22 @@ ZEST_CASE(MergedRelationPayloads) {
         .kind = RelationKind::Definition,
         .range = {0, 3}
     };
-    definition.set_definition_range({0, 50});
+    definition.set_extent({0, 50});
     first.relations[111] = {
         definition,
-        {.kind = RelationKind::Reference, .range = {10, 13}, .target_symbol = 0},
+        {.kind = RelationKind::Reference, .range = {10, 13}, .target = 0},
     };
     first.relations[333] = {
-        {.kind = RelationKind::Base, .range = {20, 23}, .target_symbol = 444},
+        {.kind = RelationKind::Base, .range = {20, 23}, .target = 444},
     };
     first.relations[555] = {
-        {.kind = RelationKind::Base, .range = {30, 33}, .target_symbol = 666},
+        {.kind = RelationKind::Base, .range = {30, 33}, .target = 666},
     };
     auto second = first;
     second.relations[333].push_back({
         .kind = RelationKind::Base,
         .range = {40, 43},
-        .target_symbol = 777
+        .target = 777
     });
 
     using Entry =
@@ -586,7 +586,7 @@ ZEST_CASE(MergedRelationPayloads) {
                                    static_cast<std::uint8_t>(relation.kind),
                                    relation.range.begin,
                                    relation.range.end,
-                                   relation.target_symbol);
+                                   relation.target);
             return true;
         });
         return relations;
@@ -648,7 +648,7 @@ ZEST_CASE(LocalSymbolNames) {
     auto external = [&] {
         index::SymbolHash result = 0;
         tu_index.iterate_symbols([&](index::SymbolHash hash,
-                                     const index::SymbolIdentity& symbol,
+                                     const index::SymbolView& symbol,
                                      llvm::ArrayRef<std::uint32_t>) {
             if(symbol.name == "visible") {
                 result = hash;
@@ -704,10 +704,10 @@ ZEST_CASE(MergedLocalFlagsUnion) {
         llvm::raw_string_ostream os(bytes);
         index::write_shard(
             file_index,
-            [&](index::SymbolHash) -> std::optional<index::SymbolIdentity> {
-                return index::SymbolIdentity{.name = "helper",
+            [&](index::SymbolHash) -> std::optional<index::SymbolView> {
+                return index::SymbolView{.name = "helper",
                                              .kind = SymbolKind::Function,
-                                             .scope = index::SymbolScope::TULocal,
+                                             .scope = index::SymbolScope::Internal,
                                              .flags = flags,
                                              .token_class = {.kind = token_kind}};
             },
@@ -1484,7 +1484,7 @@ ZEST_CASE(RelationPayloadColumnsRejected) {
     auto extent_of = [&](const index::Shard& shard) {
         LocalSourceRange extent;
         shard.lookup(111, RelationKind::Definition, [&](const index::Relation& relation) {
-            extent = relation.definition_range();
+            extent = relation.extent();
             return false;
         });
         return extent;

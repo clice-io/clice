@@ -25,10 +25,10 @@ using SymbolHash = std::uint64_t;
 using VariantHash = std::uint64_t;
 
 /// The identity of one resolution — the records one instantiated definition or
-/// macro expansion resolves in one file (resolution_identity).
+/// macro expansion resolves in one file (resolution_hash).
 using ResolutionHash = std::uint64_t;
 
-/// The identity of the resolutions a TU uses in one file (use_identity). TUs
+/// The identity of the resolutions a TU uses in one file (use_hash). TUs
 /// using the same ones share it, and the file's blob stores them once.
 using UseHash = std::uint64_t;
 
@@ -73,12 +73,12 @@ enum class SymbolScope : std::uint8_t {
     /// (internal linkage: static, anonymous namespace). Stored in the
     /// shards holding its entries; the TUs that reference it from several
     /// files list those files (TUManifest::local_fanout).
-    TULocal = 1,
+    Internal = 1,
     /// Declared inside a function (local variables, parameters, labels,
     /// local classes). Stored in the defining file's Shard blob; one another
     /// file names — through an instantiation, a macro expansion, or a local
-    /// class a function returns — is listed as for TULocal.
-    FileLocal = 2,
+    /// class a function returns — is listed as for Internal.
+    FunctionLocal = 2,
 };
 
 struct Relation {
@@ -91,14 +91,14 @@ struct Relation {
 
     LocalSourceRange range;
 
-    SymbolHash target_symbol;
+    SymbolHash target;
 
-    constexpr void set_definition_range(LocalSourceRange range) {
-        target_symbol = std::bit_cast<SymbolHash>(range);
+    constexpr void set_extent(LocalSourceRange range) {
+        target = std::bit_cast<SymbolHash>(range);
     }
 
-    constexpr auto definition_range() const {
-        return std::bit_cast<LocalSourceRange>(target_symbol);
+    constexpr auto extent() const {
+        return std::bit_cast<LocalSourceRange>(target);
     }
 };
 
@@ -221,7 +221,7 @@ constexpr inline std::uint32_t no_file = ~0u;
 
 /// A symbol's identity as a blob reader hands it out; the strings borrow
 /// the blob's bytes.
-struct SymbolIdentity {
+struct SymbolView {
     llvm::StringRef name;
     llvm::StringRef args;
     llvm::StringRef signature;
@@ -281,7 +281,7 @@ struct Symbol {
     Bitmap instantiation_files;
 
     /// The identity a reader hands out for this entry; the strings borrow it.
-    SymbolIdentity identity() const {
+    SymbolView view() const {
         return {
             .name = name,
             .args = args,
@@ -302,7 +302,7 @@ using SymbolTable = llvm::DenseMap<SymbolHash, Symbol>;
 
 /// A symbol as queries hand it out: its identity plus the stored facts,
 /// owned — the strings outlive whichever table answered.
-struct SymbolRef {
+struct SymbolInfo {
     SymbolHash hash = 0;
     std::string name;
     std::string args;
@@ -313,7 +313,7 @@ struct SymbolRef {
     SymbolFlags flags = SymbolFlags::None;
     TokenClass token_class;
 
-    static SymbolRef from(SymbolHash hash, const SymbolIdentity& identity) {
+    static SymbolInfo from(SymbolHash hash, const SymbolView& identity) {
         return {
             .hash = hash,
             .name = identity.name.str(),

@@ -62,12 +62,12 @@ constexpr auto record_key(const InstantiationRecord& record) {
 
 /// The identity of one resolution: a hash over the file's content generation
 /// and the records, which must be sorted and unique.
-ResolutionHash resolution_identity(std::uint64_t content_hash,
+ResolutionHash resolution_hash(std::uint64_t content_hash,
                                    llvm::ArrayRef<InstantiationRecord> records);
 
 /// The identity of the resolutions a TU uses in one file: a hash over them,
 /// which must be sorted and unique.
-UseHash use_identity(llvm::ArrayRef<ResolutionHash> resolutions);
+UseHash use_hash(llvm::ArrayRef<ResolutionHash> resolutions);
 
 /// What one run resolves in one file, as the worker builds it: the distinct
 /// resolutions, and the keys it walked, each pointing at its resolution or at

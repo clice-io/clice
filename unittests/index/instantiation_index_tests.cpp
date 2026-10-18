@@ -443,10 +443,10 @@ ZEST_CASE(LocalClassNamesHeader) {
     // resolves in: the table lists it with both files.
     std::optional<std::size_t> files;
     view.iterate_symbols([&](index::SymbolHash hash,
-                             const index::SymbolIdentity& identity,
+                             const index::SymbolView& identity,
                              llvm::ArrayRef<std::uint32_t> references) {
         if(identity.name == "go") {
-            ZEXPECT(identity.scope == index::SymbolScope::FileLocal);
+            ZEXPECT(identity.scope == index::SymbolScope::FunctionLocal);
             files = references.size();
         }
         return true;

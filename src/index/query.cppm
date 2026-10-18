@@ -102,7 +102,7 @@ public:
 
     /// An open buffer's PCH index while the buffer still starts with
     /// the exact preamble the index was built from; null otherwise.
-    virtual std::shared_ptr<TUIndex> preamble_blob(Fid file) const = 0;
+    virtual std::shared_ptr<TUIndex> preamble_index(Fid file) const = 0;
 };
 
 struct FreshnessOptions {
@@ -200,10 +200,10 @@ std::optional<Site> extent_of(const IndexSource& source, const Relation& relatio
 /// `parent`, the parent of `hash`, and the containers above it, outermost
 /// first, transparent ones skipped (see IndexQuery::container_chain), each
 /// resolved through `lookup`.
-llvm::SmallVector<SymbolRef, 4>
+llvm::SmallVector<SymbolInfo, 4>
     scope_chain(SymbolHash hash,
                 SymbolHash parent,
-                llvm::function_ref<std::optional<SymbolRef>(SymbolHash)> lookup);
+                llvm::function_ref<std::optional<SymbolInfo>(SymbolHash)> lookup);
 
 inline auto site_key(const Site& site) {
     return std::tie(site.path, site.range.begin, site.range.end);
@@ -223,7 +223,7 @@ inline bool is_class(SymbolKind kind) {
 /// index data of its own — ProjectIndex owns the disk-derived index, the
 /// live sources the per-buffer indexes.
 ///
-/// Every answer is a domain value (Site, SymbolRef); the transports render
+/// Every answer is a domain value (Site, SymbolInfo); the transports render
 /// them. Every method is synchronous and its results borrow the state they
 /// were read from — consume them before the next suspension point.
 ///
@@ -282,7 +282,7 @@ public:
     /// as the text spells them.
     IndexQuery written_only() const {
         auto query = *this;
-        query.resolved = false;
+        query.with_instantiations = false;
         return query;
     }
 
@@ -301,8 +301,8 @@ public:
     const Shard* shard_matching(Fid file, llvm::StringRef text) const;
 
     /// The live sources' PCH index for an open buffer (see
-    /// LiveSources::preamble_blob); null without live sources.
-    std::shared_ptr<TUIndex> preamble_blob(Fid file) const;
+    /// LiveSources::preamble_index); null without live sources.
+    std::shared_ptr<TUIndex> preamble_index(Fid file) const;
 
     /// The symbols whose occurrences cover `offset` in the file's serving
     /// source (clauses 1 and 4), and the site of that occurrence. A session
@@ -328,7 +328,7 @@ public:
     /// A symbol's name and kind, from whichever table knows the hash: open
     /// sessions, the project index, PCH overlays, then the per-file shards
     /// (names below external scope live only there), the anchor's first.
-    std::optional<SymbolRef> symbol_info(SymbolHash hash, Fid anchor = {}) const;
+    std::optional<SymbolInfo> symbol_info(SymbolHash hash, Fid anchor = {}) const;
 
     /// The containers of a symbol, outermost first: the parent chain up
     /// to the translation unit or to a parent no table knows, transparent
@@ -336,7 +336,7 @@ public:
     /// the translation unit and for an unknown hash. `anchor` as for
     /// symbol_info: a symbol of internal linkage and its containers are
     /// known to the files holding its entries.
-    llvm::SmallVector<SymbolRef, 4> container_chain(SymbolHash hash, Fid anchor = {}) const;
+    llvm::SmallVector<SymbolInfo, 4> container_chain(SymbolHash hash, Fid anchor = {}) const;
 
     /// The chain spelled as a qualified name ("ns::Outer" for
     /// `ns::Outer::name`).
@@ -390,7 +390,7 @@ public:
     /// A symbol together with its canonical site, and the whole
     /// declaration there.
     struct Located {
-        SymbolRef symbol;
+        SymbolInfo symbol;
         Site site;
         Site extent;
     };
@@ -509,7 +509,7 @@ private:
     const LiveSources* live;
 
     /// Whether answers take in what instantiations resolve (written_only).
-    bool resolved = true;
+    bool with_instantiations = true;
 };
 
 }  // namespace clice::index

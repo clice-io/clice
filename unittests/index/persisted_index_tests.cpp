@@ -274,14 +274,14 @@ ZEST_CASE(GlobalRebaseKeepsChanges) {
     project.touch(42).reference_files.add(other.raw);
     project.rebase(llvm::MemoryBuffer::getMemBufferCopy(first), pool);
     ZASSERT(project.symbol_count() == 2u);
-    ZASSERT(project.identity_of(43)->name == "late");
+    ZASSERT(project.find_symbol(43)->name == "late");
     ZASSERT(project.reference_count(42) == 2u);
 
     std::string second;
     llvm::raw_string_ostream second_os(second);
     project.serialize_global(second_os, pool);
     project.restore_unwritten();
-    ZASSERT(project.identity_of(43)->name == "late");
+    ZASSERT(project.find_symbol(43)->name == "late");
     ZASSERT(project.reference_count(42) == 2u);
 
     // The base blob's path table is kept as it is, so a base entry's bitmap
@@ -457,7 +457,7 @@ ZEST_CASE(GlobalBitmapPayloadGate) {
     ZASSERT(valid);
     index::ProjectIndex loaded;
     ZASSERT(loaded.load_global(bytes_of(*valid), pool, pins));
-    ZASSERT(loaded.identity_of(42));
+    ZASSERT(loaded.find_symbol(42));
     ZASSERT(llvm::is_contained(reference_files(loaded, 42),
                                pool.find(Spelling::absolute("/proj/ref.h"))->raw));
 
@@ -501,7 +501,7 @@ ZEST_CASE(UncoveredBitmapIdRejected) {
     auto covered = encode(mirror);
     ZASSERT(covered);
     ZASSERT(loaded.load_global(bytes_of(*covered), pool, pins));
-    ZASSERT(loaded.identity_of(42));
+    ZASSERT(loaded.find_symbol(42));
 }
 
 ZEST_CASE(GlobalDuplicateVersionsRejected) {
@@ -605,7 +605,7 @@ ZEST_CASE(GlobalRoundTripSymbolFacts) {
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     ZASSERT(loaded.load_global(buf.str(), fresh, pins));
-    auto restored = loaded.identity_of(42);
+    auto restored = loaded.find_symbol(42);
     ZASSERT(restored);
     ZASSERT(restored->name == "Box");
     ZASSERT(restored->args == "<int>");
@@ -615,7 +615,7 @@ ZEST_CASE(GlobalRoundTripSymbolFacts) {
     auto moved = fresh.find(Spelling::absolute("/proj/facts.h"));
     ZASSERT(moved);
     ZASSERT(restored->file == moved->raw);
-    ZASSERT(loaded.identity_of(7)->file == index::no_file);
+    ZASSERT(loaded.find_symbol(7)->file == index::no_file);
 }
 
 ZEST_CASE(UncoveredFileIdRejected) {

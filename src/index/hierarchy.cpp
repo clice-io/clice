@@ -48,7 +48,7 @@ void collect_by_target(const IndexQuery& index, SymbolHash hash,
                       {.preamble = false},
                       [&](const IndexSource& source, const Relation& relation) {
                           if(auto site = source.site(relation.range)) {
-                              by_target[relation.target_symbol].push_back(*site);
+                              by_target[relation.target].push_back(*site);
                           }
                           return true;
                       });
@@ -84,13 +84,13 @@ std::vector<DefinedFunction>
     std::vector<DefinedFunction> functions;
     source.shard->for_each_relation([&](SymbolHash symbol, const Relation& defined) {
         if(defined.kind != RelationKind::Definition ||
-           !defined.definition_range().contains(defined.range)) {
+           !defined.extent().contains(defined.range)) {
             return true;
         }
         if(auto info = index.symbol_info(symbol, source.file); info && is_function(info->kind)) {
             functions.push_back({
                 .hash = symbol,
-                .extent = defined.definition_range(),
+                .extent = defined.extent(),
                 .name = defined.range,
             });
         }
@@ -155,7 +155,7 @@ CallGraph call_graph(const IndexQuery& index, SymbolHash root,
                                  info->kind);
         if(value) {
             // A function's local has no caller but that function.
-            if(info->kind != SymbolKind::Variable || info->scope != SymbolScope::FileLocal) {
+            if(info->kind != SymbolKind::Variable || info->scope != SymbolScope::FunctionLocal) {
                 graph.callers = referencing_functions(index, root, anchor);
             }
         } else {

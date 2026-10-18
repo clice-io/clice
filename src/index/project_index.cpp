@@ -228,16 +228,16 @@ std::expected<void, llvm::StringRef>
     return {};
 }
 
-std::optional<SymbolIdentity> ProjectIndex::identity_of(SymbolHash hash) const {
+std::optional<SymbolView> ProjectIndex::find_symbol(SymbolHash hash) const {
     if(auto it = changed.find(hash); it != changed.end()) {
-        return it->second.identity();
+        return it->second.view();
     }
     if(auto it = written.find(hash); it != written.end()) {
-        return it->second.identity();
+        return it->second.view();
     }
     if(base) {
         if(auto doc = base->find(hash)) {
-            return base->identity(*doc);
+            return base->view(*doc);
         }
     }
     return std::nullopt;
@@ -326,10 +326,10 @@ void ProjectIndex::each_instantiation_file(SymbolHash hash,
 }
 
 void ProjectIndex::for_each_symbol(
-    llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, std::uint32_t)> visit) const {
+    llvm::function_ref<bool(SymbolHash, const SymbolView&, std::uint32_t)> visit) const {
     for(auto& [hash, symbol]: changed) {
         if(!visit(hash,
-                  symbol.identity(),
+                  symbol.view(),
                   static_cast<std::uint32_t>(symbol.reference_files.cardinality()))) {
             return;
         }
@@ -339,7 +339,7 @@ void ProjectIndex::for_each_symbol(
             continue;
         }
         if(!visit(hash,
-                  symbol.identity(),
+                  symbol.view(),
                   static_cast<std::uint32_t>(symbol.reference_files.cardinality()))) {
             return;
         }
@@ -352,7 +352,7 @@ void ProjectIndex::for_each_symbol(
         if(changed.contains(hash) || written.contains(hash)) {
             continue;
         }
-        if(!visit(hash, base->identity(doc), base->reference_counts[doc])) {
+        if(!visit(hash, base->view(doc), base->reference_counts[doc])) {
             return;
         }
     }
@@ -390,7 +390,7 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
     if(!doc) {
         return symbol;
     }
-    auto identity = base->identity(*doc);
+    auto identity = base->view(*doc);
     symbol.name = identity.name.str();
     symbol.args = identity.args.str();
     symbol.signature = identity.signature.str();
@@ -416,7 +416,7 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
     return symbol;
 }
 
-void ProjectIndex::merge(const TUIndex& index,
+void ProjectIndex::merge_symbols(const TUIndex& index,
                          llvm::ArrayRef<Fid> file_ids_map,
                          llvm::SmallVectorImpl<SymbolHash>* added) {
     // Units may spell one symbol differently (`X<int>` against
@@ -442,12 +442,12 @@ void ProjectIndex::merge(const TUIndex& index,
         return true;
     };
     index.iterate_symbols([&](SymbolHash hash,
-                              const SymbolIdentity& identity,
+                              const SymbolView& identity,
                               llvm::ArrayRef<std::uint32_t> references) {
         if(identity.scope != SymbolScope::External) {
             return true;
         }
-        bool known = identity_of(hash).has_value();
+        bool known = find_symbol(hash).has_value();
         auto& target = touch(hash);
         bool symbol_changed = !known;
         bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
@@ -623,7 +623,7 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     reference_counts.reserve(entries.size());
     for(std::uint32_t i = 0; i < entries.size(); i += 1) {
         auto& [hash, doc, symbol] = entries[i];
-        auto identity = symbol ? symbol->identity() : base->identity(doc);
+        auto identity = symbol ? symbol->view() : base->view(doc);
         blob.sym_names += identity.name;
         blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
         if(!identity.args.empty()) {

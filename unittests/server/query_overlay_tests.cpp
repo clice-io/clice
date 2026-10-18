@@ -101,7 +101,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
     index::SymbolHash hash = 0;
     std::uint32_t count = 0;
     full_index.iterate_symbols([&](index::SymbolHash symbol_id,
-                                   const index::SymbolIdentity& symbol,
+                                   const index::SymbolView& symbol,
                                    llvm::ArrayRef<std::uint32_t>) {
         if(symbol.name == name) {
             hash = symbol_id;
@@ -131,7 +131,7 @@ void merge_disk_index(llvm::StringRef focus_on_disk = {}) {
         file_ids_map.push_back(project.file_table.intern(
             Spelling::absolute(focus ? focus_on_disk : full_index.path(i))));
     }
-    project.project_index.merge(full_index, file_ids_map);
+    project.project_index.merge_symbols(full_index, file_ids_map);
 
     for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
         auto local_id = full_index.section_path(section);
@@ -428,12 +428,12 @@ ZEST_CASE(PreviewFromDisk) {
         .kind = RelationKind::Definition,
         .range = {4, 9}
     };
-    def.set_definition_range({0, 14});
+    def.set_extent({0, 14});
     file_index.relations[sym].push_back(def);
     file_index.relations[sym].push_back({
         .kind = RelationKind::Reference,
         .range = {27, 32},
-        .target_symbol = 0
+        .target = 0
     });
 
     std::string bytes;
@@ -535,7 +535,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
         .kind = RelationKind::Definition,
         .range = {0, 3}
     };
-    relation.set_definition_range({0, 3});
+    relation.set_extent({0, 3});
     fake.relations[foo].push_back(relation);
     auto header_id = project.file_table.intern(Spelling::absolute(header_path("foo.h")));
     std::string bytes;

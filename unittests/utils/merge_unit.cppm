@@ -29,7 +29,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
     }
     llvm::SmallVector<index::SymbolHash> added;
-    project_index.merge(view, file_ids_map, &added);
+    project_index.merge_symbols(view, file_ids_map, &added);
     project_index.search_pending.insert(added.begin(), added.end());
     focus = file_ids_map[view.path_count() - 1];
 
@@ -50,7 +50,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
 
     llvm::SmallVector<VersionID> fv_of;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        auto hash = consumed[i] != 0 ? consumed[i] : view.path_hash(i);
+        auto hash = consumed[i] != 0 ? consumed[i] : view.content_hash(i);
         fv_of.push_back(project.file_table.intern_version(file_ids_map[i], hash));
     }
 

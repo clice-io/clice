@@ -359,29 +359,29 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // A name qualified by its containers, inline namespaces skipped as
     // lookup skips them. A TU-local container is in `shard`, the shard
     // holding the entity's entries.
-    auto identity_of = [&](index::SymbolHash hash, const index::Shard* shard) {
-        auto identity = index.identity_of(hash);
+    auto find_symbol = [&](index::SymbolHash hash, const index::Shard* shard) {
+        auto identity = index.find_symbol(hash);
         if(!identity && shard) {
             identity = shard->find_symbol(hash);
         }
         return identity;
     };
     auto qualified_name = [&](index::SymbolHash hash, const index::Shard* shard) {
-        auto identity = identity_of(hash, shard);
+        auto identity = find_symbol(hash, shard);
         if(!identity) {
             return std::string();
         }
-        auto name = index::SymbolRef::from(hash, *identity).display_name();
+        auto name = index::SymbolInfo::from(hash, *identity).display_name();
         // A persisted parent column can be cyclic; the tables only reject
         // reserved values.
         llvm::DenseSet<index::SymbolHash> visited{hash};
         for(auto parent = identity->parent; parent != 0 && visited.insert(parent).second;) {
-            auto scope = identity_of(parent, shard);
+            auto scope = find_symbol(parent, shard);
             if(!scope) {
                 break;
             }
             if(!index::transparent_scope(scope->flags)) {
-                name = index::SymbolRef::from(parent, *scope).display_name() + "::" + name;
+                name = index::SymbolInfo::from(parent, *scope).display_name() + "::" + name;
             }
             parent = scope->parent;
         }
@@ -392,7 +392,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // namespace scope; an unscoped enum's enumerator there by the enclosing
     // namespace, which the enum declares it in.
     auto export_name_of = [&](index::SymbolHash hash,
-                              const index::SymbolIdentity& identity,
+                              const index::SymbolView& identity,
                               const index::Shard* shard) -> std::string {
         // A deduction guide has no name to export it by.
         if(identity.kind == SymbolKind::Macro ||
@@ -400,7 +400,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
            index::name_form(identity.flags) == index::NameForm::Other) {
             return {};
         }
-        auto parent = identity.parent != 0 ? identity_of(identity.parent, shard) : std::nullopt;
+        auto parent = identity.parent != 0 ? find_symbol(identity.parent, shard) : std::nullopt;
         if(!parent || parent->kind == SymbolKind::Namespace) {
             return index::has_flag(identity.flags, index::SymbolFlags::Unnamed)
                        ? std::string()
@@ -410,7 +410,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
            !index::has_flag(identity.flags, index::SymbolFlags::Completable)) {
             return {};
         }
-        auto grand = parent->parent != 0 ? identity_of(parent->parent, shard) : std::nullopt;
+        auto grand = parent->parent != 0 ? find_symbol(parent->parent, shard) : std::nullopt;
         if(grand && grand->kind != SymbolKind::Namespace) {
             return {};
         }
@@ -521,10 +521,10 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     .line = line_of(shard, relation.range.begin),
                     .offset = relation.range.begin,
                     .definition = relation.kind == RelationKind::Definition,
-                    .extent = relation.definition_range(),
+                    .extent = relation.extent(),
                 });
             } else if(relation.kind == RelationKind::Primary) {
-                raw_specializations.emplace_back(hash, relation.target_symbol, id);
+                raw_specializations.emplace_back(hash, relation.target, id);
             } else if(use_of(relation)) {
                 auto& use = raw[id][hash];
                 if(use.count == 0) {
@@ -570,7 +570,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 continue;
             }
             auto* shard = index.shard(fids[id]);
-            auto identity = identity_of(hash, shard);
+            auto identity = find_symbol(hash, shard);
             if(!identity || identity->kind != SymbolKind::Macro) {
                 continue;
             }
@@ -599,7 +599,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     llvm::StringMap<llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>, 1>>
         macro_definitions;
     for(auto& [hash, list]: sites) {
-        if(auto identity = identity_of(hash, index.shard(fids[list.front().file]));
+        if(auto identity = find_symbol(hash, index.shard(fids[list.front().file]));
            identity && identity->kind == SymbolKind::Macro) {
             for(auto& site: list) {
                 macro_definitions[identity->name].emplace_back(site.file, site.line);
@@ -665,7 +665,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             return std::string();
         }
         auto* shard = index.shard(fids[file]);
-        auto enclosing = identity_of(innermost->second, shard);
+        auto enclosing = find_symbol(innermost->second, shard);
         if(!enclosing || enclosing->kind != SymbolKind::Namespace) {
             return std::nullopt;
         }
@@ -678,7 +678,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
         auto* shard = index.shard(fids[id]);
         for(auto& [offset, target]: weak_sites[id]) {
-            auto identity = identity_of(target, shard);
+            auto identity = find_symbol(target, shard);
             if(!identity || identity->name.empty()) {
                 continue;
             }
@@ -706,11 +706,11 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // A namespace alias at namespace scope: its definition relation, and on its
     // line the last relation naming a namespace, the one it aliases.
     for(auto& [hash, list]: sites) {
-        auto identity = index.identity_of(hash);
+        auto identity = index.find_symbol(hash);
         if(!identity || identity->kind != SymbolKind::Namespace) {
             continue;
         }
-        auto parent = identity->parent != 0 ? index.identity_of(identity->parent) : std::nullopt;
+        auto parent = identity->parent != 0 ? index.find_symbol(identity->parent) : std::nullopt;
         if(parent && parent->kind != SymbolKind::Namespace) {
             continue;
         }
@@ -729,7 +729,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(used == hash || offset < last || line_of(*shard, offset) != site->line) {
                 continue;
             }
-            if(auto named = identity_of(used, shard);
+            if(auto named = find_symbol(used, shard);
                named && named->kind == SymbolKind::Namespace) {
                 target = used;
                 last = offset;
@@ -760,14 +760,14 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             scoped = site_it->second;
         }
 
-        std::optional<index::SymbolIdentity> identity = index.identity_of(hash);
+        std::optional<index::SymbolView> identity = index.find_symbol(hash);
         bool internal = !identity;
         for(std::size_t i = 0; !identity && i < scoped.size(); i += 1) {
             if(auto* shard = index.shard(fids[scoped[i].file])) {
                 identity = shard->find_symbol(hash);
             }
         }
-        if(!identity || identity->scope == index::SymbolScope::FileLocal ||
+        if(!identity || identity->scope == index::SymbolScope::FunctionLocal ||
            !links_files(identity->kind)) {
             return;
         }
@@ -924,7 +924,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             // does; its definition still encloses the declaration.
             if(site != scoped.end() &&
                llvm::any_of(definitions[declared_in], [&](const auto& definition) {
-                   auto scope = identity_of(definition.second, owner_shard);
+                   auto scope = find_symbol(definition.second, owner_shard);
                    return definition.first.begin <= site->offset &&
                           site->offset < definition.first.end && scope &&
                           scope->kind == SymbolKind::Namespace &&

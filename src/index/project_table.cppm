@@ -177,7 +177,7 @@ struct ProjectTable {
         return sets;
     }
 
-    SymbolIdentity identity(std::uint32_t doc) const {
+    SymbolView view(std::uint32_t doc) const {
         auto file = this->file(doc);
         return {
             .name = name(doc),

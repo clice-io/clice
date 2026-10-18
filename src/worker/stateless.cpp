@@ -382,7 +382,7 @@ static worker::IncludeTreeResult
              timer.ms());
     return {
         .paths = std::move(tree.paths),
-        .path_hashes = std::move(tree.path_hashes),
+        .content_hashes = std::move(tree.content_hashes),
         .nodes = std::move(tree.nodes),
         .absent = unit->absent(),
     };

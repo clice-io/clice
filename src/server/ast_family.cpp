@@ -794,7 +794,7 @@ kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
     llvm::SmallVector<VersionID> versions;
     for(std::size_t i = 0; i < tree.paths.size(); i += 1) {
         auto fid = files.intern(Spelling::absolute(tree.paths[i]));
-        auto hash = tree.path_hashes[i];
+        auto hash = tree.content_hashes[i];
         if(hash != 0) {
             files.disk.consumed(fid, hash);
         }

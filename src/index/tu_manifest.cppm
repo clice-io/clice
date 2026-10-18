@@ -31,7 +31,7 @@ struct LocalFanout {
 
 /// The instantiation resolutions a TU uses in one file — the ones it walked
 /// and the ones the known keys it skipped there stand for — by the identity
-/// of their set (index::use_identity), which the file's instantiation blob
+/// of their set (index::use_hash), which the file's instantiation blob
 /// stores.
 struct InstantiationUse {
     VersionID file;

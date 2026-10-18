@@ -29,7 +29,7 @@ public:
     void each_session_index(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
     void each_preamble(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
     void each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
-    std::shared_ptr<index::TUIndex> preamble_blob(Fid file) const override;
+    std::shared_ptr<index::TUIndex> preamble_index(Fid file) const override;
 
 private:
     /// The overlay TU index of an open buffer's PCH, or null when it has

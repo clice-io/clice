@@ -255,7 +255,7 @@ struct ShardBlob {
     /// [rel_offsets[i], rel_offsets[i + 1]). Size is table size + 1.
     IdColumn rel_offsets;
 
-    /// Symbols local to this file (FileLocal) or its TU (TULocal), whose
+    /// Symbols local to this file (FunctionLocal) or its TU (Internal), whose
     /// names live nowhere else: sparse over the symbol table, ascending.
     IdColumn local_syms;
     /// Names back to back, an end offset each.
@@ -351,7 +351,7 @@ struct InstantiationBlob {
     IdColumn resolution_records;
 
     /// The sets of resolutions the TUs use here, which manifests name by
-    /// identity (use_identity), ascending; use i's resolutions are
+    /// identity (use_hash), ascending; use i's resolutions are
     /// use_resolutions[use_ends[i - 1], use_ends[i]), ascending. A worker's
     /// blob has none: the master knows what its TU uses.
     std::vector<std::uint64_t> uses;
@@ -415,7 +415,7 @@ struct TUIndexBlob {
     /// the consumed-content hash per path, and every include edge of the
     /// parse.
     std::vector<std::string> paths;
-    std::vector<std::uint64_t> path_hashes;
+    std::vector<std::uint64_t> content_hashes;
     std::vector<IncludeNode> nodes;
 
     /// The symbols the entries name, sorted by hash, except the file-local

@@ -120,7 +120,7 @@ std::vector<Highlight>
             llvm::SmallVector<SymbolHash> constructors;
             for(auto* shard: shards) {
                 shard->lookup(symbol, RelationKind::Constructor, [&](const Relation& found) {
-                    constructors.push_back(found.target_symbol);
+                    constructors.push_back(found.target);
                     return true;
                 });
             }
@@ -158,7 +158,7 @@ std::vector<Site> definition_sites(const IndexQuery& index, SymbolHash hash, Fid
     }
     // The first block in the file the table names for the namespace stands
     // for every block, whichever files are open.
-    if(auto identity = index.project().identity_of(hash); identity && identity->file != no_file) {
+    if(auto identity = index.project().find_symbol(hash); identity && identity->file != no_file) {
         if(auto source = index.serving(Fid{identity->file})) {
             std::optional<Site> first;
             source->shard->lookup(hash, RelationKind::Definition, [&](const Relation& relation) {
@@ -354,7 +354,7 @@ std::vector<Site> type_definition(const IndexQuery& index, const IndexQuery::Cur
     if(auto source = index.serving(anchor)) {
         source->shard->lookup(symbol, RelationKind::TypeDefinition, [&](const Relation& relation) {
             if(relation.range.contains(cursor.site.range)) {
-                found.push_back({.symbol = relation.target_symbol, .anchor = anchor});
+                found.push_back({.symbol = relation.target, .anchor = anchor});
             }
             return true;
         });
@@ -369,8 +369,8 @@ std::vector<Site> type_definition(const IndexQuery& index, const IndexQuery::Cur
             IndexQuery::Order::DiskFirst,
             {.preamble = false},
             [&](const IndexSource& source, const Relation& relation) {
-                if(!relation.range.valid() && seen.insert(relation.target_symbol).second) {
-                    types.push_back({.symbol = relation.target_symbol, .anchor = source.file});
+                if(!relation.range.valid() && seen.insert(relation.target).second) {
+                    types.push_back({.symbol = relation.target, .anchor = source.file});
                 }
                 return true;
             });

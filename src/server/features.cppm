@@ -360,7 +360,7 @@ private:
     /// the way the user knows the file. Both routes answer it from the
     /// index, which knows the defining unit across files.
     feature::HoverInfo module_hover_card(const index::IndexQuery::Cursor& cursor,
-                                         const index::SymbolRef& module);
+                                         const index::SymbolInfo& module);
 
     /// The preamble include links of a session's active PCH; empty when
     /// there is no PCH or its preamble no longer matches the buffer.

@@ -30,7 +30,7 @@ struct TUIndexMirror {
     std::uint32_t format_version = index::index_format_version;
     std::int64_t built_at = 0;
     std::vector<std::string> paths;
-    std::vector<std::uint64_t> path_hashes;
+    std::vector<std::uint64_t> content_hashes;
     std::vector<index::IncludeNode> nodes;
     std::vector<std::uint64_t> sym_hashes;
     std::string sym_names;
@@ -55,7 +55,7 @@ struct TUIndexMirror {
 
     /// Append a symbol entry; the reader requires ascending hashes.
     void add_symbol(index::SymbolHash hash,
-                    const index::SymbolIdentity& identity,
+                    const index::SymbolView& identity,
                     llvm::ArrayRef<std::uint32_t> references = {},
                     llvm::ArrayRef<std::uint32_t> instantiation_files = {}) {
         sym_hashes.push_back(hash);
@@ -84,7 +84,7 @@ struct TUIndexMirror {
         mirror.built_at = view.built_at();
         for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
             mirror.paths.emplace_back(view.path(i));
-            mirror.path_hashes.push_back(view.path_hash(i));
+            mirror.content_hashes.push_back(view.content_hash(i));
         }
         for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
             mirror.nodes.push_back(view.node(i));
@@ -96,7 +96,7 @@ struct TUIndexMirror {
                 return true;
             });
         view.iterate_symbols([&](index::SymbolHash hash,
-                                 const index::SymbolIdentity& identity,
+                                 const index::SymbolView& identity,
                                  llvm::ArrayRef<std::uint32_t> references) {
             mirror.add_symbol(hash, identity, references, instantiation_files.lookup(hash));
             return true;

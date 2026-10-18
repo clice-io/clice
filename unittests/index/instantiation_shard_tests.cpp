@@ -67,7 +67,7 @@ InstantiationShard merge(const InstantiationShard& old,
 
 /// The use of a unit using every resolution of `shard`.
 index::AddedUse use_of(const InstantiationShard& shard) {
-    return {.use = index::use_identity(shard.resolutions()), .resolutions = shard.resolutions()};
+    return {.use = index::use_hash(shard.resolutions()), .resolutions = shard.resolutions()};
 }
 
 std::vector<InstantiationRecord> records_of(const InstantiationShard& shard) {
@@ -114,7 +114,7 @@ ZEST_CASE(Roundtrip) {
     ZEXPECT(shard.content_hash() == generation);
 
     auto identity =
-        index::resolution_identity(generation,
+        index::resolution_hash(generation,
                                    {reference(10, 11), call(10, 11, 50), reference(20, 22)});
     ZASSERT(shard.resolutions().size() == 1u);
     ZEXPECT(shard.resolutions().front() == identity);
@@ -347,13 +347,13 @@ ZEST_CASE(CorruptBlobRejected) {
 
     // A use names stored resolutions under the identity they hash to.
     std::vector<ResolutionHash> used = {5};
-    blob.uses = {index::use_identity(used)};
+    blob.uses = {index::use_hash(used)};
     blob.use_ends = {1};
     blob.use_resolutions = {0};
     ZEXPECT(make(bytes_of()).loaded());
-    blob.uses = {index::use_identity(used) + 1};
+    blob.uses = {index::use_hash(used) + 1};
     ZEXPECT(!make(bytes_of()).loaded());
-    blob.uses = {index::use_identity(used)};
+    blob.uses = {index::use_hash(used)};
     blob.use_resolutions = {1};
     ZEXPECT(!make(bytes_of()).loaded());
     blob.use_resolutions = {0};

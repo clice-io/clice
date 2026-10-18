@@ -60,7 +60,7 @@ void merge_into_workspace() {
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
     }
-    project.project_index.merge(view, file_ids_map);
+    project.project_index.merge_symbols(view, file_ids_map);
     focus_id = file_ids_map[view.path_count() - 1];
 
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {

@@ -281,7 +281,7 @@ CheckResult uses_ok(BlobView root) {
         for(auto resolution: table.members_of(use)) {
             members.push_back(resolutions[resolution]);
         }
-        if(use_identity(members) != table.hashes[use]) {
+        if(use_hash(members) != table.hashes[use]) {
             return std::unexpected("a use does not hash to its identity");
         }
     }
@@ -337,7 +337,7 @@ CheckResult validate(BlobView root) {
 
 }  // namespace
 
-ResolutionHash resolution_identity(std::uint64_t content_hash,
+ResolutionHash resolution_hash(std::uint64_t content_hash,
                                    llvm::ArrayRef<InstantiationRecord> records) {
     llvm::SmallVector<std::uint8_t, 256> bytes;
     auto append = [&](auto value) {
@@ -355,7 +355,7 @@ ResolutionHash resolution_identity(std::uint64_t content_hash,
     return llvm::xxh3_64bits(bytes);
 }
 
-UseHash use_identity(llvm::ArrayRef<ResolutionHash> resolutions) {
+UseHash use_hash(llvm::ArrayRef<ResolutionHash> resolutions) {
     return llvm::xxh3_64bits(
         llvm::ArrayRef(reinterpret_cast<const std::uint8_t*>(resolutions.data()),
                        resolutions.size() * sizeof(ResolutionHash)));
@@ -751,7 +751,7 @@ void write_instantiations(const FileInstantiations& instantiations,
     std::vector<ResolutionHash> identities;
     for(auto records: instantiations.resolutions) {
         canonicalize(records);
-        identities.push_back(resolution_identity(content_hash, records));
+        identities.push_back(resolution_hash(content_hash, records));
         draft.resolutions.emplace_back(identities.back(), std::move(records));
     }
     fold_resolutions(draft.resolutions);

@@ -32,7 +32,7 @@ index::TUIndex build_view() {
 index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRef name) {
     index::SymbolHash found = 0;
     project.for_each_symbol(
-        [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, std::uint32_t) {
+        [&](index::SymbolHash hash, const index::SymbolView& symbol, std::uint32_t) {
             if(symbol.name == name) {
                 found = hash;
             }
@@ -49,7 +49,7 @@ std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
     return files;
 }
 
-/// The TU-local id -> pool id mapping merge() consumes, as Indexer::merge
+/// The TU-local id -> pool id mapping merge_symbols() consumes, as Indexer::merge
 /// computes it.
 llvm::SmallVector<Fid> intern_paths(const index::TUIndex& view, clice::FileTable& pool) {
     llvm::SmallVector<Fid> ids;
@@ -75,7 +75,7 @@ ZEST_CASE(MergeCollectsExternalSymbols) {
     index::ProjectIndex project;
     auto view = build_view();
     ZASSERT(view.loaded());
-    project.merge(view, intern_paths(view, pool));
+    project.merge_symbols(view, intern_paths(view, pool));
 
     auto external = find_symbol(project, "external_fn");
     ZASSERT(external != 0);
@@ -101,12 +101,12 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     index::ProjectIndex project;
     auto view = build_view();
     ZASSERT(view.loaded());
-    project.merge(view, intern_paths(view, pool));
+    project.merge_symbols(view, intern_paths(view, pool));
 
     // A declaration-only unit places the symbol at its declaring header.
     auto hash = find_symbol(project, "shared_fn");
     ZASSERT(hash != 0);
-    auto declared = project.identity_of(hash);
+    auto declared = project.find_symbol(hash);
     ZASSERT(declared);
     ZASSERT(declared->parent == find_symbol(project, "lib"));
     ZASSERT(!index::has_flag(declared->flags, index::SymbolFlags::HasDefinition));
@@ -130,9 +130,9 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     std::string definer_bytes = index::build_tu_index(*definer.unit);
     auto definer_view = index::TUIndex::from_bytes(definer_bytes);
     ZASSERT(definer_view.loaded());
-    project.merge(definer_view, intern_paths(definer_view, pool));
+    project.merge_symbols(definer_view, intern_paths(definer_view, pool));
 
-    auto defined = project.identity_of(hash);
+    auto defined = project.find_symbol(hash);
     ZASSERT(defined);
     ZASSERT(index::has_flag(defined->flags, index::SymbolFlags::HasDefinition));
     ZASSERT(index::has_flag(defined->flags, index::SymbolFlags::Deprecated));
@@ -157,10 +157,10 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     std::string mover_bytes = index::build_tu_index(*mover.unit);
     auto mover_view = index::TUIndex::from_bytes(mover_bytes);
     ZASSERT(mover_view.loaded());
-    project.merge(mover_view, intern_paths(mover_view, pool));
+    project.merge_symbols(mover_view, intern_paths(mover_view, pool));
     auto moved = pool.find(Spelling::absolute(mover_view.path(mover_view.path_count() - 1)));
     ZASSERT(moved);
-    ZASSERT(project.identity_of(hash)->file == moved->raw);
+    ZASSERT(project.find_symbol(hash)->file == moved->raw);
 }
 
 ZEST_CASE(MergePicksOneSpelling) {
@@ -183,9 +183,9 @@ ZEST_CASE(MergePicksOneSpelling) {
         index::ProjectIndex project;
         auto first_view = index::TUIndex::from_bytes(*first);
         auto second_view = index::TUIndex::from_bytes(*second);
-        project.merge(first_view, intern_paths(first_view, pool));
-        project.merge(second_view, intern_paths(second_view, pool));
-        ZASSERT(project.identity_of(42)->args == "<int>");
+        project.merge_symbols(first_view, intern_paths(first_view, pool));
+        project.merge_symbols(second_view, intern_paths(second_view, pool));
+        ZASSERT(project.find_symbol(42)->args == "<int>");
     }
 }
 
@@ -205,9 +205,9 @@ ZEST_CASE(LatestSignatureStands) {
     index::ProjectIndex project;
     auto before_view = index::TUIndex::from_bytes(before_bytes);
     auto after_view = index::TUIndex::from_bytes(after_bytes);
-    project.merge(before_view, intern_paths(before_view, pool));
-    project.merge(after_view, intern_paths(after_view, pool));
-    ZASSERT(project.identity_of(42)->signature == "(int count)");
+    project.merge_symbols(before_view, intern_paths(before_view, pool));
+    project.merge_symbols(after_view, intern_paths(after_view, pool));
+    ZASSERT(project.find_symbol(42)->signature == "(int count)");
 }
 
 ZEST_CASE(DefinitionDecidesSignature) {
@@ -236,9 +236,9 @@ ZEST_CASE(DefinitionDecidesSignature) {
         index::ProjectIndex project;
         auto first_view = index::TUIndex::from_bytes(*first);
         auto second_view = index::TUIndex::from_bytes(*second);
-        project.merge(first_view, intern_paths(first_view, pool));
-        project.merge(second_view, intern_paths(second_view, pool));
-        ZASSERT(project.identity_of(42)->signature == "(int count)");
+        project.merge_symbols(first_view, intern_paths(first_view, pool));
+        project.merge_symbols(second_view, intern_paths(second_view, pool));
+        ZASSERT(project.find_symbol(42)->signature == "(int count)");
     }
 }
 
@@ -267,9 +267,9 @@ ZEST_CASE(DefinitionDecidesTokenKind) {
         index::ProjectIndex project;
         auto first_view = index::TUIndex::from_bytes(*first);
         auto second_view = index::TUIndex::from_bytes(*second);
-        project.merge(first_view, intern_paths(first_view, pool));
-        project.merge(second_view, intern_paths(second_view, pool));
-        ZASSERT(project.identity_of(42)->token_class.kind == SemanticTokenKind::Class);
+        project.merge_symbols(first_view, intern_paths(first_view, pool));
+        project.merge_symbols(second_view, intern_paths(second_view, pool));
+        ZASSERT(project.find_symbol(42)->token_class.kind == SemanticTokenKind::Class);
     }
 }
 
@@ -392,12 +392,12 @@ ZEST_CASE(GlobalRoundTripWithRealMerge) {
     auto view = build_view();
     ZASSERT(view.loaded());
     auto file_ids_map = intern_paths(view, pool);
-    project.merge(view, file_ids_map);
+    project.merge_symbols(view, file_ids_map);
 
     // A manifest referencing the focus file keeps its FileVersion alive
     // through the write's garbage collection.
     auto focus_fv = pool.intern_version(file_ids_map[view.path_count() - 1],
-                                        view.path_hash(view.path_count() - 1));
+                                        view.content_hash(view.path_count() - 1));
     index::TUManifest manifest;
     manifest.tu_fv = focus_fv;
     project.apply_manifest(pool, file_ids_map[view.path_count() - 1], std::move(manifest));
@@ -453,18 +453,18 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
         auto id_of = [&](llvm::StringRef path) {
             return table.find(Spelling::absolute(path))->raw;
         };
-        auto scope = index.identity_of(10);
+        auto scope = index.find_symbol(10);
         ZASSERT(scope);
         ZEXPECT(scope->parent == 0u);
         ZEXPECT(scope->args.empty());
         ZEXPECT(scope->file == index::no_file);
-        auto member = index.identity_of(20);
+        auto member = index.find_symbol(20);
         ZASSERT(member);
         ZEXPECT(member->parent == 10u);
         ZEXPECT(member->args == "<int>");
         ZEXPECT(member->file == id_of("/proj/1.h"));
         ZEXPECT(index.reference_count(20) == 2u);
-        auto outsider = index.identity_of(30);
+        auto outsider = index.find_symbol(30);
         ZASSERT(outsider);
         ZEXPECT(outsider->parent == 999u);
         ZEXPECT(index.reference_count(10) == 1u);
@@ -528,7 +528,7 @@ ZEST_CASE(WidePathIds) {
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     ZASSERT(loaded.load_global(bytes.str(), fresh, pins));
-    auto identity = loaded.identity_of(10);
+    auto identity = loaded.find_symbol(10);
     ZASSERT(identity);
     ZEXPECT(fresh.find(Spelling::absolute("/proj/0.h")) == Fid{identity->file});
     ZEXPECT(loaded.reference_count(10) == 1u);

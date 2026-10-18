@@ -21,7 +21,7 @@ struct IncludeTree {
     /// consumed per file (0 = the buffer was unavailable for hashing).
     /// Freshness baselines built from these describe what the index was
     /// built from, never a later disk state.
-    std::vector<std::uint64_t> path_hashes;
+    std::vector<std::uint64_t> content_hashes;
 
     /// Every include edge of the parse. Besides backing `path_id` lookups,
     /// these are the TU's include dependencies for shard freshness checks,

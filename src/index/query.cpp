@@ -26,18 +26,18 @@ std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
 
 std::optional<Site> extent_of(const IndexSource& source, const Relation& relation) {
     assert(RelationKind(relation.kind).isDeclOrDef());
-    auto extent = std::bit_cast<LocalSourceRange>(relation.target_symbol);
+    auto extent = std::bit_cast<LocalSourceRange>(relation.target);
     if(extent.begin >= extent.end) {
         return std::nullopt;
     }
     return source.site(extent);
 }
 
-llvm::SmallVector<SymbolRef, 4>
+llvm::SmallVector<SymbolInfo, 4>
     scope_chain(SymbolHash hash,
                 SymbolHash parent,
-                llvm::function_ref<std::optional<SymbolRef>(SymbolHash)> lookup) {
-    llvm::SmallVector<SymbolRef, 4> chain;
+                llvm::function_ref<std::optional<SymbolInfo>(SymbolHash)> lookup) {
+    llvm::SmallVector<SymbolInfo, 4> chain;
     // A parent chain follows declaration contexts, so it is acyclic as
     // built; the guard keeps a corrupted parent column from spinning.
     llvm::DenseSet<SymbolHash> visited{hash};
@@ -114,11 +114,11 @@ bool resolved_relations(const InstantiationShard& shard,
                 if(names && kind.is_one_of(RelationKind::Caller)) {
                     relation = Relation{.kind = RelationKind::Caller,
                                         .range = record.range,
-                                        .target_symbol = record.from};
+                                        .target = record.from};
                 } else if(record.from == symbol && kind.is_one_of(RelationKind::Callee)) {
                     relation = Relation{.kind = RelationKind::Callee,
                                         .range = record.range,
-                                        .target_symbol = record.target};
+                                        .target = record.target};
                 }
                 break;
             }
@@ -128,9 +128,9 @@ bool resolved_relations(const InstantiationShard& shard,
                     relation = Relation{.kind = RelationKind::Reference, .range = record.range};
                 } else if(names && kind.is_one_of(RelationKind::Derived)) {
                     relation =
-                        Relation{.kind = RelationKind::Derived, .target_symbol = record.from};
+                        Relation{.kind = RelationKind::Derived, .target = record.from};
                 } else if(record.from == symbol && kind.is_one_of(RelationKind::Base)) {
-                    relation = Relation{.kind = RelationKind::Base, .target_symbol = record.target};
+                    relation = Relation{.kind = RelationKind::Base, .target = record.target};
                 }
                 break;
             }
@@ -139,7 +139,7 @@ bool resolved_relations(const InstantiationShard& shard,
                 // declared type's relation carries no range.
                 if(record.from == symbol && kind.is_one_of(RelationKind::TypeDefinition)) {
                     relation = Relation{.kind = RelationKind::TypeDefinition,
-                                        .target_symbol = record.target};
+                                        .target = record.target};
                 }
                 break;
             }
@@ -241,7 +241,7 @@ std::optional<IndexSource> IndexQuery::serving(Fid file) const {
 }
 
 const InstantiationShard* IndexQuery::instantiations_of(Fid file, const Shard& shard) const {
-    if(!resolved) {
+    if(!with_instantiations) {
         return nullptr;
     }
     auto* instantiations = index.instantiation_shard(file);
@@ -254,8 +254,8 @@ const Shard* IndexQuery::shard_matching(Fid file, llvm::StringRef text) const {
     return shard && shard->matches_content(text) ? shard : nullptr;
 }
 
-std::shared_ptr<TUIndex> IndexQuery::preamble_blob(Fid file) const {
-    return live ? live->preamble_blob(file) : nullptr;
+std::shared_ptr<TUIndex> IndexQuery::preamble_index(Fid file) const {
+    return live ? live->preamble_index(file) : nullptr;
 }
 
 bool IndexQuery::visit_overlay_relations(const TUIndex& state,
@@ -330,7 +330,7 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
 void IndexQuery::each_disk_file(SymbolHash hash,
                                 Fid anchor,
                                 llvm::function_ref<void(Fid)> visit) const {
-    if(index.identity_of(hash)) {
+    if(index.find_symbol(hash)) {
         index.each_reference_file(hash, visit);
     } else if(anchor.valid()) {
         index.each_fanout_file(hash, anchor, visit);
@@ -391,7 +391,7 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             completed = emit(*source);
         };
         each_disk_file(hash, anchor, visit);
-        if(resolved) {
+        if(with_instantiations) {
             index.each_instantiation_file(hash, visit);
         }
         return completed;
@@ -473,7 +473,7 @@ Fid IndexQuery::definition_file(SymbolHash hash) const {
     if(found.valid()) {
         return found;
     }
-    auto identity = index.identity_of(hash);
+    auto identity = index.find_symbol(hash);
     if(!identity || !has_flag(identity->flags, SymbolFlags::HasDefinition)) {
         return {};
     }
@@ -581,10 +581,10 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file,
     return symbol_at(file, *offset);
 }
 
-std::optional<SymbolRef> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) const {
-    std::optional<SymbolRef> found;
-    auto adopt = [&](const SymbolIdentity& identity) {
-        found = SymbolRef::from(hash, identity);
+std::optional<SymbolInfo> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) const {
+    std::optional<SymbolInfo> found;
+    auto adopt = [&](const SymbolView& identity) {
+        found = SymbolInfo::from(hash, identity);
     };
 
     // Open sessions first: they hold every symbol of their unsaved buffers.
@@ -600,8 +600,8 @@ std::optional<SymbolRef> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) co
         }
     }
 
-    if(auto identity = index.identity_of(hash)) {
-        return SymbolRef::from(hash, *identity);
+    if(auto identity = index.find_symbol(hash)) {
+        return SymbolInfo::from(hash, *identity);
     }
 
     // A symbol that exists only under an open buffer's context (or in
@@ -622,7 +622,7 @@ std::optional<SymbolRef> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) co
     // reference, so a TU-local name is in the shard that produced it.
     if(auto* shard = anchor.valid() ? index.shard(anchor) : nullptr) {
         if(auto identity = shard->find_symbol(hash)) {
-            return SymbolRef::from(hash, *identity);
+            return SymbolInfo::from(hash, *identity);
         }
     }
     // An instantiation or an expansion names it in a file other than its
@@ -650,7 +650,7 @@ std::optional<SymbolRef> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) co
     return std::nullopt;
 }
 
-llvm::SmallVector<SymbolRef, 4> IndexQuery::container_chain(SymbolHash hash, Fid anchor) const {
+llvm::SmallVector<SymbolInfo, 4> IndexQuery::container_chain(SymbolHash hash, Fid anchor) const {
     auto symbol = symbol_info(hash, anchor);
     if(!symbol) {
         return {};
@@ -762,7 +762,7 @@ bool IndexQuery::reported_defined(SymbolHash hash, Fid anchor) const {
        info && has_flag(info->flags, SymbolFlags::HasDefinition)) {
         return true;
     }
-    auto identity = index.identity_of(hash);
+    auto identity = index.find_symbol(hash);
     return identity && has_flag(identity->flags, SymbolFlags::HasDefinition);
 }
 
@@ -789,9 +789,9 @@ llvm::SmallVector<IndexQuery::Target> IndexQuery::targets(SymbolHash hash,
                       Order::DiskFirst,
                       {.preamble = false},
                       [&](const IndexSource& source, const Relation& relation) {
-                          if(seen.insert(relation.target_symbol).second) {
+                          if(seen.insert(relation.target).second) {
                               result.push_back(
-                                  {.symbol = relation.target_symbol, .anchor = source.file});
+                                  {.symbol = relation.target, .anchor = source.file});
                           }
                           return true;
                       });

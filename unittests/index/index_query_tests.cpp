@@ -57,7 +57,7 @@ struct CountingSessions : index::LiveSources {
 
     void each_overlay(llvm::function_ref<bool(const index::TUIndex&)>) const override {}
 
-    std::shared_ptr<index::TUIndex> preamble_blob(Fid) const override {
+    std::shared_ptr<index::TUIndex> preamble_index(Fid) const override {
         return nullptr;
     }
 };
@@ -471,7 +471,7 @@ ZEST_CASE(LocalsByPath) {
 
     auto helper = locate(R"("helper" path:main.cpp)");
     ZASSERT(helper.size() == 1U);
-    ZEXPECT(helper.front().symbol.scope == index::SymbolScope::TULocal);
+    ZEXPECT(helper.front().symbol.scope == index::SymbolScope::Internal);
     ZEXPECT(helper.front().site.path.ends_with("main.cpp"));
 }
 

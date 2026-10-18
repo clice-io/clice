@@ -402,7 +402,7 @@ IndexStats collect_stats(Project& project) {
     std::ranges::sort(stats.instantiations, std::ranges::greater{}, &InstantiationStat::bytes);
 
     project_index.for_each_symbol(
-        [&](index::SymbolHash, const index::SymbolIdentity& symbol, std::uint32_t references) {
+        [&](index::SymbolHash, const index::SymbolView& symbol, std::uint32_t references) {
             stats.references_per_symbol.add(references);
             stats.name_lengths.add(symbol.name.size());
             return true;
@@ -576,7 +576,7 @@ void print_stats(const Project& project,
     driver::println("Top {} templates by instantiations:",
                     std::min<std::size_t>(top, templates.size()));
     for(auto [count, pattern]: templates | std::views::take(top)) {
-        auto identity = project_index.identity_of(pattern);
+        auto identity = project_index.find_symbol(pattern);
         driver::println("  {:>8}  {}", count, identity ? identity->name : llvm::StringRef("?"));
     }
 }
@@ -692,7 +692,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
                             scope->display_name());
             parent = scope->parent;
         }
-        if(auto symbol = project.project_index.identity_of(hash)) {
+        if(auto symbol = project.project_index.find_symbol(hash)) {
             driver::println("  scope={}  file={}  reference files={}",
                             kota::meta::enum_name(symbol->scope, "External"),
                             symbol->file == index::no_file
@@ -785,15 +785,15 @@ int run_show_file(Project& project, llvm::StringRef argument) {
     std::size_t relations = 0;
     shard.for_each_relation([&](index::SymbolHash symbol, const index::Relation& relation) {
         symbols.insert(symbol);
-        if(relation.target_symbol != 0 && !RelationKind(relation.kind).carries_extent()) {
-            symbols.insert(relation.target_symbol);
+        if(relation.target != 0 && !RelationKind(relation.kind).carries_extent()) {
+            symbols.insert(relation.target);
         }
         by_kind[kota::meta::enum_name(relation.kind, "Invalid")] += 1;
         relations += 1;
         return true;
     });
-    std::vector<std::pair<index::SymbolHash, index::SymbolIdentity>> locals;
-    shard.for_each_local_symbol([&](index::SymbolHash hash, const index::SymbolIdentity& identity) {
+    std::vector<std::pair<index::SymbolHash, index::SymbolView>> locals;
+    shard.for_each_local_symbol([&](index::SymbolHash hash, const index::SymbolView& identity) {
         locals.emplace_back(hash, identity);
         return true;
     });

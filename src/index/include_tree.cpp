@@ -124,13 +124,13 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
     // describe what the index was built from — a fid whose buffer never
     // loaded here (preamble header behind a PCH) contributes no hash and
     // its consumers stay conservative.
-    tree.path_hashes.assign(tree.paths.size(), 0);
+    tree.content_hashes.assign(tree.paths.size(), 0);
     auto hash_fid = [&](clang::FileID fid, std::uint32_t path_id) {
-        if(tree.path_hashes[path_id] != 0) {
+        if(tree.content_hashes[path_id] != 0) {
             return;
         }
         if(auto content = unit.loaded_file_content(fid)) {
-            tree.path_hashes[path_id] = llvm::xxh3_64bits(*content);
+            tree.content_hashes[path_id] = llvm::xxh3_64bits(*content);
         }
     };
     for(auto& [fid, node]: tree.file_nodes) {

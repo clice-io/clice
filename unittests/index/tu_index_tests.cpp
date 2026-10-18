@@ -78,7 +78,7 @@ void decode_index(const std::string& bytes) {
         }
     }
 
-    auto record = [&](index::SymbolHash hash, const index::SymbolIdentity& identity) {
+    auto record = [&](index::SymbolHash hash, const index::SymbolView& identity) {
         auto& symbol = tu_index.symbols[hash];
         symbol.name = identity.name.str();
         symbol.args = identity.args.str();
@@ -91,7 +91,7 @@ void decode_index(const std::string& bytes) {
         return &symbol;
     };
     view.iterate_symbols([&](index::SymbolHash hash,
-                             const index::SymbolIdentity& identity,
+                             const index::SymbolView& identity,
                              llvm::ArrayRef<std::uint32_t> references) {
         record(hash, identity)->reference_files.addMany(references.size(), references.data());
         return true;
@@ -101,7 +101,7 @@ void decode_index(const std::string& bytes) {
         auto record_local = [&](index::SymbolHash hash) {
             if(!tu_index.symbols.contains(hash)) {
                 if(auto identity = view.find_symbol(hash)) {
-                    ZEXPECT(identity->scope == index::SymbolScope::FileLocal);
+                    ZEXPECT(identity->scope == index::SymbolScope::FunctionLocal);
                     record(hash, *identity);
                 }
             }
@@ -202,7 +202,7 @@ bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef t
         return false;
     }
     return llvm::any_of(it->second, [&](const index::Relation& relation) {
-        return relation.kind == kind && relation.target_symbol == targets.front().target;
+        return relation.kind == kind && relation.target == targets.front().target;
     });
 }
 
@@ -661,7 +661,7 @@ ZEST_CASE(MethodCallerCallee) {
 
     bool found_callee = false;
     for(auto& r: method_it->second) {
-        if(r.kind == RelationKind::Callee && r.target_symbol == callee_hash) {
+        if(r.kind == RelationKind::Callee && r.target == callee_hash) {
             found_callee = true;
             break;
         }
@@ -673,7 +673,7 @@ ZEST_CASE(MethodCallerCallee) {
 
     bool found_caller = false;
     for(auto& r: callee_it->second) {
-        if(r.kind == RelationKind::Caller && r.target_symbol == method_hash) {
+        if(r.kind == RelationKind::Caller && r.target == method_hash) {
             found_caller = true;
             break;
         }
@@ -834,7 +834,7 @@ ZEST_CASE(SpecializedMemberType) {
     auto widget = select("widget").front().target;
     ZASSERT(llvm::any_of(it->second, [&](const index::Relation& relation) {
         return relation.kind == RelationKind::TypeDefinition && relation.range == range("use") &&
-               relation.target_symbol == widget;
+               relation.target == widget;
     }));
 }
 
@@ -860,7 +860,7 @@ ZEST_CASE(ConstructorDestructorRelations) {
     bool found_ctor = false;
     bool found_dtor = false;
     for(auto& r: it->second) {
-        if(r.kind == RelationKind::Constructor && r.target_symbol == ctor_hash) {
+        if(r.kind == RelationKind::Constructor && r.target == ctor_hash) {
             found_ctor = true;
         }
         if(r.kind == RelationKind::Destructor) {
@@ -876,7 +876,7 @@ ZEST_CASE(ConstructorDestructorRelations) {
 
     bool found_type = false;
     for(auto& r: ctor_it->second) {
-        if(r.kind == RelationKind::TypeDefinition && r.target_symbol == class_hash) {
+        if(r.kind == RelationKind::TypeDefinition && r.target == class_hash) {
             found_type = true;
         }
     }
@@ -1240,7 +1240,7 @@ ZEST_CASE(MacroDefinitionExtent) {
         return relation.kind == RelationKind::Definition;
     });
     ZASSERT(definition != relations.end());
-    ZASSERT(definition->definition_range() == range("ext"));
+    ZASSERT(definition->extent() == range("ext"));
 }
 
 ZEST_CASE(SpelledInMacroRedeclarations) {
@@ -1326,7 +1326,7 @@ ZEST_CASE(LocalClassAsBase) {
     // Only the base relation names the header function's class in
     // main.cpp: the table lists it with both files.
     auto made = symbol_named("Made").second;
-    ZEXPECT(static_cast<int>(made.scope) == static_cast<int>(index::SymbolScope::FileLocal));
+    ZEXPECT(static_cast<int>(made.scope) == static_cast<int>(index::SymbolScope::FunctionLocal));
     ZEXPECT(made.reference_files.cardinality() == 2u);
 }
 
@@ -1358,7 +1358,7 @@ ZEST_CASE(KnownVariantsSkipped) {
     auto table_names = [](const index::TUIndex& view) {
         std::vector<std::string> names;
         view.iterate_symbols([&](index::SymbolHash,
-                                 const index::SymbolIdentity& identity,
+                                 const index::SymbolView& identity,
                                  llvm::ArrayRef<std::uint32_t>) {
             names.emplace_back(identity.name);
             return true;
@@ -1500,7 +1500,7 @@ ZEST_CASE(ScopeExternal) {
     ZASSERT(found == expected);
 }
 
-ZEST_CASE(ScopeFileLocal) {
+ZEST_CASE(ScopeFunctionLocal) {
     build_index(R"(
             void foo() {
                 int local_var = 42;
@@ -1513,14 +1513,14 @@ ZEST_CASE(ScopeFileLocal) {
     for(auto& [hash, symbol]: tu_index.symbols) {
         if(expected.contains(symbol.name)) {
             ZASSERT(static_cast<int>(symbol.scope) ==
-                    static_cast<int>(index::SymbolScope::FileLocal));
+                    static_cast<int>(index::SymbolScope::FunctionLocal));
             found.insert(symbol.name);
         }
     }
     ZASSERT(found == expected);
 }
 
-ZEST_CASE(ScopeTULocal) {
+ZEST_CASE(ScopeInternal) {
     build_index(R"(
             static int static_var = 0;
             static void static_func() {}
@@ -1532,7 +1532,7 @@ ZEST_CASE(ScopeTULocal) {
     for(auto& [hash, symbol]: tu_index.symbols) {
         if(expected.contains(symbol.name)) {
             ZASSERT(static_cast<int>(symbol.scope) ==
-                    static_cast<int>(index::SymbolScope::TULocal));
+                    static_cast<int>(index::SymbolScope::Internal));
             found.insert(symbol.name);
         }
     }
@@ -1549,7 +1549,7 @@ ZEST_CASE(ScopeModuleLinkage) {
 
     ZASSERT(scope("module_var") == static_cast<int>(index::SymbolScope::External));
     ZASSERT(scope("exported_var") == static_cast<int>(index::SymbolScope::External));
-    ZASSERT(scope("static_var") == static_cast<int>(index::SymbolScope::TULocal));
+    ZASSERT(scope("static_var") == static_cast<int>(index::SymbolScope::Internal));
 }
 
 ZEST_CASE(ExportedFlag) {
@@ -1613,10 +1613,10 @@ ZEST_CASE(ScopeNoLinkage) {
     ZASSERT(scope("unnamed_field") == static_cast<int>(index::SymbolScope::External));
     ZASSERT(scope("member_value") == static_cast<int>(index::SymbolScope::External));
     ZASSERT(scope("callback") == static_cast<int>(index::SymbolScope::External));
-    ZASSERT(scope("hidden_value") == static_cast<int>(index::SymbolScope::TULocal));
-    ZASSERT(scope("hidden_alias") == static_cast<int>(index::SymbolScope::TULocal));
-    ZASSERT(scope("prototype_param") == static_cast<int>(index::SymbolScope::FileLocal));
-    ZASSERT(scope("local_value") == static_cast<int>(index::SymbolScope::FileLocal));
+    ZASSERT(scope("hidden_value") == static_cast<int>(index::SymbolScope::Internal));
+    ZASSERT(scope("hidden_alias") == static_cast<int>(index::SymbolScope::Internal));
+    ZASSERT(scope("prototype_param") == static_cast<int>(index::SymbolScope::FunctionLocal));
+    ZASSERT(scope("local_value") == static_cast<int>(index::SymbolScope::FunctionLocal));
 }
 
 ZEST_CASE(ScopeCEnumerator) {
@@ -1628,7 +1628,7 @@ ZEST_CASE(ScopeCEnumerator) {
     decode_index(index::build_tu_index(*unit));
 
     ZASSERT(scope("red") == static_cast<int>(index::SymbolScope::External));
-    ZASSERT(scope("local_value") == static_cast<int>(index::SymbolScope::FileLocal));
+    ZASSERT(scope("local_value") == static_cast<int>(index::SymbolScope::FunctionLocal));
 }
 
 ZEST_CASE(BareNameAndParentChain) {
@@ -2584,7 +2584,7 @@ ZEST_CASE(TUIndexSections) {
     // consumed-content hash column covers the whole table.
     for(std::uint32_t id = 0; id < view.path_count(); id += 1) {
         ZASSERT(!view.path(id).empty());
-        ZASSERT(view.path_hash(id) != 0);
+        ZASSERT(view.content_hash(id) != 0);
     }
 
     // Symbols read back identically through iteration and point lookup.
@@ -2829,12 +2829,12 @@ ZEST_CASE(AbsentPathHashesReadZero) {
     // entries read as 0, "unavailable".
     TUIndexMirror mirror;
     mirror.paths = {"/proj/a.h", "/proj/main.cpp"};
-    mirror.path_hashes = {7};
+    mirror.content_hashes = {7};
     auto bytes = mirror.bytes();
     auto view = index::TUIndex::from_bytes(bytes);
     ZASSERT(view.loaded());
-    ZASSERT(view.path_hash(0) == 7u);
-    ZASSERT(view.path_hash(1) == 0u);
+    ZASSERT(view.content_hash(0) == 7u);
+    ZASSERT(view.content_hash(1) == 0u);
 }
 
 };  // ZEST_SUITE(tu_index)

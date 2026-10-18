@@ -60,7 +60,7 @@ public:
 
     llvm::StringRef path(std::uint32_t id) const;
 
-    std::uint64_t path_hash(std::uint32_t id) const;
+    std::uint64_t content_hash(std::uint32_t id) const;
 
     /// The places the parse's failed lookups looked that held no file.
     std::uint32_t absent_count() const;
@@ -138,13 +138,13 @@ public:
     /// stop.
     void iterate_symbols(
         llvm::function_ref<bool(SymbolHash,
-                                const SymbolIdentity&,
+                                const SymbolView&,
                                 llvm::ArrayRef<std::uint32_t> reference_files)> callback) const;
 
     /// Look up one symbol's identity by hash: in the table, else among the
     /// sections' own symbols, which name the file-local ones (a
     /// function's locals, a template's parameters).
-    std::optional<SymbolIdentity> find_symbol(SymbolHash hash) const;
+    std::optional<SymbolView> find_symbol(SymbolHash hash) const;
 
     /// The symbols below external scope more than one of the TU's files
     /// names (Symbol::reference_files), sorted by symbol. Nullopt when a

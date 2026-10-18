@@ -96,7 +96,7 @@ struct ProjectIndex {
                     llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
 
     /// The symbol's stored facts; the strings borrow the base or the entry.
-    std::optional<SymbolIdentity> identity_of(SymbolHash hash) const;
+    std::optional<SymbolView> find_symbol(SymbolHash hash) const;
 
     /// How many files reference the symbol; 0 for an unknown hash.
     std::uint32_t reference_count(SymbolHash hash) const;
@@ -110,7 +110,7 @@ struct ProjectIndex {
     /// Every symbol, base entries and changed entries alike, in no particular
     /// order; `visit` returns false to stop.
     void for_each_symbol(
-        llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, std::uint32_t references)> visit)
+        llvm::function_ref<bool(SymbolHash, const SymbolView&, std::uint32_t references)> visit)
         const;
 
     std::size_t symbol_count() const;
@@ -125,7 +125,7 @@ struct ProjectIndex {
     /// receives the hashes of the symbols new to the table or whose name,
     /// arguments, parent, file or flags the merge changed — what a name
     /// search keyed on the table's entries must re-read.
-    void merge(const TUIndex& index,
+    void merge_symbols(const TUIndex& index,
                llvm::ArrayRef<Fid> file_ids_map,
                llvm::SmallVectorImpl<SymbolHash>* added = nullptr);
 

@@ -226,13 +226,13 @@ struct RelationTable {
         Relation relation{
             .kind = kind_of(entry),
             .range = columns.range_of(entry),
-            .target_symbol = 0,
+            .target = 0,
         };
         if(has_payload(entry)) {
             if(RelationKind(relation.kind).carries_extent()) {
-                relation.set_definition_range(extent_at(cursor.extent, relation.range.begin));
+                relation.set_extent(extent_at(cursor.extent, relation.range.begin));
             } else {
-                relation.target_symbol = sym_hashes[targets[cursor.target]];
+                relation.target = sym_hashes[targets[cursor.target]];
             }
         }
         advance(cursor, entry);
@@ -294,7 +294,7 @@ struct LocalTable {
         return sym_hashes[syms[k]];
     }
 
-    SymbolIdentity at(std::size_t k) const {
+    SymbolView at(std::size_t k) const {
         auto position = static_cast<std::uint32_t>(k);
         auto args_at = args_of.find(position);
         auto signature_at = signatures_of.find(position);
@@ -508,7 +508,7 @@ CheckResult relations_ok(BlobView root) {
                 return std::unexpected("no-range sentinel on a relation that carries a range");
             }
             if(k != cursor.extent) {
-                auto extent = relation.definition_range();
+                auto extent = relation.extent();
                 bool escaped = table.extent_heads[k] == extent_escape;
                 if(escaped
                        ? table.extent_lengths[k] != 0 || fits_extent_columns(relation.range, extent)
@@ -522,7 +522,7 @@ CheckResult relations_ok(BlobView root) {
             std::tuple key{static_cast<std::uint8_t>(relation.kind),
                            relation.range.begin,
                            relation.range.end,
-                           relation.target_symbol};
+                           relation.target};
             if(entry != table.offsets[id] && key <= prev) {
                 return std::unexpected("relation rows of one symbol are not strictly ascending");
             }
@@ -923,7 +923,7 @@ void
     }
 }
 
-std::optional<SymbolIdentity> Shard::find_symbol(SymbolHash hash) const {
+std::optional<SymbolView> Shard::find_symbol(SymbolHash hash) const {
     if(!buffer) {
         return std::nullopt;
     }
@@ -940,7 +940,7 @@ std::optional<SymbolIdentity> Shard::find_symbol(SymbolHash hash) const {
 }
 
 void Shard::for_each_local_symbol(
-    llvm::function_ref<bool(SymbolHash, const SymbolIdentity&)> callback) const {
+    llvm::function_ref<bool(SymbolHash, const SymbolView&)> callback) const {
     if(!buffer) {
         return;
     }
@@ -1039,7 +1039,7 @@ constexpr auto rel_key = [](const auto& entry) {
     return std::tuple(static_cast<std::uint8_t>(entry.relation.kind),
                       entry.relation.range.begin,
                       entry.relation.range.end,
-                      entry.relation.target_symbol);
+                      entry.relation.target);
 };
 
 constexpr auto group_key = [](const auto& group) {
@@ -1159,8 +1159,8 @@ llvm::DenseSet<SymbolHash> referenced_symbols(const MergedEntries<MaskT>& merged
         referenced.insert(group.symbol);
         for(auto& entry: group.entries) {
             auto& relation = entry.relation;
-            if(relation.target_symbol != 0 && !RelationKind(relation.kind).carries_extent()) {
-                referenced.insert(relation.target_symbol);
+            if(relation.target != 0 && !RelationKind(relation.kind).carries_extent()) {
+                referenced.insert(relation.target);
             }
         }
     }
@@ -1300,7 +1300,7 @@ struct LocalSymbol {
     TokenClass token_class;
 };
 
-LocalSymbol own(const SymbolIdentity& identity) {
+LocalSymbol own(const SymbolView& identity) {
     return {
         .name = identity.name.str(),
         .args = identity.args.str(),
@@ -1523,10 +1523,10 @@ void emit_blob(const MergedEntries<MaskT>& merged,
                 extent_ranks.push_back(static_cast<std::uint32_t>(blob.rel_extent_heads.size()));
             }
             auto kind = static_cast<std::uint8_t>(relation.kind);
-            if(relation.target_symbol != 0) {
+            if(relation.target != 0) {
                 kind |= payload_bit;
                 if(RelationKind(relation.kind).carries_extent()) {
-                    auto extent = relation.definition_range();
+                    auto extent = relation.extent();
                     if(fits_extent_columns(relation.range, extent)) {
                         blob.rel_extent_heads.push_back(
                             static_cast<std::uint16_t>(relation.range.begin - extent.begin));
@@ -1541,7 +1541,7 @@ void emit_blob(const MergedEntries<MaskT>& merged,
                         blob.rel_extent_lengths.push_back(0);
                     }
                 } else {
-                    targets.push_back(sym_id(relation.target_symbol));
+                    targets.push_back(sym_id(relation.target));
                 }
             }
             blob.rel_kinds.push_back(kind);
@@ -1682,7 +1682,7 @@ void merge_shards_impl(BlobView old_root,
 }  // namespace
 
 void write_shard(const FileIndex& file_index,
-                 llvm::function_ref<std::optional<SymbolIdentity>(SymbolHash)> symbols,
+                 llvm::function_ref<std::optional<SymbolView>(SymbolHash)> symbols,
                  llvm::StringRef content,
                  llvm::raw_ostream& os) {
     // Canonicalize straight from the in-memory entries: sorted, deduplicated.

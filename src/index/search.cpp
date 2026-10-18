@@ -20,7 +20,7 @@ namespace {
 /// whether the limit cut the ranking short.
 struct Ranked {
     NameRank rank;
-    SymbolRef symbol;
+    SymbolInfo symbol;
     /// The file a file's own symbol was found in, which holds its
     /// entries; invalid for a project symbol.
     Fid anchor;
@@ -72,7 +72,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
         query.absolute || !query.scope.empty() || query.mode == SymbolQuery::Mode::Members;
     // Candidates share their containers: each is looked up once per
     // search, not once per candidate through every open session's table.
-    llvm::DenseMap<SymbolHash, std::optional<SymbolRef>> scopes;
+    llvm::DenseMap<SymbolHash, std::optional<SymbolInfo>> scopes;
     auto scope_info = [&](SymbolHash scope, Fid anchor) {
         auto [it, inserted] = scopes.try_emplace(scope);
         if(inserted) {
@@ -81,7 +81,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
         return it->second;
     };
     auto consider = [&](SymbolHash hash,
-                        const SymbolIdentity& identity,
+                        const SymbolView& identity,
                         llvm::StringRef path,
                         std::uint32_t reference_files,
                         Fid anchor) {
@@ -118,13 +118,13 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
         }
         seen.insert(hash);
         hits.push_back(
-            {.rank = *rank, .symbol = SymbolRef::from(hash, identity), .anchor = anchor});
+            {.rank = *rank, .symbol = SymbolInfo::from(hash, identity), .anchor = anchor});
     };
     auto references_of = [&](SymbolHash hash) -> std::uint32_t {
         return project.reference_count(hash);
     };
     auto consider_symbol =
-        [&](SymbolHash hash, const SymbolIdentity& symbol, std::uint32_t references) {
+        [&](SymbolHash hash, const SymbolView& symbol, std::uint32_t references) {
             llvm::StringRef path;
             if(symbol.file != no_file) {
                 path = files.resolve(Fid{symbol.file});
@@ -133,13 +133,13 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
         };
     if(scan_table) {
         project.for_each_symbol(
-            [&](SymbolHash hash, const SymbolIdentity& symbol, std::uint32_t references) {
+            [&](SymbolHash hash, const SymbolView& symbol, std::uint32_t references) {
                 consider_symbol(hash, symbol, references);
                 return true;
             });
     } else {
         for(auto hash: project.search_pending) {
-            if(auto symbol = project.identity_of(hash)) {
+            if(auto symbol = project.find_symbol(hash)) {
                 consider_symbol(hash, *symbol, project.reference_count(hash));
             }
         }
@@ -153,8 +153,8 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
                 continue;
             }
             llvm::StringRef path = files.resolve(file);
-            shard->for_each_local_symbol([&](SymbolHash hash, const SymbolIdentity& identity) {
-                if(identity.scope == SymbolScope::TULocal && declares(*shard, hash)) {
+            shard->for_each_local_symbol([&](SymbolHash hash, const SymbolView& identity) {
+                if(identity.scope == SymbolScope::Internal && declares(*shard, hash)) {
                     consider(hash, identity, path, 0, file);
                 }
                 return true;
@@ -164,7 +164,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
     if(index.live_sources()) {
         index.live_sources()->each_session_index([&](const TUIndex& state) {
             state.iterate_symbols([&](SymbolHash hash,
-                                      const SymbolIdentity& identity,
+                                      const SymbolView& identity,
                                       llvm::ArrayRef<std::uint32_t>) {
                 llvm::StringRef path;
                 if(identity.file != no_file) {
@@ -193,7 +193,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
             if(!shard) {
                 continue;
             }
-            shard->for_each_local_symbol([&](SymbolHash hash, const SymbolIdentity& identity) {
+            shard->for_each_local_symbol([&](SymbolHash hash, const SymbolView& identity) {
                 if(declares(*shard, hash)) {
                     consider(hash, identity, path, 0, file);
                 }
@@ -266,10 +266,10 @@ Completables completables(const IndexQuery& index, llvm::StringRef prefix,
     for(auto& hit: ranked.hits) {
         seen.insert(hit.symbol.hash);
     }
-    if(auto preamble = index.preamble_blob(file)) {
+    if(auto preamble = index.preamble_index(file)) {
         NameRanker ranker(query);
         preamble->iterate_symbols(
-            [&](SymbolHash hash, const SymbolIdentity& identity, llvm::ArrayRef<std::uint32_t>) {
+            [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t>) {
                 if(!has_flag(identity.flags, SymbolFlags::Completable) ||
                    identity.scope != SymbolScope::External || !is_searchable_kind(identity.kind) ||
                    !seen.insert(hash).second) {
@@ -278,7 +278,7 @@ Completables completables(const IndexQuery& index, llvm::StringRef prefix,
                 auto quality = symbol_quality(identity.name, identity.kind, identity.flags, 0);
                 if(auto rank = ranker.rank(identity.name, identity.args, quality)) {
                     ranked.hits.push_back(
-                        {.rank = *rank, .symbol = SymbolRef::from(hash, identity), .anchor = {}});
+                        {.rank = *rank, .symbol = SymbolInfo::from(hash, identity), .anchor = {}});
                 }
                 return true;
             });
@@ -304,7 +304,7 @@ Completables completables(const IndexQuery& index, llvm::StringRef prefix,
             break;
         }
         Fid declared;
-        if(auto identity = index.project().identity_of(hit.symbol.hash);
+        if(auto identity = index.project().find_symbol(hit.symbol.hash);
            identity && identity->file != no_file) {
             declared = Fid{identity->file};
         }

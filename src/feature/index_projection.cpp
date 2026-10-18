@@ -38,7 +38,7 @@ IndexEntries extract_index_entries(const index::Shard& shard) {
             auto copy = relation;
             auto& into = kind.isDeclOrDef() ? entries.decls : entries.instantiations;
             into.push_back({.range = relation.range,
-                            .extent = copy.definition_range(),
+                            .extent = copy.extent(),
                             .symbol = hash,
                             .definition = kind.is_one_of(RelationKind::Definition)});
         } else if(kind.isReference() && nested(relation.range)) {
@@ -433,8 +433,8 @@ auto index_document_links(SourceText& source, llvm::ArrayRef<IndexIncludeEdge> e
     return links;
 }
 
-auto index_hover(const index::SymbolRef& info,
-                 llvm::ArrayRef<index::SymbolRef> scopes,
+auto index_hover(const index::SymbolInfo& info,
+                 llvm::ArrayRef<index::SymbolInfo> scopes,
                  llvm::StringRef definition_text,
                  Documentation documentation) -> HoverInfo {
     HoverInfo hover;
@@ -443,7 +443,7 @@ auto index_hover(const index::SymbolRef& info,
     /// The parent chain skips anonymous namespaces, which the card names as
     /// the AST card does: a namespace path as `(anonymous)`, the scope of a
     /// class or function as clang prints it.
-    auto anonymous = [](const index::SymbolRef& symbol) {
+    auto anonymous = [](const index::SymbolInfo& symbol) {
         return index::has_flag(symbol.flags, index::SymbolFlags::AnonymousNamespace);
     };
     if(anonymous(info)) {

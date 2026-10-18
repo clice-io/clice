@@ -257,7 +257,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                     return true;
                 }
                 auto chain = query.container_chain(hash);
-                if(llvm::none_of(chain, [&](const index::SymbolRef& container) {
+                if(llvm::none_of(chain, [&](const index::SymbolInfo& container) {
                        return container.hash == request.container;
                    })) {
                     return true;

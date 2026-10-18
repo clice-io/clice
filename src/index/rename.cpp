@@ -513,7 +513,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
         // A local or a parameter is out of another file's reach but through
         // a macro it defines, and a file no indexed unit includes defines
         // none for it.
-        bool foreign = root.scope == SymbolScope::FileLocal && file != target.symbol.site.file;
+        bool foreign = root.scope == SymbolScope::FunctionLocal && file != target.symbol.site.file;
         if(indexed ? *served.text != current->text
                    : query.indexes(file) || (!foreign && scope.units_pending)) {
             stale.insert(display);
@@ -608,7 +608,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
 
     // The scope a name is looked up in: an unscoped enumerator's is its
     // enum's.
-    auto scope_of = [&](const SymbolRef& symbol, Fid anchor) {
+    auto scope_of = [&](const SymbolInfo& symbol, Fid anchor) {
         if(symbol.kind == SymbolKind::EnumMember &&
            has_flag(symbol.flags, SymbolFlags::Completable)) {
             if(auto owner = query.symbol_info(symbol.parent, anchor)) {

@@ -31,13 +31,13 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
     if(llvm::isa<clang::TemplateTypeParmDecl,
                  clang::NonTypeTemplateParmDecl,
                  clang::TemplateTemplateParmDecl>(decl)) {
-        return SymbolScope::FileLocal;
+        return SymbolScope::FunctionLocal;
     }
     // Module linkage reaches the module's other units, as external
     // linkage reaches every unit.
     auto linkage = decl->getFormalLinkage();
     if(linkage == clang::Linkage::Internal) {
-        return SymbolScope::TULocal;
+        return SymbolScope::Internal;
     }
     if(linkage != clang::Linkage::None) {
         return SymbolScope::External;
@@ -48,9 +48,9 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
     // header. Only a function's own declarations and a prototype's
     // parameters stay in their file.
     if(decl->getParentFunctionOrMethod() || llvm::isa<clang::ParmVarDecl>(decl)) {
-        return SymbolScope::FileLocal;
+        return SymbolScope::FunctionLocal;
     }
-    return decl->isInAnonymousNamespace() ? SymbolScope::TULocal : SymbolScope::External;
+    return decl->isInAnonymousNamespace() ? SymbolScope::Internal : SymbolScope::External;
 }
 
 namespace {
@@ -454,17 +454,17 @@ public:
         Relation relation{
             .kind = kind,
             .range = range,
-            .target_symbol = 0,
+            .target = 0,
         };
 
         // Definition relations carry the macro's full extent (name through
         // last body token), like declarations do — definition-text
-        // consumers decode it out of target_symbol.
+        // consumers decode it out of target.
         if(kind.isDeclOrDef() && def) {
             auto [def_fid, def_range] = *unit.written_range(
                 clang::SourceRange(def->getDefinitionLoc(), def->getDefinitionEndLoc()));
             if(def_fid == fid) {
-                relation.set_definition_range(def_range);
+                relation.set_extent(def_range);
             }
         }
 
@@ -483,19 +483,19 @@ public:
             return;
         }
 
-        Relation relation{.kind = kind, .range = range, .target_symbol = 0};
+        Relation relation{.kind = kind, .range = range, .target = 0};
 
         if(kind.isDeclOrDef()) {
             // FIXME: why definition or declaration has invalid source range? implicit node?
             auto source_range = decls::written_range(decl);
             if(source_range.isValid()) {
-                auto [def_fid, definition_range] = unit.produced_range(source_range);
+                auto [def_fid, extent] = unit.produced_range(source_range);
                 // A declaration can begin in another file, e.g. when a
                 // header-defined macro spells its leading tokens. Such a
                 // range is meaningless in this file's coordinates; leave
                 // the definition range empty instead of storing it.
                 if(fid == def_fid) {
-                    relation.set_definition_range(definition_range);
+                    relation.set_extent(extent);
                 }
             }
         }
@@ -512,10 +512,10 @@ public:
         if(!index) {
             return;
         }
-        Relation relation{.kind = RelationKind::Instantiation, .range = range, .target_symbol = 0};
+        Relation relation{.kind = RelationKind::Instantiation, .range = range, .target = 0};
         if(auto [extent_fid, extent] = unit.produced_range(directive.getSourceRange());
            extent_fid == fid) {
-            relation.set_definition_range(extent);
+            relation.set_extent(extent);
         }
         index->relations[ensure_symbol(decls::normalize(directive.getSpecialization()))]
             .emplace_back(relation);
@@ -537,7 +537,7 @@ public:
 
         Relation relation{
             .kind = kind,
-            .target_symbol = ensure_symbol(decls::normalize(target)),
+            .target = ensure_symbol(decls::normalize(target)),
         };
         index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
@@ -591,7 +591,7 @@ public:
         Relation relation{
             .kind = RelationKind::TypeDefinition,
             .range = range,
-            .target_symbol = ensure_symbol(target),
+            .target = ensure_symbol(target),
         };
         index->relations[ensure_symbol(pattern)].emplace_back(relation);
     }
@@ -610,7 +610,7 @@ public:
         Relation relation{
             .kind = kind,
             .range = relation_range,
-            .target_symbol = ensure_symbol(decls::normalize(target)),
+            .target = ensure_symbol(decls::normalize(target)),
         };
         index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
@@ -634,13 +634,13 @@ public:
             Relation relation{
                 .kind = kind,
                 .range = range,
-                .target_symbol = 0,
+                .target = 0,
             };
             // Decl/def consumers read the definition range out of
-            // target_symbol; without it, module symbols would report their
+            // target; without it, module symbols would report their
             // definition as missing.
             if(kind.isDeclOrDef()) {
-                relation.set_definition_range(range);
+                relation.set_extent(range);
             }
             index->relations[hash].emplace_back(relation);
 
@@ -804,7 +804,7 @@ public:
         if(!index) {
             return;
         }
-        Relation relation{.kind = RelationKind::Pasted, .range = range, .target_symbol = 0};
+        Relation relation{.kind = RelationKind::Pasted, .range = range, .target = 0};
         index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
 
@@ -1277,7 +1277,7 @@ public:
         auto add = [&](const clang::NamedDecl* type_decl) {
             Relation relation{.kind = RelationKind::TypeDefinition,
                               .range = range,
-                              .target_symbol = ensure_symbol(decls::normalize(type_decl))};
+                              .target = ensure_symbol(decls::normalize(type_decl))};
             index->relations[symbol].emplace_back(relation);
         };
         add(target);
@@ -1407,7 +1407,7 @@ public:
                 kind_class,
                 relation.range.begin,
                 relation.range.end,
-                kind.carries_extent() ? 0 : relation.target_symbol};
+                kind.carries_extent() ? 0 : relation.target};
     }
 
     const llvm::DenseSet<WrittenKey>& written_in(clang::FileID fid) {
@@ -1441,11 +1441,11 @@ public:
                     record.kind = InstantiationKind::Implied;
                 } else if(kind.is_one_of(RelationKind::Callee)) {
                     record.kind = InstantiationKind::Call;
-                    record.target = relation.target_symbol;
+                    record.target = relation.target;
                     record.from = symbol;
                 } else if(kind.is_one_of(RelationKind::TypeDefinition) && relation.range.valid()) {
                     record.kind = InstantiationKind::TypeDefinition;
-                    record.target = relation.target_symbol;
+                    record.target = relation.target;
                     record.from = symbol;
                 } else {
                     continue;
@@ -1563,7 +1563,7 @@ public:
                 continue;
             }
             auto symbol = ensure_symbol(decls::normalize(target));
-            Relation relation{.kind = RelationKind::Base, .target_symbol = symbol};
+            Relation relation{.kind = RelationKind::Base, .target = symbol};
             if(known.contains(written_key(derived, relation))) {
                 continue;
             }
@@ -1880,7 +1880,7 @@ public:
                         // A query anchors a relation's target at the file
                         // holding the relation; an internal one reaches its
                         // own entries from there only through this file.
-                        if(auto it = symbols.find(relation.target_symbol);
+                        if(auto it = symbols.find(relation.target);
                            it != symbols.end() && it->second.scope != SymbolScope::External) {
                             it->second.reference_files.add(path_id);
                         }
@@ -1891,12 +1891,12 @@ public:
         auto finish_ms = finish_timer.ms_f();
 
         ScopedTimer encode_timer;
-        auto resolve = [&](SymbolHash hash) -> std::optional<SymbolIdentity> {
+        auto resolve = [&](SymbolHash hash) -> std::optional<SymbolView> {
             auto it = symbols.find(hash);
             if(it == symbols.end()) {
                 return std::nullopt;
             }
-            return it->second.identity();
+            return it->second.view();
         };
 
         llvm::SmallVector<std::uint32_t> path_ids;
@@ -1951,14 +1951,14 @@ public:
         blob.format_version = index_format_version;
         blob.built_at = unit.build_at().count();
         blob.paths = std::move(tree.paths);
-        blob.path_hashes = std::move(tree.path_hashes);
+        blob.content_hashes = std::move(tree.content_hashes);
         blob.nodes = std::move(tree.nodes);
         blob.absent = unit.absent();
         llvm::SmallVector<SymbolHash> table;
         for(auto& [hash, symbol]: symbols) {
             // A function's own name stays out but where another file names
             // it, which the merge lists (TUIndex::local_fanout).
-            if(symbol.scope == SymbolScope::FileLocal &&
+            if(symbol.scope == SymbolScope::FunctionLocal &&
                (focus_only || symbol.reference_files.cardinality() < 2)) {
                 continue;
             }

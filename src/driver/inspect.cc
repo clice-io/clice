@@ -226,12 +226,12 @@ std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& 
         named_tokens(feature::index_semantic_tokens(
                          served,
                          feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
-                         [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
+                         [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
                              auto identity = tu.find_symbol(hash);
                              if(!identity) {
                                  return std::nullopt;
                              }
-                             return index::SymbolRef::from(hash, *identity);
+                             return index::SymbolInfo::from(hash, *identity);
                          },
                          config.semantic_tokens),
                      legend);
@@ -334,12 +334,12 @@ std::optional<kota::codec::RawValue> run_document_symbol_check(CompilationUnit& 
     auto projected = feature::index_document_symbols(
         served,
         feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
-        [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
+        [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
             auto identity = tu.find_symbol(hash);
             if(!identity) {
                 return std::nullopt;
             }
-            return index::SymbolRef::from(hash, *identity);
+            return index::SymbolInfo::from(hash, *identity);
         },
         config.document_symbols);
 
