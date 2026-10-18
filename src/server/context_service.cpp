@@ -88,16 +88,6 @@ static std::string flags_label(Project& ws, ConfigID config, llvm::ArrayRef<Conf
     return label;
 }
 
-/// The command `host` lends the header `path_id` under its entry `entry`,
-/// edited by the rules matching either file.
-static ConfigID lent_config(Project& ws, Fid path_id, Fid host, const Candidate& entry) {
-    auto host_path = ws.file_table.resolve(host);
-    CanonicalRef edit_paths[] = {host_path, ws.file_table.resolve(path_id)};
-    return ws.build
-        .resolve(path_id, entry.config, CommandSource::IncludeGraph, edit_paths, host_path)
-        .config;
-}
-
 /// The command the file's own entry `entry` compiles it as.
 static ConfigID own_config(Project& ws, Fid path_id, ConfigID entry) {
     auto path = ws.file_table.resolve(path_id);
@@ -119,7 +109,7 @@ static llvm::SmallVector<ConfigID, 2>
     lent_configs(Project& ws, Fid path_id, Fid host, llvm::ArrayRef<Candidate> commands) {
     llvm::SmallVector<ConfigID, 2> configs;
     for(auto& entry: commands) {
-        configs.push_back(lent_config(ws, path_id, host, entry));
+        configs.push_back(lent_command(ws, path_id, host, entry.config).config);
     }
     return configs;
 }
@@ -232,7 +222,7 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
 
     auto lent =
         [&](Fid host, llvm::StringRef hash, llvm::StringRef base, std::uint32_t occurrence) {
-            auto applied = lent_command(ws, path_id, host, hash, base);
+            auto applied = host_command(ws, path_id, host, hash, base);
             if(!applied) {
                 return;
             }
@@ -315,7 +305,7 @@ kota::task<ext::SwitchContextResult>
             saved.command_hash = *params.command_hash;
             saved.base_hash =
                 base_of(host_commands(ws, path_id, context_path_id), [&](const Candidate& entry) {
-                    return lent_config(ws, path_id, context_path_id, entry);
+                    return lent_command(ws, path_id, context_path_id, entry.config).config;
                 });
         }
     }

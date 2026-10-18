@@ -49,11 +49,20 @@ Candidate pick_pinned_config(Project& project,
                              llvm::StringRef pinned_hash,
                              llvm::StringRef pinned_base);
 
+/// `command`, one of `host`'s, as `host` lends it to `header`: edited by
+/// the rules of both files and a run's extras, compiled as the host's
+/// language.
+CommandRef lent_command(Project& project,
+                        Fid header,
+                        Fid host,
+                        ConfigID command,
+                        llvm::ArrayRef<std::string> extra_prepend = {},
+                        llvm::ArrayRef<std::string> extra_append = {});
+
 /// The command `host` lends `header`: of the host's commands fit for the
-/// header, the pinned one (else the first), edited by the rules of both
-/// files and a run's extras, compiled as the host's language; nullopt when
-/// no command fits.
-std::optional<CommandRef> lent_command(Project& project,
+/// header, the pinned one (else the first), as lent_command lends it;
+/// nullopt when no command fits.
+std::optional<CommandRef> host_command(Project& project,
                                        Fid header,
                                        Fid host,
                                        llvm::StringRef pinned_hash,
@@ -165,13 +174,9 @@ private:
     /// which keeps the result session-local.
     struct HeaderResult {
         HeaderMode mode = HeaderMode::Unknown;
+
         std::uint64_t content_hash = 0;
     };
-
-    /// Self-containment results for headers, persisted in the artifacts
-    /// blob. Reset when a closed header or a file along its include chain
-    /// changes on disk.
-    llvm::DenseMap<Fid, HeaderResult> header_results;
 
     /// A header's command borrowed from a host source found through the
     /// include graph, with a synthesized preamble prefix when the header
@@ -196,6 +201,12 @@ private:
     /// content hash still matches on restart even though a dependency
     /// change deliberately reset the result.
     std::uint64_t persisted_mode_hash(Fid path_id) const;
+
+private:
+    /// Self-containment results for headers, persisted in the artifacts
+    /// blob. Reset when a closed header or a file along its include chain
+    /// changes on disk.
+    llvm::DenseMap<Fid, HeaderResult> header_results;
 
     Project& project;
 };

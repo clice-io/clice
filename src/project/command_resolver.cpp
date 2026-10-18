@@ -68,7 +68,27 @@ Candidate pick_pinned_config(Project& project,
     return candidates.front();
 }
 
-std::optional<CommandRef> lent_command(Project& project,
+CommandRef lent_command(Project& project,
+                        Fid header,
+                        Fid host,
+                        ConfigID command,
+                        llvm::ArrayRef<std::string> extra_prepend,
+                        llvm::ArrayRef<std::string> extra_append) {
+    // The header inherits the host's world: the rules matching the host
+    // and the rules matching the header both edit the borrowed command,
+    // each once, in declaration order.
+    auto host_path = project.file_table.resolve(host);
+    CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
+    return project.build.resolve(header,
+                                 command,
+                                 CommandSource::IncludeGraph,
+                                 edit_paths,
+                                 host_path,
+                                 extra_prepend,
+                                 extra_append);
+}
+
+std::optional<CommandRef> host_command(Project& project,
                                        Fid header,
                                        Fid host,
                                        llvm::StringRef pinned_hash,
@@ -79,9 +99,6 @@ std::optional<CommandRef> lent_command(Project& project,
     if(commands.empty()) {
         return std::nullopt;
     }
-    // The header inherits the host's world: the rules matching the host
-    // and the rules matching the header both edit the borrowed command,
-    // each once, in declaration order.
     auto host_path = project.file_table.resolve(host);
     CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
     auto picked = pick_pinned_config(project,
@@ -91,13 +108,7 @@ std::optional<CommandRef> lent_command(Project& project,
                                      host_path,
                                      pinned_hash,
                                      pinned_base);
-    return project.build.resolve(header,
-                                 picked.config,
-                                 CommandSource::IncludeGraph,
-                                 edit_paths,
-                                 host_path,
-                                 extra_prepend,
-                                 extra_append);
+    return lent_command(project, header, host, picked.config, extra_prepend, extra_append);
 }
 
 HeaderMode CommandResolver::header_mode(Fid path_id) const {
@@ -243,11 +254,8 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
         resolution.tree_wanted = ctx_ptr->host_path_id;
     }
 
-    // The header compiles as the host's language, with the header injected
-    // as the input; the synthesized prefix lands after the host's own
-    // user-content flags (its -include runs first).
     auto host_path = project.file_table.resolve(ctx_ptr->host_path_id);
-    auto ref = lent_command(project,
+    auto ref = host_command(project,
                             path_id,
                             ctx_ptr->host_path_id,
                             ctx_ptr->host_command_hash,
@@ -277,6 +285,10 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     Resolution resolution;
 
     auto finish = [&](const CommandRef& ref) {
+        // A header borrowing its host's command compiles as the host's
+        // language, with the header injected as the input; the synthesized
+        // prefix lands after the host's own user-content flags (its
+        // -include runs first).
         RenderOptions options;
         if(resolution.synthesized) {
             options.preamble = resolution.synthesized->prefix.c_str();
@@ -441,7 +453,7 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
     // search configuration, so same-named headers in different directories
     // cannot be confused.
     auto host_ref =
-        lent_command(project, chain.back(), host_path_id, host_command_hash, host_base_hash);
+        host_command(project, chain.back(), host_path_id, host_command_hash, host_base_hash);
     if(!host_ref) {
         return std::unexpected(host_path_id);
     }
