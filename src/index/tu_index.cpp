@@ -416,8 +416,8 @@ std::optional<SymbolView> TUIndex::find_symbol(SymbolHash hash) const {
     return std::nullopt;
 }
 
-std::optional<std::vector<PathFanout>> TUIndex::local_fanout(const llvm::BitVector& held) const {
-    std::vector<PathFanout> result;
+std::optional<std::vector<TUSharedLocal>> TUIndex::shared_locals(const llvm::BitVector& held) const {
+    std::vector<TUSharedLocal> result;
     bool valid = true;
     iterate_symbols(
         [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t> files) {

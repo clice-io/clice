@@ -68,7 +68,7 @@ struct BlobKey {
 };
 
 /// How the pages of a database file are used.
-struct StorageUsage {
+struct PageUsage {
     std::uint64_t page_size = 0;
     /// Pages up to the last one the file has used: the file's size, which
     /// never shrinks.
@@ -86,7 +86,7 @@ struct StorageUsage {
 /// Boundary with CacheStore: CacheStore manages the versioned cache
 /// directory and file-shaped artifacts (PCH/PCM/header contexts — clang
 /// consumes those by path, so they must be real files); BlobDatabase is
-/// the index's keyed blob store living inside that directory, a single
+/// the index's keyed blob database inside that directory, a single
 /// LMDB `index.mdb`. The interface stays virtual for test doubles (spies,
 /// failure injection).
 ///
@@ -167,7 +167,7 @@ public:
 
     /// How the file's pages are used as of the read snapshot, for `clice
     /// index stats`; nullopt from backends without a file.
-    virtual std::optional<StorageUsage> usage() {
+    virtual std::optional<PageUsage> usage() {
         return std::nullopt;
     }
 
@@ -179,29 +179,29 @@ public:
     }
 };
 
-/// The directory of a build configuration's index library:
+/// The directory of a build configuration's index database:
 /// `index/<name>` under the store's version directory, every
-/// configuration having a library of its own. The anonymous
+/// configuration having a database of its own. The anonymous
 /// configuration's is `default`; a tag's is its spelling lowercased and
 /// reduced to `[a-z0-9_-]`, then `~` and a hash of the original. The hash
 /// alone makes the name unique — filesystems fold case, Windows reserves
 /// device names and strips trailing dots, and no tag may alias `default`
 /// — while the prefix keeps it recognizable.
-std::string library_directory(const CacheStore& store, llvm::StringRef configuration);
+std::string database_directory(const CacheStore& store, llvm::StringRef configuration);
 
-/// Whether the configuration's library holds its `index.mdb`, that is, an
+/// Whether the configuration's database holds its `index.mdb`, that is, an
 /// index was ever built for it.
-bool library_exists(const CacheStore& store, llvm::StringRef configuration);
+bool database_exists(const CacheStore& store, llvm::StringRef configuration);
 
-/// The configuration's library: a single `index.mdb` (plus its `-lock`
-/// file) in its library directory, created on demand. A writable open
+/// The configuration's database: a single `index.mdb` (plus its `-lock`
+/// file) in its database directory, created on demand. A writable open
 /// presumes the caller holds the cache directory's writer lock
 /// (index/writer_lock.h) — the global/manifest blobs form one mutable
 /// lineage that tolerates no second writer. Nullptr when the
 /// environment cannot be opened safely — only confirmed corruption
 /// (or a meta mismatch) is repaired by deleting and rebuilding the
 /// database; transient errors disable index persistence for the session
-/// and touch nothing. A read-only open of a library without an
+/// and touch nothing. A read-only open of a database without an
 /// `index.mdb` yet is nullptr too; an existing one opens with MDB_RDONLY, which
 /// still registers a reader slot in the `-lock` file — the one deviation
 /// from the cache store's read-only-touches-nothing contract.

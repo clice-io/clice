@@ -117,7 +117,7 @@ public:
     /// or another format version load as an empty shard.
     static InstantiationShard from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
-    /// Swap the backing buffer for byte-identical storage, as Shard::rebind.
+    /// Swap the backing buffer for a byte-identical one, as Shard::rebind.
     bool rebind(std::unique_ptr<llvm::MemoryBuffer> replacement);
 
     bool loaded() const {

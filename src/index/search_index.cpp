@@ -893,8 +893,8 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
     if(!query.paths.empty()) {
         Bitmap allowed;
         for(std::uint32_t i = 0; i < index.paths.size(); i += 1) {
-            llvm::SmallString<256> storage;
-            auto file = path::local(to_ref(index.paths[i]), workspace, storage);
+            llvm::SmallString<256> buffer;
+            auto file = path::local(to_ref(index.paths[i]), workspace, buffer);
             if(llvm::any_of(query.paths, [&](const std::string& wanted) {
                    return path_matches(wanted, file);
                })) {

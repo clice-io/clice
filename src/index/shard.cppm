@@ -30,13 +30,13 @@ public:
     /// format version differs.
     static Shard from_bytes(llvm::StringRef data);
 
-    /// Adopt an owning buffer of blob bytes (storage reads, freshly
+    /// Adopt an owning buffer of blob bytes (database reads, freshly
     /// written blobs). A null buffer, corrupt bytes or a different format
     /// version load as an empty shard; the caller treats that as "not on
     /// disk".
     static Shard from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
-    /// Swap the backing buffer for byte-identical storage (read-snapshot
+    /// Swap the backing buffer for a byte-identical one (read-snapshot
     /// migration after a save). Verification, the live mask and the
     /// line-start cache all describe the bytes, not the address, so they
     /// carry over. Byte identity is the caller's contract (the exclusive

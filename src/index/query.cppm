@@ -191,7 +191,7 @@ void add_resolved(const InstantiationShard& shard,
 /// degrades to no text rather than slicing mismatched text.
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
-                                         std::unique_ptr<llvm::MemoryBuffer>& storage);
+                                         std::unique_ptr<llvm::MemoryBuffer>& kept);
 
 /// The whole declaration a declaring relation names, when the relation carries its
 /// extent in this source's text.
@@ -265,8 +265,8 @@ inline bool is_class(SymbolKind kind) {
 /// and only an external one's: every question about a symbol's entries also
 /// takes an `anchor`, a file holding one of them — the cursor's file, the
 /// file a relation was read from, a located symbol's site. Any other
-/// symbol's entries are the anchor's and those in the files the TUs' local
-/// fanouts list for it (ProjectIndex::each_fanout_file). External symbols
+/// symbol's entries are the anchor's and those in the files the TUs' shared
+/// locals list for it (ProjectIndex::for_each_file_of_local). External symbols
 /// ignore the anchor.
 class IndexQuery {
 public:
@@ -462,10 +462,10 @@ public:
                            RelationVisitor visitor) const;
 
     /// The text a source's offsets index: the buffer, or the file read from
-    /// disk (kept alive in `storage`) and verified against the index's
+    /// disk (alive as long as `kept`) and verified against the index's
     /// content hash.
     std::optional<llvm::StringRef> source_text(const IndexSource& source,
-                                               std::unique_ptr<llvm::MemoryBuffer>& storage) const;
+                                               std::unique_ptr<llvm::MemoryBuffer>& kept) const;
 
     const ProjectIndex& project() const {
         return index;

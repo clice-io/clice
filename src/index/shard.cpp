@@ -1754,7 +1754,7 @@ void merge_shards(const Shard& old,
 
     // Content and line table travel verbatim from any input — all inputs
     // share one content generation. Offsets from different generations
-    // must never share entry storage, hence the assert.
+    // must never share one blob's entries, hence the assert.
     ContentInfo content = old_root.valid() ? content_info_of(old_root)
                                            : content_info_of(view_of(fresh.front().bytes()));
     for([[maybe_unused]] auto& shard: fresh) {

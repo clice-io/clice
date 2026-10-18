@@ -49,7 +49,7 @@ ZEST_CASE(ManifestRoundTrip) {
     };
     manifest.absent = {VersionID{303}};
     manifest.imports = {VersionID{304}, VersionID{305}};
-    manifest.local_fanout = {
+    manifest.shared_locals = {
         {.symbol = 5, .files = {VersionID{300}, VersionID{302}}},
         {.symbol = 9, .files = {VersionID{302}, VersionID{301}}},
     };
@@ -86,7 +86,7 @@ struct ManifestBlobMirror {
     std::vector<std::uint64_t> instantiation_uses;
 };
 
-ZEST_CASE(ManifestFanoutRejected) {
+ZEST_CASE(ManifestSharedLocalRejected) {
     ManifestBlobMirror valid;
     valid.format_version = index::index_format_version;
     valid.contribution_count = 1;
@@ -400,10 +400,10 @@ struct GlobalBlobMirror {
     std::vector<std::uint32_t> contributed_files;
     std::vector<std::uint32_t> contributor_ends;
     std::vector<std::uint8_t> contributors;
-    std::vector<std::uint64_t> fanout_symbols;
-    std::vector<std::uint32_t> fanout_set_ends;
-    std::vector<std::uint32_t> fanout_file_ends;
-    std::vector<std::uint8_t> fanout_files;
+    std::vector<std::uint64_t> shared_local_symbols;
+    std::vector<std::uint32_t> shared_local_set_ends;
+    std::vector<std::uint32_t> shared_local_file_ends;
+    std::vector<std::uint8_t> shared_local_files;
 
     /// Append an entry, its parent outside the table; hashes must arrive
     /// ascending, at most 255 of them.
@@ -640,16 +640,16 @@ ZEST_CASE(UncoveredFileIdRejected) {
     ZASSERT(rejecting.symbol_count() == 0u);
 }
 
-ZEST_CASE(FanoutFilesRejected) {
-    // A reader binary-searches the symbols for the file sets the fanouts
+ZEST_CASE(SharedLocalFilesRejected) {
+    // A reader binary-searches the symbols for the file sets the shared locals
     // list: symbols out of order, or ends that misplace a symbol's sets or
     // a set's files, must not load.
     GlobalBlobMirror mirror;
     mirror.paths = {"/proj/a.h", "/proj/a.cpp"};
-    mirror.fanout_symbols = {5, 9};
-    mirror.fanout_set_ends = {1, 2};
-    mirror.fanout_files = {0, 0, 0, 0, 1, 0, 0, 0};
-    mirror.fanout_file_ends = {4, 8};
+    mirror.shared_local_symbols = {5, 9};
+    mirror.shared_local_set_ends = {1, 2};
+    mirror.shared_local_files = {0, 0, 0, 0, 1, 0, 0, 0};
+    mirror.shared_local_file_ends = {4, 8};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -662,15 +662,15 @@ ZEST_CASE(FanoutFilesRejected) {
     ZASSERT(loads(mirror));
 
     auto unordered = mirror;
-    unordered.fanout_symbols = {9, 5};
+    unordered.shared_local_symbols = {9, 5};
     ZEXPECT(!loads(unordered));
 
     auto misplaced = mirror;
-    misplaced.fanout_file_ends = {4, 7};
+    misplaced.shared_local_file_ends = {4, 7};
     ZEXPECT(!loads(misplaced));
 
     auto overrun = mirror;
-    overrun.fanout_set_ends = {1, 3};
+    overrun.shared_local_set_ends = {1, 3};
     ZEXPECT(!loads(overrun));
 }
 
@@ -828,7 +828,7 @@ ZEST_CASE(UnknownFileVersionsDetected) {
     manifest.contributions = {
         {VersionID{3}, 7}
     };
-    manifest.local_fanout = {
+    manifest.shared_locals = {
         {.symbol = 5, .files = {VersionID{3}}}
     };
     auto imported = manifest;
@@ -836,11 +836,11 @@ ZEST_CASE(UnknownFileVersionsDetected) {
     ZASSERT(imported.tu_fv == known);
     ZASSERT(imported.nodes[0].file == known.raw);
     ZASSERT(imported.contributions[0].first == known);
-    ZASSERT(imported.local_fanout[0].files[0] == known);
+    ZASSERT(imported.shared_locals[0].files[0] == known);
 
-    auto fanout = manifest;
-    fanout.local_fanout[0].files.push_back(VersionID{2});
-    ZASSERT(!loaded.import_manifest(fanout));
+    auto widened = manifest;
+    widened.shared_locals[0].files.push_back(VersionID{2});
+    ZASSERT(!loaded.import_manifest(widened));
 
     manifest.nodes.push_back({2, ~0u, 2});
     ZASSERT(!loaded.import_manifest(manifest));

@@ -155,7 +155,7 @@ inline std::size_t escape_position(llvm::ArrayRef<std::uint32_t> entries, std::s
     return static_cast<std::size_t>(std::ranges::lower_bound(entries, entry) - entries.begin());
 }
 
-/// One side of a blob's entry storage as contiguous column refs,
+/// One side of a blob's entries as contiguous column refs,
 /// encoding-agnostic: the range accessors read whichever range encoding the
 /// side stores, the mask columns whichever mask encoding.
 struct RangeColumnsView {

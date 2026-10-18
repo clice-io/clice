@@ -7,7 +7,7 @@ module clice:index.writer_lock;
 namespace clice::index {
 
 /// One writer per cache directory. The index's global/manifest lineage
-/// tolerates no second writer, and every build configuration's library
+/// tolerates no second writer, and every build configuration's database
 /// lives under the same cache directory, so the lock sits at its root:
 /// the LSP server of the workspace holds it for its lifetime, else a
 /// batch command (`clice index`, `clice lint --index`) for the run. An OS

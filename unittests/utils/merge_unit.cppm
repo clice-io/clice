@@ -72,14 +72,14 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
     for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
         held.set(view.instantiation_path(section));
     }
-    auto local_fanout = view.local_fanout(held);
-    ZASSERT(local_fanout);
-    for(auto& fanout: *local_fanout) {
-        index::LocalFanout entry{.symbol = fanout.symbol};
-        for(auto path_id: fanout.paths) {
+    auto shared_locals = view.shared_locals(held);
+    ZASSERT(shared_locals);
+    for(auto& local: *shared_locals) {
+        index::SharedLocal entry{.symbol = local.symbol};
+        for(auto path_id: local.paths) {
             entry.files.push_back(fv_of[path_id]);
         }
-        manifest.local_fanout.push_back(std::move(entry));
+        manifest.shared_locals.push_back(std::move(entry));
     }
 
     for(auto path_id:

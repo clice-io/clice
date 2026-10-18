@@ -91,10 +91,10 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_
     contributed_files = to_array_ref(root[&GlobalBlob::contributed_files]);
     contributor_ends = to_array_ref(root[&GlobalBlob::contributor_ends]);
     contributors = to_array_ref(root[&GlobalBlob::contributors]);
-    fanout_symbols = to_array_ref(root[&GlobalBlob::fanout_symbols]);
-    fanout_set_ends = to_array_ref(root[&GlobalBlob::fanout_set_ends]);
-    fanout_file_ends = to_array_ref(root[&GlobalBlob::fanout_file_ends]);
-    fanout_files = to_array_ref(root[&GlobalBlob::fanout_files]);
+    shared_local_symbols = to_array_ref(root[&GlobalBlob::shared_local_symbols]);
+    shared_local_set_ends = to_array_ref(root[&GlobalBlob::shared_local_set_ends]);
+    shared_local_file_ends = to_array_ref(root[&GlobalBlob::shared_local_file_ends]);
+    shared_local_files = to_array_ref(root[&GlobalBlob::shared_local_files]);
 
     auto version_count = fv_ids.size();
     if(fv_paths.size() != version_count || fv_hashes.size() != version_count) {
@@ -113,11 +113,11 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_
             return std::unexpected("contributed files are not ascending path ids");
         }
     }
-    if(fanout_set_ends.size() != fanout_symbols.size() ||
-       !covering_ends(fanout_set_ends, fanout_file_ends.size()) ||
-       !covering_ends(fanout_file_ends, fanout_files.size()) ||
-       !std::ranges::is_sorted(fanout_symbols, std::less_equal{})) {
-        return std::unexpected("fanout columns do not line up");
+    if(shared_local_set_ends.size() != shared_local_symbols.size() ||
+       !covering_ends(shared_local_set_ends, shared_local_file_ends.size()) ||
+       !covering_ends(shared_local_file_ends, shared_local_files.size()) ||
+       !std::ranges::is_sorted(shared_local_symbols, std::less_equal{})) {
+        return std::unexpected("shared local columns do not line up");
     }
     if(manifest_fvs.size() != manifest_gens.size()) {
         return std::unexpected("manifest pin columns do not line up");

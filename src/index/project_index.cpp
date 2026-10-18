@@ -55,11 +55,11 @@ llvm::SmallVector<std::uint64_t> distinct_hashes(const UnitHashes& table, Fid fi
     return hashes;
 }
 
-/// The files a local fanout lists, ascending, two versions of one file
+/// The files a shared local lists, ascending, two versions of one file
 /// once.
-std::vector<Fid> fanout_set(const FileTable& files, const LocalFanout& fanout) {
+std::vector<Fid> listed_files(const FileTable& files, const SharedLocal& local) {
     std::vector<Fid> set;
-    for(auto fv: fanout.files) {
+    for(auto fv: local.files) {
         set.push_back(files.version(fv).fid);
     }
     llvm::sort(set);
@@ -75,13 +75,13 @@ ProjectIndex::ProjectIndex(ProjectIndex&&) noexcept = default;
 ProjectIndex& ProjectIndex::operator=(ProjectIndex&&) noexcept = default;
 
 std::string ProjectIndex::portable(llvm::StringRef path) const {
-    llvm::SmallString<256> storage;
-    return path::portable(path, workspace, storage).str();
+    llvm::SmallString<256> buffer;
+    return path::portable(path, workspace, buffer).str();
 }
 
 Spelling ProjectIndex::local(llvm::StringRef name) const {
-    llvm::SmallString<256> storage;
-    return Spelling::absolute(path::local(name, workspace, storage));
+    llvm::SmallString<256> buffer;
+    return Spelling::absolute(path::local(name, workspace, buffer));
 }
 
 std::string ProjectIndex::key_of(const FileTable& files, Fid file) const {
@@ -528,8 +528,8 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         for(auto& use: manifest.instantiations) {
             referenced.insert(use.file);
         }
-        for(auto& fanout: manifest.local_fanout) {
-            referenced.insert(fanout.files.begin(), fanout.files.end());
+        for(auto& local: manifest.shared_locals) {
+            referenced.insert(local.files.begin(), local.files.end());
         }
         referenced.insert(manifest.absent.begin(), manifest.absent.end());
         referenced.insert(manifest.imports.begin(), manifest.imports.end());
@@ -703,19 +703,19 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         blob.contributor_ends.push_back(static_cast<std::uint32_t>(blob.contributors.size()));
     }
 
-    llvm::SmallVector<SymbolHash> fanout(llvm::make_first_range(fanout_sets));
-    llvm::sort(fanout);
-    for(auto symbol: fanout) {
-        for(auto& set: llvm::make_first_range(fanout_sets.find(symbol)->second)) {
+    llvm::SmallVector<SymbolHash> symbols(llvm::make_first_range(shared_local_sets));
+    llvm::sort(symbols);
+    for(auto symbol: symbols) {
+        for(auto& set: llvm::make_first_range(shared_local_sets.find(symbol)->second)) {
             Bitmap listed;
             for(auto file: set) {
                 listed.add(path_id(file));
             }
-            append_file_set(blob.fanout_files, listed);
-            blob.fanout_file_ends.push_back(static_cast<std::uint32_t>(blob.fanout_files.size()));
+            append_file_set(blob.shared_local_files, listed);
+            blob.shared_local_file_ends.push_back(static_cast<std::uint32_t>(blob.shared_local_files.size()));
         }
-        blob.fanout_symbols.push_back(symbol);
-        blob.fanout_set_ends.push_back(static_cast<std::uint32_t>(blob.fanout_file_ends.size()));
+        blob.shared_local_symbols.push_back(symbol);
+        blob.shared_local_set_ends.push_back(static_cast<std::uint32_t>(blob.shared_local_file_ends.size()));
     }
 
     blob.search_generation = search_generation;
@@ -793,8 +793,8 @@ bool ProjectIndex::import_manifest(TUManifest& manifest) const {
             return false;
         }
     }
-    for(auto& fanout: manifest.local_fanout) {
-        for(auto& fv: fanout.files) {
+    for(auto& local: manifest.shared_locals) {
+        for(auto& fv: local.files) {
             if(!import(fv.raw)) {
                 return false;
             }
@@ -821,8 +821,8 @@ TUManifest ProjectIndex::export_manifest(const TUManifest& manifest) {
     for(auto& use: exported.instantiations) {
         use.file.raw = persisted_id(use.file);
     }
-    for(auto& fanout: exported.local_fanout) {
-        for(auto& fv: fanout.files) {
+    for(auto& local: exported.shared_locals) {
+        for(auto& fv: local.files) {
             fv.raw = persisted_id(fv);
         }
     }
@@ -857,8 +857,8 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
     for(auto fv: manifest.imports) {
         importers[files.version(fv).fid].insert(tu_path_id);
     }
-    for(auto& fanout: manifest.local_fanout) {
-        fanout_sets[fanout.symbol][fanout_set(files, fanout)] += 1;
+    for(auto& local: manifest.shared_locals) {
+        shared_local_sets[local.symbol][listed_files(files, local)] += 1;
     }
     for(auto& use: manifest.instantiations) {
         auto path_id = files.version(use.file).fid;
@@ -904,15 +904,15 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
             importers.erase(importer_it);
         }
     }
-    for(auto& fanout: it->second.local_fanout) {
-        auto sets = fanout_sets.find(fanout.symbol);
-        auto set = sets->second.find(fanout_set(files, fanout));
+    for(auto& local: it->second.shared_locals) {
+        auto sets = shared_local_sets.find(local.symbol);
+        auto set = sets->second.find(listed_files(files, local));
         set->second -= 1;
         if(set->second == 0) {
             sets->second.erase(set);
         }
         if(sets->second.empty()) {
-            fanout_sets.erase(sets);
+            shared_local_sets.erase(sets);
         }
     }
     for(auto& use: it->second.instantiations) {
@@ -959,18 +959,18 @@ void ProjectIndex::each_contributor(Fid file, llvm::function_ref<void(Fid)> visi
     }
 }
 
-void ProjectIndex::each_fanout_file(SymbolHash hash,
+void ProjectIndex::for_each_file_of_local(SymbolHash hash,
                                     Fid anchor,
                                     llvm::function_ref<void(Fid)> visit) const {
     llvm::SmallVector<llvm::SmallVector<Fid, 4>> sets;
     if(!db) {
-        if(auto it = fanout_sets.find(hash); it != fanout_sets.end()) {
+        if(auto it = shared_local_sets.find(hash); it != shared_local_sets.end()) {
             for(auto& set: llvm::make_first_range(it->second)) {
                 sets.emplace_back(set.begin(), set.end());
             }
         }
     } else if(base) {
-        for(auto& listed: base->fanout_sets_of(hash)) {
+        for(auto& listed: base->shared_local_sets_of(hash)) {
             auto& set = sets.emplace_back();
             for(auto id: listed) {
                 if(id < base->remap.size()) {

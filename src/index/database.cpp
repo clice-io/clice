@@ -379,7 +379,7 @@ public:
         condemned = true;
     }
 
-    std::optional<StorageUsage> usage() override {
+    std::optional<PageUsage> usage() override {
         if(!txn) {
             return std::nullopt;
         }
@@ -389,7 +389,7 @@ public:
         if(mdb_stat(txn, dbi, &tree)) {
             return std::nullopt;
         }
-        StorageUsage usage{
+        PageUsage usage{
             .page_size = tree.ms_psize,
             .pages = info.me_last_pgno + 1,
             .tree_pages = tree.ms_branch_pages + tree.ms_leaf_pages,
@@ -508,10 +508,10 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     return mdb_txn_commit(wtxn) == 0 ? MetaCheck::Ok : MetaCheck::Transient;
 }
 
-std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
+std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
                                             std::size_t initial_mapsize,
                                             bool read_only) {
-    auto path = path::join(library, lmdb_file_name);
+    auto path = path::join(directory, lmdb_file_name);
 
     // LMDB takes an empty file for a new database and writes its first
     // pages, which a read-only open cannot.
@@ -722,7 +722,7 @@ FsLocality filesystem_locality(llvm::StringRef dir) {
 
 }  // namespace
 
-std::string library_directory(const CacheStore& store, llvm::StringRef configuration) {
+std::string database_directory(const CacheStore& store, llvm::StringRef configuration) {
     std::string name = "default";
     if(!configuration.empty()) {
         name = configuration.take_front(32).lower();
@@ -736,8 +736,8 @@ std::string library_directory(const CacheStore& store, llvm::StringRef configura
     return path::join(store.base_dir(), "index", name);
 }
 
-bool library_exists(const CacheStore& store, llvm::StringRef configuration) {
-    return vfs::exists(path::join(library_directory(store, configuration), lmdb_file_name));
+bool database_exists(const CacheStore& store, llvm::StringRef configuration) {
+    return vfs::exists(path::join(database_directory(store, configuration), lmdb_file_name));
 }
 
 std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
@@ -745,20 +745,20 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
                                                  std::size_t initial_mapsize,
                                                  bool read_only) {
     read_only = read_only || store.read_only();
-    auto library = library_directory(store, configuration);
+    auto directory = database_directory(store, configuration);
     if(read_only) {
-        if(!library_exists(store, configuration)) {
+        if(!database_exists(store, configuration)) {
             return nullptr;
         }
-    } else if(auto ec = vfs::create_directories(library)) {
-        LOG_WARN("Cannot create the index library {}: {}", library, ec.message());
+    } else if(auto ec = vfs::create_directories(directory)) {
+        LOG_WARN("Cannot create the index database directory {}: {}", directory, ec.message());
         return nullptr;
     }
-    auto db = open_lmdb_env(library, initial_mapsize, read_only);
+    auto db = open_lmdb_env(directory, initial_mapsize, read_only);
     if(!db) {
         return nullptr;
     }
-    LOG_INFO("Index library: {}", library);
+    LOG_INFO("Index database: {}", directory);
     return db;
 }
 

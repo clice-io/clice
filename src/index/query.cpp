@@ -11,7 +11,7 @@ namespace clice::index {
 
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
-                                         std::unique_ptr<llvm::MemoryBuffer>& storage) {
+                                         std::unique_ptr<llvm::MemoryBuffer>& kept) {
     auto buffer = vfs::read(path);
     if(!buffer) {
         return std::nullopt;
@@ -20,7 +20,7 @@ std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
     if(llvm::xxh3_64bits(text) != shard.content_hash()) {
         return std::nullopt;
     }
-    storage = std::move(*buffer);
+    kept = std::move(*buffer);
     return text;
 }
 
@@ -333,7 +333,7 @@ void IndexQuery::each_disk_file(SymbolHash hash,
     if(index.find_symbol(hash)) {
         index.each_reference_file(hash, visit);
     } else if(anchor.valid()) {
-        index.each_fanout_file(hash, anchor, visit);
+        index.for_each_file_of_local(hash, anchor, visit);
     }
 }
 
@@ -505,7 +505,7 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     // spell (a range-for's `begin`, a copy's constructor) gives way to the
     // name it follows: `for(auto& x: xs)` with the cursor right after `x`
     // stands on `x`.
-    std::unique_ptr<llvm::MemoryBuffer> storage;
+    std::unique_ptr<llvm::MemoryBuffer> kept;
     auto separates = [&](const Named& named) {
         if(named.range.begin != offset || named.range.length() > 2 ||
            llvm::any_of(named.symbols, [&](SymbolHash hash) {
@@ -514,7 +514,7 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
            })) {
             return false;
         }
-        auto text = source_text(*source, storage);
+        auto text = source_text(*source, kept);
         return text && llvm::is_contained({":", "=", "&&", "||", "?"},
                                           text->slice(named.range.begin, named.range.end));
     };
@@ -626,9 +626,9 @@ std::optional<SymbolInfo> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) c
         }
     }
     // An instantiation or an expansion names it in a file other than its
-    // own: the files the fanouts list for it hold its declaration.
+    // own: the files the shared locals list for it hold its declaration.
     if(anchor.valid()) {
-        index.each_fanout_file(hash, anchor, [&](Fid file) {
+        index.for_each_file_of_local(hash, anchor, [&](Fid file) {
             auto* shard = found ? nullptr : index.shard(file);
             if(auto identity = shard ? shard->find_symbol(hash) : std::nullopt) {
                 adopt(*identity);
@@ -820,14 +820,14 @@ llvm::SmallVector<IndexQuery::Target> IndexQuery::transitive_targets(SymbolHash 
 
 std::optional<llvm::StringRef>
     IndexQuery::source_text(const IndexSource& source,
-                            std::unique_ptr<llvm::MemoryBuffer>& storage) const {
+                            std::unique_ptr<llvm::MemoryBuffer>& kept) const {
     // Buffer-backed sources carry their text; an open session served by
     // its shard reads in buffer coordinates, so it ends up here too.
     if(source.kind == IndexSource::Kind::SessionShard ||
        source.kind == IndexSource::Kind::PreambleShard || !source.positions.text().empty()) {
         return source.positions.text();
     }
-    return disk_text(source.path, *source.shard, storage);
+    return disk_text(source.path, *source.shard, kept);
 }
 
 std::optional<std::string> IndexQuery::serving_text(Fid file) const {
@@ -835,8 +835,8 @@ std::optional<std::string> IndexQuery::serving_text(Fid file) const {
     if(!source) {
         return std::nullopt;
     }
-    std::unique_ptr<llvm::MemoryBuffer> storage;
-    auto text = source_text(*source, storage);
+    std::unique_ptr<llvm::MemoryBuffer> kept;
+    auto text = source_text(*source, kept);
     return text ? std::optional(text->str()) : std::nullopt;
 }
 

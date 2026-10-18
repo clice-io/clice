@@ -587,7 +587,7 @@ ZEST_CASE(LazyShardsStayPut) {
     ZASSERT(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
 }
 
-ZEST_CASE(FanoutAcrossUnits) {
+ZEST_CASE(SharedLocalAcrossUnits) {
     // One hash in two places: a `static` in util.h, which a.cpp includes
     // and b.cpp reads through its precompiled header, and a namespace of
     // the same name nested in an anonymous namespace of other.h, which
@@ -625,7 +625,7 @@ ZEST_CASE(FanoutAcrossUnits) {
         } else {
             manifest.contributions.emplace_back(header, 2);
         }
-        manifest.local_fanout = {
+        manifest.shared_locals = {
             {.symbol = helper, .files = {manifest.tu_fv, header}}
         };
         writer.apply_manifest(pool, tu, std::move(manifest));
@@ -645,7 +645,7 @@ ZEST_CASE(FanoutAcrossUnits) {
                          ids({"/proj/c.cpp", "/proj/other.h"})}) {
             for(auto start: group) {
                 llvm::SmallVector<Fid> reached;
-                index.each_fanout_file(helper, start, [&](Fid file) { reached.push_back(file); });
+                index.for_each_file_of_local(helper, start, [&](Fid file) { reached.push_back(file); });
                 llvm::sort(reached);
                 ZEXPECT(reached == group);
             }
@@ -656,8 +656,8 @@ ZEST_CASE(FanoutAcrossUnits) {
     std::vector<index::BlobDatabase::Blob> puts;
     for(auto tu: units) {
         auto exported = writer.export_manifest(writer.manifests.find(tu)->second);
-        // The fanout names its files by persisted ids, as the nodes do.
-        ZEXPECT(exported.local_fanout[0].files ==
+        // The shared local names its files by persisted ids, as the nodes do.
+        ZEXPECT(exported.shared_locals[0].files ==
                 std::vector<VersionID>{exported.tu_fv, VersionID{exported.nodes[1].file}});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
@@ -679,14 +679,14 @@ ZEST_CASE(FanoutAcrossUnits) {
     // A unit leaving takes its set along: c.cpp's files no longer answer.
     writer.remove_manifest(pool, units[2]);
     llvm::SmallVector<Fid> reached;
-    writer.each_fanout_file(helper, pool.intern(Spelling::absolute("/proj/c.cpp")), [&](Fid file) {
+    writer.for_each_file_of_local(helper, pool.intern(Spelling::absolute("/proj/c.cpp")), [&](Fid file) {
         reached.push_back(file);
     });
     ZEXPECT(reached.size() == 1u);
-    ZEXPECT(writer.fanout_sets.find(helper)->second.size() == 2u);
+    ZEXPECT(writer.shared_local_sets.find(helper)->second.size() == 2u);
 }
 
-ZEST_CASE(FanoutSetsCounted) {
+ZEST_CASE(SharedLocalSetsCounted) {
     // Two units list the same files for a symbol: the set answers until
     // the last of them leaves.
     constexpr index::SymbolHash helper = 99;
@@ -710,7 +710,7 @@ ZEST_CASE(FanoutSetsCounted) {
             {x_fv,           2},
             {y_fv,           3},
         };
-        manifest.local_fanout = {
+        manifest.shared_locals = {
             {.symbol = helper, .files = {x_fv, y_fv}}
         };
         index.apply_manifest(pool, tu, std::move(manifest));
@@ -718,7 +718,7 @@ ZEST_CASE(FanoutSetsCounted) {
     }
     auto reached = [&] {
         std::size_t count = 0;
-        index.each_fanout_file(helper, x, [&](Fid) { count += 1; });
+        index.for_each_file_of_local(helper, x, [&](Fid) { count += 1; });
         return count;
     };
     ZEXPECT(reached() == 2u);

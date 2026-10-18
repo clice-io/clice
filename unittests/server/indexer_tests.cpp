@@ -321,7 +321,7 @@ ZEST_CASE(MergeRejectsGarbage) {
     ZASSERT(project.project_index.symbol_count() == 0u);
 }
 
-ZEST_CASE(FanoutNamesPrecompiledInput) {
+ZEST_CASE(SharedLocalNamesPrecompiledInput) {
     // An internal symbol a unit names in a file it holds no entries of is
     // rejected, unless the unit reads that file through its precompiled
     // header or a module: their own units wrote its entries.
@@ -354,7 +354,7 @@ int use() { return 1; }
     pump.apply_report(*report);
     auto focus = project.file_table.intern(Spelling::absolute(mirror.paths.back()));
     llvm::SmallVector<Fid> reached;
-    project.project_index.each_fanout_file(helper, header, [&](Fid file) {
+    project.project_index.for_each_file_of_local(helper, header, [&](Fid file) {
         reached.push_back(file);
     });
     ZEXPECT(reached == llvm::SmallVector<Fid>{header, focus});
@@ -4329,7 +4329,7 @@ void a() {}
         });
     ZASSERT(print);
     llvm::SmallVector<Fid> reached;
-    f.project.project_index.each_fanout_file(*print, id("a.h"), [&](Fid file) {
+    f.project.project_index.for_each_file_of_local(*print, id("a.h"), [&](Fid file) {
         reached.push_back(file);
     });
     ZEXPECT(llvm::is_contained(reached, id("box.h")));

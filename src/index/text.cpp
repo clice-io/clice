@@ -49,8 +49,8 @@ std::optional<DeclaredText> declared_text(const IndexQuery& index, SymbolHash ha
                           if(!extent) {
                               return true;
                           }
-                          std::unique_ptr<llvm::MemoryBuffer> storage;
-                          auto text = index.source_text(source, storage);
+                          std::unique_ptr<llvm::MemoryBuffer> kept;
+                          auto text = index.source_text(source, kept);
                           if(!text) {
                               return true;
                           }
@@ -94,8 +94,8 @@ std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bo
             {},
             [&](const IndexSource& source, const Relation& relation) {
                 auto extent = relation.extent();
-                std::unique_ptr<llvm::MemoryBuffer> storage;
-                auto text = extent.begin < extent.end ? index.source_text(source, storage) : std::nullopt;
+                std::unique_ptr<llvm::MemoryBuffer> kept;
+                auto text = extent.begin < extent.end ? index.source_text(source, kept) : std::nullopt;
                 if(!text || extent.end > text->size()) {
                     return true;
                 }
@@ -134,8 +134,8 @@ auto copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, ll
     }
     auto declares = [&](const IndexQuery::Located& candidate) {
         auto source = index.serving(candidate.site.file);
-        std::unique_ptr<llvm::MemoryBuffer> storage;
-        auto text = source ? index.source_text(*source, storage) : std::nullopt;
+        std::unique_ptr<llvm::MemoryBuffer> kept;
+        auto text = source ? index.source_text(*source, kept) : std::nullopt;
         return text && declares_parameters(*text, candidate.site.range.end, *copied->parameters);
     };
 
@@ -165,13 +165,13 @@ auto copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, ll
 std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<Site> sites) {
     struct Text {
         std::optional<IndexSource> source;
-        std::unique_ptr<llvm::MemoryBuffer> storage;
+        std::unique_ptr<llvm::MemoryBuffer> kept;
 
         llvm::StringRef get() const {
             if(source && !source->positions.text().empty()) {
                 return source->positions.text();
             }
-            return storage ? storage->getBuffer() : llvm::StringRef();
+            return kept ? kept->getBuffer() : llvm::StringRef();
         }
     };
 
@@ -189,7 +189,7 @@ std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<S
             text->source = index.serving(site.file);
             if(text->get().empty()) {
                 if(auto* shard = index.project().shard(site.file)) {
-                    disk_text(site.path, *shard, text->storage);
+                    disk_text(site.path, *shard, text->kept);
                 }
             }
         }

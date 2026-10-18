@@ -66,10 +66,10 @@ struct ProjectTable {
     llvm::ArrayRef<std::uint32_t> contributor_ends;
     llvm::ArrayRef<std::uint8_t> contributors;
 
-    llvm::ArrayRef<std::uint64_t> fanout_symbols;
-    llvm::ArrayRef<std::uint32_t> fanout_set_ends;
-    llvm::ArrayRef<std::uint32_t> fanout_file_ends;
-    llvm::ArrayRef<std::uint8_t> fanout_files;
+    llvm::ArrayRef<std::uint64_t> shared_local_symbols;
+    llvm::ArrayRef<std::uint32_t> shared_local_set_ends;
+    llvm::ArrayRef<std::uint32_t> shared_local_file_ends;
+    llvm::ArrayRef<std::uint8_t> shared_local_files;
 
     /// Blob path id -> file table id.
     std::vector<Fid> remap;
@@ -159,18 +159,18 @@ struct ProjectTable {
         return read_file_set(back_to_back(contributors, contributor_ends, it->second));
     }
 
-    /// The file sets the local fanouts list for `symbol`, as path ids; a
+    /// The file sets the shared locals list for `symbol`, as path ids; a
     /// corrupt one is left out.
-    llvm::SmallVector<Bitmap> fanout_sets_of(SymbolHash symbol) const {
+    llvm::SmallVector<Bitmap> shared_local_sets_of(SymbolHash symbol) const {
         llvm::SmallVector<Bitmap> sets;
-        auto it = std::ranges::lower_bound(fanout_symbols, symbol);
-        if(it == fanout_symbols.end() || *it != symbol) {
+        auto it = std::ranges::lower_bound(shared_local_symbols, symbol);
+        if(it == shared_local_symbols.end() || *it != symbol) {
             return sets;
         }
-        auto entry = static_cast<std::uint32_t>(it - fanout_symbols.begin());
-        for(auto set = entry == 0 ? 0 : fanout_set_ends[entry - 1]; set < fanout_set_ends[entry];
+        auto entry = static_cast<std::uint32_t>(it - shared_local_symbols.begin());
+        for(auto set = entry == 0 ? 0 : shared_local_set_ends[entry - 1]; set < shared_local_set_ends[entry];
             set += 1) {
-            if(auto files = read_file_set(back_to_back(fanout_files, fanout_file_ends, set))) {
+            if(auto files = read_file_set(back_to_back(shared_local_files, shared_local_file_ends, set))) {
                 sets.push_back(std::move(*files));
             }
         }

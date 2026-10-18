@@ -621,8 +621,8 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
             held.set(i);
         }
     }
-    auto local_fanout = view.local_fanout(held);
-    if(!local_fanout) {
+    auto shared_locals = view.shared_locals(held);
+    if(!shared_locals) {
         LOG_WARN(
             "Reject merge for {}: a symbol below external scope names a file the unit holds "
             "no entries of",
@@ -684,12 +684,12 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     for(auto [local_id, variant]: section_contributions) {
         manifest.contributions.emplace_back(fv_of[local_id], variant);
     }
-    for(auto& fanout: *local_fanout) {
-        index::LocalFanout entry{.symbol = fanout.symbol};
-        for(auto path_id: fanout.paths) {
+    for(auto& local: *shared_locals) {
+        index::SharedLocal entry{.symbol = local.symbol};
+        for(auto path_id: local.paths) {
             entry.files.push_back(fv_of[path_id]);
         }
-        manifest.local_fanout.push_back(std::move(entry));
+        manifest.shared_locals.push_back(std::move(entry));
     }
     for(auto [local_id, use]: llvm::make_second_range(unit_uses)) {
         manifest.instantiations.push_back({.file = fv_of[local_id], .use = use});

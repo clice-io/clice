@@ -183,10 +183,10 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     {
-        auto library = index::library_directory(store, "");
-        require(!llvm::sys::fs::create_directories(library), "creating the library failed");
+        auto directory = index::database_directory(store, "");
+        require(!llvm::sys::fs::create_directories(directory), "creating the database directory failed");
         std::error_code ec;
-        llvm::raw_fd_ostream os(path::join(library, "index.mdb"), ec);
+        llvm::raw_fd_ostream os(path::join(directory, "index.mdb"), ec);
         require(!ec, "writing garbage failed");
         os << "this is not an lmdb file, not even close, but long enough to map";
     }
@@ -206,7 +206,7 @@ std::string populated_database(CacheStore& store, int count) {
             db->write({blob(index::IndexBlobKind::Shard, std::to_string(i), large_value('t'))}, {});
         require(rejected.empty(), "writing a blob failed");
     }
-    return path::join(index::library_directory(store, ""), "index.mdb");
+    return path::join(index::database_directory(store, ""), "index.mdb");
 }
 
 /// Cuts the file down to its two meta pages: the tree they point at is gone.
@@ -259,7 +259,7 @@ ZEST_CASE(ReadOnlyRefusesEmpty) {
         require(!ec, "emptying index.mdb failed");
     }
     auto store = open_store(tmp, "ws", /*read_only=*/true);
-    ZASSERT(index::library_exists(store, ""));
+    ZASSERT(index::database_exists(store, ""));
     ZASSERT(index::open_database(store, "") == nullptr);
     std::uint64_t size = 1;
     ZASSERT(!llvm::sys::fs::file_size(file, size));
@@ -275,7 +275,7 @@ ZEST_CASE(WritesCoverFreedTail) {
     std::string file;
     {
         auto store = open_store(tmp, "lmdb");
-        file = path::join(index::library_directory(store, ""), "index.mdb");
+        file = path::join(index::database_directory(store, ""), "index.mdb");
         auto db = index::open_database(store, "");
         ZASSERT(db != nullptr);
         auto advance_snapshot = [&] {
@@ -329,7 +329,7 @@ ZEST_CASE(DefaultOpenFileBounded) {
     // default exists to avoid); POSIX file sizes track the data
     // high-water mark and pass trivially.
     std::uint64_t size = 0;
-    ZASSERT(!llvm::sys::fs::file_size(path::join(index::library_directory(store, ""), "index.mdb"),
+    ZASSERT(!llvm::sys::fs::file_size(path::join(index::database_directory(store, ""), "index.mdb"),
                                       size));
     ZASSERT((size <= 256ull << 20));
 }
@@ -376,7 +376,7 @@ ZEST_CASE(ReadOnlyMissingDatabase) {
     // not leave behind.
     auto db = index::open_database(store, "", /*read_only=*/true);
     ZASSERT(db == nullptr);
-    ZASSERT(!llvm::sys::fs::exists(index::library_directory(store, "")));
+    ZASSERT(!llvm::sys::fs::exists(index::database_directory(store, "")));
 }
 
 ZEST_CASE(ReadOnlyServesExistingDatabase) {
@@ -403,22 +403,22 @@ ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
         ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "bytes")}, {}).empty());
         db->condemn();
     }
-    ZASSERT(!llvm::sys::fs::exists(path::join(index::library_directory(store, ""), "index.mdb")));
+    ZASSERT(!llvm::sys::fs::exists(path::join(index::database_directory(store, ""), "index.mdb")));
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
     ZASSERT(!db->contains(index::IndexBlobKind::CDB, "cdb"));
 }
 
-ZEST_CASE(LibraryPerConfiguration) {
-    /// Every configuration has a library of its own under `index/`, the
+ZEST_CASE(DatabasePerConfiguration) {
+    /// Every configuration has a database of its own under `index/`, the
     /// anonymous one named `default`; what one holds the other never sees.
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    ZEXPECT(index::library_directory(store, "") ==
+    ZEXPECT(index::database_directory(store, "") ==
             path::join(store.base_dir(), "index", "default"));
-    auto library = index::library_directory(store, "release");
-    ZEXPECT(path::parent_path(library) == path::join(store.base_dir(), "index"));
-    ZEXPECT(path::filename(library).starts_with("release~"));
+    auto directory = index::database_directory(store, "release");
+    ZEXPECT(path::parent_path(directory) == path::join(store.base_dir(), "index"));
+    ZEXPECT(path::filename(directory).starts_with("release~"));
 
     auto debug = index::open_database(store, "debug");
     auto release = index::open_database(store, "release");
@@ -428,19 +428,19 @@ ZEST_CASE(LibraryPerConfiguration) {
     ZASSERT(release->advance_read_snapshot());
     ZASSERT(!release->contains(index::IndexBlobKind::Global, "global"));
     ZASSERT(
-        llvm::sys::fs::exists(path::join(index::library_directory(store, "debug"), "index.mdb")));
+        llvm::sys::fs::exists(path::join(index::database_directory(store, "debug"), "index.mdb")));
     ZASSERT(
-        llvm::sys::fs::exists(path::join(index::library_directory(store, "release"), "index.mdb")));
+        llvm::sys::fs::exists(path::join(index::database_directory(store, "release"), "index.mdb")));
 }
 
-ZEST_CASE(LibraryNameSanitized) {
+ZEST_CASE(DatabaseNameSanitized) {
     /// The name's prefix is the tag reduced to a safe lowercase spelling;
     /// the hash behind the `~` tells apart tags that reduce alike, alias
     /// each other on a case-folding filesystem, or spell `default`.
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto name = [&](llvm::StringRef configuration) {
-        return path::filename(index::library_directory(store, configuration)).str();
+        return path::filename(index::database_directory(store, configuration)).str();
     };
     auto prefix = [&](llvm::StringRef configuration) {
         auto full = name(configuration);
@@ -458,13 +458,13 @@ ZEST_CASE(LibraryNameSanitized) {
     ZEXPECT(prefix(std::string(40, 'x')) == std::string(32, 'x'));
 }
 
-ZEST_CASE(LibraryBlockedByFile) {
+ZEST_CASE(DatabaseBlockedByFile) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto library = index::library_directory(store, "x");
-    auto ec = llvm::sys::fs::create_directories(path::parent_path(library));
+    auto directory = index::database_directory(store, "x");
+    auto ec = llvm::sys::fs::create_directories(path::parent_path(directory));
     ZASSERT(!ec);
-    ZASSERT(!vfs::write(library, "x"));
+    ZASSERT(!vfs::write(directory, "x"));
     ZASSERT(index::open_database(store, "x") == nullptr);
 }
 
@@ -473,14 +473,14 @@ ZEST_CASE(WriterLockAtCacheRoot) {
     auto store = open_store(tmp, "lmdb");
     auto lock = index::WriterLock::acquire(store.root_dir());
     ZASSERT(lock);
-    // The lock guards the cache directory, not a configuration's library,
-    // and opening a library takes none. (Contention itself is between
+    // The lock guards the cache directory, not a configuration's database,
+    // and opening a database takes none. (Contention itself is between
     // processes: POSIX record locks are per process, so a second
     // acquisition in this one would succeed.)
     ZASSERT(llvm::sys::fs::exists(path::join(store.root_dir(), "index.lock")));
     auto db = index::open_database(store, "x");
     ZASSERT(db != nullptr);
-    ZASSERT(!llvm::sys::fs::exists(path::join(index::library_directory(store, "x"), "index.lock")));
+    ZASSERT(!llvm::sys::fs::exists(path::join(index::database_directory(store, "x"), "index.lock")));
     auto held = read_file(path::join(store.root_dir(), "index.lock"));
     ZASSERT(held);
     ZASSERT(llvm::StringRef(*held).trim() == std::to_string(llvm::sys::Process::getProcessId()));

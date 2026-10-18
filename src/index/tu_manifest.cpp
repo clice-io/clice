@@ -80,9 +80,9 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
         blob.imports.push_back(fv.raw);
     }
 
-    for(auto& fanout: manifest.local_fanout) {
-        blob.local_symbols.push_back(fanout.symbol);
-        for(auto fv: fanout.files) {
+    for(auto& local: manifest.shared_locals) {
+        blob.local_symbols.push_back(local.symbol);
+        for(auto fv: local.files) {
             blob.local_files.push_back(fv.raw);
         }
         blob.local_file_ends.push_back(static_cast<std::uint32_t>(blob.local_files.size()));
@@ -193,10 +193,10 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
             return std::nullopt;
         }
         auto end = blob.local_file_ends[i];
-        auto& fanout = manifest.local_fanout.emplace_back();
-        fanout.symbol = blob.local_symbols[i];
+        auto& local = manifest.shared_locals.emplace_back();
+        local.symbol = blob.local_symbols[i];
         for(auto fv: llvm::ArrayRef(blob.local_files).slice(begin, end - begin)) {
-            fanout.files.push_back(VersionID{fv});
+            local.files.push_back(VersionID{fv});
         }
         begin = end;
     }

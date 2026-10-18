@@ -12,7 +12,7 @@ namespace clice::index {
 
 /// A symbol below external scope more than one of a TU's files names,
 /// with those files as the TU index's path ids.
-struct PathFanout {
+struct TUSharedLocal {
     SymbolHash symbol = 0;
     llvm::SmallVector<std::uint32_t, 2> paths;
 };
@@ -149,7 +149,7 @@ public:
     /// The symbols below external scope more than one of the TU's files
     /// names (Symbol::reference_files), sorted by symbol. Nullopt when a
     /// symbol's reference files are not all among the `held` path ids.
-    std::optional<std::vector<PathFanout>> local_fanout(const llvm::BitVector& held) const;
+    std::optional<std::vector<TUSharedLocal>> shared_locals(const llvm::BitVector& held) const;
 
     /// Whether `text` still begins with the exact preamble this TU index
     /// was built from — the gate for serving preamble-derived state

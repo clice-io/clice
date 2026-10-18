@@ -1515,7 +1515,7 @@ public:
             // Nor can a skipped key stand for a name below external scope
             // that another file declares: only the units walking the
             // instantiation list the key's file among the files naming it
-            // (TUManifest::local_fanout).
+            // (TUManifest::shared_locals).
             auto& SM = unit.context().getSourceManager();
             auto foreign = [&](SymbolHash hash) {
                 auto it = internal_decls.find(hash);
@@ -1957,7 +1957,7 @@ public:
         llvm::SmallVector<SymbolHash> table;
         for(auto& [hash, symbol]: symbols) {
             // A function's own name stays out but where another file names
-            // it, which the merge lists (TUIndex::local_fanout).
+            // it, which the merge lists (TUIndex::shared_locals).
             if(symbol.scope == SymbolScope::FunctionLocal &&
                (focus_only || symbol.reference_files.cardinality() < 2)) {
                 continue;

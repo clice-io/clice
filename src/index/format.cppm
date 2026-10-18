@@ -80,10 +80,10 @@ namespace clice::index {
 /// text of their non-ASCII lines, the global table's file sets of one or two
 /// files are raw ids, and manifests name the use set their unit shares in a
 /// file's instantiation blob and encode runs of include siblings; v40: a
-/// local fanout names its files by version, including files the unit reads
+/// shared local names its files by version, including files the unit reads
 /// through a precompiled header or a module, function-local symbols other
-/// files name join the TU index's table and the fanout, and the global
-/// table lists the files the fanouts name per symbol.
+/// files name join the TU index's table and the shared locals, and the global
+/// table lists the files the shared locals name per symbol.
 constexpr inline std::uint32_t index_format_version = 40;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
@@ -152,7 +152,7 @@ constexpr inline std::uint32_t delta_block = 16;
 /// holds the begin.
 constexpr inline std::uint8_t delta_escape = 0xff;
 
-/// One side of a blob's entry storage (occurrences, relations, records).
+/// One side of a blob's entries (occurrences, relations, records).
 ///
 /// Ranges use exactly one of three self-describing encodings:
 ///   - delta, for a side sorted by begin (occurrences, records): the begin
@@ -553,13 +553,13 @@ struct GlobalBlob {
     std::vector<std::uint32_t> contributor_ends;
     std::vector<std::uint8_t> contributors;
 
-    /// The symbols below external scope some TU's local fanout lists
-    /// (TUManifest::local_fanout), ascending; the end of each symbol's run
+    /// The symbols below external scope some TU's shared locals list
+    /// (TUManifest::shared_locals), ascending; the end of each symbol's run
     /// of file sets; and the sets, file sets back to back.
-    std::vector<std::uint64_t> fanout_symbols;
-    std::vector<std::uint32_t> fanout_set_ends;
-    std::vector<std::uint32_t> fanout_file_ends;
-    std::vector<std::uint8_t> fanout_files;
+    std::vector<std::uint64_t> shared_local_symbols;
+    std::vector<std::uint32_t> shared_local_set_ends;
+    std::vector<std::uint32_t> shared_local_file_ends;
+    std::vector<std::uint8_t> shared_local_files;
 };
 
 /// Layout and scoring version of the search blob, apart from the index
@@ -659,7 +659,7 @@ struct ManifestBlob {
 
     std::vector<std::uint32_t> imports;
 
-    /// TUManifest::local_fanout as columns: the symbols ascending, each
+    /// TUManifest::shared_locals as columns: the symbols ascending, each
     /// one's file versions back to back.
     std::vector<std::uint64_t> local_symbols;
     std::vector<std::uint32_t> local_file_ends;

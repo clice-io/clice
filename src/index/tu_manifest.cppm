@@ -22,11 +22,11 @@ struct IncludeEdge {
 /// resolve in, and the ones declaring it behind the precompiled header or a
 /// module. No project-wide table lists such a symbol: this is how a query
 /// reaches its entries in files other than the one it started from.
-struct LocalFanout {
+struct SharedLocal {
     std::uint64_t symbol = 0;
     std::vector<VersionID> files;
 
-    friend bool operator==(const LocalFanout&, const LocalFanout&) = default;
+    friend bool operator==(const SharedLocal&, const SharedLocal&) = default;
 };
 
 /// The instantiation resolutions a TU uses in one file — the ones it walked
@@ -82,7 +82,7 @@ struct TUManifest {
     std::vector<VersionID> imports;
 
     /// Sorted by symbol.
-    std::vector<LocalFanout> local_fanout;
+    std::vector<SharedLocal> shared_locals;
 
     /// One entry per file holding instantiation resolutions the TU uses: what
     /// keeps those resolutions alive.

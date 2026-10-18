@@ -72,7 +72,7 @@ enum class SymbolScope : std::uint8_t {
     /// Can be referenced across files within one TU but not across TUs
     /// (internal linkage: static, anonymous namespace). Stored in the
     /// shards holding its entries; the TUs that reference it from several
-    /// files list those files (TUManifest::local_fanout).
+    /// files list those files (TUManifest::shared_locals).
     Internal = 1,
     /// Declared inside a function (local variables, parameters, labels,
     /// local classes). Stored in the defining file's Shard blob; one another

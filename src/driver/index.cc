@@ -322,7 +322,7 @@ struct IndexStats {
     index::FieldBytes search_fields;
     std::uint64_t manifest_bytes = 0;
     index::FieldBytes manifest_fields;
-    std::uint64_t local_fanout = 0;
+    std::uint64_t shared_locals = 0;
     Histogram references_per_symbol;
     Histogram name_lengths;
     Histogram variants_per_shard;
@@ -342,7 +342,7 @@ struct IndexStats {
     /// Per template, how many of its instantiations the shards key.
     llvm::DenseMap<index::SymbolHash, std::uint32_t> keys_per_template;
 
-    std::optional<index::StorageUsage> usage;
+    std::optional<index::PageUsage> usage;
     /// Parallel to stored_kinds.
     std::array<StoredBlobs, std::size(stored_kinds)> stored;
 };
@@ -408,7 +408,7 @@ IndexStats collect_stats(Project& project) {
             return true;
         });
     for(auto& [tu, manifest]: project_index.manifests) {
-        stats.local_fanout += manifest.local_fanout.size();
+        stats.shared_locals += manifest.shared_locals.size();
         stats.unit_uses += manifest.instantiations.size();
         if(auto blob = project.index_db->read(index::IndexBlobKind::Manifest,
                                               project_index.key_of(project.file_table, tu))) {
@@ -455,14 +455,14 @@ void print_stats(const Project& project,
     };
 
     auto configuration = project.build.active_configuration();
-    driver::println("Index cache: {}", index::library_directory(*project.store, configuration));
+    driver::println("Index cache: {}", index::database_directory(*project.store, configuration));
     if(!configuration.empty()) {
         driver::println("Configuration: {}", configuration);
     }
     driver::println("Translation units: {} (manifests {}), {} internal symbols spanning files",
                     project_index.manifests.size(),
                     format_bytes(stats.manifest_bytes),
-                    stats.local_fanout);
+                    stats.shared_locals);
     driver::println("File shards: {} ({}), {} occurrences, {} relations",
                     stats.shards.size(),
                     format_bytes(stats.shard_bytes),
