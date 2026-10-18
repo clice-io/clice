@@ -156,6 +156,35 @@ struct RangeColumnsView {
         return {begin, end_of(entry, begin)};
     }
 
+    /// The first entry whose range `below` rejects, in a delta-encoded side
+    /// where `below` holds for a prefix of the entries: a binary search over
+    /// the block starts, whose begins are stored, then a scan of one block.
+    template <typename Below>
+    std::uint32_t partition_point(Below&& below) const {
+        auto blocks =
+            std::views::iota(std::uint32_t(0), static_cast<std::uint32_t>(block_begins.size()));
+        auto block = static_cast<std::uint32_t>(
+            std::ranges::partition_point(
+                blocks,
+                [&](std::uint32_t b) {
+                    auto begin = block_begins[b];
+                    return below(LocalSourceRange{begin, end_of(b * delta_block, begin)});
+                }) -
+            blocks.begin());
+        if(block == 0) {
+            return 0;
+        }
+        auto last = std::min(block * delta_block, static_cast<std::uint32_t>(size()));
+        auto begin = block_begins[block - 1];
+        for(auto entry = (block - 1) * delta_block + 1; entry < last; entry += 1) {
+            begin = next_begin(entry, begin);
+            if(!below(LocalSourceRange{begin, end_of(entry, begin)})) {
+                return entry;
+            }
+        }
+        return last;
+    }
+
     /// Visit every entry's range in entry order, the delta encoding decoded
     /// in one pass; `visit` returns false to stop.
     template <typename Visit>

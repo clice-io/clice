@@ -859,10 +859,8 @@ void Shard::lookup(std::uint32_t offset,
     // while occurrences contain it. Occurrence ranges are name-token spans,
     // pairwise disjoint or identical, so under (begin, end) order the end
     // column is monotonic too.
-    auto entries = std::views::iota(std::uint32_t(0), static_cast<std::uint32_t>(table.size()));
-    auto first = std::ranges::lower_bound(entries, offset, {}, [&](std::uint32_t entry) {
-        return table.columns.end_of(entry);
-    });
+    auto first =
+        table.columns.partition_point([&](LocalSourceRange range) { return range.end < offset; });
 
     // A cursor between two tokens belongs to the one starting at it, so
     // occurrences the offset only touches at their right edge yield after every
@@ -870,8 +868,7 @@ void Shard::lookup(std::uint32_t offset,
     // resolve to `b`, not `+`, while a cursor right after a lone token
     // still hits that token.
     llvm::SmallVector<std::uint32_t, 2> edge_entries;
-    for(auto it = first; it != entries.end(); it += 1) {
-        auto entry = *it;
+    for(auto entry = first; entry < table.size(); entry += 1) {
         auto range = table.columns.range_of(entry);
         if(!range.touches(offset)) {
             break;

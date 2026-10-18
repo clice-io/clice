@@ -61,10 +61,10 @@ struct RecordTable {
         return (kinds[record] & expansion_bit) != 0;
     }
 
-    InstantiationRecord at(std::uint32_t record) const {
+    InstantiationRecord at(std::uint32_t record, LocalSourceRange range) const {
         auto kind = kind_of(record);
         return {
-            .range = columns.range_of(record),
+            .range = range,
             .kind = kind,
             .target = sym_hashes[targets[record]],
             .from = has_from(kind) ? sym_hashes[froms[record]] : 0,
@@ -204,30 +204,35 @@ CheckResult records_ok(BlobView root) {
     }
     std::tuple<std::uint32_t, std::uint32_t, InstantiationKind, bool, std::uint32_t, std::uint32_t>
         previous;
-    for(std::uint32_t record = 0; record < count; record += 1) {
+    CheckResult result;
+    table.columns.for_each_range([&](std::uint32_t record, LocalSourceRange range) {
         if(table.kind_of(record) > InstantiationKind::TypeDefinition) {
-            return std::unexpected("unknown record kind");
+            result = std::unexpected("unknown record kind");
+            return false;
         }
         if(!has_from(table.kind_of(record)) && table.froms[record] != 0) {
-            return std::unexpected("a `from` on a record kind without one");
+            result = std::unexpected("a `from` on a record kind without one");
+            return false;
         }
-        auto begin = table.columns.begin_of(record);
-        auto end = table.columns.end_of(record);
-        if(is_no_range(begin, end) || end < begin || end > content_size) {
-            return std::unexpected("record range past the content");
+        if(is_no_range(range.begin, range.end) || range.end < range.begin ||
+           range.end > content_size) {
+            result = std::unexpected("record range past the content");
+            return false;
         }
-        std::tuple key{begin,
-                       end,
+        std::tuple key{range.begin,
+                       range.end,
                        table.kind_of(record),
                        table.expansion_of(record),
                        table.targets[record],
                        table.froms[record]};
         if(record != 0 && key <= previous) {
-            return std::unexpected("records are not strictly ascending");
+            result = std::unexpected("records are not strictly ascending");
+            return false;
         }
         previous = key;
-    }
-    return {};
+        return true;
+    });
+    return result;
 }
 
 // Every resolution holds records and every record a resolution: an ownerless
@@ -399,10 +404,10 @@ InstantiationShard InstantiationShard::from_buffer(std::unique_ptr<llvm::MemoryB
         return {};
     }
     InstantiationShard shard(std::move(buffer));
-    auto columns = RecordTable::of(root).columns;
-    for(std::uint32_t record = 0; record < columns.size(); record += 1) {
-        shard.longest = std::max(shard.longest, columns.range_of(record).length());
-    }
+    RecordTable::of(root).columns.for_each_range([&](std::uint32_t, LocalSourceRange range) {
+        shard.longest = std::max(shard.longest, range.length());
+        return true;
+    });
     return shard;
 }
 
@@ -534,17 +539,14 @@ void InstantiationShard::lookup(
     // Records nest (a base specifier around the names in it), so the end
     // column is not monotonic: scan the records beginning close enough
     // before the offset for the longest of them to reach it.
-    auto records = std::views::iota(std::uint32_t(0), static_cast<std::uint32_t>(table.size()));
-    auto begin_of = [&](std::uint32_t record) {
-        return table.columns.begin_of(record);
-    };
+    auto reach = offset - std::min(offset, longest);
     auto first =
-        std::ranges::lower_bound(records, offset - std::min(offset, longest), {}, begin_of);
-    auto last = std::ranges::upper_bound(records, offset, {}, begin_of);
-    for(auto it = first; it != last; it += 1) {
-        auto record = *it;
-        if(live(record) && table.columns.range_of(record).touches(offset) &&
-           !callback(table.at(record))) {
+        table.columns.partition_point([&](LocalSourceRange range) { return range.begin < reach; });
+    auto last = table.columns.partition_point(
+        [&](LocalSourceRange range) { return range.begin <= offset; });
+    for(auto record = first; record < last; record += 1) {
+        auto range = table.columns.range_of(record);
+        if(live(record) && range.touches(offset) && !callback(table.at(record, range))) {
             return;
         }
     }
@@ -562,13 +564,11 @@ void InstantiationShard::lookup(
         return;
     }
     auto id = static_cast<std::uint32_t>(it - table.sym_hashes.begin());
-    for(std::uint32_t record = 0; record < table.size(); record += 1) {
+    table.columns.for_each_range([&](std::uint32_t record, LocalSourceRange range) {
         bool names = table.targets[record] == id ||
                      (has_from(table.kind_of(record)) && table.froms[record] == id);
-        if(names && live(record) && !callback(table.at(record))) {
-            return;
-        }
-    }
+        return !names || !live(record) || callback(table.at(record, range));
+    });
 }
 
 void InstantiationShard::for_each_record(
@@ -577,11 +577,9 @@ void InstantiationShard::for_each_record(
         return;
     }
     auto table = RecordTable::of(view_of(bytes()));
-    for(std::uint32_t record = 0; record < table.size(); record += 1) {
-        if(live(record) && !callback(table.at(record))) {
-            return;
-        }
-    }
+    table.columns.for_each_range([&](std::uint32_t record, LocalSourceRange range) {
+        return !live(record) || callback(table.at(record, range));
+    });
 }
 
 namespace {

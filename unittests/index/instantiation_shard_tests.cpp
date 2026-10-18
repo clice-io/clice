@@ -139,6 +139,33 @@ ZEST_CASE(Roundtrip) {
     ZEXPECT(!shard.find_key(9));
 }
 
+ZEST_CASE(LookupAcrossBlocks) {
+    // Records span several blocks of their delta-encoded begins, one of
+    // them long enough to hold offsets far past its begin.
+    std::vector<InstantiationRecord> held;
+    for(std::uint32_t i = 0; i < 60; i += 1) {
+        held.push_back(reference(i * 15, 100 + i));
+    }
+    InstantiationRecord outer{
+        .range = {16, 400},
+        .kind = InstantiationKind::Reference,
+        .target = 99
+    };
+    held.push_back(outer);
+    FileInstantiations instantiations;
+    instantiations.resolutions = {held};
+    auto shard = write(instantiations);
+    ZASSERT(shard.loaded());
+    for(std::uint32_t i = 0; i < 60; i += 1) {
+        auto offset = i * 15 + 1;
+        auto found = at(shard, offset);
+        ZEXPECT(found.size() == (offset >= 16 && offset <= 400 ? 2u : 1u));
+        ZEXPECT(llvm::is_contained(found, reference(i * 15, 100 + i)));
+        ZEXPECT(naming(shard, 100 + i) == std::vector{reference(i * 15, 100 + i)});
+    }
+    ZEXPECT(at(shard, 399) == std::vector{outer});
+}
+
 ZEST_CASE(ResolutionsFoldAcrossRuns) {
     // Two runs with the same resolution store it once; a record two
     // resolutions share is stored once and serves while either lives.
