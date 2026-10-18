@@ -139,8 +139,9 @@ auto specialization_args(const clang::NamedDecl& decl, const Options& options) -
         // The readable type keeps its arguments in a template-id; one the
         // standard has an alias for keeps them behind it.
         if(options.readable) {
-            auto readable =
-                options.readable->readable(context.getCanonicalTagType(spec), options.scope);
+            auto readable = options.readable->readable(context.getCanonicalTagType(spec),
+                                                       options.scope,
+                                                       options.source);
             if(const auto* id = readable->getAs<clang::TemplateSpecializationType>()) {
                 args = id->template_arguments();
             }
@@ -649,7 +650,7 @@ auto type(clang::ASTContext& context,
         policy.Callbacks = &scopes.emplace(options.scope);
     }
     if(options.readable && !type.isNull()) {
-        type = options.readable->readable(type, options.scope);
+        type = options.readable->readable(type, options.scope, options.source);
     }
 
     if(options.resolve_decltype) {
@@ -687,7 +688,7 @@ auto type(clang::ASTContext& context,
         }
         if(auto desugared = desugar(context, sugared)) {
             if(options.readable) {
-                desugared = options.readable->readable(*desugared, options.scope);
+                desugared = options.readable->readable(*desugared, options.scope, options.source);
             }
             if(auto aka = desugared->getAsString(policy); aka != result.text) {
                 result.aka = std::move(aka);
@@ -1698,7 +1699,7 @@ struct DeclarationPrinter {
         auto text = display::type(context, type, shown, declarator).text;
         llvm::SmallVector<const clang::TagDecl*> tags;
         if(shown.readable) {
-            type = shown.readable->readable(type, shown.scope);
+            type = shown.readable->readable(type, shown.scope, shown.source);
         }
         unnamed_tags(type, tags);
         if(tags.empty()) {
@@ -1727,7 +1728,7 @@ struct DeclarationPrinter {
     auto later_declarator(clang::QualType type, llvm::StringRef declarator, const Options& shown)
         -> std::string {
         if(shown.readable) {
-            type = shown.readable->readable(type, shown.scope);
+            type = shown.readable->readable(type, shown.scope, shown.source);
         }
         auto later = printing_policy(context, shown);
         later.SuppressSpecifiers = true;
@@ -2638,23 +2639,54 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Param& param) {
     return os;
 }
 
-auto ReadableTypes::qualifier(const clang::NamedDecl& decl, const clang::DeclContext* scope)
-    -> clang::NestedNameSpecifier {
+namespace {
+
+/// The instantiation of `pattern`, a class template's or a member class of
+/// one, that `scope` is in.
+auto instance_around(const clang::CXXRecordDecl& pattern, const clang::DeclContext* scope)
+    -> const clang::CXXRecordDecl* {
+    for(; scope; scope = scope->getParent()) {
+        const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(scope);
+        const auto* instantiated = record ? record->getTemplateInstantiationPattern() : nullptr;
+        if(instantiated && instantiated->getCanonicalDecl() == pattern.getCanonicalDecl()) {
+            return record;
+        }
+    }
+    return nullptr;
+}
+
+/// The instantiation of `pattern` that a member `expr` names belongs to.
+auto instance_named(const clang::CXXRecordDecl& pattern, const clang::Stmt& expr)
+    -> const clang::CXXRecordDecl* {
+    const clang::Decl* named = nullptr;
+    if(const auto* reference = llvm::dyn_cast<clang::DeclRefExpr>(&expr)) {
+        named = reference->getDecl();
+    } else if(const auto* member = llvm::dyn_cast<clang::MemberExpr>(&expr)) {
+        named = member->getMemberDecl();
+    }
+    if(const auto* found = named ? instance_around(pattern, named->getDeclContext()) : nullptr) {
+        return found;
+    }
+    for(const auto* child: expr.children()) {
+        if(const auto* found = child ? instance_named(pattern, *child) : nullptr) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+auto ReadableTypes::qualifier(const clang::NamedDecl& decl,
+                              const clang::DeclContext* scope,
+                              const clang::Expr* source) -> clang::NestedNameSpecifier {
     const clang::DeclContext* shown = scope ? scope : context.getTranslationUnitDecl();
     /// A class's members are found unqualified in the classes derived from
-    /// it, and a class template's in its instantiations, whose members keep
-    /// the types the template writes.
+    /// it.
     auto found = [&](const clang::CXXRecordDecl& record) {
         for(const auto* outer = shown; outer; outer = outer->getParent()) {
             const auto* derived = llvm::dyn_cast<clang::CXXRecordDecl>(outer);
-            if(!derived) {
-                continue;
-            }
-            if(const auto* pattern = derived->getTemplateInstantiationPattern();
-               pattern && pattern->getCanonicalDecl() == record.getCanonicalDecl()) {
-                return true;
-            }
-            if(derived->hasDefinition() && derived->isDerivedFrom(&record)) {
+            if(derived && derived->hasDefinition() && derived->isDerivedFrom(&record)) {
                 return true;
             }
         }
@@ -2667,10 +2699,24 @@ auto ReadableTypes::qualifier(const clang::NamedDecl& decl, const clang::DeclCon
     for(const auto* parent = decl.getDeclContext(); !parent->Encloses(shown);
         parent = parent->getParent()) {
         if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(parent)) {
+            /// A class template's member that names the same type in every
+            /// specialization stays the template's own in them, whose members
+            /// keep the types the template writes: it is found unqualified in
+            /// a specialization, and named through the one `source` names a
+            /// member of; by its name alone without one.
+            if(record->isDependentContext()) {
+                if(instance_around(*record, shown)) {
+                    return std::nullopt;
+                }
+                record = source ? instance_named(*record, *source) : nullptr;
+                if(!record) {
+                    return std::nullopt;
+                }
+            }
             if(found(*record)) {
                 return std::nullopt;
             }
-            auto type = readable(context.getCanonicalTagType(record), scope);
+            auto type = readable(context.getCanonicalTagType(record), scope, source);
             return clang::NestedNameSpecifier(type.getTypePtr());
         }
         const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(parent);
@@ -2872,8 +2918,9 @@ auto ReadableTypes::standard_name(const clang::PredefinedSugarType& type)
     return cached->second;
 }
 
-auto ReadableTypes::readable(clang::QualType type, const clang::DeclContext* scope)
-    -> clang::QualType {
+auto ReadableTypes::readable(clang::QualType type,
+                             const clang::DeclContext* scope,
+                             const clang::Expr* source) -> clang::QualType {
     auto qualified = [&](clang::QualType inner) {
         return context.getQualifiedType(inner, type.getLocalQualifiers());
     };
@@ -2883,31 +2930,31 @@ auto ReadableTypes::readable(clang::QualType type, const clang::DeclContext* sco
     if(const auto* predefined = llvm::dyn_cast<clang::PredefinedSugarType>(T)) {
         if(const auto* alias = standard_name(*predefined)) {
             return qualified(context.getTypedefType(clang::ElaboratedTypeKeyword::None,
-                                                    qualifier(*alias, scope),
+                                                    qualifier(*alias, scope, source),
                                                     alias));
         }
         return qualified(predefined->desugar());
     }
     if(const auto* deduced = llvm::dyn_cast<clang::AutoType>(T);
        deduced && deduced->getDeducedKind() == clang::DeducedKind::Deduced) {
-        return qualified(readable(deduced->getDeducedType(), scope));
+        return qualified(readable(deduced->getDeducedType(), scope, source));
     }
     if(const auto* subst = llvm::dyn_cast<clang::SubstTemplateTypeParmType>(T)) {
-        return qualified(readable(subst->getReplacementType(), scope));
+        return qualified(readable(subst->getReplacementType(), scope, source));
     }
     /// A builtin transform, `__remove_cv(int)`, is the library's spelling.
     if(const auto* transform = llvm::dyn_cast<clang::UnaryTransformType>(T);
        transform && !transform->isDependentType()) {
-        return qualified(readable(transform->getUnderlyingType(), scope));
+        return qualified(readable(transform->getUnderlyingType(), scope, source));
     }
     if(const auto* alias = llvm::dyn_cast<clang::TypedefType>(T)) {
         if(internal(alias->getDecl())) {
-            return qualified(readable(alias->desugar(), scope));
+            return qualified(readable(alias->desugar(), scope, source));
         }
-        if(alias->isDependentType() || !scope) {
+        if(alias->isDependentType()) {
             return type;
         }
-        auto named = qualifier(*alias->getDecl(), scope);
+        auto named = qualifier(*alias->getDecl(), scope, source);
         if(!named) {
             return type;
         }
@@ -2915,15 +2962,16 @@ auto ReadableTypes::readable(clang::QualType type, const clang::DeclContext* sco
             context.getTypedefType(clang::ElaboratedTypeKeyword::None, named, alias->getDecl()));
     }
     if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(T)) {
-        return qualified(context.getPointerType(readable(pointer->getPointeeType(), scope)));
+        return qualified(
+            context.getPointerType(readable(pointer->getPointeeType(), scope, source)));
     }
     if(const auto* reference = llvm::dyn_cast<clang::LValueReferenceType>(T)) {
         return qualified(
-            context.getLValueReferenceType(readable(reference->getPointeeType(), scope)));
+            context.getLValueReferenceType(readable(reference->getPointeeType(), scope, source)));
     }
     if(const auto* reference = llvm::dyn_cast<clang::RValueReferenceType>(T)) {
         return qualified(
-            context.getRValueReferenceType(readable(reference->getPointeeType(), scope)));
+            context.getRValueReferenceType(readable(reference->getPointeeType(), scope, source)));
     }
 
     clang::TemplateName name;
@@ -2933,12 +2981,12 @@ auto ReadableTypes::readable(clang::QualType type, const clang::DeclContext* sco
     if(const auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(T)) {
         const auto* pattern = TST->getTemplateName().getAsTemplateDecl();
         if(TST->isTypeAlias() && internal(pattern)) {
-            return qualified(readable(TST->getAliasedType(), scope));
+            return qualified(readable(TST->getAliasedType(), scope, source));
         }
         name = TST->getTemplateName();
         arguments = TST->template_arguments();
-        if(pattern && !TST->isDependentType() && scope) {
-            if(auto named = qualifier(*pattern, scope)) {
+        if(pattern && !TST->isDependentType()) {
+            if(auto named = qualifier(*pattern, scope, source)) {
                 name = context.getQualifiedTemplateName(
                     named,
                     /*TemplateKeyword=*/false,
@@ -2951,10 +2999,10 @@ auto ReadableTypes::readable(clang::QualType type, const clang::DeclContext* sco
         if(!spec) {
             /// A canonical tag type prints the scope it is in; one as
             /// written, the qualifier it is written with.
-            if(tag->isCanonicalUnqualified() || tag->isDependentType() || !scope) {
+            if(tag->isCanonicalUnqualified() || tag->isDependentType()) {
                 return type;
             }
-            auto named = qualifier(*tag->getDecl(), scope);
+            auto named = qualifier(*tag->getDecl(), scope, source);
             if(!named) {
                 return type;
             }
@@ -2965,7 +3013,7 @@ auto ReadableTypes::readable(clang::QualType type, const clang::DeclContext* sco
         }
         if(const auto* alias = standard_alias(*spec)) {
             return qualified(context.getTypedefType(clang::ElaboratedTypeKeyword::None,
-                                                    qualifier(*alias, scope),
+                                                    qualifier(*alias, scope, source),
                                                     alias));
         }
         /// A canonical tag type prints the scope it is in; the template-id
@@ -2980,7 +3028,7 @@ auto ReadableTypes::readable(clang::QualType type, const clang::DeclContext* sco
 
     llvm::SmallVector<clang::TemplateArgument, 4> rewritten;
     for(const auto& argument: arguments) {
-        rewritten.push_back(readable(argument, scope));
+        rewritten.push_back(readable(argument, scope, source));
         changed |= !rewritten.back().structurallyEquals(argument);
     }
     /// A specialization prints every argument it has; the template-id it
@@ -3001,7 +3049,7 @@ auto ReadableTypes::readable(clang::QualType type, const clang::DeclContext* sco
         return type;
     }
     if(spec_scope) {
-        if(auto named = qualifier(*spec_scope, scope)) {
+        if(auto named = qualifier(*spec_scope, scope, source)) {
             name = context.getQualifiedTemplateName(named, /*TemplateKeyword=*/false, name);
         }
     }
@@ -3017,9 +3065,10 @@ auto ReadableTypes::readable(clang::QualType type, const clang::DeclContext* sco
 }
 
 auto ReadableTypes::readable(const clang::TemplateArgument& argument,
-                             const clang::DeclContext* scope) -> clang::TemplateArgument {
+                             const clang::DeclContext* scope,
+                             const clang::Expr* source) -> clang::TemplateArgument {
     if(argument.getKind() == clang::TemplateArgument::Type) {
-        return clang::TemplateArgument(readable(argument.getAsType(), scope),
+        return clang::TemplateArgument(readable(argument.getAsType(), scope, source),
                                        /*isNullPtr=*/false,
                                        argument.getIsDefaulted());
     }
@@ -3039,7 +3088,7 @@ auto ReadableTypes::readable(const clang::TemplateArgument& argument,
     if(argument.getKind() == clang::TemplateArgument::Pack) {
         llvm::SmallVector<clang::TemplateArgument, 4> elements;
         for(const auto& element: argument.pack_elements()) {
-            elements.push_back(readable(element, scope));
+            elements.push_back(readable(element, scope, source));
         }
         return clang::TemplateArgument::CreatePackCopy(context, elements);
     }

@@ -1,0 +1,11 @@
+[answers.member.signature_help]
+signatures = ["push(⟦const T &value⟧, int count) -> void", "push(⟦const T &value⟧) -> void"]
+active = 0
+
+[answers.second.signature_help]
+signatures = ["push(const T &value, ⟦int count⟧) -> void"]
+active = 0
+
+[answers.nested.signature_help]
+signatures = ["push(⟦const T &value⟧, int count) -> void", "push(⟦const T &value⟧) -> void"]
+active = 0

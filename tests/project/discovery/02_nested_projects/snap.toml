@@ -43,10 +43,7 @@ stdout = '''
 '''
 exit = 0
 
-["batch indexing finds nested projects"."$ clice index --jobs 2"]
-stdout = '''
-Indexed 3 translation units in #s: 3 file shards (# KB), 5 symbols.
-Session log: ${WS}/.clice/logs/${SESSION}
-'''
-stderr = 'warning: No rule names a compilation database; the 2 found apply in this order, an earlier one winning for a file both list: ${WS}/group-a/p1/compile_commands.json, ${WS}/group-a/p2/compile_commands.json. To switch between them instead, declare each on a tagged rule: [[rules]] configuration = "..." compile_commands = ["..."]'
-exit = 0
+["batch indexing names nested projects"."$ clice index --jobs 2"]
+stdout = "Session log: ${WS}/.clice/logs/${SESSION}"
+stderr = 'error: Nothing to index: no compile_commands.json found in ${WS} or its direct subdirectories. Deeper ones load only when clice.toml names them (the editor also loads one when it opens a file below it); to use those found, give clice.toml a [[rules]] table with compile_commands = ["group-a/p1", "group-a/p2"].'
+exit = 1

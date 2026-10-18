@@ -1,0 +1,5 @@
+{
+  // The build's database; the two under test/Inputs are fixtures a tool's
+  // own tests read, one of them broken on purpose.
+  "databases": { "build": ["main.cpp"] }
+}

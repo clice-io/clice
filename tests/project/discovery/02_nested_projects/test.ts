@@ -21,6 +21,12 @@ test("inspect loads the databases above its inputs", async (t) => {
     await t.cli("inspect hover group-a/p2/main.cpp");
 });
 
-test("batch indexing finds nested projects", async (t) => {
-    await t.cli("index --jobs 2");
-});
+// Discovery looks no deeper than the root's direct subdirectories: the
+// batch run, which opens no file, names the deeper databases instead.
+test(
+    "batch indexing names nested projects",
+    { errors: ["Nothing to index: no compile_commands.json found"] },
+    async (t) => {
+        await t.cli("index --jobs 2");
+    },
+);

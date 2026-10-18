@@ -37,7 +37,6 @@
           "label": "$ clice scan",
           "value": {
             "stdout": "Scanned 4 files (1 source, 3 headers) in #ms: 3 of 4 includes resolved.\n  ${WS}/main.cpp: \"missing.h\" not found",
-            "stderr": "warning: 1 unresolved includes",
             "exit": 0
           }
         },
@@ -45,7 +44,6 @@
           "label": "$ clice scan --json",
           "value": {
             "stdout": "{\n  \"files\": [\n    {\n      \"path\": \"${WS}/detail/impl.h\",\n      \"source\": false,\n      \"modules\": [],\n      \"includes\": [],\n      \"unresolved\": []\n    },\n    {\n      \"path\": \"${WS}/include/config.h\",\n      \"source\": false,\n      \"modules\": [],\n      \"includes\": [],\n      \"unresolved\": []\n    },\n    {\n      \"path\": \"${WS}/main.cpp\",\n      \"source\": true,\n      \"modules\": [],\n      \"includes\": [\n        \"${WS}/util.h\",\n        \"${WS}/include/config.h\"\n      ],\n      \"unresolved\": [\n        \"\\\"missing.h\\\"\"\n      ]\n    },\n    {\n      \"path\": \"${WS}/util.h\",\n      \"source\": false,\n      \"modules\": [],\n      \"includes\": [\n        \"${WS}/detail/impl.h\"\n      ],\n      \"unresolved\": []\n    }\n  ]\n}",
-            "stderr": "warning: 1 unresolved includes",
             "exit": 0
           }
         }

@@ -11,6 +11,7 @@ import :command.command;
 import :compile.tidy;
 import :config.config;
 import :feature.feature;
+import :project.build;
 import :project.command_resolver;
 import :project.configuration;
 import :project.index_store;
@@ -237,9 +238,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
                                     stack.sched.store,
                                     stack.sched.pump,
                                     project.config.workspace_root,
-                                    options.configuration,
-                                    /*read_only_index=*/false,
-                                    /*scan_tree=*/true);
+                                    options.configuration);
 
     // The command's whole product is the persisted index: without storage
     // (cache failed to open, another process holds the index writer lock,
@@ -254,7 +253,11 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_return;
     }
     if(report.members.empty()) {
-        LOG_ERROR("Nothing to index: no compile_commands.json found under {}", options.root);
+        LOG_ERROR(
+            "Nothing to index: no compile_commands.json found in {} or its direct "
+            "subdirectories.{}",
+            options.root,
+            deeper_databases_hint(project));
         result.exit_code = 1;
         co_await shutdown(stack);
         co_return;
@@ -500,12 +503,15 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
                                     stack.sched.pump,
                                     project.config.workspace_root,
                                     options.configuration,
-                                    /*read_only_index=*/!options.with_index,
-                                    /*scan_tree=*/true);
+                                    /*read_only_index=*/!options.with_index);
 
     auto& members = report.members;
     if(members.empty()) {
-        LOG_ERROR("Nothing to lint: no compile_commands.json found under {}", options.root);
+        LOG_ERROR(
+            "Nothing to lint: no compile_commands.json found in {} or its direct "
+            "subdirectories.{}",
+            options.root,
+            deeper_databases_hint(project));
         result.exit_code = 2;
         co_await shutdown(stack);
         co_return;
@@ -591,32 +597,36 @@ struct FormatFile {
 };
 
 /// The files `clice format` formats without arguments: the build's
-/// translation units and every file they include that is the workspace's
-/// own — inside it, outside the cache directory, the build trees (the
-/// directories below the root holding one of `databases`: what a build
-/// generates or fetches lives there) and the commands' system include
-/// directories, of a type clang-format formats, no matching rule saying
-/// `format = false`.
-std::vector<FormatFile> project_files(Project& project,
-                                      llvm::ArrayRef<Fid> members,
-                                      llvm::ArrayRef<Spelling> databases) {
+/// translation units that are the workspace's own (workspace_file: not in
+/// a build tree, where FetchContent puts the sources it fetches) and
+/// every file they include that is the workspace's own — inside it,
+/// outside the cache directory, the build trees (the directories below the
+/// root holding one of the build's databases: what a build generates or
+/// fetches lives there) and the commands' system include directories, of
+/// a type clang-format formats, no matching rule saying `format = false`.
+std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> members) {
     auto& build = project.build;
     auto& files = project.file_table;
 
     CanonicalRef root = project.config.workspace_root;
+    auto cache_dir = project.config.project.cache_dir.empty()
+                         ? CanonicalPath()
+                         : CanonicalPath(Spelling::absolute(project.config.project.cache_dir));
     std::vector<CanonicalPath> skipped_dirs;
     auto skip = [&](CanonicalPath dir) {
         if(!llvm::is_contained(skipped_dirs, dir)) {
             skipped_dirs.push_back(std::move(dir));
         }
     };
-    if(!project.config.project.cache_dir.empty()) {
-        skip(CanonicalPath(Spelling::absolute(project.config.project.cache_dir)));
+    if(!cache_dir.empty()) {
+        skip(cache_dir);
     }
     // A database at the workspace root, or above it, is a copy of the
-    // build's or the build of a larger tree, not a build tree of its own.
-    for(auto& database: databases) {
-        auto directory = CanonicalPath(database.parent());
+    // build's or the build of a larger tree, not a build tree of its own;
+    // a root link to build/compile_commands.json names build/.
+    for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
+        CanonicalPath database(Spelling::absolute(project.cdb.source_path(SourceID(i))));
+        auto directory = CanonicalRef(database).parent();
         if(directory != root && path::under(directory, root)) {
             skip(std::move(directory));
         }
@@ -632,8 +642,9 @@ std::vector<FormatFile> project_files(Project& project,
         }
     }
 
-    // The build's own units are its own wherever they sit; the
-    // directories keep out only what they include.
+    // A unit beside a database of its own directory, or in a directory its
+    // own command searches as a system one, is still the project's: the
+    // directories keep out only what units include.
     std::vector<FormatFile> result;
     llvm::DenseSet<Fid> unit(members.begin(), members.end());
     for(auto fid: project.dep_graph.all_files()) {
@@ -642,9 +653,11 @@ std::vector<FormatFile> project_files(Project& project,
         // includes, is left as it is: often a build generated it (CMake's
         // cmake_pch.hxx).
         if(!formats(path) || !build.formattable(path) ||
-           (!unit.contains(fid) &&
-            (project.dep_graph.get_includers(fid).empty() ||
-             llvm::any_of(skipped_dirs, [&](auto& dir) { return path::under(path, dir); })))) {
+           (unit.contains(fid) ? !workspace_file(root, cache_dir, path)
+                               : project.dep_graph.get_includers(fid).empty() ||
+                                     llvm::any_of(skipped_dirs, [&](auto& dir) {
+                                         return path::under(path, dir);
+                                     }))) {
             continue;
         }
         result.push_back({.path = CanonicalPath(path), .name = files.spelling(fid)});
@@ -775,29 +788,26 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         }
     }
     if(options.paths.empty() || !directories.empty()) {
-        // Like the other batch commands, which open no file: every
-        // database under the workspace applies when no rule names one,
-        // and one that cannot be loaded makes the file set incomplete.
-        auto databases = project.build.declares_sources()
-                             ? project.build.declared_sources()
-                             : compile_commands_in_tree(project, options.root, configuration);
-        if(databases.empty()) {
+        // A database that cannot be loaded makes the file set incomplete.
+        auto load = load_build(project, options.root, configuration);
+        if(project.cdb.source_count() == 0) {
             result.exit_code = 2;
-            result.error = std::format("Nothing to format: no compile_commands.json found under {}",
-                                       options.root);
+            result.error = std::format(
+                "Nothing to format: no compile_commands.json found in {} or its direct "
+                "subdirectories.{}",
+                options.root,
+                deeper_databases_hint(project));
             return result;
         }
-        auto load = load_build(project, options.root, configuration, databases);
-        for(auto& database: databases) {
-            auto id = project.cdb.find_source(database);
-            if(!id || !project.cdb.loaded(*id)) {
+        for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
+            if(!project.cdb.loaded(SourceID(i))) {
                 result.exit_code = 2;
-                result.error =
-                    std::format("{}: the compilation database could not be loaded", database);
+                result.error = std::format("{}: the compilation database could not be loaded",
+                                           project.cdb.source_path(SourceID(i)));
                 return result;
             }
         }
-        for(auto& file: project_files(project, load.members, databases)) {
+        for(auto& file: project_files(project, load.members)) {
             if(!directories.empty() && llvm::none_of(directories, [&](auto& directory) {
                    return path::under(file.path, directory);
                })) {

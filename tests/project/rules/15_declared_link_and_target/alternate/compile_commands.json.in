@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/lib/x.cpp",
+    "arguments": ["clang++", "-DMODE=2", "-c", "${WS}/lib/x.cpp"]
+  }
+]

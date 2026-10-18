@@ -1,0 +1,81 @@
+{
+  "id": "signature_help/call_contexts/17_dependent_member_calls",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "Dependent member calls",
+  "summary": "Inside a template, a call through an object of dependent type shows the overloads its class template declares",
+  "prose": "Past the first argument only the overloads taking another one stay. Clang has\nno signature for such a call until the template is instantiated.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <class T>\nstruct List {\n    T& operator[](int index);\n    void push(const T& value, int count);\n    void push(const T& value);\n};\n\ntemplate <class T>\nvoid fill(List<T> items, List<List<T>>& rows, T value) {\n    items.push(value, 1);\n    items.push(value, 1);\n    rows[0].push(value, 1);\n}\n",
+      "markers": [
+        {
+          "name": "member",
+          "begin": 231,
+          "end": 231,
+          "range": false
+        },
+        {
+          "name": "second",
+          "begin": 264,
+          "end": 264,
+          "range": false
+        },
+        {
+          "name": "nested",
+          "begin": 285,
+          "end": 285,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "member",
+          "marker": "member",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "push(⟦const T &value⟧, int count) -> void",
+                "push(⟦const T &value⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "second",
+          "marker": "second",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "push(const T &value, ⟦int count⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "nested",
+          "marker": "nested",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "push(⟦const T &value⟧, int count) -> void",
+                "push(⟦const T &value⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

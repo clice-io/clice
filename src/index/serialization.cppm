@@ -102,14 +102,15 @@ inline std::string symbol_id(SymbolHash hash) {
 /// index misses; v37: what instantiations and macro expansions resolve
 /// lives in per-file instantiation blobs, manifests list the resolutions of
 /// those they use, symbols the files whose instantiation blobs name them,
-/// and no entry resolves through a template's only instantiation; v38: id
-/// and offset columns are as narrow as their tables allow, masks as their
-/// variant count, occurrences store their begins as deltas, relation payloads
-/// are placed by kind bits and block counts, shards keep only the text of
-/// their non-ASCII lines, the global table's file sets of one or two files
-/// are raw ids, and manifests name the use set their unit shares in a file's
-/// instantiation blob and encode runs of include siblings.
-constexpr inline std::uint32_t index_format_version = 38;
+/// and no entry resolves through a template's only instantiation; v38: a
+/// friend class declaration is a reference to the class, no declaration;
+/// v39: id and offset columns are as narrow as their tables allow, masks as
+/// their variant count, occurrences store their begins as deltas, relation
+/// payloads are placed by kind bits and block counts, shards keep only the
+/// text of their non-ASCII lines, the global table's file sets of one or two
+/// files are raw ids, and manifests name the use set their unit shares in a
+/// file's instantiation blob and encode runs of include siblings.
+constexpr inline std::uint32_t index_format_version = 39;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

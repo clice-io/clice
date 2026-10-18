@@ -212,6 +212,20 @@ tests/signature_help/call_contexts/13_class_template_members
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**依赖成员调用**
+
+在模板内部，通过依赖类型的对象发起的调用会显示其类模板声明的重载
+
+过了第一个实参，就只保留还能再接受一个实参的重载。模板实例化之前，Clang 给不出这类调用的签名。
+
+```case
+tests/signature_help/call_contexts/17_dependent_member_calls
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 参数显示

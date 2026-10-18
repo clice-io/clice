@@ -9,8 +9,10 @@ import :compile.directive;
 import :feature.feature;
 import :semantic.decls;
 import :semantic.display;
+import :semantic.resolver;
 import :support.markup;
 import :syntax.documentation;
+import :syntax.lexer;
 import :syntax.lexical_scan;
 
 namespace clice::feature {
@@ -227,12 +229,8 @@ public:
         }
 
         help.signatures.reserve(candidate_count);
-        help.active_signature = 0;
-
-        context = &sema.getASTContext();
-        readable.emplace(*context, options);
-        options.readable = &*readable;
-        policy = display::printing_policy(*context, options);
+        start(sema.getASTContext());
+        call_scope = sema.CurContext;
 
         bool ranked = object_written(sema, open_paren);
         if(current_arg == 0) {
@@ -248,7 +246,13 @@ public:
                 }
                 listed.push_back(function);
                 if(!forwarded(sema, *function, current_arg, open_paren)) {
-                    call(sema, *function, current_arg, open_paren, braced);
+                    // A call through an object reads as a call of a function
+                    // named as the object.
+                    const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(function);
+                    auto name = method && method->getOverloadedOperator() == clang::OO_Call
+                                    ? callee_name(sema, open_paren)
+                                    : std::string();
+                    call(*function, current_arg, braced, name);
                 }
                 continue;
             }
@@ -262,12 +266,12 @@ public:
                     if(auto* proto = llvm::dyn_cast<clang::FunctionProtoType>(type)) {
                         for(auto param_type: proto->param_types()) {
                             signature.parameter(
-                                [&](llvm::raw_ostream& os) { print(os, param_type); });
+                                [&](llvm::raw_ostream& os) { print(os, param_type, call_scope); });
                         }
                         variadic(signature, proto->isVariadic());
                     }
                     stream << ") -> ";
-                    print(stream, type->getReturnType());
+                    print(stream, type->getReturnType(), call_scope);
                     break;
                 }
 
@@ -278,12 +282,12 @@ public:
                         auto* identifier = param->getIdentifier();
                         auto name = identifier ? identifier->deuglifiedName() : "";
                         signature.parameter([&](llvm::raw_ostream& os) {
-                            os << display::parameter(*param, name, options);
+                            os << display::parameter(*param, name, shown_in(call_scope));
                         });
                     }
                     variadic(signature, location.getTypePtr()->isVariadic());
                     stream << ") -> ";
-                    print(stream, location.getTypePtr()->getReturnType());
+                    print(stream, location.getTypePtr()->getReturnType(), call_scope);
                     break;
                 }
 
@@ -301,18 +305,19 @@ public:
                         template_parameters->size() > 0 &&
                         template_parameters->asArray().back()->isTemplateParameterPack();
 
+                    const auto* scope = declaration->getDeclContext();
                     if(auto* cls = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration)) {
                         stream << " -> " << cls->getTemplatedDecl()->getKindName();
                     } else if(auto* fn = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration)) {
                         stream << "() -> ";
-                        print(stream, fn->getTemplatedDecl()->getReturnType());
+                        print(stream, fn->getTemplatedDecl()->getReturnType(), scope);
                     } else if(auto* alias =
                                   llvm::dyn_cast<clang::TypeAliasTemplateDecl>(declaration)) {
                         stream << " -> ";
-                        print(stream, alias->getTemplatedDecl()->getUnderlyingType());
+                        print(stream, alias->getTemplatedDecl()->getUnderlyingType(), scope);
                     } else if(auto* var = llvm::dyn_cast<clang::VarTemplateDecl>(declaration)) {
                         stream << " -> ";
-                        print(stream, var->getTemplatedDecl()->getType());
+                        print(stream, var->getTemplatedDecl()->getType(), scope);
                     } else if(llvm::isa<clang::TemplateTemplateParmDecl>(declaration)) {
                         stream << " -> type";
                     } else if(llvm::isa<clang::ConceptDecl>(declaration)) {
@@ -342,10 +347,41 @@ public:
         return info;
     }
 
+    /// Answers a call clang leaves unanswered, one whose callee is
+    /// dependent, with the overloads the template resolver finds for it.
+    void dependent(clang::ASTContext& context,
+                   llvm::ArrayRef<const clang::NamedDecl*> candidates,
+                   std::uint32_t current_arg) {
+        start(context);
+        for(const auto* candidate: candidates) {
+            if(const auto* function = candidate->getUnderlyingDecl()->getAsFunction()) {
+                call(*function, current_arg, /*braced=*/false, /*name=*/"");
+            }
+        }
+    }
+
 private:
-    /// Prints `type` as every feature shows it, around `declarator`.
-    void print(llvm::raw_ostream& stream, clang::QualType type, llvm::StringRef declarator = {}) {
-        stream << display::type(*context, type, options, declarator).text;
+    /// Starts an answer, its types printed through `context`.
+    void start(clang::ASTContext& context) {
+        help.active_signature = 0;
+        this->context = &context;
+        readable.emplace(context, options);
+        options.readable = &*readable;
+        policy = display::printing_policy(context, options);
+    }
+
+    /// The options a declaration in `scope` prints its types with: named as
+    /// code there names them.
+    display::Options shown_in(const clang::DeclContext* scope) const {
+        auto shown = options;
+        shown.scope = scope;
+        return shown;
+    }
+
+    /// Prints `type` as every feature shows it, named as code in `scope`
+    /// names it.
+    void print(llvm::raw_ostream& stream, clang::QualType type, const clang::DeclContext* scope) {
+        stream << display::type(*context, type, shown_in(scope)).text;
     }
 
     /// A C-style `...` takes every argument past the named parameters.
@@ -382,7 +418,9 @@ private:
             }
             signature.parameter(
                 [&](llvm::raw_ostream& os) {
-                    os << display::parameter(*function.getParamDecl(index), name, options);
+                    os << display::parameter(*function.getParamDecl(index),
+                                             name,
+                                             shown_in(function.getDeclContext()));
                 },
                 std::move(names));
         }
@@ -399,24 +437,18 @@ private:
         variadic(signature, function.isVariadic());
     }
 
-    /// The signature of a call `candidate` answers.
-    void call(clang::Sema& sema,
-              const clang::FunctionDecl& candidate,
+    /// The signature of a call `candidate` answers, named `name` when the
+    /// call goes through an object.
+    void call(const clang::FunctionDecl& candidate,
               std::uint32_t current_arg,
-              clang::SourceLocation open_paren,
-              bool braced) {
+              bool braced,
+              llvm::StringRef name) {
         auto& function = *shown(&candidate);
         Signature signature;
         auto& stream = signature.stream;
 
         auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&function);
         bool lambda = method && method->getParent()->isLambda();
-        // A call through an object reads as a call of a function named as
-        // the object.
-        std::string name;
-        if(method && method->getOverloadedOperator() == clang::OO_Call) {
-            name = callee_name(sema, open_paren);
-        }
         if(!name.empty()) {
             stream << name;
         } else if(!lambda) {
@@ -435,7 +467,7 @@ private:
 
         if(!llvm::isa<clang::CXXConstructorDecl, clang::CXXDestructorDecl>(function)) {
             stream << " -> ";
-            print(stream, function.getReturnType());
+            print(stream, function.getReturnType(), function.getDeclContext());
         }
         add(signature, current_arg, &function);
     }
@@ -445,12 +477,13 @@ private:
     void fields(Signature& signature, const clang::RecordDecl& record) {
         if(auto* cxx_record = llvm::dyn_cast<clang::CXXRecordDecl>(&record)) {
             for(const auto& base: cxx_record->bases()) {
-                signature.parameter([&](llvm::raw_ostream& os) { print(os, base.getType()); });
+                signature.parameter(
+                    [&](llvm::raw_ostream& os) { print(os, base.getType(), &record); });
             }
         }
         for(auto* field: record.fields()) {
             signature.parameter(
-                [&](llvm::raw_ostream& os) { os << display::field(*field, options); });
+                [&](llvm::raw_ostream& os) { os << display::field(*field, shown_in(&record)); });
         }
     }
 
@@ -588,7 +621,7 @@ private:
         }
         write(signature);
         signature.stream << ") -> ";
-        print(signature.stream, forwarding->result);
+        print(signature.stream, forwarding->result, function.getDeclContext());
         add(signature, forwarding->argument, &documented);
     }
 
@@ -609,6 +642,9 @@ private:
 
     clang::ASTContext* context = nullptr;
     std::optional<display::ReadableTypes> readable;
+
+    /// Where the call Sema answers is.
+    const clang::DeclContext* call_scope = nullptr;
 
     /// Short names, as a popup has little room: no scopes, no
     /// uglification.
@@ -723,6 +759,71 @@ void document(protocol::SignatureInformation& signature,
     signature.documentation = present(shown).as_plain_text();
 }
 
+/// A call around the cursor whose callee is dependent, which Sema leaves
+/// unanswered: the callee, and the arguments before the cursor's.
+struct DependentCall {
+    const clang::Expr* callee;
+    llvm::ArrayRef<const clang::Expr*> written;
+};
+
+/// The innermost recovery expression ending at a location.
+struct RecoveryFinder : clang::RecursiveASTVisitor<RecoveryFinder> {
+    explicit RecoveryFinder(clang::SourceLocation end) : end(end) {}
+
+    clang::SourceLocation end;
+    const clang::RecoveryExpr* found = nullptr;
+
+    bool VisitRecoveryExpr(clang::RecoveryExpr* expr) {
+        if(expr->getEndLoc() == end) {
+            found = expr;
+        }
+        return true;
+    }
+};
+
+/// The innermost call whose argument list holds the cursor, when its callee
+/// is dependent. The parse stops at the cursor, at the start of an
+/// identifier the cursor ends or is inside of, which leaves the call a
+/// recovery expression of its callee and the arguments written before it,
+/// ending there.
+auto dependent_call_at(CompilationUnit& unit, std::uint32_t offset)
+    -> std::optional<DependentCall> {
+    auto focus = unit.focus_file();
+    auto content = focus.content();
+    auto typed = offset;
+    while(typed > 0 && is_identifier_char(content[typed - 1])) {
+        typed -= 1;
+    }
+    auto stop = focus.location(typed < offset && llvm::isDigit(content[typed]) ? offset : typed);
+    RecoveryFinder finder(stop);
+    for(auto* decl: unit.tu()->noload_decls()) {
+        if(focus.offset(decl->getBeginLoc())) {
+            finder.TraverseDecl(decl);
+        }
+    }
+    if(!finder.found) {
+        return std::nullopt;
+    }
+    auto parts = finder.found->subExpressions();
+    if(parts.empty() || !parts.front()->isTypeDependent()) {
+        return std::nullopt;
+    }
+    // The cursor is in the call's own argument list, right after its `(` or
+    // a `,`, not in one of a call written there that clang left no node of
+    // (`push(Node<T>(a, `).
+    auto& sources = unit.context().getSourceManager();
+    auto separator =
+        clang::Lexer::findNextToken(parts.back()->getEndLoc(), sources, unit.lang_options());
+    if(!separator || !separator->isOneOf(clang::tok::l_paren, clang::tok::comma)) {
+        return std::nullopt;
+    }
+    auto next = clang::Lexer::findNextToken(separator->getLocation(), sources, unit.lang_options());
+    if(next && sources.isBeforeInTranslationUnit(next->getLocation(), focus.location(typed))) {
+        return std::nullopt;
+    }
+    return DependentCall{.callee = parts.front(), .written = parts.drop_front()};
+}
+
 auto macro_signature(const MacroCall& call, const Documentation& doc) -> protocol::SignatureHelp {
     Signature signature;
     signature.stream << call.name << "(";
@@ -778,6 +879,17 @@ auto signature_help(CompilationParams params,
     auto unit = compile(std::move(params));
     if(!unit->completed()) {
         return help;
+    }
+
+    if(help.signatures.empty()) {
+        if(auto call = dependent_call_at(*unit, offset)) {
+            auto candidates =
+                unit->get<types::TemplateResolver>().callees(call->callee, call->written);
+            SignatureCollector(help, sources, complete_options)
+                .dependent(unit->context(),
+                           candidates,
+                           static_cast<std::uint32_t>(call->written.size()));
+        }
     }
 
     // Inside a call written in a macro's arguments Sema's signature is the

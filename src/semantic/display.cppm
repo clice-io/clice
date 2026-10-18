@@ -68,8 +68,16 @@ struct Options {
     /// type(): the scope the type is shown in. Through options.readable, a
     /// type named in another scope is named as code here names it
     /// (`std::vector<int>::iterator`, not the `iterator` the vector writes);
-    /// without one, a name keeps the qualifier it is written with.
+    /// without one, as the translation unit names it. A declaration's types
+    /// are shown in its scope, a deduced type or an expression's where its
+    /// code is.
     const clang::DeclContext* scope = nullptr;
+
+    /// type(): the expression the type is read from — what a deduced type is
+    /// deduced from, an expression shown with its own — which names the
+    /// specialization a member typedef of its class template is read through
+    /// (ReadableTypes::readable).
+    const clang::Expr* source = nullptr;
 };
 
 /// A pretty-printed type, optionally with its desugared form.
@@ -203,10 +211,15 @@ public:
         context(context), scoped(!options.suppress_scope) {}
 
     /// `type` as a reader knows it, shown in `scope`: a type named in
-    /// another scope gets the qualifier that names it from there. Without a
-    /// scope, a name keeps the qualifier it is written with.
-    auto readable(clang::QualType type, const clang::DeclContext* scope = nullptr)
-        -> clang::QualType;
+    /// another scope gets the qualifier that names it from there, the
+    /// translation unit without a scope. A member typedef of a class template
+    /// that names the same type in every specialization stays the template's
+    /// own in a specialization's members (`size_type` of `vector<int>::size()`):
+    /// it is named through the specialization a member `source` names belongs
+    /// to, by its name alone without one.
+    auto readable(clang::QualType type,
+                  const clang::DeclContext* scope,
+                  const clang::Expr* source = nullptr) -> clang::QualType;
 
     /// A reserved name a library keeps to itself, within namespace std or a
     /// reserved one (`_NonArray`, `__gnu_cxx::__alloc_traits`). One outside
@@ -214,13 +227,15 @@ public:
     bool internal(const clang::NamedDecl* decl) const;
 
 private:
-    auto readable(const clang::TemplateArgument& argument, const clang::DeclContext* scope)
-        -> clang::TemplateArgument;
+    auto readable(const clang::TemplateArgument& argument,
+                  const clang::DeclContext* scope,
+                  const clang::Expr* source) -> clang::TemplateArgument;
 
     /// The qualifier that names `decl`, a type's declaration, from `scope`;
     /// null when its name alone does.
-    auto qualifier(const clang::NamedDecl& decl, const clang::DeclContext* scope)
-        -> clang::NestedNameSpecifier;
+    auto qualifier(const clang::NamedDecl& decl,
+                   const clang::DeclContext* scope,
+                   const clang::Expr* source) -> clang::NestedNameSpecifier;
 
     bool reserved(const clang::NamedDecl* decl) const;
 

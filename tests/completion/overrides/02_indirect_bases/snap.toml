@@ -1,0 +1,15 @@
+[answers.indirect.completion]
+items = [
+    { label = "draw(int x, int y) const override", kind = "Method", insert = "int draw(int x, int y) const override;" },
+]
+
+[answers.overridden_between.completion]
+items = [
+    { label = "draw(int x, int y) const override", kind = "Method", insert = "int draw(int x, int y) const override;" },
+]
+
+[answers.final_between.completion]
+items = []
+
+[answers.deleted.completion]
+items = []

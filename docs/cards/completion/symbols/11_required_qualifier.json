@@ -92,7 +92,7 @@
                 {
                   "label": "ns::Apple",
                   "kind": "EnumMember",
-                  "detail": "ns::Fruit",
+                  "detail": "Fruit",
                   "filter": "Apple"
                 }
               ]

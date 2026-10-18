@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto it⟨: vector<int>::iterator⟩ = values.begin();" },
+    { line = "auto count⟨: vector<int>::size_type⟩ = values.size();" },
+]

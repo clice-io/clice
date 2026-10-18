@@ -1,0 +1,14 @@
+[answers."main.cpp"]
+inlay_hints = [
+    {
+        line = "auto seq⟨: Seq<int>⟩ = make();",
+        hints = [
+            {
+                label = ": Seq<int>",
+                links = [
+                    { value = "Seq", target = "class ⟦Seq⟧ {};" },
+                ],
+            },
+        ],
+    },
+]
