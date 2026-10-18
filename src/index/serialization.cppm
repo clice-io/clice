@@ -28,6 +28,18 @@ inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
     return buffer;
 }
 
+/// An ascending set of ids below `universe` as an Elias–Fano list, about
+/// 2 + log2(universe / count) bits an id: the count as a varint; then
+/// the low log2(universe / count) bits of each id, back to back; then a
+/// bit vector holding, for the i-th id, a one at its remaining high bits
+/// plus i. Every bit past the last of each part is zero, and the vector
+/// ends with the byte holding its last one.
+std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t universe);
+
+/// The ids of a list write_postings wrote for `universe`; nullopt for
+/// bytes it would not have written.
+std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t universe);
+
 /// The two highest values of an id type are reserved: they were DenseMap's
 /// sentinel keys when the format was defined, so no writer has ever emitted
 /// them, and IPC or disk bytes carrying one are corrupt.

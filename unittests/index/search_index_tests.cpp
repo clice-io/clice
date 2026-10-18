@@ -5,7 +5,9 @@ module;
 module clice;
 
 import :index.search_index;
+import :index.serialization;
 import :index.symbol_query;
+import :support.bitmap;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 
@@ -135,6 +137,40 @@ std::vector<std::string> names(const Corpus& corpus,
 
 using Names = std::vector<std::string>;
 
+/// SearchBlob field for field, to damage a built blob's posting lists.
+struct SearchBlobMirror {
+    std::uint32_t format_version = 0;
+    std::uint32_t search_version = 0;
+    std::uint64_t generation = 0;
+    std::vector<std::uint64_t> hashes;
+    std::string names;
+    std::vector<std::uint32_t> name_ends;
+    std::string args;
+    std::vector<std::uint32_t> args_ends;
+    std::vector<std::uint32_t> parents;
+    std::vector<float> qualities;
+    std::vector<std::uint32_t> by_lower_name;
+    std::vector<std::uint32_t> by_hash;
+    std::vector<std::uint32_t> token_keys;
+    std::vector<std::uint32_t> token_ends;
+    std::vector<std::uint8_t> token_postings;
+    std::vector<std::uint32_t> container_docs;
+    std::vector<std::uint32_t> children_ends;
+    std::vector<std::uint8_t> children_postings;
+    std::vector<std::uint8_t> top_level;
+    std::vector<std::uint8_t> long_names;
+    std::vector<std::uint32_t> subtree_docs;
+    std::vector<std::uint32_t> subtree_ends;
+    std::vector<std::uint8_t> subtree_postings;
+    std::vector<std::uint32_t> kind_ends;
+    std::vector<std::uint8_t> kind_postings;
+    std::vector<std::string> paths;
+    std::vector<std::uint32_t> file_ends;
+    std::vector<std::uint8_t> file_postings;
+    std::vector<std::uint32_t> local_docs;
+    std::vector<std::uint32_t> local_paths;
+};
+
 ZEST_SUITE(SearchIndex) {
 
 ZEST_CASE(Loads) {
@@ -156,14 +192,14 @@ ZEST_CASE(Loads) {
 
 ZEST_CASE(DamagedPosting) {
     auto corpus = sample();
-    auto bytes = index::build_search_blob(corpus.snapshot);
-    // Every bitmap image opens with the portable cookie of a bitmap
-    // without run containers; breaking each one leaves the blob's
-    // structure intact and every posting list undecodable.
-    const std::string cookie("\x3a\x30\x00\x00", 4);
-    for(auto at = bytes.find(cookie); at != std::string::npos; at = bytes.find(cookie, at + 4)) {
-        bytes.replace(at, 4, "\xff\xff\xff\xff");
-    }
+    SearchBlobMirror blob;
+    ZASSERT(index::deserialize_blob(index::build_search_blob(corpus.snapshot), blob));
+    // Bytes no posting list starts with: the blob's structure stays
+    // intact and every token's list is undecodable.
+    std::ranges::fill(blob.token_postings, 0xff);
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::serialize_blob(blob, os);
     SearchIndex built;
     ZASSERT(built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
     ZEXPECT(!built.damaged());
@@ -171,6 +207,68 @@ ZEST_CASE(DamagedPosting) {
     // the posting lists.
     ZEXPECT(names(corpus, built, "foo") == (Names{"foo", "Foo"}));
     ZEXPECT(built.damaged());
+}
+
+ZEST_CASE(PostingListRoundTrip) {
+    // Empty, single, sparse, dense and full sets, ids at both ends of the
+    // universe, and universes too small for low bits.
+    auto round_trip = [](std::initializer_list<std::uint32_t> ids, std::uint32_t universe) {
+        Bitmap set;
+        for(auto id: ids) {
+            set.add(id);
+        }
+        auto decoded = index::read_postings(index::write_postings(set, universe), universe);
+        return decoded && *decoded == set;
+    };
+    ZEXPECT(round_trip({}, 0));
+    ZEXPECT(round_trip({}, 100));
+    ZEXPECT(round_trip({0}, 1));
+    ZEXPECT(round_trip({99}, 100));
+    ZEXPECT(round_trip({0, 1, 2, 3}, 4));
+    ZEXPECT(round_trip({3, 70000, 70001, 999999}, 1000000));
+    Bitmap dense;
+    for(std::uint32_t id = 0; id < 50000; id += 3) {
+        dense.add(id);
+    }
+    ZEXPECT(index::read_postings(index::write_postings(dense, 50000), 50000) == dense);
+}
+
+ZEST_CASE(PostingListRejected) {
+    // Every spelling but the one write_postings produces is refused:
+    // otherwise two byte strings would name one set.
+    Bitmap set;
+    set.add(5);
+    set.add(40);
+    set.add(99);
+    auto list = index::write_postings(set, 100);
+    auto rejects = [](std::vector<std::uint8_t> bytes, std::uint32_t universe) {
+        return !index::read_postings(bytes, universe).has_value();
+    };
+    ZASSERT(!rejects(list, 100));
+    ZEXPECT(rejects({}, 100));
+    ZEXPECT(rejects({list.begin(), list.end() - 1}, 100));
+    auto trailing = list;
+    trailing.push_back(0);
+    ZEXPECT(rejects(trailing, 100));
+    auto long_count = list;
+    long_count[0] |= 0x80;
+    long_count.insert(long_count.begin() + 1, 0x00);
+    ZEXPECT(rejects(long_count, 100));
+    ZEXPECT(rejects(list, 99));
+    ZEXPECT(rejects({0x05}, 4));
+
+    // 8 and 9 in a universe of 16: a count, three low bits each, then the
+    // high parts.
+    Bitmap pair;
+    pair.add(8);
+    pair.add(9);
+    auto low_parts = index::write_postings(pair, 16);
+    ZASSERT(low_parts.size() == 3u);
+    ZASSERT(!rejects(low_parts, 16));
+    low_parts[1] = 0x00;
+    ZEXPECT(rejects(low_parts, 16));
+    low_parts[1] = 0x48;
+    ZEXPECT(rejects(low_parts, 16));
 }
 
 ZEST_CASE(FuzzyRanking) {
