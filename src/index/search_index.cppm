@@ -28,6 +28,12 @@ namespace clice::index {
 /// Whether symbols of a kind are looked up by name at all.
 bool is_searchable_kind(SymbolKind kind);
 
+/// Whether the name search offers a symbol: of a searchable kind, and named
+/// by its declaration rather than unnamed.
+inline bool searchable(SymbolKind kind, llvm::StringRef name, SymbolFlags flags) {
+    return is_searchable_kind(kind) && !name.empty() && !has_flag(flags, SymbolFlags::Unnamed);
+}
+
 /// A symbol's standing among results, independent of the query, in
 /// (0, 2]: up with the number of files referencing it, down for
 /// namespaces, macros, operators, constructors, deprecated or reserved

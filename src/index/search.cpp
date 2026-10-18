@@ -95,8 +95,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
                         llvm::StringRef path,
                         std::uint32_t reference_files,
                         Fid anchor) {
-        if(!is_searchable_kind(identity.kind) || identity.name.empty() ||
-           has_flag(identity.flags, SymbolFlags::Unnamed) || seen.contains(hash) ||
+        if(!searchable(identity.kind, identity.name, identity.flags) || seen.contains(hash) ||
            (query.external_only && identity.scope != SymbolScope::External)) {
             return;
         }

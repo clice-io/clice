@@ -1349,7 +1349,7 @@ kota::task<> IndexStore::rebuild_search_index() {
     llvm::DenseMap<std::uint32_t, std::uint32_t> path_index;
     project_index.for_each_symbol(
         [&](index::SymbolHash hash, const index::SymbolView& symbol, std::uint32_t references) {
-            if(!index::is_searchable_kind(symbol.kind) || symbol.name.empty()) {
+            if(!index::searchable(symbol.kind, symbol.name, symbol.flags)) {
                 return true;
             }
             auto file = index::no_file;
@@ -1383,7 +1383,7 @@ kota::task<> IndexStore::rebuild_search_index() {
         }
         shard.for_each_local_symbol([&](index::SymbolHash hash, const index::SymbolView& symbol) {
             if(symbol.scope != index::SymbolScope::Internal ||
-               !index::is_searchable_kind(symbol.kind) || symbol.name.empty() ||
+               !index::searchable(symbol.kind, symbol.name, symbol.flags) ||
                !shard.declares(hash)) {
                 return true;
             }
