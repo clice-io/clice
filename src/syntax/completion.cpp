@@ -135,9 +135,9 @@ std::vector<WrittenDesignator> written_designators(llvm::StringRef text,
     return std::move(groups.back().designators);
 }
 
-PreambleCompletionContext detect_completion_context(llvm::StringRef text,
-                                                    std::uint32_t offset,
-                                                    const clang::LangOptions& dialect) {
+CompletionName completion_name(llvm::StringRef text,
+                               std::uint32_t offset,
+                               const clang::LangOptions& dialect) {
     // Only a line opening with a directive, an import or a module
     // declaration has a context, and only then is the text before it lexed,
     // for the comment the line may be in.
@@ -179,13 +179,13 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text,
     // A header name half typed from `begin`, the text after an include's
     // keyword or `__has_include(`: taken textually up to the cursor. In
     // `__has_include(` the name ends at the parenthesis closing the call.
-    auto header_name = [&](std::uint32_t begin, bool parenthesized) -> PreambleCompletionContext {
+    auto header_name = [&](std::uint32_t begin, bool parenthesized) -> CompletionName {
         auto argument = text.slice(begin, offset).ltrim();
-        CompletionContext kind;
+        CompletionName::Kind kind;
         if(argument.consume_front("\"")) {
-            kind = CompletionContext::IncludeQuoted;
+            kind = CompletionName::Kind::IncludeQuoted;
         } else if(argument.consume_front("<")) {
-            kind = CompletionContext::IncludeAngled;
+            kind = CompletionName::Kind::IncludeAngled;
         } else {
             return {};
         }
@@ -193,7 +193,7 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text,
         auto component = slash == llvm::StringRef::npos ? argument : argument.drop_front(slash + 1);
         // A closed directive may name a file with spaces; an unclosed one
         // ends its name at the first space.
-        char closer = kind == CompletionContext::IncludeQuoted ? '"' : '>';
+        char closer = kind == CompletionName::Kind::IncludeQuoted ? '"' : '>';
         auto line = text.slice(offset, text.find_first_of("\r\n", offset));
         if(parenthesized) {
             line = line.take_until([](char c) { return c == ')'; });
@@ -237,8 +237,7 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text,
             after_has_include = token.is_identifier() && (token.text(text) == "__has_include" ||
                                                           token.text(text) == "__has_include_next");
         }
-        return header_begin ? header_name(*header_begin, /*parenthesized=*/true)
-                            : PreambleCompletionContext{};
+        return header_begin ? header_name(*header_begin, /*parenthesized=*/true) : CompletionName{};
     }
 
     // `[export] import` opening a logical line always means an import
@@ -252,11 +251,11 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text,
         return {};
     }
     auto& keyword = tokens[at];
-    CompletionContext kind;
+    CompletionName::Kind kind;
     if(keyword.text(text) == "import") {
-        kind = CompletionContext::Import;
+        kind = CompletionName::Kind::Import;
     } else if(keyword.text(text) == "module" && !exported) {
-        kind = CompletionContext::ModuleDeclaration;
+        kind = CompletionName::Kind::ModuleDeclaration;
     } else {
         return {};
     }

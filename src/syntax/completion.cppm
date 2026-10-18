@@ -13,19 +13,19 @@ import :vfs.file_table;
 
 namespace clice {
 
-/// What kind of preamble-level completion is being requested.
-enum class CompletionContext : std::uint8_t {
-    None,
-    IncludeQuoted,
-    IncludeAngled,
-    Import,
-    /// The name in an implementation unit's `module` declaration.
-    ModuleDeclaration,
-};
+/// The name the cursor is completing, where the text tells: a header name,
+/// or the name of an import or a module declaration.
+struct CompletionName {
+    enum class Kind : std::uint8_t {
+        None,
+        IncludeQuoted,
+        IncludeAngled,
+        Import,
+        /// The name in an implementation unit's `module` declaration.
+        ModuleDeclaration,
+    };
 
-/// Result of detecting the completion context from source text.
-struct PreambleCompletionContext {
-    CompletionContext kind = CompletionContext::None;
+    Kind kind = Kind::None;
     std::string prefix;
 
     /// What a chosen candidate replaces: the name under the cursor — of an
@@ -37,12 +37,12 @@ struct PreambleCompletionContext {
     bool closed = false;
 };
 
-/// Detect whether the cursor is in the header name of an #include or a
-/// `__has_include`, or in the name of an import or a module declaration.
+/// The name the cursor at `offset` is in: the header name of an #include
+/// or a `__has_include`, or the name of an import or a module declaration.
 /// Pure text parsing — no compiler state needed.
-PreambleCompletionContext detect_completion_context(llvm::StringRef text,
-                                                    std::uint32_t offset,
-                                                    const clang::LangOptions& dialect);
+CompletionName completion_name(llvm::StringRef text,
+                               std::uint32_t offset,
+                               const clang::LangOptions& dialect);
 
 /// Whether the code before `offset` ends in a member or scope access
 /// operator (`.`, `->`, `::`) — outside a directive, the only trigger

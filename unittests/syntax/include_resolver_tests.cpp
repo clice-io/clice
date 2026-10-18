@@ -5,78 +5,13 @@ module;
 module clice;
 
 import :syntax.include_resolver;
-import :syntax.scan;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 
 namespace clice::testing {
 namespace {
 
-// ============================================================================
-// scan() — is_angled and is_include_next fields
-// ============================================================================
-
 ZEST_SUITE(IncludeResolver) {
-
-ZEST_CASE(ScanAngledVsQuoted) {
-    auto result = scan_quick(R"(
-#include <vector>
-#include "local.h"
-)");
-
-    ZASSERT(result.includes.size() == 2u);
-    ZEXPECT(result.includes[0].path == "vector");
-    ZEXPECT(result.includes[0].is_angled);
-    ZEXPECT(!result.includes[0].is_include_next);
-
-    ZEXPECT(result.includes[1].path == "local.h");
-    ZEXPECT(!result.includes[1].is_angled);
-    ZEXPECT(!result.includes[1].is_include_next);
-}
-
-ZEST_CASE(ScanIncludeNext) {
-    auto result = scan_quick(R"(
-#include_next <stdlib.h>
-)");
-
-    ZASSERT(result.includes.size() == 1u);
-    ZEXPECT(result.includes[0].path == "stdlib.h");
-    ZEXPECT(result.includes[0].is_angled);
-    ZEXPECT(result.includes[0].is_include_next);
-}
-
-ZEST_CASE(ScanMixedDirectives) {
-    auto result = scan_quick(R"(
-#include <system.h>
-#include "quoted.h"
-#ifdef FOO
-#include <conditional_angled.h>
-#include "conditional_quoted.h"
-#endif
-#include_next "next_quoted.h"
-)");
-
-    ZASSERT(result.includes.size() == 5u);
-
-    ZEXPECT(result.includes[0].is_angled);
-    ZEXPECT(!result.includes[0].conditional);
-
-    ZEXPECT(!result.includes[1].is_angled);
-    ZEXPECT(!result.includes[1].conditional);
-
-    ZEXPECT(result.includes[2].is_angled);
-    ZEXPECT(result.includes[2].conditional);
-
-    ZEXPECT(!result.includes[3].is_angled);
-    ZEXPECT(result.includes[3].conditional);
-
-    ZEXPECT(!result.includes[4].is_angled);
-    ZEXPECT(result.includes[4].is_include_next);
-}
-
-// ============================================================================
-// resolve_include() — tests with real filesystem
-// ============================================================================
 
 ZEST_CASE(ResolveAbsolutePath) {
     TempDir tmp;

@@ -8,7 +8,7 @@ import :command.command;
 import :command.toolchain;
 import :compile.compilation;
 import :syntax.header_context;
-import :syntax.scan;
+import :syntax.preamble;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :unittests.utils.tester;
@@ -302,7 +302,7 @@ int main() { return 0; }
 
     // Add truncated focus file buffer for preamble build.
     auto& source = sources.all_files["main.cpp"];
-    auto bound = compute_preamble_bound(source.content);
+    auto bound = preamble_bound(source.content);
     auto main_vfs_path = TestVFS::path("main.cpp");
     params.input.add_remapped_file(main_vfs_path, source.content, bound);
 
@@ -346,7 +346,7 @@ int main() { return preamble_func(); }
     auto pch_path = artifact("pch");
 
     auto& source = sources.all_files["main.cpp"];
-    auto bound = compute_preamble_bound(source.content);
+    auto bound = preamble_bound(source.content);
     auto main_vfs_path = TestVFS::path("main.cpp");
 
     // Corruption the reader detects in-process must stay attributable to
@@ -411,7 +411,7 @@ ZEST_CASE(PCHIgnoresInputMtime) {
 
     auto pch_path = artifact("pch");
     auto main_vfs_path = TestVFS::path("main.cpp");
-    auto bound = compute_preamble_bound(content);
+    auto bound = preamble_bound(content);
 
     CompilationParams preamble{
         .kind = CompilationKind::Preamble,
@@ -500,33 +500,6 @@ int main() { return before() + after(); }
     }));
 }
 
-ZEST_CASE(PreambleBoundComputation) {
-    // Test that compute_preamble_bound correctly identifies the end of the preamble.
-    llvm::StringRef code_with_preamble = R"(
-#include "a.h"
-#include "b.h"
-
-int main() { return 0; }
-)";
-
-    auto bound = compute_preamble_bound(code_with_preamble);
-    // Bound should be > 0 (there are includes).
-    ZASSERT(bound > 0);
-    // Bound should be less than the total content size.
-    ZASSERT(bound < code_with_preamble.size());
-
-    // The content before the bound should contain the includes.
-    auto preamble_part = code_with_preamble.substr(0, bound);
-    ZASSERT(preamble_part.contains("#include"));
-
-    // Code with no preamble.
-    llvm::StringRef no_preamble = R"(
-int main() { return 0; }
-)";
-    auto bound2 = compute_preamble_bound(no_preamble);
-    ZASSERT(bound2 == 0U);
-}
-
 ZEST_CASE(PCMBuildChain) {
     // Test that A imports B works: build PCM for B, then compile A using B's PCM.
     TempDir tmp;
@@ -596,7 +569,7 @@ ZEST_CASE(PCHKeepsModuleImports) {
     preamble.input.pcms.try_emplace("B", pcm_path);
     auto pch_path = artifact("pch");
     preamble.output_file = pch_path;
-    auto bound = compute_preamble_bound(content);
+    auto bound = preamble_bound(content);
 
     CompilationParams params{.kind = CompilationKind::Content, .input = preamble.input};
     params.input.pch = {pch_path, bound};
@@ -625,9 +598,7 @@ ZEST_CASE(PCHWithoutModule) {
         .input = {.arguments = cxx20_command(cdb, tmp, "main.cpp")},
     };
     preamble.input.pcms.try_emplace("B", tmp.path("b.pcm"));
-    preamble.input.add_remapped_file(tmp.path("main.cpp"),
-                                     content,
-                                     compute_preamble_bound(content));
+    preamble.input.add_remapped_file(tmp.path("main.cpp"), content, preamble_bound(content));
     auto pch_path = artifact("pch");
     preamble.output_file = pch_path;
 
@@ -659,8 +630,8 @@ int bar() { return 3; }
 )";
 
     // Both versions should have the same preamble bound.
-    auto bound_v1 = compute_preamble_bound(content_v1);
-    auto bound_v2 = compute_preamble_bound(content_v2);
+    auto bound_v1 = preamble_bound(content_v1);
+    auto bound_v2 = preamble_bound(content_v2);
     ZASSERT(bound_v1 == bound_v2);
 
     // Build PCH with v1.
@@ -676,9 +647,7 @@ std::unique_ptr<CompilationUnit> build_preamble(llvm::StringRef content) {
     prepare();
     params.kind = CompilationKind::Preamble;
     params.output_file = artifact("pch");
-    params.input.add_remapped_file(TestVFS::path("main.cpp"),
-                                   content,
-                                   compute_preamble_bound(content));
+    params.input.add_remapped_file(TestVFS::path("main.cpp"), content, preamble_bound(content));
     return clice::compile(std::move(params));
 }
 
@@ -837,8 +806,8 @@ int x = 2;
 void foo() {}
 )cpp";
 
-    auto bound1 = compute_preamble_bound(v1);
-    auto bound2 = compute_preamble_bound(v2);
+    auto bound1 = preamble_bound(v1);
+    auto bound2 = preamble_bound(v2);
     ZEXPECT(bound1 == bound2);
 
     auto hash1 = llvm::xxh3_64bits(v1.substr(0, bound1));
@@ -859,8 +828,8 @@ int x = 1;
 int x = 1;
 )cpp";
 
-    auto bound1 = compute_preamble_bound(v1);
-    auto bound2 = compute_preamble_bound(v2);
+    auto bound1 = preamble_bound(v1);
+    auto bound2 = preamble_bound(v2);
     ZEXPECT(bound1 != bound2);
 
     auto hash1 = llvm::xxh3_64bits(v1.substr(0, bound1));
@@ -874,7 +843,7 @@ ZEST_CASE(ZeroBoundNoPCH) {
 int main() { return 0; }
 )cpp";
 
-    auto bound = compute_preamble_bound(code);
+    auto bound = preamble_bound(code);
     ZEXPECT(bound == 0u);
 }
 

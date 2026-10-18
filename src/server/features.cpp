@@ -951,9 +951,9 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     auto offset = map.offset(position, PositionEncoding::UTF16);
 
     const auto& dialect = index_lang_options(*session);
-    PreambleCompletionContext pctx;
+    CompletionName completing;
     if(offset) {
-        pctx = detect_completion_context(session->text, *offset, dialect);
+        completing = completion_name(session->text, *offset, dialect);
     }
 
     // Clients without request-side gating (nvim, zed) forward every
@@ -965,9 +965,9 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     // completion build.
     if(!trigger_character.empty()) {
         bool served = trigger_character == " "
-                          ? pctx.kind == CompletionContext::Import ||
-                                pctx.kind == CompletionContext::ModuleDeclaration
-                          : pctx.kind != CompletionContext::None || !offset ||
+                          ? completing.kind == CompletionName::Kind::Import ||
+                                completing.kind == CompletionName::Kind::ModuleDeclaration
+                          : completing.kind != CompletionName::Kind::None || !offset ||
                                 follows_access_operator(session->text, *offset, dialect);
         if(!served) {
             co_return serde_raw{"[]"};
@@ -975,8 +975,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     }
 
     if(offset) {
-        if(pctx.kind == CompletionContext::IncludeQuoted ||
-           pctx.kind == CompletionContext::IncludeAngled) {
+        if(completing.kind == CompletionName::Kind::IncludeQuoted ||
+           completing.kind == CompletionName::Kind::IncludeAngled) {
             std::string directory;
             std::vector<std::string> arguments;
             // Editor use: candidates must come from the same command (host
@@ -985,10 +985,10 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
 
             auto search_config = project.cdb.search_config(ref);
             vfs::Scope scope(project.file_table.dirs);
-            bool angled = (pctx.kind == CompletionContext::IncludeAngled);
+            bool angled = (completing.kind == CompletionName::Kind::IncludeAngled);
             auto candidates = complete_include_path(search_config,
                                                     path::parent_path(path),
-                                                    pctx.prefix,
+                                                    completing.prefix,
                                                     angled,
                                                     scope);
 
@@ -998,16 +998,16 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             llvm::StringRef text = session->text;
             char closer = angled ? '>' : '"';
             auto edit = [&](const IncludeCandidate& candidate) {
-                auto end = pctx.replace.end;
+                auto end = completing.replace.end;
                 if(candidate.is_directory) {
                     if(text.substr(end).starts_with("/")) {
                         end += 1;
                     }
-                } else if(pctx.closed) {
+                } else if(completing.closed) {
                     end = static_cast<std::uint32_t>(text.find(closer, end)) + 1;
                 }
                 return protocol::TextEdit{
-                    .range = *map.range({pctx.replace.begin, end}, PositionEncoding::UTF16),
+                    .range = *map.range({completing.replace.begin, end}, PositionEncoding::UTF16),
                     .new_text = candidate.name + (candidate.is_directory ? '/' : closer),
                 };
             };
@@ -1024,20 +1024,22 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             co_return to_raw(
                 feature::completion_list(std::move(items), project.config.code_completion.limit));
         }
-        if(pctx.kind == CompletionContext::Import ||
-           pctx.kind == CompletionContext::ModuleDeclaration) {
+        if(completing.kind == CompletionName::Kind::Import ||
+           completing.kind == CompletionName::Kind::ModuleDeclaration) {
             std::vector<std::string> module_names;
-            if(pctx.kind == CompletionContext::ModuleDeclaration) {
-                module_names = complete_module_declaration(project.dep_graph, pctx.prefix);
+            if(completing.kind == CompletionName::Kind::ModuleDeclaration) {
+                module_names = complete_module_declaration(project.dep_graph, completing.prefix);
             } else {
                 // The module declaration precedes every import, and the
                 // scan stops before the import being typed: the scanner
                 // rejects a buffer with an unclosed directive whole. Its
                 // lexer needs the NUL terminator a copy provides.
                 llvm::StringRef text = session->text;
-                auto declared = text.take_front(text.rfind('\n', pctx.replace.begin) + 1).str();
-                module_names =
-                    complete_module_import(project.dep_graph, pctx.prefix, scan_quick(declared));
+                auto declared =
+                    text.take_front(text.rfind('\n', completing.replace.begin) + 1).str();
+                module_names = complete_module_import(project.dep_graph,
+                                                      completing.prefix,
+                                                      scan_quick(declared));
             }
             // The unit's own partitions first, then the modules whose
             // interface lies nearest the file: the fewest directories up
@@ -1067,8 +1069,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 item.kind = protocol::CompletionItemKind::Module;
                 item.sort_text = std::format("{:05}", distance(name));
                 item.text_edit = protocol::TextEdit{
-                    .range = *map.range(pctx.replace, PositionEncoding::UTF16),
-                    .new_text = pctx.closed ? name : name + ";",
+                    .range = *map.range(completing.replace, PositionEncoding::UTF16),
+                    .new_text = completing.closed ? name : name + ";",
                 };
                 items.push_back(std::move(item));
             }

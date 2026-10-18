@@ -5,7 +5,7 @@ module;
 module clice;
 
 import :project.project;
-import :syntax.scan;
+import :syntax.preamble;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils;
 import :worker.protocol;
@@ -55,7 +55,7 @@ ZEST_CASE(BuildPCHThenCompile) {
                             dir,
                             main_path};
         params.content = main_text;
-        params.preamble_bound = compute_preamble_bound(main_text);
+        params.preamble_bound = preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
         params.index_output_path = tmp.path("preamble.pch.idx");
 
@@ -89,7 +89,7 @@ ZEST_CASE(BuildPCHThenCompile) {
 
     bool phase2_done = false;
 
-    auto preamble_bound = compute_preamble_bound(main_text);
+    auto bound = preamble_bound(main_text);
 
     sf.run([&]() -> kota::task<> {
         worker::CompileParams params;
@@ -104,7 +104,7 @@ ZEST_CASE(BuildPCHThenCompile) {
                             "-I",
                             dir,
                             main_path};
-        params.pch = {pch_path, preamble_bound};
+        params.pch = {pch_path, bound};
 
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
@@ -124,7 +124,7 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
     tmp.touch("main.cpp", main_text);
     auto main_path = tmp.path("main.cpp");
     auto dir = std::string(tmp.root);
-    auto preamble_bound = compute_preamble_bound(main_text);
+    auto bound = preamble_bound(main_text);
     std::vector<std::string> arguments = {"clang++",
                                           "-resource-dir",
                                           std::string(resource_dir()),
@@ -142,7 +142,7 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
         params.directory = dir;
         params.arguments = arguments;
         params.content = main_text;
-        params.preamble_bound = preamble_bound;
+        params.preamble_bound = bound;
         params.output_path = tmp.path("preamble.pch");
         params.index_output_path = tmp.path("preamble.pch.idx");
 
@@ -166,7 +166,7 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
         params.text = main_text;
         params.directory = dir;
         params.arguments = arguments;
-        params.pch = {pch_path, preamble_bound};
+        params.pch = {pch_path, bound};
 
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
@@ -209,7 +209,7 @@ ZEST_CASE(BlobWriteFailure) {
                             dir,
                             main_path};
         params.content = main_text;
-        params.preamble_bound = compute_preamble_bound(main_text);
+        params.preamble_bound = preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
         // Unwritable blob path: the whole build must fail (the PCH is only
         // served together with its blob), classified as an internal error.
