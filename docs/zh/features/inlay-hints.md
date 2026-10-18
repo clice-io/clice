@@ -99,7 +99,7 @@ tests/inlay_hints/parameter_hints/08_function_objects
 
 即使只能在模板内部确定被调用者，也会显示参数名
 
-根据实参数量匹配候选函数；只有筛选后仅剩一个候选函数时才显示参数名。若调用仍可能匹配多个重载，就不显示提示，也不猜测。
+根据实参数量和类型已知的实参匹配候选函数；只有筛选后仅剩一个候选函数时才显示参数名。若调用仍可能匹配多个重载，就不显示提示，也不猜测。
 
 ```case
 tests/inlay_hints/parameter_hints/10_dependent_calls
