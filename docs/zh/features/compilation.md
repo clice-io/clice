@@ -50,7 +50,7 @@ tests/compile/flags/07_precompiled_headers
 clice 在模板体写出的位置就解析它，让悬停、代码导航和诊断在每个模板内部都能工作；MSVC 目标也是如此，尽管 clang 在这类目标上、C++20 之前的标准下默认延迟解析模板体。因此，按照 MSVC 宽松的名字查找编写的代码（例如模板使用了在它之后才声明的名字）会报出符合标准的编译器同样会报的错误。命令中带有 `-fdelayed-template-parsing`（clang-cl 下为 `/Zc:twoPhase-`）时，无论该选项来自构建还是由规则追加，clice 都会像编译器一样编译这类代码。代价是：没有任何代码实例化的模板，其模板体始终不会解析，里面的内容既无法悬停，也无法查找，不过代码补全在其中仍然可用。
 
 ```case
-tests/compile/flags/13_deferred_template_bodies
+tests/compile/flags/19_deferred_template_bodies
 ```
 
 <!-- END CAPABILITY -->
