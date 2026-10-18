@@ -26,6 +26,17 @@ struct Ranked {
     Fid anchor;
 };
 
+bool ranked_before(const Ranked& lhs, const Ranked& rhs) {
+    return ranks_after(rhs.rank,
+                       rhs.symbol.name,
+                       rhs.symbol.args,
+                       rhs.symbol.hash,
+                       lhs.rank,
+                       lhs.symbol.name,
+                       lhs.symbol.args,
+                       lhs.symbol.hash);
+}
+
 struct RankedHits {
     std::vector<Ranked> hits;
     bool exhausted = true;
@@ -153,7 +164,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
             }
             llvm::StringRef path = files.resolve(file);
             shard->for_each_local_symbol([&](SymbolHash hash, const SymbolView& identity) {
-                if(identity.scope == SymbolScope::Internal && declares(*shard, hash)) {
+                if(identity.scope == SymbolScope::Internal && shard->declares(hash)) {
                     consider(hash, identity, path, 0, file);
                 }
                 return true;
@@ -192,7 +203,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
                 continue;
             }
             shard->for_each_local_symbol([&](SymbolHash hash, const SymbolView& identity) {
-                if(declares(*shard, hash)) {
+                if(shard->declares(hash)) {
                     consider(hash, identity, path, 0, file);
                 }
                 return true;
@@ -200,16 +211,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         }
     }
 
-    std::ranges::sort(hits, [](const Ranked& lhs, const Ranked& rhs) {
-        return ranks_after(rhs.rank,
-                           rhs.symbol.name,
-                           rhs.symbol.args,
-                           rhs.symbol.hash,
-                           lhs.rank,
-                           lhs.symbol.name,
-                           lhs.symbol.args,
-                           lhs.symbol.hash);
-    });
+    std::ranges::sort(hits, ranked_before);
     if(hits.size() > limit) {
         hits.resize(limit);
         exhausted = false;
@@ -280,16 +282,7 @@ Completables
                 }
                 return true;
             });
-        std::ranges::sort(ranked.hits, [](const Ranked& lhs, const Ranked& rhs) {
-            return ranks_after(rhs.rank,
-                               rhs.symbol.name,
-                               rhs.symbol.args,
-                               rhs.symbol.hash,
-                               lhs.rank,
-                               lhs.symbol.name,
-                               lhs.symbol.args,
-                               lhs.symbol.hash);
-        });
+        std::ranges::sort(ranked.hits, ranked_before);
     }
 
     Completables result{.exhausted = ranked.exhausted};

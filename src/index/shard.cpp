@@ -875,6 +875,15 @@ void Shard::relations_of(SymbolHash symbol,
                            });
 }
 
+bool Shard::has_relation(SymbolHash symbol, RelationKind kind) const {
+    bool found = false;
+    relations_of(symbol, kind, [&](const Relation&) {
+        found = true;
+        return false;
+    });
+    return found;
+}
+
 void Shard::for_each_occurrence(llvm::function_ref<bool(const Occurrence&)> callback) const {
     if(!buffer) {
         return;

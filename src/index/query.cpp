@@ -26,7 +26,7 @@ std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
 
 std::optional<Site> extent_of(const IndexSource& source, const Relation& relation) {
     assert(RelationKind(relation.kind).isDeclOrDef());
-    auto extent = std::bit_cast<LocalSourceRange>(relation.target);
+    auto extent = relation.extent();
     if(extent.begin >= extent.end) {
         return std::nullopt;
     }
@@ -53,20 +53,6 @@ llvm::SmallVector<SymbolInfo, 4>
     }
     std::ranges::reverse(chain);
     return chain;
-}
-
-bool declares(const Shard& shard, SymbolHash hash) {
-    bool found = false;
-    for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
-        shard.relations_of(hash, kind, [&](const Relation&) {
-            found = true;
-            return false;
-        });
-        if(found) {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool covers(const Site& site, const Site& cursor) {
@@ -498,14 +484,7 @@ Fid IndexQuery::definition_file(SymbolHash hash) const {
     // without it keeps the record until another unit defines the symbol.
     Fid file{identity->file};
     auto* shard = declaring_shard(file);
-    bool defines = false;
-    if(shard) {
-        shard->relations_of(hash, RelationKind::Definition, [&](const Relation&) {
-            defines = true;
-            return false;
-        });
-    }
-    return defines ? file : Fid{};
+    return shard && shard->has_relation(hash, RelationKind::Definition) ? file : Fid{};
 }
 
 std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t offset) const {
@@ -751,10 +730,7 @@ std::optional<IndexQuery::Placed> IndexQuery::canonical_placed(SymbolHash hash, 
             if(unavailable || !shard || serving(file) || files.disk.seen_missing(file)) {
                 return;
             }
-            shard->relations_of(hash, RelationKind::Definition, [&](const Relation&) {
-                unavailable = true;
-                return false;
-            });
+            unavailable = shard->has_relation(hash, RelationKind::Definition);
         });
         if(unavailable) {
             return std::nullopt;

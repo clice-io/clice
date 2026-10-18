@@ -1384,7 +1384,7 @@ kota::task<> IndexStore::rebuild_search_index() {
         shard.for_each_local_symbol([&](index::SymbolHash hash, const index::SymbolView& symbol) {
             if(symbol.scope != index::SymbolScope::Internal ||
                !index::is_searchable_kind(symbol.kind) || symbol.name.empty() ||
-               !index::declares(shard, hash)) {
+               !shard.declares(hash)) {
                 return true;
             }
             auto [path, inserted] =

@@ -144,9 +144,6 @@ private:
     mutable llvm::DenseSet<Fid> withheld_files;
 };
 
-/// Whether the shard declares or defines the symbol, not only names it.
-bool declares(const Shard& shard, SymbolHash hash);
-
 /// Cross-source dedup: an entry present in both a disk shard and a PCH
 /// overlay (or in two overlays sharing a preamble, or in two projects'
 /// indexes) comes out identical; one an instantiation resolves where the
