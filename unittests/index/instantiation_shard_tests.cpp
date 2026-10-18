@@ -329,6 +329,15 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.uses = {index::use_identity(used)};
     blob.use_resolutions = {1};
     ZEXPECT(!make(bytes_of()).loaded());
+    blob.use_resolutions = {0};
+
+    // Use lists partition the resolution column.
+    blob.use_ends = {2};
+    ZEXPECT(!make(bytes_of()).loaded());
+    blob.use_ends = {0};
+    ZEXPECT(!make(bytes_of()).loaded());
+    blob.use_ends = {1};
+    ZEXPECT(make(bytes_of()).loaded());
 }
 
 };  // ZEST_SUITE(InstantiationShard)

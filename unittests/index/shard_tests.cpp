@@ -201,7 +201,8 @@ ZEST_CASE(NonAsciiLinesMapPositions) {
     // UTF-16 and UTF-32 mapping reads: every conversion agrees with the map
     // over the whole text — inside and past code points, in line ends, on
     // ASCII and non-ASCII lines, past the last line.
-    std::string content = "int å;\r\nint y; // \xF0\x9F\x98\x80 ü\n\nx = \"é\";";
+    std::string content =
+        "int å;\r\nint y; // \xF0\x9F\x98\x80 ü\n\n// " + std::string(300, 'a') + "é\nx = \"é\";";
     auto file_index = simple_index({
         {{4, 6}, 111}
     });
@@ -402,8 +403,16 @@ void expect_encoding_behavior(std::uint32_t count) {
     ZASSERT(reference_count(shard, 999) == std::size_t(2));
 }
 
-ZEST_CASE(MaskEncoding32) {
+ZEST_CASE(MaskEncoding8) {
     expect_encoding_behavior(5);
+}
+
+ZEST_CASE(MaskEncoding16) {
+    expect_encoding_behavior(12);
+}
+
+ZEST_CASE(MaskEncoding32) {
+    expect_encoding_behavior(20);
 }
 
 ZEST_CASE(MaskEncoding64) {
@@ -474,6 +483,99 @@ ZEST_CASE(RelationPayloadRoundtrip) {
         return false;
     });
     ZASSERT(checked_pair);
+}
+
+ZEST_CASE(PayloadsAcrossBlocks) {
+    // Readers place a payload by its block's counts: enough relations for
+    // several blocks, the target and extent payloads in different blocks,
+    // and extents that do not fit the u16 columns beside ones that do.
+    index::FileIndex file_index;
+    constexpr std::uint32_t count = 100;
+    auto extent_of = [](std::uint32_t i) -> LocalSourceRange {
+        auto begin = i * 100;
+        switch(i % 4) {
+            case 0: return {begin, begin + 0x10001};
+            case 1: return {begin + 1, begin + 10};
+            default: return {begin - i % 4, begin + 40};
+        }
+    };
+    for(std::uint32_t i = 0; i < count; i += 1) {
+        file_index.relations[50].push_back({
+            .kind = RelationKind::Base,
+            .range = {i * 100 + 70, i * 100 + 73},
+            .target_symbol = 500 + i
+        });
+        index::Relation definition{
+            .kind = RelationKind::Definition,
+            .range = {i * 100, i * 100 + 3}
+        };
+        definition.set_definition_range(extent_of(i));
+        file_index.relations[111].push_back(definition);
+        file_index.relations[111].push_back({
+            .kind = RelationKind::Reference,
+            .range = {i * 100 + 50, i * 100 + 53},
+            .target_symbol = 0
+        });
+        file_index.relations[333].push_back({
+            .kind = RelationKind::Base,
+            .range = {i * 100 + 60, i * 100 + 63},
+            .target_symbol = 1000 + i
+        });
+    }
+    auto shard = make_shard(write_fresh(file_index, std::string(count * 100 + 0x10010, 'z')));
+    ZASSERT(shard.loaded());
+
+    std::uint32_t seen = 0;
+    shard.lookup(111, RelationKind::Definition, [&](const index::Relation& r) {
+        auto i = r.range.begin / 100;
+        auto extent = index::Relation(r).definition_range();
+        ZEXPECT(extent.begin == extent_of(i).begin);
+        ZEXPECT(extent.end == extent_of(i).end);
+        seen += 1;
+        return true;
+    });
+    ZEXPECT(seen == count);
+    for(auto [symbol, first]: {
+            std::pair{50u,  500u },
+            std::pair{333u, 1000u}
+    }) {
+        seen = 0;
+        shard.lookup(symbol, RelationKind::Base, [&](const index::Relation& r) {
+            ZEXPECT(r.target_symbol == first + r.range.begin / 100);
+            seen += 1;
+            return true;
+        });
+        ZEXPECT(seen == count);
+    }
+}
+
+ZEST_CASE(MergedNonAsciiLines) {
+    // A merged blob carries the non-ASCII lines its variants were built
+    // with: without them it would still load, mapping their UTF-16
+    // positions as bytes.
+    std::string content = "int a;\nint é = 1; // ü\nint b;\n";
+    auto shard = make_shard(write_fresh(simple_index({
+                                            {{4, 5}, 111}
+    }),
+                                        content));
+    shard = append_variant(shard,
+                           simple_index({
+                               {{4, 5}, 222}
+    }),
+                           content);
+    ZASSERT(shard.variants().size() == std::size_t(2));
+    auto starts = kota::ipc::lsp::line_starts(content);
+    PositionMap text(content, starts);
+    auto stored = shard.positions();
+    for(std::uint32_t offset = 0; offset <= content.size(); offset += 1) {
+        auto expected = text.position(offset, PositionEncoding::UTF16);
+        auto actual = stored.position(offset, PositionEncoding::UTF16);
+        ZEXPECT(actual.has_value() == expected.has_value());
+        if(actual && expected) {
+            ZEXPECT(actual->line == expected->line);
+            ZEXPECT(actual->character == expected->character);
+        }
+    }
 }
 
 ZEST_CASE(LocalSymbolNames) {
@@ -890,6 +992,9 @@ ZEST_CASE(MisorderedEntriesRejected) {
     blob.occ_syms.back() = 1;
     ZASSERT(make_shard(bytes_of()).loaded());
     blob.occs.block_begins = {0, 14};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+    // A block without its begin.
+    blob.occs.block_begins = {0};
     ZASSERT(!make_shard(bytes_of()).loaded());
     blob.sym_hashes = {111};
     blob.rel_offsets = {0, 0};

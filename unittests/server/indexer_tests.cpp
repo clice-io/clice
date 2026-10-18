@@ -3827,6 +3827,45 @@ void a() { Box<A>{}.show(); }
     auto uses = f.project.project_index.live_uses(box_id);
     ZASSERT(uses.size() == 1u);
     ZEXPECT(instantiations->resolutions_of(uses.front()) == stored);
+    ZEXPECT(
+        !f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
+}
+
+ZEST_CASE(UnservableInstantiationsReindex) {
+    // A unit naming a use its file's blob cannot serve is indexed again:
+    // nothing else would restore what it resolved.
+    TempDir tmp;
+    tmp.touch("box.h", R"(#pragma once
+template <typename T>
+struct Box {
+    T value;
+    void show() { value.print(); }
+};
+)");
+    tmp.touch("a.cpp", R"(#include "box.h"
+struct A { void print(); };
+void a() { Box<A>{}.show(); }
+)");
+    std::string box_key;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, tmp.path("a.cpp"));
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+        box_key = blob_key(f.project.file_table.resolve(
+            f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")))));
+    }
+    inject_blob(tmp,
+                index::IndexBlobKind::Instantiations,
+                box_key,
+                "corrupted beyond verification");
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    ZEXPECT(
+        f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
 }
 
 };  // ZEST_SUITE(IndexerPersist)
@@ -4135,6 +4174,30 @@ ZEST_CASE(ResolutionLivesWhileUsed) {
     ZEXPECT(prints() == 1u);
     f.save();
     ZEXPECT(box()->resolutions().size() == 1u);
+}
+
+ZEST_CASE(SkippedKeysFormNewUse) {
+    // A unit skipping every key it meets walks nothing new, yet the
+    // resolutions it uses together form a set no unit used before: the
+    // file's blob must store it, or the manifest names a use nothing holds.
+    tmp.touch("a2.cpp", R"(#include "box.h"
+#include "a.h"
+#include "b.h"
+void a2() { Box<A>{}.show(); Box<B>{}.show(); }
+)");
+    ZASSERT(index("a.cpp"));
+    ZASSERT(index("b.cpp"));
+    ZASSERT(index("a2.cpp"));
+    auto uses = f.project.project_index.manifests.find(id("a2.cpp"))->second.instantiations;
+    ZASSERT(uses.size() == 1u);
+    ZEXPECT(box()->has_use(uses.front().use));
+    ZEXPECT(box()->resolutions_of(uses.front().use).size() == 2u);
+
+    // a2.cpp alone keeps both resolutions alive.
+    f.drop_index(id("a.cpp"));
+    f.drop_index(id("b.cpp"));
+    f.save();
+    ZEXPECT(prints() == 2u);
 }
 
 ZEST_CASE(StaleProducerNotOffered) {

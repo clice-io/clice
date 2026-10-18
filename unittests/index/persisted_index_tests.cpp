@@ -632,6 +632,35 @@ ZEST_CASE(UncoveredFileIdRejected) {
     ZASSERT(rejecting.symbol_count() == 0u);
 }
 
+ZEST_CASE(GlobalSparseColumnsRejected) {
+    // The sparse columns name symbols by position: one past the table or
+    // out of order would hand a symbol another's arguments or parent.
+    GlobalBlobMirror mirror;
+    mirror.add_symbol(42, "a", file_set(clice::Bitmap{}));
+    mirror.add_symbol(43, "b", file_set(clice::Bitmap{}));
+    mirror.sym_args_docs = {1};
+    mirror.sym_args = "<int>";
+    mirror.sym_args_ends = {5};
+
+    clice::FileTable pool;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
+    auto loads = [&] {
+        auto bytes = encode(mirror);
+        index::ProjectIndex loaded;
+        return bytes && loaded.load_global(bytes_of(*bytes), pool, pins).has_value();
+    };
+    ZASSERT(loads());
+    mirror.sym_args_docs = {2};
+    ZEXPECT(!loads());
+    mirror.sym_args_docs = {1};
+
+    mirror.sym_far_parents = {1, 0};
+    mirror.sym_far_parent_hashes = {7, 8};
+    ZEXPECT(!loads());
+    mirror.sym_far_parents = {0, 1};
+    ZEXPECT(loads());
+}
+
 ZEST_CASE(GlobalDuplicateSymbolRejected) {
     // Entries are looked up by binary search over the hash column, so it
     // must ascend strictly; a repeated hash would let one entry shadow the

@@ -501,6 +501,36 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
     check(reloaded, again);
 }
 
+ZEST_CASE(WidePathIds) {
+    // File ids take the width of the path table, which the files only the
+    // reverse include graph names grow after the symbols are written.
+    clice::FileTable pool;
+    index::ProjectIndex project;
+    auto file_of = [&](int i) {
+        return pool.intern(Spelling::absolute(std::format("/proj/{}.h", i)));
+    };
+    auto& symbol = project.touch(10);
+    symbol.name = "x";
+    symbol.file = file_of(0).raw;
+    symbol.reference_files.add(file_of(0).raw);
+    auto unit = file_of(1000);
+    for(int i = 1; i <= 300; i += 1) {
+        project.contributions[file_of(i)][unit] = 1;
+    }
+
+    llvm::SmallString<4096> bytes;
+    llvm::raw_svector_ostream os(bytes);
+    project.serialize_global(os, pool);
+    clice::FileTable fresh;
+    index::ProjectIndex loaded;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
+    ZASSERT(loaded.load_global(bytes.str(), fresh, pins));
+    auto identity = loaded.identity_of(10);
+    ZASSERT(identity);
+    ZEXPECT(fresh.resolve(Fid{identity->file}).str() == "/proj/0.h");
+    ZEXPECT(loaded.reference_count(10) == 1u);
+}
+
 ZEST_CASE(LazyShardsStayPut) {
     // A reader fetches shards while a query still holds the ones it read
     // first: the fan-out of a position query resolves other files between
