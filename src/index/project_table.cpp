@@ -54,73 +54,48 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
     return ids;
 }
 
-std::expected<void, llvm::StringRef>
-    ProjectTable::bind(kota::codec::fbs::table_view<ProjectTableBlob> root) {
-    generation = root[&ProjectTableBlob::generation];
-    next_version_id = root[&ProjectTableBlob::next_version_id];
-    version_ids = to_array_ref(root[&ProjectTableBlob::version_ids]);
-    version_paths = root[&ProjectTableBlob::version_paths];
-    version_hashes = to_array_ref(root[&ProjectTableBlob::version_hashes]);
-    paths = root[&ProjectTableBlob::paths];
-    hashes = to_array_ref(root[&ProjectTableBlob::symbol_hashes]);
-    names = root[&ProjectTableBlob::symbol_names];
-    name_ends = to_array_ref(root[&ProjectTableBlob::symbol_name_ends]);
-    args_entries = to_array_ref(root[&ProjectTableBlob::symbol_args_entries]);
-    args = root[&ProjectTableBlob::symbol_args];
-    args_ends = to_array_ref(root[&ProjectTableBlob::symbol_args_ends]);
-    signatures = root[&ProjectTableBlob::symbol_signatures];
-    signature_ends = to_array_ref(root[&ProjectTableBlob::symbol_signature_ends]);
-    parents = ids_of(root[&ProjectTableBlob::symbol_parents], hashes.size() + 1);
-    far_parents = to_array_ref(root[&ProjectTableBlob::symbol_far_parents]);
-    far_parent_hashes = to_array_ref(root[&ProjectTableBlob::symbol_far_parent_hashes]);
-    kinds = to_array_ref(root[&ProjectTableBlob::symbol_kinds]);
-    flags = to_array_ref(root[&ProjectTableBlob::symbol_flags]);
-    token_kinds = to_array_ref(root[&ProjectTableBlob::symbol_token_kinds]);
-    token_modifiers = to_array_ref(root[&ProjectTableBlob::symbol_token_modifiers]);
-    files = ids_of(root[&ProjectTableBlob::symbol_files], paths.size() + 1);
-    reference_counts = ids_of(root[&ProjectTableBlob::symbol_reference_counts], paths.size() + 1);
-    bitmap_ends = to_array_ref(root[&ProjectTableBlob::symbol_bitmap_ends]);
-    bitmaps = to_array_ref(root[&ProjectTableBlob::symbol_bitmaps]);
-    instantiation_entries = to_array_ref(root[&ProjectTableBlob::symbol_instantiation_entries]);
-    instantiation_ends = to_array_ref(root[&ProjectTableBlob::symbol_instantiation_ends]);
-    instantiation_images = to_array_ref(root[&ProjectTableBlob::symbol_instantiations]);
-    manifest_versions = to_array_ref(root[&ProjectTableBlob::manifest_versions]);
-    manifest_generations = to_array_ref(root[&ProjectTableBlob::manifest_generations]);
-    search_generation = root[&ProjectTableBlob::search_generation];
-    search_pending = to_array_ref(root[&ProjectTableBlob::search_pending]);
-    search_pending_files = to_array_ref(root[&ProjectTableBlob::search_pending_files]);
-    contributed_files = to_array_ref(root[&ProjectTableBlob::contributed_files]);
-    contributor_ends = to_array_ref(root[&ProjectTableBlob::contributor_ends]);
-    contributors = to_array_ref(root[&ProjectTableBlob::contributors]);
-    shared_local_symbols = to_array_ref(root[&ProjectTableBlob::shared_local_symbols]);
-    shared_local_set_ends = to_array_ref(root[&ProjectTableBlob::shared_local_set_ends]);
-    shared_local_file_ends = to_array_ref(root[&ProjectTableBlob::shared_local_file_ends]);
-    shared_local_files = to_array_ref(root[&ProjectTableBlob::shared_local_files]);
+std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_view<Blob> root) {
+    columns = kota::codec::fbs::bound_view<Blob>(root);
+    auto& paths = columns[&Blob::paths];
+    auto hashes = this->hashes();
+    parents = ids_of(columns[&Blob::symbol_parents], hashes.size() + 1);
+    files = ids_of(columns[&Blob::symbol_files], paths.size() + 1);
+    reference_counts = ids_of(columns[&Blob::symbol_reference_counts], paths.size() + 1);
 
+    llvm::ArrayRef<std::uint32_t> version_ids = columns[&Blob::version_ids];
     auto version_count = version_ids.size();
-    if(version_paths.size() != version_count || version_hashes.size() != version_count) {
+    if(columns[&Blob::version_paths].size() != version_count ||
+       columns[&Blob::version_hashes].size() != version_count) {
         return std::unexpected("file version columns do not line up");
     }
     if(!std::ranges::is_sorted(version_ids)) {
         return std::unexpected("file version ids are not ascending");
     }
-    if(!sparse_ok(contributed_files, contributor_ends.size(), paths.size()) ||
-       !monotone_ends(contributor_ends, contributors.size())) {
+    llvm::ArrayRef<std::uint32_t> contributor_ends = columns[&Blob::contributor_ends];
+    if(!sparse_ok(columns[&Blob::contributed_files], contributor_ends.size(), paths.size()) ||
+       !monotone_ends(contributor_ends, columns[&Blob::contributors].size())) {
         return std::unexpected("contributor columns do not line up");
     }
+    llvm::ArrayRef<std::uint64_t> shared_local_symbols = columns[&Blob::shared_local_symbols];
+    llvm::ArrayRef<std::uint32_t> shared_local_set_ends = columns[&Blob::shared_local_set_ends];
+    llvm::ArrayRef<std::uint32_t> shared_local_file_ends = columns[&Blob::shared_local_file_ends];
     if(shared_local_set_ends.size() != shared_local_symbols.size() ||
        !covering_ends(shared_local_set_ends, shared_local_file_ends.size()) ||
-       !covering_ends(shared_local_file_ends, shared_local_files.size()) ||
+       !covering_ends(shared_local_file_ends, columns[&Blob::shared_local_files].size()) ||
        !strictly_ascending(shared_local_symbols)) {
         return std::unexpected("shared local columns do not line up");
     }
-    if(manifest_versions.size() != manifest_generations.size()) {
+    if(columns[&Blob::manifest_versions].size() != columns[&Blob::manifest_generations].size()) {
         return std::unexpected("manifest pin columns do not line up");
     }
     auto count = hashes.size();
-    if(name_ends.size() != count || signature_ends.size() != count || kinds.size() != count ||
-       flags.size() != count || token_kinds.size() != count || token_modifiers.size() != count ||
-       bitmap_ends.size() != count) {
+    llvm::ArrayRef<std::uint8_t> token_kinds = columns[&Blob::symbol_token_kinds];
+    if(columns[&Blob::symbol_name_ends].size() != count ||
+       columns[&Blob::symbol_signature_ends].size() != count ||
+       columns[&Blob::symbol_kinds].size() != count ||
+       columns[&Blob::symbol_flags].size() != count || token_kinds.size() != count ||
+       columns[&Blob::symbol_token_modifiers].size() != count ||
+       columns[&Blob::symbol_bitmap_ends].size() != count) {
         return std::unexpected("symbol columns do not line up");
     }
     if(!all_token_kinds(token_kinds)) {
@@ -130,18 +105,24 @@ std::expected<void, llvm::StringRef>
        !ids_ok(reference_counts, count, paths.size() + 1)) {
         return std::unexpected("symbol id columns do not line up");
     }
+    llvm::ArrayRef<std::uint32_t> far_parents = columns[&Blob::symbol_far_parents];
+    llvm::ArrayRef<std::uint64_t> far_parent_hashes = columns[&Blob::symbol_far_parent_hashes];
     auto sparse = [&](llvm::ArrayRef<std::uint32_t> entries, std::uint32_t values) {
         return sparse_ok(entries, values, count);
     };
-    if(!sparse(args_entries, args_ends.size()) ||
-       !sparse(instantiation_entries, instantiation_ends.size()) ||
+    if(!sparse(columns[&Blob::symbol_args_entries], columns[&Blob::symbol_args_ends].size()) ||
+       !sparse(columns[&Blob::symbol_instantiation_entries],
+               columns[&Blob::symbol_instantiation_ends].size()) ||
        !sparse(far_parents, far_parent_hashes.size())) {
         return std::unexpected("sparse symbol columns do not line up");
     }
-    if(!monotone_ends(name_ends, names.size()) || !monotone_ends(args_ends, args.size()) ||
-       !monotone_ends(signature_ends, signatures.size()) ||
-       !monotone_ends(bitmap_ends, bitmaps.size()) ||
-       !monotone_ends(instantiation_ends, instantiation_images.size())) {
+    if(!monotone_ends(columns[&Blob::symbol_name_ends], columns[&Blob::symbol_names].size()) ||
+       !monotone_ends(columns[&Blob::symbol_args_ends], columns[&Blob::symbol_args].size()) ||
+       !monotone_ends(columns[&Blob::symbol_signature_ends],
+                      columns[&Blob::symbol_signatures].size()) ||
+       !monotone_ends(columns[&Blob::symbol_bitmap_ends], columns[&Blob::symbol_bitmaps].size()) ||
+       !monotone_ends(columns[&Blob::symbol_instantiation_ends],
+                      columns[&Blob::symbol_instantiations].size())) {
         return std::unexpected("symbol arenas do not line up");
     }
     // Hashes, parents and pending entries become table keys downstream, which
@@ -155,12 +136,12 @@ std::expected<void, llvm::StringRef>
             return std::unexpected("symbol parent outside the table is not canonical");
         }
     }
-    for(auto hash: search_pending) {
+    for(auto hash: columns[&Blob::search_pending]) {
         if(reserved_key(hash)) {
             return std::unexpected("reserved pending search entry");
         }
     }
-    for(auto file: search_pending_files) {
+    for(auto file: columns[&Blob::search_pending_files]) {
         if(file >= paths.size()) {
             return std::unexpected("pending search file outside the path table");
         }

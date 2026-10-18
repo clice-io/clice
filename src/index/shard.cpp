@@ -55,7 +55,7 @@ BlobView view_of(llvm::StringRef bytes) {
 }
 
 MaskEncoding encoding_of(BlobView root) {
-    return encoding_of(to_array_ref(root[&ShardBlob::variants]).size());
+    return encoding_of(root[&ShardBlob::variants].size());
 }
 
 /// The mask of `entry` in an encoding of up to 64 variants.
@@ -104,7 +104,7 @@ struct OccurrenceTable {
     llvm::ArrayRef<std::uint64_t> symbol_hashes;
 
     static OccurrenceTable of(BlobView root) {
-        auto symbol_hashes = to_array_ref(root[&ShardBlob::symbol_hashes]);
+        auto symbol_hashes = root[&ShardBlob::symbol_hashes];
         return {
             .columns = columns_of(root[&ShardBlob::occurrences]),
             .symbols = ids_of(root[&ShardBlob::occurrence_symbols], symbol_hashes.size()),
@@ -150,21 +150,21 @@ struct RelationTable {
 
     static RelationTable of(BlobView root) {
         auto columns = columns_of(root[&ShardBlob::relations]);
-        auto symbol_hashes = to_array_ref(root[&ShardBlob::symbol_hashes]);
+        auto symbol_hashes = root[&ShardBlob::symbol_hashes];
         auto targets = ids_of(root[&ShardBlob::relation_targets], symbol_hashes.size());
-        auto extent_heads = to_array_ref(root[&ShardBlob::relation_extent_heads]);
+        auto extent_heads = root[&ShardBlob::relation_extent_heads];
         return {
             .columns = columns,
-            .kinds = to_array_ref(root[&ShardBlob::relation_kinds]),
+            .kinds = root[&ShardBlob::relation_kinds],
             .target_ranks = ids_of(root[&ShardBlob::relation_target_ranks], targets.size() + 1),
             .extent_ranks =
                 ids_of(root[&ShardBlob::relation_extent_ranks], extent_heads.size() + 1),
             .targets = targets,
             .extent_heads = extent_heads,
-            .extent_lengths = to_array_ref(root[&ShardBlob::relation_extent_lengths]),
-            .far_extents = to_array_ref(root[&ShardBlob::relation_far_extents]),
-            .far_begins = to_array_ref(root[&ShardBlob::relation_far_begins]),
-            .far_ends = to_array_ref(root[&ShardBlob::relation_far_ends]),
+            .extent_lengths = root[&ShardBlob::relation_extent_lengths],
+            .far_extents = root[&ShardBlob::relation_far_extents],
+            .far_begins = root[&ShardBlob::relation_far_begins],
+            .far_ends = root[&ShardBlob::relation_far_ends],
             .symbol_hashes = symbol_hashes,
             .offsets = ids_of(root[&ShardBlob::relation_offsets], columns.size() + 1),
         };
@@ -257,7 +257,7 @@ struct LocalTable {
     llvm::ArrayRef<std::uint64_t> symbol_hashes;
 
     static LocalTable of(BlobView root) {
-        auto symbol_hashes = to_array_ref(root[&ShardBlob::symbol_hashes]);
+        auto symbol_hashes = root[&ShardBlob::symbol_hashes];
         auto symbols = ids_of(root[&ShardBlob::local_symbols], symbol_hashes.size());
         llvm::StringRef names = root[&ShardBlob::local_names];
         llvm::StringRef args = root[&ShardBlob::local_args];
@@ -272,12 +272,12 @@ struct LocalTable {
             .signatures_of = ids_of(root[&ShardBlob::local_signatures_of], symbols.size()),
             .signatures = signatures,
             .signature_ends = ids_of(root[&ShardBlob::local_signature_ends], signatures.size() + 1),
-            .kinds = to_array_ref(root[&ShardBlob::local_kinds]),
-            .scopes = to_array_ref(root[&ShardBlob::local_scopes]),
+            .kinds = root[&ShardBlob::local_kinds],
+            .scopes = root[&ShardBlob::local_scopes],
             .parents = ids_of(root[&ShardBlob::local_parents], symbol_hashes.size() + 1),
-            .flags = to_array_ref(root[&ShardBlob::local_flags]),
-            .token_kinds = to_array_ref(root[&ShardBlob::local_token_kinds]),
-            .token_modifiers = to_array_ref(root[&ShardBlob::local_token_modifiers]),
+            .flags = root[&ShardBlob::local_flags],
+            .token_kinds = root[&ShardBlob::local_token_kinds],
+            .token_modifiers = root[&ShardBlob::local_token_modifiers],
             .symbol_hashes = symbol_hashes,
         };
     }
@@ -318,8 +318,8 @@ struct LineLengths {
     std::uint32_t escaped = 0;
 
     static LineLengths of(BlobView root) {
-        return {.lengths = to_array_ref(root[&ShardBlob::line_lengths]),
-                .long_lengths = to_array_ref(root[&ShardBlob::long_line_lengths])};
+        return {.lengths = root[&ShardBlob::line_lengths],
+                .long_lengths = root[&ShardBlob::long_line_lengths]};
     }
 
     std::uint32_t next(std::uint32_t line) {
@@ -337,7 +337,7 @@ struct LineLengths {
 // relations owned only by a duplicated entry would serve and survive
 // compaction with no contribution owning them.
 CheckResult variants_ok(BlobView root) {
-    auto variants = to_array_ref(root[&ShardBlob::variants]);
+    auto variants = root[&ShardBlob::variants];
     llvm::SmallVector<VariantHash> sorted(variants.begin(), variants.end());
     std::ranges::sort(sorted);
     if(std::ranges::adjacent_find(sorted) != sorted.end()) {
@@ -354,7 +354,7 @@ CheckResult variants_ok(BlobView root) {
 // non-ASCII byte — a pure-ASCII line is the absent entry's to spell.
 CheckResult line_table_ok(BlobView root) {
     auto line_lengths = LineLengths::of(root);
-    auto long_lines = to_array_ref(root[&ShardBlob::long_lines]);
+    auto long_lines = root[&ShardBlob::long_lines];
     if(line_lengths.lengths.empty() || !escapes_ok(line_lengths.lengths,
                                                    length_escape,
                                                    long_lines,
@@ -363,14 +363,14 @@ CheckResult line_table_ok(BlobView root) {
     }
     // A "\r\n" ending needs a line holding at least those two bytes and a
     // line after it.
-    auto crlf_lines = to_array_ref(root[&ShardBlob::crlf_lines]);
+    llvm::ArrayRef<std::uint64_t> crlf_lines = root[&ShardBlob::crlf_lines];
     if(!crlf_lines.empty() &&
        (crlf_lines.back() == 0 || crlf_lines.size() > (line_lengths.lengths.size() + 63) / 64)) {
         return std::unexpected("CRLF line table is not canonical");
     }
-    auto utf8_lines = to_array_ref(root[&ShardBlob::utf8_lines]);
+    auto utf8_lines = root[&ShardBlob::utf8_lines];
     llvm::StringRef utf8_text = root[&ShardBlob::utf8_text];
-    auto utf8_ends = to_array_ref(root[&ShardBlob::utf8_text_ends]);
+    auto utf8_ends = root[&ShardBlob::utf8_text_ends];
     if(utf8_ends.size() != utf8_lines.size() || !covering_ends(utf8_ends, utf8_text.size())) {
         return std::unexpected("non-ASCII line columns do not line up");
     }
@@ -410,7 +410,7 @@ CheckResult line_table_ok(BlobView root) {
 // read only the first match's slices, so a duplicated hash would strand
 // the later id's relations and local name unreachably.
 CheckResult symbol_table_ok(BlobView root) {
-    auto symbol_hashes = to_array_ref(root[&ShardBlob::symbol_hashes]);
+    auto symbol_hashes = root[&ShardBlob::symbol_hashes];
     auto table = RelationTable::of(root);
     auto relations = table.size();
     if(auto ok = ascending_ids_ok(table.offsets, symbol_hashes.size() + 1, relations + 1, false);
@@ -606,7 +606,7 @@ CheckResult locals_ok(BlobView root) {
 // and the next compaction erases it for real — every manifest still
 // fresh throughout.
 CheckResult masks_ok(BlobView root) {
-    auto variant_count = to_array_ref(root[&ShardBlob::variants]).size();
+    auto variant_count = root[&ShardBlob::variants].size();
     auto encoding = encoding_of(variant_count);
     for(auto columns:
         {columns_of(root[&ShardBlob::occurrences]), columns_of(root[&ShardBlob::relations])}) {
@@ -693,7 +693,7 @@ Shard::Shard(std::unique_ptr<llvm::MemoryBuffer> buffer) : buffer(std::move(buff
 }
 
 Shard Shard::from_bytes(llvm::StringRef data) {
-    return from_buffer(llvm::MemoryBuffer::getMemBuffer(data, "", false));
+    return from_buffer(in_place_buffer(data));
 }
 
 bool Shard::rebind(std::unique_ptr<llvm::MemoryBuffer> replacement) {
@@ -747,7 +747,7 @@ std::vector<VariantHash> Shard::variants() const {
     if(!buffer) {
         return {};
     }
-    auto stored = to_array_ref(view_of(buffer->getBuffer())[&ShardBlob::variants]);
+    auto stored = view_of(buffer->getBuffer())[&ShardBlob::variants];
     if(stored.empty()) {
         return {blob_hash};
     }
@@ -758,7 +758,7 @@ bool Shard::has_variant(VariantHash hash) const {
     if(!buffer) {
         return false;
     }
-    auto stored = to_array_ref(view_of(buffer->getBuffer())[&ShardBlob::variants]);
+    auto stored = view_of(buffer->getBuffer())[&ShardBlob::variants];
     if(stored.empty()) {
         return hash == blob_hash;
     }
@@ -988,7 +988,7 @@ std::span<const std::uint64_t> Shard::crlf_lines() const {
     if(!buffer) {
         return {};
     }
-    return to_array_ref(view_of(buffer->getBuffer())[&ShardBlob::crlf_lines]);
+    return view_of(buffer->getBuffer())[&ShardBlob::crlf_lines];
 }
 
 PositionMap Shard::positions() const {
@@ -999,9 +999,9 @@ PositionMap Shard::positions() const {
     return {content_size(),
             line_starts(),
             crlf_lines(),
-            to_array_ref(root[&ShardBlob::utf8_lines]),
+            root[&ShardBlob::utf8_lines],
             root[&ShardBlob::utf8_text],
-            to_array_ref(root[&ShardBlob::utf8_text_ends])};
+            root[&ShardBlob::utf8_text_ends]};
 }
 
 namespace {
@@ -1247,7 +1247,7 @@ struct ContentInfo {
 
 ContentInfo content_info_of(BlobView root) {
     auto copy = [](auto column) {
-        auto values = to_array_ref(column);
+        auto values = column;
         return std::vector(values.begin(), values.end());
     };
     return {

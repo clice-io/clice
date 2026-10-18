@@ -104,6 +104,18 @@ inline std::span<const std::uint8_t> blob_bytes(llvm::StringRef data) {
     return {reinterpret_cast<const std::uint8_t*>(data.data()), data.size()};
 }
 
+/// A buffer over `bytes` for a reader of their columns in place, which
+/// needs every column at an address its elements' alignment divides (u64
+/// at most): the bytes themselves when their base keeps it, else an
+/// aligned copy — a blob embedded in another sits at whatever offset the
+/// outer layout gave it.
+inline std::unique_ptr<llvm::MemoryBuffer> in_place_buffer(llvm::StringRef bytes) {
+    if(reinterpret_cast<std::uintptr_t>(bytes.data()) % alignof(std::uint64_t) != 0) {
+        return llvm::MemoryBuffer::getMemBufferCopy(bytes);
+    }
+    return llvm::MemoryBuffer::getMemBuffer(bytes, "", /*RequiresNullTerminator=*/false);
+}
+
 /// The root of a blob of layout `Blob` once its bytes pass the structural
 /// check and carry this build's format version; nullopt, logged as the
 /// rejection of `what`, otherwise. The cross-field checks are the reader's.
