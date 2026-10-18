@@ -216,6 +216,15 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     args.emplace_back(driver.data());
     args.append(spec.argv.begin() + 1, spec.argv.end());
     args.insert(args.begin() + spec.slot, src_path->c_str());
+    // Before C++20, clang defers template bodies on MSVC targets so that
+    // code written for MSVC's lookup rules compiles, but a deferred body has
+    // no AST: every feature inside it goes blind. Placed before the
+    // command's own flags, this one keeps that default out of the cc1
+    // command and leaves deferral to a command asking for it
+    // (`-fdelayed-template-parsing`, clang-cl's `/Zc:twoPhase-`), which
+    // every compile of the file then follows.
+    args.insert(args.begin() + (spec.family == CompilerFamily::Zig ? 2 : 1),
+                "-fno-delayed-template-parsing");
 
     std::expected<std::vector<std::string>, std::string> queried;
     switch(spec.family) {
@@ -717,13 +726,6 @@ Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config) {
     if(config.subcommand) {
         out.argv.push_back(config.subcommand);
     }
-    // Before C++20, clang defers template bodies on MSVC targets so that
-    // code written for MSVC's lookup rules compiles, but a deferred body has
-    // no AST: every feature inside it goes blind. Placed first, the flag
-    // keeps that default out of the cc1 command and leaves deferral to a
-    // command asking for it (`-fdelayed-template-parsing`, clang-cl's
-    // `/Zc:twoPhase-`), which every compile of the file then follows.
-    out.argv.push_back("-fno-delayed-template-parsing");
 
     auto emit = [&](llvm::StringRef fragment) {
         out.argv.push_back(db.strings.save(fragment).data());

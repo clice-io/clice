@@ -1,0 +1,22 @@
+[[answers.tpl.code_actions]]
+kind = "refactor.rewrite.reorderDefinitions"
+title = "Reorder definitions of 'Box' by declaration order"
+compiles = true
+
+[answers.tpl.code_actions.edits]
+"main.cpp" = '''
+
+ template <class T>
+-void Box<T>::b() {
+-    int second = 2;
++void Box<T>::a() {
++    int first = 1;
+ }
+
+ template <class T>
+-void Box<T>::a() {
+-    int first = 1;
++void Box<T>::b() {
++    int second = 2;
+ }
+'''

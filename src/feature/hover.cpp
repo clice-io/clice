@@ -120,7 +120,7 @@ auto accessor_description(const clang::NamedDecl* decl) -> std::string {
     }
     const auto* definition =
         llvm::dyn_cast_if_present<clang::CXXMethodDecl>(method->getDefinition());
-    // A deleted method is a definition without a body.
+    // A deleted method has no body, nor has one whose body is deferred.
     const auto* body = definition
                            ? llvm::dyn_cast_if_present<clang::CompoundStmt>(definition->getBody())
                            : nullptr;

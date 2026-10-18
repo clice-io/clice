@@ -70,7 +70,7 @@ std::unique_ptr<clang::CompilerInvocation>
         arguments.push_back(argument.c_str());
     }
     // A driver command (what a failed toolchain probe falls back to) gets
-    // the flag the probe gives every cc1 command, see Toolchain::probe_argv.
+    // the flag the probe gives every cc1 command, see Toolchain::query_one.
     if(arguments.size() < 2 || llvm::StringRef(arguments[1]) != "-cc1") {
         arguments.insert(arguments.begin() + 1, "-fno-delayed-template-parsing");
     }
@@ -222,6 +222,9 @@ std::unique_ptr<clang::CompilerInvocation>
             // analysis (-Wthread-safety, as abseil builds) crashes on what
             // is left.
             invocation->getDiagnosticOpts().IgnoreWarnings = true;
+            // The parse stops at the cursor, so a body the command defers
+            // would never be parsed and nothing in it would complete.
+            lang_opts.DelayedTemplateParsing = false;
             break;
         }
     }
@@ -391,13 +394,21 @@ public:
                 pp.makeModuleVisible(import->getImportedModule(), import->getLocation());
             }
         }
+        auto& deferred = unit.instance->getSema().LateParsedTemplateMap;
         // Instantiating one deferred template of an imported PCH or module
         // reads all of that file's deferred bodies into Sema, and the writer
         // would store them again: clang reads such a copy back against the
         // wrong file and crashes. The file they came from keeps them.
         if(writes_output(unit.params.kind)) {
-            unit.instance->getSema().LateParsedTemplateMap.remove_if(
-                [](const auto& entry) { return entry.first->isFromASTFile(); });
+            deferred.remove_if([](const auto& entry) { return entry.first->isFromASTFile(); });
+        }
+        // clang ends a deferred definition's range before its body, and
+        // moves the end only when it parses the body: an edit by that range
+        // would cut the body off.
+        for(auto& [function, late]: deferred) {
+            if(function->isLateTemplateParsed()) {
+                late->D->getAsFunction()->setRangeEnd(late->Toks.back().getLocation());
+            }
         }
         clang::MultiplexConsumer::HandleTranslationUnit(context);
     }
