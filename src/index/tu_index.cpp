@@ -1827,20 +1827,20 @@ public:
             }
         }
         // The unit writes no entries for what it reads through the
-        // precompiled header or a module, yet an internal name declared
-        // there is named in the declaring files as much as in the unit's own.
-        // A header module's files (-fmodules) are no unit's to index.
+        // precompiled header or a module, yet a name below external scope
+        // declared there (a header `static`, a header function's class the
+        // unit reaches through `auto`) is named in the declaring files as
+        // much as in the unit's own. A header module's files (-fmodules) are
+        // no unit's to index.
         auto& SM = unit.context().getSourceManager();
         llvm::SmallVector<std::pair<SymbolHash, clang::FileID>> declaring_files;
         for(auto [hash, decl]: internal_decls) {
-            if(focus_only || symbols.find(hash)->second.scope == SymbolScope::FileLocal) {
-                continue;
-            }
             for(const auto* redecl: decl->redecls()) {
                 auto* module = redecl->getOwningModule();
                 auto fid = SM.getFileID(SM.getFileLoc(redecl->getLocation()));
-                if(redecl->isFromASTFile() && !(module && module->isHeaderLikeModule()) &&
-                   fid.isValid() && !unit.from_context(fid)) {
+                if(!focus_only && redecl->isFromASTFile() &&
+                   !(module && module->isHeaderLikeModule()) && fid.isValid() &&
+                   !unit.from_context(fid)) {
                     declaring_files.emplace_back(hash, fid);
                     indexed_fids.push_back(fid);
                 }

@@ -16,3 +16,10 @@ template <class Shape>
 double twice(const Shape& shape) {
     return 2 * shape.radius;
 }
+
+inline auto make() {
+    struct Made {
+        double value;
+    };
+    return Made{1.0};
+}

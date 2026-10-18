@@ -1,13 +1,13 @@
 ["the units index"."$ clice index"]
 stdout = '''
-Indexed 4 translation units in #s: 5 file shards (# KB), 8 symbols.
+Indexed 5 translation units in #s: 6 file shards (# KB), 10 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
 ["internal names across the pch"."$ clice index"]
 stdout = '''
-Indexed 4 translation units in #s: 5 file shards (# KB), 8 symbols.
+Indexed 5 translation units in #s: 6 file shards (# KB), 10 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -255,6 +255,54 @@ stdout = '''
 }
 '''
 exit = 1
+
+["internal names across the pch"."$ clice query definition src/made.cpp:2:19"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Field",
+    "symbol": "#25a69d0b87eb083c path:${WS}/include/shapes.h",
+    "documentation": null,
+    "definition": {
+      "file": "${WS}/include/shapes.h",
+      "startLine": 22,
+      "endLine": 22,
+      "text": "double value"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["internal names across the pch"."$ clice query references include/shapes.h:22:16 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Field",
+    "symbol": "#25a69d0b87eb083c path:${WS}/include/shapes.h",
+    "references": [
+      {
+        "file": "${WS}/include/shapes.h",
+        "line": 22,
+        "context": "        double value;",
+        "function": "make"
+      },
+      {
+        "file": "${WS}/src/made.cpp",
+        "line": 2,
+        "context": "    return make().value;",
+        "function": "made"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
 
 ["the server reads them alike".helper]
 references = [

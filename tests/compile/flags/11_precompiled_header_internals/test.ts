@@ -2,8 +2,9 @@ import { test } from "@clice/tools/testing";
 
 // The units load the target's PCH, whose header declares names of internal
 // linkage and a template. The PCH's builder writes the header's entries;
-// the units write none there, yet use those names and instantiate the
-// template with types of their own, internal and function-local.
+// the units write none there, yet use those names, a header function's
+// own class among them, and instantiate the template with types of their
+// own, internal and function-local.
 
 test("the units index", async (t) => {
     await t.cli("index");
@@ -23,6 +24,9 @@ test("internal names across the pch", async (t) => {
     await t.cli("query references src/local.cpp:3:12 --include-declaration");
     await t.cli("query references src/local.cpp:13:16 --include-declaration");
     await t.cli("query references include/shapes.h:17:22 --include-declaration");
+    // A header function's own class, reached through `auto`.
+    await t.cli("query definition src/made.cpp:2:19");
+    await t.cli("query references include/shapes.h:22:16 --include-declaration");
 });
 
 test("the server reads them alike", async (t) => {

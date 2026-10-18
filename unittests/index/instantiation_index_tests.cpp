@@ -306,15 +306,15 @@ ZEST_CASE(PackParametersMapped) {
         void take(auto... values) { (sink(values), ...); }
         void use() { take(A{}, B{}); }
     )");
-    // Every element of the pack is the one parameter `values`: each
-    // deduces to its type, and none is a parameter of its own.
+    // Every element of the pack is the one parameter `values`, which the
+    // written code already names: each deduces its own type, and none is a
+    // parameter of its own.
     auto records = resolved();
     for(auto type: {"A", "B"}) {
-        ZEXPECT(llvm::is_contained(records, Resolved{"values", TypeDefinition, type, "values"}));
+        ZEXPECT(llvm::is_contained(records, Resolved{"auto", Deduced, type}));
     }
-    ZEXPECT(llvm::none_of(records, [](const Resolved& record) {
-        return record.kind == Reference && record.target == "values";
-    }));
+    ZEXPECT(llvm::none_of(records,
+                          [](const Resolved& record) { return record.target == "values"; }));
 }
 
 ZEST_CASE(MacroDeclaredAutoUnwritten) {
