@@ -1,0 +1,62 @@
+["closed sources"."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 5 file shards (# KB), 4 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["closed sources"."$ clice query references a.cpp:2:22 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "N",
+    "kind": "Namespace",
+    "symbol": "#5c616dc210f5d2d5 path:${WS}/a.h",
+    "references": [
+      {
+        "file": "${WS}/a.cpp",
+        "line": 2,
+        "context": "int use_a() { return N::x; }",
+        "function": "use_a"
+      },
+      {
+        "file": "${WS}/a.h",
+        "line": 2,
+        "context": "namespace N {",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["closed sources"."$ clice query references c.cpp:6:22 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "N",
+    "kind": "Namespace",
+    "symbol": "#5c616dc210f5d2d5 path:${WS}/c.cpp",
+    "references": [
+      {
+        "file": "${WS}/c.cpp",
+        "line": 2,
+        "context": "namespace N {",
+        "function": null
+      },
+      {
+        "file": "${WS}/c.cpp",
+        "line": 6,
+        "context": "int use_c() { return N::z; }",
+        "function": "use_c"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
