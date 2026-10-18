@@ -431,13 +431,7 @@ public:
                 imported.push_back(decl);
             }
             if(it->second.scope != SymbolScope::External) {
-                auto& SM = unit.context().getSourceManager();
-                internal_files.try_emplace(hash,
-                                           SM.getFileID(SM.getFileLoc(described->getLocation())));
-                if(!focus_only && it->second.scope == SymbolScope::TULocal &&
-                   described->isFromASTFile()) {
-                    precompiled_internal.emplace_back(hash, described);
-                }
+                internal_decls.try_emplace(hash, described);
             }
         }
         return hash;
@@ -1392,23 +1386,13 @@ public:
     }
 
     /// The pattern's own declaration of a parameter or a local an
-    /// instantiated body declares: the definition's parameter at the same
-    /// position — a specialization takes its parameters from whichever
-    /// declaration lookup met (`fwd.h` redeclaring the template) — and the
-    /// local whose location instantiation copied.
+    /// instantiated body declares: instantiation copies its location.
     const clang::NamedDecl* in_pattern(const clang::NamedDecl* decl) {
         const auto* function =
             llvm::dyn_cast_if_present<clang::FunctionDecl>(decl->getParentFunctionOrMethod());
         const auto* pattern = function ? function->getTemplateInstantiationPattern() : nullptr;
         if(!pattern || pattern == function) {
             return decl;
-        }
-        if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(decl);
-           param && param->getDeclContext() == function) {
-            const auto* definition = pattern->getDefinition();
-            const auto* source = definition ? definition : pattern;
-            auto index = param->getFunctionScopeIndex();
-            return index < source->getNumParams() ? source->getParamDecl(index) : decl;
         }
         auto key = [](const clang::NamedDecl* named) {
             return std::pair(named->getLocation().getRawEncoding(),
@@ -1419,6 +1403,9 @@ public:
             // A member template's body can be written outside its class,
             // in a redeclaration of the pattern.
             for(const auto* redecl: pattern->redecls()) {
+                for(const auto* param: redecl->parameters()) {
+                    it->second.try_emplace(key(param), param);
+                }
                 for(const auto* local: redecl->decls()) {
                     if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(local)) {
                         it->second.try_emplace(key(named), named);
@@ -1427,7 +1414,18 @@ public:
             }
         }
         auto found = it->second.find(key(decl));
-        return found != it->second.end() ? found->second : decl;
+        if(found == it->second.end()) {
+            return decl;
+        }
+        // A specialization takes its parameters from whichever declaration
+        // lookup met (`fwd.h` redeclaring the template); the body names the
+        // definition's.
+        const auto* definition = pattern->getDefinition();
+        if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(found->second);
+           param && definition && param->getDeclContext() != definition) {
+            return definition->getParamDecl(param->getFunctionScopeIndex());
+        }
+        return found->second;
     }
 
     /// The file holding the definition an instantiation was made from: what
@@ -1607,9 +1605,11 @@ public:
             // that another file declares: only the units walking the
             // instantiation list the key's file among the files naming it
             // (TUManifest::local_fanout).
+            auto& SM = unit.context().getSourceManager();
             auto foreign = [&](SymbolHash hash) {
-                auto it = internal_files.find(hash);
-                return it != internal_files.end() && it->second != home;
+                auto it = internal_decls.find(hash);
+                return it != internal_decls.end() &&
+                       SM.getFileID(SM.getFileLoc(it->second->getLocation())) != home;
             };
             bool names_foreign = llvm::any_of(records, [&](const InstantiationRecord& record) {
                 return foreign(record.target) || (has_from(record.kind) && foreign(record.from));
@@ -1829,12 +1829,18 @@ public:
         // The unit writes no entries for what it reads through the
         // precompiled header or a module, yet an internal name declared
         // there is named in the declaring files as much as in the unit's own.
+        // A header module's files (-fmodules) are no unit's to index.
         auto& SM = unit.context().getSourceManager();
         llvm::SmallVector<std::pair<SymbolHash, clang::FileID>> declaring_files;
-        for(auto [hash, decl]: precompiled_internal) {
+        for(auto [hash, decl]: internal_decls) {
+            if(focus_only || symbols.find(hash)->second.scope == SymbolScope::FileLocal) {
+                continue;
+            }
             for(const auto* redecl: decl->redecls()) {
+                auto* module = redecl->getOwningModule();
                 auto fid = SM.getFileID(SM.getFileLoc(redecl->getLocation()));
-                if(redecl->isFromASTFile() && fid.isValid() && !unit.from_context(fid)) {
+                if(redecl->isFromASTFile() && !(module && module->isHeaderLikeModule()) &&
+                   fid.isValid() && !unit.from_context(fid)) {
                     declaring_files.emplace_back(hash, fid);
                     indexed_fids.push_back(fid);
                 }
@@ -2129,11 +2135,9 @@ private:
     /// module declares, a namespace aside: every unit reopening it
     /// redeclares it.
     llvm::SmallVector<const clang::NamedDecl*> imported;
-    /// The file declaring each symbol registered below external scope.
-    llvm::DenseMap<SymbolHash, clang::FileID> internal_files;
-    /// The internal-linkage symbols registered that the precompiled header
-    /// or an imported module declares.
-    llvm::SmallVector<std::pair<SymbolHash, const clang::NamedDecl*>> precompiled_internal;
+    /// The declaration describing each symbol registered below external
+    /// scope.
+    llvm::DenseMap<SymbolHash, const clang::NamedDecl*> internal_decls;
     llvm::DenseSet<clang::FileID> module_files;
     llvm::DenseMap<std::uint32_t, const clang::NamedDecl*> enclosing_cache;
     llvm::DenseMap<std::uint32_t, const clang::Decl*> top_level_cache;

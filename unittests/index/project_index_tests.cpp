@@ -631,9 +631,13 @@ ZEST_CASE(ReaderFanoutAcrossUnits) {
 
     std::vector<index::BlobDatabase::Blob> puts;
     for(auto tu: units) {
+        auto exported = writer.export_manifest(writer.manifests.find(tu)->second);
+        // The fanout names its files by persisted ids, as the nodes do.
+        ZEXPECT(exported.local_fanout[0].files ==
+                std::vector<VersionID>{exported.tu_fv, VersionID{exported.nodes[1].file}});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
-        index::serialize_manifest(writer.export_manifest(writer.manifests.find(tu)->second), os);
+        index::serialize_manifest(exported, os);
         puts.push_back({index::IndexBlobKind::Manifest, writer.key_of(pool, tu), bytes});
     }
     std::string global;

@@ -391,6 +391,14 @@ struct GlobalBlobMirror {
     std::uint64_t search_generation = 0;
     std::vector<std::uint64_t> search_pending;
     std::vector<std::uint32_t> search_pending_files;
+    std::vector<std::uint32_t> contributed_files;
+    std::vector<std::uint32_t> contributor_ends;
+    std::vector<std::uint8_t> contributors;
+    std::vector<std::uint32_t> fanout_files;
+    std::vector<std::uint32_t> fanout_symbol_ends;
+    std::vector<std::uint64_t> fanout_symbols;
+    std::vector<std::uint32_t> fanout_unit_ends;
+    std::vector<std::uint8_t> fanout_units;
 
     /// Append an entry, its parent outside the table; hashes must arrive
     /// ascending, at most 255 of them.
@@ -627,6 +635,42 @@ ZEST_CASE(UncoveredFileIdRejected) {
     ZASSERT(rejecting.symbol_count() == 0u);
 }
 
+ZEST_CASE(FanoutUnitsRejected) {
+    // A reader indexes the file table with the files the units are listed
+    // for and binary-searches each file's symbols: a file the path table
+    // does not cover, symbols out of order, or ends that misplace a set must
+    // not load.
+    GlobalBlobMirror mirror;
+    mirror.paths = {"/proj/a.h", "/proj/a.cpp"};
+    mirror.fanout_files = {0};
+    mirror.fanout_symbol_ends = {2};
+    mirror.fanout_symbols = {5, 9};
+    mirror.fanout_units = {1, 0, 0, 0, 1, 0, 0, 0};
+    mirror.fanout_unit_ends = {4, 8};
+
+    clice::FileTable pool;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
+    auto loads = [&](const GlobalBlobMirror& blob) {
+        auto bytes = encode(blob);
+        ZASSERT(bytes);
+        index::ProjectIndex loaded;
+        return loaded.load_global(bytes_of(*bytes), pool, pins).has_value();
+    };
+    ZASSERT(loads(mirror));
+
+    auto uncovered = mirror;
+    uncovered.fanout_files = {2};
+    ZEXPECT(!loads(uncovered));
+
+    auto unordered = mirror;
+    unordered.fanout_symbols = {9, 5};
+    ZEXPECT(!loads(unordered));
+
+    auto misplaced = mirror;
+    misplaced.fanout_unit_ends = {4, 7};
+    ZEXPECT(!loads(misplaced));
+}
+
 ZEST_CASE(GlobalSparseColumnsRejected) {
     // The sparse columns name symbols by position: one past the table or
     // out of order would hand a symbol another's arguments or parent.
@@ -781,11 +825,19 @@ ZEST_CASE(UnknownFileVersionsDetected) {
     manifest.contributions = {
         {VersionID{3}, 7}
     };
+    manifest.local_fanout = {
+        {.symbol = 5, .files = {VersionID{3}}}
+    };
     auto imported = manifest;
     ZASSERT(loaded.import_manifest(imported));
     ZASSERT(imported.tu_fv == known);
     ZASSERT(imported.nodes[0].file == known.raw);
     ZASSERT(imported.contributions[0].first == known);
+    ZASSERT(imported.local_fanout[0].files[0] == known);
+
+    auto fanout = manifest;
+    fanout.local_fanout[0].files.push_back(VersionID{2});
+    ZASSERT(!loaded.import_manifest(fanout));
 
     manifest.nodes.push_back({2, ~0u, 2});
     ZASSERT(!loaded.import_manifest(manifest));
