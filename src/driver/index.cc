@@ -10,7 +10,10 @@ import :config.config;
 import :driver.driver;
 import :index.database;
 import :index.instantiation_shard;
+import :index.manifest;
+import :index.project_index;
 import :index.query;
+import :index.search_index;
 import :index.serialization;
 import :index.symbol_query;
 import :index.writer_lock;
@@ -288,78 +291,43 @@ struct InstantiationStat {
     std::size_t keys = 0;
 };
 
-/// The byte split of the shard blobs, mirroring the ShardBlob columns.
-struct ShardColumns {
-    std::uint64_t content = 0;
-    std::uint64_t variants = 0;
-    std::uint64_t symbols = 0;
-    std::uint64_t locals = 0;
-    std::uint64_t occ_entries = 0;
-    std::uint64_t occ_masks = 0;
-    std::uint64_t rel_entries = 0;
-    std::uint64_t rel_masks = 0;
-
-    std::uint64_t total() const {
-        return content + variants + symbols + locals + occ_entries + occ_masks + rel_entries +
-               rel_masks;
-    }
+constexpr std::pair<index::IndexBlobKind, llvm::StringLiteral> stored_kinds[] = {
+    {index::IndexBlobKind::Shard,          "file shards"         },
+    {index::IndexBlobKind::Instantiations, "instantiation shards"},
+    {index::IndexBlobKind::Manifest,       "manifests"           },
+    {index::IndexBlobKind::Global,         "global"              },
+    {index::IndexBlobKind::Search,         "search"              },
+    {index::IndexBlobKind::CDB,            "cdb"                 },
+    {index::IndexBlobKind::Artifacts,      "artifacts"           },
+    {index::IndexBlobKind::Contexts,       "contexts"            },
 };
 
-ShardColumns shard_columns_of(llvm::StringRef bytes) {
-    ShardColumns columns;
-    index::ShardBlob blob;
-    if(!index::deserialize_blob(bytes, blob)) {
-        return columns;
-    }
-    auto range_bytes = [](const index::RangeColumns& rr) -> std::uint64_t {
-        return rr.packed.size() * 4 + rr.begins.size() * 4 + rr.lengths.size() +
-               rr.long_entries.size() * 4 + rr.long_ends.size() * 4;
-    };
-    auto mask_bytes = [](const index::RangeColumns& rr) -> std::uint64_t {
-        return rr.masks32.size() * 4 + rr.masks64.size() * 8 + rr.roaring_offsets.size() * 4 +
-               rr.roaring.size();
-    };
-    columns.content = blob.content.size() + blob.line_lengths.size() + blob.long_lines.size() * 4 +
-                      blob.long_line_lengths.size() * 4;
-    columns.variants = blob.variants.size() * 8;
-    columns.symbols = blob.sym_hashes.size() * 8 + blob.sym_rel_offsets.size() * 4;
-    columns.locals = blob.local_syms.size() * 4 + blob.local_kinds.size() +
-                     blob.local_scopes.size() + blob.local_parents.size() * 8 +
-                     blob.local_flags.size() * 2;
-    for(auto& name: blob.local_names) {
-        columns.locals += name.size();
-    }
-    for(auto& args: blob.local_args) {
-        columns.locals += args.size();
-    }
-    columns.occ_entries = range_bytes(blob.occs) + blob.occ_syms8.size() +
-                          blob.occ_syms16.size() * 2 + blob.occ_syms32.size() * 4;
-    columns.occ_masks = mask_bytes(blob.occs);
-    columns.rel_entries = range_bytes(blob.rels) + blob.rel_kinds.size() +
-                          blob.rel_sym_entries.size() * 4 + blob.rel_sym8.size() +
-                          blob.rel_sym16.size() * 2 + blob.rel_sym32.size() * 4 +
-                          blob.rel_def_entries.size() * 4 + blob.rel_def_begins.size() * 4 +
-                          blob.rel_def_ends.size() * 4;
-    columns.rel_masks = mask_bytes(blob.rels);
-    return columns;
-}
+/// The blobs of one kind stored in the database, whether the loaded index
+/// uses them or not.
+struct StoredBlobs {
+    std::uint64_t count = 0;
+    std::uint64_t bytes = 0;
+};
 
 struct IndexStats {
     std::vector<ShardStat> shards;
-    ShardColumns columns;
+    index::FieldBytes shard_fields;
     std::uint64_t shard_bytes = 0;
     std::uint64_t occurrences = 0;
     std::uint64_t relations = 0;
     std::uint64_t global_bytes = 0;
+    index::FieldBytes global_fields;
     std::uint64_t search_bytes = 0;
+    index::FieldBytes search_fields;
     std::uint64_t manifest_bytes = 0;
+    index::FieldBytes manifest_fields;
     std::uint64_t local_fanout = 0;
-    index::ProjectIndex::GlobalColumns global;
     Histogram references_per_symbol;
     Histogram name_lengths;
     Histogram variants_per_shard;
 
     std::vector<InstantiationStat> instantiations;
+    index::FieldBytes instantiation_fields;
     std::uint64_t instantiation_bytes = 0;
     std::uint64_t resolutions = 0;
     std::uint64_t records = 0;
@@ -370,6 +338,10 @@ struct IndexStats {
     std::uint64_t resolution_uses = 0;
     /// Per template, how many of its instantiations the shards key.
     llvm::DenseMap<index::SymbolHash, std::uint32_t> keys_per_template;
+
+    std::optional<index::StorageUsage> usage;
+    /// Parallel to stored_kinds.
+    std::array<StoredBlobs, std::size(stored_kinds)> stored;
 };
 
 IndexStats collect_stats(Project& project) {
@@ -393,15 +365,9 @@ IndexStats collect_stats(Project& project) {
         stats.occurrences += stat.occurrences;
         stats.relations += stat.relations;
         stats.variants_per_shard.add(stat.variants);
-        auto columns = shard_columns_of(shard.bytes());
-        stats.columns.content += columns.content;
-        stats.columns.variants += columns.variants;
-        stats.columns.symbols += columns.symbols;
-        stats.columns.locals += columns.locals;
-        stats.columns.occ_entries += columns.occ_entries;
-        stats.columns.occ_masks += columns.occ_masks;
-        stats.columns.rel_entries += columns.rel_entries;
-        stats.columns.rel_masks += columns.rel_masks;
+        if(index::ShardBlob blob; index::deserialize_blob(shard.bytes(), blob)) {
+            index::measure_fields(blob, stats.shard_fields);
+        }
         stats.shards.push_back(stat);
     }
     std::ranges::sort(stats.shards, std::ranges::greater{}, &ShardStat::bytes);
@@ -420,6 +386,9 @@ IndexStats collect_stats(Project& project) {
             stats.keys_per_template[key.pattern] += 1;
             return true;
         });
+        if(index::InstantiationBlob blob; index::deserialize_blob(instantiations.bytes(), blob)) {
+            index::measure_fields(blob, stats.instantiation_fields);
+        }
         stats.instantiation_bytes += stat.bytes;
         stats.resolutions += stat.resolutions;
         stats.records += stat.records;
@@ -428,7 +397,6 @@ IndexStats collect_stats(Project& project) {
     }
     std::ranges::sort(stats.instantiations, std::ranges::greater{}, &InstantiationStat::bytes);
 
-    stats.global = project_index.global_columns();
     project_index.for_each_symbol(
         [&](index::SymbolHash, const index::SymbolIdentity& symbol, std::uint32_t references) {
             stats.references_per_symbol.add(references);
@@ -443,13 +411,28 @@ IndexStats collect_stats(Project& project) {
         if(auto blob = project.index_db->read(index::IndexBlobKind::Manifest,
                                               project_index.key_of(project.file_table, tu))) {
             stats.manifest_bytes += blob.buffer->getBufferSize();
+            index::measure_manifest(blob.buffer->getBuffer(), stats.manifest_fields);
         }
     }
-    if(auto blob = project.index_db->read(index::IndexBlobKind::Global, "global")) {
+    auto& db = *project.index_db;
+    if(auto blob = db.read(index::IndexBlobKind::Global, "global")) {
         stats.global_bytes = blob.buffer->getBufferSize();
+        index::measure_global(blob.buffer->getBuffer(), stats.global_fields);
     }
-    if(auto blob = project.index_db->read(index::IndexBlobKind::Search, "search")) {
+    if(auto blob = db.read(index::IndexBlobKind::Search, "search")) {
         stats.search_bytes = blob.buffer->getBufferSize();
+        index::measure_search(blob.buffer->getBuffer(), stats.search_fields);
+    }
+
+    stats.usage = db.usage();
+    for(auto [i, kind]: llvm::enumerate(llvm::make_first_range(stored_kinds))) {
+        auto& stored = stats.stored[i];
+        db.for_each_key(kind, [&](llvm::StringRef key) {
+            if(auto blob = db.read(kind, key)) {
+                stored.count += 1;
+                stored.bytes += blob.buffer->getBufferSize();
+            }
+        });
     }
     return stats;
 }
@@ -463,7 +446,7 @@ void print_stats(const Project& project,
         return whole != 0 ? 100.0 * static_cast<double>(bytes) / static_cast<double>(whole) : 0.0;
     };
     auto column = [&](llvm::StringRef name, std::uint64_t bytes, std::uint64_t whole) {
-        driver::println("  {:<24} {:>10}  {:>5.1f}%",
+        driver::println("  {:<32} {:>10}  {:>5.1f}%",
                         name,
                         format_bytes(bytes),
                         share(bytes, whole));
@@ -507,34 +490,46 @@ void print_stats(const Project& project,
             dropped.size());
     }
 
-    auto payload = stats.columns.total();
+    if(auto& usage = stats.usage) {
+        auto pages = [&](std::uint64_t count) {
+            return format_bytes(count * usage->page_size);
+        };
+        driver::println();
+        driver::println("Database file: {} in {} pages", pages(usage->pages), pages(1));
+        driver::println("  {:<24} {:>10}", "tree pages", pages(usage->tree_pages));
+        driver::println("  {:<24} {:>10}", "large values", pages(usage->overflow_pages));
+        driver::println("  {:<24} {:>10}", "free pages", pages(usage->free_pages));
+    }
     driver::println();
-    driver::println("Shard payload by column ({}; the rest of the file size is format framing):",
-                    format_bytes(payload));
-    column("occurrence rows", stats.columns.occ_entries, payload);
-    column("occurrence masks", stats.columns.occ_masks, payload);
-    column("relation rows", stats.columns.rel_entries, payload);
-    column("relation masks", stats.columns.rel_masks, payload);
-    column("symbol tables", stats.columns.symbols, payload);
-    column("local symbols", stats.columns.locals, payload);
-    column("content + line maps", stats.columns.content, payload);
-    column("variant tables", stats.columns.variants, payload);
+    driver::println("Stored blobs by kind:");
+    for(auto [i, label]: llvm::enumerate(llvm::make_second_range(stored_kinds))) {
+        auto& stored = stats.stored[i];
+        driver::println("  {:<24} {:>10}  {:>7}", label, format_bytes(stored.bytes), stored.count);
+    }
 
-    auto& global = stats.global;
-    auto column_bytes = global.names + global.args + global.signatures + global.bitmaps +
-                        global.instantiation_bitmaps + global.fixed + global.contributors;
-    driver::println();
-    driver::println("Global blob ({}):", format_bytes(stats.global_bytes));
-    column("symbol names", global.names, stats.global_bytes);
-    column("specialization args", global.args, stats.global_bytes);
-    column("function signatures", global.signatures, stats.global_bytes);
-    column("reference bitmaps", global.bitmaps, stats.global_bytes);
-    column("instantiation bitmaps", global.instantiation_bitmaps, stats.global_bytes);
-    column("symbol fixed columns", global.fixed, stats.global_bytes);
-    column("reverse include graph", global.contributors, stats.global_bytes);
-    column("file versions + paths",
-           stats.global_bytes > column_bytes ? stats.global_bytes - column_bytes : 0,
-           stats.global_bytes);
+    // Field by field, largest first; framing is what the fields leave of
+    // the blobs' size.
+    auto fields = [&](llvm::StringRef title, const index::FieldBytes& bytes, std::uint64_t whole) {
+        auto sorted = bytes.fields;
+        std::ranges::stable_sort(sorted, std::ranges::greater{}, [](const auto& field) {
+            return field.second;
+        });
+        std::uint64_t measured = 0;
+        driver::println();
+        driver::println("{} by field ({}):", title, format_bytes(whole));
+        for(auto& [name, size]: sorted) {
+            measured += size;
+            if(size != 0) {
+                column(name, size, whole);
+            }
+        }
+        column("(framing)", whole > measured ? whole - measured : 0, whole);
+    };
+    fields("File shards", stats.shard_fields, stats.shard_bytes);
+    fields("Instantiation shards", stats.instantiation_fields, stats.instantiation_bytes);
+    fields("Manifests", stats.manifest_fields, stats.manifest_bytes);
+    fields("Global blob", stats.global_fields, stats.global_bytes);
+    fields("Search blob", stats.search_fields, stats.search_bytes);
 
     driver::println();
     driver::println("Symbols by reference file count:");
@@ -777,34 +772,43 @@ int run_show_file(Project& project, llvm::StringRef argument) {
         }
     }
 
+    llvm::DenseSet<index::SymbolHash> symbols;
     std::size_t occurrences = 0;
-    shard.for_each_occurrence([&](const index::Occurrence&) {
+    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
+        symbols.insert(occurrence.target);
         occurrences += 1;
         return true;
     });
     std::map<llvm::StringRef, std::size_t> by_kind;
     std::size_t relations = 0;
-    shard.for_each_relation([&](index::SymbolHash, const index::Relation& relation) {
+    shard.for_each_relation([&](index::SymbolHash symbol, const index::Relation& relation) {
+        symbols.insert(symbol);
+        if(relation.target_symbol != 0 && !RelationKind(relation.kind).carries_extent()) {
+            symbols.insert(relation.target_symbol);
+        }
         by_kind[kota::meta::enum_name(relation.kind, "Invalid")] += 1;
         relations += 1;
         return true;
     });
-    index::ShardBlob blob;
-    index::deserialize_blob(shard.bytes(), blob);
+    std::vector<std::pair<index::SymbolHash, index::SymbolIdentity>> locals;
+    shard.for_each_local_symbol([&](index::SymbolHash hash, const index::SymbolIdentity& identity) {
+        locals.emplace_back(hash, identity);
+        return true;
+    });
     driver::println("  symbols={}  local symbols={}  occurrences={}  relations={}",
-                    blob.sym_hashes.size(),
-                    blob.local_syms.size(),
+                    symbols.size(),
+                    locals.size(),
                     occurrences,
                     relations);
     for(auto& [kind, count]: by_kind) {
         driver::println("    {}={}", kind, count);
     }
-    for(std::size_t k = 0; k < blob.local_syms.size(); k += 1) {
+    for(auto& [hash, identity]: locals) {
         driver::println("    local {}  kind={}  name={}{}",
-                        format_hash(blob.sym_hashes[blob.local_syms[k]]),
-                        kind_name(SymbolKind(blob.local_kinds[k])),
-                        blob.local_names[k],
-                        blob.local_args[k]);
+                        format_hash(hash),
+                        kind_name(identity.kind),
+                        identity.name,
+                        identity.args);
     }
     return 0;
 }

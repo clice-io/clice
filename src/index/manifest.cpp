@@ -254,4 +254,10 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     return manifest;
 }
 
+void measure_manifest(llvm::StringRef data, FieldBytes& bytes) {
+    if(ManifestBlob blob; deserialize_blob(data, blob)) {
+        measure_fields(blob, bytes);
+    }
+}
+
 }  // namespace clice::index

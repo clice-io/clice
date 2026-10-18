@@ -322,6 +322,57 @@ struct InstantiationBlob {
     std::vector<std::uint64_t> producer_runs;
 };
 
+/// The bytes the fields of persisted blobs hold, summed over the blobs
+/// measured, by field path (`occs.packed`) in declaration order — how
+/// `clice index stats` splits a blob kind. Scalar fields and vector
+/// headers are left to the framing, the rest of the blobs' size.
+struct FieldBytes {
+    llvm::SmallVector<std::pair<std::string, std::uint64_t>> fields;
+
+    void add(llvm::StringRef name, std::uint64_t bytes) {
+        auto it = llvm::find_if(fields, [&](const auto& field) { return field.first == name; });
+        if(it == fields.end()) {
+            fields.emplace_back(name.str(), bytes);
+        } else {
+            it->second += bytes;
+        }
+    }
+};
+
+template <typename T>
+void measure_fields(const T& blob, FieldBytes& bytes, llvm::StringRef prefix = {});
+
+template <std::size_t I, typename T>
+void measure_field(const T& blob, FieldBytes& bytes, llvm::StringRef prefix) {
+    auto& value = kota::meta::field_of<I>(blob);
+    using Field = std::remove_cvref_t<decltype(value)>;
+    auto name = std::format("{}{}", std::string_view(prefix), kota::meta::field_name<I, T>());
+    if constexpr(std::is_same_v<Field, std::string>) {
+        bytes.add(name, value.size());
+    } else if constexpr(std::is_same_v<Field, std::vector<std::string>>) {
+        // Each string lies out of line behind an offset: its length, its
+        // bytes and a NUL, padded to 4.
+        std::uint64_t total = 0;
+        for(auto& text: value) {
+            total += 4 + llvm::alignTo(4 + text.size() + 1, 4);
+        }
+        bytes.add(name, total);
+    } else if constexpr(requires { value.data(); }) {
+        bytes.add(name, value.size() * sizeof(*value.data()));
+    } else if constexpr(std::is_class_v<Field>) {
+        measure_fields(value, bytes, std::format("{}.", name));
+    } else {
+        static_assert(std::is_arithmetic_v<Field>);
+    }
+}
+
+template <typename T>
+void measure_fields(const T& blob, FieldBytes& bytes, llvm::StringRef prefix) {
+    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        (measure_field<Is>(blob, bytes, prefix), ...);
+    }(std::make_index_sequence<kota::meta::field_count<T>()>{});
+}
+
 /// The bytes of `data` as the span every kota fbs entry point takes.
 inline std::span<const std::uint8_t> blob_bytes(llvm::StringRef data) {
     return {reinterpret_cast<const std::uint8_t*>(data.data()), data.size()};

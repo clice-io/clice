@@ -1340,19 +1340,10 @@ bool ProjectIndex::open(BlobDatabase& db, FileTable& files) {
     return true;
 }
 
-ProjectIndex::GlobalColumns ProjectIndex::global_columns() const {
-    if(!base) {
-        return {};
+void measure_global(llvm::StringRef data, FieldBytes& bytes) {
+    if(GlobalBlob blob; deserialize_blob(data, blob)) {
+        measure_fields(blob, bytes);
     }
-    return {
-        .names = base->names.size(),
-        .args = base->args.size(),
-        .signatures = base->signatures.size(),
-        .bitmaps = base->bitmaps.size(),
-        .instantiation_bitmaps = base->instantiation_images.size(),
-        .fixed = base->count() * (8 + 8 + 1 + 2 + 4 + 4),
-        .contributors = base->contributors.size() + base->contributed_files.size() * (4 + 4),
-    };
 }
 
 }  // namespace clice::index

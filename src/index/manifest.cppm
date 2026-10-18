@@ -5,6 +5,7 @@ module;
 module clice:index.manifest;
 
 import :index.include_tree;
+import :index.serialization;
 import :vfs.file_table;
 
 namespace clice::index {
@@ -97,5 +98,8 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os);
 /// old-format data. FileVersion ids are not resolved here — the loader
 /// drops manifests referencing ids the global table does not know.
 std::optional<TUManifest> deserialize_manifest(llvm::StringRef data);
+
+/// Add the fields of a manifest blob to `bytes`, for `clice index stats`.
+void measure_manifest(llvm::StringRef data, FieldBytes& bytes);
 
 }  // namespace clice::index
