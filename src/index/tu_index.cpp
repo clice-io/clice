@@ -1302,7 +1302,9 @@ public:
         // its body's expressions make and the types its placeholders
         // deduce; it declares nothing its template does not, and the types
         // it substitutes are no references.
-        if(space && !semantics.node(i).node.get<clang::Stmt>()) {
+        const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
+        space_location = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
+        if(space && !stmt) {
             project_placeholder(semantics, i);
             if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
                 add_deduced_type(value);
@@ -1418,12 +1420,19 @@ public:
             return decl;
         }
         // A specialization takes its parameters from whichever declaration
-        // lookup met (`fwd.h` redeclaring the template); the body names the
-        // definition's.
+        // lookup met (`fwd.h` redeclaring the template): the definition's
+        // text names the definition's, that declaration's signature its own.
         const auto* definition = pattern->getDefinition();
         if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(found->second);
-           param && definition && param->getDeclContext() != definition) {
-            return definition->getParamDecl(param->getFunctionScopeIndex());
+           param && definition && param->getDeclContext() != definition &&
+           space_location.isValid()) {
+            auto& SM = unit.context().getSourceManager();
+            auto range = definition->getSourceRange();
+            if(SM.isPointWithin(SM.getExpansionLoc(space_location),
+                                SM.getExpansionLoc(range.getBegin()),
+                                SM.getExpansionLoc(range.getEnd()))) {
+                return definition->getParamDecl(param->getFunctionScopeIndex());
+            }
         }
         return found->second;
     }
@@ -2170,6 +2179,8 @@ private:
     /// definition, when it is a function, is the caller of its calls.
     llvm::DenseMap<clang::FileID, FileIndex>* space = nullptr;
     const clang::FunctionDecl* space_function = nullptr;
+    /// Where the expression being projected is written (in_pattern).
+    clang::SourceLocation space_location;
 
     /// Per pattern function, its parameters and locals by location and kind.
     llvm::DenseMap<

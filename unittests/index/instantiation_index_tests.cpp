@@ -366,6 +366,21 @@ ZEST_CASE(ForeignInternalUnkeyed) {
     ZEXPECT(shard.resolutions().size() == 1u);
 }
 
+ZEST_CASE(SignatureNamesItsParameter) {
+    build(R"(
+        struct V { int front(); };
+        template <typename C>
+        auto first(C& c) -> decltype(c.front());
+        int head(V& v) { return first(v); }
+        template <typename C>
+        auto first(C& c) -> decltype(c.front()) { return c.front(); }
+    )");
+    // The specialization takes its parameter from the declaration: the
+    // declaration's signature names its own `c`, the definition its own, as
+    // the written code does.
+    ZEXPECT(llvm::none_of(resolved(), [](const Resolved& record) { return record.target == "c"; }));
+}
+
 ZEST_CASE(ForeignCallerUnkeyed) {
     add_file("box.h", R"(
         namespace {
@@ -376,20 +391,22 @@ ZEST_CASE(ForeignCallerUnkeyed) {
         }
     )");
     add_file("put.h", R"(
-        void store(int);
         template <typename T>
-        void Box::put(T t) { store(t); }
+        void Box::put(T t) { t.go(); }
     )");
     build(R"(
         #include "box.h"
         #include "put.h"
-        void use() { Box{}.put(1); }
+        struct Ext { void go(); };
+        void use() { Box{}.put(Ext{}); }
     )");
     auto section = section_of("put.h");
     ZASSERT(section);
+    const auto& shard = view.instantiation_shard(*section);
     // The call's target is external, but its caller is the internal `put`
     // box.h declares.
-    ZEXPECT(view.instantiation_shard(*section).keys().empty());
+    ZEXPECT(shard.keys().empty());
+    ZEXPECT(shard.resolutions().size() == 1u);
 }
 
 ZEST_CASE(LocalClassNamesHeader) {
