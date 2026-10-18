@@ -14,7 +14,9 @@ import :index.database;
 import :index.format;
 import :index.indexer;
 import :index.instantiation_shard;
+import :index.search_index;
 import :index.shard;
+import :index.symbol_query;
 import :index.tu_index;
 import :index.tu_manifest;
 import :project.command_resolver;
@@ -698,6 +700,26 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
         ZASSERT(project.index.search_index.contains(hash));
         ZASSERT(!project.index.search_pending.contains(hash));
     }
+}
+
+ZEST_CASE(RebuildNamesThroughUnnamedScopes) {
+    TempDir tmp;
+    tmp.touch("main.cpp",
+              "namespace ns { enum { kSize = 4 }; }\nint main() { return ns::kSize; }\n");
+    open_store(tmp, project);
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ZASSERT(!indexed.data.empty());
+    merge(indexed.data.data(), indexed.data.size());
+    fx.save(IndexStore::SearchRebuild::Idle);
+    auto& search = project.index.search_index;
+    ZASSERT(search.loaded());
+
+    auto hits = [&](llvm::StringRef text) {
+        return search.search(*index::SymbolQuery::parse(text), 10, project.index.workspace)
+            .hits.size();
+    };
+    ZEXPECT(hits("ns::kSize") == 1u);
+    ZEXPECT(hits("::kSize") == 0u);
 }
 
 ZEST_CASE(RebuildKeepsMidBuildChanges) {
