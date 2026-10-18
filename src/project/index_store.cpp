@@ -436,9 +436,10 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     auto record_consumed = [&](std::uint32_t local_id, std::uint64_t content_hash) {
         auto compiled_hash = view.content_hash(local_id);
         if(compiled_hash != 0 && compiled_hash != content_hash) {
-            LOG_WARN("Reject merge for {}: the entries for {} consumed other content than the compiler",
-                     tu_path,
-                     project.file_table.resolve(file_ids_map[local_id]));
+            LOG_WARN(
+                "Reject merge for {}: the entries for {} consumed other content than the compiler",
+                tu_path,
+                project.file_table.resolve(file_ids_map[local_id]));
             return false;
         }
         consumed_hashes[local_id] = content_hash;

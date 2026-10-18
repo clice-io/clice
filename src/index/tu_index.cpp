@@ -247,8 +247,7 @@ IncludeNode TUIndex::node(std::uint32_t i) const {
 }
 
 std::uint32_t TUIndex::section_count() const {
-    return loaded() ? static_cast<std::uint32_t>(view_of(data)[&TUIndexBlob::sections].size())
-                    : 0;
+    return loaded() ? static_cast<std::uint32_t>(view_of(data)[&TUIndexBlob::sections].size()) : 0;
 }
 
 std::uint32_t TUIndex::section_path(std::uint32_t i) const {
@@ -315,9 +314,8 @@ bool TUIndex::verify_shards() const {
 }
 
 std::uint32_t TUIndex::instantiation_count() const {
-    return loaded()
-               ? static_cast<std::uint32_t>(view_of(data)[&TUIndexBlob::instantiations].size())
-               : 0;
+    return loaded() ? static_cast<std::uint32_t>(view_of(data)[&TUIndexBlob::instantiations].size())
+                    : 0;
 }
 
 std::uint32_t TUIndex::instantiation_path(std::uint32_t i) const {

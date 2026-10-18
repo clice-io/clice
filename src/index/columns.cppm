@@ -531,7 +531,9 @@ inline IdColumnWriter id_writer(IdColumn& column, std::uint32_t table_size) {
 }
 
 /// Fill `column` with `ids` into a table of `table_size` entries.
-inline void write_ids(IdColumn& column, llvm::ArrayRef<std::uint32_t> ids, std::uint32_t table_size) {
+inline void write_ids(IdColumn& column,
+                      llvm::ArrayRef<std::uint32_t> ids,
+                      std::uint32_t table_size) {
     auto writer = id_writer(column, table_size);
     for(auto id: ids) {
         writer.add(id);

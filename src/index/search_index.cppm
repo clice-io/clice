@@ -173,7 +173,9 @@ public:
     /// At most `limit` hits, best first. Empty for a query by id or
     /// place. `workspace` is the root the index names files under
     /// relative to (ProjectIndex::workspace).
-    SearchOutcome search(const SymbolQuery& query, std::uint32_t limit, CanonicalRef workspace) const;
+    SearchOutcome search(const SymbolQuery& query,
+                         std::uint32_t limit,
+                         CanonicalRef workspace) const;
 
 private:
     struct View;

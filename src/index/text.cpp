@@ -16,10 +16,7 @@ import :syntax.source_text;
 
 namespace clice::index {
 
-namespace {
-
-
-}  // namespace
+namespace {}  // namespace
 
 std::optional<DeclaredText>
     declared_text(const IndexQuery& index, SymbolHash hash, Fid anchor, RelationKind kind) {
@@ -176,15 +173,16 @@ std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<S
         if(!text) {
             text = std::make_unique<Text>();
             std::optional<llvm::StringRef> content;
-            if(auto source = index.serving(site.file); source && !source->positions.text().empty()) {
+            if(auto source = index.serving(site.file);
+               source && !source->positions.text().empty()) {
                 content = source->positions.text();
             } else if(auto* shard = index.project().shard(site.file)) {
                 content = disk_text(site.path, *shard, text->kept);
             }
             if(content) {
-                text->source.emplace(*content,
-                                     raw_dialect(clang::Language::CXX,
-                                                 clang::LangStandard::lang_cxx26));
+                text->source.emplace(
+                    *content,
+                    raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26));
             }
         }
         if(!text->source || site.range.begin >= text->source->text().size()) {
