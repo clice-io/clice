@@ -11,6 +11,7 @@ import :index.format;
 import :index.instantiation_shard;
 import :index.project_index;
 import :index.project_table;
+import :index.tu_manifest;
 import :semantic.token_class;
 import :support.logging;
 
@@ -500,21 +501,8 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os) {
     // index dropped, and ids are never reused either way.
     llvm::DenseSet<VersionID> referenced;
     for(auto& manifest: llvm::make_second_range(manifests)) {
-        referenced.insert(manifest.tu_version);
-        for(auto& node: manifest.nodes) {
-            referenced.insert(VersionID{node.file});
-        }
-        for(auto& [version, hash]: manifest.contributions) {
-            referenced.insert(version);
-        }
-        for(auto& use: manifest.instantiations) {
-            referenced.insert(use.file);
-        }
-        for(auto& local: manifest.shared_locals) {
-            referenced.insert(local.files.begin(), local.files.end());
-        }
-        referenced.insert(manifest.absent.begin(), manifest.absent.end());
-        referenced.insert(manifest.imports.begin(), manifest.imports.end());
+        for_each_version(manifest,
+                         [&](std::uint32_t version) { referenced.insert(VersionID{version}); });
     }
 
     ProjectTableBlob blob;
@@ -741,75 +729,20 @@ std::optional<VersionID> ProjectIndex::runtime_version(std::uint32_t persisted) 
 }
 
 bool ProjectIndex::import_manifest(TUManifest& manifest) const {
-    auto import = [&](std::uint32_t& id) {
-        auto version = runtime_version(id);
-        if(!version) {
-            return false;
+    bool imported = true;
+    for_each_version(manifest, [&](std::uint32_t& id) {
+        auto version = imported ? runtime_version(id) : std::nullopt;
+        imported = version.has_value();
+        if(imported) {
+            id = version->raw;
         }
-        id = version->raw;
-        return true;
-    };
-    if(!import(manifest.tu_version.raw)) {
-        return false;
-    }
-    for(auto& node: manifest.nodes) {
-        if(!import(node.file)) {
-            return false;
-        }
-    }
-    for(auto& version: llvm::make_first_range(manifest.contributions)) {
-        if(!import(version.raw)) {
-            return false;
-        }
-    }
-    for(auto& version: manifest.absent) {
-        if(!import(version.raw)) {
-            return false;
-        }
-    }
-    for(auto& version: manifest.imports) {
-        if(!import(version.raw)) {
-            return false;
-        }
-    }
-    for(auto& use: manifest.instantiations) {
-        if(!import(use.file.raw)) {
-            return false;
-        }
-    }
-    for(auto& local: manifest.shared_locals) {
-        for(auto& version: local.files) {
-            if(!import(version.raw)) {
-                return false;
-            }
-        }
-    }
-    return true;
+    });
+    return imported;
 }
 
 TUManifest ProjectIndex::export_manifest(const TUManifest& manifest) {
     auto exported = manifest;
-    exported.tu_version.raw = persisted_id(manifest.tu_version);
-    for(auto& node: exported.nodes) {
-        node.file = persisted_id(VersionID{node.file});
-    }
-    for(auto& version: llvm::make_first_range(exported.contributions)) {
-        version.raw = persisted_id(version);
-    }
-    for(auto& version: exported.absent) {
-        version.raw = persisted_id(version);
-    }
-    for(auto& version: exported.imports) {
-        version.raw = persisted_id(version);
-    }
-    for(auto& use: exported.instantiations) {
-        use.file.raw = persisted_id(use.file);
-    }
-    for(auto& local: exported.shared_locals) {
-        for(auto& version: local.files) {
-            version.raw = persisted_id(version);
-        }
-    }
+    for_each_version(exported, [&](std::uint32_t& id) { id = persisted_id(VersionID{id}); });
     return exported;
 }
 
