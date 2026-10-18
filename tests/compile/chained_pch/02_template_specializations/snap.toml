@@ -88,7 +88,7 @@ markdown = '''
 **method** `size` · struct `Holder<Widget>`
 
 ```cpp
-template <> inline int size() const
+inline int size() const
 ```
 '''
 range = "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();"
@@ -461,7 +461,7 @@ markdown = '''
 **method** `size` · struct `Holder<Widget>`
 
 ```cpp
-template <> inline int size() const
+inline int size() const
 ```
 '''
 range = "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();"
@@ -627,7 +627,7 @@ markdown = '''
 **method** `size` · struct `Holder<Widget>`
 
 ```cpp
-template <> inline int size() const
+inline int size() const
 ```
 '''
 range = "total += describe(Widget{}) + Traits<Widget>::value + holder.⟦size⟧();"
