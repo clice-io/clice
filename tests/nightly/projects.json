@@ -152,6 +152,7 @@
           "${CMAKE_TOOLCHAIN}",
           "-DCMAKE_C_COMPILER=clang",
           "-DCMAKE_CXX_COMPILER=clang++",
+          "-DCMAKE_CXX_STANDARD=20",
           "-DCMAKE_PREFIX_PATH=${CHECKOUT}/catch2",
           "-DMP_UNITS_BUILD_CXX_MODULES=ON",
           "-DMP_UNITS_API_CONTRACTS=NONE",
