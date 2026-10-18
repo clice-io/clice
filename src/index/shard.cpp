@@ -474,37 +474,23 @@ CheckResult relations_ok(BlobView root) {
         return std::unexpected("relation kinds do not match the row count");
     }
 
-    // The default LocalSourceRange is the writer's sentinel for pair
-    // relations, which carry no range of their own; every other kind is
-    // written with a real range, so a sentinel there is corruption that
-    // would serve an invalid source range forever.
-    for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
-        auto range = table.columns.range_of(entry);
-        if(is_no_range(range.begin, range.end) && !table.kind_of(entry).isBetweenSymbol()) {
-            return std::unexpected("no-range sentinel on a relation that carries a range");
-        }
-    }
-
     // Readers place a payload by its block's counts and the payload bits
     // before it, trusting both: one wrong count would hand every later
     // relation of the block another relation's payload.
-    RelationTable::Cursor counted;
     auto blocks = (table.size() + rank_block - 1) / rank_block;
-    if(table.target_ranks.size() != blocks || table.extent_ranks.size() != blocks) {
-        return std::unexpected("relation payload counts do not match the blocks");
+    if(auto ok = ids_ok(table.target_ranks, blocks, table.targets.size() + 1); !ok) {
+        return ok;
     }
+    if(auto ok = ids_ok(table.extent_ranks, blocks, table.extent_heads.size() + 1); !ok) {
+        return ok;
+    }
+    RelationTable::Cursor counted;
     for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
         if(entry % rank_block == 0 && (table.target_ranks[entry / rank_block] != counted.target ||
                                        table.extent_ranks[entry / rank_block] != counted.extent)) {
             return std::unexpected("relation payload counts are wrong");
         }
         table.advance(counted, entry);
-    }
-    if(auto ok = ids_ok(table.target_ranks, blocks, counted.target + 1); !ok) {
-        return ok;
-    }
-    if(auto ok = ids_ok(table.extent_ranks, blocks, counted.extent + 1); !ok) {
-        return ok;
     }
     if(auto ok = ids_ok(table.targets, counted.target, table.sym_hashes.size()); !ok) {
         return ok;
@@ -515,33 +501,37 @@ CheckResult relations_ok(BlobView root) {
        !escapes_ok(table.extent_heads, extent_escape, table.far_extents, table.far_begins.size())) {
         return std::unexpected("relation extent columns do not line up");
     }
-    RelationTable::Cursor cursor;
-    for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
-        auto k = cursor.extent;
-        auto relation = table.decode(entry, cursor);
-        if(k == cursor.extent) {
-            continue;
-        }
-        auto extent = relation.definition_range();
-        bool escaped = table.extent_heads[k] == extent_escape;
-        if(escaped ? table.extent_lengths[k] != 0 || fits_extent_columns(relation.range, extent)
-                   : table.extent_heads[k] > relation.range.begin) {
-            return std::unexpected("relation extent is not the canonical one");
-        }
-        if(extent.end < extent.begin || extent.end > content_size) {
-            return std::unexpected("definition range past the content");
-        }
-    }
 
     // Entries of one relation group two-way merge under the full (kind,
     // begin, end, payload) key with equal-key entries combined at write time,
     // so the key must ascend strictly within each group — out-of-order or
     // repeated entries would mis-merge silently instead of being rejected.
-    cursor = {};
+    RelationTable::Cursor cursor;
     for(std::size_t id = 0; id < table.sym_hashes.size(); id += 1) {
         std::tuple<std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t> prev{};
         for(auto entry = table.offsets[id]; entry < table.offsets[id + 1]; entry += 1) {
+            auto k = cursor.extent;
             auto relation = table.decode(entry, cursor);
+            // The default LocalSourceRange is the writer's sentinel for pair
+            // relations, which carry no range of their own; every other kind
+            // is written with a real range, so a sentinel there is corruption
+            // that would serve an invalid source range forever.
+            if(is_no_range(relation.range.begin, relation.range.end) &&
+               !table.kind_of(entry).isBetweenSymbol()) {
+                return std::unexpected("no-range sentinel on a relation that carries a range");
+            }
+            if(k != cursor.extent) {
+                auto extent = relation.definition_range();
+                bool escaped = table.extent_heads[k] == extent_escape;
+                if(escaped
+                       ? table.extent_lengths[k] != 0 || fits_extent_columns(relation.range, extent)
+                       : table.extent_heads[k] > relation.range.begin) {
+                    return std::unexpected("relation extent is not the canonical one");
+                }
+                if(extent.end < extent.begin || extent.end > content_size) {
+                    return std::unexpected("definition range past the content");
+                }
+            }
             std::tuple key{static_cast<std::uint8_t>(relation.kind),
                            relation.range.begin,
                            relation.range.end,
