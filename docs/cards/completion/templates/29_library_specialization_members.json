@@ -1,0 +1,60 @@
+{
+  "id": "completion/templates/29_library_specialization_members",
+  "topic": "completion",
+  "subtopic": "templates",
+  "title": "Members through a dependent specialization",
+  "summary": "The members of a dependent specialization of a class template show the arguments the code names it with",
+  "prose": "After `m.find(1)->` over a `lib::map<int, T>`, `first` is a `const int` and `second` a `T`, not the pair's own `_T1` and `_T2`.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "lib.h",
+      "text": "#pragma once\n\nnamespace lib {\ntemplate <class _Tp>\nstruct vector {\n    using value_type = _Tp;\n    void push_back(const value_type& __x);\n    _Tp& front();\n};\n\ntemplate <class _T1, class _T2>\nstruct pair {\n    _T1 first;\n    _T2 second;\n};\n\ntemplate <class _Key, class _Val>\nstruct map {\n    pair<const _Key, _Val>* find(const _Key& key);\n};\n}  // namespace lib\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"lib.h\"\n\ntemplate <class T>\nvoid f(lib::map<int, T>& m) {\n    m.find(1)->;\n}\n",
+      "markers": [
+        {
+          "name": "members",
+          "begin": 82,
+          "end": 82,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "members",
+          "marker": "members",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "first",
+                  "kind": "Field",
+                  "detail": "const int"
+                },
+                {
+                  "label": "second",
+                  "kind": "Field",
+                  "detail": "T"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
