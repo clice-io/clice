@@ -111,6 +111,11 @@ ZEST_CASE(ManifestFanoutRejected) {
     mirror = valid;
     mirror.local_file_ends = {1, 1};
     ZASSERT(!decodes(mirror));
+
+    // The symbols key a DenseMap at load.
+    mirror = valid;
+    mirror.local_symbols = {5, ~0ull};
+    ZASSERT(!decodes(mirror));
 }
 
 ZEST_CASE(ManifestCorruptUsesRejected) {
@@ -395,6 +400,7 @@ struct GlobalBlobMirror {
     std::vector<std::uint32_t> contributor_ends;
     std::vector<std::uint8_t> contributors;
     std::vector<std::uint64_t> fanout_symbols;
+    std::vector<std::uint32_t> fanout_set_ends;
     std::vector<std::uint32_t> fanout_file_ends;
     std::vector<std::uint8_t> fanout_files;
 
@@ -634,11 +640,13 @@ ZEST_CASE(UncoveredFileIdRejected) {
 }
 
 ZEST_CASE(FanoutFilesRejected) {
-    // A reader binary-searches the symbols for the files the fanouts list:
-    // symbols out of order, or ends that misplace a file set, must not load.
+    // A reader binary-searches the symbols for the file sets the fanouts
+    // list: symbols out of order, or ends that misplace a symbol's sets or
+    // a set's files, must not load.
     GlobalBlobMirror mirror;
     mirror.paths = {"/proj/a.h", "/proj/a.cpp"};
     mirror.fanout_symbols = {5, 9};
+    mirror.fanout_set_ends = {1, 2};
     mirror.fanout_files = {0, 0, 0, 0, 1, 0, 0, 0};
     mirror.fanout_file_ends = {4, 8};
 
@@ -659,6 +667,10 @@ ZEST_CASE(FanoutFilesRejected) {
     auto misplaced = mirror;
     misplaced.fanout_file_ends = {4, 7};
     ZEXPECT(!loads(misplaced));
+
+    auto overrun = mirror;
+    overrun.fanout_set_ends = {1, 3};
+    ZEXPECT(!loads(overrun));
 }
 
 ZEST_CASE(GlobalSparseColumnsRejected) {

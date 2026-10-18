@@ -586,12 +586,13 @@ ZEST_CASE(LazyShardsStayPut) {
     ZASSERT(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
 }
 
-ZEST_CASE(ReaderFanoutAcrossUnits) {
-    // A `static` in a shared header: each unit's manifest names the files
-    // its own copy reaches, and a reader steps from one unit to the other
-    // through the units the persisted table lists as naming the header —
-    // b.cpp among them, which reads the header through its precompiled
-    // header and contributes nothing there.
+ZEST_CASE(FanoutAcrossUnits) {
+    // One hash in two places: a `static` in util.h, which a.cpp includes
+    // and b.cpp reads through its precompiled header, and a namespace of
+    // the same name nested in an anonymous namespace of other.h, which
+    // only c.cpp includes. A walk steps from a.cpp to b.cpp through the
+    // header they share, and never into c.cpp's files — in the writer and
+    // in a reader of the persisted table.
     TempDir tmp;
     auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
     ZASSERT(store);
@@ -602,32 +603,54 @@ ZEST_CASE(ReaderFanoutAcrossUnits) {
     clice::FileTable pool;
     index::ProjectIndex writer;
     writer.global_generation = 3;
-    auto header = pool.intern(Spelling::absolute("/proj/util.h"));
-    auto header_fv = pool.intern_version(header, 0xaaaa);
+    auto util = pool.intern_version(pool.intern(Spelling::absolute("/proj/util.h")), 0xaaaa);
+    auto other = pool.intern_version(pool.intern(Spelling::absolute("/proj/other.h")), 0xbbbb);
     llvm::SmallVector<Fid> units;
-    for(auto name: {"/proj/a.cpp", "/proj/b.cpp"}) {
+    for(auto name: {"/proj/a.cpp", "/proj/b.cpp", "/proj/c.cpp"}) {
         auto tu = pool.intern(Spelling::absolute(name));
+        auto header = llvm::StringRef(name).ends_with("c.cpp") ? other : util;
         index::TUManifest manifest;
         manifest.global_gen = 3;
         manifest.tu_fv = pool.intern_version(tu, 0x1111);
         manifest.nodes = {
             {manifest.tu_fv.raw, ~0u, 1},
-            {header_fv.raw,      0,   1},
+            {header.raw,         0,   1},
         };
         manifest.contributions = {
             {manifest.tu_fv, 1}
         };
-        if(llvm::StringRef(name).ends_with("a.cpp")) {
-            manifest.contributions.emplace_back(header_fv, 2);
+        if(llvm::StringRef(name).ends_with("b.cpp")) {
+            manifest.imports = {header};
         } else {
-            manifest.imports = {header_fv};
+            manifest.contributions.emplace_back(header, 2);
         }
         manifest.local_fanout = {
-            {.symbol = helper, .files = {manifest.tu_fv, header_fv}}
+            {.symbol = helper, .files = {manifest.tu_fv, header}}
         };
         writer.apply_manifest(pool, tu, std::move(manifest));
         units.push_back(tu);
     }
+
+    auto check = [&](const index::ProjectIndex& index, clice::FileTable& table) {
+        auto ids = [&](std::initializer_list<llvm::StringRef> names) {
+            llvm::SmallVector<Fid> fids;
+            for(auto name: names) {
+                fids.push_back(table.intern(Spelling::absolute(name)));
+            }
+            llvm::sort(fids);
+            return fids;
+        };
+        for(auto group: {ids({"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}),
+                         ids({"/proj/c.cpp", "/proj/other.h"})}) {
+            for(auto start: group) {
+                llvm::SmallVector<Fid> reached;
+                index.each_fanout_file(helper, start, [&](Fid file) { reached.push_back(file); });
+                llvm::sort(reached);
+                ZEXPECT(reached == group);
+            }
+        }
+    };
+    check(writer, pool);
 
     std::vector<index::BlobDatabase::Blob> puts;
     for(auto tu: units) {
@@ -650,18 +673,16 @@ ZEST_CASE(ReaderFanoutAcrossUnits) {
     clice::FileTable files;
     index::ProjectIndex reader;
     ZASSERT(reader.open(*db, files));
-    for(auto start: {"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}) {
-        llvm::SmallVector<Fid> reached;
-        reader.each_fanout_file(helper, files.intern(Spelling::absolute(start)), [&](Fid file) {
-            reached.push_back(file);
-        });
-        ZEXPECT(reached.size() == 3u);
-        for(auto name: {"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}) {
-            auto file = files.find(Spelling::absolute(name));
-            ZASSERT(file);
-            ZEXPECT(llvm::is_contained(reached, *file));
-        }
-    }
+    check(reader, files);
+
+    // A unit leaving takes its set along: c.cpp's files no longer answer.
+    writer.remove_manifest(pool, units[2]);
+    llvm::SmallVector<Fid> reached;
+    writer.each_fanout_file(helper, pool.intern(Spelling::absolute("/proj/c.cpp")), [&](Fid file) {
+        reached.push_back(file);
+    });
+    ZEXPECT(reached.size() == 1u);
+    ZEXPECT(writer.fanout_sets.find(helper)->second.size() == 2u);
 }
 
 };  // ZEST_SUITE(ProjectIndex)

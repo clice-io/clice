@@ -231,7 +231,8 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     }
     std::uint32_t begin = 0;
     for(std::size_t i = 0; i < blob.local_symbols.size(); i += 1) {
-        if(i > 0 && blob.local_symbols[i] <= blob.local_symbols[i - 1]) {
+        if(reserved_key(blob.local_symbols[i]) ||
+           (i > 0 && blob.local_symbols[i] <= blob.local_symbols[i - 1])) {
             return std::nullopt;
         }
         auto end = blob.local_file_ends[i];

@@ -169,10 +169,12 @@ struct ProjectIndex {
     /// loaded precompiled header -> the TUs reading it (TUManifest::imports).
     llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> importers;
 
-    /// Derived from `manifests`: a symbol below external scope -> the files
-    /// the TUs' local fanouts list for it, each with how many list it
-    /// (TUManifest::local_fanout).
-    llvm::DenseMap<SymbolHash, llvm::SmallDenseMap<Fid, std::uint32_t, 2>> fanout_files;
+    /// Derived from `manifests`: a symbol below external scope -> the sets
+    /// of files the TUs' local fanouts list for it, each with how many list
+    /// it (TUManifest::local_fanout). Kept apart, as two TUs can name one
+    /// hash in files they do not share: a namespace nested in an anonymous
+    /// namespace has no file in its hash.
+    llvm::DenseMap<SymbolHash, std::map<std::vector<Fid>, std::uint32_t>> fanout_sets;
 
     /// Derived from `manifests`: file fid -> (TU fid -> the instantiation
     /// use it names there).
@@ -235,11 +237,12 @@ struct ProjectIndex {
     void each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
 
     /// The files holding entries of a symbol below external scope: `anchor`,
-    /// a file that holds some, and every file a TU's local fanout
-    /// (TUManifest::local_fanout) lists for it — from `fanout_files` in a
-    /// writer, from the global blob's persisted copy in a reader. A `static`
-    /// in a header is thus reached in every unit including the header or
-    /// reading it through a precompiled header. Each file once.
+    /// a file that holds some, and the files of every TU local fanout
+    /// (TUManifest::local_fanout) for it that lists a file reached — from
+    /// `fanout_sets` in a writer, from the global blob's persisted copy in a
+    /// reader. A `static` in a header is thus reached in every unit
+    /// including the header or reading it through a precompiled header.
+    /// Each file once.
     void each_fanout_file(SymbolHash hash, Fid anchor, llvm::function_ref<void(Fid)> visit) const;
 
     /// A TU's manifest: held by a writer, fetched on first use by a reader
