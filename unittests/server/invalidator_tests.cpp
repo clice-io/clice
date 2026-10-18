@@ -14,6 +14,7 @@ import :server.invalidator;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
+import :vfs.file_table;
 import :worker.pool;
 
 namespace clice::testing {

@@ -8,6 +8,7 @@ import :project.project;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.file_system;
+import :vfs.file_table;
 
 namespace clice::testing {
 namespace {

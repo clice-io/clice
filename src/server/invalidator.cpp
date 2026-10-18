@@ -6,6 +6,7 @@ module clice;
 
 import :sched.families.pcm;
 import :server.invalidator;
+import :vfs.file_table;
 
 namespace clice {
 

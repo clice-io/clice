@@ -36,6 +36,7 @@ import :unittests.utils.temp_dir;
 import :unittests.utils.tu_index_blob;
 import :unittests.utils;
 import :vfs.cache_store;
+import :vfs.file_table;
 import :worker.pool;
 
 namespace clice::testing {

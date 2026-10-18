@@ -6,6 +6,7 @@ module clice:project.index_store;
 
 import :project.command_resolver;
 import :project.project;
+import :vfs.file_table;
 
 namespace clice {
 

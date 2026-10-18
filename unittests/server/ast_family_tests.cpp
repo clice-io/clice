@@ -18,6 +18,7 @@ import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;
+import :vfs.file_table;
 import :worker.probe;
 
 namespace clice::testing {

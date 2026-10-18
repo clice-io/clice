@@ -21,6 +21,7 @@ import :support.logging;
 import :support.timer;
 import :syntax.preamble;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 import :worker.common;
 import :worker.protocol;

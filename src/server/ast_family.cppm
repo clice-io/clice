@@ -15,6 +15,7 @@ import :server.editor_context;
 import :server.session;
 import :server.session_store;
 import :support.signal;
+import :vfs.file_table;
 import :worker.pool;
 
 namespace clice {

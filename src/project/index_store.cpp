@@ -20,6 +20,7 @@ import :support.json;
 import :support.logging;
 import :support.timer;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {

@@ -12,6 +12,26 @@ import :vfs.path;
 
 namespace clice {
 
+/// One dependency of a compilation artifact.
+///
+/// `version` names the FileVersion the build actually consumed (interned
+/// from the worker-reported content hash); its check is paid once per
+/// turn for every artifact and TU referencing it (FileTable::
+/// check_version). An invalid version means the build saw no nameable
+/// bytes: `missing` distinguishes "the file was absent" — a place a failed
+/// lookup looked, or a file gone by the capture — (appearing is the
+/// change) from "the bytes could not be hashed" (stale until a rebuild's
+/// capture converges).
+struct DepState {
+    Fid path_id;
+    VersionID version;
+    bool missing = false;
+};
+
+/// Staleness snapshot for compilation artifacts (PCH, PCM, AST, synthesized
+/// header preambles): the consumed versions, checked via deps_changed.
+using DepsSnapshot = llvm::SmallVector<DepState>;
+
 /// The master-side table of every file the workspace touches: a path is
 /// interned once to a compact fid, and downstream code references files
 /// by fid. A fid names a file's identity (CanonicalPath): symlinked and,

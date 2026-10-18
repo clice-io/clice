@@ -13,6 +13,7 @@ import :sched.families.turun;
 import :support.logging;
 import :support.timer;
 import :vfs.file_system;
+import :vfs.file_table;
 import :worker.protocol;
 
 namespace clice {

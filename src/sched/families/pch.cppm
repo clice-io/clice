@@ -7,6 +7,7 @@ module clice:sched.families.pch;
 import :project.project;
 import :sched.blame_budget;
 import :sched.graph;
+import :vfs.file_table;
 import :worker.pool;
 
 namespace clice {

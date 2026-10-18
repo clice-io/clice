@@ -26,26 +26,6 @@ namespace clice {
 /// Bump to discard all cached artifacts after incompatible format changes.
 constexpr inline std::uint32_t cache_format_version = 15;
 
-/// One dependency of a compilation artifact.
-///
-/// `version` names the FileVersion the build actually consumed (interned
-/// from the worker-reported content hash); its check is paid once per
-/// turn for every artifact and TU referencing it (FileTable::
-/// check_version). An invalid version means the build saw no nameable
-/// bytes: `missing` distinguishes "the file was absent" — a place a failed
-/// lookup looked, or a file gone by the capture — (appearing is the
-/// change) from "the bytes could not be hashed" (stale until a rebuild's
-/// capture converges).
-struct DepState {
-    Fid path_id;
-    VersionID version;
-    bool missing = false;
-};
-
-/// Staleness snapshot for compilation artifacts (PCH, PCM, AST, synthesized
-/// header preambles): the consumed versions, checked via deps_changed.
-using DepsSnapshot = llvm::SmallVector<DepState>;
-
 /// Context for compiling a header file that lacks its own CDB entry.
 struct HeaderContext {
     Fid host_path_id;  ///< Source file acting as host.
