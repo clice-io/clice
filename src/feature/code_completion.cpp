@@ -149,6 +149,17 @@ const clang::NamedDecl* shown_declaration(const clang::NamedDecl* decl) {
     return llvm::cast<clang::NamedDecl>(shown);
 }
 
+/// The policy Sema prints its completion strings with.
+auto completion_policy(clang::Sema& sema) -> clang::PrintingPolicy {
+    auto policy = sema.getPrintingPolicy();
+    policy.AnonymousTagNameStyle =
+        llvm::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
+    policy.SuppressStrongLifetime = true;
+    policy.SuppressUnwrittenScope = true;
+    policy.CleanUglifiedParameters = true;
+    return policy;
+}
+
 /// The completion string Sema builds for a class template, with the
 /// template parameters of `pattern`: Sema reads them from the first
 /// declaration, whichever it is.
@@ -157,12 +168,7 @@ const clang::CodeCompletionString&
                           const clang::CodeCompletionResult& candidate,
                           const clang::ClassTemplateDecl& pattern,
                           clang::Sema& sema) {
-    auto policy = sema.getPrintingPolicy();
-    policy.AnonymousTagNameStyle =
-        llvm::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
-    policy.SuppressStrongLifetime = true;
-    policy.SuppressUnwrittenScope = true;
-    policy.CleanUglifiedParameters = true;
+    auto policy = completion_policy(sema);
     auto copy = [&](llvm::StringRef text) {
         return builder.getAllocator().CopyString(text);
     };
@@ -1888,8 +1894,6 @@ public:
                 readable.emplace(sema.getASTContext(), display_options);
                 display_options.readable = &*readable;
             }
-            // A declaration's types, named as code in its scope names them; a
-            // variable's deduced from its initializer.
             display_options.scope = declaration->getDeclContext();
             const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration);
             display_options.source = variable ? variable->getInit() : nullptr;
@@ -2050,12 +2054,7 @@ public:
         const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(sema.CurContext);
         if(record && context.getKind() == clang::CodeCompletionContext::CCC_ClassStructUnion &&
            sema.getCurScope()->isClassScope()) {
-            auto policy = sema.getPrintingPolicy();
-            policy.AnonymousTagNameStyle =
-                std::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
-            policy.SuppressStrongLifetime = true;
-            policy.SuppressUnwrittenScope = true;
-            policy.CleanUglifiedParameters = true;
+            auto policy = completion_policy(sema);
             for(const auto* method: overridable(*record)) {
                 clang::CodeCompletionBuilder builder(getAllocator(), getCodeCompletionTUInfo());
                 auto& pattern =

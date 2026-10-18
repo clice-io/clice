@@ -73,7 +73,8 @@ struct Options {
     /// code is.
     const clang::DeclContext* scope = nullptr;
 
-    /// type(): the expression a deduced type comes from, which names the
+    /// type(): the expression the type is read from — what a deduced type is
+    /// deduced from, an expression shown with its own — which names the
     /// specialization a member typedef of its class template is read through
     /// (ReadableTypes::readable).
     const clang::Expr* source = nullptr;

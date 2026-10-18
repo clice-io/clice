@@ -98,13 +98,13 @@ public:
     /// see say nothing, and differ between the units including it.
     llvm::SmallVector<const clang::NamedDecl*, 4> lookup(const clang::CallExpr* expr);
 
-    /// The overloads a dependent call being written, whose arguments end
-    /// after `written`, may call — clang's signature help ignores such a
-    /// call: the callee's resolved overload set, at the first argument whole,
-    /// past it the overloads that take another argument; for a member call
-    /// those its object binds best.
-    llvm::SmallVector<const clang::NamedDecl*, 4> callees(const clang::Expr* callee,
-                                                          unsigned written);
+    /// The overloads a dependent call being written, its arguments so far
+    /// `written`, may call — clang's signature help ignores such a call: the
+    /// callee's resolved overload set, at the first argument whole, past it
+    /// the overloads that take another argument; for a member call those its
+    /// object binds best.
+    llvm::SmallVector<const clang::NamedDecl*, 4>
+        callees(const clang::Expr* callee, llvm::ArrayRef<const clang::Expr*> written);
 
     /// Resolve the base type through pseudo-instantiation, then look the
     /// member up in the resolved record (e.g. `this->foo()` inherited from

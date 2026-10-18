@@ -221,6 +221,21 @@ tests/signature_help/call_contexts/13_class_template_members
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent member calls**
+
+Inside a template, a call through an object of dependent type shows the overloads its class template declares
+
+Past the first argument only the overloads taking another one stay. Clang has
+no signature for such a call until the template is instantiated.
+
+```case
+tests/signature_help/call_contexts/17_dependent_member_calls
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Parameter Display

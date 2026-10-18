@@ -1619,6 +1619,13 @@ public:
         return count >= FD->getMinRequiredArguments() && takes(FD, count);
     }
 
+    /// Whether an argument expands a pack (`f(xs...)`), which may instantiate
+    /// to any number of arguments: fixed-arity filtering would remove viable
+    /// overloads.
+    static bool expands_pack(llvm::ArrayRef<const clang::Expr*> arguments) {
+        return llvm::any_of(arguments, llvm::IsaPred<clang::PackExpansionExpr>);
+    }
+
     /// Drop the function overloads `viable` rejects. Non-function candidates
     /// (e.g. a callable object's variable) stay: arity says nothing about
     /// them.
@@ -1726,26 +1733,23 @@ public:
         if(llvm::isa<clang::CXXOperatorCallExpr>(expr)) {
             return {};
         }
-        /// An argument pack (`f(xs...)`) may instantiate to any number of
-        /// arguments; fixed-arity filtering would remove viable overloads.
-        bool has_pack_argument =
-            std::ranges::any_of(expr->arguments(), [](const clang::Expr* argument) {
-                return llvm::isa<clang::PackExpansionExpr>(argument);
-            });
+        bool pack = expands_pack({expr->getArgs(), expr->getNumArgs()});
         return callee_candidates(expr->getCallee(),
                                  [&](const clang::FunctionDecl* FD, bool member) {
-                                     return has_pack_argument ||
-                                            arity_viable(FD, expr->getNumArgs(), member);
+                                     return pack || arity_viable(FD, expr->getNumArgs(), member);
                                  });
     }
 
     /// The overloads a dependent `callee` may call, its call written as far
-    /// as `written` arguments: at the first argument every one, past it those
-    /// that take one more; for a member call those its object binds best.
-    llvm::SmallVector<const clang::NamedDecl*, 4> written_call_candidates(const clang::Expr* callee,
-                                                                          unsigned written) {
+    /// as the `written` arguments: at the first argument every one, past it
+    /// those that take one more; for a member call those its object binds
+    /// best.
+    llvm::SmallVector<const clang::NamedDecl*, 4>
+        written_call_candidates(const clang::Expr* callee,
+                                llvm::ArrayRef<const clang::Expr*> written) {
+        bool pack = expands_pack(written);
         return callee_candidates(callee, [&](const clang::FunctionDecl* FD, bool member) {
-            return written == 0 || takes(FD, passed(FD, written + 1, member));
+            return written.empty() || pack || takes(FD, passed(FD, written.size() + 1, member));
         });
     }
 
@@ -3432,8 +3436,9 @@ llvm::SmallVector<const clang::NamedDecl*, 4>
     return instantiator.call_candidates(expr);
 }
 
-llvm::SmallVector<const clang::NamedDecl*, 4> TemplateResolver::callees(const clang::Expr* callee,
-                                                                        unsigned written) {
+llvm::SmallVector<const clang::NamedDecl*, 4>
+    TemplateResolver::callees(const clang::Expr* callee,
+                              llvm::ArrayRef<const clang::Expr*> written) {
     PseudoInstantiator instantiator(context, resolved, options);
     return instantiator.written_call_candidates(callee, written);
 }

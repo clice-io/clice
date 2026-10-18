@@ -548,7 +548,7 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
     const auto& options = request.display;
     const auto* entity = templated(decl);
     /// The types the card states, named as code in the declaration's scope
-    /// names them; a variable's deduced from its initializer.
+    /// names them.
     auto shown = options;
     shown.scope = decl->getDeclContext();
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
@@ -1918,14 +1918,11 @@ auto hover_info(CompilationUnit& unit,
                     }
                 }
                 if(!deduced.isNull()) {
-                    /// What it is deduced from: decltype's operand, else the
-                    /// initializer of the variable it declares.
                     const auto* written = node->data.get<clang::TypeLoc>();
                     const auto* operand =
                         written ? llvm::dyn_cast<clang::DecltypeType>(written->getTypePtr())
                                 : nullptr;
-                    const auto* var =
-                        llvm::dyn_cast_if_present<clang::VarDecl>(node->owning_decl());
+                    const auto* var = llvm::dyn_cast<clang::VarDecl>(node->owning_decl());
                     const clang::Expr* source = operand ? operand->getUnderlyingExpr()
                                                 : var   ? var->getInit()
                                                         : nullptr;

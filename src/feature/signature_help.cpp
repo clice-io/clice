@@ -353,7 +353,7 @@ public:
                    std::uint32_t current_arg) {
         start(context);
         for(const auto* candidate: candidates) {
-            if(const auto* function = candidate->getAsFunction()) {
+            if(const auto* function = candidate->getUnderlyingDecl()->getAsFunction()) {
                 call(*function, current_arg, /*braced=*/false, /*name=*/"");
             }
         }
@@ -759,52 +759,46 @@ void document(protocol::SignatureInformation& signature,
 }
 
 /// A call around the cursor whose callee is dependent, which Sema leaves
-/// unanswered: the callee, and how many arguments come before the cursor's.
+/// unanswered: the callee, and the arguments before the cursor's.
 struct DependentCall {
     const clang::Expr* callee;
-    std::uint32_t written;
+    llvm::ArrayRef<const clang::Expr*> written;
 };
 
-/// The innermost recovery expression around a location, the traversal kept
-/// to the nodes around it.
+/// The innermost recovery expression ending at a location.
 struct RecoveryFinder : clang::RecursiveASTVisitor<RecoveryFinder> {
-    RecoveryFinder(const clang::SourceManager& sources, clang::SourceLocation location) :
-        sources(sources), location(location) {}
+    explicit RecoveryFinder(clang::SourceLocation end) : end(end) {}
 
-    const clang::SourceManager& sources;
-    clang::SourceLocation location;
+    clang::SourceLocation end;
     const clang::RecoveryExpr* found = nullptr;
 
-    bool around(clang::SourceRange range) const {
-        return range.isValid() && !sources.isBeforeInTranslationUnit(location, range.getBegin()) &&
-               !sources.isBeforeInTranslationUnit(range.getEnd(), location);
-    }
-
-    bool TraverseDecl(clang::Decl* decl) {
-        return !decl || !around(decl->getSourceRange()) ||
-               clang::RecursiveASTVisitor<RecoveryFinder>::TraverseDecl(decl);
-    }
-
-    bool TraverseStmt(clang::Stmt* stmt) {
-        return !stmt || !around(stmt->getSourceRange()) ||
-               clang::RecursiveASTVisitor<RecoveryFinder>::TraverseStmt(stmt);
-    }
-
     bool VisitRecoveryExpr(clang::RecoveryExpr* expr) {
-        found = expr;
+        if(expr->getEndLoc() == end) {
+            found = expr;
+        }
         return true;
     }
 };
 
-/// The innermost call around `offset`, when its callee is dependent. The
-/// parse stops at the cursor: the call is left a recovery expression of its
-/// callee and the arguments written before it, in a declaration this compile
-/// parsed.
+/// The innermost call whose argument list holds the cursor, when its callee
+/// is dependent. The parse stops at the cursor, at the start of an
+/// identifier the cursor ends or is inside of, which leaves the call a
+/// recovery expression of its callee and the arguments written before it,
+/// ending there.
 auto dependent_call_at(CompilationUnit& unit, std::uint32_t offset)
     -> std::optional<DependentCall> {
-    RecoveryFinder finder(unit.context().getSourceManager(), unit.focus_file().location(offset));
+    auto focus = unit.focus_file();
+    auto content = focus.content();
+    auto typed = offset;
+    while(typed > 0 && clang::isAsciiIdentifierContinue(content[typed - 1])) {
+        typed -= 1;
+    }
+    auto stop = focus.location(typed < offset && llvm::isDigit(content[typed]) ? offset : typed);
+    RecoveryFinder finder(stop);
     for(auto* decl: unit.tu()->noload_decls()) {
-        finder.TraverseDecl(decl);
+        if(focus.offset(decl->getBeginLoc())) {
+            finder.TraverseDecl(decl);
+        }
     }
     if(!finder.found) {
         return std::nullopt;
@@ -813,10 +807,20 @@ auto dependent_call_at(CompilationUnit& unit, std::uint32_t offset)
     if(parts.empty() || !parts.front()->isTypeDependent()) {
         return std::nullopt;
     }
-    return DependentCall{
-        .callee = parts.front(),
-        .written = static_cast<std::uint32_t>(parts.size() - 1),
-    };
+    // The cursor is in the call's own argument list, right after its `(` or
+    // a `,`, not in one of a call written there that clang left no node of
+    // (`push(Node<T>(a, `).
+    auto& sources = unit.context().getSourceManager();
+    auto separator =
+        clang::Lexer::findNextToken(parts.back()->getEndLoc(), sources, unit.lang_options());
+    if(!separator || !separator->isOneOf(clang::tok::l_paren, clang::tok::comma)) {
+        return std::nullopt;
+    }
+    auto next = clang::Lexer::findNextToken(separator->getLocation(), sources, unit.lang_options());
+    if(next && sources.isBeforeInTranslationUnit(next->getLocation(), focus.location(typed))) {
+        return std::nullopt;
+    }
+    return DependentCall{.callee = parts.front(), .written = parts.drop_front()};
 }
 
 auto macro_signature(const MacroCall& call, const Documentation& doc) -> protocol::SignatureHelp {
@@ -881,7 +885,9 @@ auto signature_help(CompilationParams params,
             auto candidates =
                 unit->get<types::TemplateResolver>().callees(call->callee, call->written);
             SignatureCollector(help, sources, complete_options)
-                .dependent(unit->context(), candidates, call->written);
+                .dependent(unit->context(),
+                           candidates,
+                           static_cast<std::uint32_t>(call->written.size()));
         }
     }
 
