@@ -552,8 +552,8 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
     auto resolve = [&](index::SymbolHash hash) {
         return ctx.query.symbol_info(hash, **file);
     };
-    SourceText source((*text)->getBuffer(), ctx.contexts.dialect(**file));
-    auto outline = feature::index_document_symbols(source, entries, resolve, {.locals = false});
+    SourceText buffer((*text)->getBuffer(), ctx.contexts.dialect(**file));
+    auto outline = feature::index_document_symbols(buffer, entries, resolve, {.locals = false});
     // The entry of a `#define` or a module declaration is where its symbol
     // is declared.
     llvm::DenseMap<std::uint32_t, index::SymbolHash> declared;

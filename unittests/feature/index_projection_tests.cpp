@@ -60,7 +60,7 @@ auto projected_outline() -> std::vector<feature::DocumentSymbol> {
 /// that the index records too, modifiers included; both under the
 /// Tester's C++20.
 void expect_tokens_match_ast() {
-    auto& source = unit->file_text(unit->focus_file().file());
+    auto& source = unit->focus_file().text();
     auto ast =
         feature::semantic_token_stream(source, feature::semantic_token_facts(*unit, {}, true), {});
     SourceText served(source.text(), dialect_of("main.cpp", false, "c++20"));

@@ -962,7 +962,7 @@ auto document_symbols(CompilationUnit& unit,
         return bounds % 2 == 1;
     };
     auto& semantics = unit.get<Semantics>();
-    auto& source = unit.file_text(unit.focus_file().file());
+    auto& source = unit.focus_file().text();
     const auto& lexical = source.lexical();
     std::vector<LexicalInfo::Directive> macros;
     std::vector<LexicalInfo::Directive> marks;

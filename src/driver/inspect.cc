@@ -210,7 +210,7 @@ struct TokenCheck {
 std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& unit,
                                                                const Config& config) {
     auto legend = feature::semantic_token_legend(config.semantic_tokens);
-    auto& source = unit.file_text(unit.focus_file().file());
+    auto& source = unit.focus_file().text();
     auto content = source.text();
     auto ast =
         named_tokens(feature::semantic_token_stream(source,

@@ -11,8 +11,6 @@ import :support.logging;
 
 namespace clice {
 
-namespace lsp = kota::ipc::lsp;
-
 std::shared_ptr<Session> SessionStore::find(Fid path_id) const {
     auto it = sessions.find(path_id);
     return it != sessions.end() ? it->second : nullptr;

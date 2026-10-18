@@ -1308,7 +1308,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         auto [it, inserted] = late.try_emplace(path);
         if(inserted) {
             if(document) {
-                it->second = index::scan_text(document->text, names);
+                it->second = index::scan_text(document->text().str(), names);
             } else if(auto text = vfs::read(path)) {
                 it->second = index::scan_text((*text)->getBuffer().str(), names);
             }
