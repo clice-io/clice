@@ -379,7 +379,7 @@ ZEST_CASE(TwoImportedVersions) {
     ZASSERT(project.importers.empty());
 }
 
-ZEST_CASE(GlobalRoundTripWithRealMerge) {
+ZEST_CASE(TableRoundTripWithRealMerge) {
     add_focus("main.cpp", R"(
         int global_value = 42;
         int reader() { return global_value; }
@@ -419,7 +419,7 @@ ZEST_CASE(GlobalRoundTripWithRealMerge) {
     ZASSERT(llvm::is_contained(reference_files(loaded, symbol), fresh_id->raw));
 }
 
-ZEST_CASE(GlobalColumnsRoundTrip) {
+ZEST_CASE(TableColumnsRoundTrip) {
     // Parents index the table, or a sparse column when outside it; only the
     // symbols having arguments or instantiation files list them; a file set
     // stores up to two ids raw and more as a roaring image. Every one reads

@@ -2019,7 +2019,7 @@ ZEST_CASE(LmdbLoadServesAcrossSaves) {
     ZASSERT(!it->second.bytes().empty());
 }
 
-ZEST_CASE(CorruptGlobalCondemnsDatabase) {
+ZEST_CASE(CorruptTableCondemnsDatabase) {
     // Page corruption under the project table: read fails, contains() still
     // says present, corrupted() confirms. load must condemn the database
     // (deleted on close) and continue on a fresh empty one instead of
@@ -2166,7 +2166,7 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
     ZASSERT(snapshot.buffer->getBuffer().contains("main.cpp"));
 }
 
-ZEST_CASE(UnreadableGlobalPreserved) {
+ZEST_CASE(UnreadableTablePreserved) {
     TempDir tmp;
     tmp.touch("main.cpp", "int keep() { return 1; }\n");
     auto src = tmp.path("main.cpp");
