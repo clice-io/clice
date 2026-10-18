@@ -140,6 +140,15 @@ describe("sweep", () => {
         expect(places.calls.map((c) => text.slice(c.begin - 2, c.begin))).toEqual(["f(", "g("]);
     });
 
+    test("places skip the names module declarations declare", () => {
+        const text = "module;\n#include <x>\nexport module a.b:c;\nint module_x;\n";
+        const words = placesOf("m.cppm", text).points.map(
+            (point) =>
+                `${/\w*$/.exec(text.slice(0, point.begin))?.[0] ?? ""}${/^\w*/.exec(text.slice(point.begin))?.[0] ?? ""}`,
+        );
+        expect(words).toEqual(["module", "module", "module_x"]);
+    });
+
     test("places spread over a file with more identifiers than points", () => {
         const text = Array.from({ length: 100 }, (_, i) => `int v${String(i)};\n`).join("");
         const points = placesOf("m.cpp", text).points.map((point) => point.begin);

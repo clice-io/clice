@@ -83,6 +83,10 @@ export type Request = (typeof REQUESTS)[number] | (typeof NAVIGATION)[number] | 
 
 const SOURCE = /\.(c|cc|cpp|cxx|c\+\+|cppm|ixx|cu)$/;
 
+/// The name a module declaration declares: the server answers about it from
+/// the index of module interfaces, which inspect does not build.
+const MODULE_NAME = /^[ \t]*(?:export[ \t]+)?module[ \t]+([\w.:]+)/dgm;
+
 /// A deterministic shuffle: the same seed picks the same files.
 function shuffled<T>(items: readonly T[], seed: string): T[] {
     let state = 2166136261;
@@ -139,11 +143,19 @@ export function placesOf(
         range: false,
         text,
     });
+    const moduleNames = [...text.matchAll(MODULE_NAME)].map(
+        (match) => match.indices?.[1] ?? [0, 0],
+    );
     const identifiers: number[] = [];
     const members: number[] = [];
     const calls: number[] = [];
     tokens.forEach((token, index) => {
-        if (token.directive || token.kind !== "ident" || KEYWORDS.has(word(index))) {
+        if (
+            token.directive ||
+            token.kind !== "ident" ||
+            KEYWORDS.has(word(index)) ||
+            moduleNames.some(([begin, end]) => token.begin >= begin && token.end <= end)
+        ) {
             return;
         }
         identifiers.push(token.begin + Math.floor((token.end - token.begin) / 2));
