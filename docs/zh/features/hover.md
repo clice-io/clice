@@ -315,6 +315,20 @@ tests/hover/deduced_types/06_generic_lambdas
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**库中的别名**
+
+变量的类型保留初始化器写出的别名，但不保留库留给自己使用的别名
+
+`values.size()` 显示为 `std::vector<int>::size_type`，后面跟着它所代表的类型；`front()` 返回的 `__alloc_traits` 成员别名显示为 `int &`，类型特征的结果 `invoke_result_t<…>` 则显示为它计算出的类型。别名所代表的类若是库留给自己使用的，就在别名后写出这个类：`std::vector<int>::iterator` 即 `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`。
+
+```case
+tests/hover/deduced_types/14_library_aliases
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 模板
@@ -367,6 +381,20 @@ Concept 和受约束的形参会显示约束；`Addable auto` 占位符会显示
 
 ```case
 tests/hover/templates/04_concept_constraints
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**通过依赖特化访问的成员**
+
+经由类模板的依赖特化访问的成员，按代码写出的模板实参显示
+
+对于 `lib::vector<Point<T>>`，`push_back` 属于 `lib::vector<Point<T>>`，其 `value_type` 为 `Point<T>`，而不是模板自身的 `_Tp`；`map<int, T>` 查找到的 `pair<const int, T>` 中，`second` 为 `T`。
+
+```case
+tests/hover/templates/10_library_specialization_members
 ```
 
 <!-- END CAPABILITY -->

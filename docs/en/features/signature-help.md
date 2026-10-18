@@ -323,6 +323,20 @@ tests/signature_help/parameters/07_standard_forwarding
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Members through a dependent specialization**
+
+A member of a class template called through a dependent specialization of it shows the arguments the code names it with
+
+`pts.assign(` over a `lib::vector<Point<T>>` takes a `const Point<T> &`, not the template's own `const _Tp &`.
+
+```case
+tests/signature_help/parameters/13_specialization_members
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Documentation

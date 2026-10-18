@@ -399,6 +399,20 @@ tests/completion/templates/15_concept_requirements
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**通过依赖特化访问的成员**
+
+类模板依赖特化的成员，按代码写出的模板实参显示
+
+对于 `lib::map<int, T>`，输入 `m.find(1)->` 后，`first` 为 `const int`，`second` 为 `T`，而不是 pair 自身的 `_T1` 和 `_T2`。
+
+```case
+tests/completion/templates/29_library_specialization_members
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 重写与类外定义

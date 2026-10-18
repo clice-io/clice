@@ -187,7 +187,7 @@ tests/inlay_hints/type_hints/01_auto_variables
 
 Aliases keep their spelling, and an over-long type keeps what of it fits
 
-A type too long for the limit falls back to its sugared name, then writes the template arguments that do not fit as `…`, keeping its outermost name; a type whose outermost name does not fit shows nothing. Default template arguments never print. The limit is `inlay_hints.max_length.types`; `0` lifts it.
+A type too long for the limit writes the template arguments that do not fit as `…`, keeping its outermost name; a type whose outermost name does not fit shows nothing. Default template arguments never print. The limit is `inlay_hints.max_length.types`; `0` lifts it.
 
 ```case
 tests/inlay_hints/type_hints/02_type_sugar
@@ -279,9 +279,11 @@ tests/inlay_hints/type_hints/09_dependent_auto
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Scope suppression**
+**Namespaces**
 
-Namespace qualifiers drop from hints; class scopes stay
+A hint names a type with the namespaces code at the hint would write, but `std`
+
+Class scopes stay, as do the namespaces inside `std` (`chrono::seconds`, `pmr::string`); a namespace around the hint or one a using-directive there brings in is left out, an anonymous one never shows. Template arguments read the same way.
 
 ```case
 tests/inlay_hints/type_hints/10_scopes
@@ -310,7 +312,7 @@ tests/inlay_hints/type_hints/12_instantiated_templates
 The bindings of a container's elements keep the aliases the container was declared with
 
 Iterating a `std::map<std::string, Point>` shows each key as a
-`const std::string`, not as `basic_string<char>`. Two aliases of one type,
+`const string`, not as `basic_string<char>`. Two aliases of one type,
 or an alias and the type itself, leave it unaliased.
 
 ```case
@@ -329,6 +331,62 @@ A specialization the library names with an alias shows that alias, `string` rath
 
 ```case
 tests/inlay_hints/type_hints/16_standard_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Library member aliases**
+
+A member alias of a class template gives way to what it names where that reads shorter
+
+`vector<int>::size_type` shows as `size_t` and `vector<int>::reference` as `int &`, but `vector<int>::iterator` stays: what it names is the library's own. An alias a namespace declares (`int64_t`, the code's `UserId`) or a class that is no template (`steady_clock::time_point`) stays as named; one that only stands for a builtin (`duration<long>::rep`) shows the builtin.
+
+```case
+tests/inlay_hints/type_hints/22_library_aliases
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Library internals**
+
+A type the library keeps to itself shows by the public name for it, or not at all
+
+A reserved name in namespace `std` or a reserved one, and a member of a class with one, is the library's own: `__alloc_traits<allocator<int>>::value_type &` shows as `int &`. A class of its own that an algorithm returns shows as the member alias naming it in a class of its arguments or of the initializer, `vector<int>::iterator` for `__normal_iterator<int *, vector<int>>`; one nothing public names gets no hint.
+
+```case
+tests/inlay_hints/type_hints/23_library_internals
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Computed types**
+
+A type a trait computes shows as what it computes
+
+The member `type` of a class template specialization (`common_type<seconds, seconds>::type`), an alias template that computes its type (`enable_if_t<true, int>`) and a builtin template (`__type_pack_element`) give way to their result, named as the code names it: `chrono::seconds`, `int`.
+
+```case
+tests/inlay_hints/type_hints/24_computed_types
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Members of a base**
+
+A member alias of a base class reads through the class the code reaches it in
+
+`map.find(key)` gives a `Map<int, long>::iterator`, not the `MapBase<Map<int, long>, int, long>::iterator` its base declares.
+
+```case
+tests/inlay_hints/type_hints/25_base_member_aliases
 ```
 
 <!-- END CAPABILITY -->

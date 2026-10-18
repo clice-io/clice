@@ -317,6 +317,20 @@ tests/hover/deduced_types/06_generic_lambdas
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Library aliases**
+
+The type of a variable keeps the alias its initializer names, but none the library keeps to itself
+
+`values.size()` reads as `std::vector<int>::size_type` with what it stands for after it; the member alias of `__alloc_traits` that `front()` returns reads as `int &`, and a trait's result, `invoke_result_t<…>`, as what it computes. An alias over a class the library keeps to itself names that class after it: `std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`.
+
+```case
+tests/hover/deduced_types/14_library_aliases
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Templates
@@ -369,6 +383,20 @@ A concept and a constrained parameter show the constraint; an `Addable auto` pla
 
 ```case
 tests/hover/templates/04_concept_constraints
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Members through a dependent specialization**
+
+A member of a class template reached through a dependent specialization of it reads the arguments the code names it with
+
+Over `lib::vector<Point<T>>`, `push_back` belongs to `lib::vector<Point<T>>` and its `value_type` is `Point<T>`, not the template's own `_Tp`; the `second` of the `pair<const int, T>` a `map<int, T>` finds is a `T`.
+
+```case
+tests/hover/templates/10_library_specialization_members
 ```
 
 <!-- END CAPABILITY -->
