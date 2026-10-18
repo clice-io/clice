@@ -72,6 +72,14 @@ llvm::StringRef anchored(unsigned id,
     return strings.save(Spelling(value, anchor).str());
 }
 
+/// Whether clice discards every option of `args`, none of them unknown.
+bool discards_all(llvm::ArrayRef<const char*> args) {
+    auto options = kota::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
+    return ranges::all_of(option::table().parse(args, options), [](const auto& parsed) {
+        return parsed && parsed->id != option::OPT_UNKNOWN && is_discarded_option(parsed->id);
+    });
+}
+
 ArgClass classify(unsigned id, llvm::ArrayRef<const char*> values) {
     /// -fmodule-file has two shapes: `name=path` names a prebuilt module
     /// (clice builds its own PCMs — irrelevant), a bare path is a header
@@ -79,6 +87,13 @@ ArgClass classify(unsigned id, llvm::ArrayRef<const char*> values) {
     if(id == option::OPT_fmodule_file) {
         bool named = values.size() == 1 && llvm::StringRef(values[0]).contains('=');
         return named ? ArgClass::Discarded : ArgClass::Semantic;
+    }
+    /// -Wp hands its values to the preprocessor, whose -MD and -MMD take the
+    /// file they write as their argument (the table reads it as an input):
+    /// Kbuild's `-Wp,-MMD,<depfile>`, in every command, goes as
+    /// `-MMD -MF <depfile>` does, or each command would key a probe of its own.
+    if(id == option::OPT_Wp_COMMA && discards_all(values)) {
+        return ArgClass::Discarded;
     }
     if(is_discarded_option(id)) {
         return ArgClass::Discarded;

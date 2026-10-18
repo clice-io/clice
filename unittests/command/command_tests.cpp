@@ -848,6 +848,16 @@ ZEST_CASE(DependencyScanFilter) {
     EXPECT_NOT_CONTAINS(argv, "main.d");
 };
 
+ZEST_CASE(PreprocessorDependencyFilter) {
+    /// Kbuild hands the preprocessor its dependency file through -Wp.
+    EXPECT_STRIP("gcc -Wp,-MMD,arch/x86/.main.o.d -std=gnu11 main.cpp", "gcc -std=gnu11 {}");
+    EXPECT_STRIP("clang++ -Wp,-MD,main.d -Wp,-MT,main.o,-MP -Wp,-MQmain.o main.cpp", "clang++ {}");
+    /// What else a -Wp hands over keeps it.
+    EXPECT_STRIP("g++ -Wp,-D_FORTIFY_SOURCE=2 main.cpp", "g++ -Wp,-D_FORTIFY_SOURCE=2 {}");
+    EXPECT_STRIP("g++ -Wp,-MMD,main.d,-DNDEBUG main.cpp", "g++ -Wp,-MMD,main.d,-DNDEBUG {}");
+    EXPECT_STRIP("g++ -Wp,-fclice-unknown main.cpp", "g++ -Wp,-fclice-unknown {}");
+};
+
 ZEST_CASE(ModuleFilter) {
     /// A named module mapping is discarded (clice builds its own PCMs);
     /// the bare header-unit form stays part of the frontend semantics.
