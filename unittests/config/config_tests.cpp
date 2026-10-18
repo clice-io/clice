@@ -274,7 +274,7 @@ ZEST_CASE(BornValidDefaults) {
     ZEXPECT(config.code_completion.insert_includes.value == true);
     ZEXPECT(config.code_completion.insert_imports.value == true);
     ZEXPECT(config.code_completion.limit.value == 0u);
-    ZEXPECT(config.references.limit.value == 1000u);
+    ZEXPECT(config.references.limit.value == 2000u);
 }
 
 ZEST_CASE(FinalizeDerivesPaths) {

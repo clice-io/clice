@@ -283,7 +283,7 @@ struct ReferencesConfig {
                          "keeps the locations in the file it is asked from "
                          "before any other. `clice query references` lists "
                          "every one.")
-    <std::uint32_t> limit = 1000;
+    <std::uint32_t> limit = 2000;
 };
 
 /// A rule after finalize(): patterns compiled, paths anchored.

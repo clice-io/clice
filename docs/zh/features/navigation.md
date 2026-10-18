@@ -392,7 +392,7 @@ tests/navigation/implementation/05_dependent_calls
 
 ## 查找引用
 
-“查找引用”会列出所有使用该符号名称的位置，包括其声明。方法的引用包括通过它所重写的方法发起的调用，因为这些调用可能分派到它；类的引用包括其构造函数的名称。编辑器最多收到其中 1000 处，优先保留发起请求的文件中的位置（上限由 [`[references]` 配置节](../guide/configuration.md#references)设定）；`clice query references` 会列出全部位置。
+“查找引用”会列出所有使用该符号名称的位置，包括其声明。方法的引用包括通过它所重写的方法发起的调用，因为这些调用可能分派到它；类的引用包括其构造函数的名称。编辑器最多收到其中 2000 处，优先保留发起请求的文件中的位置（上限由 [`[references]` 配置节](../guide/configuration.md#references)设定）；`clice query references` 会列出全部位置。
 
 <!-- BEGIN GENERATED ITEMS: navigation/references -->
 

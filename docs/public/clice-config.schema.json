@@ -123,7 +123,7 @@
             "$ref": "#/$defs/ReferencesConfig",
             "description": "The [references] section: what find references answers.",
             "default": {
-                "limit": 1000
+                "limit": 2000
             }
         },
         "rules": {
@@ -528,7 +528,7 @@
                     "minimum": 0,
                     "maximum": 4294967295,
                     "description": "Maximum number of locations a references request answers with; `0` means no limit. A reply cut short keeps the locations in the file it is asked from before any other. `clice query references` lists every one.",
-                    "default": 1000
+                    "default": 2000
                 }
             },
             "additionalProperties": false
