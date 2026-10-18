@@ -530,11 +530,11 @@ struct SearchIndex::View {
     }
 
     llvm::StringRef name(std::uint32_t doc) const {
-        return back_to_back(names, name_ends, doc);
+        return slice(names, name_ends, doc);
     }
 
     llvm::StringRef arguments(std::uint32_t doc) const {
-        return back_to_back(args, args_ends, doc);
+        return slice(args, args_ends, doc);
     }
 
     /// The portable name of the file a doc of internal linkage lives in;
@@ -552,7 +552,7 @@ struct SearchIndex::View {
     Bitmap decode(llvm::ArrayRef<std::uint8_t> arena,
                   llvm::ArrayRef<std::uint32_t> ends,
                   std::uint32_t i) const {
-        auto decoded = read_postings(back_to_back(arena, ends, i), count());
+        auto decoded = read_postings(slice(arena, ends, i), count());
         if(!decoded) {
             if(!damaged) {
                 LOG_WARN("A search index posting list does not decode; the index is rebuilt");

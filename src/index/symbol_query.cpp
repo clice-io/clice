@@ -360,7 +360,7 @@ llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern) {
     return result;
 }
 
-void SymbolQuery::anchor(const Spelling& root) {
+void SymbolQuery::resolve_paths(const Spelling& root) {
     for(auto& wanted: paths) {
         if(wanted == "." || wanted == ".." ||
            llvm::any_of(wanted, [](char c) { return path::is_separator(c); })) {

@@ -373,7 +373,7 @@ std::size_t ProjectIndex::symbol_count() const {
     return count;
 }
 
-Symbol& ProjectIndex::touch(SymbolHash hash) {
+Symbol& ProjectIndex::edit(SymbolHash hash) {
     auto [it, inserted] = changed.try_emplace(hash);
     if(!inserted) {
         return it->second;
@@ -448,7 +448,7 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
             return true;
         }
         bool known = find_symbol(hash).has_value();
-        auto& target = touch(hash);
+        auto& target = edit(hash);
         bool symbol_changed = !known;
         bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
         if(target.name.empty() && !identity.name.empty()) {
@@ -496,7 +496,7 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
         return true;
     });
     index.for_each_instantiation_file([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
-        auto& target = touch(hash);
+        auto& target = edit(hash);
         for(auto file: files) {
             target.instantiation_files.add(file_ids_map[file].raw);
         }
@@ -852,7 +852,7 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
     llvm::sort(manifest.absent);
     manifest.absent.erase(llvm::unique(manifest.absent), manifest.absent.end());
     for(auto fv: manifest.absent) {
-        probed[files.version(fv).fid].insert(tu_path_id);
+        absent_lookups[files.version(fv).fid].insert(tu_path_id);
     }
     for(auto fv: manifest.imports) {
         importers[files.version(fv).fid].insert(tu_path_id);
@@ -865,7 +865,7 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
         instantiation_uses[path_id][tu_path_id] = use.use;
         affected.push_back(path_id);
     }
-    units[unit_of(files, tu_path_id)] = tu_path_id;
+    units[unit_hash(files, tu_path_id)] = tu_path_id;
     manifests[tu_path_id] = std::move(manifest);
 
     llvm::sort(affected);
@@ -886,10 +886,10 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
         affected.push_back(path_id);
     }
     for(auto fv: it->second.absent) {
-        auto probe_it = probed.find(files.version(fv).fid);
+        auto probe_it = absent_lookups.find(files.version(fv).fid);
         probe_it->second.erase(tu_path_id);
         if(probe_it->second.empty()) {
-            probed.erase(probe_it);
+            absent_lookups.erase(probe_it);
         }
     }
     // Modules built at different times may have read different versions
@@ -920,7 +920,7 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
         erase_unit(instantiation_uses, path_id, tu_path_id);
         affected.push_back(path_id);
     }
-    units.erase(unit_of(files, tu_path_id));
+    units.erase(unit_hash(files, tu_path_id));
     manifests.erase(it);
 
     llvm::sort(affected);
@@ -1001,7 +1001,7 @@ void ProjectIndex::for_each_file_of_local(SymbolHash hash,
     }
 }
 
-const TUManifest* ProjectIndex::tu_manifest(Fid tu) const {
+const TUManifest* ProjectIndex::manifest(Fid tu) const {
     if(!db) {
         auto it = manifests.find(tu);
         return it != manifests.end() ? &it->second : nullptr;
@@ -1016,7 +1016,7 @@ const TUManifest* ProjectIndex::tu_manifest(Fid tu) const {
             return pin != base->manifest_fvs.end() &&
                    base->manifest_gens[pin - base->manifest_fvs.begin()] == manifest.global_gen;
         };
-        if(auto blob = db->read(IndexBlobKind::Manifest, key_of(*files, tu))) {
+        if(auto blob = db->read(BlobKind::Manifest, key_of(*files, tu))) {
             if(auto manifest = deserialize_manifest(blob.buffer->getBuffer());
                manifest && pinned(*manifest)) {
                 it->second = std::move(*manifest);
@@ -1096,7 +1096,7 @@ const Shard* ProjectIndex::shard(Fid file) const {
     // A miss is remembered as an empty entry so the database is asked
     // once per file.
     auto& slot = shards[file];
-    if(auto blob = db->read(IndexBlobKind::Shard, key_of(*files, file))) {
+    if(auto blob = db->read(BlobKind::Shard, key_of(*files, file))) {
         slot = Shard::from_buffer(std::move(blob.buffer));
     }
     return slot.loaded() ? &slot : nullptr;
@@ -1111,7 +1111,7 @@ const InstantiationShard* ProjectIndex::instantiation_shard(Fid file) const {
         return nullptr;
     }
     auto& slot = instantiations[file];
-    if(auto blob = db->read(IndexBlobKind::Instantiations, key_of(*files, file))) {
+    if(auto blob = db->read(BlobKind::Instantiations, key_of(*files, file))) {
         slot = InstantiationShard::from_buffer(std::move(blob.buffer));
     }
     return slot.loaded() ? &slot : nullptr;
@@ -1127,7 +1127,7 @@ bool ProjectIndex::bind_search(std::unique_ptr<llvm::MemoryBuffer> blob) {
 }
 
 bool ProjectIndex::open(BlobDatabase& db, FileTable& files) {
-    auto global = db.read(IndexBlobKind::Global, "global");
+    auto global = db.read(BlobKind::Global, "global");
     if(!global || !bind_global(std::move(global.buffer), files)) {
         return false;
     }
@@ -1139,7 +1139,7 @@ bool ProjectIndex::open(BlobDatabase& db, FileTable& files) {
     for(auto file: base->search_pending_files) {
         search_pending_files.insert(base->remap[file]);
     }
-    if(auto search = db.read(IndexBlobKind::Search, "search")) {
+    if(auto search = db.read(BlobKind::Search, "search")) {
         bind_search(std::move(search.buffer));
     }
     this->db = &db;

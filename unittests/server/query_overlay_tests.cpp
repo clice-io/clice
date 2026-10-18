@@ -48,8 +48,8 @@ TURunFamily turun{graph, project, resolver, pcm, pch, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 ServerLiveSources live{project, pch, session_store, projections};
 index::FreshnessGate gate{project.file_table};
-index::IndexQuery index_query{project.project_index, project.file_table, &gate, &live};
-index::IndexQuery disk_query{project.project_index, project.file_table, &gate, nullptr};
+index::IndexQuery index_query{project.index, project.file_table, &gate, &live};
+index::IndexQuery disk_query{project.index, project.file_table, &gate, nullptr};
 
 TempDir dir;
 index::TUIndex full_index;
@@ -131,11 +131,11 @@ void merge_disk_index(llvm::StringRef focus_on_disk = {}) {
         file_ids_map.push_back(project.file_table.intern(
             Spelling::absolute(focus ? focus_on_disk : full_index.path(i))));
     }
-    project.project_index.merge_symbols(full_index, file_ids_map);
+    project.index.merge_symbols(full_index, file_ids_map);
 
     for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
         auto local_id = full_index.section_path(section);
-        project.project_index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+        project.index.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(full_index.section_blob(section)));
     }
 }
@@ -439,10 +439,10 @@ ZEST_CASE(PreviewFromDisk) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(file_index, {}, text, os);
-    project.project_index.shards[path_id] =
+    project.index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    ZASSERT(project.project_index.shards[path_id].positions().text().empty());
-    auto& symbol = project.project_index.touch(sym);
+    ZASSERT(project.index.shards[path_id].positions().text().empty());
+    auto& symbol = project.index.touch(sym);
     symbol.name = "value";
     symbol.reference_files.add(path_id.raw);
 
@@ -541,9 +541,9 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(fake, {}, "xxx\n", os);
-    project.project_index.shards[header_id] =
+    project.index.shards[header_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    project.project_index.touch(foo).reference_files.add(header_id.raw);
+    project.index.touch(foo).reference_files.add(header_id.raw);
 
     auto def = index_query.first_site(foo, Fid{}, RelationKind::Definition);
     ZASSERT(def);

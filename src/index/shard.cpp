@@ -372,7 +372,7 @@ CheckResult line_table_ok(BlobView root) {
             return std::unexpected("CRLF bit on a line that cannot end in CRLF");
         }
         if(utf8_cursor < utf8_lines.size() && utf8_lines[utf8_cursor] == line) {
-            auto text = back_to_back(utf8_text, utf8_ends, utf8_cursor);
+            auto text = slice(utf8_text, utf8_ends, utf8_cursor);
             if(text.size() != (last ? length : length - (crlf ? 2 : 1)) || text.contains('\n') ||
                kota::ipc::lsp::is_ascii({text.data(), text.size()})) {
                 return std::unexpected("a non-ASCII line's text does not match its line");
@@ -632,7 +632,7 @@ CheckResult masks_ok(BlobView root) {
         // rebuilds instead.
         for(std::uint32_t entry = 0; entry < count; entry += 1) {
             auto begin = columns.roaring_offsets[entry];
-            auto mask = view_bitmap(columns.roaring.data() + begin,
+            auto mask = read_bitmap(columns.roaring.data() + begin,
                                     columns.roaring_offsets[entry + 1] - begin);
             if(!mask || mask->isEmpty() || mask->maximum() >= variant_count) {
                 return std::unexpected("entry mask does not decode or owns no stored variant");
@@ -1015,7 +1015,7 @@ struct RelationEntry {
 
 /// One symbol's relation entries, sorted by (kind, begin, end, payload).
 template <typename MaskT>
-struct RelGroup {
+struct RelationGroup {
     SymbolHash symbol;
     std::vector<RelationEntry<MaskT>> entries;
 };
@@ -1025,7 +1025,7 @@ template <typename MaskT>
 struct MergedEntries {
     std::vector<OccurrenceEntry<MaskT>> occurrences;
     /// Groups sorted by symbol hash.
-    std::vector<RelGroup<MaskT>> relations;
+    std::vector<RelationGroup<MaskT>> relations;
 };
 
 constexpr auto occ_key = [](const auto& entry) {
@@ -1207,14 +1207,14 @@ std::vector<RelationEntry<MaskT>> decode_relation_group(const RelationTable& tab
 
 /// One blob's relation groups in symbol-hash order, decoded lazily by the
 /// group merge.
-struct GroupIndex {
+struct StoredGroup {
     SymbolHash hash;
     std::uint32_t begin_entry;
     std::uint32_t end_entry;
 };
 
-std::vector<GroupIndex> relation_groups(const RelationTable& table) {
-    std::vector<GroupIndex> groups;
+std::vector<StoredGroup> relation_groups(const RelationTable& table) {
+    std::vector<StoredGroup> groups;
     for(std::uint32_t id = 0; id < table.sym_hashes.size(); id += 1) {
         if(table.offsets[id] != table.offsets[id + 1]) {
             groups.push_back({table.sym_hashes[id], table.offsets[id], table.offsets[id + 1]});
@@ -1560,7 +1560,7 @@ void emit_blob(const MergedEntries<MaskT>& merged,
 }
 
 template <typename MaskT>
-void merge_shards_impl(BlobView old_root,
+void write_merged(BlobView old_root,
                        llvm::ArrayRef<std::int64_t> id_map,
                        llvm::ArrayRef<Shard> fresh,
                        std::uint32_t fresh_base,
@@ -1613,7 +1613,7 @@ void merge_shards_impl(BlobView old_root,
                         std::make_move_iterator(entries.end()));
         }
     }
-    std::vector<RelGroup<MaskT>> fresh_groups;
+    std::vector<RelationGroup<MaskT>> fresh_groups;
     fresh_groups.reserve(fresh_group_map.size());
     for(auto& [hash, entries]: fresh_group_map) {
         canonicalize(entries, rel_key);
@@ -1621,7 +1621,7 @@ void merge_shards_impl(BlobView old_root,
     }
     std::ranges::sort(fresh_groups, {}, group_key);
 
-    std::vector<GroupIndex> old_groups;
+    std::vector<StoredGroup> old_groups;
     RelationTable old_table;
     MaskEncoding old_encoding = MaskEncoding::Single;
     if(old_root.valid()) {
@@ -1631,7 +1631,7 @@ void merge_shards_impl(BlobView old_root,
     }
     // The merge below decodes every old group once, in order.
     RelationTable::Cursor old_cursor;
-    auto decode_old = [&](const GroupIndex& group) {
+    auto decode_old = [&](const StoredGroup& group) {
         return decode_relation_group<MaskT>(
             old_table,
             group.begin_entry,
@@ -1763,7 +1763,7 @@ void merge_shards(const Shard& old,
     }
 
     if(variants.size() <= 64) {
-        merge_shards_impl<std::uint64_t>(old_root,
+        write_merged<std::uint64_t>(old_root,
                                          id_map,
                                          fresh,
                                          fresh_base,
@@ -1771,7 +1771,7 @@ void merge_shards(const Shard& old,
                                          content,
                                          os);
     } else {
-        merge_shards_impl<Bitmap>(old_root,
+        write_merged<Bitmap>(old_root,
                                   id_map,
                                   fresh,
                                   fresh_base,

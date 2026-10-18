@@ -207,7 +207,7 @@ index::ProjectIndex build_project(clice::FileTable& pool,
     };
     project.apply_manifest(pool, pool.intern(Spelling::absolute(tu)), std::move(manifest));
 
-    auto& symbol = project.touch(42);
+    auto& symbol = project.edit(42);
     symbol.name = "sym";
     symbol.reference_files.add(path_id.raw);
     return project;
@@ -270,8 +270,8 @@ ZEST_CASE(GlobalRebaseKeepsChanges) {
     std::string first;
     llvm::raw_string_ostream first_os(first);
     project.serialize_global(first_os, pool);
-    project.touch(43).name = "late";
-    project.touch(42).reference_files.add(other.raw);
+    project.edit(43).name = "late";
+    project.edit(42).reference_files.add(other.raw);
     project.rebase(llvm::MemoryBuffer::getMemBufferCopy(first), pool);
     ZASSERT(project.symbol_count() == 2u);
     ZASSERT(project.find_symbol(43)->name == "late");
@@ -584,10 +584,10 @@ ZEST_CASE(GlobalRoundTripSymbolFacts) {
     clice::FileTable pool;
     index::ProjectIndex project;
     auto file = pool.intern(Spelling::absolute("/proj/facts.h"));
-    auto& parent = project.touch(7);
+    auto& parent = project.edit(7);
     parent.name = "ns";
     parent.kind = SymbolKind::Namespace;
-    auto& symbol = project.touch(42);
+    auto& symbol = project.edit(42);
     symbol.name = "Box";
     symbol.args = "<int>";
     symbol.parent = 7;

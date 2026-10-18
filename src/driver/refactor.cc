@@ -227,7 +227,7 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
     contexts.load();
 
     index::FreshnessGate gate(files, {.check_disk = true});
-    index::IndexQuery index_query(project.project_index, files, &gate, nullptr);
+    index::IndexQuery index_query(project.index, files, &gate, nullptr);
     query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
 
     auto stale = [&](llvm::ArrayRef<std::string> listed) {

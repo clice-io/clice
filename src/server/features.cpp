@@ -1803,7 +1803,7 @@ std::vector<Features::WorkspaceSymbol> Features::workspace_symbol(llvm::StringRe
     if(!parsed) {
         return results;
     }
-    parsed->anchor(Spelling(project.config.workspace_root));
+    parsed->resolve_paths(Spelling(project.config.workspace_root));
     // Some clients (VS Code) filter the replies against the query text
     // again, where a bare name would fail a qualified query: those
     // replies carry the qualified name.
@@ -1822,7 +1822,7 @@ std::vector<Features::WorkspaceSymbol> Features::workspace_symbol(llvm::StringRe
         auto source = query.serving(located.site.file);
         results.push_back({
             .info = std::move(info),
-            .file = project.project_index.portable(project.file_table.resolve(located.site.file)),
+            .file = project.index.portable(project.file_table.resolve(located.site.file)),
             .content = source ? source->shard->content_hash() : 0,
         });
     }

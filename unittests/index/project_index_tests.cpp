@@ -360,7 +360,7 @@ ZEST_CASE(RepeatedAbsentPlace) {
     project.apply_manifest(pool, tu, std::move(manifest));
     ZASSERT(project.manifests[tu].absent.size() == std::size_t(1));
     project.remove_manifest(pool, tu);
-    ZASSERT(project.probed.empty());
+    ZASSERT(project.absent_lookups.empty());
 }
 
 ZEST_CASE(TwoImportedVersions) {
@@ -551,7 +551,7 @@ ZEST_CASE(LazyShardsStayPut) {
     std::string global;
     llvm::raw_string_ostream global_os(global);
     writer.serialize_global(global_os, writer_files);
-    puts.push_back({index::IndexBlobKind::Global, "global", global});
+    puts.push_back({index::BlobKind::Global, "global", global});
 
     constexpr std::uint32_t count = 300;
     llvm::StringRef content = "int x = 1;\n";
@@ -567,7 +567,7 @@ ZEST_CASE(LazyShardsStayPut) {
     index::ProjectIndex project;
     for(std::uint32_t i = 0; i < count; i += 1) {
         auto file = files.intern(Spelling::absolute(std::format("/proj/f{}.cpp", i)));
-        puts.push_back({index::IndexBlobKind::Shard, project.key_of(files, file), shard});
+        puts.push_back({index::BlobKind::Shard, project.key_of(files, file), shard});
     }
     ZASSERT(db->write(puts, {}).empty());
     ZASSERT(db->advance_read_snapshot());
@@ -662,12 +662,12 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(exported, os);
-        puts.push_back({index::IndexBlobKind::Manifest, writer.key_of(pool, tu), bytes});
+        puts.push_back({index::BlobKind::Manifest, writer.key_of(pool, tu), bytes});
     }
     std::string global;
     llvm::raw_string_ostream global_os(global);
     writer.serialize_global(global_os, pool);
-    puts.push_back({index::IndexBlobKind::Global, "global", global});
+    puts.push_back({index::BlobKind::Global, "global", global});
     ZASSERT(db->write(puts, {}).empty());
     ZASSERT(db->advance_read_snapshot());
 

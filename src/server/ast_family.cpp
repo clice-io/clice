@@ -1264,7 +1264,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         auto& diagnostics = result.value().diagnostics;
-        if(preamble_state && preamble_state->matches_prefix(params.text)) {
+        if(preamble_state && preamble_state->matches_preamble(params.text)) {
             diagnostics = with_preamble(std::move(diagnostics), *preamble_state, file_path);
         }
         explain_failed_imports(diagnostics, imports->resolved, pcm, project.dep_graph);

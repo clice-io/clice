@@ -164,7 +164,7 @@ llvm::SmallVector<std::uint32_t> charged_files(const Facts& facts, std::uint32_t
 
 Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_scope) {
     Facts facts;
-    auto& index = project.project_index;
+    auto& index = project.index;
     auto& table = project.file_table;
     llvm::StringRef root(index.workspace);
 
@@ -1377,7 +1377,7 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
     index::FreshnessGate gate(files, {.check_disk = true});
     LoadError stale{.message =
                         "some files changed since they were indexed; run `clice index` first"};
-    for(auto& [file, shard]: project.project_index.shards) {
+    for(auto& [file, shard]: project.index.shards) {
         if(gate.stale(file, shard.content_hash())) {
             stale.dropped.emplace_back(files.display(file));
         }

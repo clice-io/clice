@@ -990,7 +990,7 @@ private:
         }
         const auto* symbol = decls::normalize(decl);
         InlayHintPart part{.value = text.str(), .symbol = unit.get<EntityTable>().entity(symbol)};
-        if(index::classify_scope(symbol) != index::SymbolScope::External) {
+        if(index::scope_of(symbol) != index::SymbolScope::External) {
             part.anchor = unit.file_path(unit.seen_at(symbol->getLocation()).file);
         }
         return part;

@@ -25,7 +25,7 @@ import :support.timer;
 
 namespace clice::index {
 
-SymbolScope classify_scope(const clang::NamedDecl* decl) {
+SymbolScope scope_of(const clang::NamedDecl* decl) {
     // A template parameter is named only inside its template, whatever
     // linkage Clang derives for it from the enclosing context.
     if(llvm::isa<clang::TemplateTypeParmDecl,
@@ -296,8 +296,8 @@ public:
     /// preamble's own index, so they are dropped here. So are the entries
     /// of a header's borrowed includer context: its host indexes them.
     FileIndex* file_index(clang::FileID fid) {
-        if(space) {
-            return &(*space)[fid];
+        if(instantiation_entries) {
+            return &(*instantiation_entries)[fid];
         }
         if((focus_only && fid != unit.focus_file().file() && !module_files.contains(fid)) ||
            unit.from_context(fid)) {
@@ -310,7 +310,7 @@ public:
     /// writer: name lookups need the entry even when a symbol has only
     /// relations.
     index::SymbolHash ensure_symbol(const clang::NamedDecl* decl) {
-        if(space) {
+        if(instantiation_entries) {
             decl = in_pattern(decl);
         }
         auto hash = unit.get<EntityTable>().entity(decl);
@@ -363,7 +363,7 @@ public:
         }
         symbol.parent = unit.get<EntityTable>().parent(decl);
         symbol.kind = SymbolKind::from(decl);
-        symbol.scope = classify_scope(decl);
+        symbol.scope = scope_of(decl);
         if(decls::is_templated(decl)) {
             flags |= SymbolFlags::Template;
         }
@@ -718,7 +718,7 @@ public:
         for(auto p: path) {
             enclosing_cache.try_emplace(p, result);
         }
-        return result ? result : space_function;
+        return result ? result : instantiated_function;
     }
 
     /// The namespace-scope declaration node `index` lies in, null outside
@@ -1070,7 +1070,7 @@ public:
                 keyword = function->getTypeSpecStartLoc();
             }
         }
-        if(keyword.isInvalid() || (entry.flags.in_instantiation && !space)) {
+        if(keyword.isInvalid() || (entry.flags.in_instantiation && !instantiation_entries)) {
             return;
         }
         auto& SM = unit.context().getSourceManager();
@@ -1135,7 +1135,7 @@ public:
         auto& SM = unit.context().getSourceManager();
         auto location = SM.getFileLoc(occurrence.location);
         auto spelled = location == SM.getSpellingLoc(occurrence.location);
-        if(!space && occurrence.location.isMacroID()) {
+        if(!instantiation_entries && occurrence.location.isMacroID()) {
             body_names.push_back({occurrence.decl, occurrence.kind, occurrence.location});
         }
 
@@ -1205,8 +1205,8 @@ public:
         // deduce; it declares nothing its template does not, and the types
         // it substitutes are no references.
         const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
-        space_location = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
-        if(space && !stmt) {
+        written_location = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
+        if(instantiation_entries && !stmt) {
             project_placeholder(semantics, i);
             if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
                 add_deduced_type(value);
@@ -1215,7 +1215,7 @@ public:
         }
         for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
             auto name = add_name(occurrence);
-            if(space) {
+            if(instantiation_entries) {
                 continue;
             }
 
@@ -1327,10 +1327,10 @@ public:
         const auto* definition = pattern->getDefinition();
         if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(found->second);
            param && definition && param->getDeclContext() != definition &&
-           space_location.isValid()) {
+           written_location.isValid()) {
             auto& SM = unit.context().getSourceManager();
             auto range = definition->getSourceRange();
-            if(SM.isPointWithin(SM.getFileLoc(space_location),
+            if(SM.isPointWithin(SM.getFileLoc(written_location),
                                 SM.getFileLoc(range.getBegin()),
                                 SM.getFileLoc(range.getEnd()))) {
                 return definition->getParamDecl(param->getFunctionScopeIndex());
@@ -1484,15 +1484,15 @@ public:
             const auto* decl = llvm::cast<clang::NamedDecl>(root.decl);
             auto home = home_of(decl);
             llvm::DenseMap<clang::FileID, FileIndex> entries;
-            space = &entries;
-            space_function = llvm::dyn_cast<clang::FunctionDecl>(decl);
+            instantiation_entries = &entries;
+            instantiated_function = llvm::dyn_cast<clang::FunctionDecl>(decl);
             for(auto i = root.begin; i < root.end; i += 1) {
                 if(semantics.node(i).node.is_ast()) {
                     project_node(semantics, i);
                 }
             }
-            space = nullptr;
-            space_function = nullptr;
+            instantiation_entries = nullptr;
+            instantiated_function = nullptr;
             std::vector<InstantiationRecord> records;
             if(auto it = entries.find(home); it != entries.end()) {
                 records = records_of(home, it->second);
@@ -2079,10 +2079,10 @@ private:
     /// While an instantiation's nodes project, the entries they make:
     /// file_index hands these out instead of the files' own. The
     /// definition, when it is a function, is the caller of its calls.
-    llvm::DenseMap<clang::FileID, FileIndex>* space = nullptr;
-    const clang::FunctionDecl* space_function = nullptr;
+    llvm::DenseMap<clang::FileID, FileIndex>* instantiation_entries = nullptr;
+    const clang::FunctionDecl* instantiated_function = nullptr;
     /// Where the expression being projected is written (in_pattern).
-    clang::SourceLocation space_location;
+    clang::SourceLocation written_location;
 
     /// Per pattern function, its parameters and locals by location and kind.
     llvm::DenseMap<

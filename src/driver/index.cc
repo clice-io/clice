@@ -292,15 +292,15 @@ struct InstantiationStat {
     std::size_t keys = 0;
 };
 
-constexpr std::pair<index::IndexBlobKind, llvm::StringLiteral> stored_kinds[] = {
-    {index::IndexBlobKind::Shard,          "file shards"         },
-    {index::IndexBlobKind::Instantiations, "instantiation shards"},
-    {index::IndexBlobKind::Manifest,       "manifests"           },
-    {index::IndexBlobKind::Global,         "global"              },
-    {index::IndexBlobKind::Search,         "search"              },
-    {index::IndexBlobKind::CDB,            "cdb"                 },
-    {index::IndexBlobKind::Artifacts,      "artifacts"           },
-    {index::IndexBlobKind::Contexts,       "contexts"            },
+constexpr std::pair<index::BlobKind, llvm::StringLiteral> stored_kinds[] = {
+    {index::BlobKind::Shard,          "file shards"         },
+    {index::BlobKind::Instantiations, "instantiation shards"},
+    {index::BlobKind::Manifest,       "manifests"           },
+    {index::BlobKind::Global,         "global"              },
+    {index::BlobKind::Search,         "search"              },
+    {index::BlobKind::CDB,            "cdb"                 },
+    {index::BlobKind::Artifacts,      "artifacts"           },
+    {index::BlobKind::Contexts,       "contexts"            },
 };
 
 /// The blobs of one kind stored in the database, whether the loaded index
@@ -349,10 +349,10 @@ struct IndexStats {
 
 IndexStats collect_stats(Project& project) {
     IndexStats stats;
-    auto& project_index = project.project_index;
+    auto& project_index = project.index;
 
-    stats.shards.reserve(project.project_index.shards.size());
-    for(auto& [path_id, shard]: project.project_index.shards) {
+    stats.shards.reserve(project.index.shards.size());
+    for(auto& [path_id, shard]: project.index.shards) {
         ShardStat stat{.path = project.file_table.display(path_id),
                        .bytes = shard.bytes().size(),
                        .variants = shard.variants().size()};
@@ -410,18 +410,18 @@ IndexStats collect_stats(Project& project) {
     for(auto& [tu, manifest]: project_index.manifests) {
         stats.shared_locals += manifest.shared_locals.size();
         stats.unit_uses += manifest.instantiations.size();
-        if(auto blob = project.index_db->read(index::IndexBlobKind::Manifest,
+        if(auto blob = project.database->read(index::BlobKind::Manifest,
                                               project_index.key_of(project.file_table, tu))) {
             stats.manifest_bytes += blob.buffer->getBufferSize();
             index::measure_manifest(blob.buffer->getBuffer(), stats.manifest_fields);
         }
     }
-    auto& db = *project.index_db;
-    if(auto blob = db.read(index::IndexBlobKind::Global, "global")) {
+    auto& db = *project.database;
+    if(auto blob = db.read(index::BlobKind::Global, "global")) {
         stats.global_bytes = blob.buffer->getBufferSize();
         index::measure_global(blob.buffer->getBuffer(), stats.global_fields);
     }
-    if(auto blob = db.read(index::IndexBlobKind::Search, "search")) {
+    if(auto blob = db.read(index::BlobKind::Search, "search")) {
         stats.search_bytes = blob.buffer->getBufferSize();
         index::measure_search(blob.buffer->getBuffer(), stats.search_fields);
     }
@@ -443,7 +443,7 @@ void print_stats(const Project& project,
                  llvm::ArrayRef<Fid> dropped,
                  const IndexStats& stats,
                  std::uint32_t top) {
-    auto& project_index = project.project_index;
+    auto& project_index = project.index;
     auto share = [](std::uint64_t bytes, std::uint64_t whole) {
         return whole != 0 ? 100.0 * static_cast<double>(bytes) / static_cast<double>(whole) : 0.0;
     };
@@ -483,9 +483,9 @@ void print_stats(const Project& project,
                     project_index.symbol_count(),
                     project.file_table.versions.size());
     driver::println("Search index: {} symbols ({}), {} merged since its build",
-                    project.project_index.search_index.size(),
+                    project.index.search_index.size(),
                     format_bytes(stats.search_bytes),
-                    project.project_index.search_pending.size());
+                    project.index.search_pending.size());
     if(!dropped.empty()) {
         driver::println(
             "Translation units pending reindex (stale or partially written): {}; "
@@ -594,7 +594,7 @@ void print_variants(const IndexStats& stats) {
 }
 
 int run_stats(Project& project, llvm::ArrayRef<Fid> dropped, std::uint32_t top, bool variants) {
-    if(project.project_index.manifests.empty() && project.project_index.shards.empty()) {
+    if(project.index.manifests.empty() && project.index.shards.empty()) {
         driver::println("Index is empty; run `clice index` to build it.");
         return 0;
     }
@@ -646,7 +646,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
         LOG_ERROR("{}", locator.error());
         return 1;
     }
-    index::IndexQuery query(project.project_index, project.file_table, nullptr, nullptr);
+    index::IndexQuery query(project.index, project.file_table, nullptr, nullptr);
     std::vector<index::SymbolHash> matches;
     if(locator->handle) {
         matches.push_back(*locator->handle);
@@ -692,13 +692,13 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
                             scope->display_name());
             parent = scope->parent;
         }
-        if(auto symbol = project.project_index.find_symbol(hash)) {
+        if(auto symbol = project.index.find_symbol(hash)) {
             driver::println("  scope={}  file={}  reference files={}",
                             kota::meta::enum_name(symbol->scope, "External"),
                             symbol->file == index::no_file
                                 ? "-"
                                 : project.file_table.display(Fid{symbol->file}),
-                            project.project_index.reference_count(hash));
+                            project.index.reference_count(hash));
         } else {
             driver::println("  scope=local (not in the global table)");
         }
@@ -713,7 +713,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
         // table's reference bitmaps, which a file-local symbol has no entry
         // in.
         std::map<std::string, Counts> per_file;
-        for(auto& [path_id, shard]: project.project_index.shards) {
+        for(auto& [path_id, shard]: project.index.shards) {
             auto count = [&](RelationKind kind, std::size_t Counts::* field) {
                 shard.relations_of(hash, kind, [&](const index::Relation&) {
                     per_file[project.file_table.display(path_id)].*field += 1;
@@ -739,8 +739,8 @@ int run_show_file(Project& project, llvm::StringRef argument) {
     auto path = inspected_path(project, argument);
     auto file = project.file_table.find(path);
     auto shard_it =
-        file ? project.project_index.shards.find(*file) : project.project_index.shards.end();
-    if(shard_it == project.project_index.shards.end()) {
+        file ? project.index.shards.find(*file) : project.index.shards.end();
+    if(shard_it == project.index.shards.end()) {
         driver::println("No rows for {} in the index.",
                         project.file_table.display(CanonicalPath(path)));
         return 1;
@@ -754,8 +754,8 @@ int run_show_file(Project& project, llvm::StringRef argument) {
 
     // Which unit contributed which variant, from the manifests.
     std::map<std::uint64_t, std::vector<std::string>> contributors;
-    if(auto it = project.project_index.contributions.find(*file);
-       it != project.project_index.contributions.end()) {
+    if(auto it = project.index.contributions.find(*file);
+       it != project.index.contributions.end()) {
         for(auto& [tu, hash]: it->second) {
             contributors[hash].push_back(project.file_table.display(tu));
         }
@@ -819,7 +819,7 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
     auto path = inspected_path(project, argument);
     auto& files = project.file_table;
     auto tu = files.find(path);
-    auto& project_index = project.project_index;
+    auto& project_index = project.index;
     auto manifest_it = tu ? project_index.manifests.find(*tu) : project_index.manifests.end();
     if(manifest_it == project_index.manifests.end()) {
         driver::println("No manifest for {} in the index.", files.display(CanonicalPath(path)));

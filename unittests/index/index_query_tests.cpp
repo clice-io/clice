@@ -79,7 +79,7 @@ TURunFamily turun{graph, project, resolver, pcm, pch, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 ServerLiveSources live{project, pch, store, projections};
 index::FreshnessGate gate{project.file_table};
-index::IndexQuery query{project.project_index, project.file_table, &gate, &live};
+index::IndexQuery query{project.index, project.file_table, &gate, &live};
 
 Fid focus_id;
 Fid header_id;
@@ -115,7 +115,7 @@ ZEST_CASE(DefinitionAcrossFiles) {
 
     auto hit_offset = point("use");
     index::SymbolHash symbol = 0;
-    project.project_index.shards[focus_id].occurrences_at(hit_offset, [&](const index::Occurrence& o) {
+    project.index.shards[focus_id].occurrences_at(hit_offset, [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -137,7 +137,7 @@ ZEST_CASE(ReferencesAcrossFiles) {
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.project_index.shards[focus_id].occurrences_at(point("use"), [&](const index::Occurrence& o) {
+    project.index.shards[focus_id].occurrences_at(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -321,7 +321,7 @@ ZEST_CASE(UnnamedScopes) {
 
     auto at = [&](llvm::StringRef name) {
         index::SymbolHash found = 0;
-        project.project_index.shards[focus_id].occurrences_at(point(name), [&](const index::Occurrence& o) {
+        project.index.shards[focus_id].occurrences_at(point(name), [&](const index::Occurrence& o) {
             found = o.target;
             return false;
         });
@@ -350,7 +350,7 @@ ZEST_CASE(QualifiedNames) {
     index_workspace();
 
     index::SymbolHash method = 0;
-    project.project_index.shards[focus_id].occurrences_at(point("method"), [&](const index::Occurrence& o) {
+    project.index.shards[focus_id].occurrences_at(point("method"), [&](const index::Occurrence& o) {
         method = o.target;
         return false;
     });
@@ -385,7 +385,7 @@ ZEST_CASE(QualifiedNames) {
     ZASSERT(query.container_name(versioned.front().symbol.hash) == "outer");
     ZASSERT(query.qualified_name(versioned.front().symbol.hash) == "outer::versioned");
     index::SymbolHash hidden = 0;
-    project.project_index.shards[focus_id].occurrences_at(point("hidden"), [&](const index::Occurrence& o) {
+    project.index.shards[focus_id].occurrences_at(point("hidden"), [&](const index::Occurrence& o) {
         hidden = o.target;
         return false;
     });
@@ -444,7 +444,7 @@ ZEST_CASE(LocalSymbolName) {
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.project_index.shards[focus_id].occurrences_at(point("local"), [&](const index::Occurrence& o) {
+    project.index.shards[focus_id].occurrences_at(point("local"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -564,7 +564,7 @@ ZEST_CASE(StaleContributionSuppressed) {
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.project_index.shards[focus_id].occurrences_at(point("use"), [&](const index::Occurrence& o) {
+    project.index.shards[focus_id].occurrences_at(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -672,7 +672,7 @@ ZEST_CASE(ScopedSearchScalesLinearly) {
     auto visits_with = [&](int buffers) {
         CountingSessions sessions;
         open_buffers(sessions, buffers);
-        index::IndexQuery session_query{project.project_index,
+        index::IndexQuery session_query{project.index,
                                         project.file_table,
                                         nullptr,
                                         &sessions};

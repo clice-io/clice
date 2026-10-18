@@ -117,7 +117,7 @@ struct ProjectIndex {
 
     /// The symbol's entry to change: the changed entry when there is one,
     /// else a copy of the base entry, else a fresh one.
-    Symbol& touch(SymbolHash hash);
+    Symbol& edit(SymbolHash hash);
 
     /// Merge a TU's external symbols straight off the serialized TU index; `file_ids_map`
     /// maps the TU-local ids of `index`'s path table to pool ids. Symbol
@@ -164,7 +164,7 @@ struct ProjectIndex {
 
     /// Derived from `manifests`: a place some TU's failed lookup looked ->
     /// those TUs (TUManifest::absent).
-    llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> probed;
+    llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> absent_lookups;
 
     /// Derived from `manifests`: an input of an imported module or of a
     /// loaded precompiled header -> the TUs reading it (TUManifest::imports).
@@ -187,12 +187,12 @@ struct ProjectIndex {
 
     /// What an instantiation shard names a TU by: the hash of its database
     /// key.
-    std::uint64_t unit_of(const FileTable& files, Fid tu) const {
+    std::uint64_t unit_hash(const FileTable& files, Fid tu) const {
         return llvm::xxh3_64bits(key_of(files, tu));
     }
 
     /// The TU with a manifest a unit hash names.
-    std::optional<Fid> unit(std::uint64_t hash) const {
+    std::optional<Fid> find_unit(std::uint64_t hash) const {
         auto it = units.find(hash);
         return it != units.end() ? std::optional(it->second) : std::nullopt;
     }
@@ -200,7 +200,7 @@ struct ProjectIndex {
     /// Whether the run that walked a key is its TU's current manifest: a
     /// key outlives it only until the next compaction of its file.
     bool current_run(const Producer& producer) const {
-        auto tu = unit(producer.unit);
+        auto tu = find_unit(producer.unit);
         return tu && manifests.find(*tu)->second.built_at == producer.run;
     }
 
@@ -249,7 +249,7 @@ struct ProjectIndex {
     /// A TU's manifest: held by a writer, fetched on first use by a reader
     /// — whose copy names its versions by persisted ids. Null when the TU
     /// has none current.
-    const TUManifest* tu_manifest(Fid tu) const;
+    const TUManifest* manifest(Fid tu) const;
 
     /// The include edges of a document, the input of the document-link
     /// projection: from its own TU manifest when it has one, else from the
@@ -322,7 +322,7 @@ private:
     BlobDatabase* db = nullptr;
     const FileTable* files = nullptr;
 
-    /// Derived from `manifests`: unit hash (unit_of) -> TU.
+    /// Derived from `manifests`: unit hash -> TU.
     llvm::DenseMap<std::uint64_t, Fid> units;
 
     /// The persisted FileVersion id space: the global blob and the

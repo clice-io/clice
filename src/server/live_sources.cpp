@@ -43,9 +43,9 @@ index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kin
             source.instantiations.push_back(&state.instantiation_shard(*section));
         }
     }
-    auto it = project.project_index.instantiations.find(file);
+    auto it = project.index.instantiations.find(file);
     if(kind != index::IndexSource::Kind::PreambleShard &&
-       it != project.project_index.instantiations.end() &&
+       it != project.index.instantiations.end() &&
        it->second.content_hash() == session.hash) {
         source.instantiations.push_back(&it->second);
     }
@@ -74,8 +74,8 @@ std::optional<index::IndexSource> ServerLiveSources::buffer_index(Fid file) cons
     if(auto* shard = session_shard(file, *session)) {
         return buffer_source(index::IndexSource::Kind::SessionShard, file, *session, *shard);
     }
-    auto it = project.project_index.shards.find(file);
-    if(it == project.project_index.shards.end() ||
+    auto it = project.index.shards.find(file);
+    if(it == project.index.shards.end() ||
        !it->second.matches_content(session->text().size(), session->hash)) {
         return std::nullopt;
     }
@@ -123,7 +123,7 @@ void ServerLiveSources::for_each_preamble(
         // gating is needed on top.
         if(project.file_table.find(Spelling::absolute(state->path(state->path_count() - 1))) !=
                file ||
-           !state->matches_prefix(session.text())) {
+           !state->matches_preamble(session.text())) {
             return true;
         }
         return visit(buffer_source(index::IndexSource::Kind::PreambleShard,
@@ -164,7 +164,7 @@ std::shared_ptr<index::TUIndex> ServerLiveSources::preamble_index(Fid file) cons
         return nullptr;
     }
     auto state = overlay_of(file);
-    if(!state || !state->matches_prefix(session->text())) {
+    if(!state || !state->matches_preamble(session->text())) {
         return nullptr;
     }
     return state;

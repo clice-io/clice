@@ -35,7 +35,7 @@ public:
     /// corrupt bytes load as an empty reader.
     /// Section blob bytes are verified per section: structurally by
     /// section_shard on first use, or hash-checked and wrapped by
-    /// shards_verify in one pass.
+    /// verify_shards in one pass.
     static TUIndex from_bytes(llvm::StringRef data);
 
     /// Adopt an owning buffer of TU index bytes (a mapped `.pch.idx`, a
@@ -101,7 +101,7 @@ public:
     /// load gate for persisted TU indexes, where a corrupt blob must read
     /// as "pair missing" and rebuild instead of silently serving wrong
     /// entries or nothing.
-    bool shards_verify() const;
+    bool verify_shards() const;
 
     /// The files the run's instantiations or macro expansions resolve
     /// something in or skipped a known key of, ascending by path id.
@@ -156,7 +156,7 @@ public:
     /// against a live buffer (the entries are offsets into that prefix).
     /// Compared by hash: the text itself is not stored. Always false for
     /// an ordinary TU index.
-    bool matches_prefix(llvm::StringRef text) const;
+    bool matches_preamble(llvm::StringRef text) const;
 
     /// Document links of the preamble region, materialized from the
     /// TU index; empty for an ordinary one.

@@ -464,7 +464,7 @@ ZEST_CASE(RescanKeepsGuardedProvider) {
     ZASSERT(project.dep_graph.module_of(iface) == "m");
     tmp.touch("m.cpp", "#if 1\nexport module m;\n#endif\nexport int v;\n");
 
-    project.project_index.shards[iface] = shard_of(*read_file(tmp.path("m.cpp")));
+    project.index.shards[iface] = shard_of(*read_file(tmp.path("m.cpp")));
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -611,7 +611,7 @@ ZEST_CASE(CompiledIncluderCascades) {
     project.dep_graph.set_includes(scanned, 0, {{header}});
     project.dep_graph.set_includes(compiled, 0, {});
     project.dep_graph.build_reverse_map();
-    project.project_index.contributions[header][compiled] = 1;
+    project.index.contributions[header][compiled] = 1;
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -694,7 +694,7 @@ ZEST_CASE(AppearedHeaderCascades) {
     auto header = project.file_table.intern(Spelling::absolute("/proj/gen.h"));
     auto closed = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     auto open = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
-    project.project_index.probed[header].insert(closed);
+    project.index.probed[header].insert(closed);
     store.open(open);
 
     CommandResolver commands(project);
@@ -863,8 +863,8 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     auto open_id = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
     auto closed_id = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     store.open(open_id);
-    project.project_index.shards[open_id];
-    project.project_index.shards[closed_id];
+    project.index.shards[open_id];
+    project.index.shards[closed_id];
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -893,8 +893,8 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     auto dropped = dirty.drop_index;
     llvm::sort(dropped);
     ZASSERT(dropped == reindexed);
-    ZASSERT(project.project_index.shards.count(closed_id) == 1u);
-    ZASSERT(project.project_index.shards.count(open_id) == 1u);
+    ZASSERT(project.index.shards.count(closed_id) == 1u);
+    ZASSERT(project.index.shards.count(open_id) == 1u);
 }
 
 ZEST_CASE(CDBAddedOpenMarksDirty) {
@@ -931,7 +931,7 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     auto closed_header = project.file_table.intern(Spelling::absolute("/proj/closed.h"));
     auto other_header = project.file_table.intern(Spelling::absolute("/proj/other.h"));
     store.open(open_header);
-    project.project_index.shards[closed_header];
+    project.index.shards[closed_header];
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -959,7 +959,7 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     ZASSERT(drop == evicted);
     ZASSERT(llvm::is_contained(dirty.mark_ast_dirty, open_header));
     ZASSERT(llvm::is_contained(dirty.reindex_content_changed, closed_header));
-    ZASSERT(project.project_index.shards.count(closed_header) == 1u);
+    ZASSERT(project.index.shards.count(closed_header) == 1u);
 }
 
 ZEST_CASE(CDBDropsBorrowedIndex) {

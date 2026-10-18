@@ -162,7 +162,7 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
     }
 
     index::FreshnessGate gate(project.file_table, {.check_disk = true});
-    index::IndexQuery index_query(project.project_index, project.file_table, &gate, nullptr);
+    index::IndexQuery index_query(project.index, project.file_table, &gate, nullptr);
     query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
     auto outcome = ask(ctx);
 

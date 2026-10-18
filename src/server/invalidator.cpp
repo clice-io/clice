@@ -55,7 +55,7 @@ llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
             result.push_back(reader);
         }
     };
-    auto& index = project.project_index;
+    auto& index = project.index;
     if(auto it = index.contributions.find(path_id); it != index.contributions.end()) {
         for(auto tu: llvm::make_first_range(it->second)) {
             add(tu);

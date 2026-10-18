@@ -166,7 +166,7 @@ struct Pairing {
                     declaring.insert(other);
                 }
             });
-            ctx.project.project_index.for_each_reference_file(hash, [&](Fid other) {
+            ctx.project.index.for_each_reference_file(hash, [&](Fid other) {
                 auto* other_shard = consider(other) ? shard_of(other) : nullptr;
                 if(!other_shard) {
                     return;
@@ -304,7 +304,7 @@ Outcome<CounterpartsResult> counterparts(Context& ctx, const Spelling& path) {
     if(pairing.side == Side::Fragment) {
         return result;
     }
-    if(!ctx.project.project_index.shard(file)) {
+    if(!ctx.project.index.shard(file)) {
         ctx.unindexed.push_back(result.file);
     }
     pairing.pair_by_declarations();

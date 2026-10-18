@@ -124,7 +124,7 @@ const clang::LangOptions& EditorContext::dialect(Fid path_id) {
         return dialect_of("", own->is_c, own->standard);
     }
 
-    auto& contributions = project.project_index.contributions;
+    auto& contributions = project.index.contributions;
     auto it = contributions.find(path_id);
     bool c_only = it != contributions.end() && !it->second.empty() &&
                   llvm::all_of(llvm::make_first_range(it->second), [&](Fid tu) {
@@ -175,7 +175,7 @@ std::string EditorContext::serialize() const {
     ContextsData data;
     llvm::StringMap<std::uint32_t> index_map;
     auto intern = [&](Fid fid) -> std::uint32_t {
-        auto path = project.project_index.portable(project.file_table.resolve(fid));
+        auto path = project.index.portable(project.file_table.resolve(fid));
         auto [it, inserted] =
             index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
         if(inserted) {
@@ -224,14 +224,14 @@ void EditorContext::load() {
             auto host = resolve(entry.host);
             if(host.empty())
                 continue;
-            saved.host_path_id = project.file_table.intern(project.project_index.local(host));
+            saved.host_path_id = project.file_table.intern(project.index.local(host));
         }
         if(entry.occurrence != ~0u) {
             saved.occurrence = entry.occurrence;
         }
         saved.command_hash = entry.command_hash;
         saved.base_hash = entry.base_hash;
-        selections[project.file_table.intern(project.project_index.local(file))] = std::move(saved);
+        selections[project.file_table.intern(project.index.local(file))] = std::move(saved);
     }
 }
 

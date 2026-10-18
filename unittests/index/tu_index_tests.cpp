@@ -2571,7 +2571,7 @@ ZEST_CASE(TUIndexSections) {
     // Every section's hash is the byte identity of its blob, the blob
     // loads as a self-contained single-variant shard under that identity,
     // and the whole TU index passes the persisted-load gate.
-    ZASSERT(view.shards_verify());
+    ZASSERT(view.verify_shards());
     for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
         auto blob = view.section_blob(i);
         ZASSERT(view.section_hash(i) == llvm::xxh3_64bits(blob));
@@ -2628,7 +2628,7 @@ ZEST_CASE(CorruptSectionBytesRejected) {
         if(index::Shard::from_bytes(reloaded.section_blob(0)).loaded()) {
             structurally_valid_flip = true;
         }
-        ZASSERT(!reloaded.shards_verify());
+        ZASSERT(!reloaded.verify_shards());
     }
     ZASSERT(structurally_valid_flip);
 }

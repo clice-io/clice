@@ -31,7 +31,7 @@ CacheStore open_store(TempDir& tmp, llvm::StringRef sub, bool read_only = false)
     return std::move(*store);
 }
 
-index::BlobDatabase::Blob blob(index::IndexBlobKind kind, llvm::StringRef key, std::string bytes) {
+index::BlobDatabase::Blob blob(index::BlobKind kind, llvm::StringRef key, std::string bytes) {
     return {kind, key.str(), std::move(bytes)};
 }
 
@@ -50,8 +50,8 @@ ZEST_CASE(WriteReadRoundTrip) {
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
 
-    auto rejected = db->write({blob(index::IndexBlobKind::Shard, "a", large_value('a')),
-                               blob(index::IndexBlobKind::Global, "global", "gg")},
+    auto rejected = db->write({blob(index::BlobKind::Shard, "a", large_value('a')),
+                               blob(index::BlobKind::Global, "global", "gg")},
                               {});
     ZASSERT(rejected.empty());
     // Reads serve the resident snapshot; committed writes become
@@ -59,12 +59,12 @@ ZEST_CASE(WriteReadRoundTrip) {
     ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
-    auto shard = db->read(index::IndexBlobKind::Shard, "a");
+    auto shard = db->read(index::BlobKind::Shard, "a");
     ZASSERT(bool(shard));
     ZASSERT(shard.buffer->getBuffer() == large_value('a'));
-    ZASSERT(db->contains(index::IndexBlobKind::Global, "global"));
-    ZASSERT(!db->contains(index::IndexBlobKind::Shard, "missing"));
-    ZASSERT(!bool(db->read(index::IndexBlobKind::Shard, "missing")));
+    ZASSERT(db->contains(index::BlobKind::Global, "global"));
+    ZASSERT(!db->contains(index::BlobKind::Shard, "missing"));
+    ZASSERT(!bool(db->read(index::BlobKind::Shard, "missing")));
 }
 
 ZEST_CASE(WriteRemoves) {
@@ -73,20 +73,20 @@ ZEST_CASE(WriteRemoves) {
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
 
-    ZASSERT(db->write({blob(index::IndexBlobKind::Manifest, "m1", "one"),
-                       blob(index::IndexBlobKind::Manifest, "m2", "two")},
+    ZASSERT(db->write({blob(index::BlobKind::Manifest, "m1", "one"),
+                       blob(index::BlobKind::Manifest, "m2", "two")},
                       {})
                 .empty());
     ZASSERT(db->write(
                   {
     },
-                  {{index::IndexBlobKind::Manifest, "m1"}})
+                  {{index::BlobKind::Manifest, "m1"}})
                 .empty());
     ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
-    ZASSERT(!db->contains(index::IndexBlobKind::Manifest, "m1"));
-    ZASSERT(db->contains(index::IndexBlobKind::Manifest, "m2"));
+    ZASSERT(!db->contains(index::BlobKind::Manifest, "m1"));
+    ZASSERT(db->contains(index::BlobKind::Manifest, "m2"));
 }
 
 ZEST_CASE(KindsAreIsolated) {
@@ -95,20 +95,20 @@ ZEST_CASE(KindsAreIsolated) {
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
 
-    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "same", "shard"),
-                       blob(index::IndexBlobKind::Manifest, "same", "manifest")},
+    ZASSERT(db->write({blob(index::BlobKind::Shard, "same", "shard"),
+                       blob(index::BlobKind::Manifest, "same", "manifest")},
                       {})
                 .empty());
     ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
     llvm::SmallVector<std::string> shard_keys;
-    db->for_each_key(index::IndexBlobKind::Shard,
+    db->for_each_key(index::BlobKind::Shard,
                      [&](llvm::StringRef key) { shard_keys.push_back(key.str()); });
     ZASSERT(shard_keys.size() == 1);
     ZASSERT(shard_keys.front() == "same");
-    ZASSERT(db->read(index::IndexBlobKind::Manifest, "same").buffer->getBuffer() == "manifest");
-    ZASSERT(!db->contains(index::IndexBlobKind::Global, "same"));
+    ZASSERT(db->read(index::BlobKind::Manifest, "same").buffer->getBuffer() == "manifest");
+    ZASSERT(!db->contains(index::BlobKind::Global, "same"));
 }
 
 ZEST_CASE(SnapshotPinsUntilAdvance) {
@@ -117,17 +117,17 @@ ZEST_CASE(SnapshotPinsUntilAdvance) {
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
 
-    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());
+    ZASSERT(db->write({blob(index::BlobKind::Shard, "k", large_value('1'))}, {}).empty());
     ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
-    auto before = db->read(index::IndexBlobKind::Shard, "k");
+    auto before = db->read(index::BlobKind::Shard, "k");
     ZASSERT(bool(before));
 
     // Committed writes stay invisible to the resident snapshot until the
     // next advance; the borrowed buffer keeps serving the old bytes.
-    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('2'))}, {}).empty());
-    ZASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('1'));
+    ZASSERT(db->write({blob(index::BlobKind::Shard, "k", large_value('2'))}, {}).empty());
+    ZASSERT(db->read(index::BlobKind::Shard, "k").buffer->getBuffer() == large_value('1'));
     ZASSERT(before.buffer->getBuffer() == large_value('1'));
 
     auto advanced = db->advance_read_snapshot();
@@ -135,7 +135,7 @@ ZEST_CASE(SnapshotPinsUntilAdvance) {
     ZASSERT(*advanced != 0);
     // Old and new snapshots serve their own bytes side by side until the
     // old one retires — the migration window's core invariant.
-    ZASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('2'));
+    ZASSERT(db->read(index::BlobKind::Shard, "k").buffer->getBuffer() == large_value('2'));
     ZASSERT(before.buffer->getBuffer() == large_value('1'));
     db->retire_old_snapshot();
 }
@@ -146,8 +146,8 @@ ZEST_CASE(SmallValuesCopiedAligned) {
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
 
-    ZASSERT(db->write({blob(index::IndexBlobKind::Manifest, "small", "tiny"),
-                       blob(index::IndexBlobKind::Shard, "big", large_value('b'))},
+    ZASSERT(db->write({blob(index::BlobKind::Manifest, "small", "tiny"),
+                       blob(index::BlobKind::Shard, "big", large_value('b'))},
                       {})
                 .empty());
     ZASSERT(db->advance_read_snapshot());
@@ -155,12 +155,12 @@ ZEST_CASE(SmallValuesCopiedAligned) {
 
     // Inline leaf values are only 2-aligned, so they must come back as an
     // owned copy (generation 0); overflow-page values are borrowed.
-    auto small = db->read(index::IndexBlobKind::Manifest, "small");
+    auto small = db->read(index::BlobKind::Manifest, "small");
     ZASSERT(bool(small));
     ZASSERT(small.generation == 0);
     ZASSERT(reinterpret_cast<std::uintptr_t>(small.buffer->getBufferStart()) % 8 == 0);
 
-    auto big = db->read(index::IndexBlobKind::Shard, "big");
+    auto big = db->read(index::BlobKind::Shard, "big");
     ZASSERT(bool(big));
     ZASSERT(big.generation != 0);
     ZASSERT(reinterpret_cast<std::uintptr_t>(big.buffer->getBufferStart()) % 8 == 0);
@@ -172,11 +172,11 @@ ZEST_CASE(ReopenServesPersistedBlobs) {
     {
         auto db = index::open_database(store, "");
         ZASSERT(db != nullptr);
-        ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "snapshot")}, {}).empty());
+        ZASSERT(db->write({blob(index::BlobKind::CDB, "cdb", "snapshot")}, {}).empty());
     }
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "snapshot");
+    ZASSERT(db->read(index::BlobKind::CDB, "cdb").buffer->getBuffer() == "snapshot");
 }
 
 ZEST_CASE(CorruptDatabaseRebuilds) {
@@ -192,8 +192,8 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
     }
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(!db->contains(index::IndexBlobKind::CDB, "cdb"));
-    ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
+    ZASSERT(!db->contains(index::BlobKind::CDB, "cdb"));
+    ZASSERT(db->write({blob(index::BlobKind::CDB, "cdb", "fresh")}, {}).empty());
 }
 
 /// A database of `count` large blobs written over several commits, so
@@ -203,7 +203,7 @@ std::string populated_database(CacheStore& store, int count) {
     require(db != nullptr, "opening the database failed");
     for(int i = 0; i < count; i += 1) {
         auto rejected =
-            db->write({blob(index::IndexBlobKind::Shard, std::to_string(i), large_value('t'))}, {});
+            db->write({blob(index::BlobKind::Shard, std::to_string(i), large_value('t'))}, {});
         require(rejected.empty(), "writing a blob failed");
     }
     return path::join(index::database_directory(store, ""), "index.mdb");
@@ -229,11 +229,11 @@ ZEST_CASE(TruncatedDatabaseRebuilds) {
 
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(!db->contains(index::IndexBlobKind::Shard, "7"));
-    ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
+    ZASSERT(!db->contains(index::BlobKind::Shard, "7"));
+    ZASSERT(db->write({blob(index::BlobKind::CDB, "cdb", "fresh")}, {}).empty());
     ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
-    ZASSERT(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "fresh");
+    ZASSERT(db->read(index::BlobKind::CDB, "cdb").buffer->getBuffer() == "fresh");
 }
 
 ZEST_CASE(ReadOnlyRefusesTruncated) {
@@ -282,20 +282,20 @@ ZEST_CASE(WritesCoverFreedTail) {
             ZASSERT(db->advance_read_snapshot());
             db->retire_old_snapshot();
         };
-        ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "x", large_value('x'))}, {}).empty());
+        ZASSERT(db->write({blob(index::BlobKind::Shard, "x", large_value('x'))}, {}).empty());
         advance_snapshot();
         ZASSERT(db->write(
                       {
         },
-                      {{index::IndexBlobKind::Shard, "x"}})
+                      {{index::BlobKind::Shard, "x"}})
                     .empty());
         advance_snapshot();
         ZASSERT(db->write(
                       {
-                          blob(index::IndexBlobKind::CDB, "cdb", "small"),
-                          blob(index::IndexBlobKind::Shard, "h", std::string(1 << 16, 'h'))
+                          blob(index::BlobKind::CDB, "cdb", "small"),
+                          blob(index::BlobKind::Shard, "h", std::string(1 << 16, 'h'))
         },
-                      {{index::IndexBlobKind::Shard, "h"}})
+                      {{index::BlobKind::Shard, "h"}})
                     .empty());
     }
 
@@ -314,7 +314,7 @@ ZEST_CASE(WritesCoverFreedTail) {
     auto store = open_store(tmp, "lmdb", /*read_only=*/true);
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(db->contains(index::IndexBlobKind::CDB, "cdb"));
+    ZASSERT(db->contains(index::BlobKind::CDB, "cdb"));
 }
 
 ZEST_CASE(DefaultOpenFileBounded) {
@@ -322,7 +322,7 @@ ZEST_CASE(DefaultOpenFileBounded) {
     auto store = open_store(tmp, "lmdb");
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "x")}, {}).empty());
+    ZASSERT(db->write({blob(index::BlobKind::CDB, "cdb", "x")}, {}).empty());
 
     // On Windows the mapping extends index.mdb to the whole mapsize, so
     // this pins the small default (a 64 GiB logical file is the bug the
@@ -343,11 +343,11 @@ ZEST_CASE(FullMapFailsWholeBatchThenGrows) {
 
     std::vector<index::BlobDatabase::Blob> puts;
     for(int i = 0; i < 64; i += 1) {
-        puts.push_back(blob(index::IndexBlobKind::Shard, std::to_string(i), large_value('x')));
+        puts.push_back(blob(index::BlobKind::Shard, std::to_string(i), large_value('x')));
     }
     auto rejected = db->write(puts, {});
     ZASSERT(rejected.size() == puts.size());
-    ZASSERT(!db->contains(index::IndexBlobKind::Shard, "0"));
+    ZASSERT(!db->contains(index::BlobKind::Shard, "0"));
 
     auto grown = db->grow();
     ZASSERT(grown);
@@ -355,7 +355,7 @@ ZEST_CASE(FullMapFailsWholeBatchThenGrows) {
     // grow() opened a fresh snapshot, so this proves the failed batch
     // really committed nothing (the pre-grow check only saw the pinned
     // old snapshot).
-    ZASSERT(!db->contains(index::IndexBlobKind::Shard, "0"));
+    ZASSERT(!db->contains(index::BlobKind::Shard, "0"));
     // A second grow without a latched full map is a no-op.
     auto again = db->grow();
     ZASSERT(again);
@@ -364,7 +364,7 @@ ZEST_CASE(FullMapFailsWholeBatchThenGrows) {
     ZASSERT(db->write(puts, {}).empty());
     ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
-    ZASSERT(db->read(index::IndexBlobKind::Shard, "63").buffer->getBuffer() == large_value('x'));
+    ZASSERT(db->read(index::BlobKind::Shard, "63").buffer->getBuffer() == large_value('x'));
 }
 
 ZEST_CASE(ReadOnlyMissingDatabase) {
@@ -385,13 +385,13 @@ ZEST_CASE(ReadOnlyServesExistingDatabase) {
         auto store = open_store(tmp, "ws");
         auto db = index::open_database(store, "");
         ZASSERT(db != nullptr);
-        ZASSERT(db->write({blob(index::IndexBlobKind::Global, "global", "gg")}, {}).empty());
+        ZASSERT(db->write({blob(index::BlobKind::Global, "global", "gg")}, {}).empty());
     }
     auto store = open_store(tmp, "ws", /*read_only=*/true);
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(db->contains(index::IndexBlobKind::Global, "global"));
-    ZASSERT(db->read(index::IndexBlobKind::Global, "global").buffer->getBuffer() == "gg");
+    ZASSERT(db->contains(index::BlobKind::Global, "global"));
+    ZASSERT(db->read(index::BlobKind::Global, "global").buffer->getBuffer() == "gg");
 }
 
 ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
@@ -400,13 +400,13 @@ ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
     {
         auto db = index::open_database(store, "");
         ZASSERT(db != nullptr);
-        ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "bytes")}, {}).empty());
+        ZASSERT(db->write({blob(index::BlobKind::CDB, "cdb", "bytes")}, {}).empty());
         db->condemn();
     }
     ZASSERT(!llvm::sys::fs::exists(path::join(index::database_directory(store, ""), "index.mdb")));
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
-    ZASSERT(!db->contains(index::IndexBlobKind::CDB, "cdb"));
+    ZASSERT(!db->contains(index::BlobKind::CDB, "cdb"));
 }
 
 ZEST_CASE(DatabasePerConfiguration) {
@@ -424,9 +424,9 @@ ZEST_CASE(DatabasePerConfiguration) {
     auto release = index::open_database(store, "release");
     ZASSERT(debug != nullptr);
     ZASSERT(release != nullptr);
-    ZASSERT(debug->write({blob(index::IndexBlobKind::Global, "global", "d")}, {}).empty());
+    ZASSERT(debug->write({blob(index::BlobKind::Global, "global", "d")}, {}).empty());
     ZASSERT(release->advance_read_snapshot());
-    ZASSERT(!release->contains(index::IndexBlobKind::Global, "global"));
+    ZASSERT(!release->contains(index::BlobKind::Global, "global"));
     ZASSERT(
         llvm::sys::fs::exists(path::join(index::database_directory(store, "debug"), "index.mdb")));
     ZASSERT(
@@ -513,23 +513,23 @@ ZEST_CASE(OutstandingSnapshotsStack) {
     auto db = index::open_database(store, "");
     ZASSERT(db != nullptr);
 
-    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());
+    ZASSERT(db->write({blob(index::BlobKind::Shard, "k", large_value('1'))}, {}).empty());
     ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
-    auto lease = db->read(index::IndexBlobKind::Shard, "k");
+    auto lease = db->read(index::BlobKind::Shard, "k");
     ZASSERT(bool(lease));
 
     // A cancelled migration leaves its old snapshot outstanding and the
     // next advance stacks another; every stacked snapshot keeps its
     // borrowers alive until one retire clears them all.
-    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('2'))}, {}).empty());
+    ZASSERT(db->write({blob(index::BlobKind::Shard, "k", large_value('2'))}, {}).empty());
     ZASSERT(db->advance_read_snapshot());
-    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('3'))}, {}).empty());
+    ZASSERT(db->write({blob(index::BlobKind::Shard, "k", large_value('3'))}, {}).empty());
     ZASSERT(db->advance_read_snapshot());
     ZASSERT(lease.buffer->getBuffer() == large_value('1'));
-    ZASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
+    ZASSERT(db->read(index::BlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
     db->retire_old_snapshot();
-    ZASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
+    ZASSERT(db->read(index::BlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
 }
 
 };  // ZEST_SUITE(IndexDatabase)

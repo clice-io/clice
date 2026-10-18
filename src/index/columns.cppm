@@ -26,7 +26,7 @@ namespace clice::index {
 /// invariants checked — plus the container offsets the image's header carries:
 /// the in-place reader follows them instead of walking the payload, so a
 /// corrupt one would send it outside the image.
-std::optional<Bitmap> view_bitmap(const void* data, std::size_t size);
+std::optional<Bitmap> read_bitmap(const void* data, std::size_t size);
 
 /// Encode a bitmap as its portable image — the only format with a bounded
 /// deserializer.
@@ -83,7 +83,7 @@ inline bool covering_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_
 /// Entry `i` of an "entries back to back" column pair: the arena between
 /// the previous entry's end and its own.
 template <typename Arena>
-Arena back_to_back(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
+Arena slice(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
     auto begin = i == 0 ? 0 : ends[i - 1];
     return arena.drop_front(begin).take_front(ends[i] - begin);
 }
@@ -276,7 +276,7 @@ struct RangeColumnsView {
     /// every slice proven to decode, so this cannot fail.
     Bitmap bitmap_of(std::uint32_t entry) const {
         auto begin = roaring_offsets[entry];
-        return *view_bitmap(roaring.data() + begin, roaring_offsets[entry + 1] - begin);
+        return *read_bitmap(roaring.data() + begin, roaring_offsets[entry + 1] - begin);
     }
 };
 

@@ -90,7 +90,7 @@ struct ProjectTable {
     }
 
     llvm::StringRef name(std::uint32_t doc) const {
-        return back_to_back(names, name_ends, doc);
+        return slice(names, name_ends, doc);
     }
 
     llvm::StringRef arguments(std::uint32_t doc) const {
@@ -98,7 +98,7 @@ struct ProjectTable {
         if(it == args_docs.end() || *it != doc) {
             return {};
         }
-        return back_to_back(args, args_ends, static_cast<std::uint32_t>(it - args_docs.begin()));
+        return slice(args, args_ends, static_cast<std::uint32_t>(it - args_docs.begin()));
     }
 
     SymbolHash parent(std::uint32_t doc) const {
@@ -118,11 +118,11 @@ struct ProjectTable {
     }
 
     llvm::StringRef signature(std::uint32_t doc) const {
-        return back_to_back(signatures, signature_ends, doc);
+        return slice(signatures, signature_ends, doc);
     }
 
     llvm::ArrayRef<std::uint8_t> image(std::uint32_t doc) const {
-        return back_to_back(bitmaps, bitmap_ends, doc);
+        return slice(bitmaps, bitmap_ends, doc);
     }
 
     std::optional<Bitmap> bitmap(std::uint32_t doc) const {
@@ -135,7 +135,7 @@ struct ProjectTable {
         if(it == instantiation_docs.end() || *it != doc) {
             return {};
         }
-        return back_to_back(instantiation_images,
+        return slice(instantiation_images,
                             instantiation_ends,
                             static_cast<std::uint32_t>(it - instantiation_docs.begin()));
     }
@@ -156,7 +156,7 @@ struct ProjectTable {
         if(it == contributed_index.end()) {
             return std::nullopt;
         }
-        return read_file_set(back_to_back(contributors, contributor_ends, it->second));
+        return read_file_set(slice(contributors, contributor_ends, it->second));
     }
 
     /// The file sets the shared locals list for `symbol`, as path ids; a
@@ -170,7 +170,7 @@ struct ProjectTable {
         auto entry = static_cast<std::uint32_t>(it - shared_local_symbols.begin());
         for(auto set = entry == 0 ? 0 : shared_local_set_ends[entry - 1]; set < shared_local_set_ends[entry];
             set += 1) {
-            if(auto files = read_file_set(back_to_back(shared_local_files, shared_local_file_ends, set))) {
+            if(auto files = read_file_set(slice(shared_local_files, shared_local_file_ends, set))) {
                 sets.push_back(std::move(*files));
             }
         }

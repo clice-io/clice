@@ -44,11 +44,11 @@ bool open_database(Project& project, Config config, llvm::StringRef requested_co
         return false;
     }
     project.config = std::move(config);
-    project.project_index.workspace = project.config.workspace_root;
+    project.index.workspace = project.config.workspace_root;
     project.store.emplace(std::move(*store));
     project.build.reset_active(configuration);
-    project.index_db = index::open_database(*project.store, configuration, /*read_only=*/true);
-    if(!project.index_db) {
+    project.database = index::open_database(*project.store, configuration, /*read_only=*/true);
+    if(!project.database) {
         // A database that exists but did not open said why as it failed.
         if(!index::database_exists(*project.store, configuration)) {
             LOG_ERROR("No index cache at {}; run `clice index` first",
@@ -65,7 +65,7 @@ bool open_index(Project& project, Config config, llvm::StringRef requested_confi
     if(!open_database(project, std::move(config), requested_configuration)) {
         return false;
     }
-    if(!project.project_index.open(*project.index_db, project.file_table)) {
+    if(!project.index.open(*project.database, project.file_table)) {
         LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
                   std::string_view(project.config.project.cache_dir));
         return false;
@@ -93,7 +93,7 @@ std::optional<LoadedIndex> load_index(Project& project,
     }
     // load() detaches the storage when the global blob exists but cannot
     // be read — a transient IO error, not an empty index.
-    if(project.index_db == nullptr) {
+    if(project.database == nullptr) {
         LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
                   std::string_view(project.config.project.cache_dir));
         return std::nullopt;
@@ -104,7 +104,7 @@ std::optional<LoadedIndex> load_index(Project& project,
     // With no pump attached the load report's debt can only be the
     // recovery drops: every TU's blobs were missing, stale, or corrupt — a
     // damaged cache, not a legitimately empty one.
-    if(project.project_index.manifests.empty() && project.project_index.shards.empty() &&
+    if(project.index.manifests.empty() && project.index.shards.empty() &&
        !result.dropped.empty()) {
         LOG_ERROR(
             "Index cache at {} has no servable data ({} translation units need "

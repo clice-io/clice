@@ -16,7 +16,7 @@ inline std::string blob_key(llvm::StringRef name) {
 }
 
 /// The blob families the index persists.
-enum class IndexBlobKind : std::uint8_t {
+enum class BlobKind : std::uint8_t {
     /// Per-file shard blobs (ShardBlob), keyed by a path hash.
     Shard,
     /// Per-file instantiation blobs (InstantiationBlob), keyed like the
@@ -63,7 +63,7 @@ struct ReadBlob {
 
 /// Key of one persisted blob, for batch removals.
 struct BlobKey {
-    IndexBlobKind kind;
+    BlobKind kind;
     std::string key;
 };
 
@@ -99,15 +99,15 @@ public:
 
     /// The blob's bytes, or a null ReadBlob when missing or unreadable.
     /// See ReadBlob for the lifetime contract.
-    virtual ReadBlob read(IndexBlobKind kind, llvm::StringRef key) = 0;
+    virtual ReadBlob read(BlobKind kind, llvm::StringRef key) = 0;
 
     /// Whether a blob exists under the key, even when unreadable — how the
     /// loader tells a missing global blob (remove everything) from a
     /// transient read failure (touch nothing).
-    virtual bool contains(IndexBlobKind kind, llvm::StringRef key) = 0;
+    virtual bool contains(BlobKind kind, llvm::StringRef key) = 0;
 
     struct Blob {
-        IndexBlobKind kind;
+        BlobKind kind;
         std::string key;
         std::string bytes;
     };
@@ -124,7 +124,7 @@ public:
     virtual llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
                                                  llvm::ArrayRef<BlobKey> removes) = 0;
 
-    virtual void for_each_key(IndexBlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) = 0;
+    virtual void for_each_key(BlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) = 0;
 
     /// Open a new read snapshot and return its generation; reads from now
     /// on come from it. The previous snapshot — and every borrowed buffer

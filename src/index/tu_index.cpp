@@ -80,9 +80,9 @@ struct SymbolColumns {
 
     SymbolView view(std::uint32_t entry) const {
         return {
-            .name = back_to_back(names, name_ends, entry),
-            .args = back_to_back(args, args_ends, entry),
-            .signature = back_to_back(signatures, signature_ends, entry),
+            .name = slice(names, name_ends, entry),
+            .args = slice(args, args_ends, entry),
+            .signature = slice(signatures, signature_ends, entry),
             .parent = parents[entry],
             .kind = SymbolKind(kinds[entry]),
             .scope = static_cast<SymbolScope>(scopes[entry]),
@@ -94,11 +94,11 @@ struct SymbolColumns {
     }
 
     llvm::ArrayRef<std::uint32_t> references_of(std::uint32_t entry) const {
-        return back_to_back(references, reference_ends, entry);
+        return slice(references, reference_ends, entry);
     }
 
     llvm::ArrayRef<std::uint32_t> instantiations_of(std::uint32_t entry) const {
-        return back_to_back(instantiations, instantiation_ends, entry);
+        return slice(instantiations, instantiation_ends, entry);
     }
 };
 
@@ -305,7 +305,7 @@ const Shard& TUIndex::section_shard(std::uint32_t section) const {
     return slot;
 }
 
-bool TUIndex::shards_verify() const {
+bool TUIndex::verify_shards() const {
     if(shards.empty()) {
         shards.resize(section_count());
     }
@@ -440,7 +440,7 @@ std::optional<std::vector<TUSharedLocal>> TUIndex::shared_locals(const llvm::Bit
     return result;
 }
 
-bool TUIndex::matches_prefix(llvm::StringRef text) const {
+bool TUIndex::matches_preamble(llvm::StringRef text) const {
     if(!loaded()) {
         return false;
     }

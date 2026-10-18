@@ -339,14 +339,14 @@ int other = 1;
     // The preamble text itself is not stored; the TU index keeps only the
     // identity of the exact prefix it was built from.
     auto content = unit->focus_file().content();
-    ZEXPECT(state->matches_prefix(content));
-    ZEXPECT(state->matches_prefix(content.str() + "\nint more = 2;"));
-    ZEXPECT(!state->matches_prefix(content.drop_back(1)));
-    ZEXPECT(!state->matches_prefix("int changed = 0;"));
+    ZEXPECT(state->matches_preamble(content));
+    ZEXPECT(state->matches_preamble(content.str() + "\nint more = 2;"));
+    ZEXPECT(!state->matches_preamble(content.drop_back(1)));
+    ZEXPECT(!state->matches_preamble("int changed = 0;"));
 
     // An ordinary TU index never serves preamble state.
     auto ordinary = index::build_tu_index(*unit);
-    ZEXPECT(!index::TUIndex::from_bytes(ordinary).matches_prefix(content));
+    ZEXPECT(!index::TUIndex::from_bytes(ordinary).matches_preamble(content));
 }
 
 };  // ZEST_SUITE(PreambleIndex)

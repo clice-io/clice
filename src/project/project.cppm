@@ -250,15 +250,15 @@ struct Project {
     std::optional<CacheStore> store;
 
     /// The cache directory's writer lock, taken by a session that persists
-    /// its index and held until the project dies — after `index_db`, so
+    /// its index and held until the project dies — after `database`, so
     /// a reopened database never races another writer for the directory.
     std::optional<index::WriterLock> writer_lock;
 
     /// Index blob persistence, opened together with the cache store.
     /// Declared right after `store` (both backends borrow it) and before
     /// every index structure that borrows database bytes (`shards`), so
-    /// destruction runs shards → index_db → store.
-    std::unique_ptr<index::BlobDatabase> index_db;
+    /// destruction runs shards → database → store.
+    std::unique_ptr<index::BlobDatabase> database;
 
     /// Include relationships between files on disk (#include edges).
     /// Built once at startup from CDB scan; updated incrementally on didSave.
@@ -274,7 +274,7 @@ struct Project {
 
     /// The persisted index as loaded: the global symbol table, the per-TU
     /// manifests, the per-file shard blobs and the name search index.
-    index::ProjectIndex project_index;
+    index::ProjectIndex index;
 
     /// Monotonic generation of context-affecting project state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext

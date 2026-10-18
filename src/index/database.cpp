@@ -56,21 +56,21 @@ std::size_t default_mapsize() {
 #endif
 }
 
-char kind_prefix(IndexBlobKind kind) {
+char kind_prefix(BlobKind kind) {
     switch(kind) {
-        case IndexBlobKind::Shard: return 'S';
-        case IndexBlobKind::Instantiations: return 'I';
-        case IndexBlobKind::Manifest: return 'M';
-        case IndexBlobKind::Global: return 'G';
-        case IndexBlobKind::CDB: return 'C';
-        case IndexBlobKind::Artifacts: return 'A';
-        case IndexBlobKind::Contexts: return 'X';
-        case IndexBlobKind::Search: return 'N';
+        case BlobKind::Shard: return 'S';
+        case BlobKind::Instantiations: return 'I';
+        case BlobKind::Manifest: return 'M';
+        case BlobKind::Global: return 'G';
+        case BlobKind::CDB: return 'C';
+        case BlobKind::Artifacts: return 'A';
+        case BlobKind::Contexts: return 'X';
+        case BlobKind::Search: return 'N';
     }
     std::unreachable();
 }
 
-llvm::SmallString<64> encode_key(IndexBlobKind kind, llvm::StringRef key) {
+llvm::SmallString<64> encode_key(BlobKind kind, llvm::StringRef key) {
     llvm::SmallString<64> encoded;
     encoded.push_back(kind_prefix(kind));
     encoded.append(key);
@@ -192,7 +192,7 @@ public:
         }
     }
 
-    ReadBlob read(IndexBlobKind kind, llvm::StringRef key) override {
+    ReadBlob read(BlobKind kind, llvm::StringRef key) override {
         if(!txn) {
             return {};
         }
@@ -218,7 +218,7 @@ public:
                 .generation = generation};
     }
 
-    bool contains(IndexBlobKind kind, llvm::StringRef key) override {
+    bool contains(BlobKind kind, llvm::StringRef key) override {
         if(!txn) {
             return false;
         }
@@ -284,7 +284,7 @@ public:
         return {};
     }
 
-    void for_each_key(IndexBlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
+    void for_each_key(BlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
         if(!txn) {
             return;
         }

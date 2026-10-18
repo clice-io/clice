@@ -23,7 +23,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
     auto view = index::TUIndex::from_bytes(bytes);
     ZASSERT(view.loaded());
 
-    auto& project_index = project.project_index;
+    auto& project_index = project.index;
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));

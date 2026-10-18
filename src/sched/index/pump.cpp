@@ -325,7 +325,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     bool content_changed =
         pending_table.pending_reason(server_path_id) == ReindexReason::ContentChanged;
     bool served = !content_changed && compiled_by_session && compiled_by_session(server_path_id);
-    if(!served && (content_changed || store.need_update(server_path_id))) {
+    if(!served && (content_changed || store.needs_reindex(server_path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         auto outcome = co_await turun.run(
             server_path_id,

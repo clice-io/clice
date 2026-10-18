@@ -215,7 +215,7 @@ std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uin
     return result;
 }
 
-std::optional<Bitmap> view_bitmap(const void* data, std::size_t size) {
+std::optional<Bitmap> read_bitmap(const void* data, std::size_t size) {
     const auto* image = static_cast<const char*>(data);
     if(size == 0 || roaring::api::roaring_bitmap_portable_deserialize_size(image, size) != size ||
        !offsets_canonical(reinterpret_cast<const std::uint8_t*>(image))) {

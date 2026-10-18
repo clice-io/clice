@@ -28,7 +28,7 @@ void append_file_set(std::vector<std::uint8_t>& arena, const Bitmap& ids) {
 
 std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
     if(bytes.size() > raw_file_set_limit * sizeof(std::uint32_t)) {
-        auto image = view_bitmap(bytes.data(), bytes.size());
+        auto image = read_bitmap(bytes.data(), bytes.size());
         if(!image || image->cardinality() <= raw_file_set_limit) {
             return std::nullopt;
         }

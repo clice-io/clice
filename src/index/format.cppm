@@ -454,7 +454,7 @@ struct TUIndexBlob {
     std::vector<InstantiationSection> instantiations;
 
     /// Preamble ride-alongs, empty on ordinary TU indexes: identity of the
-    /// exact preamble text the PCH was built from (matches_prefix), and
+    /// exact preamble text the PCH was built from (matches_preamble), and
     /// the PCH-derived feature state spliced into focus-file results. The
     /// refs borrow the builder's inputs — encode-only, like the section
     /// blobs are for readers.

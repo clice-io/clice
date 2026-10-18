@@ -16,7 +16,7 @@ namespace clice::index {
 
 /// Which level of the multi-level symbol table stores a declaration's
 /// symbol.
-SymbolScope classify_scope(const clang::NamedDecl* decl);
+SymbolScope scope_of(const clang::NamedDecl* decl);
 
 /// How build_tu_index shapes the TU index blob.
 struct TUIndexOptions {

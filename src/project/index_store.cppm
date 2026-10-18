@@ -172,7 +172,7 @@ public:
     /// and never for `tu` itself, whose rebuild is what would confirm it.
     /// The file `tu` names walks its own instantiations: an open buffer's
     /// index stands in for the file's stored one. Valid within one
-    /// freshness round, like need_update.
+    /// freshness round, like needs_reindex.
     std::vector<std::uint64_t> known_instantiations(Fid tu);
 
     /// Drop a TU's index wholesale: manifest and contributions now (the
@@ -199,7 +199,7 @@ public:
 
     /// What the persisted index remembers of the build it was built from,
     /// as absolute paths.
-    struct Remembered {
+    struct PersistedBuild {
         /// The databases: what discovery registers at startup before
         /// anything is opened, so a nested project's units keep their index
         /// across sessions instead of being dropped as unlisted and rebuilt.
@@ -209,7 +209,7 @@ public:
         std::vector<Spelling> provisional;
     };
 
-    Remembered remembered();
+    PersistedBuild remembered();
 
     /// Load the global blob, adopt every resolvable manifest, fetch the
     /// shard blobs the contributions expect, and remove the rest.
@@ -250,7 +250,7 @@ public:
     /// Check whether a file needs re-indexing: no manifest, or a stale
     /// FileVersion among its dependencies. Valid only within one round:
     /// the results are cleared by begin_round(), never here.
-    bool need_update(Fid file);
+    bool needs_reindex(Fid file);
 
     /// Shard blobs whose write has not durably completed: dirty since the
     /// last save plus the batch a running save is committing. The gauge

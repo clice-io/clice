@@ -96,7 +96,7 @@ struct SymbolQuery {
 
     /// Take the path filters spelling a path as identities, relative ones
     /// from the workspace `root`; a bare file name stays a name.
-    void anchor(const Spelling& root);
+    void resolve_paths(const Spelling& root);
 
     /// Whether the query names symbols by pattern rather than by id or
     /// place.

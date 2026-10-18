@@ -46,7 +46,7 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     // Interning only names the file; whether the index holds a shard for
     // it is the shard fetch's answer.
     auto file = ctx.project.file_table.intern(path);
-    if(!ctx.project.project_index.shard(file)) {
+    if(!ctx.project.index.shard(file)) {
         ctx.unindexed.emplace_back(ctx.project.file_table.display(file));
         return std::nullopt;
     }
@@ -77,7 +77,7 @@ Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
         }
         return true;
     }
-    query.anchor(Spelling(ctx.project.config.workspace_root));
+    query.resolve_paths(Spelling(ctx.project.config.workspace_root));
     return query.position ? anchor(query.position->path) : true;
 }
 
@@ -392,7 +392,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
         result.files.push_back(std::move(info));
     }
     if(filter == "all" || filter == "header") {
-        for(auto path_id: llvm::make_first_range(ws.project_index.shards)) {
+        for(auto path_id: llvm::make_first_range(ws.index.shards)) {
             auto path = ws.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header_path(path)) {
                 seen.insert(path_id);
@@ -457,7 +457,7 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     auto readers = ws.dep_graph.find_readers(*file);
     // An importer reads the files its modules were built from without
     // including them.
-    if(auto it = ws.project_index.importers.find(*file); it != ws.project_index.importers.end()) {
+    if(auto it = ws.index.importers.find(*file); it != ws.index.importers.end()) {
         llvm::SmallVector<Fid> importers(it->second.begin(), it->second.end());
         llvm::sort(importers, [&](Fid lhs, Fid rhs) {
             return ws.file_table.resolve(lhs) < ws.file_table.resolve(rhs);
@@ -654,7 +654,7 @@ Outcome<ReferencesResult> references(Context& ctx,
 bool units_pending(Project& project) {
     return llvm::any_of(project.build.members(), [&](Fid unit) {
         return project.build.indexed(project.file_table.resolve(unit)) &&
-               !project.project_index.tu_manifest(unit);
+               !project.index.manifest(unit);
     });
 }
 
