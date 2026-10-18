@@ -415,7 +415,8 @@ std::string sort_text(float score, std::optional<std::uint32_t> order) {
 
 /// The virtual functions of `record`'s bases, direct or not, an override
 /// declaration in its body may name: none that it, or a class between it and
-/// the base, overrides, and none final. Sema offers only its direct bases'.
+/// the base, overrides, and none final or deleted. Sema offers only its
+/// direct bases'.
 auto overridable(const clang::CXXRecordDecl& record)
     -> llvm::SmallVector<const clang::CXXMethodDecl*> {
     llvm::SmallVector<const clang::CXXRecordDecl*> bases;
@@ -452,7 +453,7 @@ auto overridable(const clang::CXXRecordDecl& record)
     llvm::SmallVector<const clang::CXXMethodDecl*> methods;
     for(const auto* base: bases) {
         for(const auto* method: base->methods()) {
-            if(method->isVirtual() && method->getIdentifier() &&
+            if(method->isVirtual() && method->getIdentifier() && !method->isDeleted() &&
                !method->hasAttr<clang::FinalAttr>() &&
                !overridden.contains(method->getCanonicalDecl())) {
                 methods.push_back(method);

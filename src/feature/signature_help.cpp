@@ -12,6 +12,7 @@ import :semantic.display;
 import :semantic.resolver;
 import :support.markup;
 import :syntax.documentation;
+import :syntax.lexer;
 import :syntax.lexical_scan;
 
 namespace clice::feature {
@@ -790,7 +791,7 @@ auto dependent_call_at(CompilationUnit& unit, std::uint32_t offset)
     auto focus = unit.focus_file();
     auto content = focus.content();
     auto typed = offset;
-    while(typed > 0 && clang::isAsciiIdentifierContinue(content[typed - 1])) {
+    while(typed > 0 && is_identifier_char(content[typed - 1])) {
         typed -= 1;
     }
     auto stop = focus.location(typed < offset && llvm::isDigit(content[typed]) ? offset : typed);

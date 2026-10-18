@@ -10,3 +10,6 @@ items = [
 
 [answers.final_between.completion]
 items = []
+
+[answers.deleted.completion]
+items = []

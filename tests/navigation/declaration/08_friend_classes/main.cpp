@@ -1,7 +1,7 @@
 struct Holder {
     template <typename T>
-    friend class Seq;
-    friend class Box;
+    friend class §(friend_template)Seq;
+    friend class §(friend_class)Box;
 };
 
 template <typename T>

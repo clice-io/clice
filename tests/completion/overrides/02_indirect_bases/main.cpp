@@ -1,6 +1,7 @@
 struct Shape {
     virtual int draw(int x, int y) const;
     virtual void erase();
+    virtual void reset() = delete;
 };
 
 struct Polygon : Shape {};
@@ -20,4 +21,8 @@ struct Cube : Square {
 
 struct Prism : Square {
     eras§(final_between)
+};
+
+struct Circle : Polygon {
+    rese§(deleted)
 };
