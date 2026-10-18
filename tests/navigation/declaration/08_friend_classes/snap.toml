@@ -1,0 +1,5 @@
+[answers.template_use]
+declaration = ["class ⟦Seq⟧ {};"]
+
+[answers.class_use]
+declaration = ["class ⟦Box⟧ {};"]

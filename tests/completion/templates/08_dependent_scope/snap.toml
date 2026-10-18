@@ -14,6 +14,6 @@ items = [
 
 [answers.enumeration.completion]
 items = [
-    { label = "Fast", kind = "EnumMember", detail = "Modes::Mode" },
-    { label = "Slow", kind = "EnumMember", detail = "Modes::Mode" },
+    { label = "Fast", kind = "EnumMember", detail = "Mode" },
+    { label = "Slow", kind = "EnumMember", detail = "Mode" },
 ]

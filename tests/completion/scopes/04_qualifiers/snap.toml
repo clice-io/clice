@@ -26,7 +26,7 @@ items = [
 
 [answers.enumerator.completion]
 items = [
-    { label = "colors::crimson", kind = "EnumMember", detail = "colors::Color", insert = "colors::crimson" },
+    { label = "colors::crimson", kind = "EnumMember", detail = "Color", insert = "colors::crimson" },
 ]
 
 [answers.anonymous_namespace.completion]

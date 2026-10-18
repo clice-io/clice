@@ -102,8 +102,9 @@ inline std::string symbol_id(SymbolHash hash) {
 /// index misses; v37: what instantiations and macro expansions resolve
 /// lives in per-file instantiation blobs, manifests list the resolutions of
 /// those they use, symbols the files whose instantiation blobs name them,
-/// and no entry resolves through a template's only instantiation.
-constexpr inline std::uint32_t index_format_version = 37;
+/// and no entry resolves through a template's only instantiation; v38: a
+/// friend class declaration is a reference to the class, no declaration.
+constexpr inline std::uint32_t index_format_version = 38;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

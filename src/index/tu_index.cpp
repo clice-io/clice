@@ -1204,7 +1204,8 @@ public:
 
         clang::SourceRange name(location, SM.getFileLoc(keyword.getEnd()));
         for(const auto* target:
-            types::decls_of(types::unwrap(readable.readable(type)), &resolver)) {
+            types::decls_of(types::unwrap(readable.readable(type, decl->getDeclContext())),
+                            &resolver)) {
             // A closure type is declared by no name to reach.
             if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(target);
                record && record->isLambda()) {
