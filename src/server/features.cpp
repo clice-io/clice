@@ -1193,12 +1193,20 @@ Features::RawResult Features::references(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::locations(gather(
-        cursor->symbols,
-        path_id,
-        [&](const index::IndexQuery& from, index::SymbolHash named) {
-            return from.references({.symbols = {named}, .site = cursor->site}, include_declaration);
-        })));
+    auto sites = gather(cursor->symbols,
+                        path_id,
+                        [&](const index::IndexQuery& from, index::SymbolHash named) {
+                            return from.references({.symbols = {named}, .site = cursor->site},
+                                                   include_declaration);
+                        });
+    if(std::uint32_t limit = project.config.references.limit.value;
+       limit != 0 && sites.size() > limit) {
+        std::ranges::stable_partition(sites, [&](const index::Site& site) {
+            return site.file == path_id;
+        });
+        sites.erase(sites.begin() + limit, sites.end());
+    }
+    co_return to_raw(to_lsp::locations(sites));
 }
 
 Features::RawResult Features::document_highlight(Ticket ticket,

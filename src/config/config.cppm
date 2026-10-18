@@ -274,6 +274,17 @@ struct TrackerConfig {
     <std::uint32_t> workspace_poll_seconds = 30;
 };
 
+/// Corresponds to the `[references]` section in clice.toml.
+struct ReferencesConfig {
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Maximum number of locations a references request "
+                         "answers with, those in the file it is asked from "
+                         "first; `0` means no limit. `clice query references` "
+                         "lists every one.")
+    <std::uint32_t> limit = 1000;
+};
+
 /// A rule after finalize(): patterns compiled, paths anchored.
 struct CompiledRule {
     struct Pattern {
@@ -403,6 +414,10 @@ struct Config {
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [signature_help] section: signature help options.")
     <feature::SignatureHelpOptions> signature_help;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "The [references] section: what find references answers.")
+    <ReferencesConfig> references;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =

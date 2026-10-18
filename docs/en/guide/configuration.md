@@ -686,6 +686,13 @@ Show the called function's documentation comment.
 
 <!-- END GENERATED CONFIG -->
 
+## `[references]`
+
+The `[references]` section controls what find references answers.
+
+<!-- BEGIN GENERATED CONFIG: references -->
+<!-- END GENERATED CONFIG -->
+
 ## `[[rules]]`
 
 A rule names files by pattern and says where they take their compile commands from and how those commands are edited. Every rule matching a file applies, in declaration order: an earlier rule's databases rank first among the file's candidates, the first matching rule with a `default_command` supplies the command of a file without an entry, `append` and `remove` accumulate with a later `remove` cancelling an earlier `append`, and `index = false` on any matching rule keeps the file out of the index. A rule carrying a `configuration` tag applies only while that configuration is active; the distinct tags form the configuration menu.
