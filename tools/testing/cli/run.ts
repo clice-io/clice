@@ -57,16 +57,21 @@ function nativePaths(root: string): string[] {
 /// a worker's cause of death `${CRASH}`.
 export function portable(text: string, root: string): string {
     let out = text;
-    const rels = nativePaths(root);
-    for (const form of rootForms(root)) {
-        const sep = form.includes("\\\\") ? "\\\\" : path.sep;
-        for (const rel of rels) {
-            out = out.replaceAll(
-                `${form}${sep}${rel.split(path.sep).join(sep)}`,
-                `\${WS}/${posixOf(rel)}`,
-            );
+    const forms = rootForms(root);
+    // Most texts name no path under the root, and the walk of its tree is
+    // for those that do: over a whole project it takes seconds a text.
+    if (forms.some((form) => out.includes(form))) {
+        const rels = nativePaths(root);
+        for (const form of forms) {
+            const sep = form.includes("\\\\") ? "\\\\" : path.sep;
+            for (const rel of rels) {
+                out = out.replaceAll(
+                    `${form}${sep}${rel.split(path.sep).join(sep)}`,
+                    `\${WS}/${posixOf(rel)}`,
+                );
+            }
+            out = out.replaceAll(form, "${WS}");
         }
-        out = out.replaceAll(form, "${WS}");
     }
     return elideCrash(out).replace(/(\$\{WS\}[^\s"']*)/g, (span) =>
         span.replaceAll("\\\\", "/").replaceAll("\\", "/"),
