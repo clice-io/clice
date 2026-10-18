@@ -16,3 +16,7 @@ double scoped_twice() {
     };
     return twice(Scoped{});
 }
+
+double made_radius() {
+    return make().radius;
+}

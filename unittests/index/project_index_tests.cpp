@@ -685,6 +685,48 @@ ZEST_CASE(FanoutAcrossUnits) {
     ZEXPECT(writer.fanout_sets.find(helper)->second.size() == 2u);
 }
 
+ZEST_CASE(FanoutSetsCounted) {
+    // Two units list the same files for a symbol: the set answers until
+    // the last of them leaves.
+    constexpr index::SymbolHash helper = 99;
+    clice::FileTable pool;
+    index::ProjectIndex index;
+    auto x = pool.intern(Spelling::absolute("/proj/x.h"));
+    auto x_fv = pool.intern_version(x, 0xaaaa);
+    auto y_fv = pool.intern_version(pool.intern(Spelling::absolute("/proj/y.h")), 0xbbbb);
+    llvm::SmallVector<Fid> units;
+    for(auto name: {"/proj/a.cpp", "/proj/b.cpp"}) {
+        auto tu = pool.intern(Spelling::absolute(name));
+        index::TUManifest manifest;
+        manifest.tu_fv = pool.intern_version(tu, 0x1111);
+        manifest.nodes = {
+            {manifest.tu_fv.raw, ~0u, 1},
+            {x_fv.raw,           0,   1},
+            {y_fv.raw,           1,   1},
+        };
+        manifest.contributions = {
+            {manifest.tu_fv, 1},
+            {x_fv,           2},
+            {y_fv,           3},
+        };
+        manifest.local_fanout = {
+            {.symbol = helper, .files = {x_fv, y_fv}}
+        };
+        index.apply_manifest(pool, tu, std::move(manifest));
+        units.push_back(tu);
+    }
+    auto reached = [&] {
+        std::size_t count = 0;
+        index.each_fanout_file(helper, x, [&](Fid) { count += 1; });
+        return count;
+    };
+    ZEXPECT(reached() == 2u);
+    index.remove_manifest(pool, units[0]);
+    ZEXPECT(reached() == 2u);
+    index.remove_manifest(pool, units[1]);
+    ZEXPECT(reached() == 1u);
+}
+
 };  // ZEST_SUITE(ProjectIndex)
 
 }  // namespace

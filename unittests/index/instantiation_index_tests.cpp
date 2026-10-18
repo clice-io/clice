@@ -366,6 +366,32 @@ ZEST_CASE(ForeignInternalUnkeyed) {
     ZEXPECT(shard.resolutions().size() == 1u);
 }
 
+ZEST_CASE(ForeignCallerUnkeyed) {
+    add_file("box.h", R"(
+        namespace {
+        struct Box {
+            template <typename T>
+            void put(T t);
+        };
+        }
+    )");
+    add_file("put.h", R"(
+        void store(int);
+        template <typename T>
+        void Box::put(T t) { store(t); }
+    )");
+    build(R"(
+        #include "box.h"
+        #include "put.h"
+        void use() { Box{}.put(1); }
+    )");
+    auto section = section_of("put.h");
+    ZASSERT(section);
+    // The call's target is external, but its caller is the internal `put`
+    // box.h declares.
+    ZEXPECT(view.instantiation_shard(*section).keys().empty());
+}
+
 ZEST_CASE(LocalClassNamesHeader) {
     add_file("run.h", R"(
         template <typename T>

@@ -357,6 +357,10 @@ int use() { return 1; }
         reached.push_back(file);
     });
     ZEXPECT(reached == llvm::SmallVector<Fid>{header, focus});
+
+    // One the build saw gone still came out of the precompiled header.
+    DepState gone{.path_id = header, .missing = true};
+    ZEXPECT(index_store.merge(planted.data(), planted.size(), {gone}).has_value());
 }
 
 ZEST_CASE(MergeIgnoresDiskDrift) {
