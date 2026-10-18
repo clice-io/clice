@@ -723,6 +723,22 @@ tests/navigation/templates/04_dependent_expressions
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Overloads the arguments rule out**
+
+A dependent call leaves out the overloads an argument of known type can never reach
+
+No standard conversion, converting constructor or conversion function takes
+that argument to the overload's parameter. An overload whose parameter
+depends on the template parameters stays.
+
+```case
+tests/navigation/templates/11_known_arguments
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Macros
