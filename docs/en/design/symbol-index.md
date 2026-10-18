@@ -84,7 +84,7 @@ Live rows      The open buffer's latest compile results, owned by its published 
 
 ### Symbol Table Layering
 
-Symbol metadata (name, kind) is looked up in layers: an open file's live data first, then the `ProjectIndex` global table for external names, then the shard's local-name table for file-local names. Storage follows visibility — a symbol that no other file can reference never pollutes the global table.
+Symbol metadata (name, kind) is looked up in layers: an open file's live data first, then the `ProjectIndex` global table for external names, then the shard's local-name table for file-local names. Storage follows visibility — a symbol no other file names never enters the global table, and one below external scope that several files name enters it only as the list of those files, its metadata staying in the shards.
 
 ## Implementation
 
