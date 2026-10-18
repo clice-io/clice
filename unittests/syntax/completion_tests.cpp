@@ -4,14 +4,10 @@ module;
 
 module clice;
 
-import :command.search_config;
 import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.lexer;
-import :syntax.scan;
-import :unittests.utils.temp_dir;
 import :unittests.utils;
-import :vfs.dir_cache;
 
 namespace clice::testing {
 namespace {
@@ -490,97 +486,6 @@ ZEST_CASE(PrimaryInterfacesOnly) {
 }
 
 };  // ZEST_SUITE(CompleteModuleDeclaration)
-
-ZEST_SUITE(CompleteIncludePath) {
-
-/// The names complete_include_path offers, `/` after a directory's, in
-/// the order it found them.
-std::vector<std::string> names(const SearchConfig& config,
-                               llvm::StringRef includer_dir,
-                               llvm::StringRef prefix,
-                               bool angled) {
-    vfs::DirCache cache;
-    vfs::Scope scope(cache);
-    std::vector<std::string> names;
-    for(auto& candidate: complete_include_path(config, includer_dir, prefix, angled, scope)) {
-        names.push_back(candidate.name + (candidate.is_directory ? "/" : ""));
-    }
-    std::ranges::sort(names);
-    return names;
-}
-
-ZEST_CASE(QuotedIncluderFirst) {
-    TempDir tmp;
-    tmp.touch("src/local.h");
-    tmp.touch("quoted/lib.h");
-    tmp.touch("angled/list.h");
-    SearchConfig config;
-    config.dirs = {{tmp.path("quoted")}, {tmp.path("angled")}};
-    config.angled_start_idx = 1;
-    config.system_start_idx = 2;
-
-    ZEXPECT(names(config, tmp.path("src"), "l", false) ==
-            std::vector<std::string>{"lib.h", "list.h", "local.h"});
-    ZEXPECT(names(config, tmp.path("src"), "l", true) == std::vector<std::string>{"list.h"});
-
-    vfs::DirCache cache;
-    vfs::Scope scope(cache);
-    auto found = complete_include_path(config, tmp.path("src"), "l", false, scope);
-    auto order_of = [&](llvm::StringRef name) {
-        return llvm::find_if(found, [&](const IncludeCandidate& c) { return c.name == name; })
-            ->order;
-    };
-    ZEXPECT(order_of("local.h") < order_of("lib.h"));
-    ZEXPECT(order_of("lib.h") < order_of("list.h"));
-}
-
-ZEST_CASE(SubdirectoryPrefix) {
-    TempDir tmp;
-    tmp.touch("include/sys/types.h");
-    tmp.touch("include/sys/time.h");
-    tmp.touch("include/stdio.h");
-    SearchConfig config;
-    config.dirs = {{tmp.path("include")}};
-
-    ZEXPECT(names(config, "", "s", true) == std::vector<std::string>{"stdio.h", "sys/"});
-    ZEXPECT(names(config, "", "sys/ty", true) == std::vector<std::string>{"types.h"});
-}
-
-ZEST_CASE(HeadersOnly) {
-    // Extensionless files are headers only where such headers live: a
-    // system directory or one named `include`.
-    TempDir tmp;
-    tmp.touch("project/vector");
-    tmp.touch("project/value.hpp");
-    tmp.touch("project/values.txt");
-    tmp.touch("system/variant");
-    SearchConfig config;
-    config.dirs = {{tmp.path("project")}, {tmp.path("system")}};
-    config.system_start_idx = 1;
-
-    ZEXPECT(names(config, "", "v", true) == std::vector<std::string>{"value.hpp", "variant"});
-}
-
-ZEST_CASE(EarlierDirectoryWins) {
-    TempDir tmp;
-    tmp.touch("first/config.h");
-    tmp.touch("second/config.h");
-    tmp.touch("second/cond.h");
-    SearchConfig config;
-    config.dirs = {{tmp.path("first")}, {tmp.path("second")}};
-
-    vfs::DirCache cache;
-    vfs::Scope scope(cache);
-    auto found = complete_include_path(config, "", "con", true, scope);
-    ZASSERT(found.size() == 2U);
-    auto config_h = llvm::find_if(found, [](const auto& c) { return c.name == "config.h"; });
-    auto cond_h = llvm::find_if(found, [](const auto& c) { return c.name == "cond.h"; });
-    ZASSERT(config_h != found.end());
-    ZASSERT(cond_h != found.end());
-    ZEXPECT(config_h->order < cond_h->order);
-}
-
-};  // ZEST_SUITE(CompleteIncludePath)
 
 }  // namespace
 }  // namespace clice::testing

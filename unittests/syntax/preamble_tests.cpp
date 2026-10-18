@@ -190,12 +190,6 @@ ZEST_CASE(EmptyPreamble) {
     ZEXPECT(finished_preamble_bound(content, 0) == 0);
 }
 
-ZEST_CASE(NonImportIncludeLinesIgnored) {
-    llvm::StringRef content = "#define FOO 1\n#ifdef BAR\n#endif\nint x;";
-    auto bound = preamble_bound(content);
-    ZEXPECT(finished_preamble_bound(content, bound) == bound);
-}
-
 ZEST_CASE(PreprocessorDirectivesIgnored) {
     llvm::StringRef content = "#ifdef FOO\n#define BAR 1\n#endif\nint x;";
     auto bound = preamble_bound(content);

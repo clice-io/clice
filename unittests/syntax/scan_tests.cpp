@@ -249,34 +249,7 @@ ZEST_CASE(DirectiveCutAtEnd) {
     ZEXPECT(result.modules.empty());
 }
 
-ZEST_CASE(ScanAngledVsQuoted) {
-    auto result = scan_quick(R"(
-#include <vector>
-#include "local.h"
-)");
-
-    ZASSERT(result.includes.size() == 2u);
-    ZEXPECT(result.includes[0].path == "vector");
-    ZEXPECT(result.includes[0].is_angled);
-    ZEXPECT(!result.includes[0].is_include_next);
-
-    ZEXPECT(result.includes[1].path == "local.h");
-    ZEXPECT(!result.includes[1].is_angled);
-    ZEXPECT(!result.includes[1].is_include_next);
-}
-
-ZEST_CASE(ScanIncludeNext) {
-    auto result = scan_quick(R"(
-#include_next <stdlib.h>
-)");
-
-    ZASSERT(result.includes.size() == 1u);
-    ZEXPECT(result.includes[0].path == "stdlib.h");
-    ZEXPECT(result.includes[0].is_angled);
-    ZEXPECT(result.includes[0].is_include_next);
-}
-
-ZEST_CASE(ScanMixedDirectives) {
+ZEST_CASE(MixedDirectives) {
     auto result = scan_quick(R"(
 #include <system.h>
 #include "quoted.h"

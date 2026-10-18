@@ -150,7 +150,7 @@ struct QuickScanCache {
 /// conditionals are evaluated and macros expand. This is the only
 /// trustworthy source of module dependency edges — `import MACRO;` is
 /// legal ([cpp.import] macro-expands an import's tokens, see
-/// ImportMacroExpandedName in module_import_tests) — and it resolves a
+/// ModuleImportScan.ImportMacroExpandedName in scan_tests) — and it resolves a
 /// partition import (`import :part;`) against the enclosing module's
 /// name. Fills the module name and the imports with their offsets.
 /// An engaged `content` remaps the scanned file to it — even when empty:
