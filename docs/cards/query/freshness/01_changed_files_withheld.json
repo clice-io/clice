@@ -1,5 +1,5 @@
 {
-  "id": "query/freshness/01_withheld_rows",
+  "id": "query/freshness/01_changed_files_withheld",
   "topic": "query",
   "subtopic": "freshness",
   "title": "Files changed since indexing",

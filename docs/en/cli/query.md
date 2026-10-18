@@ -192,7 +192,7 @@ Answers leave out the files changed since indexing, and `--fresh` brings the ind
 Answers leave out what the index holds for files changed on disk since it was built, and name those files in `stale`
 
 ```case
-tests/query/freshness/01_withheld_rows
+tests/query/freshness/01_changed_files_withheld
 ```
 
 <!-- END CAPABILITY -->
