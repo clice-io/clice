@@ -92,7 +92,7 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
             return;
         }
         auto focus = unit.focus_file();
-        auto after = *focus.lexical().code_from(brace->begin + 1).begin();
+        auto after = *focus.lexical().code_from(brace->end).begin();
         anchor_loc = focus.location(after.range.begin);
     }
     auto anchor = editable_range(unit, anchor_loc);

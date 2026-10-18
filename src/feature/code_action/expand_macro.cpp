@@ -116,9 +116,10 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
         }
 
         // The text lands between the tokens written flush against the
-        // invocation, which must not run into it either.
+        // invocation, which must not run into it either; the end of a
+        // directive on the line before is its line break, not one of them.
         std::optional<llvm::StringRef> preceding;
-        if(first > 0 && gap(first).empty()) {
+        if(first > 0 && gap(first).empty() && !spelled[first - 1].is_eod()) {
             preceding = spelled[first - 1].text(content);
         }
         std::optional<llvm::StringRef> following;

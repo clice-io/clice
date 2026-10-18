@@ -8,6 +8,7 @@ import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.display;
 import :semantic.identity;
+import :syntax.lexer;
 
 namespace clice::feature::action {
 

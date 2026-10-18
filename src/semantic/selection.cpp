@@ -141,7 +141,7 @@ SelectionTree::SelectionTree(CompilationUnit& unit, LocalSourceRange range) {
     };
 
     llvm::DenseMap<std::uint32_t, std::pair<SelectionKind, std::uint32_t>> hits;
-    for(std::uint32_t i = first; i < count && semantics.token_offset(i) < end; i++) {
+    for(std::uint32_t i = first; i < count && tokens[i].range.begin < end; i++) {
         if(ignored(i)) {
             continue;
         }

@@ -731,9 +731,9 @@ private:
     void add_directive_entry(unsigned offset, std::uint32_t self) {
         auto indices = std::views::iota(0u, static_cast<std::uint32_t>(semantics.tokens.size()));
         auto it = std::ranges::partition_point(indices, [&](std::uint32_t i) {
-            return semantics.token_offset(i) < offset;
+            return semantics.tokens[i].range.begin < offset;
         });
-        if(it != indices.end() && semantics.token_offset(*it) == offset &&
+        if(it != indices.end() && semantics.tokens[*it].range.begin == offset &&
            semantics.tokens[*it].kind != clang::tok::comment) {
             entries.emplace_back(*it, self);
         }

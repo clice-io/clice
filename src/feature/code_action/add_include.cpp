@@ -101,52 +101,35 @@ std::optional<QualifiedName> qualified_name_at(CompilationUnit& unit, std::uint3
     auto it = std::ranges::partition_point(tokens, [&](const Token& token) {
         return token.range.end <= offset;
     });
-    if((it == tokens.end() || it->range.begin > offset) && it != tokens.begin() &&
-       std::prev(it)->range.end == offset) {
+    if((it == tokens.end() || it->range.begin > offset || it->kind == clang::tok::comment) &&
+       it != tokens.begin() && std::prev(it)->range.end == offset) {
         --it;
     }
     if(it == tokens.end() || focus.kind(*it) != clang::tok::identifier ||
        it->range.begin > offset) {
         return std::nullopt;
     }
-    // The tokens before and after token `i`, past the comments between.
-    auto previous = [&](std::size_t i) -> std::optional<std::size_t> {
-        while(i > 0) {
-            i -= 1;
-            if(tokens[i].kind != clang::tok::comment) {
-                return i;
-            }
-        }
-        return std::nullopt;
-    };
-    auto next = [&](std::size_t i) -> std::optional<std::size_t> {
-        for(i += 1; i < tokens.size(); i += 1) {
-            if(tokens[i].kind != clang::tok::comment) {
-                return i;
-            }
-        }
-        return std::nullopt;
-    };
     auto is = [&](std::optional<std::size_t> i, TokenKind kind) {
         return i && focus.kind(tokens[*i]) == kind;
     };
     llvm::SmallVector<std::size_t, 4> components{static_cast<std::size_t>(it - tokens.begin())};
-    for(auto scope = previous(components.front());
-        is(scope, clang::tok::coloncolon) && is(previous(*scope), clang::tok::identifier);
-        scope = previous(components.front())) {
-        components.insert(components.begin(), *previous(*scope));
+    for(auto scope = code_before(tokens, components.front());
+        is(scope, clang::tok::coloncolon) &&
+        is(code_before(tokens, *scope), clang::tok::identifier);
+        scope = code_before(tokens, components.front())) {
+        components.insert(components.begin(), *code_before(tokens, *scope));
     }
-    auto access = previous(components.front());
+    auto access = code_before(tokens, components.front());
     if(is(access, clang::tok::kw_template)) {
-        access = previous(*access);
+        access = code_before(tokens, *access);
     }
     if(is(access, clang::tok::period) || is(access, clang::tok::arrow)) {
         return std::nullopt;
     }
-    for(auto scope = next(components.back());
-        is(scope, clang::tok::coloncolon) && is(next(*scope), clang::tok::identifier);
-        scope = next(components.back())) {
-        components.push_back(*next(*scope));
+    for(auto scope = code_after(tokens, components.back());
+        is(scope, clang::tok::coloncolon) && is(code_after(tokens, *scope), clang::tok::identifier);
+        scope = code_after(tokens, components.back())) {
+        components.push_back(*code_after(tokens, *scope));
     }
     QualifiedName result;
     for(auto i: llvm::ArrayRef(components).drop_back()) {

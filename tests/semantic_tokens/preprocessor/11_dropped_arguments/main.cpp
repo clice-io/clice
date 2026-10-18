@@ -6,5 +6,5 @@ int right();
 
 int pick() {
     IGNORE(left(), right());
-    return FIRST(left(), right());
+    return FIRST /* the first */ (left(), /* dropped */ right());
 }

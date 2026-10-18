@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.types;
+import :syntax.lexical_scan;
 
 namespace clice::feature::action {
 
@@ -99,32 +100,23 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         auto focus = unit.focus_file();
         auto& token_map = focus.tokens();
         auto tokens = token_map.spelled();
-        const auto* at = llvm::partition_point(tokens, [&](const Token& token) {
-            return token.range.begin < range->begin;
-        });
-        auto comment = [](const Token& token) {
-            return token.kind == clang::tok::comment;
-        };
-        const auto* first = at;
-        for(const auto* it = at; it != tokens.begin();) {
-            it -= 1;
-            if(comment(*it)) {
-                continue;
-            }
-            if(!is_cv(focus.kind(*it))) {
-                break;
-            }
-            first = it;
+        auto at = static_cast<std::size_t>(llvm::partition_point(tokens,
+                                                                 [&](const Token& token) {
+                                                                     return token.range.begin <
+                                                                            range->begin;
+                                                                 }) -
+                                           tokens.begin());
+        auto first = at;
+        for(auto it = code_before(tokens, at); it && is_cv(focus.kind(tokens[*it]));
+            it = code_before(tokens, *it)) {
+            first = *it;
         }
         auto starts_expansion = [&](const Token& token) {
             auto expansions = token_map.expansions_overlapping(llvm::ArrayRef(token));
             return !expansions.empty() && expansions.front().spelled.begin() == &token;
         };
-        for(const auto* it = first; it != tokens.begin(); it -= 1) {
-            const auto& token = *std::prev(it);
-            if(comment(token)) {
-                continue;
-            }
+        for(auto it = code_before(tokens, first); it; it = code_before(tokens, *it)) {
+            const auto& token = tokens[*it];
             if(is_cv(focus.kind(token)) || starts_expansion(token)) {
                 return;
             }
@@ -132,17 +124,16 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
                 break;
             }
         }
-        for(const auto* it = first; it != at; it += 1) {
-            if(comment(*it)) {
-                return;
-            }
-            auto end = it->range.end;
-            auto next = it + 1 == at ? range->begin : (it + 1)->range.begin;
-            if(!content.substr(end, next - end).trim().empty()) {
+        for(auto index = first; index < at; index += 1) {
+            const auto& token = tokens[index];
+            auto end = token.range.end;
+            auto next = index + 1 == at ? range->begin : tokens[index + 1].range.begin;
+            if(token.kind == clang::tok::comment ||
+               !content.substr(end, next - end).trim().empty()) {
                 return;
             }
             // decltype of a const pointer has the qualifier already.
-            auto kind = focus.kind(*it);
+            auto kind = focus.kind(token);
             bool has = kind == clang::tok::kw_const ? deduced.isConstQualified()
                                                     : deduced.isVolatileQualified();
             if(!has) {
@@ -150,7 +141,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
                 printed += clang::tok::getKeywordSpelling(kind);
             }
         }
-        range->begin = first->range.begin;
+        range->begin = tokens[first].range.begin;
     }
     out.push_back(CodeAction{
         .title = std::format("Replace '{}' with '{}'",

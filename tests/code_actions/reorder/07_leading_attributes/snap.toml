@@ -10,7 +10,7 @@ compiles = true
 +DEPRECATED
 +void S::a() {}
 +
- [[nodiscard]] [[deprecated("old")]]
+ [[nodiscard]] [[deprecated("old")]] // still answers
  int S::b() {
 …
  OBSOLETE("old")

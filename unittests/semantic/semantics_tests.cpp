@@ -18,7 +18,7 @@ ZEST_SUITE(SemanticsTable, Tester) {
 
 std::optional<std::uint32_t> token_index_at(const Semantics& semantics, std::uint32_t offset) {
     for(std::uint32_t i = 0; i < semantics.spelled_tokens().size(); i += 1) {
-        if(semantics.token_offset(i) == offset) {
+        if(semantics.spelled_tokens()[i].range.begin == offset) {
             return i;
         }
     }

@@ -365,6 +365,25 @@ std::vector<LexicalInfo::Comment> scan_comments(llvm::StringRef content,
     return comments;
 }
 
+std::optional<std::size_t> code_before(llvm::ArrayRef<Token> tokens, std::size_t index) {
+    while(index > 0) {
+        index -= 1;
+        if(tokens[index].kind != clang::tok::comment) {
+            return index;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::size_t> code_after(llvm::ArrayRef<Token> tokens, std::size_t index) {
+    for(index += 1; index < tokens.size(); index += 1) {
+        if(tokens[index].kind != clang::tok::comment) {
+            return index;
+        }
+    }
+    return std::nullopt;
+}
+
 llvm::SmallVector<Token, 8> LexicalInfo::words(const Directive& directive) const {
     llvm::SmallVector<Token, 8> words;
     for(auto& token:

@@ -369,11 +369,6 @@ public:
         return tokens;
     }
 
-    /// Byte offset of spelled token `index` in the focus file.
-    std::uint32_t token_offset(std::uint32_t index) const {
-        return tokens[index].range.begin;
-    }
-
     /// Whether spelled token `index` was preprocessed away to nothing
     /// (a disabled region or an empty expansion).
     bool token_preprocessed_away(std::uint32_t index) const {

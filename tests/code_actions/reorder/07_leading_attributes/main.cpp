@@ -11,7 +11,7 @@ struct §(cls)S {
     void d();
 };
 
-[[nodiscard]] [[deprecated("old")]]
+[[nodiscard]] [[deprecated("old")]] // still answers
 int S::b() {
     return 0;
 }

@@ -79,50 +79,34 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     auto tokens = focus.tokens().spelled();
     auto& SM = unit.context().getSourceManager();
     auto token_at = [&](std::uint32_t offset) {
-        return std::ranges::partition_point(tokens, [&](const Token& token) {
-            return token.range.begin < offset;
-        });
+        return static_cast<std::size_t>(std::ranges::partition_point(tokens,
+                                                                     [&](const Token& token) {
+                                                                         return token.range.begin <
+                                                                                offset;
+                                                                     }) -
+                                        tokens.begin());
     };
-    // The tokens next to `token`, past the comments between; null at
-    // either end.
-    auto before = [&](const Token* token) -> const Token* {
-        while(token != tokens.begin()) {
-            token -= 1;
-            if(token->kind != clang::tok::comment) {
-                return token;
-            }
-        }
-        return nullptr;
-    };
-    auto after = [&](const Token* token) -> const Token* {
-        for(token += 1; token != tokens.end(); token += 1) {
-            if(token->kind != clang::tok::comment) {
-                return token;
-            }
-        }
-        return nullptr;
-    };
-    const auto* first = token_at(begin);
-    while(const auto* previous = before(first)) {
-        if(const auto* second = before(previous); second &&
-                                                  previous->kind == clang::tok::r_square &&
-                                                  second->kind == clang::tok::r_square) {
+    auto first = token_at(begin);
+    while(auto previous = code_before(tokens, first)) {
+        if(auto second = code_before(tokens, *previous);
+           second && tokens[*previous].kind == clang::tok::r_square &&
+           tokens[*second].kind == clang::tok::r_square) {
             std::uint32_t depth = 0;
-            const auto* open = previous;
+            auto open = *previous;
             while(true) {
-                if(open->kind == clang::tok::r_square) {
+                if(tokens[open].kind == clang::tok::r_square) {
                     depth += 1;
-                } else if(open->kind == clang::tok::l_square) {
+                } else if(tokens[open].kind == clang::tok::l_square) {
                     depth -= 1;
                 }
-                const auto* earlier = depth == 0 ? nullptr : before(open);
+                auto earlier = depth == 0 ? std::nullopt : code_before(tokens, open);
                 if(!earlier) {
                     break;
                 }
-                open = earlier;
+                open = *earlier;
             }
-            const auto* inner = after(open);
-            if(depth != 0 || !inner || inner->kind != clang::tok::l_square) {
+            auto inner = code_after(tokens, open);
+            if(depth != 0 || !inner || tokens[*inner].kind != clang::tok::l_square) {
                 break;
             }
             first = open;
@@ -132,7 +116,7 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
         for(const auto* attr: definition->attrs()) {
             if(attr->getLocation().isMacroID()) {
                 auto expansion = SM.getExpansionRange(attr->getLocation());
-                if(focus.offset(expansion.getEnd()) == previous->range.begin) {
+                if(focus.offset(expansion.getEnd()) == tokens[*previous].range.begin) {
                     invocation = expansion.getBegin();
                 }
             }
@@ -142,8 +126,7 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
         }
         first = token_at(unit.seen_at(*invocation).offset);
     }
-    begin = first->range.begin;
-
+    begin = tokens[first].range.begin;
     // Comments directly above the definition travel with it: each on
     // lines of its own, separated from what follows by nothing but
     // whitespace holding a single line break. A comment trailing the

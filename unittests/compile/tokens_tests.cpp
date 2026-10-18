@@ -326,8 +326,10 @@ ZEST_CASE(TouchingSkipsComments) {
     add_focus("main.cpp", "int x/* c */;");
     ZASSERT(compile());
     auto focus = unit->focus_file();
-    auto end = focus.location(static_cast<std::uint32_t>(std::strlen("int x")));
-    ZEXPECT(text(focus.tokens().spelled_touching(end)) == "x");
+    auto x = focus.location(static_cast<std::uint32_t>(std::strlen("int x")));
+    ZEXPECT(text(focus.tokens().spelled_touching(x)) == "x");
+    auto semi = focus.location(static_cast<std::uint32_t>(std::strlen("int x/* c */")));
+    ZEXPECT(text(focus.tokens().spelled_touching(semi)) == ";");
 }
 
 ZEST_CASE(TouchingFileEnd) {
