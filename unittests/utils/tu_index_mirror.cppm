@@ -32,24 +32,24 @@ struct TUIndexMirror {
     std::vector<std::string> paths;
     std::vector<std::uint64_t> content_hashes;
     std::vector<index::IncludeNode> nodes;
-    std::vector<std::uint64_t> sym_hashes;
-    std::string sym_names;
-    std::vector<std::uint32_t> sym_name_ends;
-    std::string sym_args;
-    std::vector<std::uint32_t> sym_args_ends;
-    std::string sym_signatures;
-    std::vector<std::uint32_t> sym_signature_ends;
-    std::vector<std::uint64_t> sym_parents;
-    std::vector<std::uint8_t> sym_kinds;
-    std::vector<std::uint8_t> sym_scopes;
-    std::vector<std::uint16_t> sym_flags;
-    std::vector<std::uint8_t> sym_token_kinds;
-    std::vector<std::uint32_t> sym_token_modifiers;
-    std::vector<std::uint32_t> sym_files;
-    std::vector<std::uint32_t> sym_reference_ends;
-    std::vector<std::uint32_t> sym_references;
-    std::vector<std::uint32_t> sym_instantiation_ends;
-    std::vector<std::uint32_t> sym_instantiations;
+    std::vector<std::uint64_t> symbol_hashes;
+    std::string symbol_names;
+    std::vector<std::uint32_t> symbol_name_ends;
+    std::string symbol_args;
+    std::vector<std::uint32_t> symbol_args_ends;
+    std::string symbol_signatures;
+    std::vector<std::uint32_t> symbol_signature_ends;
+    std::vector<std::uint64_t> symbol_parents;
+    std::vector<std::uint8_t> symbol_kinds;
+    std::vector<std::uint8_t> symbol_scopes;
+    std::vector<std::uint16_t> symbol_flags;
+    std::vector<std::uint8_t> symbol_token_kinds;
+    std::vector<std::uint32_t> symbol_token_modifiers;
+    std::vector<std::uint32_t> symbol_files;
+    std::vector<std::uint32_t> symbol_reference_ends;
+    std::vector<std::uint32_t> symbol_references;
+    std::vector<std::uint32_t> symbol_instantiation_ends;
+    std::vector<std::uint32_t> symbol_instantiations;
     std::vector<Section> sections;
     std::vector<InstantiationSection> instantiations;
 
@@ -58,24 +58,24 @@ struct TUIndexMirror {
                     const index::SymbolView& identity,
                     llvm::ArrayRef<std::uint32_t> references = {},
                     llvm::ArrayRef<std::uint32_t> instantiation_files = {}) {
-        sym_hashes.push_back(hash);
-        sym_names += identity.name;
-        sym_name_ends.push_back(static_cast<std::uint32_t>(sym_names.size()));
-        sym_args += identity.args;
-        sym_args_ends.push_back(static_cast<std::uint32_t>(sym_args.size()));
-        sym_signatures += identity.signature;
-        sym_signature_ends.push_back(static_cast<std::uint32_t>(sym_signatures.size()));
-        sym_parents.push_back(identity.parent);
-        sym_kinds.push_back(identity.kind.value());
-        sym_scopes.push_back(static_cast<std::uint8_t>(identity.scope));
-        sym_flags.push_back(static_cast<std::uint16_t>(identity.flags));
-        sym_token_kinds.push_back(static_cast<std::uint8_t>(identity.token_class.kind));
-        sym_token_modifiers.push_back(identity.token_class.modifiers);
-        sym_files.push_back(identity.file);
-        sym_references.insert(sym_references.end(), references.begin(), references.end());
-        sym_reference_ends.push_back(static_cast<std::uint32_t>(sym_references.size()));
-        llvm::append_range(sym_instantiations, instantiation_files);
-        sym_instantiation_ends.push_back(static_cast<std::uint32_t>(sym_instantiations.size()));
+        symbol_hashes.push_back(hash);
+        symbol_names += identity.name;
+        symbol_name_ends.push_back(static_cast<std::uint32_t>(symbol_names.size()));
+        symbol_args += identity.args;
+        symbol_args_ends.push_back(static_cast<std::uint32_t>(symbol_args.size()));
+        symbol_signatures += identity.signature;
+        symbol_signature_ends.push_back(static_cast<std::uint32_t>(symbol_signatures.size()));
+        symbol_parents.push_back(identity.parent);
+        symbol_kinds.push_back(identity.kind.value());
+        symbol_scopes.push_back(static_cast<std::uint8_t>(identity.scope));
+        symbol_flags.push_back(static_cast<std::uint16_t>(identity.flags));
+        symbol_token_kinds.push_back(static_cast<std::uint8_t>(identity.token_class.kind));
+        symbol_token_modifiers.push_back(identity.token_class.modifiers);
+        symbol_files.push_back(identity.file);
+        symbol_references.insert(symbol_references.end(), references.begin(), references.end());
+        symbol_reference_ends.push_back(static_cast<std::uint32_t>(symbol_references.size()));
+        llvm::append_range(symbol_instantiations, instantiation_files);
+        symbol_instantiation_ends.push_back(static_cast<std::uint32_t>(symbol_instantiations.size()));
     }
 
     /// A loaded TU index's fields through the sections.

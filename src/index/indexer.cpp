@@ -1973,31 +1973,31 @@ public:
         llvm::sort(table);
         for(auto hash: table) {
             auto& symbol = symbols.find(hash)->second;
-            blob.sym_hashes.push_back(hash);
-            blob.sym_names += symbol.name;
-            blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
-            blob.sym_args += symbol.args;
-            blob.sym_args_ends.push_back(static_cast<std::uint32_t>(blob.sym_args.size()));
-            blob.sym_signatures += symbol.signature;
-            blob.sym_signature_ends.push_back(
-                static_cast<std::uint32_t>(blob.sym_signatures.size()));
-            blob.sym_parents.push_back(symbol.parent);
-            blob.sym_kinds.push_back(symbol.kind.value());
-            blob.sym_scopes.push_back(static_cast<std::uint8_t>(symbol.scope));
-            blob.sym_flags.push_back(static_cast<std::uint16_t>(symbol.flags));
-            blob.sym_token_kinds.push_back(static_cast<std::uint8_t>(symbol.token_class.kind));
-            blob.sym_token_modifiers.push_back(symbol.token_class.modifiers);
-            blob.sym_files.push_back(symbol.file);
+            blob.symbol_hashes.push_back(hash);
+            blob.symbol_names += symbol.name;
+            blob.symbol_name_ends.push_back(static_cast<std::uint32_t>(blob.symbol_names.size()));
+            blob.symbol_args += symbol.args;
+            blob.symbol_args_ends.push_back(static_cast<std::uint32_t>(blob.symbol_args.size()));
+            blob.symbol_signatures += symbol.signature;
+            blob.symbol_signature_ends.push_back(
+                static_cast<std::uint32_t>(blob.symbol_signatures.size()));
+            blob.symbol_parents.push_back(symbol.parent);
+            blob.symbol_kinds.push_back(symbol.kind.value());
+            blob.symbol_scopes.push_back(static_cast<std::uint8_t>(symbol.scope));
+            blob.symbol_flags.push_back(static_cast<std::uint16_t>(symbol.flags));
+            blob.symbol_token_kinds.push_back(static_cast<std::uint8_t>(symbol.token_class.kind));
+            blob.symbol_token_modifiers.push_back(symbol.token_class.modifiers);
+            blob.symbol_files.push_back(symbol.file);
             for(auto file: symbol.reference_files) {
-                blob.sym_references.push_back(file);
+                blob.symbol_references.push_back(file);
             }
-            blob.sym_reference_ends.push_back(
-                static_cast<std::uint32_t>(blob.sym_references.size()));
+            blob.symbol_reference_ends.push_back(
+                static_cast<std::uint32_t>(blob.symbol_references.size()));
             for(auto file: symbol.instantiation_files) {
-                blob.sym_instantiations.push_back(file);
+                blob.symbol_instantiations.push_back(file);
             }
-            blob.sym_instantiation_ends.push_back(
-                static_cast<std::uint32_t>(blob.sym_instantiations.size()));
+            blob.symbol_instantiation_ends.push_back(
+                static_cast<std::uint32_t>(blob.symbol_instantiations.size()));
         }
         blob.sections = std::move(sections);
         blob.instantiations = std::move(instantiation_sections);

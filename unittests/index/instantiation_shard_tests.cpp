@@ -289,7 +289,7 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.format_version = index::index_format_version;
     blob.content_hash = generation;
     blob.content_size = size;
-    blob.sym_hashes = {11};
+    blob.symbol_hashes = {11};
     blob.records.block_begins = {10};
     blob.records.deltas = {0};
     blob.records.lengths = {3};
@@ -328,9 +328,9 @@ ZEST_CASE(CorruptBlobRejected) {
     ZEXPECT(make(bytes_of()).loaded());
 
     // Hashes that key DenseMaps once decoded.
-    blob.sym_hashes = {~0ull};
+    blob.symbol_hashes = {~0ull};
     ZEXPECT(!make(bytes_of()).loaded());
-    blob.sym_hashes = {11};
+    blob.symbol_hashes = {11};
     blob.resolutions = {~0ull};
     ZEXPECT(!make(bytes_of()).loaded());
     blob.resolutions = {5};

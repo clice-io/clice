@@ -260,7 +260,7 @@ std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid
         if(auto found = tree_enterings(project,
                                        host,
                                        header,
-                                       it->second.tu_fv,
+                                       it->second.tu_version,
                                        it->second.nodes,
                                        it->second.absent)) {
             return found;

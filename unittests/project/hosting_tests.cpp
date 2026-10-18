@@ -454,7 +454,7 @@ ZEST_CASE(EnteringsFollowTree) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
-    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(foo, foo_text), .line = 1},
         {.file = p.version(bar, bar_text), .parent = 0, .line = 2},
@@ -486,7 +486,7 @@ ZEST_CASE(TreeRulesOutHost) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
-    manifest.tu_fv = VersionID{p.version(a, a_text)};
+    manifest.tu_version = VersionID{p.version(a, a_text)};
     manifest.nodes = {
         {.file = p.version(shared, shared_text), .line = 1},
         {.file = p.version(config_a, ""), .parent = 0, .line = 2},
@@ -516,7 +516,7 @@ ZEST_CASE(EnteringsInCompileOrder) {
     auto list = p.write("list.def", "X(a)\n");
 
     index::TUManifest manifest;
-    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(list, "X(a)\n"), .line = 3},
         {.file = p.version(mid, mid_text), .line = 1},
@@ -547,7 +547,7 @@ ZEST_CASE(ForcedIncludeFallsBack) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
-    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(common, common_text), .line = 300},
         {.file = p.version(t, "#pragma once\n"), .parent = 0, .line = 2},
@@ -573,7 +573,7 @@ ZEST_CASE(ContributorHosts) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
-    manifest.tu_fv = VersionID{p.version(b, b_text)};
+    manifest.tu_version = VersionID{p.version(b, b_text)};
     manifest.nodes = {
         {.file = p.version(config_b, ""), .line = 1}
     };
@@ -598,7 +598,7 @@ ZEST_CASE(StaleTreeFallsBack) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
-    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(foo, "#pragma once\n#include \"bar.h\"\n"), .line = 1},
         {.file = p.version(bar, "int b;\n"), .parent = 0, .line = 2},
@@ -624,7 +624,7 @@ ZEST_CASE(AppearedFileFallsBack) {
     std::vector<VersionID> absent{p.project.file_table.intern_version(part, 0)};
 
     index::TUManifest manifest;
-    manifest.tu_fv = root;
+    manifest.tu_version = root;
     manifest.absent = absent;
     p.project.index.manifests[unity] = std::move(manifest);
     auto before = enterings(p.project, unity, part);
@@ -662,7 +662,7 @@ ZEST_CASE(RepeatedHeaderChangeStales) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
-    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(t, "#pragma once\nint t;\n"), .line = 1},
         {.file = p.version(t, "#pragma once\nint t;\n"), .line = 2, .skipped = true},

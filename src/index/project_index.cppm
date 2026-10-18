@@ -74,7 +74,7 @@ struct ProjectIndex {
 
     /// The writer's half of a bound blob: intern its file versions into
     /// `files` and read the per-TU manifest
-    /// pins — `manifest_pins` maps each pinned TU's tu_fv (as the table's
+    /// pins — `manifest_pins` maps each pinned TU's tu_version (as the table's
     /// id) to the generation its manifest must carry to be adopted.
     /// Rejects a blob whose version table is inconsistent, leaving `files`
     /// untouched.

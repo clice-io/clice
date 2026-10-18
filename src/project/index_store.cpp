@@ -643,8 +643,8 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     // from the compiler's own buffers, shared by every TU that consumed it
     // (see file_version_stale).
     auto baseline_before_ns = vfs::stat_baseline_before_ns(view.built_at());
-    llvm::SmallVector<VersionID> fv_of;
-    fv_of.resize_for_overwrite(view.path_count());
+    llvm::SmallVector<VersionID> version_of;
+    version_of.resize_for_overwrite(view.path_count());
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         llvm::StringRef path = view.path(i);
         // The section's own record wins: for a hashless path (behind a
@@ -669,30 +669,30 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
             }
         }
 
-        fv_of[i] = project.file_table.intern_version(file_ids_map[i], hash);
+        version_of[i] = project.file_table.intern_version(file_ids_map[i], hash);
     }
 
-    manifest.tu_fv = fv_of[focus_local_id];
+    manifest.tu_version = version_of[focus_local_id];
     manifest.nodes.reserve(view.node_count());
     for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
         auto node = view.node(i);
-        manifest.nodes.push_back({.file = fv_of[node.file].raw,
+        manifest.nodes.push_back({.file = version_of[node.file].raw,
                                   .parent = node.parent,
                                   .line = node.line,
                                   .skipped = node.skipped});
     }
     for(auto [local_id, variant]: section_contributions) {
-        manifest.contributions.emplace_back(fv_of[local_id], variant);
+        manifest.contributions.emplace_back(version_of[local_id], variant);
     }
     for(auto& local: *shared_locals) {
         index::SharedLocal entry{.symbol = local.symbol};
         for(auto path_id: local.paths) {
-            entry.files.push_back(fv_of[path_id]);
+            entry.files.push_back(version_of[path_id]);
         }
         manifest.shared_locals.push_back(std::move(entry));
     }
     for(auto [local_id, use]: llvm::make_second_range(unit_uses)) {
-        manifest.instantiations.push_back({.file = fv_of[local_id], .use = use});
+        manifest.instantiations.push_back({.file = version_of[local_id], .use = use});
     }
 
     // The places the parse's failed lookups looked: the file table watches
@@ -1699,7 +1699,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         // error, not absence: removal would destroy an intact index and
         // force a full rebuild. Run this session memory-only instead —
         // saving a fresh lineage over blobs whose anchor was never read
-        // could alias their fv ids and generations — and leave
+        // could alias their version ids and generations — and leave
         // everything for a healthier restart to load.
         if(db.contains(index::BlobKind::ProjectTable, "global")) {
             // Confirmed page corruption heals through rebuildability: the
@@ -1771,22 +1771,22 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
             dead_manifests.push_back(key.str());
             return;
         }
-        auto tu_fv = project_index.runtime_version(manifest->tu_fv.raw);
+        auto tu_version = project_index.runtime_version(manifest->tu_version.raw);
         bool imported = project_index.import_manifest(*manifest);
-        auto pin = imported ? manifest_pins.find(manifest->tu_fv) : manifest_pins.end();
+        auto pin = imported ? manifest_pins.find(manifest->tu_version) : manifest_pins.end();
         if(pin == manifest_pins.end() || pin->second != manifest->table_generation) {
             dead_manifests.push_back(key.str());
             // The manifest raced a crash ahead of the project table (its own
             // pin never committed). When the TU's version is still resolvable,
             // re-enqueue it: the CDB pass never covers standalone-indexed
             // headers.
-            if(tu_fv) {
-                report.add_reindex(project.file_table.version(*tu_fv).fid);
+            if(tu_version) {
+                report.add_reindex(project.file_table.version(*tu_version).fid);
             }
             return;
         }
-        adopted_pins.insert(manifest->tu_fv);
-        auto tu_path_id = project.file_table.version(manifest->tu_fv).fid;
+        adopted_pins.insert(manifest->tu_version);
+        auto tu_path_id = project.file_table.version(manifest->tu_version).fid;
         project_index.apply_manifest(project.file_table, tu_path_id, std::move(*manifest));
     });
     if(!read_only) {
@@ -1796,11 +1796,11 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     }
     // A pinned TU without an adopted manifest lost it to a failed write
     // that the committed project table outran, or to a lost removal; re-enqueue it —
-    // its index is unservable until a reindex. Pinned fvs always resolve:
+    // its index is unservable until a reindex. Pinned versions always resolve:
     // load_table rejects a blob whose pins its own table cannot cover.
-    for(auto fv: llvm::make_first_range(manifest_pins)) {
-        if(!adopted_pins.contains(fv)) {
-            report.add_reindex(project.file_table.version(fv).fid);
+    for(auto version: llvm::make_first_range(manifest_pins)) {
+        if(!adopted_pins.contains(version)) {
+            report.add_reindex(project.file_table.version(version).fid);
         }
     }
 
@@ -1813,8 +1813,8 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     // nothing — it is permanently stale and reindexes its TU anyway.
     llvm::DenseMap<Fid, llvm::SmallVector<std::uint64_t, 1>> generations;
     for(auto& manifest: llvm::make_second_range(project_index.manifests)) {
-        for(auto fv: llvm::make_first_range(manifest.contributions)) {
-            auto& record = project.file_table.version(fv);
+        for(auto version: llvm::make_first_range(manifest.contributions)) {
+            auto& record = project.file_table.version(version);
             if(record.content_hash == 0) {
                 continue;
             }
@@ -2277,16 +2277,16 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     }
 }
 
-bool IndexStore::file_version_stale(VersionID fv_id) {
-    auto [cached, inserted] = fv_stale.try_emplace(fv_id, true);
+bool IndexStore::file_version_stale(VersionID version_id) {
+    auto [cached, inserted] = version_stale.try_emplace(version_id, true);
     if(!inserted) {
         return cached->second;
     }
 
     // Missing and unreadable both read as stale — conservative, the
     // reindex re-observes.
-    bool stale = project.file_table.check_version(fv_id) != vfs::DiskState::CheckResult::Fresh;
-    fv_stale[fv_id] = stale;
+    bool stale = project.file_table.check_version(version_id) != vfs::DiskState::CheckResult::Fresh;
+    version_stale[version_id] = stale;
     return stale;
 }
 
@@ -2300,7 +2300,7 @@ bool IndexStore::needs_reindex(Fid file) {
     // iteration skipped would keep serving a stale index behind a fresh
     // result.
     auto& manifest = manifest_it->second;
-    if(file_version_stale(manifest.tu_fv)) {
+    if(file_version_stale(manifest.tu_version)) {
         return true;
     }
     for(auto& node: manifest.nodes) {
@@ -2308,11 +2308,11 @@ bool IndexStore::needs_reindex(Fid file) {
             return true;
         }
     }
-    if(llvm::any_of(manifest.imports, [&](VersionID fv) { return file_version_stale(fv); })) {
+    if(llvm::any_of(manifest.imports, [&](VersionID version) { return file_version_stale(version); })) {
         return true;
     }
-    return llvm::any_of(manifest.absent, [&](VersionID fv) {
-        return project.file_table.disk.present(project.file_table.version(fv).fid);
+    return llvm::any_of(manifest.absent, [&](VersionID version) {
+        return project.file_table.disk.present(project.file_table.version(version).fid);
     });
 }
 

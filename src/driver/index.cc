@@ -826,19 +826,19 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
         return 1;
     }
     auto& manifest = manifest_it->second;
-    auto version_path = [&](VersionID fv) {
-        return files.display(files.version(fv).fid);
+    auto version_path = [&](VersionID version) {
+        return files.display(files.version(version).fid);
     };
     auto unit = files.display(*tu);
     driver::println("translation unit {}", unit);
     driver::println("  built at {}  generation={}  content hash={}",
                     format_time(manifest.built_at),
                     manifest.table_generation,
-                    format_hash(files.version(manifest.tu_fv).content_hash));
+                    format_hash(files.version(manifest.tu_version).content_hash));
 
     driver::println("  contributions={}", manifest.contributions.size());
-    for(auto& [fv, hash]: manifest.contributions) {
-        driver::println("    {}  {}", format_hash(hash), version_path(fv));
+    for(auto& [version, hash]: manifest.contributions) {
+        driver::println("    {}  {}", format_hash(hash), version_path(version));
     }
 
     // The include tree, children under their parent in node order; a

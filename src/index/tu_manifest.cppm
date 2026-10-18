@@ -61,7 +61,7 @@ struct TUManifest {
     std::uint64_t built_at = 0;
 
     /// The TU's own file version.
-    VersionID tu_fv;
+    VersionID tu_version;
 
     std::vector<IncludeNode> nodes;
 

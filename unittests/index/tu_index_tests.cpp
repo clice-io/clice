@@ -600,9 +600,9 @@ ZEST_CASE(CallerAndCallee) {
     auto& index = tu_index.focus_file_index;
 
     // Find caller symbol and check for Callee relation.
-    auto caller_occs = select("caller_def");
-    ZASSERT(!caller_occs.empty());
-    auto caller_hash = caller_occs.front().target;
+    auto caller_occurrences = select("caller_def");
+    ZASSERT(!caller_occurrences.empty());
+    auto caller_hash = caller_occurrences.front().target;
 
     auto caller_it = index.relations.find(caller_hash);
     ZASSERT(caller_it != index.relations.end());
@@ -617,9 +617,9 @@ ZEST_CASE(CallerAndCallee) {
     ZASSERT(found_callee);
 
     // Find callee symbol and check for Caller relation.
-    auto callee_occs = select("callee_def");
-    ZASSERT(!callee_occs.empty());
-    auto callee_hash = callee_occs.front().target;
+    auto callee_occurrences = select("callee_def");
+    ZASSERT(!callee_occurrences.empty());
+    auto callee_hash = callee_occurrences.front().target;
 
     auto callee_it = index.relations.find(callee_hash);
     ZASSERT(callee_it != index.relations.end());
@@ -649,13 +649,13 @@ ZEST_CASE(MethodCallerCallee) {
 
     // Calls inside a method body produce call edges, with the method as
     // the caller.
-    auto method_occs = select("method_def");
-    ZASSERT(!method_occs.empty());
-    auto method_hash = method_occs.front().target;
+    auto method_occurrences = select("method_def");
+    ZASSERT(!method_occurrences.empty());
+    auto method_hash = method_occurrences.front().target;
 
-    auto callee_occs = select("callee_def");
-    ZASSERT(!callee_occs.empty());
-    auto callee_hash = callee_occs.front().target;
+    auto callee_occurrences = select("callee_def");
+    ZASSERT(!callee_occurrences.empty());
+    auto callee_hash = callee_occurrences.front().target;
 
     auto method_it = index.relations.find(method_hash);
     ZASSERT(method_it != index.relations.end());
@@ -693,9 +693,9 @@ ZEST_CASE(UsingRelationKey) {
     // The relation of a using declaration is keyed by the same symbol
     // its occurrence references, so looking the occurrence's symbol up in
     // the relations always finds the using site.
-    auto use_occs = select("use");
-    ZASSERT(!use_occs.empty());
-    auto hash = use_occs.front().target;
+    auto use_occurrences = select("use");
+    ZASSERT(!use_occurrences.empty());
+    auto hash = use_occurrences.front().target;
 
     auto it = index.relations.find(hash);
     ZASSERT(it != index.relations.end());
@@ -775,13 +775,13 @@ ZEST_CASE(DependentWeakReference) {
 
     /// The dependent name resolves through the template resolver to the
     /// pattern's member; both sites share one symbol.
-    auto use_occs = select("use");
-    ZASSERT(!use_occs.empty());
-    auto target_occs = select("target");
-    ZASSERT(!target_occs.empty());
-    ZASSERT(use_occs.front().target == target_occs.front().target);
+    auto use_occurrences = select("use");
+    ZASSERT(!use_occurrences.empty());
+    auto target_occurrences = select("target");
+    ZASSERT(!target_occurrences.empty());
+    ZASSERT(use_occurrences.front().target == target_occurrences.front().target);
 
-    auto it = index.relations.find(use_occs.front().target);
+    auto it = index.relations.find(use_occurrences.front().target);
     ZASSERT(it != index.relations.end());
 
     bool found_weak = false;
@@ -848,12 +848,12 @@ ZEST_CASE(ConstructorDestructorRelations) {
         )");
 
     auto& index = tu_index.focus_file_index;
-    auto class_occs = select("s");
-    auto ctor_occs = select("ctor");
-    ZASSERT(!class_occs.empty());
-    ZASSERT(!ctor_occs.empty());
-    auto class_hash = class_occs.front().target;
-    auto ctor_hash = ctor_occs.front().target;
+    auto class_occurrences = select("s");
+    auto constructor_occurrences = select("ctor");
+    ZASSERT(!class_occurrences.empty());
+    ZASSERT(!constructor_occurrences.empty());
+    auto class_hash = class_occurrences.front().target;
+    auto ctor_hash = constructor_occurrences.front().target;
 
     auto it = index.relations.find(class_hash);
     ZASSERT(it != index.relations.end());
@@ -891,13 +891,13 @@ ZEST_CASE(MacroRelations) {
         )");
 
     auto& index = tu_index.focus_file_index;
-    auto def_occs = select("def");
-    auto use_occs = select("use");
-    ZASSERT(!def_occs.empty());
-    ZASSERT(!use_occs.empty());
-    ZASSERT(def_occs.front().target == use_occs.front().target);
+    auto definition_occurrences = select("def");
+    auto use_occurrences = select("use");
+    ZASSERT(!definition_occurrences.empty());
+    ZASSERT(!use_occurrences.empty());
+    ZASSERT(definition_occurrences.front().target == use_occurrences.front().target);
 
-    auto it = index.relations.find(def_occs.front().target);
+    auto it = index.relations.find(definition_occurrences.front().target);
     ZASSERT(it != index.relations.end());
 
     bool found_definition = false;
@@ -999,12 +999,12 @@ ZEST_CASE(ModuleName) {
     build_index(R"(export module §(m)⟦§(m)foo⟧;)");
 
     auto& index = tu_index.focus_file_index;
-    auto occs = select("m");
-    ZASSERT(!occs.empty());
-    ZASSERT(occs.front().target == unit->get<EntityTable>().module_entity("foo"));
+    auto occurrences = select("m");
+    ZASSERT(!occurrences.empty());
+    ZASSERT(occurrences.front().target == unit->get<EntityTable>().module_entity("foo"));
     ZASSERT(symbol_named("foo").second.kind.value() == SymbolKind(SymbolKind::Module).value());
 
-    auto it = index.relations.find(occs.front().target);
+    auto it = index.relations.find(occurrences.front().target);
     ZASSERT(it != index.relations.end());
 
     bool found_definition = false;
@@ -1020,12 +1020,12 @@ ZEST_CASE(ModulePartitionName) {
     build_index(R"(export module §(m)⟦§(m)foo:part⟧;)");
 
     // The occurrence spans the whole written name, partition included.
-    auto occs = select("m");
-    ZASSERT(!occs.empty());
-    ZASSERT(occs.front().range == range("m"));
+    auto occurrences = select("m");
+    ZASSERT(!occurrences.empty());
+    ZASSERT(occurrences.front().range == range("m"));
 
     auto& index = tu_index.focus_file_index;
-    auto it = index.relations.find(occs.front().target);
+    auto it = index.relations.find(occurrences.front().target);
     ZASSERT(it != index.relations.end());
 
     bool found_definition = false;
@@ -1041,12 +1041,12 @@ ZEST_CASE(InternalPartitionName) {
     build_index(R"(module §(m)⟦§(m)foo:part⟧;)");
 
     // An internal partition defines the partition it declares.
-    auto occs = select("m");
-    ZASSERT(!occs.empty());
-    ZASSERT(occs.front().range == range("m"));
+    auto occurrences = select("m");
+    ZASSERT(!occurrences.empty());
+    ZASSERT(occurrences.front().range == range("m"));
 
     auto& index = tu_index.focus_file_index;
-    auto it = index.relations.find(occs.front().target);
+    auto it = index.relations.find(occurrences.front().target);
     ZASSERT(it != index.relations.end());
     ZEXPECT(llvm::any_of(it->second, [](auto& r) { return r.kind == RelationKind::Definition; }));
 }
@@ -1078,9 +1078,9 @@ int main() {
     // The module's own unit indexes its declarations and the headers behind
     // them; an importer's index holds what it parsed.
     ZEXPECT(tu_index.file_indices.empty());
-    auto occs = select("use");
-    ZASSERT(!occs.empty());
-    ZEXPECT(occs.front().target == symbol_named("make").first);
+    auto occurrences = select("use");
+    ZASSERT(!occurrences.empty());
+    ZEXPECT(occurrences.front().target == symbol_named("make").first);
 }
 
 ZEST_CASE(ImportedDeclarationsNamed) {
@@ -1140,12 +1140,12 @@ module §(m)⟦§(m)foo⟧;
 
     // An implementation unit's module declaration is a Declaration of the
     // module, not a Definition.
-    auto occs = select("m");
-    ZASSERT(!occs.empty());
-    ZASSERT(occs.front().range == range("m"));
+    auto occurrences = select("m");
+    ZASSERT(!occurrences.empty());
+    ZASSERT(occurrences.front().range == range("m"));
 
     auto& index = tu_index.focus_file_index;
-    auto it = index.relations.find(occs.front().target);
+    auto it = index.relations.find(occurrences.front().target);
     ZASSERT(it != index.relations.end());
 
     bool found_declaration = false;
@@ -1179,8 +1179,8 @@ ZEST_CASE(OverrideRelation) {
     bool found_implementation = false;
 
     auto check_relations = [&](DecodedShard& idx) {
-        for(auto& [hash, rels]: idx.relations) {
-            for(auto& r: rels) {
+        for(auto& [hash, relations]: idx.relations) {
+            for(auto& r: relations) {
                 if(r.kind == RelationKind::Interface)
                     found_interface = true;
                 if(r.kind == RelationKind::Implementation)
@@ -1208,9 +1208,9 @@ ZEST_CASE(DeclarationAndDefinition) {
     auto& index = tu_index.focus_file_index;
 
     // Find the declaration occurrence and verify Declaration relation exists.
-    auto decl_occs = select("decl");
-    ZASSERT(!decl_occs.empty());
-    auto symbol_hash = decl_occs.front().target;
+    auto declaration_occurrences = select("decl");
+    ZASSERT(!declaration_occurrences.empty());
+    auto symbol_hash = declaration_occurrences.front().target;
 
     auto it = index.relations.find(symbol_hash);
     ZASSERT(it != index.relations.end());
@@ -1297,8 +1297,8 @@ ZEST_CASE(CrossFileHeaderIndex) {
     // The helper's declaration should be in the header's index.
     bool found_in_header = false;
     for(auto& [path_id, file_index]: tu_index.file_indices) {
-        for(auto& [sym, rels]: file_index.relations) {
-            if(sym == helper_hash) {
+        for(auto& [symbol, relations]: file_index.relations) {
+            if(symbol == helper_hash) {
                 found_in_header = true;
                 break;
             }
@@ -1391,9 +1391,9 @@ ZEST_CASE(SymbolKinds) {
         )");
 
     auto check_kind = [&](llvm::StringRef name, SymbolKind expected) {
-        auto occs = select(name);
-        ZASSERT(!occs.empty());
-        auto hash = occs.front().target;
+        auto occurrences = select(name);
+        ZASSERT(!occurrences.empty());
+        auto hash = occurrences.front().target;
         ZASSERT(tu_index.symbols.contains(hash));
         ZASSERT(tu_index.symbols[hash].kind.value() == expected.value());
     };
@@ -1418,8 +1418,8 @@ ZEST_CASE(LookupOccurrence) {
 
     auto x_range = range("x");
     std::optional<index::Occurrence> found;
-    shard.occurrences_at(point("x"), [&](const index::Occurrence& occ) {
-        found = occ;
+    shard.occurrences_at(point("x"), [&](const index::Occurrence& occurrence) {
+        found = occurrence;
         return true;
     });
     ZASSERT(found);
@@ -1427,16 +1427,16 @@ ZEST_CASE(LookupOccurrence) {
     ZEXPECT(found->range.end == x_range.end);
 
     found.reset();
-    shard.occurrences_at(point("ref"), [&](const index::Occurrence& occ) {
-        found = occ;
+    shard.occurrences_at(point("ref"), [&](const index::Occurrence& occurrence) {
+        found = occurrence;
         return true;
     });
     ZASSERT(found);
     ZEXPECT(found->target == fi.occurrences.front().target);
 
     found.reset();
-    shard.occurrences_at(0, [&](const index::Occurrence& occ) {
-        found = occ;
+    shard.occurrences_at(0, [&](const index::Occurrence& occurrence) {
+        found = occurrence;
         return false;
     });
     ZEXPECT(!found.has_value());
@@ -1451,16 +1451,16 @@ ZEST_CASE(LookupRelation) {
     const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
     ZASSERT(shard.loaded());
 
-    std::optional<index::Occurrence> occ;
+    std::optional<index::Occurrence> occurrence;
     shard.occurrences_at(point("decl"), [&](const index::Occurrence& o) {
-        occ = o;
+        occurrence = o;
         return false;
     });
-    ZASSERT(occ);
+    ZASSERT(occurrence);
 
     auto def_range = range("def");
     bool found_def = false;
-    shard.relations_of(occ->target, RelationKind::Definition, [&](const index::Relation& r) {
+    shard.relations_of(occurrence->target, RelationKind::Definition, [&](const index::Relation& r) {
         found_def = true;
         ZEXPECT(r.range.begin == def_range.begin);
         ZEXPECT(r.range.end == def_range.end);
@@ -1469,7 +1469,7 @@ ZEST_CASE(LookupRelation) {
     ZEXPECT(found_def);
 
     bool found_any = false;
-    shard.relations_of(occ->target, RelationKind::Caller, [&](const index::Relation&) {
+    shard.relations_of(occurrence->target, RelationKind::Caller, [&](const index::Relation&) {
         found_any = true;
         return false;
     });
@@ -2681,9 +2681,9 @@ ZEST_CASE(FromRejectsReservedParents) {
     ZASSERT(index::TUIndex::from_bytes(honest.bytes()).loaded());
 
     TUIndexMirror hostile = honest;
-    hostile.sym_parents[0] = ~std::uint64_t(0);
+    hostile.symbol_parents[0] = ~std::uint64_t(0);
     ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
-    hostile.sym_parents[0] = ~std::uint64_t(0) - 1;
+    hostile.symbol_parents[0] = ~std::uint64_t(0) - 1;
     ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
 }
 
@@ -2705,43 +2705,43 @@ ZEST_CASE(FromRejectsSymbolColumns) {
     {
         // Lookups binary-search the hashes.
         auto hostile = honest;
-        std::swap(hostile.sym_hashes[0], hostile.sym_hashes[1]);
+        std::swap(hostile.symbol_hashes[0], hostile.symbol_hashes[1]);
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
         auto hostile = honest;
-        hostile.sym_hashes[1] = hostile.sym_hashes[0];
+        hostile.symbol_hashes[1] = hostile.symbol_hashes[0];
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
         auto hostile = honest;
-        hostile.sym_hashes[1] = ~std::uint64_t(0);
+        hostile.symbol_hashes[1] = ~std::uint64_t(0);
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
         auto hostile = honest;
-        hostile.sym_references.back() = 2;
+        hostile.symbol_references.back() = 2;
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
         auto hostile = honest;
-        hostile.sym_files[1] = 2;
+        hostile.symbol_files[1] = 2;
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
         // Token kinds index the legend's tables.
         auto hostile = honest;
-        hostile.sym_token_kinds[1] = 200;
+        hostile.symbol_token_kinds[1] = 200;
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
         auto hostile = honest;
-        hostile.sym_name_ends[0] = 100;
+        hostile.symbol_name_ends[0] = 100;
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
         auto hostile = honest;
-        hostile.sym_kinds.pop_back();
+        hostile.symbol_kinds.pop_back();
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
 }

@@ -253,8 +253,8 @@ std::string planted_blob(llvm::StringRef text, std::uint64_t variant) {
         blob.line_lengths.push_back(static_cast<std::uint8_t>(next - starts[i]));
     }
     blob.variants = {variant};
-    blob.sym_hashes = {111};
-    blob.rel_offsets = {0, 0};
+    blob.symbol_hashes = {111};
+    blob.relation_offsets = {0, 0};
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::serialize_blob(blob, os);
@@ -1434,9 +1434,9 @@ ZEST_CASE(CreatedHeaderStales) {
     IndexerFixture f;
     f.merge(indexed.data.data(), indexed.data.size());
     auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
-    auto gen = f.project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
-    ZASSERT(f.project.index.absent_lookups.lookup(gen).contains(tu));
-    ZASSERT(f.project.file_table.disk.seen_missing(gen));
+    auto generation = f.project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
+    ZASSERT(f.project.index.absent_lookups.lookup(generation).contains(tu));
+    ZASSERT(f.project.file_table.disk.seen_missing(generation));
     ZASSERT(!f.needs_reindex(src));
 
     tmp.touch("gen.h", "int make();\n");
@@ -1461,8 +1461,8 @@ ZEST_CASE(AbsentSpellingsOnePlace) {
     auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto& manifest = f.project.index.manifests.find(tu)->second;
     auto place = f.project.file_table.intern(Spelling::absolute(tmp.path("real/gen.h")));
-    ZASSERT(llvm::count_if(manifest.absent, [&](VersionID fv) {
-                return f.project.file_table.version(fv).fid == place;
+    ZASSERT(llvm::count_if(manifest.absent, [&](VersionID version) {
+                return f.project.file_table.version(version).fid == place;
             }) == 1);
 }
 #endif
@@ -1870,15 +1870,15 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
         // while the TU's own version is known — here for the header, whose
         // standalone index no CDB pass would ever rebuild.
         auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-        VersionID header_fv;
-        for(std::uint32_t fv = 0; fv < f.project.file_table.versions.size(); fv += 1) {
-            if(f.project.file_table.versions[fv].fid == header_id) {
-                header_fv = VersionID{fv};
+        VersionID header_version;
+        for(std::uint32_t version = 0; version < f.project.file_table.versions.size(); version += 1) {
+            if(f.project.file_table.versions[version].fid == header_id) {
+                header_version = VersionID{version};
             }
         }
-        ZASSERT(header_fv.valid());
+        ZASSERT(header_version.valid());
         index::TUManifest stale;
-        stale.tu_fv = header_fv;
+        stale.tu_version = header_version;
         stale = f.project.index.export_manifest(stale);
         stale.nodes.push_back({.file = 9999});
         std::string bytes;
@@ -1939,7 +1939,7 @@ ZEST_CASE(DeferredRemovalYieldsToFreshWrite) {
         // next load removes it — deferred into the first save — and the
         // TU's shard turns orphan, deferred too.
         index::TUManifest stale;
-        stale.tu_fv = VersionID{999999};
+        stale.tu_version = VersionID{999999};
         stale.nodes.push_back({.file = 9999});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
@@ -2182,7 +2182,7 @@ ZEST_CASE(UnreadableGlobalPreserved) {
 
     // The project table exists but fails to open — a transient IO error at
     // startup, not absence. Removing everything would destroy the intact
-    // index; a fresh lineage saved over the unread one could alias its fv
+    // index; a fresh lineage saved over the unread one could alias its version
     // ids and generations. The session must run memory-only and leave every
     // blob for the next start.
     struct UnreadableGlobal final : index::BlobDatabase {

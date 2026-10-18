@@ -291,28 +291,28 @@ ZEST_CASE(ManifestContributions) {
     auto b = pool.intern(Spelling::absolute("/proj/b.h"));
     auto tu1 = pool.intern(Spelling::absolute("/proj/tu1.cpp"));
     auto tu2 = pool.intern(Spelling::absolute("/proj/tu2.cpp"));
-    auto fv_a = pool.intern_version(a, 0xa);
-    auto fv_b = pool.intern_version(b, 0xb);
+    auto version_a = pool.intern_version(a, 0xa);
+    auto version_b = pool.intern_version(b, 0xb);
 
     auto manifest_for =
-        [&](VersionID tu_fv,
+        [&](VersionID tu_version,
             std::initializer_list<std::pair<VersionID, std::uint64_t>> contributions) {
             index::TUManifest manifest;
-            manifest.tu_fv = tu_fv;
+            manifest.tu_version = tu_version;
             manifest.contributions = contributions;
             return manifest;
         };
 
-    auto tu1_fv = pool.intern_version(tu1, 0x1);
-    auto tu2_fv = pool.intern_version(tu2, 0x2);
+    auto tu1_version = pool.intern_version(tu1, 0x1);
+    auto tu2_version = pool.intern_version(tu2, 0x2);
 
     // TU 1 contributes h1 to file 1 and h2 to file 2.
     auto affected = project.apply_manifest(pool,
                                            tu1,
-                                           manifest_for(tu1_fv,
+                                           manifest_for(tu1_version,
                                                         {
-                                                            {fv_a, 100},
-                                                            {fv_b, 200}
+                                                            {version_a, 100},
+                                                            {version_b, 200}
     }));
     ZASSERT(affected.size() == std::size_t(2));
     ZASSERT(project.live_variants(a).size() == std::size_t(1));
@@ -320,9 +320,9 @@ ZEST_CASE(ManifestContributions) {
     // TU 2 shares file 1's variant: the live set does not grow.
     project.apply_manifest(pool,
                            tu2,
-                           manifest_for(tu2_fv,
+                           manifest_for(tu2_version,
                                         {
-                                            {fv_a, 100}
+                                            {version_a, 100}
     }));
     ZASSERT(project.live_variants(a).size() == std::size_t(1));
 
@@ -331,9 +331,9 @@ ZEST_CASE(ManifestContributions) {
     // loses its only contribution.
     project.apply_manifest(pool,
                            tu1,
-                           manifest_for(tu1_fv,
+                           manifest_for(tu1_version,
                                         {
-                                            {fv_a, 300}
+                                            {version_a, 300}
     }));
     ZASSERT(project.live_variants(a).size() == std::size_t(2));
     ZASSERT(project.live_variants(b).empty());
@@ -354,7 +354,7 @@ ZEST_CASE(RepeatedAbsentPlace) {
     auto tu = pool.intern(Spelling::absolute("/proj/tu.cpp"));
     auto place = pool.intern_version(header, 0);
     index::TUManifest manifest;
-    manifest.tu_fv = pool.intern_version(tu, 0x1);
+    manifest.tu_version = pool.intern_version(tu, 0x1);
     manifest.absent = {place, place};
 
     project.apply_manifest(pool, tu, std::move(manifest));
@@ -370,7 +370,7 @@ ZEST_CASE(TwoImportedVersions) {
     auto header = pool.intern(Spelling::absolute("/proj/a.h"));
     auto tu = pool.intern(Spelling::absolute("/proj/tu.cpp"));
     index::TUManifest manifest;
-    manifest.tu_fv = pool.intern_version(tu, 0x1);
+    manifest.tu_version = pool.intern_version(tu, 0x1);
     manifest.imports = {pool.intern_version(header, 0x2), pool.intern_version(header, 0x3)};
 
     project.apply_manifest(pool, tu, std::move(manifest));
@@ -396,10 +396,10 @@ ZEST_CASE(GlobalRoundTripWithRealMerge) {
 
     // A manifest referencing the focus file keeps its FileVersion alive
     // through the write's garbage collection.
-    auto focus_fv = pool.intern_version(file_ids_map[view.path_count() - 1],
+    auto focus_version = pool.intern_version(file_ids_map[view.path_count() - 1],
                                         view.content_hash(view.path_count() - 1));
     index::TUManifest manifest;
-    manifest.tu_fv = focus_fv;
+    manifest.tu_version = focus_version;
     project.apply_manifest(pool, file_ids_map[view.path_count() - 1], std::move(manifest));
 
     llvm::SmallString<4096> buf;
@@ -546,7 +546,7 @@ ZEST_CASE(LazyShardsStayPut) {
 
     clice::FileTable writer_files;
     index::ProjectIndex writer;
-    writer.touch(7).name = "x";
+    writer.edit(7).name = "x";
     std::vector<index::BlobDatabase::Blob> puts;
     std::string global;
     llvm::raw_string_ostream global_os(global);
@@ -612,13 +612,13 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         auto header = llvm::StringRef(name).ends_with("c.cpp") ? other : util;
         index::TUManifest manifest;
         manifest.table_generation = 3;
-        manifest.tu_fv = pool.intern_version(tu, 0x1111);
+        manifest.tu_version = pool.intern_version(tu, 0x1111);
         manifest.nodes = {
-            {manifest.tu_fv.raw, ~0u, 1},
+            {manifest.tu_version.raw, ~0u, 1},
             {header.raw,         0,   1},
         };
         manifest.contributions = {
-            {manifest.tu_fv, 1}
+            {manifest.tu_version, 1}
         };
         if(llvm::StringRef(name).ends_with("b.cpp")) {
             manifest.imports = {header};
@@ -626,7 +626,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
             manifest.contributions.emplace_back(header, 2);
         }
         manifest.shared_locals = {
-            {.symbol = helper, .files = {manifest.tu_fv, header}}
+            {.symbol = helper, .files = {manifest.tu_version, header}}
         };
         writer.apply_manifest(pool, tu, std::move(manifest));
         units.push_back(tu);
@@ -658,7 +658,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         auto exported = writer.export_manifest(writer.manifests.find(tu)->second);
         // The shared local names its files by persisted ids, as the nodes do.
         ZEXPECT(exported.shared_locals[0].files ==
-                std::vector<VersionID>{exported.tu_fv, VersionID{exported.nodes[1].file}});
+                std::vector<VersionID>{exported.tu_version, VersionID{exported.nodes[1].file}});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(exported, os);
@@ -693,25 +693,25 @@ ZEST_CASE(SharedLocalSetsCounted) {
     clice::FileTable pool;
     index::ProjectIndex index;
     auto x = pool.intern(Spelling::absolute("/proj/x.h"));
-    auto x_fv = pool.intern_version(x, 0xaaaa);
-    auto y_fv = pool.intern_version(pool.intern(Spelling::absolute("/proj/y.h")), 0xbbbb);
+    auto x_version = pool.intern_version(x, 0xaaaa);
+    auto y_version = pool.intern_version(pool.intern(Spelling::absolute("/proj/y.h")), 0xbbbb);
     llvm::SmallVector<Fid> units;
     for(auto name: {"/proj/a.cpp", "/proj/b.cpp"}) {
         auto tu = pool.intern(Spelling::absolute(name));
         index::TUManifest manifest;
-        manifest.tu_fv = pool.intern_version(tu, 0x1111);
+        manifest.tu_version = pool.intern_version(tu, 0x1111);
         manifest.nodes = {
-            {manifest.tu_fv.raw, ~0u, 1},
-            {x_fv.raw,           0,   1},
-            {y_fv.raw,           1,   1},
+            {manifest.tu_version.raw, ~0u, 1},
+            {x_version.raw,           0,   1},
+            {y_version.raw,           1,   1},
         };
         manifest.contributions = {
-            {manifest.tu_fv, 1},
-            {x_fv,           2},
-            {y_fv,           3},
+            {manifest.tu_version, 1},
+            {x_version,           2},
+            {y_version,           3},
         };
         manifest.shared_locals = {
-            {.symbol = helper, .files = {x_fv, y_fv}}
+            {.symbol = helper, .files = {x_version, y_version}}
         };
         index.apply_manifest(pool, tu, std::move(manifest));
         units.push_back(tu);

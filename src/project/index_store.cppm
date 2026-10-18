@@ -244,7 +244,7 @@ public:
     /// the disk can change under a running round, but staleness is
     /// re-judged per round anyway.
     void begin_round() {
-        fv_stale.clear();
+        version_stale.clear();
     }
 
     /// Check whether a file needs re-indexing: no manifest, or a stale
@@ -403,12 +403,12 @@ private:
 
     /// Per-round FileVersion staleness results: many TUs share the same
     /// versions, and one stat (or repair) per version per round is enough.
-    llvm::DenseMap<VersionID, bool> fv_stale;
+    llvm::DenseMap<VersionID, bool> version_stale;
 
     /// Two-layer staleness test on a FileVersion, cached per round; a hash
     /// match after a stat mismatch repairs the version's stat fast path in
     /// place for every consumer.
-    bool file_version_stale(VersionID fv_id);
+    bool file_version_stale(VersionID version_id);
 
     /// Retire a file's instantiation shard, now or at the next save.
     void retire_instantiations(Fid path_id);

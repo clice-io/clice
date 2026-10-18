@@ -56,34 +56,34 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_
         return std::unexpected("written by another index format version");
     }
     generation = root[&ProjectTableBlob::generation];
-    next_fv_id = root[&ProjectTableBlob::next_fv_id];
-    fv_ids = to_array_ref(root[&ProjectTableBlob::fv_ids]);
-    fv_paths = root[&ProjectTableBlob::fv_paths];
-    fv_hashes = to_array_ref(root[&ProjectTableBlob::fv_hashes]);
+    next_version_id = root[&ProjectTableBlob::next_version_id];
+    version_ids = to_array_ref(root[&ProjectTableBlob::version_ids]);
+    version_paths = root[&ProjectTableBlob::version_paths];
+    version_hashes = to_array_ref(root[&ProjectTableBlob::version_hashes]);
     paths = root[&ProjectTableBlob::paths];
-    hashes = to_array_ref(root[&ProjectTableBlob::sym_hashes]);
-    names = to_ref(root[&ProjectTableBlob::sym_names]);
-    name_ends = to_array_ref(root[&ProjectTableBlob::sym_name_ends]);
-    args_docs = to_array_ref(root[&ProjectTableBlob::sym_args_docs]);
-    args = to_ref(root[&ProjectTableBlob::sym_args]);
-    args_ends = to_array_ref(root[&ProjectTableBlob::sym_args_ends]);
-    signatures = to_ref(root[&ProjectTableBlob::sym_signatures]);
-    signature_ends = to_array_ref(root[&ProjectTableBlob::sym_signature_ends]);
-    parents = ids_of(root[&ProjectTableBlob::sym_parents], hashes.size() + 1);
-    far_parents = to_array_ref(root[&ProjectTableBlob::sym_far_parents]);
-    far_parent_hashes = to_array_ref(root[&ProjectTableBlob::sym_far_parent_hashes]);
-    kinds = to_array_ref(root[&ProjectTableBlob::sym_kinds]);
-    flags = to_array_ref(root[&ProjectTableBlob::sym_flags]);
-    token_kinds = to_array_ref(root[&ProjectTableBlob::sym_token_kinds]);
-    token_modifiers = to_array_ref(root[&ProjectTableBlob::sym_token_modifiers]);
-    files = ids_of(root[&ProjectTableBlob::sym_files], paths.size() + 1);
-    reference_counts = ids_of(root[&ProjectTableBlob::sym_reference_counts], paths.size() + 1);
-    bitmap_ends = to_array_ref(root[&ProjectTableBlob::sym_bitmap_ends]);
-    bitmaps = to_array_ref(root[&ProjectTableBlob::sym_bitmaps]);
-    instantiation_docs = to_array_ref(root[&ProjectTableBlob::sym_instantiation_docs]);
-    instantiation_ends = to_array_ref(root[&ProjectTableBlob::sym_instantiation_ends]);
-    instantiation_images = to_array_ref(root[&ProjectTableBlob::sym_instantiations]);
-    manifest_fvs = to_array_ref(root[&ProjectTableBlob::manifest_fvs]);
+    hashes = to_array_ref(root[&ProjectTableBlob::symbol_hashes]);
+    names = to_ref(root[&ProjectTableBlob::symbol_names]);
+    name_ends = to_array_ref(root[&ProjectTableBlob::symbol_name_ends]);
+    args_entries = to_array_ref(root[&ProjectTableBlob::symbol_args_entries]);
+    args = to_ref(root[&ProjectTableBlob::symbol_args]);
+    args_ends = to_array_ref(root[&ProjectTableBlob::symbol_args_ends]);
+    signatures = to_ref(root[&ProjectTableBlob::symbol_signatures]);
+    signature_ends = to_array_ref(root[&ProjectTableBlob::symbol_signature_ends]);
+    parents = ids_of(root[&ProjectTableBlob::symbol_parents], hashes.size() + 1);
+    far_parents = to_array_ref(root[&ProjectTableBlob::symbol_far_parents]);
+    far_parent_hashes = to_array_ref(root[&ProjectTableBlob::symbol_far_parent_hashes]);
+    kinds = to_array_ref(root[&ProjectTableBlob::symbol_kinds]);
+    flags = to_array_ref(root[&ProjectTableBlob::symbol_flags]);
+    token_kinds = to_array_ref(root[&ProjectTableBlob::symbol_token_kinds]);
+    token_modifiers = to_array_ref(root[&ProjectTableBlob::symbol_token_modifiers]);
+    files = ids_of(root[&ProjectTableBlob::symbol_files], paths.size() + 1);
+    reference_counts = ids_of(root[&ProjectTableBlob::symbol_reference_counts], paths.size() + 1);
+    bitmap_ends = to_array_ref(root[&ProjectTableBlob::symbol_bitmap_ends]);
+    bitmaps = to_array_ref(root[&ProjectTableBlob::symbol_bitmaps]);
+    instantiation_entries = to_array_ref(root[&ProjectTableBlob::symbol_instantiation_entries]);
+    instantiation_ends = to_array_ref(root[&ProjectTableBlob::symbol_instantiation_ends]);
+    instantiation_images = to_array_ref(root[&ProjectTableBlob::symbol_instantiations]);
+    manifest_versions = to_array_ref(root[&ProjectTableBlob::manifest_versions]);
     manifest_generations = to_array_ref(root[&ProjectTableBlob::manifest_generations]);
     search_generation = root[&ProjectTableBlob::search_generation];
     search_pending = to_array_ref(root[&ProjectTableBlob::search_pending]);
@@ -96,11 +96,11 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_
     shared_local_file_ends = to_array_ref(root[&ProjectTableBlob::shared_local_file_ends]);
     shared_local_files = to_array_ref(root[&ProjectTableBlob::shared_local_files]);
 
-    auto version_count = fv_ids.size();
-    if(fv_paths.size() != version_count || fv_hashes.size() != version_count) {
+    auto version_count = version_ids.size();
+    if(version_paths.size() != version_count || version_hashes.size() != version_count) {
         return std::unexpected("file version columns do not line up");
     }
-    if(!std::ranges::is_sorted(fv_ids)) {
+    if(!std::ranges::is_sorted(version_ids)) {
         return std::unexpected("file version ids are not ascending");
     }
     if(contributor_ends.size() != contributed_files.size() ||
@@ -119,7 +119,7 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_
        !std::ranges::is_sorted(shared_local_symbols, std::less_equal{})) {
         return std::unexpected("shared local columns do not line up");
     }
-    if(manifest_fvs.size() != manifest_generations.size()) {
+    if(manifest_versions.size() != manifest_generations.size()) {
         return std::unexpected("manifest pin columns do not line up");
     }
     auto count = hashes.size();
@@ -135,11 +135,11 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_
        !ids_ok(reference_counts, count, paths.size() + 1)) {
         return std::unexpected("symbol id columns do not line up");
     }
-    auto sparse = [&](llvm::ArrayRef<std::uint32_t> docs, std::size_t values) {
-        return sparse_ok(docs, values, count);
+    auto sparse = [&](llvm::ArrayRef<std::uint32_t> entries, std::size_t values) {
+        return sparse_ok(entries, values, count);
     };
-    if(!sparse(args_docs, args_ends.size()) ||
-       !sparse(instantiation_docs, instantiation_ends.size()) ||
+    if(!sparse(args_entries, args_ends.size()) ||
+       !sparse(instantiation_entries, instantiation_ends.size()) ||
        !sparse(far_parents, far_parent_hashes.size())) {
         return std::unexpected("sparse symbol columns do not line up");
     }

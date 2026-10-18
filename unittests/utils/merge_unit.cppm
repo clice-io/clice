@@ -48,24 +48,24 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
         consumed[local_id] = project_index.shards[global_id].content_hash();
     }
 
-    llvm::SmallVector<VersionID> fv_of;
+    llvm::SmallVector<VersionID> version_of;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         auto hash = consumed[i] != 0 ? consumed[i] : view.content_hash(i);
-        fv_of.push_back(project.file_table.intern_version(file_ids_map[i], hash));
+        version_of.push_back(project.file_table.intern_version(file_ids_map[i], hash));
     }
 
     index::TUManifest manifest;
-    manifest.tu_fv = fv_of[view.path_count() - 1];
+    manifest.tu_version = version_of[view.path_count() - 1];
     for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
         auto node = view.node(i);
-        manifest.nodes.push_back({.file = fv_of[node.file].raw,
+        manifest.nodes.push_back({.file = version_of[node.file].raw,
                                   .parent = node.parent,
                                   .line = node.line,
                                   .skipped = node.skipped});
     }
     llvm::BitVector held(view.path_count());
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
-        manifest.contributions.emplace_back(fv_of[view.section_path(section)],
+        manifest.contributions.emplace_back(version_of[view.section_path(section)],
                                             view.section_hash(section));
         held.set(view.section_path(section));
     }
@@ -77,7 +77,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
     for(auto& local: *shared_locals) {
         index::SharedLocal entry{.symbol = local.symbol};
         for(auto path_id: local.paths) {
-            entry.files.push_back(fv_of[path_id]);
+            entry.files.push_back(version_of[path_id]);
         }
         manifest.shared_locals.push_back(std::move(entry));
     }

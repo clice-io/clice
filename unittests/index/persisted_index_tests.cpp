@@ -23,7 +23,7 @@ ZEST_CASE(ManifestRoundTrip) {
     index::TUManifest manifest;
     manifest.table_generation = 7;
     manifest.built_at = 1234567;
-    manifest.tu_fv = VersionID{300};
+    manifest.tu_version = VersionID{300};
     // A root node, a multi-byte-varint line, a parent that FOLLOWS its child
     // (the include tree resolves parent chains after appending), and runs of
     // siblings — skipped or not, lines ascending or not, under a node or the
@@ -72,7 +72,7 @@ struct ManifestBlobMirror {
     std::uint32_t format_version = 0;
     std::uint64_t table_generation = 0;
     std::uint64_t built_at = 0;
-    std::uint32_t tu_fv = 0;
+    std::uint32_t tu_version = 0;
     std::uint32_t node_count = 0;
     std::uint32_t contribution_count = 0;
     std::vector<std::uint8_t> nodes;
@@ -195,15 +195,15 @@ index::ProjectIndex build_project(clice::FileTable& pool,
                                   llvm::StringRef tu) {
     index::ProjectIndex project;
     auto path_id = pool.intern(Spelling::absolute(path));
-    auto fv = pool.intern_version(path_id, 0xabcd);
+    auto version = pool.intern_version(path_id, 0xabcd);
 
     index::TUManifest manifest;
-    manifest.tu_fv = pool.intern_version(pool.intern(Spelling::absolute(tu)), 0x1111);
+    manifest.tu_version = pool.intern_version(pool.intern(Spelling::absolute(tu)), 0x1111);
     manifest.nodes = {
-        {fv.raw, ~0u, 3}
+        {version.raw, ~0u, 3}
     };
     manifest.contributions = {
-        {fv, 777}
+        {version, 777}
     };
     project.apply_manifest(pool, pool.intern(Spelling::absolute(tu)), std::move(manifest));
 
@@ -250,11 +250,11 @@ ZEST_CASE(GlobalRoundTripRemap) {
     ZASSERT(loaded.table_generation == 9u);
 
     // The blob pins the TU's manifest at the generation it was saved under.
-    auto tu_fv = fresh.version_ids.find(
+    auto tu_version = fresh.version_ids.find(
         {*fresh.find(Spelling::absolute("/proj/tu.cpp")), std::uint64_t(0x1111)});
-    ZASSERT(tu_fv != fresh.version_ids.end());
+    ZASSERT(tu_version != fresh.version_ids.end());
     ZASSERT(pins.size() == std::size_t(1));
-    ZASSERT(pins.find(tu_fv->second)->second == 9u);
+    ZASSERT(pins.find(tu_version->second)->second == 9u);
 
     ZASSERT(fresh.version_ids.contains({*id, std::uint64_t(0xabcd)}));
 }
@@ -365,34 +365,34 @@ std::vector<std::uint8_t> file_set(const clice::Bitmap& ids) {
 struct ProjectTableBlobMirror {
     std::uint32_t format_version = index::index_format_version;
     std::uint64_t generation = 0;
-    std::uint32_t next_fv_id = 0;
-    std::vector<std::uint32_t> fv_ids;
-    std::vector<std::string> fv_paths;
-    std::vector<std::uint64_t> fv_hashes;
+    std::uint32_t next_version_id = 0;
+    std::vector<std::uint32_t> version_ids;
+    std::vector<std::string> version_paths;
+    std::vector<std::uint64_t> version_hashes;
     std::vector<std::string> paths;
-    std::vector<std::uint64_t> sym_hashes;
-    std::string sym_names;
-    std::vector<std::uint32_t> sym_name_ends;
-    std::vector<std::uint32_t> sym_args_docs;
-    std::string sym_args;
-    std::vector<std::uint32_t> sym_args_ends;
-    std::string sym_signatures;
-    std::vector<std::uint32_t> sym_signature_ends;
-    index::IdColumn sym_parents;
-    std::vector<std::uint32_t> sym_far_parents;
-    std::vector<std::uint64_t> sym_far_parent_hashes;
-    std::vector<std::uint8_t> sym_kinds;
-    std::vector<std::uint16_t> sym_flags;
-    std::vector<std::uint8_t> sym_token_kinds;
-    std::vector<std::uint32_t> sym_token_modifiers;
-    index::IdColumn sym_files;
-    index::IdColumn sym_reference_counts;
-    std::vector<std::uint32_t> sym_bitmap_ends;
-    std::vector<std::uint8_t> sym_bitmaps;
-    std::vector<std::uint32_t> sym_instantiation_docs;
-    std::vector<std::uint32_t> sym_instantiation_ends;
-    std::vector<std::uint8_t> sym_instantiations;
-    std::vector<std::uint32_t> manifest_fvs;
+    std::vector<std::uint64_t> symbol_hashes;
+    std::string symbol_names;
+    std::vector<std::uint32_t> symbol_name_ends;
+    std::vector<std::uint32_t> symbol_args_entries;
+    std::string symbol_args;
+    std::vector<std::uint32_t> symbol_args_ends;
+    std::string symbol_signatures;
+    std::vector<std::uint32_t> symbol_signature_ends;
+    index::IdColumn symbol_parents;
+    std::vector<std::uint32_t> symbol_far_parents;
+    std::vector<std::uint64_t> symbol_far_parent_hashes;
+    std::vector<std::uint8_t> symbol_kinds;
+    std::vector<std::uint16_t> symbol_flags;
+    std::vector<std::uint8_t> symbol_token_kinds;
+    std::vector<std::uint32_t> symbol_token_modifiers;
+    index::IdColumn symbol_files;
+    index::IdColumn symbol_reference_counts;
+    std::vector<std::uint32_t> symbol_bitmap_ends;
+    std::vector<std::uint8_t> symbol_bitmaps;
+    std::vector<std::uint32_t> symbol_instantiation_entries;
+    std::vector<std::uint32_t> symbol_instantiation_ends;
+    std::vector<std::uint8_t> symbol_instantiations;
+    std::vector<std::uint32_t> manifest_versions;
     std::vector<std::uint64_t> manifest_generations;
     std::uint64_t search_generation = 0;
     std::vector<std::uint64_t> search_pending;
@@ -413,22 +413,22 @@ struct ProjectTableBlobMirror {
                     std::uint64_t parent = 0,
                     std::uint32_t file = index::no_file) {
         if(parent != 0) {
-            sym_far_parents.push_back(static_cast<std::uint32_t>(sym_hashes.size()));
-            sym_far_parent_hashes.push_back(parent);
+            symbol_far_parents.push_back(static_cast<std::uint32_t>(symbol_hashes.size()));
+            symbol_far_parent_hashes.push_back(parent);
         }
-        sym_hashes.push_back(hash);
-        sym_names += name;
-        sym_name_ends.push_back(static_cast<std::uint32_t>(sym_names.size()));
-        sym_signature_ends.push_back(static_cast<std::uint32_t>(sym_signatures.size()));
-        sym_parents.push_back(0);
-        sym_kinds.push_back(0);
-        sym_flags.push_back(0);
-        sym_token_kinds.push_back(0);
-        sym_token_modifiers.push_back(0);
-        sym_files.push_back(static_cast<std::uint8_t>(file == index::no_file ? 0 : file + 1));
-        sym_reference_counts.push_back(0);
-        sym_bitmaps.insert(sym_bitmaps.end(), image.begin(), image.end());
-        sym_bitmap_ends.push_back(static_cast<std::uint32_t>(sym_bitmaps.size()));
+        symbol_hashes.push_back(hash);
+        symbol_names += name;
+        symbol_name_ends.push_back(static_cast<std::uint32_t>(symbol_names.size()));
+        symbol_signature_ends.push_back(static_cast<std::uint32_t>(symbol_signatures.size()));
+        symbol_parents.push_back(0);
+        symbol_kinds.push_back(0);
+        symbol_flags.push_back(0);
+        symbol_token_kinds.push_back(0);
+        symbol_token_modifiers.push_back(0);
+        symbol_files.push_back(static_cast<std::uint8_t>(file == index::no_file ? 0 : file + 1));
+        symbol_reference_counts.push_back(0);
+        symbol_bitmaps.insert(symbol_bitmaps.end(), image.begin(), image.end());
+        symbol_bitmap_ends.push_back(static_cast<std::uint32_t>(symbol_bitmaps.size()));
     }
 };
 
@@ -464,10 +464,10 @@ ZEST_CASE(GlobalBitmapPayloadGate) {
     // A malformed image after columns that decoded fine: the reject must
     // leave no partial state — file versions or symbols — that later
     // merges would build on and the next save persist.
-    mirror.next_fv_id = 8;
-    mirror.fv_ids = {7};
-    mirror.fv_paths = {"/proj/partial.h"};
-    mirror.fv_hashes = {0x1};
+    mirror.next_version_id = 8;
+    mirror.version_ids = {7};
+    mirror.version_paths = {"/proj/partial.h"};
+    mirror.version_hashes = {0x1};
     mirror.add_symbol(43, "other", std::vector<std::uint8_t>{0xff, 0xff, 0xff});
     auto corrupt = encode(mirror);
     ZASSERT(corrupt);
@@ -510,10 +510,10 @@ ZEST_CASE(GlobalDuplicateVersionsRejected) {
     // an id whose record names the later path, attributing contributions
     // to the wrong file.
     ProjectTableBlobMirror mirror;
-    mirror.next_fv_id = 9;
-    mirror.fv_ids = {7, 7};
-    mirror.fv_paths = {"/proj/a.h", "/proj/b.h"};
-    mirror.fv_hashes = {0x1, 0x2};
+    mirror.next_version_id = 9;
+    mirror.version_ids = {7, 7};
+    mirror.version_paths = {"/proj/a.h", "/proj/b.h"};
+    mirror.version_hashes = {0x1, 0x2};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -523,9 +523,9 @@ ZEST_CASE(GlobalDuplicateVersionsRejected) {
     ZASSERT(!loaded.load_table(bytes_of(*dup_id), pool, pins).has_value());
     ZASSERT(pool.versions.empty());
 
-    mirror.fv_ids = {7, 8};
-    mirror.fv_paths = {"/proj/a.h", "/proj/a.h"};
-    mirror.fv_hashes = {0x1, 0x1};
+    mirror.version_ids = {7, 8};
+    mirror.version_paths = {"/proj/a.h", "/proj/a.h"};
+    mirror.version_hashes = {0x1, 0x1};
     auto dup_pair = encode(mirror);
     ZASSERT(dup_pair);
     ZASSERT(!loaded.load_table(bytes_of(*dup_pair), pool, pins).has_value());
@@ -533,7 +533,7 @@ ZEST_CASE(GlobalDuplicateVersionsRejected) {
     // The same path under two content hashes is the legitimate shape: two
     // observed versions of one file. Only the ids the blob carries map
     // into the table; the ones the writer garbage-collected map nowhere.
-    mirror.fv_hashes = {0x1, 0x2};
+    mirror.version_hashes = {0x1, 0x2};
     auto distinct = encode(mirror);
     ZASSERT(distinct);
     ZASSERT(loaded.load_table(bytes_of(*distinct), pool, pins));
@@ -548,10 +548,10 @@ ZEST_CASE(GlobalBadCounterRejected) {
     // below it; a lagging counter would alias stored ids on the next
     // intern, and a sentinel one would insert a DenseMap reserved key.
     ProjectTableBlobMirror mirror;
-    mirror.next_fv_id = 8;
-    mirror.fv_ids = {7};
-    mirror.fv_paths = {"/proj/a.h"};
-    mirror.fv_hashes = {0x1};
+    mirror.next_version_id = 8;
+    mirror.version_ids = {7};
+    mirror.version_paths = {"/proj/a.h"};
+    mirror.version_hashes = {0x1};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -560,21 +560,21 @@ ZEST_CASE(GlobalBadCounterRejected) {
     index::ProjectIndex loaded;
     ZASSERT(loaded.load_table(bytes_of(*ahead), pool, pins));
 
-    mirror.next_fv_id = 7;
+    mirror.next_version_id = 7;
     auto lagging = encode(mirror);
     ZASSERT(lagging);
     ZASSERT(!loaded.load_table(bytes_of(*lagging), pool, pins).has_value());
 
-    mirror.next_fv_id = std::numeric_limits<std::uint32_t>::max() - 1;
-    mirror.fv_ids = {};
-    mirror.fv_paths = {};
-    mirror.fv_hashes = {};
+    mirror.next_version_id = std::numeric_limits<std::uint32_t>::max() - 1;
+    mirror.version_ids = {};
+    mirror.version_paths = {};
+    mirror.version_hashes = {};
     auto reserved = encode(mirror);
     ZASSERT(reserved);
     ZASSERT(!loaded.load_table(bytes_of(*reserved), pool, pins).has_value());
 
     // A garbage high-water mark far beyond any real lineage rejects.
-    mirror.next_fv_id = 0xf0000000;
+    mirror.next_version_id = 0xf0000000;
     auto oversized = encode(mirror);
     ZASSERT(oversized);
     ZASSERT(!loaded.load_table(bytes_of(*oversized), pool, pins).has_value());
@@ -632,7 +632,7 @@ ZEST_CASE(UncoveredFileIdRejected) {
     index::ProjectIndex loaded;
     ZASSERT(loaded.load_table(bytes_of(*control), pool, pins));
 
-    mirror.sym_files = {6};
+    mirror.symbol_files = {6};
     auto uncovered = encode(mirror);
     ZASSERT(uncovered);
     index::ProjectIndex rejecting;
@@ -680,9 +680,9 @@ ZEST_CASE(GlobalSparseColumnsRejected) {
     ProjectTableBlobMirror mirror;
     mirror.add_symbol(42, "a", file_set(clice::Bitmap{}));
     mirror.add_symbol(43, "b", file_set(clice::Bitmap{}));
-    mirror.sym_args_docs = {1};
-    mirror.sym_args = "<int>";
-    mirror.sym_args_ends = {5};
+    mirror.symbol_args_entries = {1};
+    mirror.symbol_args = "<int>";
+    mirror.symbol_args_ends = {5};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -692,14 +692,14 @@ ZEST_CASE(GlobalSparseColumnsRejected) {
         return bytes && loaded.load_table(bytes_of(*bytes), pool, pins).has_value();
     };
     ZASSERT(loads());
-    mirror.sym_args_docs = {2};
+    mirror.symbol_args_entries = {2};
     ZEXPECT(!loads());
-    mirror.sym_args_docs = {1};
+    mirror.symbol_args_entries = {1};
 
-    mirror.sym_far_parents = {1, 0};
-    mirror.sym_far_parent_hashes = {7, 8};
+    mirror.symbol_far_parents = {1, 0};
+    mirror.symbol_far_parent_hashes = {7, 8};
     ZEXPECT(!loads());
-    mirror.sym_far_parents = {0, 1};
+    mirror.symbol_far_parents = {0, 1};
     ZEXPECT(loads());
 }
 
@@ -723,13 +723,13 @@ ZEST_CASE(GlobalDuplicateSymbolRejected) {
     ZASSERT(!loaded.load_table(bytes_of(*dup), pool, pins).has_value());
     ZASSERT(loaded.symbol_count() == 0u);
 
-    mirror.sym_hashes = {42, 43};
+    mirror.symbol_hashes = {42, 43};
     auto distinct = encode(mirror);
     ZASSERT(distinct);
     ZASSERT(loaded.load_table(bytes_of(*distinct), pool, pins));
     ZASSERT(loaded.symbol_count() == std::size_t(2));
 
-    mirror.sym_hashes = {43, 42};
+    mirror.symbol_hashes = {43, 42};
     auto descending = encode(mirror);
     ZASSERT(descending);
     ZASSERT(!loaded.load_table(bytes_of(*descending), pool, pins).has_value());
@@ -741,7 +741,7 @@ ZEST_CASE(GlobalTokenKindRejected) {
     ProjectTableBlobMirror mirror;
     mirror.paths = four_paths();
     mirror.add_symbol(42, "sym", file_set(clice::Bitmap{}));
-    mirror.sym_token_kinds = {200};
+    mirror.symbol_token_kinds = {200};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -750,7 +750,7 @@ ZEST_CASE(GlobalTokenKindRejected) {
     index::ProjectIndex loaded;
     ZASSERT(!loaded.load_table(bytes_of(*corrupt), pool, pins).has_value());
 
-    mirror.sym_token_kinds = {0};
+    mirror.symbol_token_kinds = {0};
     auto valid = encode(mirror);
     ZASSERT(valid);
     ZASSERT(loaded.load_table(bytes_of(*valid), pool, pins));
@@ -767,9 +767,9 @@ ZEST_CASE(GlobalReservedKeysRejected) {
 
     {
         ProjectTableBlobMirror mirror;
-        mirror.fv_ids = {0xffffffffu};
-        mirror.fv_paths = {"/proj/a.h"};
-        mirror.fv_hashes = {0x1};
+        mirror.version_ids = {0xffffffffu};
+        mirror.version_paths = {"/proj/a.h"};
+        mirror.version_hashes = {0x1};
         auto bytes = encode(mirror);
         ZASSERT(bytes);
         ZASSERT(!loaded.load_table(bytes_of(*bytes), pool, pins).has_value());
@@ -804,10 +804,10 @@ ZEST_CASE(GlobalReservedKeysRejected) {
 
 ZEST_CASE(UnknownFileVersionsDetected) {
     ProjectTableBlobMirror mirror;
-    mirror.next_fv_id = 4;
-    mirror.fv_ids = {3};
-    mirror.fv_paths = {"/proj/a.h"};
-    mirror.fv_hashes = {0x1};
+    mirror.next_version_id = 4;
+    mirror.version_ids = {3};
+    mirror.version_paths = {"/proj/a.h"};
+    mirror.version_hashes = {0x1};
     auto bytes = encode(mirror);
     ZASSERT(bytes);
 
@@ -821,7 +821,7 @@ ZEST_CASE(UnknownFileVersionsDetected) {
             ->second;
 
     index::TUManifest manifest;
-    manifest.tu_fv = VersionID{3};
+    manifest.tu_version = VersionID{3};
     manifest.nodes = {
         {3, ~0u, 1}
     };
@@ -833,7 +833,7 @@ ZEST_CASE(UnknownFileVersionsDetected) {
     };
     auto imported = manifest;
     ZASSERT(loaded.import_manifest(imported));
-    ZASSERT(imported.tu_fv == known);
+    ZASSERT(imported.tu_version == known);
     ZASSERT(imported.nodes[0].file == known.raw);
     ZASSERT(imported.contributions[0].first == known);
     ZASSERT(imported.shared_locals[0].files[0] == known);
@@ -884,10 +884,10 @@ ZEST_CASE(SharedTableLineages) {
 
     auto imported = persisted;
     ZASSERT(second_loaded.import_manifest(imported));
-    ZASSERT(shared.version(imported.tu_fv).fid == *shared.find(Spelling::absolute("/app/tu.cpp")));
+    ZASSERT(shared.version(imported.tu_version).fid == *shared.find(Spelling::absolute("/app/tu.cpp")));
     ZASSERT(imported.contributions[0].first == header->second);
     ZASSERT(second_pins.size() == std::size_t(1));
-    ZASSERT(second_pins.contains(imported.tu_fv));
+    ZASSERT(second_pins.contains(imported.tu_version));
     ZASSERT(second_loaded.export_manifest(imported) == persisted);
 }
 

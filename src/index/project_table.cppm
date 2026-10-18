@@ -26,16 +26,16 @@ struct ProjectTable {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
     std::uint64_t generation = 0;
-    std::uint32_t next_fv_id = 0;
-    llvm::ArrayRef<std::uint32_t> fv_ids;
-    kota::codec::fbs::array_view<std::string> fv_paths;
-    llvm::ArrayRef<std::uint64_t> fv_hashes;
+    std::uint32_t next_version_id = 0;
+    llvm::ArrayRef<std::uint32_t> version_ids;
+    kota::codec::fbs::array_view<std::string> version_paths;
+    llvm::ArrayRef<std::uint64_t> version_hashes;
 
     kota::codec::fbs::array_view<std::string> paths;
     llvm::ArrayRef<std::uint64_t> hashes;
     llvm::StringRef names;
     llvm::ArrayRef<std::uint32_t> name_ends;
-    llvm::ArrayRef<std::uint32_t> args_docs;
+    llvm::ArrayRef<std::uint32_t> args_entries;
     llvm::StringRef args;
     llvm::ArrayRef<std::uint32_t> args_ends;
     llvm::StringRef signatures;
@@ -51,11 +51,11 @@ struct ProjectTable {
     IdColumnView reference_counts;
     llvm::ArrayRef<std::uint32_t> bitmap_ends;
     llvm::ArrayRef<std::uint8_t> bitmaps;
-    llvm::ArrayRef<std::uint32_t> instantiation_docs;
+    llvm::ArrayRef<std::uint32_t> instantiation_entries;
     llvm::ArrayRef<std::uint32_t> instantiation_ends;
     llvm::ArrayRef<std::uint8_t> instantiation_images;
 
-    llvm::ArrayRef<std::uint32_t> manifest_fvs;
+    llvm::ArrayRef<std::uint32_t> manifest_versions;
     llvm::ArrayRef<std::uint64_t> manifest_generations;
 
     std::uint64_t search_generation = 0;
@@ -89,59 +89,59 @@ struct ProjectTable {
         return static_cast<std::uint32_t>(it - hashes.begin());
     }
 
-    llvm::StringRef name(std::uint32_t doc) const {
-        return slice(names, name_ends, doc);
+    llvm::StringRef name(std::uint32_t entry) const {
+        return slice(names, name_ends, entry);
     }
 
-    llvm::StringRef arguments(std::uint32_t doc) const {
-        auto it = std::ranges::lower_bound(args_docs, doc);
-        if(it == args_docs.end() || *it != doc) {
+    llvm::StringRef arguments(std::uint32_t entry) const {
+        auto it = std::ranges::lower_bound(args_entries, entry);
+        if(it == args_entries.end() || *it != entry) {
             return {};
         }
-        return slice(args, args_ends, static_cast<std::uint32_t>(it - args_docs.begin()));
+        return slice(args, args_ends, static_cast<std::uint32_t>(it - args_entries.begin()));
     }
 
-    SymbolHash parent(std::uint32_t doc) const {
-        if(parents[doc] != 0) {
-            return hashes[parents[doc] - 1];
+    SymbolHash parent(std::uint32_t entry) const {
+        if(parents[entry] != 0) {
+            return hashes[parents[entry] - 1];
         }
-        auto it = std::ranges::lower_bound(far_parents, doc);
-        if(it == far_parents.end() || *it != doc) {
+        auto it = std::ranges::lower_bound(far_parents, entry);
+        if(it == far_parents.end() || *it != entry) {
             return 0;
         }
         return far_parent_hashes[it - far_parents.begin()];
     }
 
     /// The symbol's file as a path id of the blob, or no_file.
-    std::uint32_t file(std::uint32_t doc) const {
-        return files[doc] == 0 ? no_file : files[doc] - 1;
+    std::uint32_t file(std::uint32_t entry) const {
+        return files[entry] == 0 ? no_file : files[entry] - 1;
     }
 
-    llvm::StringRef signature(std::uint32_t doc) const {
-        return slice(signatures, signature_ends, doc);
+    llvm::StringRef signature(std::uint32_t entry) const {
+        return slice(signatures, signature_ends, entry);
     }
 
-    llvm::ArrayRef<std::uint8_t> image(std::uint32_t doc) const {
-        return slice(bitmaps, bitmap_ends, doc);
+    llvm::ArrayRef<std::uint8_t> image(std::uint32_t entry) const {
+        return slice(bitmaps, bitmap_ends, entry);
     }
 
-    std::optional<Bitmap> bitmap(std::uint32_t doc) const {
-        return read_file_set(image(doc));
+    std::optional<Bitmap> bitmap(std::uint32_t entry) const {
+        return read_file_set(image(entry));
     }
 
     /// Empty for a symbol no instantiation names.
-    llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t doc) const {
-        auto it = std::ranges::lower_bound(instantiation_docs, doc);
-        if(it == instantiation_docs.end() || *it != doc) {
+    llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t entry) const {
+        auto it = std::ranges::lower_bound(instantiation_entries, entry);
+        if(it == instantiation_entries.end() || *it != entry) {
             return {};
         }
         return slice(instantiation_images,
                             instantiation_ends,
-                            static_cast<std::uint32_t>(it - instantiation_docs.begin()));
+                            static_cast<std::uint32_t>(it - instantiation_entries.begin()));
     }
 
-    std::optional<Bitmap> instantiation_bitmap(std::uint32_t doc) const {
-        return read_file_set(instantiation_image(doc));
+    std::optional<Bitmap> instantiation_bitmap(std::uint32_t entry) const {
+        return read_file_set(instantiation_image(entry));
     }
 
     /// The TUs that contributed a variant to `file`, as path ids; nullopt when
@@ -167,8 +167,8 @@ struct ProjectTable {
         if(it == shared_local_symbols.end() || *it != symbol) {
             return sets;
         }
-        auto entry = static_cast<std::uint32_t>(it - shared_local_symbols.begin());
-        for(auto set = entry == 0 ? 0 : shared_local_set_ends[entry - 1]; set < shared_local_set_ends[entry];
+        auto position = static_cast<std::uint32_t>(it - shared_local_symbols.begin());
+        for(auto set = position == 0 ? 0 : shared_local_set_ends[position - 1]; set < shared_local_set_ends[position];
             set += 1) {
             if(auto files = read_file_set(slice(shared_local_files, shared_local_file_ends, set))) {
                 sets.push_back(std::move(*files));
@@ -177,19 +177,19 @@ struct ProjectTable {
         return sets;
     }
 
-    SymbolView view(std::uint32_t doc) const {
-        auto file = this->file(doc);
+    SymbolView view(std::uint32_t entry) const {
+        auto file = this->file(entry);
         return {
-            .name = name(doc),
-            .args = arguments(doc),
-            .signature = signature(doc),
-            .parent = parent(doc),
-            .kind = SymbolKind(kinds[doc]),
+            .name = name(entry),
+            .args = arguments(entry),
+            .signature = signature(entry),
+            .parent = parent(entry),
+            .kind = SymbolKind(kinds[entry]),
             .scope = SymbolScope::External,
-            .flags = static_cast<SymbolFlags>(flags[doc]),
+            .flags = static_cast<SymbolFlags>(flags[entry]),
             .file = file == no_file ? no_file : remap[file].raw,
-            .token_class = {.kind = static_cast<SemanticTokenKind>(token_kinds[doc]),
-                            .modifiers = token_modifiers[doc]},
+            .token_class = {.kind = static_cast<SemanticTokenKind>(token_kinds[entry]),
+                            .modifiers = token_modifiers[entry]},
         };
     }
 

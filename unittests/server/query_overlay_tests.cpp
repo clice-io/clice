@@ -418,19 +418,19 @@ ZEST_CASE(PreviewFromDisk) {
     auto path = dir.path("preview.cpp");
     auto path_id = project.file_table.intern(Spelling::absolute(path));
 
-    index::SymbolHash sym = 777;
+    index::SymbolHash symbol_hash = 777;
     index::FileIndex file_index;
     file_index.occurrences.push_back({
         {4, 9},
-        sym
+        symbol_hash
     });
     index::Relation def{
         .kind = RelationKind::Definition,
         .range = {4, 9}
     };
     def.set_extent({0, 14});
-    file_index.relations[sym].push_back(def);
-    file_index.relations[sym].push_back({
+    file_index.relations[symbol_hash].push_back(def);
+    file_index.relations[symbol_hash].push_back({
         .kind = RelationKind::Reference,
         .range = {27, 32},
         .target = 0
@@ -442,21 +442,21 @@ ZEST_CASE(PreviewFromDisk) {
     project.index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     ZASSERT(project.index.shards[path_id].positions().text().empty());
-    auto& symbol = project.index.touch(sym);
+    auto& symbol = project.index.edit(symbol_hash);
     symbol.name = "value";
     symbol.reference_files.add(path_id.raw);
 
-    auto definition = index::definition_text(disk_query, sym, Fid{});
+    auto definition = index::definition_text(disk_query, symbol_hash, Fid{});
     ZASSERT(definition);
     ZEXPECT(definition->text == "int value = 1;");
 
-    auto references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
+    auto references = disk_query.sites(symbol_hash, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
     ZEXPECT(index::context_lines(disk_query, references) == std::vector<std::string>{"int other = value;"});
 
     dir.touch("preview.cpp", "int moved = 0;\n");
-    ZEXPECT(!index::definition_text(disk_query, sym, Fid{}).has_value());
-    references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
+    ZEXPECT(!index::definition_text(disk_query, symbol_hash, Fid{}).has_value());
+    references = disk_query.sites(symbol_hash, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
     ZEXPECT(index::context_lines(disk_query, references) == std::vector<std::string>{""});
 }
@@ -543,7 +543,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     index::write_shard(fake, {}, "xxx\n", os);
     project.index.shards[header_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    project.index.touch(foo).reference_files.add(header_id.raw);
+    project.index.edit(foo).reference_files.add(header_id.raw);
 
     auto def = index_query.first_site(foo, Fid{}, RelationKind::Definition);
     ZASSERT(def);

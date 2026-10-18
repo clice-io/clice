@@ -155,12 +155,12 @@ struct SearchBlobMirror {
     std::vector<std::uint32_t> token_keys;
     std::vector<std::uint32_t> token_ends;
     std::vector<std::uint8_t> token_postings;
-    std::vector<std::uint32_t> container_docs;
+    std::vector<std::uint32_t> container_entries;
     std::vector<std::uint32_t> children_ends;
     std::vector<std::uint8_t> children_postings;
     std::vector<std::uint8_t> top_level;
     std::vector<std::uint8_t> long_names;
-    std::vector<std::uint32_t> subtree_docs;
+    std::vector<std::uint32_t> subtree_entries;
     std::vector<std::uint32_t> subtree_ends;
     std::vector<std::uint8_t> subtree_postings;
     std::vector<std::uint32_t> kind_ends;
@@ -168,7 +168,7 @@ struct SearchBlobMirror {
     std::vector<std::string> paths;
     std::vector<std::uint32_t> file_ends;
     std::vector<std::uint8_t> file_postings;
-    std::vector<std::uint32_t> local_docs;
+    std::vector<std::uint32_t> local_entries;
     std::vector<std::uint32_t> local_paths;
 };
 
