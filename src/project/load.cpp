@@ -11,6 +11,7 @@ import :index.database;
 import :index.project_index;
 import :index.tu_manifest;
 import :project.artifact_records;
+import :project.build;
 import :project.command_resolver;
 import :project.command_snapshot;
 import :project.configuration;
@@ -278,12 +279,9 @@ BuildLoad load_build(Project& project,
             // root.
             return path::under(llvm::StringRef(source), llvm::StringRef(root));
         }));
-        auto key = [](const Spelling& source) {
-            return std::tuple(
-                llvm::count_if(source.str(), [](char c) { return path::is_separator(c); }),
-                llvm::StringRef(source));
-        };
-        std::ranges::sort(stable, {}, key);
+        std::ranges::sort(stable, {}, [](const Spelling& source) {
+            return discovery_rank(llvm::StringRef(source));
+        });
         paths.append(stable.begin(), stable.end());
     }
     // One source per database, however many of its spellings discovery

@@ -99,14 +99,16 @@ llvm::SmallVector<SourceID, 4> Build::source_order(CanonicalRef path) const {
     }
     // A vanished database keeps serving its entries, but one regenerated
     // elsewhere takes over the files both list.
-    auto rank = [&](SourceID id) {
-        auto source = cdb.source_path(id);
-        auto depth = llvm::count_if(source, [](char c) { return path::is_separator(c); });
-        return std::tuple(!cdb.present(id), depth, source);
-    };
-    std::ranges::sort(discovered, {}, rank);
+    std::ranges::sort(discovered, {}, [&](SourceID id) {
+        return std::pair(!cdb.present(id), discovery_rank(cdb.source_path(id)));
+    });
     order.append(discovered);
     return order;
+}
+
+std::pair<std::uint32_t, llvm::StringRef> discovery_rank(llvm::StringRef database) {
+    auto depth = llvm::count_if(database, [](char c) { return path::is_separator(c); });
+    return {static_cast<std::uint32_t>(depth), database};
 }
 
 llvm::SmallVector<CompilationEntry, 2> Build::entries(Fid file) const {
