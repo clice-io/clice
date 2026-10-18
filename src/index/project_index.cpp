@@ -26,8 +26,6 @@ namespace {
 /// better compacted by the rebuild the rejection triggers.
 constexpr inline std::uint32_t max_persisted_versions = 1u << 24;
 
-using BlobView = kota::codec::fbs::table_view<ProjectTableBlob>;
-
 /// A table derived from the manifests: file -> (TU -> the hash it names there).
 using UnitHashes = llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>>;
 
@@ -92,13 +90,12 @@ bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob, FileTabl
     if(!blob) {
         return false;
     }
-    auto root = BlobView::from_bytes(blob_bytes(blob->getBuffer()));
-    if(!root.valid()) {
-        LOG_DEBUG("Rejecting project table: structural verification failed");
+    auto root = verify_root<ProjectTableBlob>(blob->getBuffer(), "project table");
+    if(!root) {
         return false;
     }
     auto bound = std::make_unique<ProjectTable>();
-    if(auto ok = bound->bind(root); !ok) {
+    if(auto ok = bound->bind(*root); !ok) {
         LOG_DEBUG("Rejecting project table: {}", std::string_view(ok.error()));
         return false;
     }

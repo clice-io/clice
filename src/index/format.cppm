@@ -2,6 +2,8 @@ module;
 
 #include "modules/prelude.h"
 
+#include "support/logging.macros.h"
+
 /// The persisted index format: every blob layout the index writes, to the
 /// database or between processes, and the version gating them. Writers,
 /// load-time validation and the hand-built blobs of corruption tests share
@@ -10,6 +12,7 @@ module;
 module clice:index.format;
 
 import :index.symbol;
+import :support.logging;
 
 namespace clice::index {
 
@@ -99,6 +102,47 @@ void serialize_blob(const T& value, llvm::raw_ostream& os) {
 /// The bytes of `data` as the span every kota fbs entry point takes.
 inline std::span<const std::uint8_t> blob_bytes(llvm::StringRef data) {
     return {reinterpret_cast<const std::uint8_t*>(data.data()), data.size()};
+}
+
+/// The root of a blob of layout `Blob` once its bytes pass the structural
+/// check and carry this build's format version; nullopt, logged as the
+/// rejection of `what`, otherwise. The cross-field checks are the reader's.
+template <typename Blob>
+std::optional<kota::codec::fbs::table_view<Blob>> verify_root(llvm::StringRef bytes,
+                                                              llvm::StringRef what) {
+    auto root = kota::codec::fbs::table_view<Blob>::from_bytes(blob_bytes(bytes));
+    if(!root.valid()) {
+        LOG_DEBUG("Rejecting {}: structural verification failed", what);
+        return std::nullopt;
+    }
+    if(root[&Blob::format_version] != index_format_version) {
+        LOG_DEBUG("Rejecting {}: format version {}, this build reads {}",
+                  what,
+                  root[&Blob::format_version],
+                  index_format_version);
+        return std::nullopt;
+    }
+    return root;
+}
+
+/// The root of a blob a load verified, read in place without verifying
+/// again.
+template <typename Blob>
+kota::codec::fbs::table_view<Blob> verified_root(llvm::StringRef bytes) {
+    return kota::codec::fbs::table_view<Blob>::from_verified_bytes(blob_bytes(bytes));
+}
+
+/// Swap a reader's backing buffer for byte-identical bytes elsewhere (a
+/// newer read snapshot): what the reader verified and derived describes
+/// the bytes, not their address. False, keeping `buffer`, when the sizes
+/// differ.
+inline bool rebind_buffer(std::unique_ptr<llvm::MemoryBuffer>& buffer,
+                          std::unique_ptr<llvm::MemoryBuffer> replacement) {
+    if(!buffer || !replacement || replacement->getBufferSize() != buffer->getBufferSize()) {
+        return false;
+    }
+    buffer = std::move(replacement);
+    return true;
 }
 
 /// Verify and deserialize a blob into `out`. The out-parameter overload of

@@ -50,13 +50,8 @@ MaskEncoding encoding_of(std::size_t variant_count) {
     return MaskEncoding::Roaring;
 }
 
-/// The blob was fully verified at load; per-query views skip that cost.
 BlobView view_of(llvm::StringRef bytes) {
-    return BlobView::from_verified_bytes(blob_bytes(bytes));
-}
-
-BlobView root_of(const llvm::MemoryBuffer& buffer) {
-    return view_of(buffer.getBuffer());
+    return verified_root<ShardBlob>(bytes);
 }
 
 MaskEncoding encoding_of(BlobView root) {
@@ -682,11 +677,7 @@ Shard Shard::from_bytes(llvm::StringRef data) {
 }
 
 bool Shard::rebind(std::unique_ptr<llvm::MemoryBuffer> replacement) {
-    if(!buffer || !replacement || replacement->getBufferSize() != buffer->getBufferSize()) {
-        return false;
-    }
-    buffer = std::move(replacement);
-    return true;
+    return rebind_buffer(buffer, std::move(replacement));
 }
 
 Shard Shard::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
@@ -699,18 +690,11 @@ Shard Shard::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
     // then the format-version gate, then the cross-field checks the raw
     // column readers rely on. Anything failing loads as "not on disk" and
     // the background indexer rebuilds it.
-    auto root = BlobView::from_bytes(blob_bytes(buffer->getBuffer()));
-    if(!root.valid()) {
-        LOG_DEBUG("Rejecting shard blob: structural verification failed");
+    auto root = verify_root<ShardBlob>(buffer->getBuffer(), "shard blob");
+    if(!root) {
         return {};
     }
-    if(root[&ShardBlob::format_version] != index_format_version) {
-        LOG_DEBUG("Rejecting shard blob: format version {}, this build reads {}",
-                  root[&ShardBlob::format_version],
-                  index_format_version);
-        return {};
-    }
-    if(auto ok = validate(root); !ok) {
+    if(auto ok = validate(*root); !ok) {
         LOG_DEBUG("Rejecting shard blob: {}", ok.error());
         return {};
     }
@@ -721,14 +705,14 @@ std::uint64_t Shard::content_hash() const {
     if(!buffer) {
         return 0;
     }
-    return root_of(*buffer)[&ShardBlob::content_hash];
+    return view_of(buffer->getBuffer())[&ShardBlob::content_hash];
 }
 
 std::uint32_t Shard::content_size() const {
     if(!buffer) {
         return 0;
     }
-    return root_of(*buffer)[&ShardBlob::content_size];
+    return view_of(buffer->getBuffer())[&ShardBlob::content_size];
 }
 
 bool Shard::matches_content(llvm::StringRef text) const {
@@ -743,7 +727,7 @@ std::vector<VariantHash> Shard::variants() const {
     if(!buffer) {
         return {};
     }
-    auto stored = to_array_ref(root_of(*buffer)[&ShardBlob::variants]);
+    auto stored = to_array_ref(view_of(buffer->getBuffer())[&ShardBlob::variants]);
     if(stored.empty()) {
         return {blob_hash};
     }
@@ -754,7 +738,7 @@ bool Shard::has_variant(VariantHash hash) const {
     if(!buffer) {
         return false;
     }
-    auto stored = to_array_ref(root_of(*buffer)[&ShardBlob::variants]);
+    auto stored = to_array_ref(view_of(buffer->getBuffer())[&ShardBlob::variants]);
     if(stored.empty()) {
         return hash == blob_hash;
     }
@@ -791,7 +775,7 @@ bool Shard::has_dead_variants() const {
 LiveFilter Shard::live_filter(const RangeColumnsView& columns) const {
     return {
         .all = live.all,
-        .encoding = encoding_of(root_of(*buffer)),
+        .encoding = encoding_of(view_of(buffer->getBuffer())),
         .bits = live.bits,
         .big = &live.big,
         .columns = &columns,
@@ -803,7 +787,7 @@ void Shard::occurrences_at(std::uint32_t offset,
     if(!buffer) {
         return;
     }
-    auto table = OccurrenceTable::of(root_of(*buffer));
+    auto table = OccurrenceTable::of(view_of(buffer->getBuffer()));
     auto is_live = live_filter(table.columns);
 
     // Binary search the first occurrence whose end reaches the offset, then walk
@@ -871,7 +855,7 @@ void Shard::relations_of(SymbolHash symbol,
     if(!buffer) {
         return;
     }
-    auto table = RelationTable::of(root_of(*buffer));
+    auto table = RelationTable::of(view_of(buffer->getBuffer()));
     auto found = sorted_find(table.symbol_hashes, symbol);
     if(!found) [[unlikely]] {
         return;
@@ -895,7 +879,7 @@ void Shard::for_each_occurrence(llvm::function_ref<bool(const Occurrence&)> call
     if(!buffer) {
         return;
     }
-    auto table = OccurrenceTable::of(root_of(*buffer));
+    auto table = OccurrenceTable::of(view_of(buffer->getBuffer()));
     auto is_live = live_filter(table.columns);
     table.columns.for_each_range([&](std::uint32_t entry, LocalSourceRange range) {
         return !is_live(entry) || callback(table.at(entry, range));
@@ -907,7 +891,7 @@ void
     if(!buffer) {
         return;
     }
-    auto table = RelationTable::of(root_of(*buffer));
+    auto table = RelationTable::of(view_of(buffer->getBuffer()));
     auto is_live = live_filter(table.columns);
     RelationTable::Cursor cursor;
     for(std::uint32_t id = 0; id < table.symbol_hashes.size(); id += 1) {
@@ -929,7 +913,7 @@ std::optional<SymbolView> Shard::find_symbol(SymbolHash hash) const {
     if(!buffer) {
         return std::nullopt;
     }
-    auto table = LocalTable::of(root_of(*buffer));
+    auto table = LocalTable::of(view_of(buffer->getBuffer()));
     auto position = sorted_find(table.symbol_hashes, hash);
     if(!position) {
         return std::nullopt;
@@ -946,7 +930,7 @@ void Shard::for_each_local_symbol(
     if(!buffer) {
         return;
     }
-    auto table = LocalTable::of(root_of(*buffer));
+    auto table = LocalTable::of(view_of(buffer->getBuffer()));
     for(std::size_t k = 0; k < table.size(); k += 1) {
         if(!callback(table.hash_of(k), table.at(k))) {
             return;
@@ -959,7 +943,7 @@ std::span<const std::uint32_t> Shard::line_starts() const {
         return {};
     }
     if(line_starts_cache.empty()) {
-        auto root = root_of(*buffer);
+        auto root = view_of(buffer->getBuffer());
         auto lengths = to_array_ref(root[&ShardBlob::line_lengths]);
         auto long_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
         line_starts_cache.reserve(lengths.size());
@@ -982,14 +966,14 @@ std::span<const std::uint64_t> Shard::crlf_lines() const {
     if(!buffer) {
         return {};
     }
-    return to_array_ref(root_of(*buffer)[&ShardBlob::crlf_lines]);
+    return to_array_ref(view_of(buffer->getBuffer())[&ShardBlob::crlf_lines]);
 }
 
 PositionMap Shard::positions() const {
     if(!buffer) {
         return {0, {}, {}};
     }
-    auto root = root_of(*buffer);
+    auto root = view_of(buffer->getBuffer());
     return {content_size(),
             line_starts(),
             crlf_lines(),

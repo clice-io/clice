@@ -698,9 +698,8 @@ struct SearchIndex::View {
 
 std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     auto& view = *this;
-    if(root[&SearchIndexBlob::format_version] != index_format_version ||
-       root[&SearchIndexBlob::search_version] != search_format_version) {
-        return std::unexpected("written by another format version");
+    if(root[&SearchIndexBlob::search_version] != search_format_version) {
+        return std::unexpected("written by another search format version");
     }
     view.generation = root[&SearchIndexBlob::generation];
     view.hashes = to_array_ref(root[&SearchIndexBlob::hashes]);
@@ -811,13 +810,12 @@ bool SearchIndex::load(std::unique_ptr<llvm::MemoryBuffer> blob) {
     if(!blob) {
         return false;
     }
-    auto root = BlobView::from_bytes(blob_bytes(blob->getBuffer()));
-    if(!root.valid()) {
-        LOG_DEBUG("Rejecting search blob: structural verification failed");
+    auto root = verify_root<SearchIndexBlob>(blob->getBuffer(), "search blob");
+    if(!root) {
         return false;
     }
     auto bound = std::make_unique<View>();
-    if(auto ok = bound->bind(root); !ok) {
+    if(auto ok = bound->bind(*root); !ok) {
         LOG_DEBUG("Rejecting search blob: {}", std::string_view(ok.error()));
         return false;
     }

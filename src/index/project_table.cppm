@@ -189,7 +189,8 @@ struct ProjectTable {
         };
     }
 
-    /// Bind the columns of a verified blob, checking they line up.
+    /// Bind the columns of a blob verify_root accepted, checking they line
+    /// up.
     std::expected<void, llvm::StringRef> bind(kota::codec::fbs::table_view<ProjectTableBlob> root);
 };
 

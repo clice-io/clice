@@ -17,9 +17,8 @@ namespace {
 
 using BlobView = kota::codec::fbs::table_view<InstantiationShardBlob>;
 
-/// The blob was fully verified at load; per-query views skip that cost.
 BlobView view_of(llvm::StringRef bytes) {
-    return BlobView::from_verified_bytes(blob_bytes(bytes));
+    return verified_root<InstantiationShardBlob>(bytes);
 }
 
 /// A record kind's byte: the InstantiationKind, with this bit set for a
@@ -366,17 +365,11 @@ InstantiationShard InstantiationShard::from_buffer(std::unique_ptr<llvm::MemoryB
     if(!buffer) {
         return {};
     }
-    auto root = BlobView::from_bytes(blob_bytes(buffer->getBuffer()));
-    if(!root.valid()) {
-        LOG_DEBUG("Rejecting instantiation blob: structural verification failed");
+    auto verified = verify_root<InstantiationShardBlob>(buffer->getBuffer(), "instantiation blob");
+    if(!verified) {
         return {};
     }
-    if(root[&InstantiationShardBlob::format_version] != index_format_version) {
-        LOG_DEBUG("Rejecting instantiation blob: format version {}, this build reads {}",
-                  root[&InstantiationShardBlob::format_version],
-                  index_format_version);
-        return {};
-    }
+    auto root = *verified;
     if(auto ok = validate(root); !ok) {
         LOG_DEBUG("Rejecting instantiation blob: {}", ok.error());
         return {};
@@ -390,11 +383,7 @@ InstantiationShard InstantiationShard::from_buffer(std::unique_ptr<llvm::MemoryB
 }
 
 bool InstantiationShard::rebind(std::unique_ptr<llvm::MemoryBuffer> replacement) {
-    if(!buffer || !replacement || replacement->getBufferSize() != buffer->getBufferSize()) {
-        return false;
-    }
-    buffer = std::move(replacement);
-    return true;
+    return rebind_buffer(buffer, std::move(replacement));
 }
 
 std::uint64_t InstantiationShard::content_hash() const {

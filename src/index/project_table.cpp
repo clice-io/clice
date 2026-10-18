@@ -56,9 +56,6 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
 
 std::expected<void, llvm::StringRef>
     ProjectTable::bind(kota::codec::fbs::table_view<ProjectTableBlob> root) {
-    if(root[&ProjectTableBlob::format_version] != index_format_version) {
-        return std::unexpected("written by another index format version");
-    }
     generation = root[&ProjectTableBlob::generation];
     next_version_id = root[&ProjectTableBlob::next_version_id];
     version_ids = to_array_ref(root[&ProjectTableBlob::version_ids]);
