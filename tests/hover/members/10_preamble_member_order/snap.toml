@@ -1,0 +1,13 @@
+[answers.base.hover]
+markdown = '''
+**class** `Test`
+
+```cpp
+class Test {
+  int flag_saver_;
+  struct Setup_should_be_spelled_SetUp;
+}
+```
+Size: 16 bytes (4 bytes padding), alignment 8 bytes
+'''
+range = "class ParsedTest : public ⟦Test⟧ {};"

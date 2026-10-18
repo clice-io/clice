@@ -1,3 +1,3 @@
 # Assembler sources
 
-Preprocessed assembler files open in the editor and join the index
+Assembler sources a build compiles, preprocessed or not, are left to the assembler: the index, lint and the editor skip them

@@ -45,15 +45,15 @@ tests/compile/flags/07_precompiled_headers
 
 ## 其他语言
 
-构建过程中编译的其他语言文件（例如汇编源文件）也可以在编辑器中打开。
+clice 不处理构建过程中编译的其他语言文件（例如汇编源文件）：它只分析 C 族代码。
 
 <!-- BEGIN GENERATED ITEMS: compile/languages -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **汇编源文件**
 
-经过预处理的汇编文件可在编辑器中打开，并纳入索引
+构建过程中编译的汇编源文件，无论是否经过预处理，都留给汇编器处理：索引、Lint 和编辑器都会跳过它们
 
 ```case
 tests/compile/languages/01_assembler

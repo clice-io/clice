@@ -1,0 +1,26 @@
+[answers.function_template.completion]
+items = [
+    { label = "salary", kind = "Field", detail = "int" },
+]
+
+[answers.prefix.completion]
+items = [
+    { label = "salary", kind = "Field", detail = "int" },
+]
+
+[answers.bare.completion]
+items = [
+    { label = "salary", kind = "Field", detail = "int" },
+    { label = "seniority", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.hand_written.completion]
+items = [
+    { label = "seniority", kind = "Field", detail = "int" },
+]
+
+[answers.whole_name.completion]
+items = [
+    { label = "salary", kind = "Field", detail = "int" },
+]

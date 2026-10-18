@@ -2,6 +2,16 @@
   {
     "directory": "${WS}",
     "file": "${WS}/entry.S",
-    "arguments": ["clang", "-c", "${WS}/entry.S", "-o", "entry.o"]
+    "arguments": ["clang", "-D__ASSEMBLY__", "-c", "${WS}/entry.S", "-o", "entry.o"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "${WS}/boot.s",
+    "arguments": ["clang", "-c", "${WS}/boot.s", "-o", "boot.o"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "${WS}/main.c",
+    "arguments": ["clang", "-c", "${WS}/main.c", "-o", "main.o"]
   }
 ]

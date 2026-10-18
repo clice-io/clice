@@ -450,10 +450,12 @@ clang::NamedDecl* only_instantiation_impl(TemplateDeclTy* TD) {
         if(Spec->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization)
             continue;
         // Overload resolution specializes every function template candidate
-        // it deduces; only the one a call picks is referenced.
+        // it deduces; only the one a call picks is referenced, or has its
+        // body instantiated for it: a generic lambda's deduced return type
+        // is, and a body that fails there leaves the call unreferenced.
         if constexpr(std::is_same_v<TemplateDeclTy, clang::FunctionTemplateDecl>) {
             if(Spec->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation &&
-               !Spec->isReferenced())
+               !Spec->isReferenced() && !Spec->isInvalidDecl())
                 continue;
         }
         // A class template specialization the code only names, through a

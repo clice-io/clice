@@ -1,0 +1,9 @@
+[answers.friend_declared.completion]
+items = [
+    { label = "span<typename Tp>", kind = "Class" },
+]
+
+[answers.typedef_named.completion]
+items = [
+    { label = "attr", kind = "TypeParameter" },
+]

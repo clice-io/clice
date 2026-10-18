@@ -648,19 +648,46 @@ Features::RawResult Features::hover(Ticket ticket,
     co_return std::move(raw);
 }
 
+void Features::merge_preamble_macros(const Session& session,
+                                     std::vector<feature::SemanticToken>& tokens) {
+    auto state = query.preamble_blob(session.path_id);
+    if(!state) {
+        return;
+    }
+    llvm::DenseMap<std::uint32_t, std::uint32_t> modifiers;
+    state->shard_of(state->path_count() - 1)
+        .for_each_occurrence([&](const index::Occurrence& occurrence) {
+            auto symbol = state->find_symbol(occurrence.target);
+            if(symbol && symbol->token_class.kind == SemanticTokenKind::Macro) {
+                modifiers.try_emplace(occurrence.range.begin, symbol->token_class.modifiers);
+            }
+            return true;
+        });
+    for(auto& token: tokens) {
+        if(token.kind != SemanticTokenKind::Macro) {
+            continue;
+        }
+        if(auto it = modifiers.find(token.range.begin); it != modifiers.end()) {
+            token.modifiers |= it->second;
+        }
+    }
+}
+
 Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellation_token token) {
     auto& session = ticket.session;
     std::optional<index::IndexSource> source;
+    std::optional<std::vector<feature::SemanticToken>> tokens;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             session->index_served = true;
-            co_return feature::index_semantic_tokens(
+            tokens = feature::index_semantic_tokens(
                 session->text,
                 index_lang_options(*session),
                 feature::extract_index_entries(*source->shard),
                 [&](index::SymbolHash hash) { return query.symbol_info(hash); },
                 project.config.semantic_tokens);
+            break;
         }
         case Route::Empty: {
             // The client caches this null, and only a semanticTokens
@@ -671,9 +698,15 @@ Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellati
             session->index_served = true;
             co_return std::nullopt;
         }
-        case Route::Ast: break;
+        case Route::Ast: {
+            tokens = co_await dispatcher.semantic_tokens(ticket, std::move(token)).or_fail();
+            break;
+        }
     }
-    co_return co_await dispatcher.semantic_tokens(ticket, std::move(token)).or_fail();
+    if(tokens) {
+        merge_preamble_macros(*session, *tokens);
+    }
+    co_return tokens;
 }
 
 Features::RawResult Features::inlay_hints(Ticket ticket,

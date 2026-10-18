@@ -1,14 +1,22 @@
 import { test } from "@clice/tools/testing";
 
-// The preprocessor passes `#` comment lines through to the assembler
-// (#791): the editor and the batch index must both get past them.
+// The build assembles entry.S after preprocessing it and boot.s as it is:
+// neither is C-family code, so clice indexes, lints and serves only main.c.
 
 test("open", async (t) => {
     const s = await t.start();
-    await t.show("diagnostics", s.diagnostics("entry.S"));
-    await t.show("size", s.hover(t.at("entry.S", ".quad |SIZE")));
+    await t.show("preprocessed", s.diagnostics("entry.S"));
+    await t.show("plain", s.diagnostics("boot.s"));
+});
+
+test("inspect", async (t) => {
+    await t.cli("inspect semantic-tokens entry.S");
 });
 
 test("index", async (t) => {
     await t.cli("index --jobs 1");
+});
+
+test("lint", async (t) => {
+    await t.cli("lint");
 });

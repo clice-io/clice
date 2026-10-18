@@ -1,0 +1,9 @@
+[answers.undefined.semantic_token]
+text = "CREATE_TRACE_POINTS"
+type = "macro"
+modifiers = ["empty"]
+
+[answers.tested.semantic_token]
+text = "HAVE_BUILTIN"
+type = "macro"
+modifiers = ["callable"]

@@ -1,0 +1,4 @@
+[answers.member.completion]
+items = [
+    { label = "npos", kind = "Variable", detail = "const size_type" },
+]

@@ -9,6 +9,7 @@ module;
 module clice;
 
 import :command.argument_parser;
+import :command.command;
 import :feature.feature;
 import :server.counterparts;
 import :server.editor_context;
@@ -605,6 +606,10 @@ void LSPClient::register_document_sync() {
             return;
         }
         auto& path = spelled->str();
+        if(is_foreign_path(path)) {
+            LOG_INFO("didOpen: {} is no C-family source; not served", path);
+            return;
+        }
 
         // A didOpen racing ahead of the initialize handshake is a client
         // protocol violation, but sessions are plain state with no worker
@@ -647,7 +652,7 @@ void LSPClient::register_document_sync() {
         // The edit reaches a second name's buffer whether or not it still
         // agrees with the first name's.
         auto spelled = uri_to_path(params.text_document.uri);
-        if(!spelled) {
+        if(!spelled || is_foreign_path(spelled->str())) {
             return;
         }
         auto& path = spelled->str();

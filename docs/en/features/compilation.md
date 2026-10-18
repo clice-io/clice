@@ -45,15 +45,15 @@ tests/compile/flags/07_precompiled_headers
 
 ## Other Languages
 
-Files of other languages a build compiles, such as assembler sources, open in the editor.
+Files of other languages a build compiles, such as assembler sources, are left alone: clice analyzes only C-family code.
 
 <!-- BEGIN GENERATED ITEMS: compile/languages -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Assembler sources**
 
-Preprocessed assembler files open in the editor and join the index
+Assembler sources a build compiles, preprocessed or not, are left to the assembler: the index, lint and the editor skip them
 
 ```case
 tests/compile/languages/01_assembler

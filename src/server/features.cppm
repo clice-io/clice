@@ -375,6 +375,11 @@ private:
     /// there is no PCH or its preamble no longer matches the buffer.
     std::vector<index::DocumentLink> find_preamble_links(const Session& session);
 
+    /// The modifiers a macro named in the preamble region takes from its
+    /// definition, which only the PCH's index knows: neither the worker's
+    /// AST nor the per-edit index covers the directives the preamble ran.
+    void merge_preamble_macros(const Session& session, std::vector<feature::SemanticToken>& tokens);
+
     /// The include-like directive links of a session's whole buffer: the
     /// PCH's cached preamble links, then the worker's AST's for the rest.
     /// Module names go through the ordinary index pipeline, not these.

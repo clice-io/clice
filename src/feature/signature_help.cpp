@@ -91,6 +91,52 @@ const clang::FunctionDecl* shown(const clang::FunctionDecl* function) {
     return function;
 }
 
+/// Orders the candidates Sema ranks alike for a call with no argument
+/// written yet, which it leaves in the order its lookup found them: a
+/// class's implicit constructors join that order when something first
+/// needs one, in a preamble's PCH or later in the file. The declared
+/// functions go first, as the code declares them, then the implicit ones
+/// in the order Sema declares them, then the templates, which Sema ranks
+/// last.
+void
+    order_unranked(llvm::MutableArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates,
+                   const clang::SourceManager& sources) {
+    auto group = [](const clang::FunctionDecl* function) {
+        if(!function) {
+            return 0;
+        }
+        if(function->getPrimaryTemplate() || function->getDescribedFunctionTemplate()) {
+            return 3;
+        }
+        return function->isImplicit() ? 2 : 1;
+    };
+    auto special = [](const clang::FunctionDecl* function) {
+        const auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(function);
+        if(!constructor) {
+            return 3;
+        }
+        return constructor->isDefaultConstructor() ? 0
+               : constructor->isCopyConstructor()  ? 1
+               : constructor->isMoveConstructor()  ? 2
+                                                   : 3;
+    };
+    llvm::stable_sort(candidates, [&](const auto& left, const auto& right) {
+        const auto* lhs = left.getFunction();
+        const auto* rhs = right.getFunction();
+        if(group(lhs) != group(rhs)) {
+            return group(lhs) < group(rhs);
+        }
+        if(!lhs) {
+            return false;
+        }
+        if(lhs->isImplicit()) {
+            return special(lhs) < special(rhs);
+        }
+        return sources.isBeforeInTranslationUnit(shown(lhs)->getLocation(),
+                                                 shown(rhs)->getLocation());
+    });
+}
+
 /// The parameters an instantiation expanded from a pack of the
 /// declaration it was instantiated from, as indices [begin, end): each
 /// is named after the pack, which names none of them. A member template
@@ -200,6 +246,9 @@ public:
         policy = display::printing_policy(*context, options);
 
         bool ranked = object_written(sema, open_paren);
+        if(current_arg == 0 && !ranked) {
+            order_unranked({candidates, candidate_count}, sema.getSourceManager());
+        }
         llvm::SmallVector<const clang::FunctionDecl*> listed;
         for(auto& candidate: llvm::make_range(candidates, candidates + candidate_count)) {
             if(auto* function = candidate.getFunction()) {

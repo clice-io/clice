@@ -1,43 +1,20 @@
-[open.diagnostics]
-wrong = "an assembler source is parsed as C after preprocessing: its comment and directive lines, which the build accepts, show errors"
-diagnostics = [
-    {
-        at = "⟦#⟧ Copyright 2003 Pavel Machek <pavel@suse.cz",
-        severity = "error",
-        message = "expected identifier or '('",
-        source = "clang",
-        code = "err_expected_either",
-    },
-    {
-        at = "⟦.⟧text",
-        severity = "error",
-        message = "expected identifier or '('",
-        source = "clang",
-        code = "err_expected_either",
-    },
-]
+[open.preprocessed]
+diagnostics = []
 
-[open.size.hover]
-markdown = '''
-**macro** `SIZE`
+[open.plain]
+diagnostics = []
 
-```cpp
-#define SIZE 8
-```
-Expands to:
-```cpp
-8
-```
-'''
-range = ".quad ⟦SIZE⟧"
+[inspect."$ clice inspect semantic-tokens entry.S"]
+stderr = "error: entry.S: not a C-family source file"
+exit = 1
 
 [index."$ clice index --jobs 1"]
-wrong = "an assembler source is parsed as C after preprocessing: its comment and directive lines, which the build accepts, count as errors"
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
-1 translation unit compiled with errors; the index holds what parsed:
-  ${WS}/entry.S
-    ${WS}/entry.S:2:1: expected identifier or '('
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
+exit = 0
+
+[lint."$ clice lint"]
+stdout = "Linted 1 translation unit in #s: 0 findings."
 exit = 0

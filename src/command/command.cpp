@@ -45,6 +45,11 @@ bool is_source_path(llvm::StringRef path) {
     return !is_header_path(path) && clang::driver::types::isDerivedFromC(suffix_type(path));
 }
 
+bool is_foreign_path(llvm::StringRef path) {
+    auto type = suffix_type(path);
+    return type != clang::driver::types::TY_INVALID && !is_c_family_type(type);
+}
+
 bool is_context_header_path(llvm::StringRef path) {
     return path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
            path.ends_with(".tpp") || path.ends_with(".ipp") || path.ends_with(".tcc") ||
@@ -885,7 +890,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         auto& working = known->second;
         llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
-        // Some build systems emit non-C-family files (e.g. .rc, .asm, .def)
+        // Some build systems emit non-C-family files (e.g. .rc, .asm, .S, .def)
         // into compile_commands.json: skipped, unless the command's -x
         // says what clang does not know the extension for (a `.ixx`
         // module interface).
@@ -1101,10 +1106,7 @@ llvm::ArrayRef<CompilationEntry> CompilationDatabase::pch_writers(Fid pch) const
 
 bool CompilationDatabase::forces_c_family(ConfigID id) const {
     namespace types = clang::driver::types;
-    auto language = forced_language(id);
-    auto type = language.empty() ? types::TY_INVALID
-                                 : types::lookupTypeForTypeSpecifier(language.str().c_str());
-    return type != types::TY_INVALID && types::isAcceptedByClang(type);
+    return is_c_family_type(types::lookupTypeForTypeSpecifier(forced_language(id).str().c_str()));
 }
 
 InputKind CompilationDatabase::input_kind(ConfigID id, llvm::StringRef file) {

@@ -1,0 +1,11 @@
+[answers.call.hover]
+markdown = '''
+**function** `unlock`
+
+```cpp
+void unlock(int rq) releases(lockp(rq))
+```
+
+`releases(lockp(rq))` is `__attribute__((release_capability(lockp(rq))))`
+'''
+range = "⟦unlock⟧(1);"

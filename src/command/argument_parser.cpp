@@ -377,6 +377,11 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
     return std::move(os.str());
 }
 
+bool is_c_family_type(clang::driver::types::ID type) {
+    namespace types = clang::driver::types;
+    return type != types::TY_Asm && types::isAcceptedByClang(type);
+}
+
 bool is_c_family_file(llvm::StringRef filename) {
     namespace types = clang::driver::types;
     auto ext = llvm::sys::path::extension(filename);
@@ -389,8 +394,7 @@ bool is_c_family_file(llvm::StringRef filename) {
         return true;
     }
     /// Drop the leading dot: ".cpp" -> "cpp".
-    auto type = types::lookupTypeForExtension(ext.drop_front());
-    return type != types::TY_INVALID && types::isAcceptedByClang(type);
+    return is_c_family_type(types::lookupTypeForExtension(ext.drop_front()));
 }
 
 }  // namespace clice

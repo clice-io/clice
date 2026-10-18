@@ -1349,6 +1349,23 @@ bool declared_with(const clang::Decl& member, const clang::TagDecl& tag) {
     return type_start == tag.getBeginLoc() && types::unwrap(type)->getAs<clang::TagType>();
 }
 
+/// The members of `record` in the order its source writes them: a record
+/// read from an AST file whose fields were loaded first, as its layout loads
+/// them, lists them after the rest.
+llvm::SmallVector<const clang::Decl*> source_order(const clang::RecordDecl& record) {
+    llvm::SmallVector<const clang::Decl*> decls;
+    for(const auto* decl: record.decls()) {
+        if(decl->getBeginLoc().isValid()) {
+            decls.push_back(decl);
+        }
+    }
+    auto& sources = record.getASTContext().getSourceManager();
+    llvm::stable_sort(decls, [&](const clang::Decl* left, const clang::Decl* right) {
+        return sources.isBeforeInTranslationUnit(left->getBeginLoc(), right->getBeginLoc());
+    });
+    return decls;
+}
+
 /// Whether the alias names a tag declared with it and named by it alone, as
 /// in `typedef struct { ... } Point;`.
 bool declares_tag(const clang::TypedefNameDecl& alias) {
@@ -1426,6 +1443,39 @@ void unnamed_tags(clang::QualType type, llvm::SmallVectorImpl<const clang::TagDe
     }
 }
 
+/// The attribute as clang prints it, its expression arguments as code:
+/// clang prints a list of them by their addresses,
+/// `release_capability(0x55f4c48d3398)`.
+auto pretty(const clang::Attr& attr, const clang::PrintingPolicy& policy) -> std::string {
+    std::string text;
+    llvm::raw_string_ostream os(text);
+    attr.printPretty(os, policy);
+
+    struct Arguments : clang::RecursiveASTVisitor<Arguments> {
+        bool TraverseStmt(clang::Stmt* stmt) {
+            if(auto* expr = llvm::dyn_cast_or_null<clang::Expr>(stmt)) {
+                exprs.push_back(expr);
+            }
+            return true;
+        }
+
+        llvm::SmallVector<const clang::Expr*> exprs;
+    } arguments;
+
+    arguments.TraverseAttr(const_cast<clang::Attr*>(&attr));
+    for(const auto* expr: arguments.exprs) {
+        std::string address;
+        llvm::raw_string_ostream(address) << static_cast<const void*>(expr);
+        if(auto at = text.find(address); at != std::string::npos) {
+            std::string code;
+            llvm::raw_string_ostream stream(code);
+            expr->printPretty(stream, nullptr, policy);
+            text.replace(at, address.size(), code);
+        }
+    }
+    return text;
+}
+
 /// The attribute specifiers a declaration writes, where it writes them.
 struct WrittenAttributes {
     /// Before the declaration.
@@ -1473,9 +1523,7 @@ struct DeclarationPrinter {
     }
 
     auto printed(const clang::Attr& attr) -> std::string {
-        std::string text;
-        llvm::raw_string_ostream os(text);
-        attr.printPretty(os, policy);
+        auto text = pretty(attr, policy);
         /// clang prints an absent message as an empty one:
         /// `[[nodiscard("")]]`.
         llvm::StringRef trimmed = llvm::StringRef(text).trim();
@@ -2149,7 +2197,7 @@ struct DeclarationPrinter {
 
     void members(const clang::RecordDecl& record, std::string& text) {
         auto access = record.isClass() ? clang::AS_private : clang::AS_public;
-        auto decls = record.decls();
+        auto decls = source_order(record);
         bool listed = false;
         bool hidden = false;
         for(auto it = decls.begin(); it != decls.end(); ++it) {
@@ -2390,10 +2438,7 @@ auto attribute(const clang::Attr& attr, const clang::ASTContext& context) -> std
         }
     }
     if(written.empty()) {
-        std::string printed;
-        llvm::raw_string_ostream os(printed);
-        attr.printPretty(os, context.getPrintingPolicy());
-        return llvm::StringRef(printed).trim().str();
+        return llvm::StringRef(pretty(attr, context.getPrintingPolicy())).trim().str();
     }
     if(attr.isCXX11Attribute() || attr.isC23Attribute()) {
         /// `[[using gnu: hot, aligned(8)]]` writes the scope once, before the
