@@ -310,6 +310,20 @@ tests/signature_help/parameters/07_standard_forwarding
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**通过依赖特化访问的成员**
+
+经由类模板的依赖特化调用的成员，按代码写出的模板实参显示
+
+对于 `lib::vector<Point<T>>`，`pts.assign(` 的参数为 `const Point<T> &`，而不是模板自身的 `const _Tp &`。
+
+```case
+tests/signature_help/parameters/13_specialization_members
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 文档

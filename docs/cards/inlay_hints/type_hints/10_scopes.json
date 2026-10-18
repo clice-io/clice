@@ -2,15 +2,15 @@
   "id": "inlay_hints/type_hints/10_scopes",
   "topic": "inlay_hints",
   "subtopic": "type_hints",
-  "title": "Scope suppression",
-  "summary": "Namespace qualifiers drop from hints; class scopes stay",
-  "prose": "",
+  "title": "Namespaces",
+  "summary": "A hint names a type with the namespaces code at the hint would write, but `std`",
+  "prose": "Class scopes stay, as do the namespaces inside `std` (`chrono::seconds`, `pmr::string`); a namespace around the hint or one a using-directive there brings in is left out, an anonymous one never shows. Template arguments read the same way.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace outer {\nnamespace inner {\n\nstruct S1 {};\nS1 make_s1();\nauto x = make_s1();\n\nstruct S2 {\n    template <typename T>\n    struct Nested {};\n};\n\nS2::Nested<int> make_nested();\nauto y = make_nested();\n\n}  // namespace inner\n}  // namespace outer\n",
+      "text": "namespace std {\ntemplate <class Char>\nstruct basic_string {};\n\ntypedef basic_string<char> string;\n\nnamespace chrono {\nstruct seconds {};\n}  // namespace chrono\n}  // namespace std\n\nnamespace outer {\nnamespace inner {\n\nstruct S1 {};\nS1 make_s1();\nauto x = make_s1();\n\nstruct S2 {\n    template <typename T>\n    struct Nested {};\n};\n\nS2::Nested<int> make_nested();\nauto y = make_nested();\n\n}  // namespace inner\n\ninner::S1 make_inner();\nauto z = make_inner();\n\n}  // namespace outer\n\nnamespace lib {\nstruct Thing {};\n\ntemplate <class A, class B>\nstruct Pair {};\n\nThing make();\nPair<std::string, Thing> pair();\n}  // namespace lib\n\nnamespace {\nstruct Hidden {};\nHidden hide();\n}  // namespace\n\nstd::string name();\nstd::chrono::seconds wait();\n\nvoid use() {\n    auto inner = outer::make_inner();\n    auto thing = lib::make();\n    auto both = lib::pair();\n    auto text = name();\n    auto waited = wait();\n    auto hidden = hide();\n}\n\nnamespace app {\nusing namespace lib;\nauto thing = make();\n}  // namespace app\n",
       "markers": []
     }
   ],
@@ -28,11 +28,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 16,
                       "character": 0
                     },
                     "end": {
-                      "line": 5,
+                      "line": 16,
                       "character": 19
                     }
                   }
@@ -44,12 +44,140 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 13,
+                      "line": 24,
                       "character": 0
                     },
                     "end": {
-                      "line": 13,
+                      "line": 24,
                       "character": 23
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto z⟨: inner::S1⟩ = make_inner();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 29,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 29,
+                      "character": 22
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto inner⟨: outer::inner::S1⟩ = outer::make_inner();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 52,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 52,
+                      "character": 37
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto thing⟨: lib::Thing⟩ = lib::make();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 53,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 53,
+                      "character": 29
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto both⟨: lib::Pair<string, lib::Thing>⟩ = lib::pair();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 54,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 54,
+                      "character": 28
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto text⟨: string⟩ = name();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 55,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 55,
+                      "character": 23
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto waited⟨: chrono::seconds⟩ = wait();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 56,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 56,
+                      "character": 25
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto hidden⟨: Hidden⟩ = hide();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 57,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 57,
+                      "character": 25
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto thing⟨: Thing⟩ = make();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 62,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 62,
+                      "character": 20
                     }
                   }
                 }

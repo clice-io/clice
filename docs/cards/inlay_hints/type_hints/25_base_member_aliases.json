@@ -1,0 +1,47 @@
+{
+  "id": "inlay_hints/type_hints/25_base_member_aliases",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Members of a base",
+  "summary": "A member alias of a base class reads through the class the code reaches it in",
+  "prose": "`map.find(key)` gives a `Map<int, long>::iterator`, not the `MapBase<Map<int, long>, int, long>::iterator` its base declares.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <class Key, class Value, class Info, class Bucket>\nstruct MapIterator {};\n\ntemplate <class Key>\nstruct KeyInfo {};\n\ntemplate <class Derived, class Key, class Value>\nstruct MapBase {\n    using iterator = MapIterator<Key, Value, KeyInfo<Key>, Derived>;\n    iterator find(Key key);\n};\n\ntemplate <class Key, class Value>\nstruct Map : MapBase<Map<Key, Value>, Key, Value> {};\n\nvoid use(Map<int, long>& map) {\n    auto it = map.find(1);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto it⟨: Map<int, long>::iterator⟩ = map.find(⟨key:⟩1);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 26
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

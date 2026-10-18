@@ -187,7 +187,7 @@ tests/inlay_hints/type_hints/01_auto_variables
 
 别名会保留原有写法，过长的类型则保留能放下的部分
 
-超出长度上限的类型会先改用带语法糖的名称，再把放不下的模板实参写成 `…`，但保留最外层的名称；连最外层名称都放不下的类型不显示提示。默认模板实参始终不显示。长度上限由 `inlay_hints.max_length.types` 设置；设为 `0` 即可取消限制。
+超出长度上限的类型会把放不下的模板实参写成 `…`，但保留最外层的名称；连最外层名称都放不下的类型不显示提示。默认模板实参始终不显示。长度上限由 `inlay_hints.max_length.types` 设置；设为 `0` 即可取消限制。
 
 ```case
 tests/inlay_hints/type_hints/02_type_sugar
@@ -279,9 +279,11 @@ tests/inlay_hints/type_hints/09_dependent_auto
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**作用域省略**
+**命名空间**
 
-提示中省略命名空间限定符，保留类作用域
+提示中的类型带上在该位置写代码时会写出的命名空间，但不写 `std`
+
+类作用域保留，`std` 内的命名空间同样保留（`chrono::seconds`、`pmr::string`）；提示所在的命名空间，以及该处 using 指令引入的命名空间，都会省略，匿名命名空间从不显示。模板实参也按同样的方式显示。
 
 ```case
 tests/inlay_hints/type_hints/10_scopes
@@ -309,7 +311,7 @@ tests/inlay_hints/type_hints/12_instantiated_templates
 
 容器元素的绑定会保留声明容器时使用的别名
 
-遍历 `std::map<std::string, Point>` 时，每个键都显示为 `const std::string`，而不是 `basic_string<char>`。同一类型写成了两个别名，或者既写成别名又直接写出原类型时，提示不使用别名。
+遍历 `std::map<std::string, Point>` 时，每个键都显示为 `const string`，而不是 `basic_string<char>`。同一类型写成了两个别名，或者既写成别名又直接写出原类型时，提示不使用别名。
 
 ```case
 tests/inlay_hints/type_hints/13_binding_aliases
@@ -327,6 +329,62 @@ tests/inlay_hints/type_hints/13_binding_aliases
 
 ```case
 tests/inlay_hints/type_hints/16_standard_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**库的成员别名**
+
+类模板的成员别名，若其所指的类型读起来更短，就改为显示该类型
+
+`vector<int>::size_type` 显示为 `size_t`，`vector<int>::reference` 显示为 `int &`，但 `vector<int>::iterator` 保持不变：它所指的是库自己的类型。命名空间中声明的别名（`int64_t`、代码自己的 `UserId`）和非模板类中声明的别名（`steady_clock::time_point`）都按原名显示；只代表内置类型的别名（`duration<long>::rep`）则显示为该内置类型。
+
+```case
+tests/inlay_hints/type_hints/22_library_aliases
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**库的内部类型**
+
+库留给自己使用的类型以其公开名称显示，没有公开名称则不显示
+
+位于命名空间 `std` 或以保留名称命名的命名空间中的保留名称，以及以保留名称命名的类的成员，都属于库自己：`__alloc_traits<allocator<int>>::value_type &` 显示为 `int &`。算法返回库自己的类时，提示改用该类的模板实参或初始化器中的类里指代它的成员别名，例如 `__normal_iterator<int *, vector<int>>` 显示为 `vector<int>::iterator`；没有任何公开名称指代的类不显示提示。
+
+```case
+tests/inlay_hints/type_hints/23_library_internals
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**计算得出的类型**
+
+由类型特征计算得出的类型显示为计算结果
+
+类模板特化的成员 `type`（`common_type<seconds, seconds>::type`）、计算出其类型的别名模板（`enable_if_t<true, int>`）以及内置模板（`__type_pack_element`）都改为显示结果，并按代码中的写法命名：`chrono::seconds`、`int`。
+
+```case
+tests/inlay_hints/type_hints/24_computed_types
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**基类的成员**
+
+基类的成员别名按代码访问它时所经由的类显示
+
+`map.find(key)` 得到的是 `Map<int, long>::iterator`，而不是其基类所声明的 `MapBase<Map<int, long>, int, long>::iterator`。
+
+```case
+tests/inlay_hints/type_hints/25_base_member_aliases
 ```
 
 <!-- END CAPABILITY -->

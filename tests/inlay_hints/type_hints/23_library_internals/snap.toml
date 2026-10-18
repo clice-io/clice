@@ -1,0 +1,11 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto& first⟨: int &⟩ = values.front();" },
+    { line = "auto after⟨: vector<int>::iterator⟩ = std::next(⟨it:⟩values.begin());" },
+    { line = "auto second⟨: vector<int>::iterator⟩ = std::next(⟨it:⟩start);" },
+    { line = "auto flag⟨: vector<bool>::iterator⟩ = flags.begin();" },
+    { line = "auto set⟨: vector<bool>::iterator⟩ = std::find(⟨first:⟩flags.begin(), ⟨last:⟩flags.begin());" },
+    { line = "auto backwards⟨: reverse_iterator<span<int>::iterator>⟩ = items.rbegin();" },
+    { line = "auto forwards = std::next(⟨it:⟩backwards.base());" },
+    { line = "auto found⟨: span<int>::iterator⟩ = std::find(⟨first:⟩items.begin(), ⟨last:⟩items.end());" },
+]

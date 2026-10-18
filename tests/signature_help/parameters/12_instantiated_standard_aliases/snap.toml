@@ -1,0 +1,15 @@
+[answers.standard.signature_help]
+signatures = ["put(⟦string value⟧) -> void"]
+active = 0
+
+[answers.polymorphic.signature_help]
+signatures = ["put(⟦pmr::string value⟧) -> void"]
+active = 0
+
+[answers.array.signature_help]
+signatures = ["fill(⟦string values[2]⟧) -> void"]
+active = 0
+
+[answers.function_pointer.signature_help]
+signatures = ["each(⟦void (*visit)(string)⟧) -> void"]
+active = 0

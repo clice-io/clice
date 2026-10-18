@@ -1311,6 +1311,10 @@ public:
                         tag = object.isNull() ? nullptr : informed.resolve_tag(object);
                     }
                 }
+                /// The members of a dependent specialization read its
+                /// template's parameters as its arguments.
+                display_options.specialization =
+                    object.isNull() ? nullptr : object->getAs<clang::TemplateSpecializationType>();
                 if(auto* name = llvm::dyn_cast<clang::DeclRefExpr>(base->IgnoreParenImpCasts());
                    !tag && !arrow && name) {
                     if(auto* var = llvm::dyn_cast<clang::VarDecl>(name->getDecl());
@@ -1437,8 +1441,11 @@ public:
 
         if(resolving) {
             resolved_candidates |= candidate_count > 0;
-        } else if(complete_resolved(sema, context)) {
-            return;
+        } else {
+            display_options.specialization = nullptr;
+            if(complete_resolved(sema, context)) {
+                return;
+            }
         }
 
         if(candidate_count == 0) {

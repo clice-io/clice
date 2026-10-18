@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto wrapped⟨: Sequence::iterator⟩ = std::wrap(sequence.begin()).get();" },
+    { line = "auto found⟨: Derived<…>::iterator⟩ = derived.find();" },
+]

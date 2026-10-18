@@ -1,0 +1,21 @@
+#pragma once
+
+namespace std {
+template <class Char>
+struct char_traits {};
+
+template <class T>
+struct allocator {};
+
+template <class Char, class Traits = char_traits<Char>, class Alloc = allocator<Char>>
+struct basic_string {};
+
+using string = basic_string<char>;
+
+namespace pmr {
+template <class T>
+struct polymorphic_allocator {};
+
+using string = basic_string<char, char_traits<char>, polymorphic_allocator<char>>;
+}  // namespace pmr
+}  // namespace std

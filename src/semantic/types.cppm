@@ -56,6 +56,12 @@ auto declared_type(const clang::TypeDecl* decl) -> clang::QualType;
 /// where `written` holds none of these or no single instantiation exists.
 auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clang::QualType;
 
+/// The dependent class template specialization `access` names a member of,
+/// resolved: `vector<Point<T>>` for `pts.push_back`; null when it names none.
+auto accessed_specialization(const clang::CXXDependentScopeMemberExpr& access,
+                             TemplateResolver& resolver)
+    -> const clang::TemplateSpecializationType*;
+
 /// Whether code could write `type` where it stands: nothing in it waits for
 /// instantiation to say what an expression's type is (`<dependent type>`,
 /// a dependent `decltype`, an undeduced `auto`), and no template parameter

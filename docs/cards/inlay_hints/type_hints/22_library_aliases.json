@@ -1,0 +1,143 @@
+{
+  "id": "inlay_hints/type_hints/22_library_aliases",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Library member aliases",
+  "summary": "A member alias of a class template gives way to what it names where that reads shorter",
+  "prose": "`vector<int>::size_type` shows as `size_t` and `vector<int>::reference` as `int &`, but `vector<int>::iterator` stays: what it names is the library's own. An alias a namespace declares (`int64_t`, the code's `UserId`) or a class that is no template (`steady_clock::time_point`) stays as named; one that only stands for a builtin (`duration<long>::rep`) shows the builtin.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace std {\ntypedef unsigned long size_t;\ntypedef long int64_t;\n\ntemplate <class Pointer, class Container>\nstruct __normal_iterator {};\n\ntemplate <class T>\nstruct vector {\n    using reference = T&;\n    using size_type = size_t;\n    using iterator = __normal_iterator<T*, vector>;\n    reference front();\n    size_type size() const;\n    iterator begin();\n};\n\ntemplate <class Rep>\nstruct duration {\n    using rep = Rep;\n    rep count() const;\n};\n\nstruct steady_clock {\n    using time_point = int64_t;\n    static time_point now();\n};\n}  // namespace std\n\nusing UserId = std::int64_t;\nUserId current_user();\nstd::int64_t big();\n\nvoid use(std::vector<int>& values, std::duration<long> elapsed) {\n    auto count = values.size();\n    auto& first = values.front();\n    auto it = values.begin();\n    auto ticks = elapsed.count();\n    auto now = std::steady_clock::now();\n    auto user = current_user();\n    auto large = big();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto count⟨: size_t⟩ = values.size();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 34,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 34,
+                      "character": 31
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto& first⟨: int &⟩ = values.front();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 35,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 35,
+                      "character": 33
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto it⟨: vector<int>::iterator⟩ = values.begin();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 36,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 36,
+                      "character": 29
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto ticks⟨: long⟩ = elapsed.count();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 37,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 37,
+                      "character": 33
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto now⟨: steady_clock::time_point⟩ = std::steady_clock::now();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 38,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 38,
+                      "character": 40
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto user⟨: UserId⟩ = current_user();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 39,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 39,
+                      "character": 31
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto large⟨: int64_t⟩ = big();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 40,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 40,
+                      "character": 23
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

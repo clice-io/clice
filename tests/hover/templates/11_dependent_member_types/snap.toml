@@ -1,0 +1,60 @@
+[answers.field.hover]
+markdown = '''
+**field** `field` · struct `Box<T &>`
+
+```cpp
+T &field
+```
+'''
+range = "box.⟦field⟧;"
+
+[answers.get.hover]
+markdown = '''
+**method** `get` · struct `Box<T>`
+
+```cpp
+lib::decay_t<T> get()
+```
+'''
+range = "plain.⟦get⟧();"
+
+[answers.size.hover]
+markdown = '''
+**method** `size` · struct `Wrapper<lib::vector<T>>`
+
+```cpp
+auto size() -> decltype(this->value.size())
+```
+Type: `auto () -> decltype(this->value.size())`
+'''
+range = "wrapper.⟦size⟧();"
+
+[answers.assign.hover]
+markdown = '''
+**method** `assign` · struct `Tuple<T, int, T>`
+
+```cpp
+void assign(T first, Bs... rest)
+```
+'''
+range = "tuple.⟦assign⟧(T(), 1, T());"
+
+[answers.explicit_conversion.hover]
+markdown = '''
+**method** `operator bool` · struct `Flag<lib::vector<T>>`
+
+```cpp
+explicit(sizeof(T) > 1) operator bool() const
+```
+'''
+range = "flag.⟦operator⟧ bool();"
+
+[answers.mapped_type.hover]
+markdown = '''
+**type** `mapped_type` · struct `lib::map<int, T>`
+
+```cpp
+typedef T mapped_type
+```
+'''
+range = "typename lib::map<int, T>::⟦mapped_type⟧ value;"

@@ -1,0 +1,102 @@
+{
+  "id": "inlay_hints/type_hints/24_computed_types",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Computed types",
+  "summary": "A type a trait computes shows as what it computes",
+  "prose": "The member `type` of a class template specialization (`common_type<seconds, seconds>::type`), an alias template that computes its type (`enable_if_t<true, int>`) and a builtin template (`__type_pack_element`) give way to their result, named as the code names it: `chrono::seconds`, `int`.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace std {\ntemplate <bool Condition, class T = void>\nstruct enable_if {};\n\ntemplate <class T>\nstruct enable_if<true, T> {\n    typedef T type;\n};\n\ntemplate <bool Condition, class T = void>\nusing enable_if_t = typename enable_if<Condition, T>::type;\n\ntemplate <class... Ts>\nstruct common_type;\n\ntemplate <class T>\nstruct common_type<T, T> {\n    typedef T type;\n};\n\ntemplate <long Num, long Den = 1>\nstruct ratio {\n    static constexpr long num = Num;\n    static constexpr long den = Den;\n    typedef ratio<num, den> type;\n};\n\nnamespace chrono {\ntemplate <class Rep, class Period = ratio<1>>\nstruct duration {};\n\ntypedef duration<long> seconds;\n}  // namespace chrono\n\ntemplate <class Rep, class Period>\nstruct common_type<chrono::duration<Rep, Period>, chrono::duration<Rep, Period>> {\n    typedef chrono::duration<Rep, typename Period::type> type;\n};\n\nnamespace chrono {\ntemplate <class Rep, class Period>\ntypename common_type<duration<Rep, Period>, duration<Rep, Period>>::type\n    operator-(duration<Rep, Period>, duration<Rep, Period>);\n}  // namespace chrono\n\ntemplate <class T>\nenable_if_t<true, T> identity(T value);\n\ntemplate <unsigned Index, class... Ts>\n__type_pack_element<Index, Ts...> pick(Ts... values);\n}  // namespace std\n\nvoid use(std::chrono::seconds earlier,\n         std::chrono::seconds later,\n         std::chrono::duration<double, std::ratio<1, 1000>> start,\n         std::chrono::duration<double, std::ratio<1, 1000>> stop) {\n    auto elapsed = later - earlier;\n    auto measured = stop - start;\n    auto same = std::identity(1);\n    auto first = std::pick<0>(1, 2.0);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "config": {
+        "inlay_hints": {
+          "max_length": {
+            "types": 0
+          }
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto elapsed⟨: chrono::seconds⟩ = later - earlier;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 56,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 56,
+                      "character": 35
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto measured⟨: chrono::duration<double, ratio<1, 1000>>⟩ = stop - start;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 57,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 57,
+                      "character": 33
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto same⟨: int⟩ = std::identity(⟨value:⟩1);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 58,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 58,
+                      "character": 33
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto first⟨: int⟩ = std::pick<0>(1, 2.0);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 59,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 59,
+                      "character": 38
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
