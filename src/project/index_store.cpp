@@ -1350,7 +1350,9 @@ kota::task<> IndexStore::rebuild_search_index() {
     llvm::DenseMap<std::uint32_t, std::uint32_t> path_index;
     project_index.for_each_symbol(
         [&](index::SymbolHash hash, const index::SymbolView& symbol, std::uint32_t references) {
-            if(!index::searchable(symbol.kind, symbol.name, symbol.flags)) {
+            // Unnamed scopes stay in: the build names their members through
+            // them, and leaves them out of the index itself.
+            if(!index::is_searchable_kind(symbol.kind) || symbol.name.empty()) {
                 return true;
             }
             auto file = index::no_file;
@@ -1384,7 +1386,7 @@ kota::task<> IndexStore::rebuild_search_index() {
         }
         shard.for_each_local_symbol([&](index::SymbolHash hash, const index::SymbolView& symbol) {
             if(symbol.scope != index::SymbolScope::Internal ||
-               !index::searchable(symbol.kind, symbol.name, symbol.flags) ||
+               !index::is_searchable_kind(symbol.kind) || symbol.name.empty() ||
                !shard.declares(hash)) {
                 return true;
             }
