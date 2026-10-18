@@ -374,6 +374,12 @@ auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clan
     return type ? type->desugar() : clang::QualType();
 }
 
+auto accessed_specialization(const clang::Expr& base, bool arrow, TemplateResolver& resolver)
+    -> const clang::TemplateSpecializationType* {
+    auto object = resolver.member_object(&base, arrow);
+    return object.isNull() ? nullptr : object->getAs<clang::TemplateSpecializationType>();
+}
+
 auto writable(clang::QualType type) -> bool {
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         bool VisitBuiltinType(clang::BuiltinType* type) {

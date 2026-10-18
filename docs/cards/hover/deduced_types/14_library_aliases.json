@@ -1,0 +1,170 @@
+{
+  "id": "hover/deduced_types/14_library_aliases",
+  "topic": "hover",
+  "subtopic": "deduced_types",
+  "title": "Library aliases",
+  "summary": "The type of a variable keeps the alias its initializer names, but none the library keeps to itself",
+  "prose": "`values.size()` reads as `std::vector<int>::size_type` with what it stands for after it; the member alias of `__alloc_traits` that `front()` returns reads as `int &`, and a trait's result, `invoke_result_t<…>`, as what it computes. An alias over a class the library keeps to itself names that class after it: `std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace __gnu_cxx {\ntemplate <class Pointer, class Container>\nstruct __normal_iterator {};\n\ntemplate <class Alloc>\nstruct __alloc_traits {\n    typedef typename Alloc::value_type value_type;\n};\n}  // namespace __gnu_cxx\n\nnamespace std {\ntypedef unsigned long size_t;\n\ntemplate <class T>\nstruct allocator {\n    typedef T value_type;\n};\n\ntemplate <class T, class Alloc = allocator<T>>\nstruct vector {\n    typedef typename __gnu_cxx::__alloc_traits<Alloc>::value_type& reference;\n    typedef size_t size_type;\n    typedef __gnu_cxx::__normal_iterator<T*, vector> iterator;\n    reference front();\n    size_type size() const;\n    iterator begin();\n};\n\ntemplate <class F>\nstruct invoke_result {\n    typedef decltype(static_cast<F (*)()>(nullptr)()()) type;\n};\n\ntemplate <class F>\nusing invoke_result_t = typename invoke_result<F>::type;\n\ntemplate <class F>\ninvoke_result_t<F> invoke(F function);\n}  // namespace std\n\nint answer();\n\nvoid use(std::vector<int>& values) {\n    auto count = values.size();\n    auto& first = values.front();\n    auto it = values.begin();\n    auto result = std::invoke(answer);\n    auto copy = std::invoke(answer);\n}\n",
+      "markers": [
+        {
+          "name": "count",
+          "begin": 973,
+          "end": 973,
+          "range": false
+        },
+        {
+          "name": "first",
+          "begin": 1006,
+          "end": 1006,
+          "range": false
+        },
+        {
+          "name": "iterator",
+          "begin": 1039,
+          "end": 1039,
+          "range": false
+        },
+        {
+          "name": "result",
+          "begin": 1069,
+          "end": 1069,
+          "range": false
+        },
+        {
+          "name": "keyword",
+          "begin": 1103,
+          "end": 1103,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "count",
+          "marker": "count",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `count` · function `use`\n\n```cpp\nauto count = values.size()\n```\nType: `std::vector<int>::size_type` (aka `unsigned long`)",
+              "range": {
+                "$place": "auto ⟦count⟧ = values.size();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 43,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 43,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "first",
+          "marker": "first",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `first` · function `use`\n\n```cpp\nauto &first = values.front()\n```\nType: `int &`",
+              "range": {
+                "$place": "auto& ⟦first⟧ = values.front();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 44,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 44,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "iterator",
+          "marker": "iterator",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `it` · function `use`\n\n```cpp\nauto it = values.begin()\n```\nType: `std::vector<int>::iterator` (aka `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`)",
+              "range": {
+                "$place": "auto ⟦it⟧ = values.begin();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 45,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 45,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "result",
+          "marker": "result",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `result` · function `use`\n\n```cpp\nauto result = std::invoke(answer)\n```\nType: `int`",
+              "range": {
+                "$place": "auto ⟦result⟧ = std::invoke(answer);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 46,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 46,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "keyword",
+          "marker": "keyword",
+          "value": {
+            "hover": {
+              "markdown": "**auto**\n\n```cpp\nint\n```",
+              "range": {
+                "$place": "⟦auto⟧ copy = std::invoke(answer);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 47,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 47,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

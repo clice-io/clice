@@ -1,0 +1,6 @@
+[answers.members.completion]
+items = [
+    { label = "first", kind = "Field", detail = "const int" },
+    { label = "second", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]

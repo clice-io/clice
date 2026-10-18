@@ -1,0 +1,4 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto it⟨: Map<int, long>::iterator⟩ = map.find(⟨key:⟩1);" },
+]

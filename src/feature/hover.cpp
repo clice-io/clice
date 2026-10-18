@@ -540,6 +540,26 @@ void add_macros(HoverInfo& info,
     }
 }
 
+/// The dependent specialization the code at `node` names a member of a
+/// class template through: `vector<Point<T>>` for `pts.push_back` or
+/// `typename vector<Point<T>>::value_type`.
+auto accessed_specialization(const SelectionTree::Node& node, CompilationUnit& unit)
+    -> const clang::TemplateSpecializationType* {
+    if(const auto* access = node.get<clang::CXXDependentScopeMemberExpr>()) {
+        return access->isImplicitAccess()
+                   ? nullptr
+                   : types::accessed_specialization(*access->getBase(),
+                                                    access->isArrow(),
+                                                    unit.get<types::TemplateResolver>());
+    }
+    const auto* loc = node.get<clang::TypeLoc>();
+    const auto* name = loc ? loc->getType()->getAs<clang::DependentNameType>() : nullptr;
+    auto qualifier = name ? name->getQualifier() : clang::NestedNameSpecifier();
+    return qualifier.getKind() == clang::NestedNameSpecifier::Kind::Type
+               ? qualifier.getAsType()->getAs<clang::TemplateSpecializationType>()
+               : nullptr;
+}
+
 /// The card of a declaration.
 auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverInfo {
     HoverInfo info;
@@ -553,6 +573,9 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
     shown.scope = decl->getDeclContext();
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
         shown.source = var->getInit();
+    } else if(const auto* binding = llvm::dyn_cast<clang::BindingDecl>(decl)) {
+        const auto* decomposed = llvm::cast<clang::VarDecl>(binding->getDecomposedDecl());
+        shown.source = decomposed->getInit();
     }
 
     if(auto access = decl->getAccess();
@@ -1063,15 +1086,20 @@ auto deduced_hover(clang::QualType type,
     auto options = request.display;
     options.scope = scope;
     options.source = source;
-    auto shown = display::type(request.unit.context(), type, options);
+    /// What the keyword stands for carries the aliases of the declarations
+    /// it was deduced from, as a placeholder's deduced type does.
+    auto& context = request.unit.context();
+    type = context.getAutoType(clang::DeducedKind::Deduced, type, clang::AutoTypeKeyword::Auto);
+    auto shown = display::type(context, type, options);
     info.definition = shown.text;
     reformat(info.definition);
-    add_alias(info, request.unit.context(), type, options);
+    add_alias(info, context, type, options);
+    auto readable = options.readable->readable(type, scope, source);
     const clang::NamedDecl* named = nullptr;
-    if(const auto* alias = type->getAs<clang::TypedefType>()) {
+    if(const auto* alias = readable->getAs<clang::TypedefType>()) {
         named = alias->getDecl();
     } else {
-        named = type->getAsTagDecl();
+        named = readable->getAsTagDecl();
     }
     if(named) {
         info.documentation = documentation(request.unit, named, request.documentation);
@@ -1955,7 +1983,11 @@ auto hover_info(CompilationUnit& unit,
                 decl = deduced;
             }
             if(decl) {
-                info = decl_hover(decl, request);
+                auto through = display_options;
+                through.specialization = accessed_specialization(*node, unit);
+                info =
+                    decl_hover(decl,
+                               {.unit = unit, .documentation = documentation, .display = through});
                 if(options.layout) {
                     add_layout(*templated(decl), *info);
                 }

@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto& first⟨: int &⟩ = values.front();" },
+    { line = "auto after⟨: vector<int>::iterator⟩ = std::next(⟨it:⟩values.begin());" },
+    { line = "auto found⟨: span<int>::iterator⟩ = std::find(⟨first:⟩items.begin(), ⟨last:⟩items.end());" },
+]

@@ -1,0 +1,79 @@
+{
+  "id": "inlay_hints/type_hints/23_library_internals",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Library internals",
+  "summary": "A type the library keeps to itself shows by the public name for it, or not at all",
+  "prose": "A reserved name in namespace `std` or a reserved one, and a member of a class with one, is the library's own: `__alloc_traits<allocator<int>>::value_type &` shows as `int &`. A class of its own that an algorithm returns shows as the member alias naming it in a class of its arguments or of the initializer, `vector<int>::iterator` for `__normal_iterator<int *, vector<int>>`; one nothing public names gets no hint.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace __gnu_cxx {\ntemplate <class Pointer, class Container>\nstruct __normal_iterator {};\n\ntemplate <class Alloc>\nstruct __alloc_traits {\n    typedef typename Alloc::value_type value_type;\n};\n}  // namespace __gnu_cxx\n\nnamespace std {\ntemplate <class T>\nstruct allocator {\n    typedef T value_type;\n};\n\ntemplate <class T, class Alloc = allocator<T>>\nstruct vector {\n    typedef typename __gnu_cxx::__alloc_traits<Alloc>::value_type& reference;\n    typedef __gnu_cxx::__normal_iterator<T*, vector> iterator;\n    reference front();\n    iterator begin();\n};\n\ntemplate <class Pointer>\nstruct __wrap_iter {};\n\ntemplate <class T>\nstruct span {\n    typedef __wrap_iter<T*> iterator;\n    iterator begin();\n    iterator end();\n};\n\ntemplate <class Iterator>\nIterator next(Iterator it);\n\ntemplate <class Iterator>\nIterator find(Iterator first, Iterator last);\n\nstruct _Bind_front {};\n_Bind_front bind_front();\n}  // namespace std\n\nvoid use(std::vector<int>& values, std::span<int> items) {\n    auto& first = values.front();\n    auto after = std::next(values.begin());\n    auto found = std::find(items.begin(), items.end());\n    auto bound = std::bind_front();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto& first⟨: int &⟩ = values.front();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 45,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 45,
+                      "character": 33
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto after⟨: vector<int>::iterator⟩ = std::next(⟨it:⟩values.begin());",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 46,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 46,
+                      "character": 43
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto found⟨: span<int>::iterator⟩ = std::find(⟨first:⟩items.begin(), ⟨last:⟩items.end());",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 47,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 47,
+                      "character": 55
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

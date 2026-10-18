@@ -2,4 +2,12 @@
 inlay_hints = [
     { line = "auto x⟨: S1⟩ = make_s1();" },
     { line = "auto y⟨: S2::Nested<int>⟩ = make_nested();" },
+    { line = "auto z⟨: inner::S1⟩ = make_inner();" },
+    { line = "auto inner⟨: outer::inner::S1⟩ = outer::make_inner();" },
+    { line = "auto thing⟨: lib::Thing⟩ = lib::make();" },
+    { line = "auto both⟨: lib::Pair<string, lib::Thing>⟩ = lib::pair();" },
+    { line = "auto text⟨: string⟩ = name();" },
+    { line = "auto waited⟨: chrono::seconds⟩ = wait();" },
+    { line = "auto hidden⟨: Hidden⟩ = hide();" },
+    { line = "auto thing⟨: Thing⟩ = make();" },
 ]

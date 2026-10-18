@@ -83,7 +83,7 @@
             "inlay_hints": [
               {
                 "line": {
-                  "$place": "for (auto& [name⟨: const std::string⟩, point⟨: Point⟩] : points) {",
+                  "$place": "for (auto& [name⟨: const string⟩, point⟨: Point⟩] : points) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -107,7 +107,7 @@
             "inlay_hints": [
               {
                 "line": {
-                  "$place": "auto& [label⟨: std::string⟩, origin⟨: Point⟩] = entry;",
+                  "$place": "auto& [label⟨: string⟩, origin⟨: Point⟩] = entry;",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -155,7 +155,7 @@
             "inlay_hints": [
               {
                 "line": {
-                  "$place": "auto copy⟨: std::string⟩ = text;",
+                  "$place": "auto copy⟨: string⟩ = text;",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -179,7 +179,7 @@
             "inlay_hints": [
               {
                 "line": {
-                  "$place": "for (auto& [key⟨: const std::string⟩, value⟨: Point⟩] : table) {",
+                  "$place": "for (auto& [key⟨: const string⟩, value⟨: Point⟩] : table) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -203,7 +203,7 @@
             "inlay_hints": [
               {
                 "line": {
-                  "$place": "auto& [where⟨: std::string *⟩, place⟨: Point⟩] = found;",
+                  "$place": "auto& [where⟨: string *⟩, place⟨: Point⟩] = found;",
                   "path": "main.cpp",
                   "range": {
                     "start": {

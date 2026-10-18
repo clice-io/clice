@@ -9,6 +9,7 @@ import :feature.feature;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
+import :semantic.types;
 import :support.fuzzy_matcher;
 import :support.markup;
 import :syntax.documentation;
@@ -1437,8 +1438,23 @@ public:
 
         if(resolving) {
             resolved_candidates |= candidate_count > 0;
-        } else if(complete_resolved(sema, context)) {
-            return;
+        } else {
+            /// The members of a dependent specialization read its template's
+            /// parameters as its arguments.
+            const auto* base = context.getBaseExpr();
+            bool access = context.getKind() == clang::CodeCompletionContext::CCC_DotMemberAccess ||
+                          context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess;
+            types::TemplateResolver resolver(sema.getASTContext());
+            display_options.specialization =
+                access && base && base->isTypeDependent()
+                    ? types::accessed_specialization(
+                          *base,
+                          context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess,
+                          resolver)
+                    : nullptr;
+            if(complete_resolved(sema, context)) {
+                return;
+            }
         }
 
         if(candidate_count == 0) {

@@ -1,0 +1,79 @@
+{
+  "id": "inlay_hints/type_hints/24_computed_types",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Computed types",
+  "summary": "A type a trait computes shows as what it computes",
+  "prose": "The member `type` of a class template specialization (`common_type<seconds, seconds>::type`), an alias template that computes its type (`enable_if_t<true, int>`) and a builtin template (`__type_pack_element`) give way to their result, named as the code names it: `chrono::seconds`, `int`.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace std {\ntemplate <bool Condition, class T = void>\nstruct enable_if {};\n\ntemplate <class T>\nstruct enable_if<true, T> {\n    typedef T type;\n};\n\ntemplate <bool Condition, class T = void>\nusing enable_if_t = typename enable_if<Condition, T>::type;\n\ntemplate <class... Ts>\nstruct common_type;\n\ntemplate <class T>\nstruct common_type<T, T> {\n    typedef T type;\n};\n\nnamespace chrono {\ntemplate <class Rep>\nstruct duration {};\n\ntypedef duration<long> seconds;\n\ntemplate <class Rep>\ntypename common_type<duration<Rep>, duration<Rep>>::type operator-(duration<Rep>, duration<Rep>);\n}  // namespace chrono\n\ntemplate <class T>\nenable_if_t<true, T> identity(T value);\n\ntemplate <unsigned Index, class... Ts>\n__type_pack_element<Index, Ts...> pick(Ts... values);\n}  // namespace std\n\nvoid use(std::chrono::seconds earlier, std::chrono::seconds later) {\n    auto elapsed = later - earlier;\n    auto same = std::identity(1);\n    auto first = std::pick<0>(1, 2.0);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto elapsed⟨: chrono::seconds⟩ = later - earlier;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 38,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 38,
+                      "character": 35
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto same⟨: int⟩ = std::identity(⟨value:⟩1);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 39,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 39,
+                      "character": 33
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto first⟨: int⟩ = std::pick<0>(1, 2.0);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 40,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 40,
+                      "character": 38
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

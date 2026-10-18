@@ -10,6 +10,7 @@ import :feature.feature;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
+import :semantic.types;
 import :support.markup;
 import :syntax.documentation;
 import :syntax.lexer;
@@ -348,11 +349,15 @@ public:
     }
 
     /// Answers a call clang leaves unanswered, one whose callee is
-    /// dependent, with the overloads the template resolver finds for it.
+    /// dependent, with the overloads the template resolver finds for it;
+    /// the members of a dependent `specialization` read its template's
+    /// parameters as its arguments.
     void dependent(clang::ASTContext& context,
                    llvm::ArrayRef<const clang::NamedDecl*> candidates,
-                   std::uint32_t current_arg) {
+                   std::uint32_t current_arg,
+                   const clang::TemplateSpecializationType* specialization) {
         start(context);
+        options.specialization = specialization;
         for(const auto* candidate: candidates) {
             if(const auto* function = candidate->getUnderlyingDecl()->getAsFunction()) {
                 call(*function, current_arg, /*braced=*/false, /*name=*/"");
@@ -883,12 +888,18 @@ auto signature_help(CompilationParams params,
 
     if(help.signatures.empty()) {
         if(auto call = dependent_call_at(*unit, offset)) {
-            auto candidates =
-                unit->get<types::TemplateResolver>().callees(call->callee, call->written);
+            auto& resolver = unit->get<types::TemplateResolver>();
+            auto candidates = resolver.callees(call->callee, call->written);
+            const auto* access = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(call->callee);
             SignatureCollector(help, sources, complete_options)
                 .dependent(unit->context(),
                            candidates,
-                           static_cast<std::uint32_t>(call->written.size()));
+                           static_cast<std::uint32_t>(call->written.size()),
+                           access && !access->isImplicitAccess()
+                               ? types::accessed_specialization(*access->getBase(),
+                                                                access->isArrow(),
+                                                                resolver)
+                               : nullptr);
         }
     }
 

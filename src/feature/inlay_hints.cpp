@@ -1149,21 +1149,13 @@ private:
         if(!options.deduced_types || type.isNull()) {
             return;
         }
-        // The desugared type, or the sugared one when that fits instead or
-        // when only it can be shortened.
-        const auto* shown = scope();
-        auto sugared = readable_types.readable(type, shown, source);
-        auto printed =
-            readable_types.readable(display::maybe_desugar(unit.context(), type), shown, source);
-        auto text = display::type(unit.context(), printed, display_options).text;
-        if(auto limit = options.max_length.types;
-           limit != 0 && characters(text) > limit && sugared != printed) {
-            auto sugared_text = display::type(unit.context(), sugared, display_options).text;
-            if(characters(sugared_text) <= limit || !elide(text, limit)) {
-                printed = sugared;
-                text = std::move(sugared_text);
-            }
+        auto printed = readable_types.readable(type, scope(), source);
+        // A class only the library's own names spell says nothing a reader
+        // knows, as a lambda's type does not.
+        if(readable_types.internal(printed)) {
+            return;
         }
+        auto text = display::type(unit.context(), printed, display_options).text;
         if(auto fitted = fit_type(text)) {
             add_inlay_hint(range,
                            HintSide::Right,
@@ -1788,11 +1780,10 @@ private:
     LocalSourceRange restrict_range;
     const InlayHintsOptions& options;
 
-    // The sugared type is more useful in some cases, and the canonical
-    // type in other cases. Suppress scopes to keep type names short.
-    // Not setting PrintCanonicalTypes for "auto" allows
-    // SuppressDefaultTemplateArgs (set by default) to have an effect.
-    display::Options display_options = {.suppress_scope = true};
+    // Suppress scopes to keep type names short. Not setting
+    // PrintCanonicalTypes for "auto" allows SuppressDefaultTemplateArgs (set
+    // by default) to have an effect.
+    display::Options display_options = {.suppress_scope = true, .hint_types = true};
 
     // If/else chains are tricky.
     //   if (cond1) {
