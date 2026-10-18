@@ -60,7 +60,7 @@ const index::Shard* ServerLiveSources::session_shard(Fid file, const Session& se
     // A shard compiled from exactly the buffer's bytes describes it however
     // its dependencies moved since (the shard's DepsOnly contract).
     auto& shard = projection->file_shard();
-    if(projections.current(file) || shard.matches_content(session.text.size(), session.hash)) {
+    if(projections.current(file) || shard.matches_content(session.text().size(), session.hash)) {
         return &shard;
     }
     return nullptr;
@@ -76,7 +76,7 @@ std::optional<index::IndexSource> ServerLiveSources::buffer_index(Fid file) cons
     }
     auto it = project.project_index.shards.find(file);
     if(it == project.project_index.shards.end() ||
-       !it->second.matches_content(session->text.size(), session->hash)) {
+       !it->second.matches_content(session->text().size(), session->hash)) {
         return std::nullopt;
     }
     return buffer_source(index::IndexSource::Kind::Shard, file, *session, it->second);
@@ -123,7 +123,7 @@ void ServerLiveSources::each_preamble(
         // gating is needed on top.
         if(project.file_table.find(Spelling::absolute(state->path(state->path_count() - 1))) !=
                file ||
-           !state->matches_prefix(session.text)) {
+           !state->matches_prefix(session.text())) {
             return true;
         }
         return visit(buffer_source(index::IndexSource::Kind::PreambleShard,
@@ -164,7 +164,7 @@ std::shared_ptr<index::TUIndex> ServerLiveSources::preamble_blob(Fid file) const
         return nullptr;
     }
     auto state = overlay_of(file);
-    if(!state || !state->matches_prefix(session->text)) {
+    if(!state || !state->matches_prefix(session->text())) {
         return nullptr;
     }
     return state;

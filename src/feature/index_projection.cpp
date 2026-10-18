@@ -11,6 +11,7 @@ import :semantic.token_class;
 import :syntax.documentation;
 import :syntax.lexer;
 import :syntax.lexical_scan;
+import :syntax.source_text;
 
 namespace clice::feature {
 
@@ -119,20 +120,18 @@ std::optional<llvm::StringRef> before_body(const std::string& text) {
 
 }  // namespace
 
-auto index_semantic_tokens(llvm::StringRef content,
-                           const clang::LangOptions& lang_opts,
+auto index_semantic_tokens(SourceText& text,
                            const IndexEntries& entries,
                            IndexSymbolResolver resolve,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
-    const auto& table = keywords(lang_opts);
     using Kind = SemanticTokenKind;
     using Modifier = SemanticTokenModifier;
 
     // The token kinds names_token reads.
-    auto lexical = lexical_scan(content, lang_opts);
+    auto content = text.text();
     llvm::DenseMap<std::uint32_t, clang::tok::TokenKind> lexed;
-    for(const auto& token: lexical.tokens) {
-        lexed.try_emplace(token.range.begin, lexed_kind(token, content, table));
+    for(const auto& token: text.lexical().tokens) {
+        lexed.try_emplace(token.range.begin, text.kind(token));
     }
     auto anchors = [&](std::uint32_t offset, const TokenClass& token) {
         auto it = lexed.find(offset);
@@ -203,11 +202,10 @@ auto index_semantic_tokens(llvm::StringRef content,
         }
     }
 
-    return semantic_token_stream(lexical.tokens, content, lang_opts, table, facts, options);
+    return semantic_token_stream(text, facts, options);
 }
 
-auto index_document_symbols(llvm::StringRef content,
-                            const clang::LangOptions& lang_opts,
+auto index_document_symbols(SourceText& text,
                             const IndexEntries& entries,
                             IndexSymbolResolver resolve,
                             const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
@@ -266,7 +264,7 @@ auto index_document_symbols(llvm::StringRef content,
     // The `#define`s the preprocessor read, the ones whose macro the index
     // knows.
     std::ranges::sort(macro_names);
-    auto lexical = lexical_scan(content, lang_opts);
+    const auto& lexical = text.lexical();
     std::vector<LexicalInfo::Directive> macros;
     std::vector<LexicalInfo::Directive> marks;
     for(const auto& directive: lexical.directives) {
@@ -290,18 +288,10 @@ auto index_document_symbols(llvm::StringRef content,
             modules.push_back(module);
         }
     }
-    return outline(std::move(declarations),
-                   lexical,
-                   macros,
-                   modules,
-                   marks,
-                   content,
-                   keywords(lang_opts),
-                   options);
+    return outline(std::move(declarations), text, macros, modules, marks, options);
 }
 
-auto index_folding_ranges(llvm::StringRef content,
-                          const clang::LangOptions& lang_opts,
+auto index_folding_ranges(SourceText& text,
                           llvm::ArrayRef<IndexDecl> decls,
                           IndexSymbolResolver resolve) -> std::vector<FoldingRange> {
     // The braces outside comments, literals and directive lines, and the
@@ -314,7 +304,8 @@ auto index_folding_ranges(llvm::StringRef content,
         std::int32_t depth;
     };
 
-    auto lexical = lexical_scan(content, lang_opts);
+    auto content = text.text();
+    const auto& lexical = text.lexical();
     auto braces = braces_of(lexical);
     std::vector<LocalSourceRange> ambiguous;
     std::vector<std::uint32_t> block_directives;
@@ -412,20 +403,17 @@ auto index_folding_ranges(llvm::StringRef content,
     return ranges;
 }
 
-auto index_document_links(llvm::StringRef content,
-                          const clang::LangOptions& lang_opts,
-                          llvm::ArrayRef<IndexIncludeEdge> edges)
+auto index_document_links(SourceText& text, llvm::ArrayRef<IndexIncludeEdge> edges)
     -> std::vector<index::DocumentLink> {
-    auto line_starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
-    auto lexical = lexical_scan(content, lang_opts);
+    auto positions = text.positions();
 
     std::vector<index::DocumentLink> links;
     for(const auto& edge: edges) {
-        if(edge.line == 0 || edge.line > line_starts.size()) {
+        auto line = edge.line == 0 ? std::nullopt : positions.line_bounds(edge.line - 1);
+        if(!line) {
             continue;
         }
-        auto offset = line_starts[edge.line - 1];
-        auto range = find_directive_argument(lexical, content, offset);
+        auto range = find_directive_argument(text.lexical(), text.text(), line->begin);
         if(!range) {
             continue;
         }

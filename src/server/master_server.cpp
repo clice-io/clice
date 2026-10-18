@@ -426,7 +426,7 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
         from.close_session(path_id);
         auto& to = route(path_id);
         owners[path_id] = &to;
-        to.open_session(path_id, session->text, session->version);
+        to.open_session(path_id, session->text().str(), session->version);
         auto moved = to.sessions.find(path_id);
         // The crash records move with the document; work still in flight
         // under the old project books into them.
@@ -787,7 +787,7 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     if(target != owner) {
         owner->close_session(path_id);
         owners[path_id] = target.get();
-        target->open_session(path_id, session->text, session->version);
+        target->open_session(path_id, session->text().str(), session->version);
         session = find_session(path_id);
     }
     result = co_await target->context_service.switch_context(*session, context_path_id, params);

@@ -55,8 +55,7 @@ void SessionStore::for_each(llvm::function_ref<bool(Fid, const Session&)> visito
 
 void SessionStore::apply_open(Session& session, std::string text, int version) {
     session.version = version;
-    session.text = std::move(text);
-    session.sync_text();
+    session.set_text(std::move(text));
     session.generation++;
     if(auto it = parked.find(session.path_id); it != parked.end()) {
         session.quarantine = std::move(it->second.quarantine);
@@ -78,14 +77,12 @@ void SessionStore::apply_change(Session& session,
             [&](auto& c) {
                 using T = std::remove_cvref_t<decltype(c)>;
                 if constexpr(std::is_same_v<T, protocol::TextDocumentContentChangeWholeDocument>) {
-                    if(session.text != c.text) {
-                        session.text = c.text;
+                    if(session.text() != c.text) {
+                        session.set_text(c.text);
                         applied = true;
                     }
                 } else {
-                    // The batch's earlier changes left non_ascii_lines
-                    // stale; line_starts is kept current.
-                    PositionMap map(session.text, session.line_starts);
+                    auto map = session.positions();
                     auto& range = c.range;
                     if(!map.offset(range.start, PositionEncoding::UTF16) ||
                        !map.offset(range.end, PositionEncoding::UTF16)) {
@@ -105,12 +102,17 @@ void SessionStore::apply_change(Session& session,
                             version);
                     }
                     auto [start, end] = map.offset_range(range, PositionEncoding::UTF16);
-                    if(llvm::StringRef(session.text).substr(start, end - start) != c.text) {
-                        session.text.replace(start, end - start, c.text);
+                    auto text = session.text();
+                    if(text.substr(start, end - start) != c.text) {
+                        std::string edited;
+                        edited.reserve(text.size() - (end - start) + c.text.size());
+                        edited.append(text.take_front(start));
+                        edited.append(c.text);
+                        edited.append(text.drop_front(end));
+                        session.set_text(std::move(edited));
                         applied = true;
                     }
                 }
-                session.line_starts = lsp::line_starts(session.text);
             },
             change);
     }
@@ -121,7 +123,6 @@ void SessionStore::apply_change(Session& session,
         session.quarantine->on_change(Quarantine::Clock::now());
     }
 
-    session.sync_text();
     session.generation++;
 }
 

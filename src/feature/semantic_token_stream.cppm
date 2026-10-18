@@ -7,6 +7,7 @@ module clice:feature.semantic_token_stream;
 import :compile.compilation;
 import :feature.feature;
 import :semantic.token_class;
+import :syntax.source_text;
 import :syntax.token;
 
 namespace clice::feature {
@@ -61,18 +62,13 @@ auto semantic_token_facts(CompilationUnit& unit,
                           llvm::ArrayRef<std::uint32_t> inactive_regions,
                           bool index_known) -> TokenFacts;
 
-/// The semantic tokens of `content`, the single writer of both the AST's
-/// and the index's: every token of its lexical scan (`tokens`, lexed under
-/// `lang_opts`, whose keywords `keywords` holds) classified by `facts`
-/// where they say, by its spelling
-/// otherwise — keywords, literals split into their prefix, escapes,
-/// placeholders and suffix, comments with their documentation commands,
-/// directives, template brackets. Adjacent tokens of one classification
-/// merge.
-auto semantic_token_stream(llvm::ArrayRef<Token> tokens,
-                           llvm::StringRef content,
-                           const clang::LangOptions& lang_opts,
-                           const clang::IdentifierTable& keywords,
+/// The semantic tokens of `source`, the single writer of both the AST's
+/// and the index's: every token of its lexical scan classified by `facts`
+/// where they say, by its spelling otherwise — keywords, literals split
+/// into their prefix, escapes, placeholders and suffix, comments with their
+/// documentation commands, directives, template brackets. Adjacent tokens
+/// of one classification merge.
+auto semantic_token_stream(SourceText& source,
                            const TokenFacts& facts,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
 

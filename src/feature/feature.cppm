@@ -18,6 +18,7 @@ import :support.markup;
 import :syntax.documentation;
 import :syntax.lexical_scan;
 import :syntax.position;
+import :syntax.source_text;
 import :vfs.ids;
 import :vfs.path;
 
@@ -743,11 +744,9 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
 auto selection_ranges(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> offsets)
     -> std::vector<std::vector<LocalSourceRange>>;
 
-/// The ranges only the text shows, from a raw lex of `content`: what a
-/// document without an AST gets.
-auto lexical_selection_ranges(llvm::StringRef content,
-                              const clang::LangOptions& lang_opts,
-                              llvm::ArrayRef<std::uint32_t> offsets)
+/// The ranges only the text shows, from its lexical scan: what a document
+/// without an AST gets.
+auto lexical_selection_ranges(SourceText& text, llvm::ArrayRef<std::uint32_t> offsets)
     -> std::vector<std::vector<LocalSourceRange>>;
 
 /// Protocol encoding of one offset's ranges as a chain of parents.
@@ -787,18 +786,16 @@ struct OutlineEntry {
 /// when it is a scope, a template parameter never.
 bool outline_lists(SymbolKind kind, bool unnamed, bool template_parameter);
 
-/// The outline the entries make in the file `content` holds, `lexical`
-/// its lexical scan and `keywords` its dialect's, with its `#define` directives (`macros`, those
-/// the preprocessor read), module declarations and `#pragma mark`s (`marks`): the entries are named
-/// as the text writes them, members of one macro invocation listed under it, nested by where they
-/// are written, and sections made of the marks.
+/// The outline the entries make in the file `text` holds, with its
+/// `#define` directives (`macros`, those the preprocessor read), module
+/// declarations and `#pragma mark`s (`marks`): the entries are named as the
+/// text writes them, members of one macro invocation listed under it,
+/// nested by where they are written, and sections made of the marks.
 auto outline(std::vector<OutlineEntry> entries,
-             const LexicalInfo& lexical,
+             SourceText& text,
              llvm::ArrayRef<LexicalInfo::Directive> macros,
              llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules,
              llvm::ArrayRef<LexicalInfo::Directive> marks,
-             llvm::StringRef content,
-             const clang::IdentifierTable& keywords,
              const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
 /// The outline of the focus file, a `#define` in it only outside the
@@ -1192,11 +1189,10 @@ using IndexIncludeEdge = index::IncludeEdge;
 
 using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolRef>(index::SymbolHash)>;
 
-/// The tokens of `content` as the AST's would be, from what the index
+/// The tokens of `text` as the AST's would be, from what the index
 /// records: each symbol's classified from `resolve` at its occurrences, the
 /// roles `decls` give, the writes `writes` record.
-auto index_semantic_tokens(llvm::StringRef content,
-                           const clang::LangOptions& lang_opts,
+auto index_semantic_tokens(SourceText& text,
                            const IndexEntries& entries,
                            IndexSymbolResolver resolve,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
@@ -1207,10 +1203,9 @@ auto index_semantic_tokens(llvm::StringRef content,
 /// differs (see to_lsp::symbol_kind).
 auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind;
 
-/// The outline of the file `content` holds, from its index entries: the
+/// The outline of the file `text` holds, from its index entries: the
 /// AST's (outline()) without details, a macro's parameters aside.
-auto index_document_symbols(llvm::StringRef content,
-                            const clang::LangOptions& lang_opts,
+auto index_document_symbols(SourceText& text,
                             const IndexEntries& entries,
                             IndexSymbolResolver resolve,
                             const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
@@ -1221,8 +1216,7 @@ auto index_document_symbols(llvm::StringRef content,
 /// visible like the AST folds do. Extents touching a conditional whose
 /// branches unbalance braces produce no fold — a raw pairing there is
 /// wrong for some preprocessing variant.
-auto index_folding_ranges(llvm::StringRef content,
-                          const clang::LangOptions& lang_opts,
+auto index_folding_ranges(SourceText& text,
                           llvm::ArrayRef<IndexDecl> decls,
                           IndexSymbolResolver resolve) -> std::vector<FoldingRange>;
 
@@ -1230,9 +1224,7 @@ auto index_folding_ranges(llvm::StringRef content,
 /// located with find_directive_argument on its directive line. Lines the
 /// manifest has no edge for (guard-skipped includes, __has_include, #embed)
 /// produce no link.
-auto index_document_links(llvm::StringRef content,
-                          const clang::LangOptions& lang_opts,
-                          llvm::ArrayRef<IndexIncludeEdge> edges)
+auto index_document_links(SourceText& text, llvm::ArrayRef<IndexIncludeEdge> edges)
     -> std::vector<index::DocumentLink>;
 
 /// Assemble the read-only hover card: name, kind, where it is (`scopes`,

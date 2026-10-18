@@ -6,8 +6,6 @@ module clice;
 
 import :command.search_config;
 import :index.rename;
-import :project.command_resolver;
-import :project.hosting;
 import :sched.index.pump;
 import :semantic.symbol;
 import :server.ast_family;
@@ -77,7 +75,7 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
         // An oversized buffer is not worth a synchronous main-thread lex;
         // the full-lex projections follow the investment policy instead of
         // the index slice. Index-backed answers serve at any size.
-        bool capped = options.full_lex && session.text.size() > full_lex_cap;
+        bool capped = options.full_lex && session.text().size() > full_lex_cap;
         if(!capped) {
             // The session's own index when current (the quarantine fallback
             // — the worker cannot be asked, the index is still true), else
@@ -162,99 +160,9 @@ std::optional<index::IndexQuery::Cursor>
     return query.symbol_at(path_id, position.line, position.character);
 }
 
-/// The command a file compiles with — among a multi-configuration
-/// file's or host's entries the pinned one, else the first, or the default
-/// command covering it — rules applied, like the resolve path's effective
-/// command: whether it compiles the file as C, whether an -x forces that
-/// (the driver override beats every suffix heuristic), and the last -std
-/// value.
-struct CommandLang {
-    CommandSource source;
-    bool is_c = false;
-    bool language_forced = false;
-    std::string standard;
-};
-
-static std::optional<CommandLang> command_lang(Project& project,
-                                               Fid file,
-                                               llvm::ArrayRef<CanonicalRef> paths,
-                                               const Selection* pin) {
-    auto path = project.file_table.resolve(file);
-    auto commands = project.build.commands(file);
-    if(commands.empty()) {
-        return std::nullopt;
-    }
-    auto command = pick_pinned_config(project,
-                                      file,
-                                      commands,
-                                      paths,
-                                      path,
-                                      pin ? llvm::StringRef(pin->command_hash) : "",
-                                      pin ? llvm::StringRef(pin->base_hash) : "");
-    auto ref = project.build.resolve(file, command.config, command.source, paths, path);
-
-    llvm::StringRef language = ref.input.value;
-    CommandLang result{
-        .source = command.source,
-        .is_c = language == "c" || language == "c-header",
-        .language_forced = !project.cdb.forced_language(ref.config).empty(),
-    };
-    for(auto& arg: project.cdb.config(ref.config).args) {
-        if(arg.opt_id == option::OPT_std_EQ && arg.values.size() == 1) {
-            result.standard = arg.values[0];
-        }
-    }
-    return result;
-}
-
-Fid Features::host_of(Fid path_id) const {
-    if(auto it = contexts.selections.find(path_id); it != contexts.selections.end()) {
-        if(it->second.host_path_id.valid()) {
-            return it->second.host_path_id;
-        }
-    }
-    if(const auto* context = contexts.header_context(path_id)) {
-        return context->host_path_id;
-    }
-    // A header compiled under its own entry resolves no context; its
-    // includers still name the source its definitions belong in.
-    auto hosts = ranked_hosts(project, path_id);
-    return hosts.empty() ? Fid{} : hosts.front();
-}
-
-const clang::LangOptions& Features::index_lang_options(const Session& session) {
-    auto path = project.file_table.resolve(session.path_id);
-    const auto* pin = contexts.selection(session.path_id);
-    bool host_pin = pin && pin->host_path_id.valid();
-    auto own = command_lang(project, session.path_id, path, host_pin ? nullptr : pin);
-    // A file's entry is its command; a default command yields to the host
-    // a header borrows from, in resolve_command's order.
-    if(own && own->language_forced && own->source == CommandSource::CDBExact) {
-        return dialect_of("", own->is_c, own->standard);
-    }
-
-    // A header's active context (the user's persisted choice, else the
-    // resolved host) names the view being read; its command beats the
-    // contributor union the way it does for the AST after an escalation.
-    if(Fid host = host_of(session.path_id); host.valid()) {
-        CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
-        auto host_lang = command_lang(project, host, edit_paths, host_pin ? pin : nullptr);
-        if(host_lang) {
-            return dialect_of("", host_lang->is_c, host_lang->standard);
-        }
-    }
-
-    if(own && own->language_forced) {
-        return dialect_of("", own->is_c, own->standard);
-    }
-
-    auto& contributions = project.project_index.contributions;
-    auto it = contributions.find(session.path_id);
-    bool c_only = it != contributions.end() && !it->second.empty() &&
-                  llvm::all_of(llvm::make_first_range(it->second), [&](Fid tu) {
-                      return llvm::StringRef(project.file_table.resolve(tu)).ends_with(".c");
-                  });
-    return dialect_of(path, c_only, own ? llvm::StringRef(own->standard) : llvm::StringRef());
+SourceText& Features::text_of(Session& session) {
+    session.source->set_dialect(contexts.dialect(session.path_id));
+    return *session.source;
 }
 
 std::optional<feature::HoverInfo> Features::index_hover_card(const Session& session,
@@ -322,11 +230,10 @@ std::vector<protocol::Location> Features::directive_definition(const index::Docu
 std::optional<protocol::Hover> Features::directive_hover(const Session& session,
                                                          const index::DocumentLink& link,
                                                          protocol::MarkupKind markup) {
-    if(link.range.end > session.text.size()) {
+    if(link.range.end > session.text().size()) {
         return std::nullopt;
     }
-    llvm::StringRef name(session.text.data() + link.range.begin, link.range.length());
-    name = name.trim();
+    auto name = session.text().substr(link.range.begin, link.range.length()).trim();
     if(name.size() >= 2 && ((name.front() == '"' && name.back() == '"') ||
                             (name.front() == '<' && name.back() == '>'))) {
         name = name.drop_front().drop_back();
@@ -388,9 +295,8 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             // manifest never described — an edited directive would get
             // the old target, confidently wrong.
             std::vector<protocol::DocumentLink> links;
-            if(query.shard_matching(session->path_id, session->text)) {
-                auto raw = feature::index_document_links(session->text,
-                                                         index_lang_options(*session),
+            if(query.shard_matching(session->path_id, session->text())) {
+                auto raw = feature::index_document_links(text_of(*session),
                                                          query.include_edges(session->path_id));
                 convert(raw, links);
             }
@@ -515,12 +421,11 @@ Features::RawResult Features::definition(Ticket ticket,
     bool shard_served = serving && serving->kind == index::IndexSource::Kind::Shard;
     if(session->serving == ServingMode::IndexOnly || ASTFamily::compile_barred(*session) ||
        (shard_served && !cursor_at(path_id, position))) {
-        if(!query.shard_matching(session->path_id, session->text)) {
+        if(!query.shard_matching(session->path_id, session->text())) {
             co_return serde_raw{"[]"};
         }
         if(offset) {
-            auto links = feature::index_document_links(session->text,
-                                                       index_lang_options(*session),
+            auto links = feature::index_document_links(text_of(*session),
                                                        query.include_edges(session->path_id));
             if(auto* link = link_at(links, *offset)) {
                 co_return to_raw(directive_definition(*link));
@@ -611,9 +516,9 @@ Features::RawResult Features::hover(Ticket ticket,
     auto offset = session->positions().offset(position, PositionEncoding::UTF16);
     bool on_directive = false;
     if(offset) {
-        llvm::StringRef text = session->text;
+        llvm::StringRef text = session->text();
         on_directive =
-            Lexer(text.substr(logical_line_begin(text, *offset)), index_lang_options(*session))
+            Lexer(text.substr(logical_line_begin(text, *offset)), contexts.dialect(path_id))
                 .advance()
                 .is_directive_hash();
     }
@@ -682,8 +587,7 @@ Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellati
         case Route::Index: {
             session->index_served = true;
             tokens = feature::index_semantic_tokens(
-                session->text,
-                index_lang_options(*session),
+                text_of(*session),
                 feature::extract_index_entries(*source->shard),
                 [&](index::SymbolHash hash) { return query.symbol_info(hash); },
                 project.config.semantic_tokens);
@@ -778,7 +682,7 @@ Features::RawResult Features::folding_range(Ticket ticket,
     auto& session = ticket.session;
     auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
         return to_raw(feature::folding_ranges_to_protocol(folds,
-                                                          session->text,
+                                                          session->text(),
                                                           session->positions(),
                                                           PositionEncoding::UTF16,
                                                           client));
@@ -790,8 +694,7 @@ Features::RawResult Features::folding_range(Ticket ticket,
         case Route::Index: {
             auto entries = feature::extract_index_entries(*source->shard);
             auto folds = feature::index_folding_ranges(
-                session->text,
-                index_lang_options(*session),
+                text_of(*session),
                 entries.decls,
                 [&](index::SymbolHash hash) { return query.symbol_info(hash); });
             session->index_served = true;
@@ -837,8 +740,7 @@ Features::RawResult Features::document_symbol(Ticket ticket,
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             auto symbols = feature::index_document_symbols(
-                session->text,
-                index_lang_options(*session),
+                text_of(*session),
                 feature::extract_index_entries(*source->shard),
                 [&](index::SymbolHash hash) { return query.symbol_info(hash); },
                 project.config.document_symbols);
@@ -874,7 +776,7 @@ Features::RawResult Features::selection_range(Ticket ticket,
         return to_raw(result);
     };
     auto lexical = [&] {
-        if(session->text.size() > full_lex_cap) {
+        if(session->text().size() > full_lex_cap) {
             std::vector<std::vector<LocalSourceRange>> points;
             for(auto offset: offsets) {
                 points.push_back({
@@ -883,9 +785,7 @@ Features::RawResult Features::selection_range(Ticket ticket,
             }
             return convert(points);
         }
-        return convert(feature::lexical_selection_ranges(session->text,
-                                                         index_lang_options(*session),
-                                                         offsets));
+        return convert(feature::lexical_selection_ranges(text_of(*session), offsets));
     };
 
     switch(co_await pick_route(ticket, {})) {
@@ -950,10 +850,10 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     auto map = session->positions();
     auto offset = map.offset(position, PositionEncoding::UTF16);
 
-    const auto& dialect = index_lang_options(*session);
+    const auto& dialect = contexts.dialect(session->path_id);
     CompletionName completing;
     if(offset) {
-        completing = completion_name(session->text, *offset, dialect);
+        completing = completion_name(session->text(), *offset, dialect);
     }
 
     // Clients without request-side gating (nvim, zed) forward every
@@ -968,7 +868,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                           ? completing.kind == CompletionName::Kind::Import ||
                                 completing.kind == CompletionName::Kind::ModuleDeclaration
                           : completing.kind != CompletionName::Kind::None || !offset ||
-                                follows_access_operator(session->text, *offset, dialect);
+                                follows_access_operator(session->text(), *offset, dialect);
         if(!served) {
             co_return serde_raw{"[]"};
         }
@@ -995,7 +895,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             // A directory continues the path, replacing a `/` already
             // there; a header ends it and closes the directive, replacing
             // the rest of the path through a closing delimiter already there.
-            llvm::StringRef text = session->text;
+            llvm::StringRef text = session->text();
             char closer = angled ? '>' : '"';
             auto edit = [&](const IncludeCandidate& candidate) {
                 auto end = completing.replace.end;
@@ -1034,7 +934,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 // scan stops before the import being typed: the scanner
                 // rejects a buffer with an unclosed directive whole. Its
                 // lexer needs the NUL terminator a copy provides.
-                llvm::StringRef text = session->text;
+                llvm::StringRef text = session->text();
                 auto declared =
                     text.take_front(text.rfind('\n', completing.replace.begin) + 1).str();
                 module_names = complete_module_import(project.dep_graph,
@@ -1081,7 +981,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
 
     std::vector<feature::ScopeCandidate> candidates;
     bool exhausted = true;
-    if(auto prefix = offset ? feature::unqualified_prefix(session->text, *offset) : std::nullopt;
+    if(auto prefix = offset ? feature::unqualified_prefix(session->text(), *offset) : std::nullopt;
        prefix && project.config.code_completion.all_scopes) {
         exhausted = scope_candidates(*prefix, path_id, candidates);
     }

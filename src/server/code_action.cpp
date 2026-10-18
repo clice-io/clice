@@ -10,6 +10,7 @@ import :index.symbol_query;
 import :server.editor_context;
 import :server.features;
 import :syntax.include_resolver;
+import :syntax.source_text;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -220,7 +221,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                  std::move(action.kind),
                  feature::format_edits(
                      path,
-                     session->text,
+                     session->text(),
                      {
                          {request.range, request.before + *text + request.after}
             }));
@@ -230,7 +231,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     auto resolve_host = [&](feature::CodeAction& action,
                             const feature::DefineInHostRequest& request) {
         auto text = feature::assemble_definitions(request.pieces, defined_elsewhere);
-        Fid host = host_of(path_id);
+        Fid host = contexts.host_of(path_id);
         if(!text || !host.valid()) {
             return;
         }
@@ -277,18 +278,18 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             edit.range = {*after, *after};
             edit.new_text = "\n\n" + formatted;
         } else {
-            std::string content;
-            if(host_session) {
-                content = host_session->text;
-            } else if(auto read = vfs::read(host_path)) {
-                content = (*read)->getBuffer().str();
-            } else {
-                return;
+            std::optional<SourceText> disk;
+            auto* host_text = host_session ? host_session->source.get() : nullptr;
+            if(!host_text) {
+                auto read = vfs::read(host_path);
+                if(!read) {
+                    return;
+                }
+                host_text = &disk.emplace((*read)->getBuffer().str());
             }
-            auto lines = kota::ipc::lsp::line_starts(content);
-            auto end =
-                *PositionMap(content, lines)
-                     .position(static_cast<std::uint32_t>(content.size()), PositionEncoding::UTF16);
+            auto content = host_text->text();
+            auto end = *host_text->positions().position(static_cast<std::uint32_t>(content.size()),
+                                                        PositionEncoding::UTF16);
             edit.range = {end, end};
             edit.new_text =
                 (content.empty() || content.ends_with('\n') ? "\n" : "\n\n") + formatted;

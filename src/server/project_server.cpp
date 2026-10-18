@@ -293,7 +293,7 @@ void ProjectServer::decide_open_serving(std::shared_ptr<Session> session) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: escalate
         // now instead of answering empty until the first edit.
-        if(!it->second.matches_content(session->text.size(), session->hash)) {
+        if(!it->second.matches_content(session->text().size(), session->hash)) {
             ast.escalate(*session);
         }
         return;
@@ -391,7 +391,7 @@ void ProjectServer::index_attempt_finished(Fid path_id) {
     }
     auto it = project.project_index.shards.find(path_id);
     if(it == project.project_index.shards.end() ||
-       !it->second.matches_content(session->text.size(), session->hash)) {
+       !it->second.matches_content(session->text().size(), session->hash)) {
         ast.escalate(*session);
     }
 }

@@ -8,8 +8,8 @@ import :feature.feature;
 import :feature.semantic_token_stream;
 import :semantic.token_class;
 import :syntax.doc_comment;
-import :syntax.lexer;
 import :syntax.documentation;
+import :syntax.source_text;
 import :syntax.token;
 
 namespace clice::feature {
@@ -270,14 +270,9 @@ std::size_t number_suffix(llvm::StringRef text) {
 
 class TokenStream {
 public:
-    TokenStream(llvm::ArrayRef<Token> stream,
-                llvm::StringRef content,
-                const clang::LangOptions& lang_opts,
-                const clang::IdentifierTable& keywords,
-                const TokenFacts& facts,
-                const SemanticTokensOptions& options) :
-        stream(stream), content(content), lang_opts(lang_opts), keywords(keywords), facts(facts),
-        options(options) {}
+    TokenStream(SourceText& source, const TokenFacts& facts, const SemanticTokensOptions& options) :
+        source(source), stream(source.lexical().tokens), content(source.text()),
+        lang_opts(source.dialect()), facts(facts), options(options) {}
 
     auto build() -> std::vector<SemanticToken> {
         for(at = 0; at < stream.size(); at += 1) {
@@ -337,7 +332,7 @@ private:
             definition_empty = false;
         }
         auto spelling = token.text(content);
-        auto kind = lexed_kind(token, content, keywords);
+        auto kind = source.kind(token);
         bool word = clang::tok::isAnyIdentifier(kind) || clang::tok::getKeywordSpelling(kind);
 
         if(clang::tok::isStringLiteral(kind) || is_char_literal(kind)) {
@@ -881,12 +876,12 @@ private:
             {.range = range, .kind = classified.kind, .modifiers = classified.modifiers});
     }
 
+    SourceText& source;
     llvm::ArrayRef<Token> stream;
     /// The index in `stream` of the token being classified.
     std::size_t at = 0;
     llvm::StringRef content;
     const clang::LangOptions& lang_opts;
-    const clang::IdentifierTable& keywords;
     const TokenFacts& facts;
     const SemanticTokensOptions& options;
 
@@ -941,13 +936,10 @@ bool is_override_keyword(llvm::StringRef spelling) {
     return spelling == "override" || spelling == "final" || spelling == "sealed";
 }
 
-auto semantic_token_stream(llvm::ArrayRef<Token> tokens,
-                           llvm::StringRef content,
-                           const clang::LangOptions& lang_opts,
-                           const clang::IdentifierTable& keywords,
+auto semantic_token_stream(SourceText& source,
                            const TokenFacts& facts,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
-    return TokenStream(tokens, content, lang_opts, keywords, facts, options).build();
+    return TokenStream(source, facts, options).build();
 }
 
 }  // namespace clice::feature

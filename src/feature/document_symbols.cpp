@@ -12,8 +12,8 @@ import :semantic.identity;
 import :semantic.semantics;
 import :semantic.symbol;
 import :support.text;
-import :syntax.lexer;
 import :syntax.lexical_scan;
+import :syntax.source_text;
 
 namespace clice::feature {
 
@@ -122,13 +122,12 @@ bool spells(llvm::StringRef content, LocalSourceRange selection, llvm::StringRef
 /// `name` with the nested name qualifier written before it and the template
 /// argument list written after it, `selection` spelling the name in the
 /// declaration `range`: `Box<T*>::reset`, `Box<void>`.
-std::string written_name(llvm::StringRef content,
-                         const LexicalInfo& lexical,
-                         const clang::IdentifierTable& keywords,
+std::string written_name(SourceText& source,
                          LocalSourceRange range,
                          LocalSourceRange selection,
                          llvm::StringRef name) {
-    auto tokens = lexical.code_from(range.begin);
+    auto content = source.text();
+    auto tokens = source.lexical().code_from(range.begin);
     auto token = tokens.begin();
     llvm::SmallVector<Token> before;
     for(; token != tokens.end() && token->range.begin < selection.begin; ++token) {
@@ -168,7 +167,7 @@ std::string written_name(llvm::StringRef content,
     // Back from the name over `component ::` pairs, a component a name with
     // its template arguments: `ns::Box<T>::`.
     auto named = [&](const Token& token) {
-        return lexed_kind(token, content, keywords) == clang::tok::identifier;
+        return source.kind(token) == clang::tok::identifier;
     };
     auto start = before.size();
     while(start > 1 && before[start - 1].kind == clang::tok::coloncolon) {
@@ -510,22 +509,17 @@ void merge_typedefs(std::vector<Node>& nodes, const LexicalInfo& lexical) {
 }  // namespace
 
 auto outline(std::vector<OutlineEntry> entries,
-             const LexicalInfo& lexical,
+             SourceText& source,
              llvm::ArrayRef<LexicalInfo::Directive> macros,
              llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules,
              llvm::ArrayRef<LexicalInfo::Directive> marks,
-             llvm::StringRef content,
-             const clang::IdentifierTable& keywords,
              const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+    auto content = source.text();
+    const auto& lexical = source.lexical();
     for(auto& entry: entries) {
         if(!entry.from_macro && !entry.unnamed &&
            spells(content, entry.selection_range, entry.name)) {
-            entry.name = written_name(content,
-                                      lexical,
-                                      keywords,
-                                      entry.range,
-                                      entry.selection_range,
-                                      entry.name);
+            entry.name = written_name(source, entry.range, entry.selection_range, entry.name);
         }
     }
     if(options.macros) {
@@ -968,8 +962,8 @@ auto document_symbols(CompilationUnit& unit,
         return bounds % 2 == 1;
     };
     auto& semantics = unit.get<Semantics>();
-    auto focus = unit.focus_file();
-    const auto& lexical = focus.lexical();
+    auto& source = unit.file_text(unit.focus_file().file());
+    const auto& lexical = source.lexical();
     std::vector<LexicalInfo::Directive> macros;
     std::vector<LexicalInfo::Directive> marks;
     for(const auto& directive: lexical.directives) {
@@ -983,12 +977,10 @@ auto document_symbols(CompilationUnit& unit,
         }
     }
     return outline(Collector(unit).collect(),
-                   lexical,
+                   source,
                    macros,
                    semantics.module_declarations(),
                    marks,
-                   focus.content(),
-                   unit.keywords(),
                    options);
 }
 

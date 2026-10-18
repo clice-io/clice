@@ -82,8 +82,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
 
     auto it = sources.all_files.find(llvm::sys::path::filename(focus_path));
     ZASSERT(it != sources.all_files.end());
-    session->text = it->second.content;
-    session->sync_text();
+    session->set_text(it->second.content);
 
     auto& entry = projections.entries[path_id];
     auto projection = std::make_shared<ASTProjection>();
@@ -474,8 +473,7 @@ int main() { return 0; }
     // file that built the blob.
     auto other_path = std::string(llvm::sys::path::parent_path(focus_path)) + "/other.cpp";
     auto other = session_store.open(project.file_table.intern(Spelling::absolute(other_path)));
-    other->text = session->text;
-    other->line_starts = session->line_starts;
+    other->set_text(session->text().str());
     auto& other_entry = projections.entries[other->path_id];
     auto other_projection = std::make_shared<ASTProjection>();
     other_projection->pch_key = "key";
@@ -498,8 +496,7 @@ int main() { return 0; }
     // as the buffer still starts with the blob's preamble text, the
     // entry keeps serving — the prefix comparison is the freshness check.
     projections.entries[session->path_id].current = false;
-    session->text += "int more;\n";
-    session->sync_text();
+    session->set_text(session->text().str() + "int more;\n");
     ZEXPECT(index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
 }
 
@@ -513,8 +510,7 @@ int main() { return 0; }
     // A deferred PCH rebuild keeps an old blob while the buffer's
     // preamble moved on; once the buffer no longer starts with the blob's
     // stored preamble text, its entries must not be served.
-    session->text = "// drift\n" + session->text;
-    session->sync_text();
+    session->set_text("// drift\n" + session->text().str());
     ZEXPECT(!index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition).has_value());
 }
 
