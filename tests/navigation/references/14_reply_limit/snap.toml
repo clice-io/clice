@@ -5,6 +5,15 @@ references = [
     "return compute(value) + ⟦compute⟧(1);",
 ]
 
+["no limit".references]
+references = [
+    "lib.cpp │ return ⟦compute⟧(compute(value));",
+    "lib.cpp │ return compute(⟦compute⟧(value));",
+    "return ⟦compute⟧(value) + compute(1);",
+    "return compute(value) + ⟦compute⟧(1);",
+    "shared.h │ int ⟦compute⟧(int value);",
+]
+
 [query."$ clice index"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 3 symbols.

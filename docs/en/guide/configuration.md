@@ -698,7 +698,7 @@ The `[references]` section controls what find references answers.
 | ------- | -------- | ------- |
 | `limit` | `uint32` | `1000`  |
 
-Maximum number of locations a references request answers with, those in the file it is asked from first; `0` means no limit. `clice query references` lists every one.
+Maximum number of locations a references request answers with; `0` means no limit. A reply cut short keeps the locations in the file it is asked from before any other. `clice query references` lists every one.
 
 </div>
 
