@@ -138,7 +138,9 @@ public:
 
 private:
     FileTable& files;
+
     mutable llvm::DenseSet<Fid> checked;
+
     mutable llvm::DenseSet<Fid> withheld_files;
 };
 
@@ -504,8 +506,11 @@ private:
 
 private:
     const ProjectIndex& index;
+
     FileTable& files;
+
     const FreshnessGate* gate;
+
     const LiveSources* live;
 
     /// Whether answers take in what instantiations resolve (written_only).

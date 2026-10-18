@@ -185,6 +185,7 @@ private:
         return live_records.empty() || ((live_records[record / 64] >> (record % 64)) & 1) != 0;
     }
 
+private:
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
     /// A bit per record some live resolution holds; empty while every

@@ -113,9 +113,13 @@ public:
 
 private:
     const SymbolQuery& query;
+
     std::string lower_pattern;
+
     FuzzyMatcher exact;
+
     std::optional<FuzzyMatcher> typo;
+
     /// The query's tokens when it is too short for trigrams, else empty.
     llvm::SmallVector<NameToken, 2> short_tokens;
 };
@@ -172,6 +176,8 @@ public:
 
 private:
     struct View;
+
+private:
     std::unique_ptr<View> view;
 };
 

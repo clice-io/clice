@@ -135,11 +135,15 @@ private:
     /// per query.
     LiveFilter live_filter(const RangeColumnsView& columns) const;
 
+private:
     std::unique_ptr<llvm::MemoryBuffer> buffer;
+
     Live live;
+
     /// Byte hash of the blob — the identity of a worker-emitted blob's
     /// single anonymous variant. Computed once at load.
     std::uint64_t blob_hash = 0;
+
     /// Lazily materialized from the line-length columns; the blob is
     /// immutable for the shard's lifetime, so the cache never invalidates.
     mutable std::vector<std::uint32_t> line_starts_cache;

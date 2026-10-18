@@ -41,6 +41,7 @@ private:
 
     void release();
 
+private:
     int fd;
 };
 

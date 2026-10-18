@@ -179,11 +179,13 @@ private:
     /// The verified TU index bytes (owned iff `owned` is set); accessors
     /// rebuild the (pointer-sized) fbs view from them on demand.
     std::unique_ptr<llvm::MemoryBuffer> owned;
+
     llvm::StringRef data;
 
     /// Lazily wrapped per-section readers; the TU index is immutable for
     /// the reader's lifetime, so the cache never invalidates.
     mutable std::vector<Shard> shards;
+
     mutable std::vector<InstantiationShard> instantiation_shards;
 };
 

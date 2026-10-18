@@ -305,6 +305,9 @@ struct ProjectIndex {
     bool open(BlobDatabase& db, FileTable& files);
 
 private:
+    std::uint32_t persisted_id(VersionID version);
+
+private:
     std::unique_ptr<ProjectTable> base;
 
     /// Entries merged or changed since the base was bound, in file-table ids.
@@ -320,6 +323,7 @@ private:
 
     /// The database shard() fetches from, when opened over one.
     BlobDatabase* db = nullptr;
+
     const FileTable* files = nullptr;
 
     /// Derived from `manifests`: unit hash -> TU.
@@ -333,10 +337,10 @@ private:
     /// the manifests load); writing maps back, handing out ids to the
     /// versions the lineage has not persisted yet.
     llvm::DenseMap<std::uint32_t, VersionID> runtime_ids;
-    llvm::DenseMap<VersionID, std::uint32_t> persisted_ids;
-    std::uint32_t next_persisted_id = 0;
 
-    std::uint32_t persisted_id(VersionID version);
+    llvm::DenseMap<VersionID, std::uint32_t> persisted_ids;
+
+    std::uint32_t next_persisted_id = 0;
 };
 
 }  // namespace clice::index
