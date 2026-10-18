@@ -7,6 +7,7 @@ module clice:index.project_index;
 import :index.database;
 import :index.format;
 import :index.instantiation_shard;
+import :index.project_table;
 import :index.search_index;
 import :index.shard;
 import :index.tu_index;
@@ -304,8 +305,7 @@ struct ProjectIndex {
     bool open(BlobDatabase& db, FileTable& files);
 
 private:
-    struct Base;
-    std::unique_ptr<Base> base;
+    std::unique_ptr<ProjectTable> base;
 
     /// Entries merged or changed since the base was bound, in file-table ids.
     llvm::DenseMap<SymbolHash, Symbol> changed;
@@ -338,8 +338,5 @@ private:
 
     std::uint32_t persisted_id(VersionID version);
 };
-
-/// Add the fields of a global blob to `bytes`, for `clice index stats`.
-void measure_global(llvm::StringRef data, FieldBytes& bytes);
 
 }  // namespace clice::index
