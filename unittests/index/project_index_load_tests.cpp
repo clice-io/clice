@@ -54,7 +54,7 @@ ZEST_CASE(LoadRestoresIndex) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
     }
 
@@ -82,7 +82,7 @@ ZEST_CASE(IdleRebuildPinsSearch) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         // The plain save persists the table; the idle one then rebuilds
         // the search index with no other change to write.
         f.save();
@@ -113,7 +113,7 @@ ZEST_CASE(LoadHealsBrokenShard) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
         header_key = index::blob_key(f.project.file_table.resolve(
             f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
@@ -170,7 +170,7 @@ ZEST_CASE(ReadOnlyLoadKeepsDisk) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
         header_key = index::blob_key(f.project.file_table.resolve(
             f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
@@ -218,7 +218,7 @@ ZEST_CASE(LoadHealsMissingVariant) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
         header_key = index::blob_key(f.project.file_table.resolve(
             f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
@@ -257,7 +257,7 @@ ZEST_CASE(LoadHealsWrongGeneration) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
         auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -292,7 +292,7 @@ ZEST_CASE(LoadDropsNewerManifest) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
 
         // Plant what a lost project table write leaves behind: a manifest carrying
@@ -338,7 +338,7 @@ ZEST_CASE(LoadDropsLostManifest) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
 
         // Plant what a failed manifest write under a committed global leaves
@@ -384,7 +384,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
 
         // Plant what a crash between save phases leaves: a manifest whose
@@ -442,7 +442,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
-ZEST_CASE(DeferredRemovalYieldsToFreshWrite) {
+ZEST_CASE(FreshWriteBeatsRemoval) {
     TempDir tmp;
     tmp.touch("main.cpp", "int sweep_target() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -452,7 +452,7 @@ ZEST_CASE(DeferredRemovalYieldsToFreshWrite) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
         // The indexer keys blobs by the pool-canonical path, which need
         // not equal the raw temp path byte-for-byte (Windows 8.3 names).
@@ -483,7 +483,7 @@ ZEST_CASE(DeferredRemovalYieldsToFreshWrite) {
     // must win or the file never persists again.
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
-    f.merge(indexed.data.data(), indexed.data.size());
+    f.merge(indexed.data);
     f.save();
 
     auto key = index::blob_key(f.project.file_table.resolve(
@@ -498,7 +498,7 @@ ZEST_CASE(DeferredRemovalYieldsToFreshWrite) {
     ZASSERT(shard_alive);
 }
 
-ZEST_CASE(LmdbLoadServesAcrossSaves) {
+ZEST_CASE(LoadServesAcrossSaves) {
     TempDir tmp;
     tmp.touch("main.cpp", "int lmdb_value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -516,7 +516,7 @@ ZEST_CASE(LmdbLoadServesAcrossSaves) {
         open_lmdb(f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
     }
 
@@ -532,7 +532,7 @@ ZEST_CASE(LmdbLoadServesAcrossSaves) {
     tmp.touch("other.cpp", "int other_value() { return 2; }\n");
     auto other = index_file(tmp, tmp.path("other.cpp"));
     ZASSERT(!other.data.empty());
-    f.merge(other.data.data(), other.data.size());
+    f.merge(other.data);
     f.save();
 
     auto* it = f.project.index.shard(path_id);
@@ -558,8 +558,8 @@ ZEST_CASE(CorruptTableCondemnsDatabase) {
             return true;
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob>,
-                                             llvm::ArrayRef<index::BlobKey>) override {
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob>,
+                                               llvm::ArrayRef<index::BlobKey>) override {
             return {};
         }
 
@@ -608,7 +608,7 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         tu_path = indexed.tu_path;
         f.save();
     }
@@ -634,8 +634,8 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
             return real->contains(kind, key);
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                             llvm::ArrayRef<index::BlobKey> removes) override {
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
             return real->write(puts, removes);
         }
 
@@ -701,7 +701,7 @@ ZEST_CASE(UnreadableTablePreserved) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
     }
 
@@ -722,8 +722,8 @@ ZEST_CASE(UnreadableTablePreserved) {
             return real->contains(kind, key);
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                             llvm::ArrayRef<index::BlobKey> removes) override {
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
             return real->write(puts, removes);
         }
 
@@ -772,7 +772,7 @@ ZEST_CASE(DropIndexEvictsPersisted) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
 
         // The compile command changed: content freshness cannot see it, so

@@ -81,7 +81,7 @@ ZEST_CASE(LocalSymbolName) {
     ZASSERT(info->name == "hidden");
 }
 
-ZEST_CASE(OpenSessionServedByShard) {
+ZEST_CASE(ShardServesOpenSession) {
     add_file("header.h", R"(
         struct §(def)⟦§(def)Widget⟧ { int value; };
     )");
@@ -121,7 +121,7 @@ ZEST_CASE(DivergedBufferWithdrawsShard) {
     ZASSERT(!query.symbol_at(focus_id, point("use")).has_value());
 }
 
-ZEST_CASE(HeaderEdgesFromHostManifest) {
+ZEST_CASE(HeaderEdgesFromHost) {
     add_file("inner.h", R"(
         int inner_value();
     )");

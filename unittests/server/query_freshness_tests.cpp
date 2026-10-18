@@ -4,7 +4,6 @@ module;
 
 module clice;
 
-import :index.indexer;
 import :index.query;
 import :index.search;
 import :index.shard;
@@ -18,6 +17,7 @@ import :sched.index.pump;
 import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
+import :unittests.utils.merge_unit;
 import :unittests.utils.tester;
 import :unittests.utils;
 import :worker.pool;
@@ -50,17 +50,8 @@ Fid header_id;
 /// Build a TU index from the added sources and merge it into the
 /// workspace.
 void merge_into_workspace() {
-    auto bytes = index::build_tu_index(*unit);
-    auto view = index::TUIndex::from_bytes(bytes);
-    ZASSERT(view.loaded());
-    ZASSERT(project.index.merge(bytes, {}).has_value());
-    focus_id = project.file_table.intern(Spelling::absolute(view.path(view.path_count() - 1)));
-    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
-        auto path = view.path(view.section_path(section));
-        if(llvm::sys::path::filename(path) == "header.h") {
-            header_id = project.file_table.intern(Spelling::absolute(path));
-        }
-    }
+    merge_unit(project, *unit, focus_id);
+    header_id = project.file_table.intern(Spelling::absolute(TestVFS::path("header.h")));
 }
 
 /// The symbol hash at an offset in a file's merged shard.

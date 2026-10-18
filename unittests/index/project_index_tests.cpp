@@ -50,7 +50,7 @@ std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
     return files;
 }
 
-/// The TU-local id -> pool id mapping merge_symbols() consumes, as IndexStore::merge
+/// The TU-local id -> pool id mapping merge_symbols() consumes, as merge()
 /// computes it.
 llvm::SmallVector<Fid> intern_paths(const index::TUIndex& view, clice::FileTable& pool) {
     llvm::SmallVector<Fid> ids;

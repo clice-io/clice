@@ -54,9 +54,8 @@ struct IndexerFixture {
     }
 
     /// Merge a worker result and take its report, as the TURun round does.
-    bool merge(const void* data, std::size_t size) {
-        auto report =
-            project.index.merge(llvm::StringRef(static_cast<const char*>(data), size), {});
+    bool merge(llvm::StringRef data) {
+        auto report = project.index.merge(data, {});
         if(report) {
             pump.apply_report(*report);
         }
@@ -192,8 +191,11 @@ inline llvm::SmallDenseMap<Fid, std::uint64_t, 2> contributions_of(const index::
 }
 
 struct IndexedTU {
-    std::string data;     ///< TU index bytes, as a worker would ship them.
-    std::string tu_path;  ///< The TU's canonical path inside the index.
+    /// TU index bytes, as a worker would ship them.
+    std::string data;
+
+    /// The TU's canonical path inside the index.
+    std::string tu_path;
 };
 
 /// Index a real on-disk file in-process into its TU index bytes, the

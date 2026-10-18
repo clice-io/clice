@@ -40,8 +40,8 @@ struct WriteLog final : index::BlobDatabase {
         return real->contains(kind, key);
     }
 
-    llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                         llvm::ArrayRef<index::BlobKey> removes) override {
+    llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                           llvm::ArrayRef<index::BlobKey> removes) override {
         writes.emplace_back();
         for(auto& put: puts) {
             writes.back().push_back(put.kind);
@@ -95,16 +95,12 @@ kota::event_loop& loop = fx.loop;
 Project& project = fx.project;
 IndexPump& pump = fx.pump;
 
-bool merge(const void* data, std::size_t size) {
-    return fx.merge(data, size);
+bool merge(llvm::StringRef data) {
+    return fx.merge(data);
 }
 
 kota::task<> async_save() {
     return fx.async_save();
-}
-
-void drop_index(Fid id) {
-    fx.drop_index(id);
 }
 
 ZEST_CASE(SaveCommitsDirtyShard) {
@@ -115,7 +111,7 @@ ZEST_CASE(SaveCommitsDirtyShard) {
 
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
-    merge(indexed.data.data(), indexed.data.size());
+    merge(indexed.data);
 
     auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
     ZASSERT(project.index.pending_shard_writes() == 1u);
@@ -160,8 +156,8 @@ ZEST_CASE(SaveMigratesShardViews) {
             return real->contains(kind, key);
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                             llvm::ArrayRef<index::BlobKey> removes) override {
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
             return real->write(puts, removes);
         }
 
@@ -196,7 +192,7 @@ ZEST_CASE(SaveMigratesShardViews) {
 
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
-    merge(indexed.data.data(), indexed.data.size());
+    merge(indexed.data);
     auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto* before = project.index.shard(path_id);
     ZASSERT(before);
@@ -223,7 +219,7 @@ ZEST_CASE(SaveMigratesShardViews) {
     ZASSERT(it->variants() == variants_before);
 }
 
-ZEST_CASE(GrowFailureShedsCleanShards) {
+ZEST_CASE(GrowFailureShedsShards) {
     TempDir tmp;
     tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
     tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
@@ -247,8 +243,8 @@ ZEST_CASE(GrowFailureShedsCleanShards) {
             return real->contains(kind, key);
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                             llvm::ArrayRef<index::BlobKey> removes) override {
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
             auto failed = real->write(puts, removes);
             for(std::size_t i = 0; i < puts.size(); i += 1) {
                 if(puts[i].key == fail_key && !llvm::is_contained(failed, i)) {
@@ -290,8 +286,8 @@ ZEST_CASE(GrowFailureShedsCleanShards) {
         project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path))));
     project.database = std::move(spy);
 
-    merge(indexed_clean.data.data(), indexed_clean.data.size());
-    merge(indexed_dirty.data.data(), indexed_dirty.data.size());
+    merge(indexed_clean.data);
+    merge(indexed_dirty.data);
     auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
     auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
 
@@ -315,7 +311,7 @@ ZEST_CASE(MidSaveMergeKept) {
 
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
-    merge(indexed.data.data(), indexed.data.size());
+    merge(indexed.data);
     auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
 
     // Prepared before save() starts so the interleaved merge is purely an
@@ -333,7 +329,7 @@ ZEST_CASE(MidSaveMergeKept) {
     std::size_t mid_save_pending = 0;
     auto merge_body = [&]() -> kota::task<> {
         mid_save_pending = project.index.pending_shard_writes();
-        merge(fresh.data.data(), fresh.data.size());
+        merge(fresh.data);
         co_return;
     };
     auto save_task = save_body();
@@ -373,13 +369,13 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
     open_store(tmp, project);
     auto first = index_file(tmp, tmp.path("a.cpp"));
     ZASSERT(!first.data.empty());
-    merge(first.data.data(), first.data.size());
+    merge(first.data);
     fx.save(index::SearchRebuild::Idle);
     ZASSERT(project.index.search_index().loaded());
 
     auto second = index_file(tmp, tmp.path("b.cpp"));
     ZASSERT(!second.data.empty());
-    merge(second.data.data(), second.data.size());
+    merge(second.data);
     llvm::SmallVector<index::SymbolHash> merged(project.index.search_pending().begin(),
                                                 project.index.search_pending().end());
     ZASSERT(!merged.empty());
@@ -412,14 +408,14 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
     }
 }
 
-ZEST_CASE(RebuildNamesThroughUnnamedScopes) {
+ZEST_CASE(RebuildThroughUnnamedScopes) {
     TempDir tmp;
     tmp.touch("main.cpp",
               "namespace ns { enum { kSize = 4 }; }\nint main() { return ns::kSize; }\n");
     open_store(tmp, project);
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
-    merge(indexed.data.data(), indexed.data.size());
+    merge(indexed.data);
     fx.save(index::SearchRebuild::Idle);
     auto& search = project.index.search_index();
     ZASSERT(search.loaded());
@@ -440,12 +436,12 @@ ZEST_CASE(RebuildKeepsMidBuildChanges) {
     open_store(tmp, project);
     auto first = index_file(tmp, tmp.path("a.cpp"));
     ZASSERT(!first.data.empty());
-    merge(first.data.data(), first.data.size());
+    merge(first.data);
     fx.save(index::SearchRebuild::Idle);
 
     auto second = index_file(tmp, tmp.path("b.cpp"));
     ZASSERT(!second.data.empty());
-    merge(second.data.data(), second.data.size());
+    merge(second.data);
     llvm::SmallVector<index::SymbolHash> merged(project.index.search_pending().begin(),
                                                 project.index.search_pending().end());
     ZASSERT(!merged.empty());
@@ -459,7 +455,7 @@ ZEST_CASE(RebuildKeepsMidBuildChanges) {
         co_await fx.async_save(index::SearchRebuild::Idle);
     };
     auto merge_body = [&]() -> kota::task<> {
-        merge(moved.data.data(), moved.data.size());
+        merge(moved.data);
         co_return;
     };
     auto save_task = save_body();
@@ -486,8 +482,8 @@ ZEST_CASE(SaveCompactsAndRetires) {
     auto b = index_file(tmp, tmp.path("b.cpp"), {"-DMODE"});
     ZASSERT(!a.data.empty());
     ZASSERT(!b.data.empty());
-    merge(a.data.data(), a.data.size());
-    merge(b.data.data(), b.data.size());
+    merge(a.data);
+    merge(b.data);
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
     ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(2));
 
@@ -506,7 +502,7 @@ ZEST_CASE(SaveCompactsAndRetires) {
     tmp.touch("b.cpp", "int b() { return 2; }\n");
     auto b2 = index_file(tmp, tmp.path("b.cpp"));
     ZASSERT(!b2.data.empty());
-    merge(b2.data.data(), b2.data.size());
+    merge(b2.data);
     ZASSERT(project.index.shard(header_id)->has_dead_variants());
     save();
     ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(1));
@@ -516,7 +512,7 @@ ZEST_CASE(SaveCompactsAndRetires) {
     tmp.touch("a.cpp", "int a() { return 3; }\n");
     auto a2 = index_file(tmp, tmp.path("a.cpp"));
     ZASSERT(!a2.data.empty());
-    merge(a2.data.data(), a2.data.size());
+    merge(a2.data);
     save();
     ZASSERT(!project.index.shard(header_id));
     ZASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
@@ -541,8 +537,8 @@ ZEST_CASE(SaveRetiresPinnedShard) {
     auto b = index_file(tmp, tmp.path("pb.cpp"), {"-DMODE"});
     ZASSERT(!a.data.empty());
     ZASSERT(!b.data.empty());
-    merge(a.data.data(), a.data.size());
-    merge(b.data.data(), b.data.size());
+    merge(a.data);
+    merge(b.data);
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("pinned.h")));
     ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(2));
 
@@ -554,7 +550,7 @@ ZEST_CASE(SaveRetiresPinnedShard) {
               "inline int pin_fn() { return 2; }\n");
     auto a2 = index_file(tmp, tmp.path("pa.cpp"));
     ZASSERT(!a2.data.empty());
-    merge(a2.data.data(), a2.data.size());
+    merge(a2.data);
     ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(1));
 
     // The rebuild re-enqueued pb; its pass then runs and fails, consuming
@@ -564,7 +560,7 @@ ZEST_CASE(SaveRetiresPinnedShard) {
     // pa's index drops before pb reindexes: every stored variant is dead,
     // but pb's pinned hash keeps the live set nonempty. The save must
     // retire the shard rather than compact to an empty variant set.
-    drop_index(project.file_table.intern(Spelling::absolute(a2.tu_path)));
+    fx.drop_index(project.file_table.intern(Spelling::absolute(a2.tu_path)));
     auto body = [&]() -> kota::task<> {
         co_await async_save();
     };
@@ -604,10 +600,10 @@ ZEST_CASE(FailedWriteNotCounted) {
             return false;
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                             llvm::ArrayRef<index::BlobKey>) override {
-            llvm::SmallVector<std::size_t> failed;
-            for(std::size_t i = 0; i < puts.size(); i += 1) {
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey>) override {
+            llvm::SmallVector<std::uint32_t> failed;
+            for(std::uint32_t i = 0; i < puts.size(); i += 1) {
                 failed.push_back(i);
             }
             return failed;
@@ -630,7 +626,7 @@ ZEST_CASE(FailedWriteNotCounted) {
 
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
-    merge(indexed.data.data(), indexed.data.size());
+    merge(indexed.data);
     ZASSERT(project.index.pending_shard_writes() == 1u);
 
     auto save = [&] {
@@ -683,8 +679,8 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
             return stored.contains({kind, key.str()});
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                             llvm::ArrayRef<index::BlobKey>) override {
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey>) override {
             if(!fail) {
                 for(auto& put: puts) {
                     stored[{put.kind, put.key}] = put.bytes;
@@ -692,8 +688,8 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
                 return {};
             }
             poisoned = true;
-            llvm::SmallVector<std::size_t> failed;
-            for(std::size_t i = 0; i < puts.size(); i += 1) {
+            llvm::SmallVector<std::uint32_t> failed;
+            for(std::uint32_t i = 0; i < puts.size(); i += 1) {
                 failed.push_back(i);
             }
             return failed;
@@ -740,9 +736,9 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
         loop.run();
     };
 
-    merge(indexed_clean.data.data(), indexed_clean.data.size());
+    merge(indexed_clean.data);
     save();
-    merge(indexed_dirty.data.data(), indexed_dirty.data.size());
+    merge(indexed_dirty.data);
     probe->fail = true;
     save();
 
@@ -784,8 +780,8 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
             return false;
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob>,
-                                             llvm::ArrayRef<index::BlobKey>) override {
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob>,
+                                               llvm::ArrayRef<index::BlobKey>) override {
             return {};
         }
 
@@ -817,7 +813,7 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
 
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
-    merge(indexed.data.data(), indexed.data.size());
+    merge(indexed.data);
 
     auto save = [&] {
         auto body = [&]() -> kota::task<> {
@@ -842,7 +838,7 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     ZASSERT(!has_unsaved_state(project));
 }
 
-ZEST_CASE(GrownMapRetriesAtOnce) {
+ZEST_CASE(GrownMapRetriesNow) {
     TempDir tmp;
     std::string header = "#pragma once\n";
     for(int i = 0; i < 2000; i += 1) {
@@ -857,7 +853,7 @@ ZEST_CASE(GrownMapRetriesAtOnce) {
     auto& log = open_logged(tmp, f.project, 64 * 1024);
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
-    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(f.merge(indexed.data));
 
     auto task = f.pump.persist();
     f.loop.schedule(task);
@@ -914,7 +910,7 @@ void a() { Box<A>{}.show(); }
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, tmp.path("a.cpp"));
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
         auto resolutions = f.project.index.instantiation_shard(box_id)->resolutions();
         stored.assign(resolutions.begin(), resolutions.end());
@@ -955,7 +951,7 @@ void a() { Box<A>{}.show(); }
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, tmp.path("a.cpp"));
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
         box_key = index::blob_key(f.project.file_table.resolve(
             f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")))));

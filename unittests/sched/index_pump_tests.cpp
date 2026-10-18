@@ -25,7 +25,7 @@ ZEST_CASE(PreemptionKeepsBudget) {
 
     // A preemption under memory pressure requeues without spending the
     // crash budget, no matter how often it repeats.
-    for(unsigned i = 0; i < 2 * IndexerFixture::budget; ++i) {
+    for(unsigned i = 0; i < 2 * IndexerFixture::budget; i += 1) {
         ZASSERT(int(f.fail(id, PendingTable::Failure::Preempted)) ==
                 int(IndexerFixture::Decision::Requeued));
     }
@@ -50,7 +50,7 @@ ZEST_CASE(LostSpendsBudget) {
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/poison.cpp"));
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
-    for(unsigned i = 0; i < IndexerFixture::budget; ++i) {
+    for(unsigned i = 0; i < IndexerFixture::budget; i += 1) {
         ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) ==
                 int(IndexerFixture::Decision::Requeued));
     }
@@ -273,10 +273,9 @@ ZEST_CASE(PauseResumesRound) {
 
 };  // ZEST_SUITE(IndexPumpRequeue)
 
-/// The store's neutral change reports and the pump taking them — the
-/// contracts the Indexer split introduced: every index-changing source
-/// reports debt and index changes, the save carries the pump's debt
-/// snapshot both ways.
+/// The index's serving-neutral change reports and the pump taking them:
+/// every index-changing source reports debt and index changes, the save
+/// carries the pump's debt snapshot both ways.
 ZEST_SUITE(IndexPumpReports) {
 
 ZEST_CASE(MergeReportsIndexChanged) {
@@ -289,7 +288,7 @@ ZEST_CASE(MergeReportsIndexChanged) {
     llvm::SmallVector<Fid> notified;
     auto conn = f.pump.on_index_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
-    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(f.merge(indexed.data));
 
     ZASSERT(llvm::is_contained(notified,
                                f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
@@ -306,7 +305,7 @@ ZEST_CASE(DropReportsServedIndex) {
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
-    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(f.merge(indexed.data));
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
@@ -334,7 +333,7 @@ ZEST_CASE(RetireReportsIndexChanged) {
     open_store(tmp, f.project);
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
-    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(f.merge(indexed.data));
     f.save();
 
     // The TU stops including the header: its contribution dies, and the
@@ -342,7 +341,7 @@ ZEST_CASE(RetireReportsIndexChanged) {
     tmp.touch("main.cpp", "int use() { return 0; }\n");
     auto second = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!second.data.empty());
-    ZASSERT(f.merge(second.data.data(), second.data.size()));
+    ZASSERT(f.merge(second.data));
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
     ZASSERT(f.project.index.shard(header_id) != nullptr);

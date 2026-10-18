@@ -998,7 +998,7 @@ ZEST_CASE(CDBDropsBorrowedIndex) {
 }
 
 ZEST_CASE(CDBBorrowersByServing) {
-    // Open borrowers the index store names: an index-only session loses
+    // Open borrowers the command snapshot names: an index-only session loses
     // its serving index with the drop and reindexes now; a compiling one
     // reindexes when it closes. Neither recompiles — no context borrows.
     FileTable files;

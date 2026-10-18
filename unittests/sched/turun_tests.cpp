@@ -111,7 +111,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
     f.project.dep_graph.build_reverse_map();
 
     auto a = index_file(tmp, tmp.path("a.cpp"));
-    ZASSERT(f.merge(a.data.data(), a.data.size()));
+    ZASSERT(f.merge(a.data));
     auto x2_id = f.project.file_table.intern(Spelling::absolute(tmp.path("x2.h")));
     ZASSERT(!f.project.index.shard(x2_id));
 

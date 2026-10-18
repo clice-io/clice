@@ -31,7 +31,7 @@ ZEST_CASE(OfflineCommandChangeReindexed) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
     }
 
@@ -58,7 +58,7 @@ ZEST_CASE(UnchangedCommandKept) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
     }
 
@@ -83,7 +83,7 @@ ZEST_CASE(RemovedEntryKeepsIndex) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data.data(), indexed.data.size());
+        f.merge(indexed.data);
         f.save();
     }
 
@@ -123,7 +123,7 @@ ZEST_CASE(UndeclaredSourceRetires) {
         load_declared(f, {"a", "b"});
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
@@ -165,7 +165,7 @@ ZEST_CASE(SourceRelocationPersists) {
         load_declared(f);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
@@ -204,7 +204,7 @@ ZEST_CASE(DiscoveredRelocationRetires) {
         f.project.cdb.load(tmp.path("compile_commands.json"));
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
@@ -238,7 +238,7 @@ ZEST_CASE(DefaultCommandKept) {
         add_default_rule(f);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
@@ -266,7 +266,7 @@ ZEST_CASE(UncoveredDefaultRetires) {
         f.project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
@@ -293,7 +293,7 @@ ZEST_CASE(ExcludedRuleDropsIndex) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
@@ -322,7 +322,7 @@ ZEST_CASE(RuleChangeReindexed) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
@@ -359,7 +359,7 @@ ZEST_CASE(HostChangeDropsHeader) {
         // produces it; the host source itself was never indexed.
         auto indexed = index_file(tmp, header);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
@@ -389,7 +389,7 @@ ZEST_CASE(HeaderRuleChangeReindexed) {
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, header);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
@@ -422,7 +422,7 @@ ZEST_CASE(RecordedHostChangeDrops) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, header);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -460,7 +460,7 @@ ZEST_CASE(ExcludedHostChangeDrops) {
         add_default_rule(f, "clang++ -DFOO=1 -c");
         auto indexed = index_file(tmp, header);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -499,7 +499,7 @@ ZEST_CASE(PinnedHostKeepsHeader) {
         f.project.cdb.add_command(tmp.root, other, llvm::StringRef("clang++ -c other.cpp"));
         auto indexed = index_file(tmp, header);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -537,7 +537,7 @@ ZEST_CASE(UnreachableHostRebuilds) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
         auto indexed = index_file(tmp, header);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -576,10 +576,10 @@ ZEST_CASE(CDBWriteFailureRetried) {
             return real->contains(kind, key);
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                             llvm::ArrayRef<index::BlobKey> removes) override {
-            llvm::SmallVector<std::size_t> failed;
-            for(std::size_t i = 0; i < puts.size(); i += 1) {
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            llvm::SmallVector<std::uint32_t> failed;
+            for(std::uint32_t i = 0; i < puts.size(); i += 1) {
                 written.push_back(puts[i].kind);
                 if(fail_cdb && puts[i].kind == index::BlobKind::CommandSnapshot) {
                     failed.push_back(i);
@@ -619,7 +619,7 @@ ZEST_CASE(CDBWriteFailureRetried) {
 
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
-    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(f.merge(indexed.data));
     f.save();
 
     // The snapshot rides the batch behind the index state it describes.
@@ -647,7 +647,7 @@ ZEST_CASE(MissingSnapshotRewritten) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
         // The project table committed but the final CDB write never did: the rest of
         // the index is intact.
@@ -682,7 +682,7 @@ ZEST_CASE(DroppedHeaderDebtRetried) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, header);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -726,7 +726,7 @@ ZEST_CASE(VanishedHeaderDebtDies) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, header);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -772,7 +772,7 @@ ZEST_CASE(FailedStandaloneInSnapshot) {
         // the same batch.
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
-        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(f.merge(indexed.data));
         f.save();
     }
 
@@ -800,11 +800,11 @@ ZEST_CASE(LateDebtShutdownRetry) {
             return false;
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                             llvm::ArrayRef<index::BlobKey>) override {
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey>) override {
             poisoned = true;
-            llvm::SmallVector<std::size_t> failed;
-            for(std::size_t i = 0; i < puts.size(); i += 1) {
+            llvm::SmallVector<std::uint32_t> failed;
+            for(std::uint32_t i = 0; i < puts.size(); i += 1) {
                 failed.push_back(i);
             }
             return failed;
@@ -839,7 +839,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
     f.mark_failed(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h"))));
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
-    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(f.merge(indexed.data));
 
     index::IndexReport report;
     auto body = [&]() -> kota::task<> {
