@@ -175,13 +175,14 @@ CheckResult symbols_ok(BlobView root) {
     return {};
 }
 
-// lookup(offset) narrows its scan by begin order, the merge decodes records
-// by their key, and every range is served as a source range into the
-// file's text.
+// lookup(offset) narrows its scan by begin order and the merge decodes
+// records by their key.
 CheckResult records_ok(BlobView root) {
     auto table = RecordTable::of(root);
-    auto content_size = root[&InstantiationBlob::content_size];
-    if(auto ok = range_encoding_ok(table.columns, content_size, true); !ok) {
+    if(auto ok = range_encoding_ok(table.columns,
+                                   root[&InstantiationBlob::content_size],
+                                   RangeEncoding::Delta);
+       !ok) {
         return ok;
     }
     if(!table.columns.masks8.empty() || !table.columns.masks16.empty() ||
@@ -209,11 +210,6 @@ CheckResult records_ok(BlobView root) {
         }
         if(!has_from(table.kind_of(record)) && table.froms[record] != 0) {
             result = std::unexpected("a `from` on a record kind without one");
-            return false;
-        }
-        if(is_no_range(range.begin, range.end) || range.end < range.begin ||
-           range.end > content_size) {
-            result = std::unexpected("record range past the content");
             return false;
         }
         std::tuple key{range.begin,

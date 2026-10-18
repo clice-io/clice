@@ -442,21 +442,22 @@ CheckResult symbol_table_ok(BlobView root) {
 
 CheckResult range_encodings_ok(BlobView root) {
     auto content_size = root[&ShardBlob::content_size];
-    if(auto ok = range_encoding_ok(columns_of(root[&ShardBlob::occs]), content_size, true); !ok) {
+    if(auto ok = range_encoding_ok(columns_of(root[&ShardBlob::occs]),
+                                   content_size,
+                                   RangeEncoding::Delta);
+       !ok) {
         return ok;
     }
-    if(auto ok = range_encoding_ok(columns_of(root[&ShardBlob::rels]), content_size, false); !ok) {
-        return ok;
-    }
-    return {};
+    return range_encoding_ok(columns_of(root[&ShardBlob::rels]),
+                             content_size,
+                             unsorted_encoding(content_size));
 }
 
 // lookup(offset) binary-searches the decoded end column and stops its
-// containment walk on begin order; occurrences out of either order (a corrupt
-// escaped end included) would silently miss or misresolve occurrences on
-// every query, forever — reject the blob so it is rebuilt instead. Ends
-// are bounded by the content size too: every decoded range is served as
-// a source range into the content.
+// containment walk on begin order, which the delta encoding proves; ends out
+// of order (a corrupt escaped end included) would silently miss or
+// misresolve occurrences on every query, forever — reject the blob so it is
+// rebuilt instead.
 // The merge also two-way merges occurrences under the full (begin, end, sym)
 // key with equal-key occurrences combined at write time, so equal ranges must
 // carry strictly ascending symbols — sym_hashes is strictly sorted, so
@@ -466,15 +467,13 @@ CheckResult occurrences_ok(BlobView root) {
     if(auto ok = ids_ok(table.syms, table.size(), table.sym_hashes.size()); !ok) {
         return ok;
     }
-    auto content_size = root[&ShardBlob::content_size];
     LocalSourceRange prev{0, 0};
     std::uint32_t prev_sym = 0;
     CheckResult result;
     table.columns.for_each_range([&](std::uint32_t entry, LocalSourceRange range) {
         auto sym = table.syms[entry];
-        if(range.begin < prev.begin || range.end < prev.end || range.end < range.begin ||
-           range.end > content_size) {
-            result = std::unexpected("occurrences are out of order or past the content");
+        if(range.end < prev.end) {
+            result = std::unexpected("occurrence ends are out of order");
         } else if(entry != 0 && range == prev && sym <= prev_sym) {
             result = std::unexpected("occurrences of one range are not strictly ascending");
         }
@@ -492,23 +491,14 @@ CheckResult relations_ok(BlobView root) {
         return std::unexpected("relation kinds do not match the row count");
     }
 
-    // Relation ranges carry no query order to enforce, but are served as
-    // source ranges all the same — bound them like the occurrence ends.
-    // The exception is the default LocalSourceRange, the writer's sentinel
-    // for pair relations, which carry no range of their own; every other
-    // kind is written with a real range, so a sentinel there is corruption
-    // that would serve an invalid source range forever.
+    // The default LocalSourceRange is the writer's sentinel for pair
+    // relations, which carry no range of their own; every other kind is
+    // written with a real range, so a sentinel there is corruption that
+    // would serve an invalid source range forever.
     for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
-        auto begin = table.columns.begin_of(entry);
-        auto end = table.columns.end_of(entry);
-        if(is_no_range(begin, end)) {
-            if(!table.kind_of(entry).isBetweenSymbol()) {
-                return std::unexpected("no-range sentinel on a relation that carries a range");
-            }
-            continue;
-        }
-        if(end < begin || end > content_size) {
-            return std::unexpected("relation range past the content");
+        auto range = table.columns.range_of(entry);
+        if(is_no_range(range.begin, range.end) && !table.kind_of(entry).isBetweenSymbol()) {
+            return std::unexpected("no-range sentinel on a relation that carries a range");
         }
     }
 

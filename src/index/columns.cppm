@@ -133,22 +133,23 @@ struct RangeColumnsView {
         return begin;
     }
 
+    /// The length byte of `entry`: its length, or length_escape for one
+    /// whose end the escape table holds.
+    std::uint8_t stored_length(std::uint32_t entry) const {
+        return packed.empty() ? lengths[entry] : static_cast<std::uint8_t>(packed[entry] & 0xff);
+    }
+
     /// The end of `entry`, which begins at `begin`.
     std::uint32_t end_of(std::uint32_t entry, std::uint32_t begin) const {
         if(!packed.empty() && packed[entry] == packed_sentinel) {
             return ~std::uint32_t(0);
         }
-        auto length =
-            packed.empty() ? lengths[entry] : static_cast<std::uint8_t>(packed[entry] & 0xff);
+        auto length = stored_length(entry);
         if(length == length_escape) {
             auto it = std::ranges::lower_bound(long_entries, entry);
             return long_ends[it - long_entries.begin()];
         }
         return begin + length;
-    }
-
-    std::uint32_t end_of(std::uint32_t entry) const {
-        return end_of(entry, begin_of(entry));
     }
 
     LocalSourceRange range_of(std::uint32_t entry) const {
@@ -278,43 +279,53 @@ inline llvm::SmallVector<std::uint8_t> packed_lengths(llvm::ArrayRef<std::uint32
     return lengths;
 }
 
-/// The delta columns' shape: a begin per block, a delta per entry, 0 at a
-/// block's start and the escape exactly where the begin moved 255 bytes or
-/// more, every escape paired with its begin.
-inline bool deltas_ok(const RangeColumnsView& columns) {
-    auto count = columns.deltas.size();
-    if(columns.lengths.size() != count ||
-       columns.block_begins.size() != (count + delta_block - 1) / delta_block ||
-       !escapes_ok(columns.deltas, delta_escape, columns.far_entries, columns.far_begins.size())) {
-        return false;
-    }
-    std::uint32_t begin = 0;
-    for(std::uint32_t entry = 0; entry < count; entry += 1) {
-        auto next = columns.next_begin(entry, begin);
-        if(entry % delta_block == 0 ? columns.deltas[entry] != 0 || (entry != 0 && next < begin)
-                                    : next < begin || (columns.deltas[entry] == delta_escape) !=
-                                                          (next - begin >= delta_escape)) {
-            return false;
-        }
-        begin = next;
-    }
-    return true;
+/// How a side's ranges are stored (RangeColumns).
+enum class RangeEncoding : std::uint8_t {
+    Delta,
+    Packed,
+    Wide,
+};
+
+/// The encoding of an unsorted side over content of `content_size` bytes.
+inline RangeEncoding unsorted_encoding(std::uint32_t content_size) {
+    return content_size <= packed_range_limit ? RangeEncoding::Packed : RangeEncoding::Wide;
 }
 
-/// Exactly one range encoding — delta for a side sorted by begin, else the
-/// one the content size picks — with its escape tables paired with the
-/// entries.
+/// Exactly the columns of `encoding`, its escape tables paired with the
+/// entries: in the delta encoding a begin per block and a delta per entry,
+/// 0 at a block's start and the escape exactly where the begin moved 255
+/// bytes or more; in every encoding a length escaped exactly where it is
+/// 255 or more. Every range is served as a source range into the content,
+/// so it lies inside it — but for the no-range sentinel of pair relations,
+/// which only an unsorted side holds.
 inline CheckResult range_encoding_ok(const RangeColumnsView& columns,
                                      std::uint32_t content_size,
-                                     bool sorted) {
+                                     RangeEncoding encoding) {
     bool delta_empty = columns.block_begins.empty() && columns.deltas.empty() &&
                        columns.far_entries.empty() && columns.far_begins.empty();
-    bool encoding_ok = sorted
-                           ? columns.packed.empty() && columns.begins.empty() && deltas_ok(columns)
-                       : content_size <= packed_range_limit
-                           ? delta_empty && columns.begins.empty() && columns.lengths.empty()
-                           : delta_empty && columns.packed.empty() &&
-                                 columns.lengths.size() == columns.begins.size();
+    bool encoding_ok = false;
+    switch(encoding) {
+        case RangeEncoding::Delta: {
+            auto count = columns.deltas.size();
+            encoding_ok = columns.packed.empty() && columns.begins.empty() &&
+                          columns.lengths.size() == count &&
+                          columns.block_begins.size() == (count + delta_block - 1) / delta_block &&
+                          escapes_ok(columns.deltas,
+                                     delta_escape,
+                                     columns.far_entries,
+                                     columns.far_begins.size());
+            break;
+        }
+        case RangeEncoding::Packed: {
+            encoding_ok = delta_empty && columns.begins.empty() && columns.lengths.empty();
+            break;
+        }
+        case RangeEncoding::Wide: {
+            encoding_ok = delta_empty && columns.packed.empty() &&
+                          columns.lengths.size() == columns.begins.size();
+            break;
+        }
+    }
     if(!encoding_ok) {
         return std::unexpected("range encoding is not the canonical one");
     }
@@ -327,7 +338,30 @@ inline CheckResult range_encoding_ok(const RangeColumnsView& columns,
     if(!escaped_ok) {
         return std::unexpected("range escape table does not pair with its entries");
     }
-    return {};
+    std::uint32_t previous = 0;
+    CheckResult result;
+    columns.for_each_range([&](std::uint32_t entry, LocalSourceRange range) {
+        if(encoding == RangeEncoding::Delta) {
+            auto delta = columns.deltas[entry];
+            if((entry != 0 && range.begin < previous) ||
+               (entry % delta_block == 0
+                    ? delta != 0
+                    : (delta == delta_escape) != (range.begin - previous >= delta_escape))) {
+                result = std::unexpected("begin deltas are not the canonical ones");
+                return false;
+            }
+            previous = range.begin;
+        } else if(is_no_range(range.begin, range.end)) {
+            return true;
+        }
+        if(range.end < range.begin || range.end > content_size) {
+            result = std::unexpected("range past the content");
+        } else if(columns.stored_length(entry) == length_escape && range.length() < length_escape) {
+            result = std::unexpected("escaped length below the escape threshold");
+        }
+        return result.has_value();
+    });
+    return result;
 }
 
 /// A sparse entry table: one value per listed entry, entries strictly
@@ -419,18 +453,6 @@ inline void write_ids(IdColumn& column, llvm::ArrayRef<std::uint32_t> ids, std::
     for(auto id: ids) {
         writer.add(id);
     }
-}
-
-/// How a side's ranges are stored (RangeColumns).
-enum class RangeEncoding : std::uint8_t {
-    Delta,
-    Packed,
-    Wide,
-};
-
-/// The encoding of an unsorted side over content of `content_size` bytes.
-inline RangeEncoding unsorted_encoding(std::uint32_t content_size) {
-    return content_size <= packed_range_limit ? RangeEncoding::Packed : RangeEncoding::Wide;
 }
 
 /// Appends entry ranges in the encoding chosen for the whole side.

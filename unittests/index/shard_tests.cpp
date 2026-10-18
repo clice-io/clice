@@ -935,7 +935,7 @@ ZEST_CASE(MisorderedEntriesRejected) {
     // rebuilt, not keep misresolving queries on every restart.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    fill_content(blob, "aaaaaaaaaaaaaaaa");
+    fill_content(blob, std::string(320, 'a'));
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.rel_offsets = {0, 0};
@@ -945,7 +945,7 @@ ZEST_CASE(MisorderedEntriesRejected) {
                         {8, index::length_escape}
     });
     blob.occs.long_entries = {1};
-    blob.occs.long_ends = {12};
+    blob.occs.long_ends = {263};
     blob.occ_syms = {0, 0};
 
     auto bytes_of = [&] {
@@ -1007,6 +1007,9 @@ ZEST_CASE(MisorderedEntriesRejected) {
                         {0, 3                   },
                         {8, index::length_escape}
     });
+    blob.occs.long_entries = {1};
+    blob.occs.long_ends = {263};
+    ZASSERT(make_shard(bytes_of()).loaded());
     blob.occs.deltas = {0, 255};
     blob.occs.far_entries = {1};
     blob.occs.far_begins = {8};
@@ -1019,7 +1022,7 @@ ZEST_CASE(MisorderedEntriesRejected) {
                         {8, 3                   }
     });
     blob.occs.long_entries = {0};
-    blob.occs.long_ends = {14};  // ends decode to {14, 11}
+    blob.occs.long_ends = {300};  // ends decode to {300, 11}
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // An escaped end before its own begin.
@@ -1150,6 +1153,48 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     blob.rels.packed = {index::pack_range(0, index::length_escape)};
     blob.rel_target_ranks = {0};
     blob.rel_extent_ranks = {0};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+}
+
+ZEST_CASE(ShortEscapedLengthRejected) {
+    // A length escapes exactly when its byte cannot hold it: an escaped
+    // shorter one is a second spelling of the same blob.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, std::string(300, 'a'));
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.rel_offsets = {0, 0};
+    set_occurrences(blob,
+                    {
+                        {0, index::length_escape}
+    });
+    blob.occs.long_entries = {0};
+    blob.occs.long_ends = {255};
+    blob.occ_syms = {0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ZASSERT(make_shard(bytes_of()).loaded());
+
+    blob.occs.long_ends = {254};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+    blob.occs.long_ends = {255};
+
+    // The relation side alike.
+    blob.rel_offsets = {0, 1};
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
+    blob.rels.packed = {index::pack_range(0, index::length_escape)};
+    blob.rels.long_entries = {0};
+    blob.rels.long_ends = {255};
+    blob.rel_target_ranks = {0};
+    blob.rel_extent_ranks = {0};
+    ZASSERT(make_shard(bytes_of()).loaded());
+    blob.rels.long_ends = {254};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
