@@ -191,16 +191,6 @@ kota::task<index::IndexReport> save_project(Project& project,
         snapshot.saved(std::move(*snapshot_bytes));
     }
 
-    // Context choices as of the ticket taken are durable: advance the
-    // committed ticket and wake durability waiters (switchContext). Failed
-    // attempts pulse too, or a permanently failing write (full disk,
-    // unserializable path) parks every durability wait forever; they give
-    // up after a few of these.
-    if(contexts_ok) {
-        contexts.committed_ticket = std::max(contexts.committed_ticket, flush_ticket);
-    }
-    pulse(contexts);
-
     // Corruption can show up first at write time (a damaged page only the
     // write's tree descent reaches): heal like load-time corruption instead
     // of writing into the damaged environment every save. The batch's
@@ -212,7 +202,18 @@ kota::task<index::IndexReport> save_project(Project& project,
         co_return report;
     }
 
-    if(!co_await index.migrate_views(db, loop, report)) {
+    if(co_await index.migrate_views(db, loop, report)) {
+        // Context choices as of the ticket taken are durable: advance the
+        // committed ticket and wake durability waiters (switchContext).
+        // Failed attempts pulse too, or a permanently failing write (full
+        // disk, unserializable path) parks every durability wait forever;
+        // they give up after a few of these. A recovery pulses as it
+        // reopens: what the condemned database took is not durable.
+        if(contexts_ok) {
+            contexts.committed_ticket = std::max(contexts.committed_ticket, flush_ticket);
+        }
+        pulse(contexts);
+    } else {
         recover_corrupt_database(project, report);
     }
 
