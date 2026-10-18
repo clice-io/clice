@@ -1,0 +1,62 @@
+[server.references]
+references = [
+    "lib.cpp │ return ⟦compute⟧(compute(value));",
+    "return ⟦compute⟧(value) + compute(1);",
+    "return compute(value) + ⟦compute⟧(1);",
+]
+
+["no limit".references]
+references = [
+    "lib.cpp │ return ⟦compute⟧(compute(value));",
+    "lib.cpp │ return compute(⟦compute⟧(value));",
+    "return ⟦compute⟧(value) + compute(1);",
+    "return compute(value) + ⟦compute⟧(1);",
+    "shared.h │ int ⟦compute⟧(int value);",
+]
+
+[query."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[query."$ clice query references main.cpp:4:12"]
+stdout = '''
+{
+  "result": {
+    "name": "compute",
+    "kind": "Function",
+    "symbol": "#0129094638d1b328",
+    "references": [
+      {
+        "file": "${WS}/lib.cpp",
+        "line": 4,
+        "context": "    return compute(compute(value));",
+        "function": "twice"
+      },
+      {
+        "file": "${WS}/lib.cpp",
+        "line": 4,
+        "context": "    return compute(compute(value));",
+        "function": "twice"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "    return compute(value) + compute(1);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "    return compute(value) + compute(1);",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0

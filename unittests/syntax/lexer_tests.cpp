@@ -23,7 +23,7 @@ std::vector<Token> lex_all(Lexer& lexer) {
     return tokens;
 }
 
-ZEST_SUITE(SourceText) {
+ZEST_SUITE(Lexer) {
 
 ZEST_CASE(IgnoreComments) {
     llvm::StringRef content = "int x = 1; // comment";
@@ -120,7 +120,7 @@ ZEST_CASE(DigitSeparator) {
     ZEXPECT(tokens[2].text(content) == "1'000");
 }
 
-};  // ZEST_SUITE(SourceText)
+};  // ZEST_SUITE(Lexer)
 
 ZEST_SUITE(HeaderNameLexing) {
 

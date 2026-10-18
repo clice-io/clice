@@ -35,7 +35,7 @@ import :feature.feature;
 import :index.tu_index;
 import :support.logging;
 import :support.timer;
-import :syntax.scan;
+import :syntax.preamble;
 import :vfs.file_system;
 import :worker.serialize;
 
@@ -233,7 +233,7 @@ FileResult profile_file(llvm::StringRef file,
 
     // The interactive shapes: build the preamble PCH (first didOpen), then
     // parse the full file over it (every didChange).
-    result.preamble_bound = compute_preamble_bound(content);
+    result.preamble_bound = preamble_bound(content);
     if(result.preamble_bound == 0) {
         return result;
     }

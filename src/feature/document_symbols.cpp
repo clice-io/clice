@@ -12,6 +12,7 @@ import :semantic.identity;
 import :semantic.semantics;
 import :semantic.symbol;
 import :support.text;
+import :syntax.lexer;
 import :syntax.lexical_scan;
 
 namespace clice::feature {
@@ -123,7 +124,7 @@ bool spells(llvm::StringRef content, LocalSourceRange selection, llvm::StringRef
 /// declaration `range`: `Box<T*>::reset`, `Box<void>`.
 std::string written_name(llvm::StringRef content,
                          const LexicalInfo& lexical,
-                         clang::IdentifierTable& keywords,
+                         const clang::IdentifierTable& keywords,
                          LocalSourceRange range,
                          LocalSourceRange selection,
                          llvm::StringRef name) {
@@ -167,8 +168,7 @@ std::string written_name(llvm::StringRef content,
     // Back from the name over `component ::` pairs, a component a name with
     // its template arguments: `ns::Box<T>::`.
     auto named = [&](const Token& token) {
-        return token.is_identifier() &&
-               keywords.get(spelling(content, token)).getTokenID() == clang::tok::identifier;
+        return lexed_kind(token, content, keywords) == clang::tok::identifier;
     };
     auto start = before.size();
     while(start > 1 && before[start - 1].kind == clang::tok::coloncolon) {
@@ -515,9 +515,8 @@ auto outline(std::vector<OutlineEntry> entries,
              llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules,
              llvm::ArrayRef<LexicalInfo::Directive> marks,
              llvm::StringRef content,
-             const clang::LangOptions& lang_opts,
+             const clang::IdentifierTable& keywords,
              const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
-    clang::IdentifierTable keywords(lang_opts);
     for(auto& entry: entries) {
         if(!entry.from_macro && !entry.unnamed &&
            spells(content, entry.selection_range, entry.name)) {
@@ -989,7 +988,7 @@ auto document_symbols(CompilationUnit& unit,
                    semantics.module_declarations(),
                    marks,
                    focus.content(),
-                   unit.lang_options(),
+                   unit.keywords(),
                    options);
 }
 

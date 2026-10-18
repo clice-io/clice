@@ -14,7 +14,6 @@ ${WS}/include.cpp:5:10: error: 'missing.h' file not found [clang-diagnostic-erro
 ${WS}/include.cpp:8:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 Linted 1 translation unit in #s: 3 findings.
 '''
-stderr = "warning: 1 unresolved includes"
 exit = 1
 
 ["missing forced include"."$ clice lint --jobs 2"]

@@ -12,6 +12,7 @@ import :sched.families.pcm;
 import :support.anomaly;
 import :support.logging;
 import :syntax.header_context;
+import :syntax.preamble;
 import :syntax.scan;
 import :vfs.file_system;
 import :vfs.path;
@@ -90,7 +91,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
             lexical.has_module_syntax() || (dep_graph.has_import_candidates() &&
                                             !dep_graph.scanned(path_id, lexical.directives_hash));
         directives = lexical.directives_hash;
-        bound = compute_preamble_bound(*content);
+        bound = preamble_bound(*content);
     }
     if(!may_import) {
         co_return ModuleDeps{};

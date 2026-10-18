@@ -73,36 +73,40 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     auto focus = unit.focus_file();
     auto content = focus.content();
     auto begin = range->begin;
-
     // Attribute specifiers right before the declaration (`[[deprecated]]`
     // on a line of its own, or a macro spelling one) lie outside its
     // range.
-    auto& token_map = focus.tokens();
-    auto tokens = token_map.spelled();
+    auto tokens = focus.tokens().spelled();
     auto& SM = unit.context().getSourceManager();
     auto token_at = [&](std::uint32_t offset) {
-        return std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
-            return token_map.offset(token) < offset;
-        });
+        return static_cast<std::size_t>(std::ranges::partition_point(tokens,
+                                                                     [&](const Token& token) {
+                                                                         return token.range.begin <
+                                                                                offset;
+                                                                     }) -
+                                        tokens.begin());
     };
     auto first = token_at(begin);
-    while(first != tokens.begin()) {
-        auto previous = std::prev(first);
-        if(previous != tokens.begin() && previous->kind() == clang::tok::r_square &&
-           std::prev(previous)->kind() == clang::tok::r_square) {
+    while(auto previous = code_before(tokens, first)) {
+        if(auto second = code_before(tokens, *previous);
+           second && tokens[*previous].kind == clang::tok::r_square &&
+           tokens[*second].kind == clang::tok::r_square) {
             std::uint32_t depth = 0;
-            auto open = previous;
-            for(;; --open) {
-                if(open->kind() == clang::tok::r_square) {
+            auto open = *previous;
+            while(true) {
+                if(tokens[open].kind == clang::tok::r_square) {
                     depth += 1;
-                } else if(open->kind() == clang::tok::l_square) {
+                } else if(tokens[open].kind == clang::tok::l_square) {
                     depth -= 1;
                 }
-                if(depth == 0 || open == tokens.begin()) {
+                auto earlier = depth == 0 ? std::nullopt : code_before(tokens, open);
+                if(!earlier) {
                     break;
                 }
+                open = *earlier;
             }
-            if(depth != 0 || std::next(open)->kind() != clang::tok::l_square) {
+            auto inner = code_after(tokens, open);
+            if(depth != 0 || !inner || tokens[*inner].kind != clang::tok::l_square) {
                 break;
             }
             first = open;
@@ -112,7 +116,7 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
         for(const auto* attr: definition->attrs()) {
             if(attr->getLocation().isMacroID()) {
                 auto expansion = SM.getExpansionRange(attr->getLocation());
-                if(expansion.getEnd() == previous->location()) {
+                if(focus.offset(expansion.getEnd()) == tokens[*previous].range.begin) {
                     invocation = expansion.getBegin();
                 }
             }
@@ -122,8 +126,7 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
         }
         first = token_at(unit.seen_at(*invocation).offset);
     }
-    begin = token_map.offset(*first);
-
+    begin = tokens[first].range.begin;
     // Comments directly above the definition travel with it: each on
     // lines of its own, separated from what follows by nothing but
     // whitespace holding a single line break. A comment trailing the

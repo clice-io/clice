@@ -16,8 +16,26 @@ semantic_tokens = [
     { at = "⟦IGNORE⟧(left(), right());", type = "macro", modifiers = ["callable", "empty"] },
     { at = "IGNORE(⟦left(),⟧ right());", type = "plain", modifiers = ["inactive"] },
     { at = "IGNORE(left(), ⟦right()⟧);", type = "plain", modifiers = ["inactive"] },
-    { at = "⟦return⟧ FIRST(left(), right());", type = "keyword", modifiers = ["controlFlow"] },
-    { at = "return ⟦FIRST⟧(left(), right());", type = "macro", modifiers = ["callable"] },
-    { at = "return FIRST(⟦left⟧(), right());", type = "function", modifiers = ["global"] },
-    { at = "return FIRST(left(), ⟦right()⟧);", type = "plain", modifiers = ["inactive"] },
+    {
+        at = "⟦return⟧ FIRST /* the first */ (left(), /* dropped */ right());",
+        type = "keyword",
+        modifiers = ["controlFlow"],
+    },
+    {
+        at = "return ⟦FIRST⟧ /* the first */ (left(), /* dropped */ right());",
+        type = "macro",
+        modifiers = ["callable"],
+    },
+    { at = "return FIRST ⟦/* the first */⟧ (left(), /* dropped */ right());", type = "comment" },
+    {
+        at = "return FIRST /* the first */ (⟦left⟧(), /* dropped */ right());",
+        type = "function",
+        modifiers = ["global"],
+    },
+    { at = "return FIRST /* the first */ (left(), ⟦/* dropped */⟧ right());", type = "comment" },
+    {
+        at = "return FIRST /* the first */ (left(), /* dropped */ ⟦right()⟧);",
+        type = "plain",
+        modifiers = ["inactive"],
+    },
 ]

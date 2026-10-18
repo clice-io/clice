@@ -124,8 +124,7 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
         }
         return FileRange{
             focus,
-            {decompose(spelled.front().location()).offset,
-              decompose(spelled.back().endLocation()).offset}
+            {spelled.front().range.begin, spelled.back().range.end}
         };
     }
 
@@ -226,7 +225,7 @@ auto CompilationUnit::file_text(clang::FileID fid) -> SourceText& {
                 content = params.input.buffers.find(focus)->second;
             }
         }
-        text = std::make_unique<SourceText>(content, lang_options());
+        text = std::make_unique<SourceText>(content, lang_options(), keywords());
     }
     return *text;
 }
@@ -243,10 +242,14 @@ auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
     return file_text(fid).positions();
 }
 
+auto CompilationUnit::lexical(clang::FileID fid) -> const LexicalInfo& {
+    return file_text(fid).lexical();
+}
+
 auto CompilationUnit::comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment> {
     // Every feature reads the focus file's lexical scan anyway.
     if(fid == SM().getMainFileID()) {
-        return file_text(fid).lexical().comments;
+        return lexical(fid).comments;
     }
     return file_text(fid).comments();
 }
@@ -381,7 +384,11 @@ auto FocusFile::tokens() -> const TokenMap& {
 }
 
 auto FocusFile::lexical() -> const LexicalInfo& {
-    return unit.file_text(file()).lexical();
+    return unit.lexical(file());
+}
+
+auto FocusFile::kind(const Token& token) -> TokenKind {
+    return unit.file_text(file()).kind(token);
 }
 
 auto FocusFile::location(std::uint32_t offset) -> clang::SourceLocation {
@@ -467,6 +474,10 @@ std::chrono::milliseconds CompilationUnit::build_at() {
 
 clang::LangOptions& CompilationUnit::lang_options() {
     return instance->getLangOpts();
+}
+
+auto CompilationUnit::keywords() -> const clang::IdentifierTable& {
+    return instance->getPreprocessor().getIdentifierTable();
 }
 
 std::vector<DepFile> CompilationUnit::deps() {

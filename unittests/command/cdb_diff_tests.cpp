@@ -173,7 +173,7 @@ ZEST_CASE(CodegenChangeIgnored) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-fno-omit-frame-pointer", "-flto"}}
+                   {tmp.root.str(), "a.cpp", {"-fno-omit-frame-pointer", "-ffunction-sections"}}
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 

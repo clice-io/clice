@@ -74,10 +74,11 @@ clang::DynTypedNode SemanticNode::dyn_typed() const {
     });
 }
 
-bool should_ignore_token(const clang::syntax::Token& token) {
-    switch(token.kind()) {
+bool should_ignore_token(TokenKind kind) {
+    switch(kind) {
         // Even "attached" comments are not considered part of a node's range.
         case clang::tok::comment:
+        case clang::tok::eod:
         // The AST doesn't directly store locations for terminating semicolons.
         case clang::tok::semi:
         // We don't have locations for cvr-qualifiers: see QualifiedTypeLoc.
@@ -497,14 +498,13 @@ private:
         focus_fid = unit.focus_file().file();
         focus_file_range = clang::SourceRange(SM.getLocForStartOfFile(focus_fid),
                                               SM.getLocForEndOfFile(focus_fid));
-        semantics.file_begin = focus_file_range.getBegin();
 
         // Token ownership serves the focus file's features; the whole-TU
         // shape reads no tokens.
         if(!options.all_files) {
             auto& tokens = unit.focus_file().tokens();
             semantics.tokens = tokens.spelled();
-            semantics.pp_ignored = &tokens.preprocessed_away();
+            semantics.pp_ignored = tokens.preprocessed_away();
             taken.resize(tokens.expanded().size());
         }
 
@@ -719,19 +719,22 @@ private:
     // Add an ownership entry for spelled token `index` unless it is one a
     // selection does not count.
     void add_token_entry(std::uint32_t index, std::uint32_t self) {
-        if(!should_ignore_token(semantics.tokens[index]) && !(*semantics.pp_ignored)[index]) {
+        if(!should_ignore_token(unit.focus_file().kind(semantics.tokens[index])) &&
+           !semantics.pp_ignored[index]) {
             entries.emplace_back(index, self);
         }
     }
 
     // Add one ownership entry at `offset` regardless of the selection ignore
-    // set — preprocessor nodes own their directive tokens.
+    // set — preprocessor nodes own their directive tokens — but never for a
+    // comment, which a Comment node stands for by its range alone.
     void add_directive_entry(unsigned offset, std::uint32_t self) {
         auto indices = std::views::iota(0u, static_cast<std::uint32_t>(semantics.tokens.size()));
         auto it = std::ranges::partition_point(indices, [&](std::uint32_t i) {
-            return semantics.token_offset(i) < offset;
+            return semantics.tokens[i].range.begin < offset;
         });
-        if(it != indices.end() && semantics.token_offset(*it) == offset) {
+        if(it != indices.end() && semantics.tokens[*it].range.begin == offset &&
+           semantics.tokens[*it].kind != clang::tok::comment) {
             entries.emplace_back(*it, self);
         }
     }
@@ -800,7 +803,6 @@ private:
     // imports as first-class nodes.
     void append_directives() {
         semantics.modules = unit.focus_file().lexical().modules;
-        semantics.focus_comments = unit.comments(focus_fid);
         filter_module_declarations();
 
         struct Entry {
@@ -854,9 +856,9 @@ private:
             }
         }
 
-        // A comment node owns no spelled tokens (the stream drops them); it
-        // participates by its payload range only.
-        for(auto& comment: semantics.focus_comments) {
+        // A comment node owns no token; it participates by its payload range
+        // only.
+        for(auto& comment: unit.comments(focus_fid)) {
             directives.push_back({comment.range.begin, SemanticNode(&comment), {}});
         }
 
@@ -1214,8 +1216,18 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
             }
         }
 
-        RelationKind kind = TD->isThisDeclarationADefinition() ? RelationKind::Definition
-                                                               : RelationKind::Declaration;
+        /// template <typename T> friend class Foo;
+        ///                                     ^~~~ reference: a friend
+        /// declaration only grants access, code names the class through its
+        /// own declarations
+        const clang::Decl* declared = TD;
+        if(const auto* described = TD->getDescribedTemplate()) {
+            declared = described;
+        }
+        RelationKind kind = declared->getFriendObjectKind() != clang::Decl::FOK_None
+                                ? RelationKind::Reference
+                            : TD->isThisDeclarationADefinition() ? RelationKind::Definition
+                                                                 : RelationKind::Declaration;
         refer(out, TD, kind, TD->getLocation());
         return;
     }

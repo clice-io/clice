@@ -411,26 +411,24 @@ void add_text(llvm::StringRef content,
 llvm::SmallVector<LocalSourceRange, 2> anchors(CompilationUnit& unit, std::uint32_t offset) {
     const auto& semantics = unit.get<Semantics>();
     auto tokens = semantics.spelled_tokens();
-    auto range_of = [&](std::uint32_t i) {
-        auto begin = semantics.token_offset(i);
-        return LocalSourceRange{begin, begin + tokens[i].length()};
-    };
+    auto focus = unit.focus_file();
     auto usable = [&](std::uint32_t i) {
-        return !should_ignore_token(tokens[i]) && !semantics.token_preprocessed_away(i);
+        return !should_ignore_token(focus.kind(tokens[i])) && !semantics.token_preprocessed_away(i);
     };
     auto word = [&](std::uint32_t i) {
-        return clang::tok::getPunctuatorSpelling(tokens[i].kind()) == nullptr;
+        return clang::tok::getPunctuatorSpelling(focus.kind(tokens[i])) == nullptr;
     };
 
     auto count = static_cast<std::uint32_t>(tokens.size());
     auto indices = std::views::iota(0u, count);
     auto first = static_cast<std::uint32_t>(
-        std::ranges::partition_point(indices,
-                                     [&](std::uint32_t i) { return range_of(i).end < offset; }) -
+        std::ranges::partition_point(
+            indices,
+            [&](std::uint32_t i) { return tokens[i].range.end < offset; }) -
         indices.begin());
 
     std::optional<std::uint32_t> touched;
-    for(auto i = first; i < count && range_of(i).begin <= offset; i += 1) {
+    for(auto i = first; i < count && tokens[i].range.begin <= offset; i += 1) {
         if(usable(i) && (!touched || word(i) || !word(*touched))) {
             touched = i;
         }
@@ -439,14 +437,14 @@ llvm::SmallVector<LocalSourceRange, 2> anchors(CompilationUnit& unit, std::uint3
         // The parentheses and commas of a macro invocation stand for no
         // node; its name stands for what the invocation expands to.
         if(semantics.owners(*touched).empty()) {
-            const auto& map = unit.focus_file().tokens();
+            const auto& map = focus.tokens();
             auto expansions = map.expansions_overlapping(tokens.slice(*touched, 1));
             if(!expansions.empty() && !expansions.front().expanded.empty()) {
                 const auto& name = expansions.front().spelled.front();
-                return {range_of(static_cast<std::uint32_t>(&name - tokens.data()))};
+                return {name.range};
             }
         }
-        return {range_of(*touched)};
+        return {tokens[*touched].range};
     }
 
     llvm::SmallVector<LocalSourceRange, 2> sides;
@@ -455,14 +453,14 @@ llvm::SmallVector<LocalSourceRange, 2> anchors(CompilationUnit& unit, std::uint3
         before -= 1;
     }
     if(before > 0) {
-        sides.push_back(range_of(before - 1));
+        sides.push_back(tokens[before - 1].range);
     }
     auto after = first;
     while(after < count && !usable(after)) {
         after += 1;
     }
     if(after < count) {
-        sides.push_back(range_of(after));
+        sides.push_back(tokens[after].range);
     }
     return sides;
 }
@@ -868,7 +866,7 @@ auto selection_ranges(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> offse
     auto focus = unit.focus_file();
     auto content = focus.content();
     llvm::ArrayRef<Token> tokens = focus.lexical().tokens;
-    auto text = scan_text(content, tokens, focus.tokens().skipped(tokens));
+    auto text = scan_text(content, tokens, focus.tokens().preprocessed_away());
     std::vector<std::vector<LocalSourceRange>> result;
     for(auto offset: offsets) {
         Steps steps{.offset = offset};

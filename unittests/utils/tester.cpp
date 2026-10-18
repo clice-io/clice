@@ -17,6 +17,7 @@ module;
 module clice;
 
 import :support.logging;
+import :syntax.preamble;
 import :syntax.scan;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
@@ -89,7 +90,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
 
     // Phase 1: Build PCH from the preamble portion.
     auto& focus_source = sources.all_files[src_path];
-    auto bound = compute_preamble_bound(focus_source.content);
+    auto bound = preamble_bound(focus_source.content);
     CompilationParams preamble{
         .kind = CompilationKind::Preamble,
         .input = params.input,

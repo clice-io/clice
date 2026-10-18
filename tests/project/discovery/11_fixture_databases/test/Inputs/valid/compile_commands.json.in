@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}/test/Inputs/valid",
+    "file": "${WS}/test/Inputs/valid/project.cpp",
+    "command": "clang++ -c project.cpp"
+  }
+]

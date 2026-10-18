@@ -1,5 +1,5 @@
 ["no database"."$ clice lint --jobs 2"]
-stderr = "error: Nothing to lint: no compile_commands.json found under ${WS}"
+stderr = "error: Nothing to lint: no compile_commands.json found in ${WS} or its direct subdirectories."
 exit = 2
 
 ["missing workspace"."$ clice lint --workspace nowhere --jobs 2"]

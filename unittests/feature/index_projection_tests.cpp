@@ -66,6 +66,7 @@ void expect_tokens_match_ast() {
     auto ast = feature::semantic_token_stream(unit->focus_file().lexical().tokens,
                                               content,
                                               unit->lang_options(),
+                                              unit->keywords(),
                                               feature::semantic_token_facts(*unit, {}, true),
                                               {});
     auto projected = feature::index_semantic_tokens(content,

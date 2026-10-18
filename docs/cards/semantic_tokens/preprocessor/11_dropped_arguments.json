@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "#define FIRST(a, b) a\n#define IGNORE(...)\n\nint left();\nint right();\n\nint pick() {\n    IGNORE(left(), right());\n    return FIRST(left(), right());\n}\n",
+      "text": "#define FIRST(a, b) a\n#define IGNORE(...)\n\nint left();\nint right();\n\nint pick() {\n    IGNORE(left(), right());\n    return FIRST /* the first */ (left(), /* dropped */ right());\n}\n",
       "markers": []
     }
   ],
@@ -327,7 +327,7 @@
               },
               {
                 "at": {
-                  "$place": "⟦return⟧ FIRST(left(), right());",
+                  "$place": "⟦return⟧ FIRST /* the first */ (left(), /* dropped */ right());",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -347,7 +347,7 @@
               },
               {
                 "at": {
-                  "$place": "return ⟦FIRST⟧(left(), right());",
+                  "$place": "return ⟦FIRST⟧ /* the first */ (left(), /* dropped */ right());",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -367,7 +367,7 @@
               },
               {
                 "at": {
-                  "$place": "return FIRST(⟦left⟧(), right());",
+                  "$place": "return FIRST ⟦/* the first */⟧ (left(), /* dropped */ right());",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -376,7 +376,24 @@
                     },
                     "end": {
                       "line": 8,
-                      "character": 21
+                      "character": 32
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "return FIRST /* the first */ (⟦left⟧(), /* dropped */ right());",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 34
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 38
                     }
                   }
                 },
@@ -387,16 +404,33 @@
               },
               {
                 "at": {
-                  "$place": "return FIRST(left(), ⟦right()⟧);",
+                  "$place": "return FIRST /* the first */ (left(), ⟦/* dropped */⟧ right());",
                   "path": "main.cpp",
                   "range": {
                     "start": {
                       "line": 8,
-                      "character": 25
+                      "character": 42
                     },
                     "end": {
                       "line": 8,
-                      "character": 32
+                      "character": 55
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "return FIRST /* the first */ (left(), /* dropped */ ⟦right()⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 56
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 63
                     }
                   }
                 },

@@ -19,6 +19,7 @@ import :server.editor_context;
 import :support.anomaly;
 import :support.logging;
 import :support.timer;
+import :syntax.preamble;
 import :vfs.file_system;
 import :vfs.path;
 import :worker.common;
@@ -243,7 +244,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // which reports its own error.
     auto bound = synthesized && !synthesized->open.empty()
                      ? 0
-                     : complete_preamble_bound(text, compute_preamble_bound(text));
+                     : finished_preamble_bound(text, preamble_bound(text));
     if(bound == 0 && !synthesized) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts end up here too: they borrow

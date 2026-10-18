@@ -3,13 +3,18 @@
   "topic": "completion",
   "subtopic": "include_path_completion",
   "title": "Nearest headers first",
-  "summary": "Header names list the includer's directory first, then the quoted include directories, the others in order, the system's last",
+  "summary": "Header names list the includer's directory first, then the quoted include directories, the others in order, the system's last; a name two directories hold is listed once, from the first",
   "prose": "",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "hdrorder_tools.h",
+      "text": "",
+      "markers": []
+    },
+    {
+      "path": "inc/hdrorder_common.h",
       "text": "",
       "markers": []
     },
@@ -43,6 +48,11 @@
     },
     {
       "path": "sys/hdrorder_alloc.h",
+      "text": "",
+      "markers": []
+    },
+    {
+      "path": "sys/hdrorder_common.h",
       "text": "",
       "markers": []
     }
@@ -80,6 +90,25 @@
                   "label": "hdrorder_widgets.h",
                   "kind": "File",
                   "insert": "hdrorder_widgets.h\"",
+                  "replace": {
+                    "$place": "#include \"⟦hdrorder\"⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 19
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "hdrorder_common.h",
+                  "kind": "File",
+                  "insert": "hdrorder_common.h\"",
                   "replace": {
                     "$place": "#include \"⟦hdrorder\"⟧",
                     "path": "main.cpp",
@@ -143,6 +172,25 @@
           "value": {
             "completion": {
               "items": [
+                {
+                  "label": "hdrorder_common.h",
+                  "kind": "File",
+                  "insert": "hdrorder_common.h>",
+                  "replace": {
+                    "$place": "#include <⟦hdrorder>⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 19
+                      }
+                    }
+                  }
+                },
                 {
                   "label": "hdrorder_shapes.h",
                   "kind": "File",

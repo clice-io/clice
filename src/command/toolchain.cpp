@@ -959,16 +959,20 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
 
     // The query is moved into the coroutine frame as a parameter, so the
     // argument references stay valid for the coroutine's whole lifetime.
-    auto make_task = [](Pending p) -> kota::task<QueryOutcome> {
+    auto make_task = [](Pending p, kota::semaphore& drivers) -> kota::task<QueryOutcome> {
+        auto running = co_await drivers.scoped_acquire();
         auto result = co_await query_one(p.spec);
         co_return QueryOutcome{std::move(p.key), std::move(result)};
     };
 
     auto query_all = [&]() -> kota::task<kota::small_vector<QueryOutcome>> {
+        // A database whose commands key thousands of probes would otherwise
+        // run thousands of drivers at once.
+        kota::semaphore drivers(kota::sys::parallelism());
         std::vector<kota::task<QueryOutcome>> tasks;
         tasks.reserve(pending.size());
         for(auto& p: pending) {
-            tasks.push_back(make_task(std::move(p)));
+            tasks.push_back(make_task(std::move(p), drivers));
         }
 
         co_return co_await kota::when_all(std::move(tasks));

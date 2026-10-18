@@ -1,0 +1,7 @@
+[[rules]]
+patterns = ["app/**"]
+compile_commands = ["."]
+
+[[rules]]
+patterns = ["lib/**"]
+compile_commands = ["build", "alternate"]

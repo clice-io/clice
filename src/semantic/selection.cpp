@@ -82,14 +82,11 @@ bool SelectionTree::create_each(CompilationUnit& unit,
     auto& tokens = focus.tokens();
 
     // Prefer right token over left.
-    for(const clang::syntax::Token& token:
-        llvm::reverse(tokens.spelled_touching(focus.location(begin)))) {
-        if(should_ignore_token(token)) {
+    for(const auto& token: llvm::reverse(tokens.spelled_touching(focus.location(begin)))) {
+        if(should_ignore_token(focus.kind(token))) {
             continue;
         }
-
-        auto offset = tokens.offset(token);
-        ranges.emplace_back(offset, offset + token.length());
+        ranges.push_back(token.range);
     }
 
     /// Make sure, we have at least one range.
@@ -132,24 +129,24 @@ SelectionTree::SelectionTree(CompilationUnit& unit, LocalSourceRange range) {
     auto count = static_cast<std::uint32_t>(tokens.size());
     auto indices = std::views::iota(0u, count);
     auto lower = std::ranges::partition_point(indices, [&](std::uint32_t i) {
-        return semantics.token_offset(i) + tokens[i].length() <= begin;
+        return tokens[i].range.end <= begin;
     });
     auto first = static_cast<std::uint32_t>(lower - indices.begin());
     // A token is ignored by the algorithm if it can never contribute to any
     // selection: comments, semicolons, cvr-qualifiers, tokens preprocessed
     // to nothing.
+    auto focus = unit.focus_file();
     auto ignored = [&](std::uint32_t i) {
-        return should_ignore_token(tokens[i]) || semantics.token_preprocessed_away(i);
+        return should_ignore_token(focus.kind(tokens[i])) || semantics.token_preprocessed_away(i);
     };
 
     llvm::DenseMap<std::uint32_t, std::pair<SelectionKind, std::uint32_t>> hits;
-    for(std::uint32_t i = first; i < count && semantics.token_offset(i) < end; i++) {
+    for(std::uint32_t i = first; i < count && tokens[i].range.begin < end; i++) {
         if(ignored(i)) {
             continue;
         }
 
-        auto offset = semantics.token_offset(i);
-        SelectionKind token_kind = (offset >= begin && offset + tokens[i].length() <= end)
+        SelectionKind token_kind = begin <= tokens[i].range.begin && tokens[i].range.end <= end
                                        ? SelectionTree::Complete
                                        : SelectionTree::Partial;
 

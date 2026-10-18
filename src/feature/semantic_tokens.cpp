@@ -12,6 +12,7 @@ import :semantic.token_class;
 import :semantic.resolver;
 import :semantic.semantics;
 import :semantic.symbol;
+import :syntax.lexical_scan;
 import :syntax.token;
 
 namespace clice::feature {
@@ -257,9 +258,11 @@ private:
             // lookup located at its keyword.
             if(auto name = unresolved_name(entry.node); name && !index_known) {
                 if(auto index = spelled_index(name->first);
-                   index && semantics.spelled_tokens()[*index].kind() == clang::tok::identifier &&
+                   index &&
+                   unit.focus_file().kind(semantics.spelled_tokens()[*index]) ==
+                       clang::tok::identifier &&
                    !semantics.token_preprocessed_away(*index)) {
-                    auto offset = semantics.token_offset(*index);
+                    auto offset = semantics.spelled_tokens()[*index].range.begin;
                     unresolved.try_emplace(offset, name->second);
                     usage[offset] |= mask(Modifier::Dependent);
                 }
@@ -297,7 +300,8 @@ private:
                 // dependent name keep it dependent.
                 if(occurrence.kind.is_one_of(RelationKind::WeakReference) && !index_known &&
                    !entry.node.get<clang::UsingDecl>()) {
-                    usage[semantics.token_offset(*token)] |= mask(Modifier::Dependent);
+                    usage[semantics.spelled_tokens()[*token].range.begin] |=
+                        mask(Modifier::Dependent);
                 }
                 references.push_back({
                     .location = occurrence.location,
@@ -409,8 +413,8 @@ private:
         std::vector<std::pair<std::uint32_t, std::uint32_t>> dropped;
         for(const auto* ref: invocations) {
             auto name = spelled_index(ref->loc);
-            if(!name || *name + 1 >= spelled.size() ||
-               spelled[*name + 1].kind() != clang::tok::l_paren) {
+            auto open = name ? code_after(spelled, *name) : std::nullopt;
+            if(!open || spelled[*open].kind != clang::tok::l_paren) {
                 continue;
             }
             const auto& macro = *ref->macro;
@@ -422,19 +426,19 @@ private:
             // Each argument's first and last token; past the last named
             // parameter, a variadic macro's arguments are one.
             std::uint32_t parameter = 0;
-            std::optional<std::uint32_t> first;
+            std::optional<std::size_t> first;
+            std::size_t last = 0;
             std::uint32_t depth = 0;
-            for(auto index = *name + 2; index < spelled.size(); index += 1) {
-                auto kind = spelled[index].kind();
+            for(auto index = code_after(spelled, *open); index;
+                index = code_after(spelled, *index)) {
+                auto kind = spelled[*index].kind;
                 bool ends = depth == 0 &&
                             (kind == clang::tok::r_paren ||
                              (kind == clang::tok::comma && parameter + 1 < macro.getNumParams()));
                 if(ends) {
                     if(first && parameter < macro.getNumParams() &&
                        !used(macro.params()[parameter])) {
-                        const auto& last = spelled[index - 1];
-                        dropped.emplace_back(semantics.token_offset(*first),
-                                             semantics.token_offset(index - 1) + last.length());
+                        dropped.emplace_back(spelled[*first].range.begin, spelled[last].range.end);
                     }
                     if(kind == clang::tok::r_paren) {
                         break;
@@ -451,6 +455,7 @@ private:
                 if(!first) {
                     first = index;
                 }
+                last = *index;
             }
         }
         // An argument may hold a whole untaken branch: overlapping spans
@@ -473,15 +478,15 @@ private:
     /// locations at their spelling.
     std::optional<std::uint32_t> token_at(clang::SourceLocation location) {
         if(auto index = spelled_index(location)) {
-            return semantics.token_offset(*index);
+            return semantics.spelled_tokens()[*index].range.begin;
         }
         return std::nullopt;
     }
 
     std::optional<std::uint32_t> spelled_index(clang::SourceLocation location) {
         auto index = spelled_containing(location);
-        if(!index || semantics.spelled_tokens()[*index].location() !=
-                         (location.isMacroID() ? sources.getSpellingLoc(location) : location)) {
+        if(!index ||
+           semantics.spelled_tokens()[*index].range.begin != unit.written_at(location).offset) {
             return std::nullopt;
         }
         return index;
@@ -493,19 +498,19 @@ private:
         if(location.isInvalid()) {
             return std::nullopt;
         }
-        if(location.isMacroID()) {
-            location = sources.getSpellingLoc(location);
+        auto [file, offset] = unit.written_at(location);
+        if(file != unit.focus_file().file()) {
+            return std::nullopt;
         }
         auto spelled = semantics.spelled_tokens();
-        auto it = std::partition_point(
-            spelled.begin(),
-            spelled.end(),
-            [&](const clang::syntax::Token& token) { return !(location < token.location()); });
+        auto it = llvm::partition_point(spelled, [&](const Token& token) {
+            return token.range.begin <= offset;
+        });
         if(it == spelled.begin()) {
             return std::nullopt;
         }
         it -= 1;
-        if(location.getRawEncoding() - it->location().getRawEncoding() >= it->length()) {
+        if(offset >= it->range.end) {
             return std::nullopt;
         }
         return static_cast<std::uint32_t>(it - spelled.begin());
@@ -518,7 +523,7 @@ private:
         if(!index || (!allow_ignored && semantics.token_preprocessed_away(*index))) {
             return;
         }
-        combine(combined[semantics.token_offset(*index)], classified);
+        combine(combined[semantics.spelled_tokens()[*index].range.begin], classified);
     }
 
     /// Anchor a declaration name at `location` and, through `end` for a
@@ -542,11 +547,11 @@ private:
         }
         auto spelled = semantics.spelled_tokens();
         for(auto index = *first; index <= *last; index += 1) {
-            if(!names_token(spelled[index].kind(), classified) ||
+            if(!names_token(unit.focus_file().kind(spelled[index]), classified) ||
                semantics.token_preprocessed_away(index)) {
                 continue;
             }
-            auto offset = semantics.token_offset(index);
+            auto offset = spelled[index].range.begin;
             if(*last != *first) {
                 owned[offset] = classified;
             } else {
@@ -746,6 +751,7 @@ auto semantic_tokens(CompilationUnit& unit,
     return semantic_token_stream(focus.lexical().tokens,
                                  focus.content(),
                                  unit.lang_options(),
+                                 unit.keywords(),
                                  facts,
                                  options);
 }

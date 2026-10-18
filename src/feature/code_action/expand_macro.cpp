@@ -74,23 +74,18 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
     const auto& options = unit.lang_options();
     auto content = focus.content();
     auto spelled = tokens.spelled();
-    auto end_of = [&](const clang::syntax::Token& token) {
-        return tokens.offset(token) + token.length();
-    };
     for(const auto& expansion: tokens.expansions_overlapping(touching)) {
-        // A name the raw lexer must clean, one starting with a line splice,
-        // stays raw.
-        if(!llvm::is_contained({clang::tok::identifier, clang::tok::raw_identifier},
-                               expansion.spelled.front().kind())) {
+        // A macro named after a keyword (`#define inline`) stays as written.
+        const auto& name = expansion.spelled.front();
+        if(focus.kind(name) != clang::tok::identifier) {
             continue;
         }
-        const auto& name = expansion.spelled.front();
-        auto begin = tokens.offset(name);
-        auto end = end_of(expansion.spelled.back());
+        auto begin = name.range.begin;
+        auto end = expansion.spelled.back().range.end;
         auto first = static_cast<std::size_t>(expansion.spelled.begin() - spelled.begin());
         auto last = first + expansion.spelled.size();
         auto gap = [&](std::size_t index) {
-            return content.slice(end_of(spelled[index - 1]), tokens.offset(spelled[index]));
+            return content.slice(spelled[index - 1].range.end, spelled[index].range.begin);
         };
         // Macro references in a directive (`#if GUARD`) expand to nothing
         // in the token stream.
@@ -121,14 +116,15 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
         }
 
         // The text lands between the tokens written flush against the
-        // invocation, which must not run into it either.
+        // invocation, which must not run into it either; the end of a
+        // directive on the line before is its line break, not one of them.
         std::optional<llvm::StringRef> preceding;
-        if(first > 0 && gap(first).empty()) {
-            preceding = spelled[first - 1].text(SM);
+        if(first > 0 && gap(first).empty() && !spelled[first - 1].is_eod()) {
+            preceding = spelled[first - 1].text(content);
         }
         std::optional<llvm::StringRef> following;
         if(last < spelled.size() && gap(last).empty()) {
-            following = spelled[last].text(SM);
+            following = spelled[last].text(content);
         }
         auto head = expanded.empty() ? following : expanded.front().text(SM);
         if(preceding && head && glues(*preceding, *head, options)) {
@@ -139,7 +135,8 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
         }
 
         out.push_back(CodeAction{
-            .title = std::format("Expand macro '{}'", unit.token_spelling(name.location())),
+            .title = std::format("Expand macro '{}'",
+                                 unit.token_spelling(focus.location(name.range.begin))),
             .kind = action_kind::expand_macro,
             .edits = {{{begin, end}, std::move(text)}},
         });

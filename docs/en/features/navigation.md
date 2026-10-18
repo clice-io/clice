@@ -419,7 +419,7 @@ tests/navigation/implementation/05_dependent_calls
 
 ## Find References
 
-Find references lists every place that names the symbol, its declarations included. A method's references include the calls made through the methods it overrides, which may dispatch to it; a class's the names of its constructors.
+Find references lists every place that names the symbol, its declarations included. A method's references include the calls made through the methods it overrides, which may dispatch to it; a class's the names of its constructors. By default an editor gets 2000 of them at most, those in the file it asks from kept first (the [`[references]` section](../guide/configuration.md#references) sets the limit); `clice query references` lists every one.
 
 <!-- BEGIN GENERATED ITEMS: navigation/references -->
 

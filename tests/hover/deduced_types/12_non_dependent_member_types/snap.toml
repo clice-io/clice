@@ -1,0 +1,21 @@
+[answers.keyword.hover]
+markdown = '''
+**auto**
+
+```cpp
+std::vector<int>::size_type
+```
+`std::vector<int>::size_type` is `unsigned long`
+'''
+range = "⟦auto⟧ count = values.size();"
+
+[answers.variable.hover]
+markdown = '''
+**variable** `count` · function `use`
+
+```cpp
+auto count = values.size()
+```
+Type: `std::vector<int>::size_type` (aka `unsigned long`)
+'''
+range = "auto ⟦count⟧ = values.size();"

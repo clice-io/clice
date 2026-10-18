@@ -545,6 +545,7 @@ public:
                 continue;
             }
 
+            current = index;
             switch(entry.node.kind()) {
                 case SemanticNode::Kind::Decl: {
                     handle_decl(entry.node.get<clang::Decl>());
@@ -1124,14 +1125,36 @@ private:
         return limit == 0 ? text.str() : elide(text, limit);
     }
 
-    void add_type_hint(clang::SourceRange range, clang::QualType type, llvm::StringRef prefix) {
+    /// The scope the code of the node being visited is in, null at the top
+    /// level.
+    const clang::DeclContext* scope() const {
+        auto nodes = unit.get<Semantics>().node_entries();
+        for(auto index = current; index != Semantics::invalid; index = nodes[index].parent) {
+            if(nodes[index].node.kind() == SemanticNode::Kind::Decl) {
+                const auto* decl = nodes[index].node.get<clang::Decl>();
+                if(const auto* context = llvm::dyn_cast<clang::DeclContext>(decl)) {
+                    return context;
+                }
+                return decl->getDeclContext();
+            }
+        }
+        return nullptr;
+    }
+
+    /// Hints `type`, deduced from `source` when an expression gives it.
+    void add_type_hint(clang::SourceRange range,
+                       clang::QualType type,
+                       const clang::Expr* source,
+                       llvm::StringRef prefix) {
         if(!options.deduced_types || type.isNull()) {
             return;
         }
         // The desugared type, or the sugared one when that fits instead or
         // when only it can be shortened.
-        auto sugared = readable_types.readable(type);
-        auto printed = readable_types.readable(display::maybe_desugar(unit.context(), type));
+        const auto* shown = scope();
+        auto sugared = readable_types.readable(type, shown, source);
+        auto printed =
+            readable_types.readable(display::maybe_desugar(unit.context(), type), shown, source);
         auto text = display::type(unit.context(), printed, display_options).text;
         if(auto limit = options.max_length.types;
            limit != 0 && characters(text) > limit && sugared != printed) {
@@ -1229,7 +1252,7 @@ private:
         if(!type || type->getDeducedType().isNull()) {
             return;
         }
-        add_type_hint(range, decl->getReturnType(), /*Prefix=*/"-> ");
+        add_type_hint(range, decl->getReturnType(), /*source=*/nullptr, /*Prefix=*/"-> ");
     }
 
     // A PseudoObjectExpr typically incorporates a syntactic expression and
@@ -1412,6 +1435,7 @@ private:
                 }
                 add_type_hint(binding->getLocation(),
                               written_types.as_written(type),
+                              written,
                               /*Prefix=*/": ");
             }
             return;
@@ -1434,7 +1458,7 @@ private:
                 // (e.g. for `const auto& x = 42`, print `const int&`).
                 // Alternatively, we could place the hint on the `auto`
                 // (and then just print the type deduced for the `auto`).
-                add_type_hint(var->getLocation(), deduced, /*Prefix=*/": ");
+                add_type_hint(var->getLocation(), deduced, var->getInit(), /*Prefix=*/": ");
             }
         }
 
@@ -1450,6 +1474,7 @@ private:
                                decls::only_instantiation(const_cast<clang::ParmVarDecl*>(param))) {
                             add_type_hint(var->getLocation(),
                                           IPVD->getType(),
+                                          /*source=*/nullptr,
                                           /*Prefix=*/": ");
                         }
                     }
@@ -1680,7 +1705,7 @@ private:
     void handle_type_loc(clang::TypeLoc TL) {
         if(const auto* DT = llvm::dyn_cast<clang::DecltypeType>(TL.getType()))
             if(clang::QualType UT = DT->getUnderlyingType(); !UT->isDependentType())
-                add_type_hint(TL.getSourceRange(), UT, ": ");
+                add_type_hint(TL.getSourceRange(), UT, DT->getUnderlyingExpr(), ": ");
     }
 
     /// The template arguments class template argument deduction found for
@@ -1702,10 +1727,10 @@ private:
         if(!spec) {
             return;
         }
-        // The arguments as the template's own name takes them: without the
-        // scope around it (`Outer<int>::`), the standard alias naming the
-        // whole (`string`), or the sugar of a deduction guide's return type
-        // (`enable_if_t<…>` for `std::array`).
+        // The arguments as the template's own name takes them, in its scope:
+        // without the scope around it (`Outer<int>::`), the standard alias
+        // naming the whole (`string`), or the sugar of a deduction guide's
+        // return type (`enable_if_t<…>` for `std::array`).
         auto& context = unit.context();
         auto arguments = spec->getTemplateArgs().asArray();
         // A guide may pass the defaults explicitly (`basic_string`'s traits).
@@ -1718,12 +1743,14 @@ private:
                                                   params->getDepth())) {
             arguments = arguments.drop_back();
         }
-        auto named = readable_types.readable(context.getTemplateSpecializationType(
-            clang::ElaboratedTypeKeyword::None,
-            clang::TemplateName(spec->getSpecializedTemplate()),
-            arguments,
-            spec->getTemplateArgs().asArray(),
-            context.getCanonicalType(deduced)));
+        auto named =
+            readable_types.readable(context.getTemplateSpecializationType(
+                                        clang::ElaboratedTypeKeyword::None,
+                                        clang::TemplateName(spec->getSpecializedTemplate()),
+                                        arguments,
+                                        spec->getTemplateArgs().asArray(),
+                                        context.getCanonicalType(deduced)),
+                                    spec->getDeclContext());
         auto text = display::type(context, named, display_options).text;
         auto list = first_argument_list(text);
         if(!list) {
@@ -1780,6 +1807,9 @@ private:
     llvm::DenseSet<const clang::InitListExpr*> initializer_lists;
 
     display::ReadableTypes readable_types{unit.context(), display_options};
+
+    /// The node run() visits.
+    std::uint32_t current = Semantics::invalid;
 };
 
 }  // namespace

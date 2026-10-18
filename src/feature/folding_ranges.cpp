@@ -136,7 +136,7 @@ public:
         collect_brackets();
         collect_block_directives();
         collect_module_fragments(semantics.module_declarations());
-        collect_comments(semantics.comments());
+        collect_comments(lexical.comments);
         collect_macro_definitions();
         collect_imports();
         collect_raw_strings(lexical.raw_strings);
@@ -394,9 +394,9 @@ private:
     /// AST, which knows those a macro closes (`#define END }`).
     void collect_brackets() {
         auto& tokens = lexical.tokens;
-        auto skipped = unit.focus_file().tokens().skipped(tokens);
+        auto skipped = unit.focus_file().tokens().preprocessed_away();
         BracketPairs pairs;
-        for(auto [token, skip]: llvm::zip(tokens, skipped)) {
+        for(auto [token, skip]: llvm::zip_equal(tokens, skipped)) {
             auto open = pairs.visit(token, skip);
             if(!open || pairs.in_directive() ||
                (token.kind == clang::tok::r_brace && !pairs.in_skipped())) {
@@ -688,7 +688,7 @@ private:
 
     /// Whether `range` holds nothing but blanks and comments.
     bool blank(LocalSourceRange range) {
-        auto comments = semantics.comments();
+        const auto& comments = lexical.comments;
         auto comment = std::ranges::lower_bound(
             comments,
             range.begin,

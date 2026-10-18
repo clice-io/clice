@@ -23,3 +23,29 @@ title = "Add #include <cstddef>"
 
  struct Box {};
 '''
+
+[[answers.commented.code_actions]]
+kind = "quickfix"
+title = "Add #include <utility>"
+
+[answers.commented.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <utility>
+
+ struct Box {};
+'''
+
+[[answers.qualified.code_actions]]
+kind = "quickfix"
+title = "Add #include <utility>"
+
+[answers.qualified.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <utility>
+
+ struct Box {};
+'''

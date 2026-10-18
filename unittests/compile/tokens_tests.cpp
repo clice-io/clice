@@ -27,11 +27,27 @@ std::string text(llvm::ArrayRef<clang::syntax::Token> tokens) {
     return out;
 }
 
+/// Spelled tokens as text, the directive ends left out.
+std::string text(llvm::ArrayRef<Token> tokens) {
+    auto content = unit->focus_file().content();
+    std::string out;
+    for(auto& token: tokens) {
+        if(token.is_eod()) {
+            continue;
+        }
+        if(!out.empty()) {
+            out += ' ';
+        }
+        out += token.text(content);
+    }
+    return out;
+}
+
 /// The spelled tokens that survived preprocessing, or not.
 std::string spelled_where(bool away) {
     auto spelled = unit->focus_file().tokens().spelled();
-    auto& flags = unit->focus_file().tokens().preprocessed_away();
-    std::vector<clang::syntax::Token> picked;
+    auto flags = unit->focus_file().tokens().preprocessed_away();
+    std::vector<Token> picked;
     for(std::size_t i = 0; i < spelled.size(); i += 1) {
         if(flags[i] == away) {
             picked.push_back(spelled[i]);
@@ -88,6 +104,7 @@ std::string expansions() {
 /// (`?` for none).
 std::string origins() {
     auto& SM = unit->context().getSourceManager();
+    auto content = unit->focus_file().content();
     auto spelled = unit->focus_file().tokens().spelled();
     std::string out;
     for(auto [index, token]: llvm::enumerate(unit->focus_file().tokens().expanded())) {
@@ -98,7 +115,7 @@ std::string origins() {
         out += std::format("{}{}:{}",
                            out.empty() ? "" : " ",
                            token.text(SM),
-                           origin ? spelled[*origin].text(SM) : "?");
+                           origin ? spelled[*origin].text(content) : "?");
     }
     return out;
 }
@@ -112,8 +129,7 @@ std::optional<std::uint32_t> origin_offset(llvm::StringRef spelling, std::size_t
     if(!origin) {
         return std::nullopt;
     }
-    auto& SM = unit->context().getSourceManager();
-    return SM.getFileOffset(unit->focus_file().tokens().spelled()[*origin].location());
+    return unit->focus_file().tokens().spelled()[*origin].range.begin;
 }
 
 ZEST_CASE(PreprocessedAway) {
@@ -291,6 +307,29 @@ int m;
     auto eof = static_cast<std::uint32_t>(unit->focus_file().tokens().expanded().size() - 1);
     ZEXPECT(unit->focus_file().tokens().expanded()[eof].kind() == clang::tok::eof);
     ZEXPECT(!unit->focus_file().tokens().origin(eof));
+}
+
+ZEST_CASE(CommentsShareFlags) {
+    // A comment goes with the token before it.
+    add_focus("main.cpp", R"cpp(
+#if 0
+int a; // gone
+#endif
+int b; // kept
+)cpp");
+    ZASSERT(compile());
+    ZEXPECT(spelled_where(false) == "int b ; // kept");
+    ZEXPECT(spelled_where(true) == "# if 0 int a ; // gone # endif");
+}
+
+ZEST_CASE(TouchingSkipsComments) {
+    add_focus("main.cpp", "int x/* c */;");
+    ZASSERT(compile());
+    auto focus = unit->focus_file();
+    auto x = focus.location(static_cast<std::uint32_t>(std::strlen("int x")));
+    ZEXPECT(text(focus.tokens().spelled_touching(x)) == "x");
+    auto semi = focus.location(static_cast<std::uint32_t>(std::strlen("int x/* c */")));
+    ZEXPECT(text(focus.tokens().spelled_touching(semi)) == ";");
 }
 
 ZEST_CASE(TouchingFileEnd) {

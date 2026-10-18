@@ -1,0 +1,23 @@
+["build tree"."$ clice format"]
+stdout = "Formatted 1 file in #s."
+exit = 0
+
+["build tree"."$ clice format".files]
+"src/main.cpp" = '''
+ #include "foo.h"
+
+-int   main(){return foo(1);}
++int main() { return foo(1); }
+'''
+
+["build tree through a root link"."$ clice format"]
+stdout = "Formatted 1 file in #s."
+exit = 0
+
+["build tree through a root link"."$ clice format".files]
+"src/main.cpp" = '''
+ #include "foo.h"
+
+-int   main(){return foo(1);}
++int main() { return foo(1); }
+'''

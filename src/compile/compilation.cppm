@@ -373,6 +373,9 @@ public:
     /// The comments of file_content(fid).
     auto comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment>;
 
+    /// The lexical scan of file_content(fid).
+    auto lexical(clang::FileID fid) -> const LexicalInfo&;
+
     /// Check if a file is a builtin file.
     bool is_builtin_file(clang::FileID fid);
 
@@ -468,6 +471,10 @@ public:
     std::chrono::milliseconds build_at();
 
     clang::LangOptions& lang_options();
+
+    /// The keywords of the compile's dialect, its own flags' included
+    /// (`-fms-extensions`): the preprocessor's identifier table.
+    auto keywords() -> const clang::IdentifierTable&;
 
     clang::ASTContext& context();
 
@@ -658,6 +665,9 @@ public:
     /// The lexical scan of the text, run on first use: the one every
     /// feature reads its raw tokens, comments and directive lines from.
     auto lexical() -> const LexicalInfo&;
+
+    /// What `token`, one of lexical()'s, lexes as (SourceText::kind).
+    auto kind(const Token& token) -> TokenKind;
 
     /// The location at `offset`.
     auto location(std::uint32_t offset) -> clang::SourceLocation;

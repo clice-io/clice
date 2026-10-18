@@ -16,10 +16,8 @@ ProjectLoad bootstrap_project(Project& project,
                               IndexPump& pump,
                               CanonicalRef root,
                               llvm::StringRef requested_configuration,
-                              bool read_only_index,
-                              bool scan_tree) {
-    auto load =
-        load_project(project, store, root, requested_configuration, read_only_index, scan_tree);
+                              bool read_only_index) {
+    auto load = load_project(project, store, root, requested_configuration, read_only_index);
     bool owed = !load.index.report.reindex().empty();
     pump.apply_report(load.index.report);
 

@@ -4,18 +4,33 @@ module;
 
 module clice;
 
+import :support.text;
 import :syntax.lexer;
 
 namespace clice {
 
+namespace {
+
+/// Every dialect raw_dialect() made and the keyword tables keywords()
+/// built of them. Stable addresses: callers hold both by reference.
+struct RawDialects {
+    std::mutex mutex;
+    std::map<std::pair<clang::Language, clang::LangStandard::Kind>, clang::LangOptions> dialects;
+    std::map<const clang::LangOptions*, clang::IdentifierTable> keywords;
+
+    static RawDialects& get() {
+        static RawDialects instance;
+        return instance;
+    }
+};
+
+}  // namespace
+
 const clang::LangOptions& raw_dialect(clang::Language language,
                                       clang::LangStandard::Kind standard) {
-    static std::mutex mutex;
-    // Stable addresses: callers hold the options by reference.
-    static std::map<std::pair<clang::Language, clang::LangStandard::Kind>, clang::LangOptions>
-        dialects;
-    std::lock_guard lock(mutex);
-    auto [it, inserted] = dialects.try_emplace({language, standard});
+    auto& raw = RawDialects::get();
+    std::lock_guard lock(raw.mutex);
+    auto [it, inserted] = raw.dialects.try_emplace({language, standard});
     if(inserted) {
         auto& options = it->second;
         std::vector<std::string> includes;
@@ -40,6 +55,30 @@ const clang::LangOptions& dialect_of(llvm::StringRef path, bool c, llvm::StringR
         }
     }
     return raw_dialect(language, kind);
+}
+
+const clang::IdentifierTable& keywords(const clang::LangOptions& dialect) {
+    const auto& raw =
+        raw_dialect(dialect.CPlusPlus ? clang::Language::CXX : clang::Language::C, dialect.LangStd);
+    auto& dialects = RawDialects::get();
+    std::lock_guard lock(dialects.mutex);
+    return dialects.keywords.try_emplace(&raw, raw).first->second;
+}
+
+TokenKind keyword_kind(llvm::StringRef word, const clang::IdentifierTable& keywords) {
+    auto it = keywords.find(word);
+    return it == keywords.end() ? clang::tok::identifier : it->second->getTokenID();
+}
+
+TokenKind lexed_kind(const Token& token,
+                     llvm::StringRef content,
+                     const clang::IdentifierTable& keywords) {
+    if(!token.is_identifier()) {
+        return token.kind;
+    }
+    auto text = token.text(content);
+    return text.contains('\\') ? keyword_kind(unspliced(text), keywords)
+                               : keyword_kind(text, keywords);
 }
 
 static clang::SourceLocation fake_loc = clang::SourceLocation::getFromRawEncoding(1);

@@ -1,0 +1,8 @@
+[answers.completion.completion]
+items = [
+    { label = "width", kind = "Variable", detail = "int" },
+]
+
+[answers."signature help".signature_help]
+signatures = ["max(⟦const T &a⟧, const T &b) -> const T &"]
+active = 0

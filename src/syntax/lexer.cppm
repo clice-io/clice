@@ -28,6 +28,22 @@ const clang::LangOptions& dialect_of(llvm::StringRef path = {},
                                      bool c = false,
                                      llvm::StringRef standard = {});
 
+/// The keyword table of the raw dialect of `dialect`'s language and
+/// standard, built on first use and alive for the whole run.
+const clang::IdentifierTable& keywords(const clang::LangOptions& dialect);
+
+/// What the word `word` lexes as where `keywords` holds the keywords
+/// (keywords(), or a compile's own identifier table): a keyword's kind, an
+/// alternative operator name's (`and`) the punctuator it spells, else
+/// `identifier`.
+TokenKind keyword_kind(llvm::StringRef word, const clang::IdentifierTable& keywords);
+
+/// What `token` of `content` lexes as: a raw identifier its keyword_kind,
+/// line splices folded away; any other token its kind.
+TokenKind lexed_kind(const Token& token,
+                     llvm::StringRef content,
+                     const clang::IdentifierTable& keywords);
+
 /// A character of an identifier as the lexer reads one: `$` included, and
 /// the bytes of multi-byte UTF-8 sequences, as clang accepts extended
 /// characters in identifiers.

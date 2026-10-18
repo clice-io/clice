@@ -15,7 +15,7 @@ import :compile.tokens;
 import :support.logging;
 import :syntax.header_context;
 import :syntax.position;
-import :syntax.scan;
+import :syntax.preamble;
 import :vfs.file_system;
 
 namespace clice {
@@ -213,9 +213,19 @@ std::unique_ptr<clang::CompilerInvocation>
 
         case CompilationKind::Preprocess:
         case CompilationKind::Content:
-        case CompilationKind::Whole:
+        case CompilationKind::Whole: {
+            front_opts.OutputFile.clear();
+            break;
+        }
+
         case CompilationKind::Completion: {
             front_opts.OutputFile.clear();
+            // A completion reports no diagnostics, and it cuts the body it
+            // completes in short without the error that keeps clang's
+            // analysis-based warnings off a broken body: the thread-safety
+            // analysis (-Wthread-safety, as abseil builds) crashes on what
+            // is left.
+            invocation->getDiagnosticOpts().IgnoreWarnings = true;
             break;
         }
     }
@@ -512,7 +522,7 @@ CompilationStatus CompilationUnit::run() {
     if(auto& [pch, bound] = params.input.pch;
        !pch.empty() && instance->getLangOpts().IsHeaderFile) {
         auto focus = focus_file();
-        if(pragma_once(focus.content(), bound)) {
+        if(has_pragma_once(focus.content(), bound)) {
             instance->getPreprocessor().getHeaderSearchInfo().MarkFileIncludeOnce(
                 *SM().getFileEntryRefForID(focus.file()));
         }
@@ -568,7 +578,7 @@ CompilationStatus CompilationUnit::run() {
     }
 
     if(collected_tokens) {
-        collected_tokens->finish();
+        collected_tokens->finish(focus_file().lexical().tokens);
     }
 
     run_tidy();

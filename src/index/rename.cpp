@@ -145,8 +145,7 @@ std::optional<std::string> invalid_identifier(llvm::StringRef name) {
         return std::format("`{}` is not an identifier", std::string_view(name));
     }
     for(auto* options: {&c(), &cxx()}) {
-        clang::IdentifierTable table(*options);
-        if(table.get(name).getTokenID() != clang::tok::identifier) {
+        if(keyword_kind(name, keywords(*options)) != clang::tok::identifier) {
             return std::format("`{}` is a keyword", std::string_view(name));
         }
     }
@@ -439,7 +438,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
         }
     };
 
-    clang::IdentifierTable keywords(cxx());
+    const auto& cxx_keywords = keywords(cxx());
     for(auto& member: target.group) {
         for(auto kind: {RelationKind::Definition,
                         RelationKind::Declaration,
@@ -459,7 +458,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
                     auto written =
                         llvm::StringRef(*text.text).slice(site.range.begin, site.range.end);
                     if(llvm::any_of(written, is_identifier_char) &&
-                       keywords.get(written).getTokenID() == clang::tok::identifier) {
+                       keyword_kind(written, cxx_keywords) == clang::tok::identifier) {
                         plan.unconfirmed.push_back(
                             {.site = site,
                              .reason = std::format("the name is written here as `{}`",

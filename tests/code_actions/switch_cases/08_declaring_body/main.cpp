@@ -1,6 +1,7 @@
 // A switch body declaring a variable receives the missing cases at its top:
-// above a conditional directive around the first label, and above a first
-// label carrying an attribute, which falls through into the next section.
+// above a conditional directive around the first label, above a first
+// label carrying an attribute, which falls through into the next section,
+// and below a comment opening a body in digraph braces.
 
 enum class Shape { Circle, Square, Triangle };
 
@@ -26,5 +27,15 @@ int corners(Shape shape, int extra) {
         int count = 4;
         return count + extra;
     }
+    return 3;
+}
+
+int digraphs(Shape shape) {
+    §(digraph)switch (shape) <%
+    // the round one
+    case Shape::Circle:
+        int count = 0;
+        return count;
+    %>
     return 3;
 }

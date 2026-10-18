@@ -1591,22 +1591,20 @@ public:
         return object.isNull() ? lookup_result() : lookup(object, name);
     }
 
-    /// Can `FD` accept a call with `count` arguments? Default arguments
-    /// lower the minimum; C-style variadics and parameter packs lift the
-    /// maximum.
-    static bool arity_viable(const clang::FunctionDecl* FD, unsigned count, bool member_call) {
-        /// A member-syntax call does not spell the explicit object argument
-        /// (`s.foo(1)` with `foo(this S&, int)`), but the declaration counts
-        /// it.
-        if(member_call) {
-            if(auto method = llvm::dyn_cast<clang::CXXMethodDecl>(FD);
-               method && method->isExplicitObjectMemberFunction()) {
-                count += 1;
-            }
+    /// The arguments a call passing `count` gives `FD`: a member-syntax call
+    /// does not spell the explicit object argument (`s.foo(1)` with
+    /// `foo(this S&, int)`), but the declaration counts it.
+    static unsigned passed(const clang::FunctionDecl* FD, unsigned count, bool member_call) {
+        if(auto method = llvm::dyn_cast<clang::CXXMethodDecl>(FD);
+           member_call && method && method->isExplicitObjectMemberFunction()) {
+            return count + 1;
         }
-        if(count < FD->getMinRequiredArguments()) {
-            return false;
-        }
+        return count;
+    }
+
+    /// Does `FD` take as many as `count` arguments? C-style variadics and
+    /// parameter packs lift the maximum.
+    static bool takes(const clang::FunctionDecl* FD, unsigned count) {
         if(count <= FD->getNumParams() || FD->isVariadic()) {
             return true;
         }
@@ -1615,56 +1613,74 @@ public:
         });
     }
 
-    /// Drop the overloads that cannot accept `count` arguments.
-    /// Non-function candidates (e.g. a callable object's variable) stay:
-    /// arity says nothing about them.
-    static void drop_by_arity(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
-                              unsigned count,
-                              bool member_call) {
+    /// Can `FD` accept a call with `count` arguments? Default arguments
+    /// lower the minimum.
+    static bool arity_viable(const clang::FunctionDecl* FD, unsigned count, bool member_call) {
+        count = passed(FD, count, member_call);
+        return count >= FD->getMinRequiredArguments() && takes(FD, count);
+    }
+
+    /// Whether an argument expands a pack (`f(xs...)`), which may instantiate
+    /// to any number of arguments: fixed-arity filtering would remove viable
+    /// overloads.
+    static bool expands_pack(llvm::ArrayRef<const clang::Expr*> arguments) {
+        return llvm::any_of(arguments, llvm::IsaPred<clang::PackExpansionExpr>);
+    }
+
+    /// Drop the function overloads `viable` rejects. Non-function candidates
+    /// (e.g. a callable object's variable) stay: arity says nothing about
+    /// them.
+    static void drop_unviable(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
+                              llvm::function_ref<bool(const clang::FunctionDecl*)> viable) {
         auto removed = std::ranges::remove_if(candidates, [&](const clang::NamedDecl* decl) {
             auto FD = as_function(decl);
-            return FD && !arity_viable(FD, count, member_call);
+            return FD && !viable(FD);
         });
         candidates.erase(removed.begin(), removed.end());
     }
 
-    /// Drop the overloads that one of the call's arguments can never
-    /// initialize a parameter of (never_initializes): both sides
+    /// Drop the overloads that cannot accept `count` arguments.
+    static void drop_by_arity(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
+                              unsigned count,
+                              bool member_call) {
+        drop_unviable(candidates, [&](const clang::FunctionDecl* FD) {
+            return arity_viable(FD, count, member_call);
+        });
+    }
+
+    /// Whether every one of `arguments` may initialize its parameter of
+    /// `FD`, none certain to fail (never_initializes): both sides
     /// non-dependent, matched by position up to an argument or a parameter
     /// pack.
-    void drop_by_arguments(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
-                           const clang::CallExpr* expr,
-                           bool member_call) {
-        auto removed = std::ranges::remove_if(candidates, [&](const clang::NamedDecl* decl) {
-            auto FD = as_function(decl);
-            if(!FD || FD->isInvalidDecl()) {
+    bool accepts(const clang::FunctionDecl* FD,
+                 llvm::ArrayRef<const clang::Expr*> arguments,
+                 bool member_call) {
+        if(FD->isInvalidDecl()) {
+            return true;
+        }
+        unsigned offset = 0;
+        if(auto method = llvm::dyn_cast<clang::CXXMethodDecl>(FD);
+           method && method->isExplicitObjectMemberFunction()) {
+            if(!member_call) {
+                return true;
+            }
+            offset = 1;
+        }
+        for(unsigned index = 0; index < arguments.size(); index += 1) {
+            auto argument = arguments[index];
+            if(llvm::isa<clang::PackExpansionExpr>(argument) ||
+               index + offset >= FD->getNumParams()) {
+                break;
+            }
+            auto param = FD->getParamDecl(index + offset);
+            if(param->isParameterPack()) {
+                break;
+            }
+            if(never_initializes(context, *argument, param->getType())) {
                 return false;
             }
-            unsigned offset = 0;
-            if(auto method = llvm::dyn_cast<clang::CXXMethodDecl>(FD);
-               method && method->isExplicitObjectMemberFunction()) {
-                if(!member_call) {
-                    return false;
-                }
-                offset = 1;
-            }
-            for(unsigned index = 0; index < expr->getNumArgs(); index += 1) {
-                auto argument = expr->getArg(index);
-                if(llvm::isa<clang::PackExpansionExpr>(argument) ||
-                   index + offset >= FD->getNumParams()) {
-                    break;
-                }
-                auto param = FD->getParamDecl(index + offset);
-                if(param->isParameterPack()) {
-                    break;
-                }
-                if(never_initializes(context, *argument, param->getType())) {
-                    return true;
-                }
-            }
-            return false;
-        });
-        candidates.erase(removed.begin(), removed.end());
+        }
+        return true;
     }
 
     /// Overloads that differ only in their object parameter — its cv- and
@@ -1754,9 +1770,37 @@ public:
         if(llvm::isa<clang::CXXOperatorCallExpr>(expr)) {
             return {};
         }
+        llvm::ArrayRef<const clang::Expr*> arguments(expr->getArgs(), expr->getNumArgs());
+        bool pack = expands_pack(arguments);
+        return callee_candidates(expr->getCallee(),
+                                 [&](const clang::FunctionDecl* FD, bool member) {
+                                     return (pack || arity_viable(FD, arguments.size(), member)) &&
+                                            accepts(FD, arguments, member);
+                                 });
+    }
 
+    /// The overloads a dependent `callee` may call, its call written as far
+    /// as the `written` arguments: at the first argument every one, past it
+    /// those that take one more; for a member call those its object binds
+    /// best.
+    llvm::SmallVector<const clang::NamedDecl*, 4>
+        written_call_candidates(const clang::Expr* callee,
+                                llvm::ArrayRef<const clang::Expr*> written) {
+        bool pack = expands_pack(written);
+        return callee_candidates(callee, [&](const clang::FunctionDecl* FD, bool member) {
+            return written.empty() || pack || takes(FD, passed(FD, written.size() + 1, member));
+        });
+    }
+
+private:
+    /// The resolved overload set of a dependent `callee`, the functions
+    /// `viable` rejects left out, and for a member call those its object
+    /// binds best.
+    llvm::SmallVector<const clang::NamedDecl*, 4>
+        callee_candidates(const clang::Expr* callee,
+                          llvm::function_ref<bool(const clang::FunctionDecl*, bool)> viable) {
         llvm::SmallVector<const clang::NamedDecl*, 4> candidates;
-        auto callee = expr->getCallee()->IgnoreParenImpCasts();
+        callee = callee->IgnoreParenImpCasts();
         bool member_call =
             llvm::isa<clang::UnresolvedMemberExpr, clang::CXXDependentScopeMemberExpr>(callee);
         clang::QualType object;
@@ -1778,22 +1822,12 @@ public:
             auto members = lookup(DSDRE->getQualifier(), DSDRE->getDeclName());
             candidates.append(members.begin(), members.end());
         }
-
-        /// An argument pack (`f(xs...)`) may instantiate to any number of
-        /// arguments; fixed-arity filtering would remove viable overloads.
-        bool has_pack_argument =
-            std::ranges::any_of(expr->arguments(), [](const clang::Expr* argument) {
-                return llvm::isa<clang::PackExpansionExpr>(argument);
-            });
-        if(!has_pack_argument) {
-            drop_by_arity(candidates, expr->getNumArgs(), member_call);
-        }
-        drop_by_arguments(candidates, expr, member_call);
+        drop_unviable(candidates,
+                      [&](const clang::FunctionDecl* FD) { return viable(FD, member_call); });
         select_by_object(candidates, object, rvalue_object);
         return candidates;
     }
 
-private:
     /// Per-kind dispatch. Whitelist of type classes the resolver understands;
     /// anything else passes through unchanged, which downstream treats as
     /// unresolved. Local qualifiers are stripped here and reapplied on the
@@ -3439,6 +3473,13 @@ llvm::SmallVector<const clang::NamedDecl*, 4>
     TemplateResolver::lookup(const clang::CallExpr* expr) {
     PseudoInstantiator instantiator(context, resolved, options);
     return instantiator.call_candidates(expr);
+}
+
+llvm::SmallVector<const clang::NamedDecl*, 4>
+    TemplateResolver::callees(const clang::Expr* callee,
+                              llvm::ArrayRef<const clang::Expr*> written) {
+    PseudoInstantiator instantiator(context, resolved, options);
+    return instantiator.written_call_candidates(callee, written);
 }
 
 }  // namespace clice::types

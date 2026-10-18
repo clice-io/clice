@@ -27,3 +27,19 @@ compiles = true
      [[likely]] case Shape::Circle:
          extra += 1;
 '''
+
+[[answers.digraph.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 2 missing enum cases to switch"
+compiles = true
+
+[answers.digraph.code_actions.edits]
+"main.cpp" = '''
+     switch (shape) <%
+     // the round one
++    case Shape::Square:
++    case Shape::Triangle:
++        break;
+     case Shape::Circle:
+         int count = 0;
+'''

@@ -158,7 +158,8 @@ void CDBWatcher::discover_into(Fid path_id, CDBDiff& found) {
     // nothing else would.
     for(auto& database: compile_commands_above(path.parent(), root)) {
         auto registered = project.cdb.find_source(database);
-        if(registered && project.cdb.loaded(*registered)) {
+        if((registered && project.cdb.loaded(*registered)) ||
+           (!registered && project.cdb.find_same_file(database))) {
             continue;
         }
         auto id = registered ? *registered : project.cdb.add_source(database);
@@ -228,6 +229,12 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
             it = places.try_emplace(place.str(), disk.watch(place.str())).first;
         }
         if(!it->second->stamp) {
+            continue;
+        }
+        // Another spelling of a tracked database, as build/compile_commands.json
+        // is when the root links it, stays watched: once the link goes, it
+        // is a database of its own.
+        if(project.cdb.find_same_file(place)) {
             continue;
         }
         // Never loaded, so baselined unread: the fresh file is a change

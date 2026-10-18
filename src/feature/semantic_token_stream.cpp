@@ -8,6 +8,7 @@ import :feature.feature;
 import :feature.semantic_token_stream;
 import :semantic.token_class;
 import :syntax.doc_comment;
+import :syntax.lexer;
 import :syntax.documentation;
 import :syntax.token;
 
@@ -272,9 +273,10 @@ public:
     TokenStream(llvm::ArrayRef<Token> stream,
                 llvm::StringRef content,
                 const clang::LangOptions& lang_opts,
+                const clang::IdentifierTable& keywords,
                 const TokenFacts& facts,
                 const SemanticTokensOptions& options) :
-        stream(stream), content(content), lang_opts(lang_opts), keywords(lang_opts), facts(facts),
+        stream(stream), content(content), lang_opts(lang_opts), keywords(keywords), facts(facts),
         options(options) {}
 
     auto build() -> std::vector<SemanticToken> {
@@ -335,11 +337,7 @@ private:
             definition_empty = false;
         }
         auto spelling = token.text(content);
-        auto kind = token.kind;
-        if(token.is_identifier()) {
-            auto it = keywords.find(spelling);
-            kind = it == keywords.end() ? clang::tok::identifier : it->second->getTokenID();
-        }
+        auto kind = lexed_kind(token, content, keywords);
         bool word = clang::tok::isAnyIdentifier(kind) || clang::tok::getKeywordSpelling(kind);
 
         if(clang::tok::isStringLiteral(kind) || is_char_literal(kind)) {
@@ -888,7 +886,7 @@ private:
     std::size_t at = 0;
     llvm::StringRef content;
     const clang::LangOptions& lang_opts;
-    clang::IdentifierTable keywords;
+    const clang::IdentifierTable& keywords;
     const TokenFacts& facts;
     const SemanticTokensOptions& options;
 
@@ -946,9 +944,10 @@ bool is_override_keyword(llvm::StringRef spelling) {
 auto semantic_token_stream(llvm::ArrayRef<Token> tokens,
                            llvm::StringRef content,
                            const clang::LangOptions& lang_opts,
+                           const clang::IdentifierTable& keywords,
                            const TokenFacts& facts,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
-    return TokenStream(tokens, content, lang_opts, facts, options).build();
+    return TokenStream(tokens, content, lang_opts, keywords, facts, options).build();
 }
 
 }  // namespace clice::feature

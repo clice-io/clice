@@ -6,6 +6,9 @@
 #define DEREF(p) *p
 #define PICK(c) (c ? 1 : ::fallback())
 #define NOTHING
+#define DIV /
+#define DECLARE(name) constexpr int name = 6;
+§(declared)DECLARE(six)
 
 constexpr int fallback() {
     return 2;
@@ -17,3 +20,5 @@ static_assert(§(negated)NEG-value == 4);
 static_assert(12/§(divided)DEREF(pointer) == 3);
 static_assert(§(picked)PICK(false) == 2);
 static_assert(12/§(removed)NOTHING*pointer == 3);
+static_assert(12 §(commented)DIV/**/3 == 4);
+static_assert(six == 6);

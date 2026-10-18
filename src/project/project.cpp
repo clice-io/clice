@@ -138,19 +138,32 @@ llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_roo
     return found;
 }
 
-llvm::SmallVector<Spelling> compile_commands_below(CanonicalRef workspace_root,
-                                                   CanonicalRef cache_dir) {
+llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
+                                                    CanonicalRef cache_dir) {
+    // Deep enough for a CMake preset's out/build/<preset> and a nested
+    // project's build directory, and no deeper: a workspace with no
+    // database at all may be a home directory.
+    constexpr std::size_t deepest = 3;
+    auto depth = [&](llvm::StringRef dir) {
+        return static_cast<std::size_t>(
+            llvm::count_if(dir.drop_front(workspace_root.size()),
+                           [](char c) { return path::is_separator(c); }));
+    };
     llvm::SmallVector<Spelling> found;
     vfs::walk(workspace_root, [&](const vfs::Entry& entry) {
         auto spelled = Spelling::absolute(entry.path);
         if(entry.type == llvm::sys::fs::file_type::directory_file) {
-            return path::filename(spelled.str()) != ".git" &&
-                   workspace_root.entry(spelled) != cache_dir;
+            auto name = path::filename(spelled.str());
+            return !name.starts_with(".") && name != "node_modules" &&
+                   workspace_root.entry(spelled) != cache_dir && depth(spelled) <= deepest;
         }
+        // The root and its direct subdirectories are where discovery looks.
         if(path::filename(spelled.str()) == "compile_commands.json") {
-            found.push_back(std::move(spelled));
+            if(depth(spelled.parent()) >= 2) {
+                found.push_back(std::move(spelled));
+            }
         } else if(entry.type == llvm::sys::fs::file_type::symlink_file &&
-                  vfs::is_directory(spelled)) {
+                  vfs::is_directory(spelled) && depth(spelled) >= 2) {
             // Not walked into (links may cycle), but a build directory
             // symlinked elsewhere keeps its database.
             if(auto database = database_in(spelled)) {
@@ -159,6 +172,7 @@ llvm::SmallVector<Spelling> compile_commands_below(CanonicalRef workspace_root,
         }
         return false;
     });
+    std::ranges::sort(found, {}, &Spelling::str);
     return found;
 }
 

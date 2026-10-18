@@ -176,6 +176,14 @@ struct LexicalInfo {
     const Directive* directive_at(llvm::StringRef content, std::uint32_t offset) const;
 };
 
+/// The index of the nearest of `tokens` before `index` that is no
+/// comment; none when there is none.
+std::optional<std::size_t> code_before(llvm::ArrayRef<Token> tokens, std::size_t index);
+
+/// The index of the nearest of `tokens` after `index` that is no comment;
+/// none when there is none.
+std::optional<std::size_t> code_after(llvm::ArrayRef<Token> tokens, std::size_t index);
+
 /// A `#define` as its words (LexicalInfo::words) spell it.
 struct MacroDefinition {
     /// The macro's name.
