@@ -1,0 +1,20 @@
+["templates instantiate across the pch"."main.cpp"]
+diagnostics = []
+
+["templates instantiate across the pch".call.hover]
+markdown = '''
+**function** `thrice`
+
+```cpp
+template <> int thrice<int>(int value)
+```
+'''
+range = "return ⟦thrice⟧(3);"
+
+["the pchs index template bodies".one]
+references = [
+    "include/four.h │ return value - ⟦one⟧();",
+    "include/numbers.h │ inline int ⟦one⟧() {",
+    "include/numbers.h │ return value + ⟦one⟧();",
+    "return ⟦one⟧() + 1;",
+]

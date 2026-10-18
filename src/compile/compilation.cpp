@@ -170,14 +170,15 @@ std::unique_ptr<clang::CompilerInvocation>
 
     auto& lang_opts = invocation->getLangOpts();
 
-    // MSVC targets defer template bodies by default so SDK headers written
-    // for MSVC's lookup rules still parse, but a deferred body has no AST and
-    // every feature inside it goes blind. Only PCH and PCM builds keep the
-    // default: an error there discards the PCH/PCM, so those headers must
-    // keep parsing the way clang meant them to.
-    if(!writes_output(params.kind)) {
-        lang_opts.DelayedTemplateParsing = false;
-    }
+    // Before C++20, clang defers template bodies on MSVC targets so that
+    // code written for MSVC's lookup rules compiles, but a deferred body has
+    // no AST: every feature inside it goes blind. Nor can PCH builds keep
+    // the default: a chained PCH (a preamble over a CMake PCH) that
+    // instantiates a deferred template of the PCH below it copies that
+    // PCH's deferred bodies, and clang crashes reading the copies back.
+    // Every compile parses bodies eagerly, as clangd does, at the cost of
+    // the errors a conforming compiler reports in such code.
+    lang_opts.DelayedTemplateParsing = false;
 
     // A header compiled under a source's command (`-x c++` buys a parse
     // instead of a precompiled-header job) is still a header: no "#pragma

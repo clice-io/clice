@@ -120,8 +120,7 @@ auto accessor_description(const clang::NamedDecl* decl) -> std::string {
     }
     const auto* definition =
         llvm::dyn_cast_if_present<clang::CXXMethodDecl>(method->getDefinition());
-    // A method of a class template in the preamble may still be
-    // late-parsed: it is defined, but its body is not there.
+    // A deleted method is a definition without a body.
     const auto* body = definition
                            ? llvm::dyn_cast_if_present<clang::CompoundStmt>(definition->getBody())
                            : nullptr;
