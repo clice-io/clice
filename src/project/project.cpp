@@ -99,8 +99,10 @@ CDBDiff Project::refresh_provisional() {
     return diff;
 }
 
+constexpr llvm::StringLiteral database_name = "compile_commands.json";
+
 static std::optional<Spelling> database_in(const Spelling& dir) {
-    Spelling candidate("compile_commands.json", dir);
+    Spelling candidate(database_name, dir);
     if(!vfs::exists(candidate)) {
         return std::nullopt;
     }
@@ -112,7 +114,7 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     if(workspace_root.empty()) {
         return places;
     }
-    places.emplace_back("compile_commands.json", Spelling(workspace_root));
+    places.emplace_back(database_name, Spelling(workspace_root));
 
     // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
@@ -127,15 +129,19 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
     }
     std::ranges::sort(subdirectories, {}, &Spelling::str);
     for(auto& subdirectory: subdirectories) {
-        places.emplace_back("compile_commands.json", subdirectory);
+        places.emplace_back(database_name, subdirectory);
     }
     return places;
 }
 
+/// The places that hold a database.
+static llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
+    llvm::erase_if(places, [](const Spelling& place) { return !vfs::exists(place); });
+    return places;
+}
+
 llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root) {
-    auto found = database_places(workspace_root);
-    llvm::erase_if(found, [](const Spelling& place) { return !vfs::exists(place); });
-    return found;
+    return existing(database_places(workspace_root));
 }
 
 llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
@@ -158,7 +164,7 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
                    workspace_root.entry(spelled) != cache_dir && depth(spelled) <= deepest;
         }
         // The root and its direct subdirectories are where discovery looks.
-        if(path::filename(spelled.str()) == "compile_commands.json") {
+        if(path::filename(spelled.str()) == database_name) {
             if(depth(spelled.parent()) >= 2) {
                 found.push_back(std::move(spelled));
             }
@@ -201,7 +207,7 @@ CanonicalPath project_root_above(CanonicalRef start) {
 llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef workspace_root) {
     llvm::SmallVector<Spelling> places;
     path::walk_ancestors(start, workspace_root, [&](llvm::StringRef dir) {
-        places.emplace_back("compile_commands.json", Spelling::absolute(dir));
+        places.emplace_back(database_name, Spelling::absolute(dir));
         return true;
     });
     return places;
@@ -209,9 +215,7 @@ llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalR
 
 llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
                                                    CanonicalRef workspace_root) {
-    auto found = database_places_above(start, workspace_root);
-    llvm::erase_if(found, [](const Spelling& place) { return !vfs::exists(place); });
-    return found;
+    return existing(database_places_above(start, workspace_root));
 }
 
 DepsSnapshot capture_deps_snapshot(FileTable& files,
