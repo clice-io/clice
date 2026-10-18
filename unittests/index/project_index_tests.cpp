@@ -11,7 +11,7 @@ import :index.shard;
 import :index.tu_index;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
-import :unittests.utils.tu_index_mirror;
+import :unittests.utils.tu_index_blob;
 import :unittests.utils;
 import :vfs.cache_store;
 
@@ -166,14 +166,14 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
 ZEST_CASE(MergePicksOneSpelling) {
     // Two units spelling one specialization differently must leave the
     // same name in the table whichever merges first.
-    TUIndexMirror spelled_int;
+    auto spelled_int = tu_index_blob();
     spelled_int.paths = {"/proj/main.cpp"};
-    spelled_int.add_symbol(42, {.name = "X", .args = "<int>"});
-    TUIndexMirror spelled_signed;
+    add_symbol(spelled_int, 42, {.name = "X", .args = "<int>"});
+    auto spelled_signed = tu_index_blob();
     spelled_signed.paths = {"/proj/main.cpp"};
-    spelled_signed.add_symbol(42, {.name = "X", .args = "<signed int>"});
-    auto int_bytes = spelled_int.bytes();
-    auto signed_bytes = spelled_signed.bytes();
+    add_symbol(spelled_signed, 42, {.name = "X", .args = "<signed int>"});
+    auto int_bytes = serialized(spelled_int);
+    auto signed_bytes = serialized(spelled_signed);
 
     clice::FileTable pool;
     for(auto [first, second]: {
@@ -192,14 +192,14 @@ ZEST_CASE(MergePicksOneSpelling) {
 ZEST_CASE(LatestSignatureStands) {
     // Renaming a parameter keeps the function's hash: the unit merged last
     // tells how it reads now.
-    TUIndexMirror before;
+    auto before = tu_index_blob();
     before.paths = {"/proj/main.cpp"};
-    before.add_symbol(42, {.name = "scale", .signature = "(int x)"});
-    TUIndexMirror after;
+    add_symbol(before, 42, {.name = "scale", .signature = "(int x)"});
+    auto after = tu_index_blob();
     after.paths = {"/proj/main.cpp"};
-    after.add_symbol(42, {.name = "scale", .signature = "(int count)"});
-    auto before_bytes = before.bytes();
-    auto after_bytes = after.bytes();
+    add_symbol(after, 42, {.name = "scale", .signature = "(int count)"});
+    auto before_bytes = serialized(before);
+    auto after_bytes = serialized(after);
 
     clice::FileTable pool;
     index::ProjectIndex project;
@@ -214,19 +214,19 @@ ZEST_CASE(DefinitionDecidesSignature) {
     // A header declaring `scale(int)` and the unit defining it with a named
     // parameter read the same function differently: the definition's
     // reading stands whatever merges first.
-    TUIndexMirror declares;
+    auto declares = tu_index_blob();
     declares.paths = {"/proj/main.cpp"};
-    declares.add_symbol(42, {.name = "scale", .signature = "(int)"});
-    TUIndexMirror defines;
+    add_symbol(declares, 42, {.name = "scale", .signature = "(int)"});
+    auto defines = tu_index_blob();
     defines.paths = {"/proj/main.cpp"};
-    defines.add_symbol(42,
+    add_symbol(defines, 42,
                        {
                            .name = "scale",
                            .signature = "(int count)",
                            .flags = index::SymbolFlags::HasDefinition,
                        });
-    auto declares_bytes = declares.bytes();
-    auto defines_bytes = defines.bytes();
+    auto declares_bytes = serialized(declares);
+    auto defines_bytes = serialized(defines);
 
     clice::FileTable pool;
     for(auto [first, second]: {
@@ -245,19 +245,19 @@ ZEST_CASE(DefinitionDecidesSignature) {
 ZEST_CASE(DefinitionDecidesTokenKind) {
     // A unit that sees only `struct S;` and one that defines `class S {}`
     // must leave the definition's kind whichever merges first.
-    TUIndexMirror declares;
+    auto declares = tu_index_blob();
     declares.paths = {"/proj/main.cpp"};
-    declares.add_symbol(42, {.name = "S", .token_class = {.kind = SemanticTokenKind::Struct}});
-    TUIndexMirror defines;
+    add_symbol(declares, 42, {.name = "S", .token_class = {.kind = SemanticTokenKind::Struct}});
+    auto defines = tu_index_blob();
     defines.paths = {"/proj/main.cpp"};
-    defines.add_symbol(42,
+    add_symbol(defines, 42,
                        {
                            .name = "S",
                            .flags = index::SymbolFlags::HasDefinition,
                            .token_class = {.kind = SemanticTokenKind::Class},
                        });
-    auto declares_bytes = declares.bytes();
-    auto defines_bytes = defines.bytes();
+    auto declares_bytes = serialized(declares);
+    auto defines_bytes = serialized(defines);
 
     clice::FileTable pool;
     for(auto [first, second]: {

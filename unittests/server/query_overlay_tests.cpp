@@ -22,7 +22,7 @@ import :server.live_sources;
 import :server.session_store;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
-import :unittests.utils.tu_index_mirror;
+import :unittests.utils.tu_index_blob;
 import :unittests.utils;
 import :vfs.file_system;
 import :vfs.path;
@@ -144,10 +144,10 @@ void merge_disk_index(llvm::StringRef focus_on_disk = {}) {
 /// every entry of its buffer lives behind the PCH. `loaded` is what the
 /// freshness gate keys on; an unloaded index means "compile not finished".
 index::TUIndex empty_session_index() {
-    TUIndexMirror mirror;
-    mirror.built_at = 1;
-    mirror.paths = {focus_path};
-    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(mirror.bytes()));
+    auto blob = tu_index_blob();
+    blob.built_at = 1;
+    blob.paths = {focus_path};
+    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(serialized(blob)));
 }
 
 void install_empty_index(std::source_location location = std::source_location::current()) {

@@ -31,7 +31,7 @@ import :syntax.dependency_graph;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
-import :unittests.utils.tu_index_mirror;
+import :unittests.utils.tu_index_blob;
 import :unittests.utils;
 import :vfs.cache_store;
 import :worker.pool;
@@ -235,9 +235,9 @@ IndexedTU index_file(TempDir& tmp,
 /// Re-encode a TU index with its consumed-content hash column dropped,
 /// as a file behind a PCM ships it.
 std::string strip_content_hashes(llvm::StringRef data) {
-    auto mirror = TUIndexMirror::of(index::TUIndex::from_bytes(data));
-    mirror.content_hashes.clear();
-    return mirror.bytes();
+    auto blob = tu_index_blob(index::TUIndex::from_bytes(data));
+    blob.content_hashes.clear();
+    return serialized(blob);
 }
 
 /// A structurally valid blob of `text`'s content generation carrying an
@@ -332,18 +332,18 @@ int use() { return 1; }
 )");
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
-    auto mirror = TUIndexMirror::of(index::TUIndex::from_bytes(indexed.data));
-    auto header_path = std::ranges::find_if(mirror.paths, [](const std::string& path) {
+    auto blob = tu_index_blob(index::TUIndex::from_bytes(indexed.data));
+    auto header_path = std::ranges::find_if(blob.paths, [](const std::string& path) {
         return llvm::StringRef(path).ends_with("shared.h");
     });
-    ZASSERT(header_path != mirror.paths.end());
-    auto header_id = static_cast<std::uint32_t>(header_path - mirror.paths.begin());
-    auto focus_id = static_cast<std::uint32_t>(mirror.paths.size() - 1);
+    ZASSERT(header_path != blob.paths.end());
+    auto header_id = static_cast<std::uint32_t>(header_path - blob.paths.begin());
+    auto focus_id = static_cast<std::uint32_t>(blob.paths.size() - 1);
     constexpr index::SymbolHash helper = ~0ull - 2;
-    mirror.add_symbol(helper,
+    add_symbol(blob, helper,
                       {.name = "helper", .scope = index::SymbolScope::Internal},
                       {header_id, focus_id});
-    auto planted = mirror.bytes();
+    auto planted = serialized(blob);
 
     ZEXPECT(!merge(planted.data(), planted.size()));
 
@@ -352,7 +352,7 @@ int use() { return 1; }
     auto report = index_store.merge(planted.data(), planted.size(), {input});
     ZASSERT(report);
     pump.apply_report(*report);
-    auto focus = project.file_table.intern(Spelling::absolute(mirror.paths.back()));
+    auto focus = project.file_table.intern(Spelling::absolute(blob.paths.back()));
     llvm::SmallVector<Fid> reached;
     project.index.for_each_file_of_local(helper, header, [&](Fid file) {
         reached.push_back(file);

@@ -11,7 +11,7 @@ import :index.tu_index;
 import :project.project;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
-import :unittests.utils.tu_index_mirror;
+import :unittests.utils.tu_index_blob;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -21,10 +21,10 @@ namespace {
 /// A TU index blob holding only the minimal path table verification demands,
 /// under `version`.
 std::string blob_of_version(std::uint32_t version) {
-    TUIndexMirror mirror;
-    mirror.format_version = version;
-    mirror.paths = {"/proj/main.cpp"};
-    return mirror.bytes();
+    auto blob = tu_index_blob();
+    blob.format_version = version;
+    blob.paths = {"/proj/main.cpp"};
+    return serialized(blob);
 }
 
 ZEST_SUITE(PreambleIndex, Tester) {
