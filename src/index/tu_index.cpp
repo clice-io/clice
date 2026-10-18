@@ -1834,6 +1834,7 @@ public:
         // no unit's to index.
         auto& SM = unit.context().getSourceManager();
         llvm::SmallVector<std::pair<SymbolHash, clang::FileID>> declaring_files;
+        llvm::DenseSet<clang::FileID> queued(indexed_fids.begin(), indexed_fids.end());
         for(auto [hash, decl]: internal_decls) {
             for(const auto* redecl: decl->redecls()) {
                 auto* module = redecl->getOwningModule();
@@ -1842,7 +1843,9 @@ public:
                    !(module && module->isHeaderLikeModule()) && fid.isValid() &&
                    !unit.from_context(fid)) {
                     declaring_files.emplace_back(hash, fid);
-                    indexed_fids.push_back(fid);
+                    if(queued.insert(fid).second) {
+                        indexed_fids.push_back(fid);
+                    }
                 }
             }
         }
