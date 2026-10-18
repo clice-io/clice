@@ -42,7 +42,8 @@
       "parts": {
         "llvm": ["llvm/", "third-party/", "build/"],
         "clang": ["clang/", "clang-tools-extra/"],
-        "mlir": ["mlir/", "flang/"],
+        "mlir": ["mlir/"],
+        "flang": ["flang/"],
         "lldb": ["lldb/", "lld/", "bolt/", "polly/"]
       },
       "sample": 40

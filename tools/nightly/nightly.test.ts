@@ -16,6 +16,7 @@ describe("projects", () => {
             "llvm/llvm",
             "llvm/clang",
             "llvm/mlir",
+            "llvm/flang",
             "llvm/lldb",
             "linux",
             "clice",
