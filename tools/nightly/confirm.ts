@@ -41,7 +41,9 @@ export async function confirm<T extends { unit: string }>(
 ): Promise<(T & CompilerCheck)[]> {
     // By the file's real path: Bazel names a source through its execution
     // root, whose entries link back into the workspace clice names it by.
-    const real = (file: string) => (fs.existsSync(file) ? fs.realpathSync(file) : file);
+    // On Windows clice spells a drive in lowercase and the build in
+    // uppercase: the file system's own spelling is the one both resolve to.
+    const real = (file: string) => (fs.existsSync(file) ? fs.realpathSync.native(file) : file);
     const byUnit = new Map<string, DatabaseEntry>();
     for (const entry of entries) {
         const source = real(path.resolve(entry.directory, entry.file));
