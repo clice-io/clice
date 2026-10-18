@@ -198,7 +198,7 @@ int run_scan(const ScanOptions& opts) {
     if(first.load.members.empty()) {
         LOG_ERROR("Nothing to scan: no compilation database for {} lists a file.{}",
                   root.str(),
-                  deeper_databases(*first.project));
+                  deeper_databases_hint(*first.project));
         return 1;
     }
     auto output = describe(first);

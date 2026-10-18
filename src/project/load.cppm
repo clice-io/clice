@@ -36,11 +36,11 @@ BuildLoad load_build(Project& project,
                      llvm::ArrayRef<Spelling> nearby = {},
                      llvm::ArrayRef<Spelling> provisional = {});
 
-/// What to add to the guidance of a workspace without a database:
-/// a sentence naming the compile_commands.json files deeper in it than
-/// discovery looks (compile_commands_below), as the rule that loads them;
-/// empty when there is none, or the rules declare the build's sources.
-std::string deeper_databases(const Project& project);
+/// The sentence the guidance of a workspace without a database ends with:
+/// the rule that loads the compile_commands.json files discovery passes
+/// over (deeper_compile_commands). Empty when there is none, or the rules
+/// declare the build's sources.
+std::string deeper_databases_hint(const Project& project);
 
 /// What load_project found and did.
 struct ProjectLoad {

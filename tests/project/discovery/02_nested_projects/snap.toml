@@ -45,5 +45,5 @@ exit = 0
 
 ["batch indexing names nested projects"."$ clice index --jobs 2"]
 stdout = "Session log: ${WS}/.clice/logs/${SESSION}"
-stderr = 'error: Nothing to index: no compile_commands.json found under ${WS}. clice looks at the workspace root and its direct subdirectories unless clice.toml names a database; to use the deeper ones found, add [[rules]] compile_commands = ["group-a/p1", "group-a/p2"] to clice.toml.'
+stderr = 'error: Nothing to index: no compile_commands.json found in ${WS} or its direct subdirectories. Deeper ones load only when clice.toml names them; to use those found, add [[rules]] compile_commands = ["group-a/p1", "group-a/p2"] to clice.toml.'
 exit = 1

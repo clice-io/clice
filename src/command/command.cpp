@@ -139,6 +139,11 @@ ArgClass classify(unsigned id, llvm::ArrayRef<const char*> values) {
     if(id == option::OPT_Wp_COMMA && dependency_options(values)) {
         return ArgClass::Discarded;
     }
+    /// g++ takes an LTO job count (-flto=8), which clang rejects.
+    if(id == option::OPT_flto_EQ && values.size() == 1 &&
+       !llvm::is_contained({"full", "thin", "none"}, llvm::StringRef(values[0]))) {
+        return ArgClass::Discarded;
+    }
     if(is_discarded_option(id)) {
         return ArgClass::Discarded;
     }
@@ -800,8 +805,7 @@ void CompilationDatabase::rebuild_entry_list() {
 /// every spelling of that directory finds the same source, while a
 /// database file symlinked elsewhere is still read through the link. So
 /// is a directory that is itself a symlink (build -> out/debug): switching
-/// the link switches the database. A link and the file it names are still
-/// one database (find_source).
+/// the link switches the database.
 static Spelling source_key(const Spelling& path) {
     auto file =
         path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
@@ -831,9 +835,17 @@ std::optional<SourceID> CompilationDatabase::find_source(const Spelling& path) c
             return SourceID(i);
         }
     }
+    return std::nullopt;
+}
+
+std::optional<SourceID> CompilationDatabase::find_same_file(const Spelling& path) const {
+    auto key = source_key(path);
     CanonicalPath file(key);
     for(std::size_t i = 0; i < source_files.size(); i += 1) {
-        if(CanonicalPath(Spelling::absolute(source_files[i].path)) == file) {
+        // The tests' anonymous source has no file.
+        auto& registered = source_files[i].path;
+        if(!registered.empty() && registered != key.str() &&
+           CanonicalPath(Spelling::absolute(registered)) == file) {
             return SourceID(i);
         }
     }

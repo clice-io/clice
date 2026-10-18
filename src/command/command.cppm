@@ -331,10 +331,12 @@ public:
     /// is read until load_source().
     SourceID add_source(const Spelling& path);
 
-    /// The registered source `path` names: spelled the same, or the same
-    /// file — a link to a registered database, or the database a
-    /// registered link names.
     std::optional<SourceID> find_source(const Spelling& path) const;
+
+    /// The source registered under another spelling of the file `path`
+    /// names: the database a link names, or a link to it — as the root's
+    /// compile_commands.json links build/compile_commands.json.
+    std::optional<SourceID> find_same_file(const Spelling& path) const;
 
     llvm::StringRef source_path(SourceID id) const;
 

@@ -11,11 +11,12 @@ nearest `.clang-format` above each file.
 **Usage**: `clice format [<path>...] [--workspace <dir>] [--configuration <tag>] [--check] [--jobs <n>]`
 
 Without paths it formats the build's own files: every translation unit of the
-compilation database and every file with a C-family suffix they include that
-sits inside the workspace, outside the build trees (a directory below the root
-holding a compilation database, where a build generates or fetches sources,
-units included), outside the system include directories of their commands and
-outside the cache directory. A
+compilation database outside a build tree (a directory holding `CMakeCache.txt`
+or `build.ninja`, where FetchContent puts the sources it fetches) and every file
+with a C-family suffix they include that sits inside the workspace, outside the
+build trees (a directory below the root holding a compilation database, where a
+build generates or fetches sources), outside the system include directories of
+their commands and outside the cache directory. A
 directory argument narrows that set to the
 files under it; a file argument with a C-family suffix is formatted whether or
 not the build knows it. Paths are relative to the workspace. A rule in `clice.toml` with

@@ -11,6 +11,7 @@ import :command.command;
 import :compile.tidy;
 import :config.config;
 import :feature.feature;
+import :project.build;
 import :project.command_resolver;
 import :project.configuration;
 import :project.index_store;
@@ -252,9 +253,11 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_return;
     }
     if(report.members.empty()) {
-        LOG_ERROR("Nothing to index: no compile_commands.json found under {}.{}",
-                  options.root,
-                  deeper_databases(project));
+        LOG_ERROR(
+            "Nothing to index: no compile_commands.json found in {} or its direct "
+            "subdirectories.{}",
+            options.root,
+            deeper_databases_hint(project));
         result.exit_code = 1;
         co_await shutdown(stack);
         co_return;
@@ -504,9 +507,11 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
 
     auto& members = report.members;
     if(members.empty()) {
-        LOG_ERROR("Nothing to lint: no compile_commands.json found under {}.{}",
-                  options.root,
-                  deeper_databases(project));
+        LOG_ERROR(
+            "Nothing to lint: no compile_commands.json found in {} or its direct "
+            "subdirectories.{}",
+            options.root,
+            deeper_databases_hint(project));
         result.exit_code = 2;
         co_await shutdown(stack);
         co_return;
@@ -592,62 +597,67 @@ struct FormatFile {
 };
 
 /// The files `clice format` formats without arguments: the build's
-/// translation units and every file they include that is the workspace's
-/// own — inside it, outside the cache directory and the build trees (the
-/// directories below the root holding one of the build's databases: what
-/// a build generates or fetches lives there, units and all), included
-/// from outside the commands' system include directories, of a type
-/// clang-format formats, no matching rule saying `format = false`.
+/// translation units that are the workspace's own (workspace_file: not in
+/// a build tree, where FetchContent puts the sources it fetches) and
+/// every file they include that is the workspace's own — inside it,
+/// outside the cache directory, the build trees (the directories below the
+/// root holding one of the build's databases: what a build generates or
+/// fetches lives there) and the commands' system include directories, of
+/// a type clang-format formats, no matching rule saying `format = false`.
 std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> members) {
     auto& build = project.build;
     auto& files = project.file_table;
 
     CanonicalRef root = project.config.workspace_root;
-    auto add = [](std::vector<CanonicalPath>& dirs, CanonicalPath dir) {
-        if(!llvm::is_contained(dirs, dir)) {
-            dirs.push_back(std::move(dir));
+    auto cache_dir = project.config.project.cache_dir.empty()
+                         ? CanonicalPath()
+                         : CanonicalPath(Spelling::absolute(project.config.project.cache_dir));
+    std::vector<CanonicalPath> skipped_dirs;
+    auto skip = [&](CanonicalPath dir) {
+        if(!llvm::is_contained(skipped_dirs, dir)) {
+            skipped_dirs.push_back(std::move(dir));
         }
     };
-    std::vector<CanonicalPath> foreign_dirs;
-    if(!project.config.project.cache_dir.empty()) {
-        add(foreign_dirs, CanonicalPath(Spelling::absolute(project.config.project.cache_dir)));
+    if(!cache_dir.empty()) {
+        skip(cache_dir);
     }
     // A database at the workspace root, or above it, is a copy of the
-    // build's or the build of a larger tree, not a build tree of its own.
+    // build's or the build of a larger tree, not a build tree of its own;
+    // a root link to build/compile_commands.json names build/.
     for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
-        auto directory =
-            CanonicalPath(Spelling::absolute(project.cdb.source_path(SourceID(i))).parent());
+        CanonicalPath database(Spelling::absolute(project.cdb.source_path(SourceID(i))));
+        auto directory = CanonicalRef(database).parent();
         if(directory != root && path::under(directory, root)) {
-            add(foreign_dirs, std::move(directory));
+            skip(std::move(directory));
         }
     }
-    std::vector<CanonicalPath> system_dirs;
     for(auto member: members) {
         auto path = files.resolve(member);
         for(auto& command: build.commands(member)) {
             auto ref = build.resolve(member, command.config, command.source, path, path);
             auto search = project.cdb.search_config(ref);
             for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
-                add(system_dirs, CanonicalPath(Spelling::absolute(dir.path)));
+                skip(CanonicalPath(Spelling::absolute(dir.path)));
             }
         }
     }
 
-    // A unit in a system include directory is the build's own still: its
-    // own command searches the directory it sits in.
+    // A unit beside a database of its own directory, or in a directory its
+    // own command searches as a system one, is still the project's: the
+    // directories keep out only what units include.
     std::vector<FormatFile> result;
     llvm::DenseSet<Fid> unit(members.begin(), members.end());
-    auto in = [](llvm::ArrayRef<CanonicalPath> dirs, CanonicalRef path) {
-        return llvm::any_of(dirs, [&](auto& dir) { return path::under(path, dir); });
-    };
     for(auto fid: project.dep_graph.all_files()) {
         auto path = files.resolve(fid);
         // A header only a command forces in, which no unit's text
         // includes, is left as it is: often a build generated it (CMake's
         // cmake_pch.hxx).
-        if(!formats(path) || !build.formattable(path) || in(foreign_dirs, path) ||
-           (!unit.contains(fid) &&
-            (project.dep_graph.get_includers(fid).empty() || in(system_dirs, path)))) {
+        if(!formats(path) || !build.formattable(path) ||
+           (unit.contains(fid) ? !workspace_file(root, cache_dir, path)
+                               : project.dep_graph.get_includers(fid).empty() ||
+                                     llvm::any_of(skipped_dirs, [&](auto& dir) {
+                                         return path::under(path, dir);
+                                     }))) {
             continue;
         }
         result.push_back({.path = CanonicalPath(path), .name = files.spelling(fid)});
@@ -782,10 +792,11 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         auto load = load_build(project, options.root, configuration);
         if(project.cdb.source_count() == 0) {
             result.exit_code = 2;
-            result.error =
-                std::format("Nothing to format: no compile_commands.json found under {}.{}",
-                            options.root,
-                            deeper_databases(project));
+            result.error = std::format(
+                "Nothing to format: no compile_commands.json found in {} or its direct "
+                "subdirectories.{}",
+                options.root,
+                deeper_databases_hint(project));
             return result;
         }
         for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {

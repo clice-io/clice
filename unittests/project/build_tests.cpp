@@ -509,24 +509,42 @@ ZEST_CASE(DiscoverEveryNearby) {
             CanonicalPath(Spelling::absolute(path::join(tmp.root, "compile_commands.json"))));
 };
 
+ZEST_CASE(DeeperDatabasesNamed) {
+    /// The walk names what discovery passes over, three directories deep
+    /// at most.
+    TempDir tmp;
+    tmp.touch("compile_commands.json", "[]");
+    tmp.touch("build/compile_commands.json", "[]");
+    tmp.touch("build/debug/compile_commands.json", "[]");
+    tmp.touch("out/build/x64-debug/compile_commands.json", "[]");
+    tmp.touch("a/b/c/d/compile_commands.json", "[]");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    Spelling spelled(root);
+    auto deeper = deeper_compile_commands(root, CanonicalPath());
+    ZASSERT(deeper.size() == 2u);
+    ZEXPECT(deeper[0].str() == Spelling("build/debug/compile_commands.json", spelled).str());
+    ZEXPECT(deeper[1].str() ==
+            Spelling("out/build/x64-debug/compile_commands.json", spelled).str());
+};
+
 #ifndef _WIN32
 ZEST_CASE(DiscoverSymlinkedBuild) {
     /// A build directory symlinked elsewhere keeps its database, for
     /// discovery and the walk below it alike.
     TempDir tmp;
     tmp.touch("elsewhere/build/compile_commands.json", "[]");
-    tmp.mkdir("ws");
+    tmp.mkdir("ws/sub");
     ZASSERT(::symlink(tmp.path("elsewhere/build").c_str(), tmp.path("ws/build").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("elsewhere/build").c_str(), tmp.path("ws/sub/build").c_str()) == 0);
     CanonicalPath root(Spelling::absolute(tmp.path("ws")));
-    auto expected = Spelling("build/compile_commands.json", Spelling(root)).str();
 
     auto found = discover_compile_commands(root);
     ZASSERT(found.size() == 1u);
-    ZEXPECT(found[0].str() == expected);
+    ZEXPECT(found[0].str() == Spelling("build/compile_commands.json", Spelling(root)).str());
 
-    auto below = compile_commands_below(root, CanonicalPath());
-    ZASSERT(below.size() == 1u);
-    ZEXPECT(below[0].str() == expected);
+    auto deeper = deeper_compile_commands(root, CanonicalPath());
+    ZASSERT(deeper.size() == 1u);
+    ZEXPECT(deeper[0].str() == Spelling("sub/build/compile_commands.json", Spelling(root)).str());
 };
 
 ZEST_CASE(LinkedBuildKeyedByLink) {
@@ -546,9 +564,9 @@ ZEST_CASE(LinkedBuildKeyedByLink) {
     ZEXPECT(cdb.add_source(build) == first);
 };
 
-ZEST_CASE(LinkedDatabaseOneSource) {
-    /// The root's link to the build's database is that database: either
-    /// spelling finds the source the other registered.
+ZEST_CASE(LinkedDatabaseSameFile) {
+    /// The root's link to the build's database is that database while the
+    /// link stands.
     TempDir tmp;
     tmp.touch("build/compile_commands.json", "[]");
     ZASSERT(::symlink(tmp.path("build/compile_commands.json").c_str(),
@@ -556,8 +574,13 @@ ZEST_CASE(LinkedDatabaseOneSource) {
     FileTable files;
     CompilationDatabase cdb{files};
     auto link = cdb.add_source(Spelling::absolute(tmp.path("compile_commands.json")));
-    ZEXPECT(cdb.add_source(Spelling::absolute(tmp.path("build/compile_commands.json"))) == link);
-    ZEXPECT(cdb.source_count() == 1u);
+    auto target = Spelling::absolute(tmp.path("build/compile_commands.json"));
+    ZEXPECT(cdb.find_same_file(target) == link);
+    ZEXPECT(cdb.find_same_file(Spelling::absolute(tmp.path("compile_commands.json"))) ==
+            std::nullopt);
+
+    ZASSERT(::unlink(tmp.path("compile_commands.json").c_str()) == 0);
+    ZEXPECT(cdb.find_same_file(target) == std::nullopt);
 };
 #endif
 
