@@ -158,7 +158,7 @@ public:
     bool loaded() const;
 
     /// Number of symbols in the index.
-    std::size_t size() const;
+    std::uint32_t size() const;
 
     bool contains(SymbolHash hash) const;
 
@@ -173,7 +173,7 @@ public:
     /// At most `limit` hits, best first. Empty for a query by id or
     /// place. `workspace` is the root the index names files under
     /// relative to (ProjectIndex::workspace).
-    SearchOutcome search(const SymbolQuery& query, std::size_t limit, CanonicalRef workspace) const;
+    SearchOutcome search(const SymbolQuery& query, std::uint32_t limit, CanonicalRef workspace) const;
 
 private:
     struct View;

@@ -31,7 +31,7 @@ namespace {
 
 using BlobView = kota::codec::fbs::table_view<ShardBlob>;
 
-MaskEncoding encoding_of(std::size_t variant_count) {
+MaskEncoding encoding_of(std::uint32_t variant_count) {
     if(variant_count <= 1) {
         return MaskEncoding::Single;
     }
@@ -112,7 +112,7 @@ struct OccurrenceTable {
         };
     }
 
-    std::size_t size() const {
+    std::uint32_t size() const {
         return columns.size();
     }
 
@@ -170,7 +170,7 @@ struct RelationTable {
         };
     }
 
-    std::size_t size() const {
+    std::uint32_t size() const {
         return columns.size();
     }
 
@@ -186,8 +186,8 @@ struct RelationTable {
     /// relations must be decoded one after another from where the cursor
     /// was placed.
     struct Cursor {
-        std::size_t target = 0;
-        std::size_t extent = 0;
+        std::uint32_t target = 0;
+        std::uint32_t extent = 0;
     };
 
     void advance(Cursor& cursor, std::uint32_t entry) const {
@@ -209,7 +209,7 @@ struct RelationTable {
     }
 
     /// Extent `k`, of a relation whose range begins at `name`.
-    LocalSourceRange extent_at(std::size_t k, std::uint32_t name) const {
+    LocalSourceRange extent_at(std::uint32_t k, std::uint32_t name) const {
         if(extent_heads[k] == extent_escape) {
             auto far = escape_position(far_extents, k);
             return {far_begins[far], far_ends[far]};
@@ -282,15 +282,15 @@ struct LocalTable {
         };
     }
 
-    std::size_t size() const {
+    std::uint32_t size() const {
         return symbols.size();
     }
 
-    SymbolHash hash_of(std::size_t k) const {
+    SymbolHash hash_of(std::uint32_t k) const {
         return symbol_hashes[symbols[k]];
     }
 
-    SymbolView at(std::size_t k) const {
+    SymbolView at(std::uint32_t k) const {
         auto position = static_cast<std::uint32_t>(k);
         auto args_at = args_of.find(position);
         auto signature_at = signatures_of.find(position);
@@ -351,9 +351,9 @@ CheckResult line_table_ok(BlobView root) {
         return std::unexpected("non-ASCII line columns do not line up");
     }
     std::uint64_t line_sum = 0;
-    std::size_t escape_cursor = 0;
+    std::uint32_t escape_cursor = 0;
     std::uint32_t utf8_cursor = 0;
-    for(std::size_t line = 0; line < line_lengths.size(); line += 1) {
+    for(std::uint32_t line = 0; line < line_lengths.size(); line += 1) {
         std::uint32_t length = line_lengths[line];
         if(length == length_escape) {
             length = long_line_lengths[escape_cursor];
@@ -490,7 +490,7 @@ CheckResult relations_ok(BlobView root) {
     // so the key must ascend strictly within each group — out-of-order or
     // repeated entries would mis-merge silently instead of being rejected.
     RelationTable::Cursor cursor;
-    for(std::size_t id = 0; id < table.symbol_hashes.size(); id += 1) {
+    for(std::uint32_t id = 0; id < table.symbol_hashes.size(); id += 1) {
         std::tuple<std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t> prev{};
         for(auto entry = table.offsets[id]; entry < table.offsets[id + 1]; entry += 1) {
             auto k = cursor.extent;
@@ -553,7 +553,7 @@ CheckResult locals_ok(BlobView root) {
         if(auto ok = ends_ok(ends, of.size(), text.size()); !ok) {
             return ok;
         }
-        for(std::size_t i = 0; i < of.size(); i += 1) {
+        for(std::uint32_t i = 0; i < of.size(); i += 1) {
             if(ends.slice(text, i).empty()) {
                 return std::unexpected("an empty local argument or signature stored");
             }
@@ -571,7 +571,7 @@ CheckResult locals_ok(BlobView root) {
     }
     // A local symbol's parent becomes a DenseSet key in a query's container
     // walk, where the sentinel values corrupt or assert.
-    for(std::size_t k = 0; k < count; k += 1) {
+    for(std::uint32_t k = 0; k < count; k += 1) {
         if(table.parents[k] != 0 && reserved_key(table.symbol_hashes[table.parents[k] - 1])) {
             return std::unexpected("reserved local parent hash");
         }
@@ -591,7 +591,7 @@ CheckResult masks_ok(BlobView root) {
     for(auto columns:
         {columns_of(root[&ShardBlob::occurrences]), columns_of(root[&ShardBlob::relations])}) {
         auto count = columns.size();
-        auto expected = [&](MaskEncoding column) -> std::size_t {
+        auto expected = [&](MaskEncoding column) -> std::uint32_t {
             if(column != encoding) {
                 return 0;
             }
@@ -752,7 +752,7 @@ void Shard::set_live(llvm::ArrayRef<VariantHash> live_hashes) {
     }
 
     auto stored = variants();
-    std::size_t matched = 0;
+    std::uint32_t matched = 0;
     Live next;
     for(std::uint32_t id = 0; id < stored.size(); id += 1) {
         if(!llvm::is_contained(live_hashes, stored[id])) {
@@ -940,7 +940,7 @@ void Shard::for_each_local_symbol(
         return;
     }
     auto table = LocalTable::of(view_of(buffer->getBuffer()));
-    for(std::size_t k = 0; k < table.size(); k += 1) {
+    for(std::uint32_t k = 0; k < table.size(); k += 1) {
         if(!callback(table.hash_of(k), table.at(k))) {
             return;
         }
@@ -957,7 +957,7 @@ std::span<const std::uint32_t> Shard::line_starts() const {
         auto long_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
         line_starts_cache.reserve(lengths.size());
         std::uint32_t start = 0;
-        std::size_t escape_cursor = 0;
+        std::uint32_t escape_cursor = 0;
         for(auto length: lengths) {
             line_starts_cache.push_back(start);
             if(length == length_escape) {
@@ -1121,8 +1121,8 @@ void merge_sorted(std::vector<Entry> old_entries,
 /// OR-ed masks.
 template <typename Entry, typename Key>
 void combine_equal(std::vector<Entry>& entries, Key key) {
-    std::size_t out = 0;
-    for(std::size_t i = 0; i < entries.size(); i += 1) {
+    std::uint32_t out = 0;
+    for(std::uint32_t i = 0; i < entries.size(); i += 1) {
         if(out != 0 && key(entries[out - 1]) == key(entries[i])) {
             entries[out - 1].mask |= entries[i].mask;
         } else {
@@ -1257,7 +1257,7 @@ ContentInfo content_info_of(llvm::StringRef content) {
 
     auto starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
     info.line_lengths.reserve(starts.size());
-    for(std::size_t i = 0; i < starts.size(); i += 1) {
+    for(std::uint32_t i = 0; i < starts.size(); i += 1) {
         auto last = i + 1 == starts.size();
         auto next = last ? info.size : starts[i + 1];
         auto length = next - starts[i];
@@ -1312,7 +1312,7 @@ LocalSymbol own(const SymbolView& identity) {
 /// reference are filtered at emit time.
 void collect_locals(BlobView root, llvm::DenseMap<SymbolHash, LocalSymbol>& locals) {
     auto table = LocalTable::of(root);
-    for(std::size_t k = 0; k < table.size(); k += 1) {
+    for(std::uint32_t k = 0; k < table.size(); k += 1) {
         auto identity = table.at(k);
         auto [it, inserted] = locals.try_emplace(table.hash_of(k), own(identity));
         // Variants may see different facts of one symbol (a definition

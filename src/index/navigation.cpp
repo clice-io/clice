@@ -394,7 +394,7 @@ std::vector<Site> type_definition(const IndexQuery& index,
     }
     // An alias leads on to the type it names, through aliases of aliases.
     llvm::DenseSet<SymbolHash> seen;
-    for(std::size_t i = 0; i < found.size(); i += 1) {
+    for(std::uint32_t i = 0; i < found.size(); i += 1) {
         auto target = found[i];
         auto named = index.symbol_info(target.symbol, target.anchor);
         if(!seen.insert(target.symbol).second || !named || named->kind != SymbolKind::Type ||

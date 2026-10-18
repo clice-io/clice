@@ -97,7 +97,7 @@ struct BitWriter {
 /// Bits read in the order BitWriter appends them.
 struct BitReader {
     llvm::ArrayRef<std::uint8_t> bytes;
-    std::size_t at = 0;
+    std::uint32_t at = 0;
     std::uint64_t buffer = 0;
     std::uint32_t held = 0;
 
@@ -124,7 +124,7 @@ void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value) {
     out.push_back(static_cast<std::uint8_t>(value));
 }
 
-std::optional<std::uint64_t> read_varint(llvm::ArrayRef<std::uint8_t> bytes, std::size_t& at) {
+std::optional<std::uint64_t> read_varint(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t& at) {
     std::uint64_t value = 0;
     auto first = at;
     for(std::uint32_t shift = 0; shift < 64; shift += 7) {
@@ -178,7 +178,7 @@ std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t univer
 }
 
 std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t universe) {
-    std::size_t at = 0;
+    std::uint32_t at = 0;
     auto read = read_varint(bytes, at);
     if(!read || *read > universe) {
         return std::nullopt;
@@ -204,7 +204,7 @@ std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uin
     std::vector<std::uint32_t> ids;
     ids.reserve(count);
     BitReader reader{.bytes = lows};
-    for(std::size_t b = 0; b < highs.size(); b += 1) {
+    for(std::uint32_t b = 0; b < highs.size(); b += 1) {
         for(std::uint8_t byte = highs[b]; byte != 0; byte &= byte - 1) {
             if(ids.size() == count) {
                 return std::nullopt;

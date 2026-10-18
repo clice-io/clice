@@ -113,7 +113,7 @@ struct ProjectIndex {
         llvm::function_ref<bool(SymbolHash, const SymbolView&, std::uint32_t references)> visit)
         const;
 
-    std::size_t symbol_count() const;
+    std::uint32_t symbol_count() const;
 
     /// The symbol's entry to change: the changed entry when there is one,
     /// else a copy of the base entry, else a fresh one.

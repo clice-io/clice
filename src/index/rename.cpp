@@ -84,7 +84,7 @@ std::string where(const Site& site) {
 /// Every symbol named `name` exactly, however many.
 std::vector<IndexQuery::Located> all_named(const IndexQuery& query, llvm::StringRef name) {
     SymbolQuery exact{.mode = SymbolQuery::Mode::Exact, .pattern = name.str()};
-    for(std::size_t limit = 256;; limit *= 4) {
+    for(std::uint32_t limit = 256;; limit *= 4) {
         auto hits = search(query, exact, limit);
         if(hits.size() < limit) {
             return hits;

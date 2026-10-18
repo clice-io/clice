@@ -18,7 +18,7 @@ namespace {
 constexpr std::uint32_t no_entry = ~0u;
 
 /// Deeper parent chains than this only come from corrupt bytes.
-constexpr std::size_t max_chain = 64;
+constexpr std::uint32_t max_chain = 64;
 
 using Mode = SymbolQuery::Mode;
 
@@ -37,7 +37,7 @@ bool reserved_name(llvm::StringRef name) {
     return name.size() > 1 && name[0] == '_' && (name[1] == '_' || llvm::isUpper(name[1]));
 }
 
-bool strictly_ascending_entries(llvm::ArrayRef<std::uint32_t> entries, std::size_t count) {
+bool strictly_ascending_entries(llvm::ArrayRef<std::uint32_t> entries, std::uint32_t count) {
     return strictly_ascending(entries) && (entries.empty() || entries.back() < count);
 }
 
@@ -49,7 +49,7 @@ struct TopHits {
         std::uint32_t entry;
     };
 
-    std::size_t limit;
+    std::uint32_t limit;
     llvm::function_ref<llvm::StringRef(std::uint32_t)> name_of;
     llvm::function_ref<llvm::StringRef(std::uint32_t)> args_of;
     llvm::function_ref<SymbolHash(std::uint32_t)> hash_of;
@@ -214,7 +214,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     }
     auto parent_of = [&](std::uint32_t id) {
         auto parent = entry_of(id).parent;
-        for(std::size_t depth = 0; parent != 0 && depth < max_chain; depth += 1) {
+        for(std::uint32_t depth = 0; parent != 0 && depth < max_chain; depth += 1) {
             if(auto anonymous = anonymous_parents.find(parent);
                anonymous != anonymous_parents.end()) {
                 parent = anonymous->second;
@@ -647,7 +647,7 @@ struct SearchIndex::View {
     llvm::SmallVector<ScopeEntry, 8> chain(std::uint32_t entry) const {
         llvm::SmallVector<ScopeEntry, 8> entries;
         auto parent = parents[entry];
-        for(std::size_t depth = 0; parent != no_entry && depth < max_chain; depth += 1) {
+        for(std::uint32_t depth = 0; parent != no_entry && depth < max_chain; depth += 1) {
             entries.push_back({.name = name(parent), .args = arguments(parent)});
             parent = parents[parent];
         }
@@ -745,7 +745,7 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
             return std::unexpected("name order outside the entries");
         }
     }
-    for(std::size_t i = 0; i < count; i += 1) {
+    for(std::uint32_t i = 0; i < count; i += 1) {
         auto entry = view.by_hash[i];
         if(entry >= count || (i > 0 && view.hashes[entry] <= view.hashes[view.by_hash[i - 1]])) {
             return std::unexpected("hash order is not ascending");
@@ -817,7 +817,7 @@ bool SearchIndex::loaded() const {
     return view != nullptr;
 }
 
-std::size_t SearchIndex::size() const {
+std::uint32_t SearchIndex::size() const {
     return view ? view->count() : 0;
 }
 
@@ -839,7 +839,7 @@ bool SearchIndex::contains(SymbolHash hash) const {
 }
 
 SearchOutcome SearchIndex::search(const SymbolQuery& query,
-                                  std::size_t limit,
+                                  std::uint32_t limit,
                                   CanonicalRef workspace) const {
     if(!view || limit == 0 || !query.by_pattern()) {
         return {};

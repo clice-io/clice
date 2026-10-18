@@ -85,7 +85,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
 
     constexpr std::uint64_t id_max = std::numeric_limits<std::uint32_t>::max();
     llvm::ArrayRef<std::uint8_t> nodes(blob.nodes);
-    std::size_t pos = 0;
+    std::uint32_t pos = 0;
     manifest.nodes.reserve(blob.node_count);
     for(std::uint32_t i = 0; i < blob.node_count; i += 1) {
         auto read_version = read_varint(nodes, pos);
@@ -156,7 +156,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         return std::nullopt;
     }
     std::uint32_t begin = 0;
-    for(std::size_t i = 0; i < blob.local_symbols.size(); i += 1) {
+    for(std::uint32_t i = 0; i < blob.local_symbols.size(); i += 1) {
         if(reserved_key(blob.local_symbols[i]) ||
            (i > 0 && blob.local_symbols[i] <= blob.local_symbols[i - 1])) {
             return std::nullopt;
@@ -174,7 +174,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
        llvm::any_of(blob.instantiation_uses, [](std::uint64_t use) { return reserved_key(use); })) {
         return std::nullopt;
     }
-    for(std::size_t i = 0; i < blob.instantiation_files.size(); i += 1) {
+    for(std::uint32_t i = 0; i < blob.instantiation_files.size(); i += 1) {
         manifest.instantiations.push_back({
             .file = VersionID{blob.instantiation_files[i]},
             .use = blob.instantiation_uses[i],

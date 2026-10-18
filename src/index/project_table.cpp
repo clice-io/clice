@@ -42,7 +42,7 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
     }
     Bitmap ids;
     std::optional<std::uint32_t> previous;
-    for(std::size_t i = 0; i < bytes.size(); i += sizeof(std::uint32_t)) {
+    for(std::uint32_t i = 0; i < bytes.size(); i += sizeof(std::uint32_t)) {
         std::uint32_t id;
         std::memcpy(&id, bytes.data() + i, sizeof(id));
         if(previous && id <= *previous) {
@@ -134,7 +134,7 @@ std::expected<void, llvm::StringRef>
        !ids_ok(reference_counts, count, paths.size() + 1)) {
         return std::unexpected("symbol id columns do not line up");
     }
-    auto sparse = [&](llvm::ArrayRef<std::uint32_t> entries, std::size_t values) {
+    auto sparse = [&](llvm::ArrayRef<std::uint32_t> entries, std::uint32_t values) {
         return sparse_ok(entries, values, count);
     };
     if(!sparse(args_entries, args_ends.size()) ||
@@ -154,7 +154,7 @@ std::expected<void, llvm::StringRef>
     if(!strictly_ascending(hashes) || llvm::any_of(hashes, reserved_key<SymbolHash>)) {
         return std::unexpected("symbol hashes are not ascending");
     }
-    for(std::size_t k = 0; k < far_parents.size(); k += 1) {
+    for(std::uint32_t k = 0; k < far_parents.size(); k += 1) {
         if(parents[far_parents[k]] != 0 || reserved_key(far_parent_hashes[k])) {
             return std::unexpected("symbol parent outside the table is not canonical");
         }

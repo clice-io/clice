@@ -42,7 +42,7 @@ struct RankedHits {
     bool exhausted = true;
 };
 
-RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std::size_t limit) {
+RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std::uint32_t limit) {
     const auto& project = index.project();
     auto& files = index.file_table();
     std::vector<Ranked> hits;
@@ -222,7 +222,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
 
 std::vector<IndexQuery::Located> search(const IndexQuery& index,
                                         const SymbolQuery& query,
-                                        std::size_t limit) {
+                                        std::uint32_t limit) {
     ScopedTimer timer;
     if(limit == 0 || !query.by_pattern()) {
         return {};
@@ -230,7 +230,7 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
     // A symbol no source places cedes its slot to the next one: the
     // ranking is fetched wider until the cut is filled or exhausted.
     std::vector<IndexQuery::Located> results;
-    for(std::size_t fetch = limit * 2;; fetch *= 4) {
+    for(std::uint32_t fetch = limit * 2;; fetch *= 4) {
         auto ranked = ranked_search(index, query, fetch);
         results.clear();
         for(auto& hit: ranked.hits) {
@@ -256,7 +256,7 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
 }
 
 Completables
-    completables(const IndexQuery& index, llvm::StringRef prefix, Fid file, std::size_t limit) {
+    completables(const IndexQuery& index, llvm::StringRef prefix, Fid file, std::uint32_t limit) {
     SymbolQuery query{.pattern = prefix.str(), .external_only = true};
     // Members outnumber the names of namespaces: the ranking is fetched
     // wider than the names wanted.
@@ -374,7 +374,7 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
     // Every symbol spelling the name exactly is wanted, however many: the
     // ranking is fetched wider until a match of a lower tier ends it.
     RankedHits ranked;
-    for(std::size_t limit = 64;; limit *= 4) {
+    for(std::uint32_t limit = 64;; limit *= 4) {
         ranked = ranked_search(index, query, limit);
         if(ranked.exhausted || (!ranked.hits.empty() && ranked.hits.back().rank.tier > 1)) {
             break;

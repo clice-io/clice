@@ -157,7 +157,7 @@ std::expected<void, llvm::StringRef>
         return std::unexpected("duplicate file version id");
     }
     llvm::DenseSet<std::pair<llvm::StringRef, std::uint64_t>> blob_versions;
-    for(std::size_t i = 0; i < count; i += 1) {
+    for(std::uint32_t i = 0; i < count; i += 1) {
         if(!blob_versions.insert({blob.version_paths[i], blob.version_hashes[i]}).second) {
             return std::unexpected("duplicate file version");
         }
@@ -173,13 +173,13 @@ std::expected<void, llvm::StringRef>
     // Two spellings of one file intern to the same version; the ids both
     // stay mapped to it.
     next_persisted_id = blob.next_version_id;
-    for(std::size_t i = 0; i < count; i += 1) {
+    for(std::uint32_t i = 0; i < count; i += 1) {
         auto path_id = files.intern(local(blob.version_paths[i]));
         auto id = files.intern_version(path_id, blob.version_hashes[i]);
         runtime_ids.try_emplace(blob.version_ids[i], id);
         persisted_ids.try_emplace(id, blob.version_ids[i]);
     }
-    for(std::size_t k = 0; k < blob.manifest_versions.size(); k += 1) {
+    for(std::uint32_t k = 0; k < blob.manifest_versions.size(); k += 1) {
         manifest_pins[runtime_ids.find(blob.manifest_versions[k])->second] =
             blob.manifest_generations[k];
     }
@@ -358,8 +358,8 @@ void ProjectIndex::for_each_symbol(
     }
 }
 
-std::size_t ProjectIndex::symbol_count() const {
-    std::size_t count = base ? base->count() : 0;
+std::uint32_t ProjectIndex::symbol_count() const {
+    std::uint32_t count = base ? base->count() : 0;
     for(auto hash: llvm::make_first_range(changed)) {
         if(!written.contains(hash) && !(base && base->find(hash))) {
             count += 1;
@@ -595,7 +595,7 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os, const FileTable& files
     }
     llvm::sort(keys);
     std::uint32_t base_entry = 0;
-    std::size_t k = 0;
+    std::uint32_t k = 0;
     auto base_count = base ? base->count() : 0;
     while(base_entry < base_count || k < keys.size()) {
         if(k == keys.size() || (base_entry < base_count && base->hashes[base_entry] < keys[k])) {

@@ -118,7 +118,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // A parent names another node or the root; consumers index their
     // per-node tables with it unchecked.
     auto nodes = root[&TUIndexBlob::nodes];
-    for(std::size_t i = 0; i < nodes.size(); i += 1) {
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
         IncludeNode node = nodes.at(i);
         if(node.file >= count || (node.parent != no_node && node.parent >= nodes.size())) {
             LOG_DEBUG("Rejecting TU index: include node past the path or node table");
@@ -149,7 +149,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // one is corrupt. Merged reference files would persist behind versions
     // that match the disk, so a path id past the table must reject the
     // whole TU index rather than be dropped.
-    for(std::size_t i = 0; i < symbol_count; i += 1) {
+    for(std::uint32_t i = 0; i < symbol_count; i += 1) {
         if((i != 0 && symbols.hashes[i] <= symbols.hashes[i - 1]) ||
            reserved_key(symbols.hashes[i]) || reserved_key(symbols.parents[i])) {
             LOG_DEBUG("Rejecting TU index: unsorted or reserved symbol hash, or reserved parent");
@@ -173,7 +173,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // out-of-order id would attribute one file's index to another.
     auto sections = root[&TUIndexBlob::sections];
     std::uint32_t previous_path_id = 0;
-    for(std::size_t i = 0; i < sections.size(); i += 1) {
+    for(std::uint32_t i = 0; i < sections.size(); i += 1) {
         auto path_id = sections.at(i)[&FileSection::path_id];
         if(path_id >= count || (i != 0 && path_id <= previous_path_id)) {
             LOG_DEBUG("Rejecting TU index: section path ids are not strictly ascending");
@@ -184,7 +184,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // The merge maps skipped keys through their file's stored keys by
     // binary search.
     auto instantiations = root[&TUIndexBlob::instantiations];
-    for(std::size_t i = 0; i < instantiations.size(); i += 1) {
+    for(std::uint32_t i = 0; i < instantiations.size(); i += 1) {
         auto section = instantiations.at(i);
         auto path_id = section[&InstantiationSection::path_id];
         if(path_id >= count || (i != 0 && path_id <= previous_path_id) ||
@@ -444,7 +444,7 @@ std::vector<DocumentLink> TUIndex::links() const {
 
     std::vector<DocumentLink> links;
     links.reserve(entries.size());
-    for(std::size_t i = 0; i < entries.size(); i += 1) {
+    for(std::uint32_t i = 0; i < entries.size(); i += 1) {
         auto entry = entries[i];
         links.push_back(DocumentLink{
             .range = entry[&DocumentLink::range],

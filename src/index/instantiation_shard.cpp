@@ -48,7 +48,7 @@ struct RecordTable {
         };
     }
 
-    std::size_t size() const {
+    std::uint32_t size() const {
         return columns.size();
     }
 
@@ -80,7 +80,7 @@ struct SetTable {
     llvm::ArrayRef<std::uint32_t> ends;
     IdColumnView members;
     /// The size of the table the members index.
-    std::size_t member_count;
+    std::uint32_t member_count;
 
     static SetTable resolutions_of(BlobView root) {
         auto records = columns_of(root[&InstantiationShardBlob::records]).size();
@@ -303,7 +303,7 @@ CheckResult keys_ok(BlobView root) {
     if(llvm::any_of(table.producer_units, [](std::uint64_t unit) { return reserved_key(unit); })) {
         return std::unexpected("a reserved producer unit");
     }
-    for(std::size_t i = 1; i < producers; i += 1) {
+    for(std::uint32_t i = 1; i < producers; i += 1) {
         if(std::pair(table.producer_units[i - 1], table.producer_runs[i - 1]) >=
            std::pair(table.producer_units[i], table.producer_runs[i])) {
             return std::unexpected("producers are not strictly ascending");
@@ -607,7 +607,7 @@ void emit(const Draft& draft, llvm::raw_ostream& os) {
     auto targets = id_writer(blob.record_targets, blob.symbol_hashes.size());
     auto froms = id_writer(blob.record_froms, blob.symbol_hashes.size());
     std::vector<std::vector<std::uint32_t>> members(draft.resolutions.size());
-    for(std::size_t i = 0; i < held.size(); i += 1) {
+    for(std::uint32_t i = 0; i < held.size(); i += 1) {
         auto& [record, resolution] = held[i];
         if(i == 0 || held[i - 1].first != record) {
             ranges.add(record.range);

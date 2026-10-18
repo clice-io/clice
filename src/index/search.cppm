@@ -23,7 +23,7 @@ namespace clice::index {
 /// place.
 std::vector<IndexQuery::Located> search(const IndexQuery& index,
                                         const SymbolQuery& query,
-                                        std::size_t limit);
+                                        std::uint32_t limit);
 
 /// A name unqualified completion may offer from the index, with the
 /// file of its canonical declaration: invalid for one of a preamble,
@@ -44,7 +44,7 @@ struct Completables {
 };
 
 Completables
-    completables(const IndexQuery& index, llvm::StringRef prefix, Fid file, std::size_t limit);
+    completables(const IndexQuery& index, llvm::StringRef prefix, Fid file, std::uint32_t limit);
 
 /// The symbols a locator query names: by id; by place — the symbol
 /// under a cursor, or those defined on a line of the file's serving
