@@ -134,7 +134,7 @@ bool glob_matches(llvm::StringRef pattern, llvm::StringRef name);
 /// The literal runs between a glob pattern's wildcards.
 llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern);
 
-/// Whether `file` satisfies an anchored `path:` term (SymbolQuery::anchor):
+/// Whether `file` satisfies an anchored `path:` term (SymbolQuery::resolve_paths):
 /// a bare file name by name, a path by being that file or lying under that
 /// directory.
 bool path_matches(llvm::StringRef wanted, llvm::StringRef file);

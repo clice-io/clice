@@ -7,6 +7,7 @@ module clice:index.project_table;
 import :index.columns;
 import :index.format;
 import :index.symbol;
+import :semantic.symbol;
 import :semantic.token_class;
 import :support.bitmap;
 import :vfs.ids;

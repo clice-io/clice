@@ -296,7 +296,7 @@ constexpr std::pair<index::BlobKind, llvm::StringLiteral> stored_kinds[] = {
     {index::BlobKind::Shard,              "file shards"         },
     {index::BlobKind::InstantiationShard, "instantiation shards"},
     {index::BlobKind::TUManifest,         "manifests"           },
-    {index::BlobKind::ProjectTable,       "global"              },
+    {index::BlobKind::ProjectTable,       "project table"       },
     {index::BlobKind::SearchIndex,        "search"              },
     {index::BlobKind::CommandSnapshot,    "cdb"                 },
     {index::BlobKind::ArtifactRecords,    "artifacts"           },
@@ -548,7 +548,7 @@ void print_stats(const Project& project,
     driver::println();
     driver::println("Top {} file shards by size:", std::min<std::size_t>(top, stats.shards.size()));
     for(auto& stat: stats.shards | std::views::take(top)) {
-        driver::println("  {:>10}  {:>4} variants  {:>9} occs  {:>9} rels  {}",
+        driver::println("  {:>10}  {:>4} variants  {:>9} occurrences  {:>9} relations  {}",
                         format_bytes(stat.bytes),
                         stat.variants,
                         stat.occurrences,

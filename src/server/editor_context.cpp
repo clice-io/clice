@@ -18,7 +18,7 @@ namespace clice {
 
 namespace {
 
-/// The contexts blob: user context choices — never invalidated by content,
+/// The context choices: user context choices — never invalidated by content,
 /// only by the user or a vanished CDB anchor. Paths persist as spellings
 /// and are re-interned at load. The structs mirror the on-disk JSON layout
 /// field for field — changing them changes the format.
@@ -196,7 +196,7 @@ std::string EditorContext::serialize() const {
 
     auto json = kota::codec::json::to_string<PathJsonConfig>(data);
     if(!json) {
-        LOG_WARN("Failed to serialize the contexts blob");
+        LOG_WARN("Failed to serialize the context choices");
         return {};
     }
     return std::move(*json);
@@ -208,7 +208,7 @@ void EditorContext::load() {
     }
     ContextsData data;
     if(!kota::codec::json::from_string(blob.bytes, data)) {
-        LOG_WARN("Failed to parse the contexts blob");
+        LOG_WARN("Failed to parse the context choices");
         return;
     }
     auto resolve = [&](std::uint32_t idx) -> llvm::StringRef {
@@ -288,7 +288,7 @@ void EditorContext::validate_saved_context(Fid path_id) {
         LOG_INFO("didOpen: dropping stale saved context for {}",
                  project.file_table.resolve(path_id));
         selections.erase(path_id);
-        // The drop must reach the contexts blob, or the stale choice
+        // The drop must reach the context choices, or the stale choice
         // resurrects from disk at the next start.
         mark_dirty();
     }

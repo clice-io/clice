@@ -240,9 +240,9 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
                                     project.config.workspace_root,
                                     options.configuration);
 
-    // The command's whole product is the persisted index: without storage
+    // The command's whole product is the persisted index: without a database
     // (cache failed to open, another process holds the index writer lock,
-    // or an unreadable global blob disabled persistence) the run would
+    // or an unreadable project table disabled persistence) the run would
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
     if(!project.database) {

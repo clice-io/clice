@@ -303,7 +303,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // file that built it, where a file sharing it would find its own.  The
     // clang version guards against reusing
     // blobs a newer bundled clang would reject, and the build configuration
-    // keeps the blob with the library that records its dependencies:
+    // keeps the blob with the database that records its dependencies:
     // shared across configurations, one could rebuild it while another's
     // records still confirmed the old content. A PCH built over the
     // build's precompiled header names the very build it chains onto:

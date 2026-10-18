@@ -30,10 +30,10 @@ enum class BlobKind : std::uint8_t {
     /// against, key "cdb" — how a cold start detects compile-command
     /// changes that happened while no server was running.
     CommandSnapshot,
-    /// The single artifact-validity blob (PCH/PCM records with their deps,
+    /// The single artifact records blob (PCH/PCM records with their deps,
     /// header-mode results), key "artifacts".
     ArtifactRecords,
-    /// The single user-context blob (saved context choices, synthesized
+    /// The single context choices blob (saved context choices, synthesized
     /// artifact hosts), key "contexts" — sovereignty records, never
     /// garbage-collected by content.
     ContextChoices,

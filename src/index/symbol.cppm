@@ -219,7 +219,7 @@ constexpr NameForm name_form(SymbolFlags flags) {
 /// No canonical file: the symbol has entries but none of them declares it.
 constexpr inline std::uint32_t no_file = ~0u;
 
-/// A symbol's identity as a blob reader hands it out; the strings borrow
+/// A symbol's facts as a blob reader hands them out; the strings borrow
 /// the blob's bytes.
 struct SymbolView {
     llvm::StringRef name;
@@ -280,7 +280,7 @@ struct Symbol {
     /// and type hierarchy read, not rename or the name search.
     Bitmap instantiation_files;
 
-    /// The identity a reader hands out for this entry; the strings borrow it.
+    /// The view a reader hands out for this entry; the strings borrow it.
     SymbolView view() const {
         return {
             .name = name,
@@ -300,8 +300,8 @@ struct Symbol {
 
 using SymbolTable = llvm::DenseMap<SymbolHash, Symbol>;
 
-/// A symbol as queries hand it out: its identity plus the stored facts,
-/// owned — the strings outlive whichever table answered.
+/// A symbol as queries hand it out: its hash and its facts, owned — the
+/// strings outlive whichever table answered.
 struct SymbolInfo {
     SymbolHash hash = 0;
     std::string name;

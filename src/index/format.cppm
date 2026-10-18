@@ -398,8 +398,9 @@ struct InstantiationSection {
     std::vector<std::uint64_t> skipped;
 };
 
-/// The TU index's serialized layout. Only the builder below ever materializes
-/// it; every consumer reads the bytes through the TUIndex reader.
+/// The TU index's serialized layout. Only the indexer materializes it (and
+/// tests planting shapes it never emits); every consumer reads the bytes
+/// through the TUIndex reader.
 struct TUIndexBlob {
     /// Serialized schema version (index_format_version), gated by
     /// TUIndex::from_bytes.

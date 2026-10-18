@@ -9,7 +9,7 @@ import :project.project;
 
 namespace clice {
 
-/// A persisted header-mode result in the artifacts blob. Mirrors the
+/// A persisted header-mode result in the artifact records. Mirrors the
 /// on-disk JSON layout field for field — changing it changes the format.
 struct CacheModeEntry {
     std::uint32_t file;          // index into the cache path table
@@ -87,7 +87,7 @@ struct Resolution {
 /// cached header contexts on top. Around the host branch it owns the
 /// header-context synthesis (in-memory files restoring the includer's
 /// preprocessor state, see SynthesizedContext) and the self-containment
-/// results that decide it, persisted in the artifacts blob.
+/// results that decide it, persisted in the artifact records.
 class CommandResolver {
 public:
     explicit CommandResolver(Project& project) : project(project) {}
@@ -108,15 +108,15 @@ public:
     /// Record a header trial's result. NeedsContext carries the content
     /// hash it was scored on so a stale result is dropped on cache load;
     /// scored with no disk observation (hash 0) it stays session-local.
-    /// Marks the artifacts blob dirty when the persisted slice changes.
+    /// Marks the artifact records dirty when the persisted slice changes.
     void record_header_mode(Fid path_id, HeaderMode mode, std::uint64_t content_hash = 0);
 
     /// Drop a header's result entirely (its content changed); the next
-    /// compile re-earns it. Marks the artifacts blob dirty when a
+    /// compile re-earns it. Marks the artifact records dirty when a
     /// persisted result is dropped.
     void reset_header_mode(Fid path_id);
 
-    /// Fill the validation slice of the artifacts blob (header-mode
+    /// Fill the validation slice of the artifact records (header-mode
     /// results, content-hash gated at load). @param intern_id maps a
     /// runtime path id into the blob's path table; interning order is part
     /// of the on-disk format.

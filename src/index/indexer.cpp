@@ -278,9 +278,9 @@ bool is_completable(const clang::NamedDecl* decl) {
 
 /// Projects the unit's semantic map into TUIndex entries: occurrences and
 /// relations from the resolve facts, macros from the preprocessor directives.
-class Projector {
+class Indexer {
 public:
-    Projector(CompilationUnit& unit, const TUIndexOptions& options) :
+    Indexer(CompilationUnit& unit, const TUIndexOptions& options) :
         unit(unit), focus_only(unit.kind() == CompilationKind::Content && !options.all_files),
         known_variants(options.known_variants),
         resolver(unit.context(), {.only_instantiation = false}), readable(unit.context(), {}),
@@ -2032,27 +2032,55 @@ public:
     }
 
 private:
+    /// What this run's instantiations and macro expansions resolve in each
+    /// file, and the known keys whose definition the file holds.
+    struct Resolved {
+        FileInstantiations walked;
+        std::vector<SymbolHash> skipped;
+    };
+
+    /// The names the written code spells through a macro: the ones a
+    /// `#define` body spells make the expansions' resolutions.
+    struct BodyName {
+        const clang::NamedDecl* decl;
+        RelationKind kind;
+        clang::SourceLocation location;
+    };
+
+private:
     CompilationUnit& unit;
+
     bool focus_only;
+
     llvm::ArrayRef<std::uint64_t> known_variants;
+
     types::TemplateResolver resolver;
+
     /// The types function signatures print as readers know them.
     display::ReadableTypes readable;
+
     IncludeTree tree;
+
     SymbolTable symbols;
+
     /// Build-time working state keyed by FileID — clang::FileID means
     /// nothing outside the compilation, so it never leaves the builder;
     /// the encode step converts it through tree.path_id.
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
+
     /// With focus_only, the symbols registered that an imported
     /// module declares, a namespace aside: every unit reopening it
     /// redeclares it.
     llvm::SmallVector<const clang::NamedDecl*> imported;
+
     /// The declaration describing each symbol registered below external
     /// scope.
     llvm::DenseMap<SymbolHash, const clang::NamedDecl*> internal_decls;
+
     llvm::DenseSet<clang::FileID> module_files;
+
     llvm::DenseMap<std::uint32_t, const clang::NamedDecl*> enclosing_cache;
+
     llvm::DenseMap<std::uint32_t, const clang::Decl*> top_level_cache;
 
     /// The keys of the instantiations the receiver already holds
@@ -2063,13 +2091,6 @@ private:
     /// walked (TUIndexOptions::standard_library_instantiations).
     bool standard_library;
 
-    /// What this run's instantiations and macro expansions resolve in each
-    /// file, and the known keys whose definition the file holds.
-    struct Resolved {
-        FileInstantiations walked;
-        std::vector<SymbolHash> skipped;
-    };
-
     llvm::DenseMap<clang::FileID, Resolved> resolved;
 
     /// Per file, its written relations as records would say them
@@ -2077,10 +2098,13 @@ private:
     llvm::DenseMap<clang::FileID, llvm::DenseSet<WrittenKey>> written;
 
     /// While an instantiation's nodes project, the entries they make:
-    /// file_index hands these out instead of the files' own. The
-    /// definition, when it is a function, is the caller of its calls.
+    /// file_index hands these out instead of the files' own.
     llvm::DenseMap<clang::FileID, FileIndex>* instantiation_entries = nullptr;
+
+    /// The instantiated definition, when it is a function: the caller of
+    /// its calls.
     const clang::FunctionDecl* instantiated_function = nullptr;
+
     /// Where the expression being projected is written (in_pattern).
     clang::SourceLocation written_location;
 
@@ -2090,22 +2114,14 @@ private:
         llvm::DenseMap<std::pair<clang::SourceLocation::UIntTy, unsigned>, const clang::NamedDecl*>>
         pattern_locals;
 
-    /// The names the written code spells through a macro: the ones a
-    /// `#define` body spells make the expansions' resolutions.
-    struct BodyName {
-        const clang::NamedDecl* decl;
-        RelationKind kind;
-        clang::SourceLocation location;
-    };
-
     std::vector<BodyName> body_names;
 };
 
 }  // namespace
 
 std::string build_tu_index(CompilationUnit& unit, const TUIndexOptions& options) {
-    Projector projector(unit, options);
-    return projector.build(nullptr);
+    Indexer indexer(unit, options);
+    return indexer.build(nullptr);
 }
 
 std::string build_preamble_index(CompilationUnit& unit,
@@ -2125,8 +2141,8 @@ std::string build_preamble_index(CompilationUnit& unit,
         .open_conditionals = open_conditionals,
         .diagnostics = diagnostics,
     };
-    Projector projector(unit, {});
-    return projector.build(&extras);
+    Indexer indexer(unit, {});
+    return indexer.build(&extras);
 }
 
 }  // namespace clice::index

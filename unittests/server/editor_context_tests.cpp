@@ -259,7 +259,7 @@ ZEST_CASE(ValidateDropsStaleChoice) {
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
 
     // A host pin whose CDB entry disappeared while the server was down.
-    // The drop must dirty the contexts blob, or the stale choice
+    // The drop must dirty the context choices, or the stale choice
     // resurrects from disk at the next start.
     resolver.selections[header] = Selection{host, std::nullopt, ""};
     resolver.validate_saved_context(header);

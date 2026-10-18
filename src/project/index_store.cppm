@@ -30,7 +30,7 @@ struct IndexLoadOptions {
     bool borrow = false;
 };
 
-/// The contexts blob — the editor's context choices — as the index
+/// The context choices — the editor's context choices — as the index
 /// database carries it beside the index. The store moves bytes only: the
 /// editor state they encode serializes into them when it changes and
 /// parses them after a load (see EditorContext), so a process without that
@@ -38,7 +38,7 @@ struct IndexLoadOptions {
 /// replacing a corrupt one. Only this blob has a durability waiter
 /// (switchContext), so only it hands out tickets: a ticket resolves once a
 /// save whose snapshot covers it commits the blob — independent of the
-/// artifacts blob, whose failures retry through the dirty flag alone and
+/// artifact records, whose failures retry through the dirty flag alone and
 /// must not hold a context ack hostage. `committed` pulses after every
 /// attempt, failed ones included, so waiters can give up on a disk that
 /// cannot take the write.
@@ -134,7 +134,7 @@ public:
 
     IndexStore(kota::event_loop& loop, Project& project, CommandResolver& commands);
 
-    /// The contexts blob, filled by load() and written by save().
+    /// The context choices, filled by load() and written by save().
     ContextChoices contexts;
 
     /// Why a merge committed nothing.
@@ -184,7 +184,7 @@ public:
     Report drop_index(Fid tu_path_id);
 
     /// Persist the dirty state (rewritten shards, replaced manifests, the
-    /// project table) through the index storage. Serialization runs on the
+    /// project table) to the index database. Serialization runs on the
     /// event loop from copies; the write batch is offloaded to the kota
     /// thread pool. Shards whose variant set shrank are compacted first.
     ///
@@ -284,7 +284,7 @@ private:
     kota::event_loop& loop;
     Project& project;
 
-    /// Header-mode results, persisted in the artifacts blob.
+    /// Header-mode results, persisted in the artifact records.
     CommandResolver& commands;
 
     /// Serializes concurrent save() calls: the pump's round-end save, the
@@ -293,7 +293,7 @@ private:
     /// assumes one save at a time.
     kota::semaphore save_gate{1};
 
-    /// Serialize the artifact-validity blob from live state; empty on
+    /// Serialize the artifact records from live state; empty on
     /// serialization failure (stays dirty, retried).
     std::string serialize_artifacts();
 

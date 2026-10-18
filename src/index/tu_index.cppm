@@ -141,7 +141,7 @@ public:
                                 const SymbolView&,
                                 llvm::ArrayRef<std::uint32_t> reference_files)> callback) const;
 
-    /// Look up one symbol's identity by hash: in the table, else among the
+    /// Look up one symbol by hash: in the table, else among the
     /// sections' own symbols, which name the file-local ones (a
     /// function's locals, a template's parameters).
     std::optional<SymbolView> find_symbol(SymbolHash hash) const;

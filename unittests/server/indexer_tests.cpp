@@ -321,7 +321,7 @@ ZEST_CASE(MergeRejectsGarbage) {
     ZASSERT(project.index.symbol_count() == 0u);
 }
 
-ZEST_CASE(SharedLocalNamesPrecompiledInput) {
+ZEST_CASE(SharedLocalPrecompiledInput) {
     // An internal symbol a unit names in a file it holds no entries of is
     // rejected, unless the unit reads that file through its precompiled
     // header or a module: their own units wrote its entries.
@@ -1431,9 +1431,9 @@ ZEST_CASE(CreatedHeaderStales) {
     IndexerFixture f;
     f.merge(indexed.data.data(), indexed.data.size());
     auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
-    auto generation = f.project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
-    ZASSERT(f.project.index.absent_lookups.lookup(generation).contains(tu));
-    ZASSERT(f.project.file_table.disk.seen_missing(generation));
+    auto header = f.project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
+    ZASSERT(f.project.index.absent_lookups.lookup(header).contains(tu));
+    ZASSERT(f.project.file_table.disk.seen_missing(header));
     ZASSERT(!f.needs_reindex(src));
 
     tmp.touch("gen.h", "int make();\n");
@@ -3101,7 +3101,7 @@ ZEST_CASE(DeplessPcmDropped) {
 }
 
 ZEST_CASE(HeaderModePersisted) {
-    // The NeedsContext result rides the artifacts blob: a restart with
+    // The NeedsContext result rides the artifact records: a restart with
     // unchanged disk content adopts it instead of re-running the trial.
     TempDir tmp;
     tmp.touch("utils.h", "inline int f();\n");
@@ -3126,7 +3126,7 @@ ZEST_CASE(HeaderModePersisted) {
 }
 
 ZEST_CASE(ContextsBlobRoundTrip) {
-    // The editor's choices and artifact hosts ride the contexts blob: a
+    // The editor's choices and artifact hosts ride the context choices: a
     // restart attaching an editor gets them back, and the save that
     // committed them resolves the durability ticket taken before it.
     TempDir tmp;
@@ -3169,7 +3169,7 @@ ZEST_CASE(ContextsBlobRoundTrip) {
 
 ZEST_CASE(UnownedContextsPassThrough) {
     // A process with no editor (the batch commands) never rewrites the
-    // contexts blob, yet carries its bytes into a database replacing a
+    // context choices, yet carries their bytes into a database replacing a
     // corrupt one — the user's choices must not die with the old one.
     TempDir tmp;
     std::string bytes =
@@ -3196,7 +3196,7 @@ ZEST_CASE(UnownedContextsPassThrough) {
 
 ZEST_CASE(NoContextsNoRewrite) {
     // Nothing loaded, nothing to carry: a replaced database gets no empty
-    // contexts blob, and no save keeps retrying one.
+    // context choices, and no save keeps retrying them.
     TempDir tmp;
     IndexerFixture f;
     open_store(tmp, f.project);

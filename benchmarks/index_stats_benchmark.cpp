@@ -302,7 +302,7 @@ struct Stats {
         for(auto& [symbol, relations]: fi.relations) {
             variant_symbols.insert(symbol);
             // Non-decl/def payloads are symbol hashes the shard's table
-            // must also cover (decl/def payloads are definition ranges).
+            // must also cover (decl/def payloads are extents).
             for(auto& r: relations) {
                 if(r.target != 0 && !RelationKind(r.kind).isDeclOrDef()) {
                     variant_symbols.insert(r.target);
@@ -824,11 +824,12 @@ std::string format_report_md(const Stats& stats, const Report& r, llvm::StringRe
     }
     std::uint64_t scope_total = r.scope_dedup[0] + r.scope_dedup[1] + r.scope_dedup[2];
     line("");
-    line(std::format("- deduped total {} → External {:.1f}%, Internal {:.1f}%, FunctionLocal {:.1f}%",
-                     scope_total,
-                     frac(r.scope_dedup[0], scope_total),
-                     frac(r.scope_dedup[1], scope_total),
-                     frac(r.scope_dedup[2], scope_total)));
+    line(std::format(
+        "- deduped total {} → External {:.1f}%, Internal {:.1f}%, FunctionLocal {:.1f}%",
+        scope_total,
+        frac(r.scope_dedup[0], scope_total),
+        frac(r.scope_dedup[1], scope_total),
+        frac(r.scope_dedup[2], scope_total)));
     line("");
 
     line("## 7. Include directive sharing");

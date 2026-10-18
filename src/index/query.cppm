@@ -216,10 +216,6 @@ inline bool is_function(SymbolKind kind) {
                               kind);
 }
 
-inline bool is_class(SymbolKind kind) {
-    return llvm::is_contained({SymbolKind::Class, SymbolKind::Struct, SymbolKind::Union}, kind);
-}
-
 /// Read-only queries over every index source: disk shards, open sessions'
 /// file indexes, PCH overlays and the buffers' own preamble indexes. Holds no
 /// index data of its own — ProjectIndex owns the disk-derived index, the

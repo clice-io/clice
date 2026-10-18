@@ -151,7 +151,7 @@ public:
     /// Open the pch.idx index of a cached PCH. The single consumption
     /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
     /// on-disk pair is retracted from the store as well — otherwise every
-    /// later session re-adopts the corrupt pair from the artifacts blob and
+    /// later session re-adopts the corrupt pair from the artifact records and
     /// silently degrades again. With the pair gone the next ensure_pch is
     /// a miss and rebuilds both halves. Loads count against the
     /// loaded-state budget (see enforce_loaded_budget).

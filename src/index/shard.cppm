@@ -103,7 +103,7 @@ public:
     /// order, relations in (kind, range, payload) order within each group.
     void for_each_relation(llvm::function_ref<bool(SymbolHash, const Relation&)> callback) const;
 
-    /// Look up a local symbol's identity; the strings borrow the blob.
+    /// Look up a local symbol; the strings borrow the blob.
     std::optional<SymbolView> find_symbol(SymbolHash hash) const;
 
     /// Visit every local symbol the blob names, with its identity.

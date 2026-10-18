@@ -95,7 +95,7 @@ enum class HeaderMode : std::uint32_t {
 
 /// The user's choice for a file in the editor (clice/switchContext): the
 /// host to borrow a command from, or one of the file's own entries.
-/// Persisted in the contexts blob; validated on didOpen.
+/// Persisted in the context choices; validated on didOpen.
 struct Selection {
     /// Header context host; invalid = none.
     Fid host_path_id;
@@ -272,7 +272,7 @@ struct Project {
     /// The last PCM build of each module unit, failed ones included.
     llvm::DenseMap<Fid, PCMBuild> pcm_builds;
 
-    /// The persisted index as loaded: the global symbol table, the per-TU
+    /// The persisted index as loaded: the project table, the per-TU
     /// manifests, the per-file shard blobs and the name search index.
     index::ProjectIndex index;
 

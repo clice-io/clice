@@ -17,6 +17,10 @@ namespace clice::index {
 
 namespace {
 
+bool is_class(SymbolKind kind) {
+    return llvm::is_contained({SymbolKind::Class, SymbolKind::Struct, SymbolKind::Union}, kind);
+}
+
 /// Drop the cursor's own site from an answer set — standing on a
 /// declaration or definition navigates to the other sites — unless it is
 /// the only site the symbol has (an inline definition, nowhere else to go).

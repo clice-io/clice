@@ -4,14 +4,17 @@ module;
 
 module clice;
 
+import :index.columns;
+import :index.format;
 import :index.project_table;
+import :semantic.token_class;
 
 namespace clice::index {
 
 /// Most file sets hold one or two files: up to raw_file_set_limit path ids
 /// are stored raw as u32s, more as a portable roaring image — which is
 /// longer than any raw list, so a slice's length says which it is.
-constexpr std::size_t raw_file_set_limit = 2;
+constexpr static std::uint32_t raw_file_set_limit = 2;
 
 void append_file_set(std::vector<std::uint8_t>& arena, const Bitmap& ids) {
     if(ids.cardinality() <= raw_file_set_limit) {

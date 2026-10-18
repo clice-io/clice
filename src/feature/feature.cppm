@@ -161,7 +161,7 @@ auto documentation(CompilationUnit& unit,
                    const DocumentationOptions& options) -> Documentation;
 
 /// The same of an indexed symbol, from the comments in the text the index
-/// read (IndexQuery::doc_comment).
+/// read (index::doc_comment).
 auto documentation(const index::IndexQuery& query,
                    index::SymbolHash hash,
                    Fid anchor,

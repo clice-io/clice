@@ -421,20 +421,30 @@ private:
         }
     }
 
+private:
     MDB_env* env;
+
     MDB_dbi dbi;
+
     /// Current read snapshot; owned by the opening (event-loop) thread.
     MDB_txn* txn;
+
     /// Pre-advance snapshots kept alive while their borrowers migrate; a
     /// migration cancelled mid-way leaves entries for the next one.
     llvm::SmallVector<MDB_txn*, 2> outstanding;
+
     std::uint64_t generation = 1;
+
     std::string path;
+
     /// Set by write() on the pool thread, consumed by grow() on the loop.
     std::atomic<bool> map_full = false;
+
     /// See note_error()/corrupted(); written on both loop and pool threads.
     std::atomic<bool> poisoned = false;
+
     bool condemned = false;
+
     bool read_only_ = false;
 };
 

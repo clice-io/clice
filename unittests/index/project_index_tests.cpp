@@ -49,7 +49,7 @@ std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
     return files;
 }
 
-/// The TU-local id -> pool id mapping merge_symbols() consumes, as Indexer::merge
+/// The TU-local id -> pool id mapping merge_symbols() consumes, as IndexStore::merge
 /// computes it.
 llvm::SmallVector<Fid> intern_paths(const index::TUIndex& view, clice::FileTable& pool) {
     llvm::SmallVector<Fid> ids;
@@ -550,10 +550,10 @@ ZEST_CASE(LazyShardsStayPut) {
     index::ProjectIndex writer;
     writer.edit(7).name = "x";
     std::vector<index::BlobDatabase::Blob> puts;
-    std::string global;
-    llvm::raw_string_ostream global_os(global);
-    writer.serialize_table(global_os, writer_files);
-    puts.push_back({index::BlobKind::ProjectTable, "global", global});
+    std::string table;
+    llvm::raw_string_ostream table_os(table);
+    writer.serialize_table(table_os, writer_files);
+    puts.push_back({index::BlobKind::ProjectTable, "global", table});
 
     constexpr std::uint32_t count = 300;
     llvm::StringRef content = "int x = 1;\n";
@@ -668,10 +668,10 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         index::serialize_manifest(exported, os);
         puts.push_back({index::BlobKind::TUManifest, writer.key_of(pool, tu), bytes});
     }
-    std::string global;
-    llvm::raw_string_ostream global_os(global);
-    writer.serialize_table(global_os, pool);
-    puts.push_back({index::BlobKind::ProjectTable, "global", global});
+    std::string table_bytes;
+    llvm::raw_string_ostream table_os(table_bytes);
+    writer.serialize_table(table_os, pool);
+    puts.push_back({index::BlobKind::ProjectTable, "global", table_bytes});
     ZASSERT(db->write(puts, {}).empty());
     ZASSERT(db->advance_read_snapshot());
 

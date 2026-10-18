@@ -1290,7 +1290,7 @@ ContentInfo content_info_of(llvm::StringRef content) {
     return info;
 }
 
-/// A local symbol's identity, owned for the duration of a write.
+/// A local symbol's facts, owned for the duration of a write.
 struct LocalSymbol {
     std::string name;
     std::string args;

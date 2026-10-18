@@ -14,7 +14,7 @@ namespace clice {
 /// the header contexts resolved for open files. Editor-facing compiles
 /// resolve through here, layering this state over the project's
 /// CommandResolver; background compiles never see it. The choices are
-/// what the contexts blob encodes: every change reserializes them into it,
+/// what the context choices encodes: every change reserializes them into it,
 /// and a load parses them back (switchContext waits on its durability).
 /// The protocol handlers (clice/queryContext,
 /// currentContext, switchContext) live in ContextService and drive this
@@ -28,7 +28,7 @@ struct EditorContext {
     ContextChoices& blob;
 
     /// User context choices (clice/switchContext), persisted in the
-    /// contexts blob and validated against the CDB and include graph on
+    /// context choices blob and validated against the CDB and include graph on
     /// didOpen. The single source of truth for a file's active context.
     llvm::DenseMap<Fid, Selection> selections;
 

@@ -25,7 +25,7 @@ bool open_index(Project& project, Config config, llvm::StringRef requested_confi
 struct LoadedIndex {
     llvm::SmallVector<Fid> dropped;
 
-    /// The contexts blob as loaded (see ContextChoices).
+    /// The context choices as loaded (see ContextChoices).
     std::string contexts;
 };
 

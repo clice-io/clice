@@ -177,7 +177,7 @@ std::string serialize_cdb_snapshot(Project& project,
     return std::move(*json);
 }
 
-/// The artifacts blob: a JSON document in the index database, the
+/// The artifact records: a JSON document in the index database, the
 /// persisted form of PCH/PCM validity metadata and header-mode results
 /// (the cache.json successor). Paths are
 /// persisted as spellings and re-interned at load — runtime fids are not
@@ -288,7 +288,7 @@ std::string IndexStore::serialize_artifacts() {
 
     auto json = kota::codec::json::to_string<PathJsonConfig>(data);
     if(!json) {
-        LOG_WARN("Failed to serialize the artifacts blob");
+        LOG_WARN("Failed to serialize the artifact records");
         return {};
     }
     return std::move(*json);
@@ -300,7 +300,7 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
     }
     ArtifactRecords data;
     if(!kota::codec::json::from_string(bytes, data)) {
-        LOG_WARN("Failed to parse the artifacts blob");
+        LOG_WARN("Failed to parse the artifact records");
         return;
     }
 
@@ -1119,10 +1119,10 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     }
 
     // Metadata blobs ride every save: dirty artifact records and context
-    // choices flush on whatever save runs next. The contexts ticket is
+    // choices flush on whatever save runs next. The context choices' ticket is
     // snapshotted here — marks arriving past this point are not covered by
-    // these bytes and wait for the next save. The contexts blob's fate
-    // is tracked on its own: a failing artifacts blob must not park a
+    // these bytes and wait for the next save. The context choices' fate
+    // is tracked on its own: failing artifact records must not park a
     // switchContext ack whose choice is already durable.
     auto flush_ticket = contexts.ticket;
     std::optional<std::size_t> artifacts_index;
@@ -2046,7 +2046,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     if(!blob) {
         // Unknown baseline: nothing to diff against. Dirty the snapshot so
         // the next save recreates it even when it commits nothing else —
-        // after a crash that lost only the CDB blob, waiting for an
+        // after a crash that lost only the command snapshot, waiting for an
         // unrelated dirtying merge would leave offline command edits
         // undetectable across every following session.
         cdb_dirty = true;
