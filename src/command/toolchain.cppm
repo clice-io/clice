@@ -52,7 +52,7 @@ public:
     }
 
     /// Pre-probe in parallel, deduplicated by probe key, running as many
-    /// drivers at once as the machine has cores. Blocks until all unique
+    /// drivers at once as the process has CPUs. Blocks until all unique
     /// probes complete.
     void warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs);
 

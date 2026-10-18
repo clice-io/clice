@@ -968,7 +968,7 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
     auto query_all = [&]() -> kota::task<kota::small_vector<QueryOutcome>> {
         // A database whose commands key thousands of probes would otherwise
         // run thousands of drivers at once.
-        kota::semaphore drivers(std::max(1u, std::thread::hardware_concurrency()));
+        kota::semaphore drivers(kota::sys::parallelism());
         std::vector<kota::task<QueryOutcome>> tasks;
         tasks.reserve(pending.size());
         for(auto& p: pending) {

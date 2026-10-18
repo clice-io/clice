@@ -372,7 +372,7 @@ ZEST_CASE(WarmPartialFailure, skip = Windows) {
 
 ZEST_CASE(WarmBoundsDrivers, skip = Windows) {
     // Each driver records how many drivers run beside it: twice as many
-    // probes as the machine has cores never run more drivers than cores.
+    // probes as the process has CPUs never run more drivers than CPUs.
     TempDir tmp;
     tmp.mkdir("running");
     auto driver = tmp.path("cc.clang");
@@ -390,7 +390,7 @@ echo '{2}' >&2
     ZASSERT(
         !llvm::sys::fs::setPermissions(driver, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
 
-    auto cores = std::max(1u, std::thread::hardware_concurrency());
+    auto cores = kota::sys::parallelism();
     Fixture f;
     llvm::SmallVector<CommandRef> refs;
     for(unsigned i = 0; i < 2 * cores; i += 1) {
