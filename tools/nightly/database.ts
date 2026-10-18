@@ -55,7 +55,9 @@ const WRITES_WITH_VALUE = new Set(["-o", "-MF", "-MT", "-MQ"]);
 const WRITES = new Set(["-c", "-MD", "-MMD"]);
 
 /// The entry's command checking the code only: what the build ran, without
-/// the files it writes, and `-fsyntax-only`.
+/// the files it writes, and `-fsyntax-only`. A CMake precompiled header is
+/// read from its source instead (the `-include` beside it stays): the
+/// preparation builds no `.pch`.
 export function syntaxOnly(entry: DatabaseEntry): string[] {
     const args = entryArguments(entry);
     const out: string[] = [];
@@ -63,6 +65,12 @@ export function syntaxOnly(entry: DatabaseEntry): string[] {
         const arg = args[i] ?? "";
         if (WRITES_WITH_VALUE.has(arg)) {
             i += 1;
+        } else if (
+            arg === "-Xclang" &&
+            args[i + 1] === "-include-pch" &&
+            args[i + 2] === "-Xclang"
+        ) {
+            i += 3;
         } else if (
             !WRITES.has(arg) &&
             !arg.startsWith("-Wp,-MD,") &&

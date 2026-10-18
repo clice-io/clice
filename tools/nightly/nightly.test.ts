@@ -26,6 +26,36 @@ describe("projects", () => {
 });
 
 describe("database", () => {
+    test("a checking command reads a CMake precompiled header from its source", () => {
+        expect(
+            syntaxOnly({
+                directory: "/b",
+                file: "a.cpp",
+                arguments: [
+                    "clang++",
+                    "-Xclang",
+                    "-include-pch",
+                    "-Xclang",
+                    "/b/cmake_pch.hxx.pch",
+                    "-Xclang",
+                    "-include",
+                    "-Xclang",
+                    "/b/cmake_pch.hxx",
+                    "-c",
+                    "a.cpp",
+                ],
+            }),
+        ).toEqual([
+            "clang++",
+            "-Xclang",
+            "-include",
+            "-Xclang",
+            "/b/cmake_pch.hxx",
+            "a.cpp",
+            "-fsyntax-only",
+        ]);
+    });
+
     test("a checking command writes nothing", () => {
         expect(
             syntaxOnly({
