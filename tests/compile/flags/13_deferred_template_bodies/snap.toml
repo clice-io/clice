@@ -1,7 +1,7 @@
-[answers.deferred]
+[hover.deferred]
 hover = {}
 
-[answers.call.hover]
+[hover.call.hover]
 markdown = '''
 **function** `scaled`
 
@@ -10,3 +10,9 @@ template <> int scaled<int>(int value)
 ```
 '''
 range = "return ⟦scaled⟧(21);"
+
+[completion.deferred.completion]
+items = [
+    { label = "level", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]

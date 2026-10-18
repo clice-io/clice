@@ -4,7 +4,7 @@
   "subtopic": "flags",
   "title": "Deferred template bodies",
   "summary": "A command that asks clang to defer template bodies has them deferred in every compile",
-  "prose": "clice parses a template's body where it is written, even on MSVC targets, where clang's default before C++20 defers it, so that hover, navigation and diagnostics work inside every template. Code written for MSVC's permissive lookup, such as a template using a name declared after it, then reports the errors a conforming compiler would. A command that passes `-fdelayed-template-parsing` (clang-cl: `/Zc:twoPhase-`), from the build or appended by a rule, compiles such code as the compiler does. The cost: the body of a template that nothing instantiates stays unparsed, and nothing inside it can be hovered or found.",
+  "prose": "clice parses a template's body where it is written, even on MSVC targets, where clang's default before C++20 defers it, so that hover, navigation and diagnostics work inside every template. Code written for MSVC's permissive lookup, such as a template using a name declared after it, then reports the errors a conforming compiler would. A command that passes `-fdelayed-template-parsing` (clang-cl: `/Zc:twoPhase-`), from the build or appended by a rule, compiles such code as the compiler does. The cost: the body of a template that nothing instantiates stays unparsed, and nothing inside it can be hovered or found; completion still works there.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -15,18 +15,18 @@
     },
     {
       "path": "main.cpp",
-      "text": "template <class T>\nint scaled(T value) {\n    return value * factor;\n}\n\nint factor = 2;\n\ntemplate <class T>\nint shifted(T value) {\n    return value + factor;\n}\n\nint doubled() {\n    return scaled(21);\n}\n",
+      "text": "struct Gauge {\n    int level;\n};\n\ntemplate <class T>\nint scaled(T value) {\n    return value * factor;\n}\n\nint factor = 2;\n\ntemplate <class T>\nint shifted(T value, Gauge gauge) {\n    return value + gauge.level;\n}\n\nint doubled() {\n    return scaled(21);\n}\n",
       "markers": [
         {
           "name": "deferred",
-          "begin": 149,
-          "end": 149,
+          "begin": 202,
+          "end": 202,
           "range": false
         },
         {
           "name": "call",
-          "begin": 187,
-          "end": 187,
+          "begin": 239,
+          "end": 239,
           "range": false
         }
       ]
@@ -34,7 +34,7 @@
   ],
   "tests": [
     {
-      "name": "answers",
+      "name": "hover",
       "blocks": [
         {
           "label": "deferred",
@@ -54,15 +54,39 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 13,
+                    "line": 17,
                     "character": 11
                   },
                   "end": {
-                    "line": 13,
+                    "line": 17,
                     "character": 17
                   }
                 }
               }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "completion",
+      "blocks": [
+        {
+          "label": "deferred",
+          "marker": "deferred",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "level",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
             }
           }
         }
