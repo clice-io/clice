@@ -703,7 +703,7 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
     auto probe_body = [&]() -> kota::task<> {
         auto& table = project.index;
         for(auto hash: merged) {
-            findable &= table.search_index.contains(hash) || table.search_pending.contains(hash);
+            findable &= table.search_index().contains(hash) || table.search_pending().contains(hash);
         }
         co_return;
     };
@@ -3860,7 +3860,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     auto& log = open_logged(tmp, project);
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
-    auto report = stack.store.merge(indexed.data.data(), indexed.data.size(), {});
+    auto report = project.index.merge(indexed.data, {});
     ZASSERT(report);
     stack.pump.apply_report(*report);
 

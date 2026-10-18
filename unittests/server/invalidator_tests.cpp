@@ -6,6 +6,7 @@ module clice;
 
 import :index.project_index;
 import :index.tu_manifest;
+import :project.command_snapshot;
 import :sched.families.pcm;
 import :sched.families.turun;
 import :sched.graph;
@@ -984,7 +985,7 @@ ZEST_CASE(CDBDropsBorrowedIndex) {
     ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
-    ph.index.record_header_host(header, host);
+    project.command_snapshot.record_host(header, host);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
     CDBDiff delta;
     delta.changed = {host};
@@ -1013,8 +1014,8 @@ ZEST_CASE(CDBBorrowersByServing) {
     ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
-    ph.index.record_header_host(served, host);
-    ph.index.record_header_host(compiled, host);
+    project.command_snapshot.record_host(served, host);
+    project.command_snapshot.record_host(compiled, host);
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
     CDBDiff delta;
     delta.changed = {host};
