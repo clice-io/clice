@@ -313,8 +313,8 @@ ZEST_CASE(PackParametersMapped) {
     for(auto type: {"A", "B"}) {
         ZEXPECT(llvm::is_contained(records, Resolved{"auto", Deduced, type}));
     }
-    ZEXPECT(llvm::none_of(records,
-                          [](const Resolved& record) { return record.target == "values"; }));
+    ZEXPECT(
+        llvm::none_of(records, [](const Resolved& record) { return record.target == "values"; }));
 }
 
 ZEST_CASE(MacroDeclaredAutoUnwritten) {
