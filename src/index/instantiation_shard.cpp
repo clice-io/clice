@@ -549,14 +549,6 @@ void InstantiationShard::for_each_record(
 
 namespace {
 
-/// A key while a write accumulates it.
-struct DraftKey {
-    SymbolHash key = 0;
-    SymbolHash pattern = 0;
-    std::optional<ResolutionHash> resolution;
-    std::optional<Producer> producer;
-};
-
 /// Everything a write accumulates before choosing column encodings.
 struct Draft {
     std::uint64_t content_hash = 0;
@@ -564,7 +556,7 @@ struct Draft {
     /// Ascending by identity, each resolution's records sorted and unique.
     std::vector<std::pair<ResolutionHash, std::vector<InstantiationRecord>>> resolutions;
     /// Ascending by key.
-    std::vector<DraftKey> keys;
+    std::vector<InstantiationShard::Key> keys;
     /// Ascending by identity, each use's resolutions stored above.
     std::vector<std::pair<UseHash, std::vector<ResolutionHash>>> uses;
 };
@@ -743,8 +735,9 @@ void write_instantiations(const FileInstantiations& instantiations,
             added.resolution = identities[*key.resolution];
         }
     }
-    std::ranges::sort(draft.keys, {}, &DraftKey::key);
-    draft.keys.erase(std::ranges::unique(draft.keys, {}, &DraftKey::key).begin(), draft.keys.end());
+    std::ranges::sort(draft.keys, {}, &InstantiationShard::Key::key);
+    draft.keys.erase(std::ranges::unique(draft.keys, {}, &InstantiationShard::Key::key).begin(),
+                     draft.keys.end());
     emit(draft, os);
 }
 
@@ -804,7 +797,7 @@ bool merge_instantiations(const InstantiationShard& old,
                                           [](const auto& entry) { return entry.first; });
     };
 
-    std::vector<DraftKey> walked;
+    std::vector<InstantiationShard::Key> walked;
     if(fresh) {
         fresh->for_each_key([&](const InstantiationShard::Key& key) {
             walked.push_back({.key = key.key,
@@ -814,10 +807,10 @@ bool merge_instantiations(const InstantiationShard& old,
             return true;
         });
     }
-    std::vector<DraftKey> kept;
+    std::vector<InstantiationShard::Key> kept;
     old.for_each_key([&](const InstantiationShard::Key& key) {
         if(keep_producer(*key.producer) && stored(key.resolution) &&
-           !std::ranges::binary_search(walked, key.key, {}, &DraftKey::key)) {
+           !std::ranges::binary_search(walked, key.key, {}, &InstantiationShard::Key::key)) {
             kept.push_back({.key = key.key,
                             .pattern = key.pattern,
                             .resolution = key.resolution,
@@ -829,8 +822,8 @@ bool merge_instantiations(const InstantiationShard& old,
                        walked,
                        std::back_inserter(draft.keys),
                        {},
-                       &DraftKey::key,
-                       &DraftKey::key);
+                       &InstantiationShard::Key::key,
+                       &InstantiationShard::Key::key);
     if(draft.resolutions.empty() && draft.keys.empty()) {
         return false;
     }

@@ -1296,38 +1296,14 @@ ContentInfo content_info_of(llvm::StringRef content) {
     return info;
 }
 
-/// A local symbol's facts, owned for the duration of a write.
-struct LocalSymbol {
-    std::string name;
-    std::string args;
-    std::string signature;
-    SymbolHash parent;
-    SymbolKind kind;
-    SymbolScope scope;
-    SymbolFlags flags;
-    TokenClass token_class;
-};
-
-LocalSymbol own(const SymbolView& identity) {
-    return {
-        .name = identity.name.str(),
-        .args = identity.args.str(),
-        .signature = identity.signature.str(),
-        .parent = identity.parent,
-        .kind = identity.kind,
-        .scope = identity.scope,
-        .flags = identity.flags,
-        .token_class = identity.token_class,
-    };
-}
-
 /// Collect one blob's local symbols; symbols the merged entries no longer
 /// reference are filtered at emit time.
-void collect_locals(BlobView root, llvm::DenseMap<SymbolHash, LocalSymbol>& locals) {
+void collect_locals(BlobView root, llvm::DenseMap<SymbolHash, SymbolInfo>& locals) {
     auto table = LocalTable::of(root);
     for(std::uint32_t k = 0; k < table.size(); k += 1) {
         auto identity = table.at(k);
-        auto [it, inserted] = locals.try_emplace(table.hash_of(k), own(identity));
+        auto hash = table.hash_of(k);
+        auto [it, inserted] = locals.try_emplace(hash, SymbolInfo::from(hash, identity));
         // Variants may see different facts of one symbol (a definition
         // behind `#ifdef`); like the project table, the union is kept, and
         // the token kind a defining variant gives.
@@ -1417,14 +1393,14 @@ struct SideWriter {
 /// the data, so equal inputs produce equal bytes.
 template <typename MaskT>
 void emit_blob(const MergedEntries<MaskT>& merged,
-               const llvm::DenseMap<SymbolHash, LocalSymbol>& locals,
+               const llvm::DenseMap<SymbolHash, SymbolInfo>& locals,
                std::vector<VariantHash> variants,
                const ContentInfo& content,
                llvm::raw_ostream& os) {
     // The locals the entries name; their parents join the symbol table,
     // which their parent column indexes.
     auto symbols = referenced_symbols(merged);
-    llvm::SmallVector<std::pair<SymbolHash, const LocalSymbol*>> kept;
+    llvm::SmallVector<std::pair<SymbolHash, const SymbolInfo*>> kept;
     for(auto& [hash, info]: locals) {
         if(symbols.contains(hash)) {
             kept.emplace_back(hash, &info);
@@ -1679,7 +1655,7 @@ void write_merged(BlobView old_root,
     // Local names union: every input blob is self-contained, so the merge
     // needs no external symbol resolver. First writer wins — identities of
     // one symbol agree across blobs of one file.
-    llvm::DenseMap<SymbolHash, LocalSymbol> locals;
+    llvm::DenseMap<SymbolHash, SymbolInfo> locals;
     if(old_root.valid()) {
         collect_locals(old_root, locals);
     }
@@ -1718,12 +1694,12 @@ void write_shard(const FileIndex& file_index,
     }
     std::ranges::sort(merged.relations, {}, group_key);
 
-    llvm::DenseMap<SymbolHash, LocalSymbol> locals;
+    llvm::DenseMap<SymbolHash, SymbolInfo> locals;
     if(symbols) {
         for(auto hash: referenced_symbols(merged)) {
             auto found = symbols(hash);
             if(found && found->scope != SymbolScope::External) {
-                locals.try_emplace(hash, own(*found));
+                locals.try_emplace(hash, SymbolInfo::from(hash, *found));
             }
         }
     }
