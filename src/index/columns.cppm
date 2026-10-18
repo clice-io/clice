@@ -28,25 +28,35 @@ inline bool is_no_range(std::uint32_t begin, std::uint32_t end) {
 /// holds the begin.
 constexpr inline std::uint8_t delta_escape = 0xff;
 
-/// An id column in whichever width the blob stores; validation proves
-/// exactly one width is present.
+/// The width in bytes of ids into a table of `table_size` entries.
+inline std::uint8_t id_width(std::size_t table_size) {
+    return table_size <= 0x100 ? 1 : table_size <= 0x10000 ? 2 : 4;
+}
+
+/// An id column read in the width its table picks (IdColumn).
 struct SymIds {
-    llvm::ArrayRef<std::uint8_t> ids8;
-    llvm::ArrayRef<std::uint16_t> ids16;
-    llvm::ArrayRef<std::uint32_t> ids32;
+    llvm::ArrayRef<std::uint8_t> bytes;
+    std::uint8_t width = 1;
 
     std::size_t size() const {
-        return ids8.size() + ids16.size() + ids32.size();
+        return bytes.size() / width;
     }
 
     std::uint32_t operator[](std::size_t i) const {
-        if(!ids8.empty()) {
-            return ids8[i];
+        auto at = bytes.data() + i * width;
+        switch(width) {
+            case 1: return *at;
+            case 2: {
+                std::uint16_t id;
+                std::memcpy(&id, at, sizeof(id));
+                return id;
+            }
+            default: {
+                std::uint32_t id;
+                std::memcpy(&id, at, sizeof(id));
+                return id;
+            }
         }
-        if(!ids16.empty()) {
-            return ids16[i];
-        }
-        return ids32[i];
     }
 
     /// The first position whose id is not below `id`, in an ascending
@@ -196,15 +206,9 @@ inline RangeColumnsView columns_of(kota::codec::fbs::table_view<RangeColumns> vi
     };
 }
 
-inline SymIds ids_of(kota::codec::fbs::table_view<IdColumn> view) {
-    if(!view.valid()) {
-        return {};
-    }
-    return {
-        to_array_ref(view[&IdColumn::ids8]),
-        to_array_ref(view[&IdColumn::ids16]),
-        to_array_ref(view[&IdColumn::ids32]),
-    };
+/// The ids of a column into a table of `table_size` entries.
+inline SymIds ids_of(kota::codec::fbs::array_view<std::uint8_t> view, std::size_t table_size) {
+    return {to_array_ref(view), id_width(table_size)};
 }
 
 /// The escape table must pair one-to-one, in column order, with the sentinel
@@ -311,23 +315,17 @@ inline bool sparse_ok(llvm::ArrayRef<std::uint32_t> entries,
            (entries.empty() || entries.back() < count);
 }
 
-/// Exactly one id width, chosen by the table's size, one id per entry and
-/// every id inside the table.
+/// One id per entry in the width the table's size picks, every id inside
+/// the table. The width was picked from a table size read before
+/// validation, which this table size may contradict.
 inline CheckResult sym_ids_ok(const SymIds& ids, std::size_t count, std::size_t table_size) {
-    if(ids.size() != count) {
+    if(ids.width != id_width(table_size) || ids.bytes.size() != count * ids.width) {
         return std::unexpected("id column does not match the entry count");
     }
-    bool width_ok = table_size <= 0x100     ? ids.ids16.empty() && ids.ids32.empty()
-                    : table_size <= 0x10000 ? ids.ids8.empty() && ids.ids32.empty()
-                                            : ids.ids8.empty() && ids.ids16.empty();
-    if(!width_ok) {
-        return std::unexpected("id width is not the canonical one");
-    }
-    auto in_table = [&](auto column) {
-        return llvm::all_of(column, [&](std::uint32_t id) { return id < table_size; });
-    };
-    if(!in_table(ids.ids8) || !in_table(ids.ids16) || !in_table(ids.ids32)) {
-        return std::unexpected("id past its table");
+    for(std::size_t i = 0; i < count; i += 1) {
+        if(ids[i] >= table_size) {
+            return std::unexpected("id past its table");
+        }
     }
     return {};
 }
@@ -362,32 +360,31 @@ inline CheckResult ends_ok(const SymIds& ends, std::size_t count, std::size_t te
 /// Appends ids in the width chosen for the whole column from its table's
 /// size.
 struct SymIdWriter {
-    enum class Width : std::uint8_t { U8, U16, U32 };
+    IdColumn& column;
+    std::uint8_t width;
 
-    Width width;
-    std::vector<std::uint8_t>& ids8;
-    std::vector<std::uint16_t>& ids16;
-    std::vector<std::uint32_t>& ids32;
-
-    static Width width_for(std::size_t table_size) {
-        return table_size <= 0x100 ? Width::U8 : table_size <= 0x10000 ? Width::U16 : Width::U32;
+    std::size_t size() const {
+        return column.size() / width;
     }
 
     void add(std::uint32_t id) {
+        auto at = column.size();
+        column.resize(at + width);
         switch(width) {
-            case Width::U8: ids8.push_back(static_cast<std::uint8_t>(id)); break;
-            case Width::U16: ids16.push_back(static_cast<std::uint16_t>(id)); break;
-            case Width::U32: ids32.push_back(id); break;
+            case 1: column[at] = static_cast<std::uint8_t>(id); break;
+            case 2: {
+                auto narrow = static_cast<std::uint16_t>(id);
+                std::memcpy(column.data() + at, &narrow, sizeof(narrow));
+                break;
+            }
+            default: std::memcpy(column.data() + at, &id, sizeof(id)); break;
         }
     }
 };
 
 /// A writer of `column` for ids into a table of `table_size` entries.
 inline SymIdWriter id_writer(IdColumn& column, std::size_t table_size) {
-    return {.width = SymIdWriter::width_for(table_size),
-            .ids8 = column.ids8,
-            .ids16 = column.ids16,
-            .ids32 = column.ids32};
+    return {.column = column, .width = id_width(table_size)};
 }
 
 /// Fill `column` with `ids` into a table of `table_size` entries.

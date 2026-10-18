@@ -116,10 +116,11 @@ struct OccurrenceTable {
     llvm::ArrayRef<std::uint64_t> sym_hashes;
 
     static OccurrenceTable of(BlobView root) {
+        auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
         return {
             .columns = columns_of(root[&ShardBlob::occs]),
-            .syms = ids_of(root[&ShardBlob::occ_syms]),
-            .sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]),
+            .syms = ids_of(root[&ShardBlob::occ_syms], sym_hashes.size()),
+            .sym_hashes = sym_hashes,
         };
     }
 
@@ -165,19 +166,23 @@ struct RelationTable {
     SymIds offsets;
 
     static RelationTable of(BlobView root) {
+        auto columns = columns_of(root[&ShardBlob::rels]);
+        auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
+        auto targets = ids_of(root[&ShardBlob::rel_targets], sym_hashes.size());
+        auto extent_heads = to_array_ref(root[&ShardBlob::rel_extent_heads]);
         return {
-            .columns = columns_of(root[&ShardBlob::rels]),
+            .columns = columns,
             .kinds = to_array_ref(root[&ShardBlob::rel_kinds]),
-            .target_ranks = ids_of(root[&ShardBlob::rel_target_ranks]),
-            .extent_ranks = ids_of(root[&ShardBlob::rel_extent_ranks]),
-            .targets = ids_of(root[&ShardBlob::rel_targets]),
-            .extent_heads = to_array_ref(root[&ShardBlob::rel_extent_heads]),
+            .target_ranks = ids_of(root[&ShardBlob::rel_target_ranks], targets.size() + 1),
+            .extent_ranks = ids_of(root[&ShardBlob::rel_extent_ranks], extent_heads.size() + 1),
+            .targets = targets,
+            .extent_heads = extent_heads,
             .extent_lengths = to_array_ref(root[&ShardBlob::rel_extent_lengths]),
             .far_extents = to_array_ref(root[&ShardBlob::rel_far_extents]),
             .far_begins = to_array_ref(root[&ShardBlob::rel_far_begins]),
             .far_ends = to_array_ref(root[&ShardBlob::rel_far_ends]),
-            .sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]),
-            .offsets = ids_of(root[&ShardBlob::rel_offsets]),
+            .sym_hashes = sym_hashes,
+            .offsets = ids_of(root[&ShardBlob::rel_offsets], columns.size() + 1),
         };
     }
 
@@ -269,23 +274,28 @@ struct LocalTable {
     llvm::ArrayRef<std::uint64_t> sym_hashes;
 
     static LocalTable of(BlobView root) {
+        auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
+        auto syms = ids_of(root[&ShardBlob::local_syms], sym_hashes.size());
+        auto names = to_ref(root[&ShardBlob::local_names]);
+        auto args = to_ref(root[&ShardBlob::local_args]);
+        auto signatures = to_ref(root[&ShardBlob::local_signatures]);
         return {
-            .syms = ids_of(root[&ShardBlob::local_syms]),
-            .names = to_ref(root[&ShardBlob::local_names]),
-            .name_ends = ids_of(root[&ShardBlob::local_name_ends]),
-            .args_of = ids_of(root[&ShardBlob::local_args_of]),
-            .args = to_ref(root[&ShardBlob::local_args]),
-            .args_ends = ids_of(root[&ShardBlob::local_args_ends]),
-            .signatures_of = ids_of(root[&ShardBlob::local_signatures_of]),
-            .signatures = to_ref(root[&ShardBlob::local_signatures]),
-            .signature_ends = ids_of(root[&ShardBlob::local_signature_ends]),
+            .syms = syms,
+            .names = names,
+            .name_ends = ids_of(root[&ShardBlob::local_name_ends], names.size() + 1),
+            .args_of = ids_of(root[&ShardBlob::local_args_of], syms.size()),
+            .args = args,
+            .args_ends = ids_of(root[&ShardBlob::local_args_ends], args.size() + 1),
+            .signatures_of = ids_of(root[&ShardBlob::local_signatures_of], syms.size()),
+            .signatures = signatures,
+            .signature_ends = ids_of(root[&ShardBlob::local_signature_ends], signatures.size() + 1),
             .kinds = to_array_ref(root[&ShardBlob::local_kinds]),
             .scopes = to_array_ref(root[&ShardBlob::local_scopes]),
-            .parents = ids_of(root[&ShardBlob::local_parents]),
+            .parents = ids_of(root[&ShardBlob::local_parents], sym_hashes.size() + 1),
             .flags = to_array_ref(root[&ShardBlob::local_flags]),
             .token_kinds = to_array_ref(root[&ShardBlob::local_token_kinds]),
             .token_modifiers = to_array_ref(root[&ShardBlob::local_token_modifiers]),
-            .sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]),
+            .sym_hashes = sym_hashes,
         };
     }
 
@@ -416,12 +426,13 @@ CheckResult utf8_lines_ok(BlobView root) {
 // the later id's relations and local name unreachably.
 CheckResult symbol_table_ok(BlobView root) {
     auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
-    auto relations = RelationTable::of(root).size();
-    auto offsets = ids_of(root[&ShardBlob::rel_offsets]);
-    if(auto ok = ascending_ids_ok(offsets, sym_hashes.size() + 1, relations + 1, false); !ok) {
+    auto table = RelationTable::of(root);
+    auto relations = table.size();
+    if(auto ok = ascending_ids_ok(table.offsets, sym_hashes.size() + 1, relations + 1, false);
+       !ok) {
         return ok;
     }
-    if(offsets[0] != 0 || offsets[sym_hashes.size()] != relations) {
+    if(table.offsets[0] != 0 || table.offsets[sym_hashes.size()] != relations) {
         return std::unexpected("relation offsets are not a partition of the relations");
     }
     if(!std::ranges::is_sorted(sym_hashes, std::less_equal{})) {

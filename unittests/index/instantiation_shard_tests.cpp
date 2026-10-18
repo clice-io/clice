@@ -266,11 +266,11 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.sym_hashes = {11};
     blob.records.packed = {index::pack_range(10, 3)};
     blob.record_kinds = {0};
-    blob.record_targets.ids8 = {0};
-    blob.record_froms.ids8 = {0};
+    blob.record_targets = {0};
+    blob.record_froms = {0};
     blob.resolutions = {5};
     blob.resolution_ends = {1};
-    blob.resolution_records.ids8 = {0};
+    blob.resolution_records = {0};
     auto bytes_of = [&] {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
@@ -281,10 +281,10 @@ ZEST_CASE(CorruptBlobRejected) {
 
     // A record no resolution holds.
     blob.resolution_ends = {0};
-    blob.resolution_records.ids8 = {};
+    blob.resolution_records = {};
     ZEXPECT(!make(bytes_of()).loaded());
     blob.resolution_ends = {1};
-    blob.resolution_records.ids8 = {0};
+    blob.resolution_records = {0};
 
     // A record past the content.
     blob.records.packed = {index::pack_range(size, 3)};
@@ -293,10 +293,10 @@ ZEST_CASE(CorruptBlobRejected) {
 
     // A key whose resolution is not stored.
     blob.keys = {1};
-    blob.key_patterns.ids8 = {0};
-    blob.key_resolutions.ids8 = {2};
+    blob.key_patterns = {0};
+    blob.key_resolutions = {2};
     ZEXPECT(!make(bytes_of()).loaded());
-    blob.key_resolutions.ids8 = {1};
+    blob.key_resolutions = {1};
     ZEXPECT(make(bytes_of()).loaded());
 
     // Hashes that key DenseMaps once decoded.
@@ -311,7 +311,7 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.producer_units = {100};
     blob.producer_runs = {1};
     ZEXPECT(!make(bytes_of()).loaded());
-    blob.key_producers.ids8 = {0};
+    blob.key_producers = {0};
     ZEXPECT(make(bytes_of()).loaded());
     blob.producer_units = {~0ull - 1};
     ZEXPECT(!make(bytes_of()).loaded());
@@ -321,12 +321,12 @@ ZEST_CASE(CorruptBlobRejected) {
     std::vector<ResolutionHash> used = {5};
     blob.uses = {index::use_identity(used)};
     blob.use_ends = {1};
-    blob.use_resolutions.ids8 = {0};
+    blob.use_resolutions = {0};
     ZEXPECT(make(bytes_of()).loaded());
     blob.uses = {index::use_identity(used) + 1};
     ZEXPECT(!make(bytes_of()).loaded());
     blob.uses = {index::use_identity(used)};
-    blob.use_resolutions.ids8 = {1};
+    blob.use_resolutions = {1};
     ZEXPECT(!make(bytes_of()).loaded());
 }
 

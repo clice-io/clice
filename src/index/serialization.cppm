@@ -145,15 +145,11 @@ constexpr inline std::uint32_t pack_range(std::uint32_t begin, std::uint8_t leng
 /// past a begin that already sits at the content limit.
 constexpr inline std::uint32_t packed_sentinel = 0xffffffff;
 
-/// A column of ids into a table, in the width the table's size picks: u8
-/// up to 256 entries, u16 up to 65536, u32 beyond. Exactly one width is
-/// present. End offsets into a text of `n` bytes are ids into a table of
-/// `n + 1`.
-struct IdColumn {
-    std::vector<std::uint8_t> ids8;
-    std::vector<std::uint16_t> ids16;
-    std::vector<std::uint32_t> ids32;
-};
+/// A column of ids into a table, back to back in the width the table's
+/// size picks: u8 up to 256 entries, u16 up to 65536, u32 beyond. Readers
+/// know the table, so the width is stored nowhere. End offsets into a text
+/// of `n` bytes are ids into a table of `n + 1`.
+using IdColumn = std::vector<std::uint8_t>;
 
 /// Entries per block of a delta-encoded begin column.
 constexpr inline std::uint32_t delta_block = 16;

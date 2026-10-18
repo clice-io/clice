@@ -412,13 +412,13 @@ struct GlobalBlobMirror {
         sym_names += name;
         sym_name_ends.push_back(static_cast<std::uint32_t>(sym_names.size()));
         sym_signature_ends.push_back(static_cast<std::uint32_t>(sym_signatures.size()));
-        sym_parents.ids8.push_back(0);
+        sym_parents.push_back(0);
         sym_kinds.push_back(0);
         sym_flags.push_back(0);
         sym_token_kinds.push_back(0);
         sym_token_modifiers.push_back(0);
-        sym_files.ids8.push_back(static_cast<std::uint8_t>(file == index::no_file ? 0 : file + 1));
-        sym_reference_counts.ids8.push_back(0);
+        sym_files.push_back(static_cast<std::uint8_t>(file == index::no_file ? 0 : file + 1));
+        sym_reference_counts.push_back(0);
         sym_bitmaps.insert(sym_bitmaps.end(), image.begin(), image.end());
         sym_bitmap_ends.push_back(static_cast<std::uint32_t>(sym_bitmaps.size()));
     }
@@ -624,7 +624,7 @@ ZEST_CASE(UncoveredFileIdRejected) {
     index::ProjectIndex loaded;
     ZASSERT(loaded.load_global(bytes_of(*control), pool, pins));
 
-    mirror.sym_files.ids8 = {6};
+    mirror.sym_files = {6};
     auto uncovered = encode(mirror);
     ZASSERT(uncovered);
     index::ProjectIndex rejecting;

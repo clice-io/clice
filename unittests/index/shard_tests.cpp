@@ -723,13 +723,13 @@ ZEST_CASE(ReservedLocalParentRejected) {
     fill_content(blob, "aaåå");
     blob.variants = {1};
     blob.sym_hashes = {111, ~std::uint64_t(0)};
-    blob.rel_offsets.ids8 = {0, 0, 0};
-    blob.local_syms.ids8 = {0};
+    blob.rel_offsets = {0, 0, 0};
+    blob.local_syms = {0};
     blob.local_names = "helper";
-    blob.local_name_ends.ids8 = {6};
+    blob.local_name_ends = {6};
     blob.local_kinds = {0};
     blob.local_scopes = {1};
-    blob.local_parents.ids8 = {0};
+    blob.local_parents = {0};
     blob.local_flags = {0};
     blob.local_token_kinds = {0};
     blob.local_token_modifiers = {0};
@@ -742,21 +742,21 @@ ZEST_CASE(ReservedLocalParentRejected) {
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
-    blob.local_parents.ids8 = {2};
+    blob.local_parents = {2};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // So does a token kind past the enum: it indexes the legend's tables.
-    blob.local_parents.ids8 = {0};
+    blob.local_parents = {0};
     blob.local_token_kinds = {200};
     ZASSERT(!make_shard(bytes_of()).loaded());
     blob.local_token_kinds = {0};
 
     // An argument list stored empty is the absent entry's to spell.
-    blob.local_args_of.ids8 = {0};
-    blob.local_args_ends.ids8 = {0};
+    blob.local_args_of = {0};
+    blob.local_args_ends = {0};
     ZASSERT(!make_shard(bytes_of()).loaded());
     blob.local_args = "<int>";
-    blob.local_args_ends.ids8 = {5};
+    blob.local_args_ends = {5};
     auto shard = make_shard(bytes_of());
     ZASSERT(shard.loaded());
     auto helper = shard.find_symbol(111);
@@ -776,7 +776,7 @@ ZEST_CASE(NonAsciiLineMismatchRejected) {
     fill_content(blob, "aa\nåå\nbb");
     blob.variants = {1};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
+    blob.rel_offsets = {0, 0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -810,7 +810,7 @@ ZEST_CASE(LineTableMismatchRejected) {
     fill_content(blob, "aaa\nbbb\n");
     blob.variants = {1};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
+    blob.rel_offsets = {0, 0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -836,7 +836,7 @@ ZEST_CASE(MisorderedEntriesRejected) {
     fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
+    blob.rel_offsets = {0, 0};
     set_occurrences(blob,
                     {
                         {0, 3                   },
@@ -844,7 +844,7 @@ ZEST_CASE(MisorderedEntriesRejected) {
     });
     blob.occs.long_entries = {1};
     blob.occs.long_ends = {12};
-    blob.occ_syms.ids8 = {0, 0};
+    blob.occ_syms = {0, 0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -884,16 +884,16 @@ ZEST_CASE(MisorderedEntriesRejected) {
     });
     blob.occs.long_entries = {};
     blob.occs.long_ends = {};
-    blob.occ_syms.ids8.assign(17, 0);
+    blob.occ_syms.assign(17, 0);
     blob.sym_hashes = {111, 222};
-    blob.rel_offsets.ids8 = {0, 0, 0};
-    blob.occ_syms.ids8.back() = 1;
+    blob.rel_offsets = {0, 0, 0};
+    blob.occ_syms.back() = 1;
     ZASSERT(make_shard(bytes_of()).loaded());
     blob.occs.block_begins = {0, 14};
     ZASSERT(!make_shard(bytes_of()).loaded());
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
-    blob.occ_syms.ids8 = {0, 0};
+    blob.rel_offsets = {0, 0};
+    blob.occ_syms = {0, 0};
 
     // A begin escaped though it moved less than the escape distance: a
     // second spelling of the same occurrences.
@@ -938,13 +938,13 @@ ZEST_CASE(DuplicateOccKeyRejected) {
     fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111, 222};
-    blob.rel_offsets.ids8 = {0, 0, 0};
+    blob.rel_offsets = {0, 0, 0};
     set_occurrences(blob,
                     {
                         {0, 3},
                         {0, 3}
     });
-    blob.occ_syms.ids8 = {0, 1};
+    blob.occ_syms = {0, 1};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -955,10 +955,10 @@ ZEST_CASE(DuplicateOccKeyRejected) {
     // Positive control: one range with ascending symbols loads.
     ZASSERT(make_shard(bytes_of()).loaded());
 
-    blob.occ_syms.ids8 = {0, 0};
+    blob.occ_syms = {0, 0};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
-    blob.occ_syms.ids8 = {1, 0};
+    blob.occ_syms = {1, 0};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
@@ -972,12 +972,12 @@ ZEST_CASE(UnsortedRelationsRejected) {
     fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 2};
+    blob.rel_offsets = {0, 2};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference),
                       static_cast<std::uint8_t>(RelationKind::Reference)};
     blob.rels.packed = {index::pack_range(0, 3), index::pack_range(4, 3)};
-    blob.rel_target_ranks.ids8 = {0};
-    blob.rel_extent_ranks.ids8 = {0};
+    blob.rel_target_ranks = {0};
+    blob.rel_extent_ranks = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -1004,14 +1004,14 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     fill_content(blob, std::string(300, 'a'));
     blob.variants = {1};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
+    blob.rel_offsets = {0, 0};
     set_occurrences(blob,
                     {
                         {0, index::length_escape}
     });
     blob.occs.long_entries = {0};
     blob.occs.long_ends = {260};
-    blob.occ_syms.ids8 = {0};
+    blob.occ_syms = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -1040,11 +1040,11 @@ ZEST_CASE(EscapeTableMismatchRejected) {
                     {
                         {0, index::length_escape}
     });
-    blob.rel_offsets.ids8 = {0, 1};
+    blob.rel_offsets = {0, 1};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
     blob.rels.packed = {index::pack_range(0, index::length_escape)};
-    blob.rel_target_ranks.ids8 = {0};
-    blob.rel_extent_ranks.ids8 = {0};
+    blob.rel_target_ranks = {0};
+    blob.rel_extent_ranks = {0};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
@@ -1058,16 +1058,16 @@ ZEST_CASE(RangesBeyondContentRejected) {
     fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 1};
+    blob.rel_offsets = {0, 1};
     set_occurrences(blob,
                     {
                         {0, 3}
     });
-    blob.occ_syms.ids8 = {0};
+    blob.occ_syms = {0};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
     blob.rels.packed = {index::pack_range(0, 3)};
-    blob.rel_target_ranks.ids8 = {0};
-    blob.rel_extent_ranks.ids8 = {0};
+    blob.rel_target_ranks = {0};
+    blob.rel_extent_ranks = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -1128,10 +1128,10 @@ ZEST_CASE(WrongRangeEncodingRejected) {
     fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
+    blob.rel_offsets = {0, 0};
     blob.occs.begins = {0};
     blob.occs.lengths = {3};
-    blob.occ_syms.ids8 = {0};
+    blob.occ_syms = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -1161,12 +1161,12 @@ ZEST_CASE(WrongSymWidthRejected) {
     fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
+    blob.rel_offsets = {0, 0};
     set_occurrences(blob,
                     {
                         {0, 3}
     });
-    blob.occ_syms.ids16 = {0};
+    blob.occ_syms = {0, 0};
 
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
@@ -1183,7 +1183,7 @@ ZEST_CASE(DuplicateSymbolHashRejected) {
     fill_content(blob, "aaaa");
     blob.variants = {1};
     blob.sym_hashes = {111, 222};
-    blob.rel_offsets.ids8 = {0, 0, 0};
+    blob.rel_offsets = {0, 0, 0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -1206,7 +1206,7 @@ ZEST_CASE(DuplicateVariantRejected) {
     fill_content(blob, "aaaa");
     blob.variants = {1, 2};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
+    blob.rel_offsets = {0, 0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -1229,17 +1229,17 @@ ZEST_CASE(StraySymbolIdRejected) {
     fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 1};
+    blob.rel_offsets = {0, 1};
     set_occurrences(blob,
                     {
                         {0, 3}
     });
-    blob.occ_syms.ids8 = {0};
+    blob.occ_syms = {0};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base) | index::payload_bit};
     blob.rels.packed = {index::pack_range(4, 3)};
-    blob.rel_target_ranks.ids8 = {0};
-    blob.rel_extent_ranks.ids8 = {0};
-    blob.rel_targets.ids8 = {0};
+    blob.rel_target_ranks = {0};
+    blob.rel_extent_ranks = {0};
+    blob.rel_targets = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -1249,11 +1249,11 @@ ZEST_CASE(StraySymbolIdRejected) {
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
-    blob.occ_syms.ids8 = {5};
+    blob.occ_syms = {5};
     ZASSERT(!make_shard(bytes_of()).loaded());
-    blob.occ_syms.ids8 = {0};
+    blob.occ_syms = {0};
 
-    blob.rel_targets.ids8 = {5};
+    blob.rel_targets = {5};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
@@ -1267,11 +1267,11 @@ ZEST_CASE(RelationPayloadColumnsRejected) {
     fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 1};
+    blob.rel_offsets = {0, 1};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) | index::payload_bit};
     blob.rels.packed = {index::pack_range(4, 3)};
-    blob.rel_target_ranks.ids8 = {0};
-    blob.rel_extent_ranks.ids8 = {0};
+    blob.rel_target_ranks = {0};
+    blob.rel_extent_ranks = {0};
     blob.rel_extent_heads = {4};
     blob.rel_extent_lengths = {8};
 
@@ -1293,9 +1293,9 @@ ZEST_CASE(RelationPayloadColumnsRejected) {
     ZASSERT(shard.loaded());
     ZASSERT(extent_of(shard) == LocalSourceRange{0, 8});
 
-    blob.rel_extent_ranks.ids8 = {1};
+    blob.rel_extent_ranks = {1};
     ZASSERT(!make_shard(bytes_of()).loaded());
-    blob.rel_extent_ranks.ids8 = {0};
+    blob.rel_extent_ranks = {0};
 
     // An extent without the payload bit owning it, a target in its place.
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Definition)};
@@ -1328,12 +1328,12 @@ ZEST_CASE(OwnerlessMaskRejected) {
     fill_content(blob, "aaaa");
     blob.variants = {1, 2};
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
+    blob.rel_offsets = {0, 0};
     set_occurrences(blob,
                     {
                         {0, 3}
     });
-    blob.occ_syms.ids8 = {0};
+    blob.occ_syms = {0};
     blob.occs.masks8 = {0b01};
 
     auto bytes_of = [&] {
@@ -1410,12 +1410,12 @@ ZEST_CASE(CorruptRoaringMaskRejected) {
         blob.variants.push_back(i);
     }
     blob.sym_hashes = {111};
-    blob.rel_offsets.ids8 = {0, 0};
+    blob.rel_offsets = {0, 0};
     set_occurrences(blob,
                     {
                         {0, 3}
     });
-    blob.occ_syms.ids8 = {0};
+    blob.occ_syms = {0};
 
     clice::Bitmap mask;
     mask.add(2);

@@ -71,6 +71,8 @@ struct GlobalBlob {
     std::vector<std::uint32_t> sym_token_modifiers;
     /// Path ids plus one, 0 for a symbol without a declaring relation.
     IdColumn sym_files;
+    /// The files referencing each symbol, counted: at most the path count,
+    /// so they take the width of path ids.
     IdColumn sym_reference_counts;
     std::vector<std::uint32_t> sym_bitmap_ends;
     std::vector<std::uint8_t> sym_bitmaps;
@@ -332,15 +334,15 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     args_ends = to_array_ref(root[&GlobalBlob::sym_args_ends]);
     signatures = to_ref(root[&GlobalBlob::sym_signatures]);
     signature_ends = to_array_ref(root[&GlobalBlob::sym_signature_ends]);
-    parents = ids_of(root[&GlobalBlob::sym_parents]);
+    parents = ids_of(root[&GlobalBlob::sym_parents], hashes.size() + 1);
     far_parents = to_array_ref(root[&GlobalBlob::sym_far_parents]);
     far_parent_hashes = to_array_ref(root[&GlobalBlob::sym_far_parent_hashes]);
     kinds = to_array_ref(root[&GlobalBlob::sym_kinds]);
     flags = to_array_ref(root[&GlobalBlob::sym_flags]);
     token_kinds = to_array_ref(root[&GlobalBlob::sym_token_kinds]);
     token_modifiers = to_array_ref(root[&GlobalBlob::sym_token_modifiers]);
-    files = ids_of(root[&GlobalBlob::sym_files]);
-    reference_counts = ids_of(root[&GlobalBlob::sym_reference_counts]);
+    files = ids_of(root[&GlobalBlob::sym_files], paths.size() + 1);
+    reference_counts = ids_of(root[&GlobalBlob::sym_reference_counts], paths.size() + 1);
     bitmap_ends = to_array_ref(root[&GlobalBlob::sym_bitmap_ends]);
     bitmaps = to_array_ref(root[&GlobalBlob::sym_bitmaps]);
     instantiation_docs = to_array_ref(root[&GlobalBlob::sym_instantiation_docs]);
@@ -385,7 +387,7 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
         return std::unexpected("a symbol's token kind is out of range");
     }
     if(!sym_ids_ok(parents, count, count + 1) || !sym_ids_ok(files, count, paths.size() + 1) ||
-       reference_counts.size() != count) {
+       !sym_ids_ok(reference_counts, count, paths.size() + 1)) {
         return std::unexpected("symbol id columns do not line up");
     }
     // The sparse columns list symbols strictly ascending inside the table.
@@ -1051,9 +1053,6 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         }
     }
     write_ids(blob.sym_parents, parents, entries.size() + 1);
-    write_ids(blob.sym_reference_counts,
-              reference_counts,
-              (reference_counts.empty() ? 0 : std::ranges::max(reference_counts)) + 1);
 
     std::vector<std::pair<std::uint32_t, Bitmap>> reverse;
     reverse.reserve(contributions.size());
@@ -1080,6 +1079,7 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
     llvm::sort(blob.search_pending_files);
     // After every path id is handed out: the width follows the path table.
     write_ids(blob.sym_files, file_ids, blob.paths.size() + 1);
+    write_ids(blob.sym_reference_counts, reference_counts, blob.paths.size() + 1);
 
     serialize_blob(blob, os);
 }

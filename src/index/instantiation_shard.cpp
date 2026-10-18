@@ -39,12 +39,13 @@ struct RecordTable {
     llvm::ArrayRef<std::uint64_t> sym_hashes;
 
     static RecordTable of(BlobView root) {
+        auto sym_hashes = to_array_ref(root[&InstantiationBlob::sym_hashes]);
         return {
             .columns = columns_of(root[&InstantiationBlob::records]),
             .kinds = to_array_ref(root[&InstantiationBlob::record_kinds]),
-            .targets = ids_of(root[&InstantiationBlob::record_targets]),
-            .froms = ids_of(root[&InstantiationBlob::record_froms]),
-            .sym_hashes = to_array_ref(root[&InstantiationBlob::sym_hashes]),
+            .targets = ids_of(root[&InstantiationBlob::record_targets], sym_hashes.size()),
+            .froms = ids_of(root[&InstantiationBlob::record_froms], sym_hashes.size()),
+            .sym_hashes = sym_hashes,
         };
     }
 
@@ -82,7 +83,8 @@ struct ResolutionTable {
         return {
             .hashes = to_array_ref(root[&InstantiationBlob::resolutions]),
             .ends = to_array_ref(root[&InstantiationBlob::resolution_ends]),
-            .records = ids_of(root[&InstantiationBlob::resolution_records]),
+            .records = ids_of(root[&InstantiationBlob::resolution_records],
+                              columns_of(root[&InstantiationBlob::records]).size()),
         };
     }
 
@@ -101,7 +103,8 @@ struct UseTable {
         return {
             .hashes = to_array_ref(root[&InstantiationBlob::uses]),
             .ends = to_array_ref(root[&InstantiationBlob::use_ends]),
-            .resolutions = ids_of(root[&InstantiationBlob::use_resolutions]),
+            .resolutions = ids_of(root[&InstantiationBlob::use_resolutions],
+                                  to_array_ref(root[&InstantiationBlob::resolutions]).size()),
         };
     }
 
@@ -129,14 +132,18 @@ struct KeyTable {
     llvm::ArrayRef<std::uint64_t> producer_runs;
 
     static KeyTable of(BlobView root) {
+        auto sym_hashes = to_array_ref(root[&InstantiationBlob::sym_hashes]);
+        auto resolution_hashes = to_array_ref(root[&InstantiationBlob::resolutions]);
+        auto producer_units = to_array_ref(root[&InstantiationBlob::producer_units]);
         return {
             .keys = to_array_ref(root[&InstantiationBlob::keys]),
-            .patterns = ids_of(root[&InstantiationBlob::key_patterns]),
-            .resolutions = ids_of(root[&InstantiationBlob::key_resolutions]),
-            .producers = ids_of(root[&InstantiationBlob::key_producers]),
-            .sym_hashes = to_array_ref(root[&InstantiationBlob::sym_hashes]),
-            .resolution_hashes = to_array_ref(root[&InstantiationBlob::resolutions]),
-            .producer_units = to_array_ref(root[&InstantiationBlob::producer_units]),
+            .patterns = ids_of(root[&InstantiationBlob::key_patterns], sym_hashes.size()),
+            .resolutions =
+                ids_of(root[&InstantiationBlob::key_resolutions], resolution_hashes.size() + 1),
+            .producers = ids_of(root[&InstantiationBlob::key_producers], producer_units.size()),
+            .sym_hashes = sym_hashes,
+            .resolution_hashes = resolution_hashes,
+            .producer_units = producer_units,
             .producer_runs = to_array_ref(root[&InstantiationBlob::producer_runs]),
         };
     }
@@ -666,9 +673,7 @@ void emit(const Draft& draft, llvm::raw_ostream& os) {
         for(auto record: members[resolution]) {
             record_ids.add(record);
         }
-        blob.resolution_ends.push_back(static_cast<std::uint32_t>(
-            blob.resolution_records.ids8.size() + blob.resolution_records.ids16.size() +
-            blob.resolution_records.ids32.size()));
+        blob.resolution_ends.push_back(static_cast<std::uint32_t>(record_ids.size()));
     }
 
     std::vector<std::uint32_t> use_resolutions;
