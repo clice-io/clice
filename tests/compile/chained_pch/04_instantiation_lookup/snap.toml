@@ -1,0 +1,1005 @@
+[features.make]
+highlights = [
+    { at = "decltype(⟦make⟧(2)) made = make(3);", kind = "text" },
+    { at = "decltype(make(2)) made = ⟦make⟧(3);", kind = "text" },
+]
+
+[features.make.hover]
+markdown = '''
+**function** `make`
+
+```cpp
+template <> int make<int>(int value)
+```
+'''
+range = "decltype(make(2)) made = ⟦make⟧(3);"
+
+[features.size]
+highlights = [
+    { at = "int total = made + wrapped->⟦size⟧() + apply(Local{});", kind = "text" },
+]
+
+[features.size.hover]
+markdown = '''
+**method** `size` · struct `Wrapper<Late>`
+
+```cpp
+int size() const
+```
+'''
+range = "int total = made + wrapped->⟦size⟧() + apply(Local{});"
+
+[features.apply]
+highlights = [
+    { at = "int total = made + wrapped->size() + ⟦apply⟧(Local{});", kind = "text" },
+    {
+        at = "return total + ⟦apply⟧(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        kind = "text",
+    },
+    {
+        at = "return total + apply(Gadget{}) + ⟦apply⟧(Later{}) + apply(Early{}) + base_use() + top_use();",
+        kind = "text",
+    },
+    {
+        at = "return total + apply(Gadget{}) + apply(Later{}) + ⟦apply⟧(Early{}) + base_use() + top_use();",
+        kind = "text",
+    },
+]
+
+[features.apply.hover]
+markdown = '''
+**function** `apply`
+
+```cpp
+template <> int apply<Local>(Local value)
+```
+'''
+range = "int total = made + wrapped->size() + ⟦apply⟧(Local{});"
+
+[features.early]
+highlights = [
+    { at = "return ⟦helper⟧(early) + helper(gadget) + helper(later);", kind = "text" },
+]
+
+[features.early.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+int helper(Early)
+```
+'''
+range = "return ⟦helper⟧(early) + helper(gadget) + helper(later);"
+
+[features.gadget]
+highlights = [
+    { at = "return helper(early) + ⟦helper⟧(gadget) + helper(later);", kind = "text" },
+]
+
+[features.gadget.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+int helper(Gadget)
+```
+'''
+range = "return helper(early) + ⟦helper⟧(gadget) + helper(later);"
+
+[features.later]
+highlights = [
+    { at = "int ⟦helper⟧(Later);", kind = "text" },
+    { at = "return helper(early) + helper(gadget) + ⟦helper⟧(later);", kind = "text" },
+]
+
+[features.later.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+int helper(Later)
+```
+'''
+range = "return helper(early) + helper(gadget) + ⟦helper⟧(later);"
+
+[features.symbols]
+document_symbols = [
+    { name = "Later", kind = "Struct", at = "struct ⟦Later⟧ {};" },
+    { name = "helper", kind = "Function", at = "int ⟦helper⟧(Later);" },
+    { name = "Local", kind = "Struct", at = "struct ⟦Local⟧ {};" },
+    { name = "helper", kind = "Function", at = "int ⟦helper⟧(Local);" },
+    {
+        name = "run",
+        kind = "Function",
+        at = "int ⟦run⟧() {",
+        children = [
+            { name = "made", kind = "Variable", at = "decltype(make(2)) ⟦made⟧ = make(3);" },
+            { name = "total", kind = "Variable", at = "int ⟦total⟧ = made + wrapped->size() + apply(Local{});" },
+        ],
+    },
+    { name = "probe", kind = "Function", at = "int ⟦probe⟧(Early early, Gadget gadget, Later later) {" },
+]
+
+[features.tokens]
+semantic_tokens = [
+    { at = '⟦#include⟧ "extra.h"', type = "directive" },
+    { at = '#include ⟦"extra.h"⟧', type = "header" },
+    { at = "⟦struct⟧ Later {};", type = "keyword" },
+    { at = "struct ⟦Later⟧ {};", type = "struct", modifiers = ["definition", "global"] },
+    { at = "⟦int⟧ helper(Later);", type = "primitive" },
+    { at = "int ⟦helper⟧(Later);", type = "function", modifiers = ["declaration", "global"] },
+    { at = "int helper(⟦Later⟧);", type = "struct", modifiers = ["global"] },
+    { at = "⟦struct⟧ Local {};", type = "keyword" },
+    { at = "struct ⟦Local⟧ {};", type = "struct", modifiers = ["definition", "global"] },
+    { at = "⟦int⟧ helper(Local);", type = "primitive" },
+    { at = "int ⟦helper⟧(Local);", type = "function", modifiers = ["declaration", "global"] },
+    { at = "int helper(⟦Local⟧);", type = "struct", modifiers = ["global"] },
+    { at = "⟦int⟧ run() {", type = "primitive" },
+    { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦decltype⟧(make(2)) made = make(3);", type = "keyword" },
+    {
+        at = "decltype(⟦make⟧(2)) made = make(3);",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    { at = "decltype(make(⟦2⟧)) made = make(3);", type = "number" },
+    { at = "decltype(make(2)) ⟦made⟧ = make(3);", type = "variable", modifiers = ["definition", "local"] },
+    { at = "decltype(make(2)) made ⟦=⟧ make(3);", type = "operator" },
+    {
+        at = "decltype(make(2)) made = ⟦make⟧(3);",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    { at = "decltype(make(2)) made = make(⟦3⟧);", type = "number" },
+    { at = "⟦int⟧ total = made + wrapped->size() + apply(Local{});", type = "primitive" },
+    {
+        at = "int ⟦total⟧ = made + wrapped->size() + apply(Local{});",
+        type = "variable",
+        modifiers = ["definition", "local"],
+    },
+    { at = "int total ⟦=⟧ made + wrapped->size() + apply(Local{});", type = "operator" },
+    { at = "int total = ⟦made⟧ + wrapped->size() + apply(Local{});", type = "variable", modifiers = ["local"] },
+    { at = "int total = made ⟦+⟧ wrapped->size() + apply(Local{});", type = "operator" },
+    {
+        at = "int total = made + ⟦wrapped⟧->size() + apply(Local{});",
+        type = "variable",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "int total = made + wrapped->⟦size⟧() + apply(Local{});",
+        type = "method",
+        modifiers = ["readonly", "defaultLibrary", "member"],
+    },
+    { at = "int total = made + wrapped->size() ⟦+⟧ apply(Local{});", type = "operator" },
+    {
+        at = "int total = made + wrapped->size() + ⟦apply⟧(Local{});",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    { at = "int total = made + wrapped->size() + apply(⟦Local⟧{});", type = "struct", modifiers = ["global"] },
+    {
+        at = "⟦return⟧ total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        type = "keyword",
+        modifiers = ["controlFlow"],
+    },
+    {
+        at = "return ⟦total⟧ + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        type = "variable",
+        modifiers = ["local"],
+    },
+    {
+        at = "return total ⟦+⟧ apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        type = "operator",
+    },
+    {
+        at = "return total + ⟦apply⟧(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    {
+        at = "return total + apply(⟦Gadget⟧{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        type = "struct",
+        modifiers = ["global"],
+    },
+    {
+        at = "return total + apply(Gadget{}) ⟦+⟧ apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        type = "operator",
+    },
+    {
+        at = "return total + apply(Gadget{}) + ⟦apply⟧(Later{}) + apply(Early{}) + base_use() + top_use();",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    {
+        at = "return total + apply(Gadget{}) + apply(⟦Later⟧{}) + apply(Early{}) + base_use() + top_use();",
+        type = "struct",
+        modifiers = ["global"],
+    },
+    {
+        at = "return total + apply(Gadget{}) + apply(Later{}) ⟦+⟧ apply(Early{}) + base_use() + top_use();",
+        type = "operator",
+    },
+    {
+        at = "return total + apply(Gadget{}) + apply(Later{}) + ⟦apply⟧(Early{}) + base_use() + top_use();",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    {
+        at = "return total + apply(Gadget{}) + apply(Later{}) + apply(⟦Early⟧{}) + base_use() + top_use();",
+        type = "struct",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) ⟦+⟧ base_use() + top_use();",
+        type = "operator",
+    },
+    {
+        at = "return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + ⟦base_use⟧() + top_use();",
+        type = "function",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() ⟦+⟧ top_use();",
+        type = "operator",
+    },
+    {
+        at = "return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + ⟦top_use⟧();",
+        type = "function",
+        modifiers = ["global"],
+    },
+    { at = "⟦int⟧ probe(Early early, Gadget gadget, Later later) {", type = "primitive" },
+    {
+        at = "int ⟦probe⟧(Early early, Gadget gadget, Later later) {",
+        type = "function",
+        modifiers = ["definition", "global"],
+    },
+    {
+        at = "int probe(⟦Early⟧ early, Gadget gadget, Later later) {",
+        type = "struct",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "int probe(Early ⟦early⟧, Gadget gadget, Later later) {",
+        type = "parameter",
+        modifiers = ["definition", "local"],
+    },
+    { at = "int probe(Early early, ⟦Gadget⟧ gadget, Later later) {", type = "struct", modifiers = ["global"] },
+    {
+        at = "int probe(Early early, Gadget ⟦gadget⟧, Later later) {",
+        type = "parameter",
+        modifiers = ["definition", "local"],
+    },
+    { at = "int probe(Early early, Gadget gadget, ⟦Later⟧ later) {", type = "struct", modifiers = ["global"] },
+    {
+        at = "int probe(Early early, Gadget gadget, Later ⟦later⟧) {",
+        type = "parameter",
+        modifiers = ["definition", "local"],
+    },
+    { at = "⟦return⟧ helper(early) + helper(gadget) + helper(later);", type = "keyword", modifiers = ["controlFlow"] },
+    {
+        at = "return ⟦helper⟧(early) + helper(gadget) + helper(later);",
+        type = "function",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    { at = "return helper(⟦early⟧) + helper(gadget) + helper(later);", type = "parameter", modifiers = ["local"] },
+    { at = "return helper(early) ⟦+⟧ helper(gadget) + helper(later);", type = "operator" },
+    { at = "return helper(early) + ⟦helper⟧(gadget) + helper(later);", type = "function", modifiers = ["global"] },
+    { at = "return helper(early) + helper(⟦gadget⟧) + helper(later);", type = "parameter", modifiers = ["local"] },
+    { at = "return helper(early) + helper(gadget) ⟦+⟧ helper(later);", type = "operator" },
+    { at = "return helper(early) + helper(gadget) + ⟦helper⟧(later);", type = "function", modifiers = ["global"] },
+    { at = "return helper(early) + helper(gadget) + helper(⟦later⟧);", type = "parameter", modifiers = ["local"] },
+]
+
+[features.hints]
+inlay_hints = [
+    { line = "decltype(make(⟨value:⟩2))⟨: int⟩ made = make(⟨value:⟩3);" },
+    { line = "int total = made + wrapped->size() + apply(⟨value:⟩Local{});" },
+    {
+        line = "return total + apply(⟨value:⟩Gadget{}) + apply(⟨value:⟩Later{}) + apply(⟨value:⟩Early{}) + base_use() + top_use();",
+    },
+]
+
+[features.links]
+document_links = [
+    { at = '#include ⟦"extra.h"⟧', target = "include/extra.h" },
+]
+
+[locations."main.cpp"]
+diagnostics = []
+
+[locations.make]
+definition = ["include/base.h │ auto ⟦make⟧(T value) {"]
+declaration = ["include/base.h │ auto ⟦make⟧(T value) {"]
+references = [
+    "include/base.h │ auto ⟦make⟧(T value) {",
+    "include/extra.h │ return apply(Gadget{}) + ⟦make⟧(1);",
+    "decltype(⟦make⟧(2)) made = make(3);",
+    "decltype(make(2)) made = ⟦make⟧(3);",
+]
+
+[locations.make.hover]
+markdown = '''
+**function** `make`
+
+```cpp
+template <> int make<int>(int value)
+```
+'''
+range = "decltype(make(2)) made = ⟦make⟧(3);"
+
+[locations.size]
+definition = ["include/base.h │ int ⟦size⟧() const {"]
+declaration = ["include/base.h │ int ⟦size⟧() const {"]
+references = ["include/base.h │ int ⟦size⟧() const {", "int total = made + wrapped->⟦size⟧() + apply(Local{});"]
+
+[locations.size.hover]
+markdown = '''
+**method** `size` · struct `Wrapper<Late>`
+
+```cpp
+int size() const
+```
+'''
+range = "int total = made + wrapped->⟦size⟧() + apply(Local{});"
+
+[locations.apply]
+definition = ["include/base.h │ int ⟦apply⟧(T value) {"]
+declaration = ["include/base.h │ int ⟦apply⟧(T value) {"]
+references = [
+    "include/base.h │ int ⟦apply⟧(T value) {",
+    "include/base.h │ return ⟦apply⟧(Early{});",
+    "include/extra.h │ return ⟦apply⟧(Gadget{}) + make(1);",
+    "int total = made + wrapped->size() + ⟦apply⟧(Local{});",
+    "return total + ⟦apply⟧(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+    "return total + apply(Gadget{}) + ⟦apply⟧(Later{}) + apply(Early{}) + base_use() + top_use();",
+    "return total + apply(Gadget{}) + apply(Later{}) + ⟦apply⟧(Early{}) + base_use() + top_use();",
+]
+
+[locations.apply.hover]
+markdown = '''
+**function** `apply`
+
+```cpp
+template <> int apply<Local>(Local value)
+```
+'''
+range = "int total = made + wrapped->size() + ⟦apply⟧(Local{});"
+
+[locations.early]
+wrong = "should list helper(value) in base.h, which apply<Early> reads, as it does once the file is indexed"
+definition = ["include/base.h │ int ⟦helper⟧(Early);"]
+declaration = ["include/base.h │ int ⟦helper⟧(Early);"]
+references = ["include/base.h │ int ⟦helper⟧(Early);", "return ⟦helper⟧(early) + helper(gadget) + helper(later);"]
+
+[locations.early.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+int helper(Early)
+```
+'''
+range = "return ⟦helper⟧(early) + helper(gadget) + helper(later);"
+
+[locations.gadget]
+wrong = "should list where apply<Gadget> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+definition = ["include/extra.h │ int ⟦helper⟧(Gadget);"]
+declaration = ["include/extra.h │ int ⟦helper⟧(Gadget);"]
+references = ["include/extra.h │ int ⟦helper⟧(Gadget);", "return helper(early) + ⟦helper⟧(gadget) + helper(later);"]
+
+[locations.gadget.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+int helper(Gadget)
+```
+'''
+range = "return helper(early) + ⟦helper⟧(gadget) + helper(later);"
+
+[locations.later]
+wrong = "should list helper(value) in base.h, which apply<Later> reads, as it does once the file is indexed"
+definition = ["int ⟦helper⟧(Later);"]
+declaration = ["int ⟦helper⟧(Later);"]
+references = ["int ⟦helper⟧(Later);", "return helper(early) + helper(gadget) + ⟦helper⟧(later);"]
+
+[locations.later.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+int helper(Later)
+```
+'''
+range = "return helper(early) + helper(gadget) + ⟦helper⟧(later);"
+
+["indexed locations"."main.cpp"]
+diagnostics = []
+
+["indexed locations".make]
+definition = ["include/base.h │ auto ⟦make⟧(T value) {"]
+declaration = ["include/base.h │ auto ⟦make⟧(T value) {"]
+references = [
+    "include/base.h │ auto ⟦make⟧(T value) {",
+    "include/extra.h │ return apply(Gadget{}) + ⟦make⟧(1);",
+    "decltype(⟦make⟧(2)) made = make(3);",
+    "decltype(make(2)) made = ⟦make⟧(3);",
+]
+
+["indexed locations".make.hover]
+markdown = '''
+**function** `make`
+
+```cpp
+template <> int make<int>(int value)
+```
+'''
+range = "decltype(make(2)) made = ⟦make⟧(3);"
+
+["indexed locations".size]
+definition = ["include/base.h │ int ⟦size⟧() const {"]
+declaration = ["include/base.h │ int ⟦size⟧() const {"]
+references = ["include/base.h │ int ⟦size⟧() const {", "int total = made + wrapped->⟦size⟧() + apply(Local{});"]
+
+["indexed locations".size.hover]
+markdown = '''
+**method** `size` · struct `Wrapper<Late>`
+
+```cpp
+int size() const
+```
+'''
+range = "int total = made + wrapped->⟦size⟧() + apply(Local{});"
+
+["indexed locations".apply]
+definition = ["include/base.h │ int ⟦apply⟧(T value) {"]
+declaration = ["include/base.h │ int ⟦apply⟧(T value) {"]
+references = [
+    "include/base.h │ int ⟦apply⟧(T value) {",
+    "include/base.h │ return ⟦apply⟧(Early{});",
+    "include/extra.h │ return ⟦apply⟧(Gadget{}) + make(1);",
+    "int total = made + wrapped->size() + ⟦apply⟧(Local{});",
+    "return total + ⟦apply⟧(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+    "return total + apply(Gadget{}) + ⟦apply⟧(Later{}) + apply(Early{}) + base_use() + top_use();",
+    "return total + apply(Gadget{}) + apply(Later{}) + ⟦apply⟧(Early{}) + base_use() + top_use();",
+]
+
+["indexed locations".apply.hover]
+markdown = '''
+**function** `apply`
+
+```cpp
+template <> int apply<Local>(Local value)
+```
+'''
+range = "int total = made + wrapped->size() + ⟦apply⟧(Local{});"
+
+["indexed locations".early]
+definition = ["include/base.h │ int ⟦helper⟧(Early);"]
+declaration = ["include/base.h │ int ⟦helper⟧(Early);"]
+references = [
+    "include/base.h │ return ⟦helper⟧(value);",
+    "include/base.h │ int ⟦helper⟧(Early);",
+    "return ⟦helper⟧(early) + helper(gadget) + helper(later);",
+]
+
+["indexed locations".early.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+int helper(Early)
+```
+'''
+range = "return ⟦helper⟧(early) + helper(gadget) + helper(later);"
+
+["indexed locations".gadget]
+wrong = "should list where apply<Gadget> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+definition = ["include/extra.h │ int ⟦helper⟧(Gadget);"]
+declaration = ["include/extra.h │ int ⟦helper⟧(Gadget);"]
+references = ["include/extra.h │ int ⟦helper⟧(Gadget);", "return helper(early) + ⟦helper⟧(gadget) + helper(later);"]
+
+["indexed locations".gadget.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+int helper(Gadget)
+```
+'''
+range = "return helper(early) + ⟦helper⟧(gadget) + helper(later);"
+
+["indexed locations".later]
+definition = ["int ⟦helper⟧(Later);"]
+declaration = ["int ⟦helper⟧(Later);"]
+references = [
+    "include/base.h │ return ⟦helper⟧(value);",
+    "int ⟦helper⟧(Later);",
+    "return helper(early) + helper(gadget) + ⟦helper⟧(later);",
+]
+
+["indexed locations".later.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+int helper(Later)
+```
+'''
+range = "return helper(early) + helper(gadget) + ⟦helper⟧(later);"
+
+[index."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 22 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:10:30 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "make",
+    "kind": "Function",
+    "symbol": "#903860494d920af6",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 13,
+        "context": "auto make(T value) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 13,
+        "context": "    return apply(Gadget{}) + make(1);",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 10,
+        "context": "    decltype(make(2)) made = make(3);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 10,
+        "context": "    decltype(make(2)) made = make(3);",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:11:33 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "size",
+    "kind": "Method",
+    "symbol": "#2aa2ee9c03bebac4",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 21,
+        "context": "    int size() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 11,
+        "context": "    int total = made + wrapped->size() + apply(Local{});",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:11:42 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "apply",
+    "kind": "Function",
+    "symbol": "#fbfbf17025f87518",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 8,
+        "context": "int apply(T value) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 33,
+        "context": "    return apply(Early{});",
+        "function": "base_use"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 13,
+        "context": "    return apply(Gadget{}) + make(1);",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 11,
+        "context": "    int total = made + wrapped->size() + apply(Local{});",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        "function": "run"
+      }
+    ],
+    "total": 7
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:16:12 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#7e62fe4108f3584c",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 9,
+        "context": "    return helper(value);",
+        "function": "apply",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 30,
+        "context": "int helper(Early);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 16,
+        "context": "    return helper(early) + helper(gadget) + helper(later);",
+        "function": "probe"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:16:28 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#740245a53d76071b",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 9,
+        "context": "    return helper(value);",
+        "function": "apply",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 10,
+        "context": "int helper(Gadget);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 16,
+        "context": "    return helper(early) + helper(gadget) + helper(later);",
+        "function": "probe"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:16:45 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#cc7abf9bf99c2654",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 9,
+        "context": "    return helper(value);",
+        "function": "apply",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "int helper(Later);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 16,
+        "context": "    return helper(early) + helper(gadget) + helper(later);",
+        "function": "probe"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice index #2"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 22 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:10:30 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "make",
+    "kind": "Function",
+    "symbol": "#903860494d920af6",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 13,
+        "context": "auto make(T value) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 13,
+        "context": "    return apply(Gadget{}) + make(1);",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 10,
+        "context": "    decltype(make(2)) made = make(3);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 10,
+        "context": "    decltype(make(2)) made = make(3);",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:11:33 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "size",
+    "kind": "Method",
+    "symbol": "#2aa2ee9c03bebac4",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 21,
+        "context": "    int size() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 11,
+        "context": "    int total = made + wrapped->size() + apply(Local{});",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:11:42 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "apply",
+    "kind": "Function",
+    "symbol": "#fbfbf17025f87518",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 8,
+        "context": "int apply(T value) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 33,
+        "context": "    return apply(Early{});",
+        "function": "base_use"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 13,
+        "context": "    return apply(Gadget{}) + make(1);",
+        "function": "top_use"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 11,
+        "context": "    int total = made + wrapped->size() + apply(Local{});",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    return total + apply(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
+        "function": "run"
+      }
+    ],
+    "total": 7
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:16:12 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#7e62fe4108f3584c",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 9,
+        "context": "    return helper(value);",
+        "function": "apply",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 30,
+        "context": "int helper(Early);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 16,
+        "context": "    return helper(early) + helper(gadget) + helper(later);",
+        "function": "probe"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:16:28 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#740245a53d76071b",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 9,
+        "context": "    return helper(value);",
+        "function": "apply",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 10,
+        "context": "int helper(Gadget);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 16,
+        "context": "    return helper(early) + helper(gadget) + helper(later);",
+        "function": "probe"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:16:45 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#cc7abf9bf99c2654",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 9,
+        "context": "    return helper(value);",
+        "function": "apply",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "int helper(Later);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 16,
+        "context": "    return helper(early) + helper(gadget) + helper(later);",
+        "function": "probe"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0

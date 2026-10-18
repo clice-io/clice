@@ -1,0 +1,1171 @@
+[features.local]
+highlights = [
+    { at = "double ⟦radius⟧;", kind = "text" },
+]
+
+[features.local.hover]
+markdown = '''
+**field** `radius` · struct `(anonymous namespace)::Local`
+
+```cpp
+double radius
+```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "double ⟦radius⟧;"
+
+[features.scoped]
+highlights = [
+    { at = "double ⟦radius⟧ = 0;", kind = "text" },
+]
+
+[features.scoped.hover]
+markdown = '''
+**field** `radius` · struct `Scoped`
+
+```cpp
+double radius = 0
+```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "double ⟦radius⟧ = 0;"
+
+[features.made]
+highlights = [
+    { at = "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;", kind = "read" },
+]
+
+[features.made.hover]
+markdown = '''
+**field** `value` · struct `Made`
+
+```cpp
+double value
+```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;"
+
+[features.helper]
+highlights = [
+    { at = "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();", kind = "text" },
+]
+
+[features.helper.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+static double helper(double value)
+```
+'''
+range = "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();"
+
+[features.scale]
+highlights = [
+    { at = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();", kind = "read" },
+]
+
+[features.scale.hover]
+markdown = '''
+**variable** `scale`
+
+```cpp
+const double scale = 2.0
+```
+Value: `2`
+Passed as `value` by value
+'''
+range = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();"
+
+[features.hidden]
+highlights = [
+    { at = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();", kind = "read" },
+]
+
+[features.hidden.hover]
+markdown = '''
+**field** `radius` · struct `(anonymous namespace)::Hidden`
+
+```cpp
+double radius
+```
+Value: `2`
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();"
+
+[features.ring]
+highlights = [
+    { at = "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();", kind = "read" },
+]
+
+[features.ring.hover]
+markdown = '''
+**field** `radius` · struct `(anonymous namespace)::Ring`
+
+```cpp
+double radius
+```
+Value: `3`
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();"
+
+[features.ring_twice]
+highlights = [
+    { at = "total += helper(scale) + ⟦ring_twice⟧() + hidden_twice();", kind = "text" },
+    { at = "return total + Hidden{2.0}.radius + Ring{3.0}.radius + ⟦ring_twice⟧();", kind = "text" },
+]
+
+[features.ring_twice.hover]
+markdown = '''
+**function** `ring_twice`
+
+```cpp
+static double ring_twice()
+```
+'''
+range = "return total + Hidden{2.0}.radius + Ring{3.0}.radius + ⟦ring_twice⟧();"
+
+[features.symbols]
+document_symbols = [
+    {
+        name = "(anonymous namespace)",
+        kind = "Namespace",
+        at = "namespace ⟦{⟧",
+        children = [
+            {
+                name = "Local",
+                kind = "Struct",
+                at = "struct ⟦Local⟧ {",
+                children = [
+                    { name = "radius", kind = "Field", at = "double ⟦radius⟧;" },
+                ],
+            },
+        ],
+    },
+    {
+        name = "run",
+        kind = "Function",
+        at = "double ⟦run⟧() {",
+        children = [
+            {
+                name = "Scoped",
+                kind = "Struct",
+                at = "struct ⟦Scoped⟧ {",
+                children = [
+                    { name = "radius", kind = "Field", at = "double ⟦radius⟧ = 0;" },
+                ],
+            },
+            {
+                name = "total",
+                kind = "Variable",
+                at = "double ⟦total⟧ = twice(Local{1.0}) + twice(Scoped{}) + make().value;",
+            },
+        ],
+    },
+]
+
+[features.tokens]
+semantic_tokens = [
+    { at = '⟦#include⟧ "extra.h"', type = "directive" },
+    { at = '#include ⟦"extra.h"⟧', type = "header" },
+    { at = "⟦namespace⟧ {", type = "keyword" },
+    { at = "⟦struct⟧ Local {", type = "keyword" },
+    { at = "struct ⟦Local⟧ {", type = "struct", modifiers = ["definition", "internal"] },
+    { at = "⟦double⟧ radius;", type = "primitive" },
+    { at = "double ⟦radius⟧;", type = "field", modifiers = ["definition", "member"] },
+    { at = "}  ⟦// namespace⟧", type = "comment" },
+    { at = "⟦double⟧ run() {", type = "primitive" },
+    { at = "double ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦struct⟧ Scoped {", type = "keyword" },
+    { at = "struct ⟦Scoped⟧ {", type = "struct", modifiers = ["definition", "local"] },
+    { at = "⟦double⟧ radius = 0;", type = "primitive" },
+    { at = "double ⟦radius⟧ = 0;", type = "field", modifiers = ["definition", "member"] },
+    { at = "double radius ⟦=⟧ 0;", type = "operator" },
+    { at = "double radius = ⟦0⟧;", type = "number" },
+    { at = "⟦double⟧ total = twice(Local{1.0}) + twice(Scoped{}) + make().value;", type = "primitive" },
+    {
+        at = "double ⟦total⟧ = twice(Local{1.0}) + twice(Scoped{}) + make().value;",
+        type = "variable",
+        modifiers = ["definition", "local"],
+    },
+    { at = "double total ⟦=⟧ twice(Local{1.0}) + twice(Scoped{}) + make().value;", type = "operator" },
+    {
+        at = "double total = ⟦twice⟧(Local{1.0}) + twice(Scoped{}) + make().value;",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    {
+        at = "double total = twice(⟦Local⟧{1.0}) + twice(Scoped{}) + make().value;",
+        type = "struct",
+        modifiers = ["internal"],
+    },
+    { at = "double total = twice(Local{⟦1.0⟧}) + twice(Scoped{}) + make().value;", type = "number" },
+    { at = "double total = twice(Local{1.0}) ⟦+⟧ twice(Scoped{}) + make().value;", type = "operator" },
+    {
+        at = "double total = twice(Local{1.0}) + ⟦twice⟧(Scoped{}) + make().value;",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    {
+        at = "double total = twice(Local{1.0}) + twice(⟦Scoped⟧{}) + make().value;",
+        type = "struct",
+        modifiers = ["local"],
+    },
+    { at = "double total = twice(Local{1.0}) + twice(Scoped{}) ⟦+⟧ make().value;", type = "operator" },
+    {
+        at = "double total = twice(Local{1.0}) + twice(Scoped{}) + ⟦make⟧().value;",
+        type = "function",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;",
+        type = "field",
+        modifiers = ["defaultLibrary", "member"],
+    },
+    {
+        at = "⟦total⟧ += helper(scale) + ring_twice() + hidden_twice();",
+        type = "variable",
+        modifiers = ["modification", "local"],
+    },
+    { at = "total ⟦+=⟧ helper(scale) + ring_twice() + hidden_twice();", type = "operator" },
+    {
+        at = "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();",
+        type = "function",
+        modifiers = ["defaultLibrary", "internal"],
+    },
+    {
+        at = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();",
+        type = "variable",
+        modifiers = ["readonly", "defaultLibrary", "internal"],
+    },
+    { at = "total += helper(scale) ⟦+⟧ ring_twice() + hidden_twice();", type = "operator" },
+    { at = "total += helper(scale) + ⟦ring_twice⟧() + hidden_twice();", type = "function", modifiers = ["internal"] },
+    { at = "total += helper(scale) + ring_twice() ⟦+⟧ hidden_twice();", type = "operator" },
+    { at = "total += helper(scale) + ring_twice() + ⟦hidden_twice⟧();", type = "function", modifiers = ["global"] },
+    {
+        at = "⟦return⟧ total + Hidden{2.0}.radius + Ring{3.0}.radius + ring_twice();",
+        type = "keyword",
+        modifiers = ["controlFlow"],
+    },
+    {
+        at = "return ⟦total⟧ + Hidden{2.0}.radius + Ring{3.0}.radius + ring_twice();",
+        type = "variable",
+        modifiers = ["local"],
+    },
+    { at = "return total ⟦+⟧ Hidden{2.0}.radius + Ring{3.0}.radius + ring_twice();", type = "operator" },
+    {
+        at = "return total + ⟦Hidden⟧{2.0}.radius + Ring{3.0}.radius + ring_twice();",
+        type = "struct",
+        modifiers = ["defaultLibrary", "internal"],
+    },
+    { at = "return total + Hidden{⟦2.0⟧}.radius + Ring{3.0}.radius + ring_twice();", type = "number" },
+    {
+        at = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();",
+        type = "field",
+        modifiers = ["defaultLibrary", "member"],
+    },
+    { at = "return total + Hidden{2.0}.radius ⟦+⟧ Ring{3.0}.radius + ring_twice();", type = "operator" },
+    {
+        at = "return total + Hidden{2.0}.radius + ⟦Ring⟧{3.0}.radius + ring_twice();",
+        type = "struct",
+        modifiers = ["internal"],
+    },
+    { at = "return total + Hidden{2.0}.radius + Ring{⟦3.0⟧}.radius + ring_twice();", type = "number" },
+    {
+        at = "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();",
+        type = "field",
+        modifiers = ["member"],
+    },
+    { at = "return total + Hidden{2.0}.radius + Ring{3.0}.radius ⟦+⟧ ring_twice();", type = "operator" },
+    {
+        at = "return total + Hidden{2.0}.radius + Ring{3.0}.radius + ⟦ring_twice⟧();",
+        type = "function",
+        modifiers = ["internal"],
+    },
+]
+
+[features.hints]
+inlay_hints = [
+    { line = "double total = twice(⟨shape:⟩Local{⟨.radius=⟩1.0}) + twice(⟨shape:⟩Scoped{}) + make().value;" },
+    { line = "total += helper(⟨value:⟩scale) + ring_twice() + hidden_twice();" },
+    { line = "return total + Hidden{⟨.radius=⟩2.0}.radius + Ring{⟨.radius=⟩3.0}.radius + ring_twice();" },
+]
+
+[features.links]
+document_links = [
+    { at = '#include ⟦"extra.h"⟧', target = "include/extra.h" },
+]
+
+[locations."main.cpp"]
+diagnostics = []
+
+[locations.local]
+wrong = "should list shape.radius in base.h, which twice<Local> reads, as it does once the file is indexed"
+definition = ["double ⟦radius⟧;"]
+declaration = ["double ⟦radius⟧;"]
+references = ["double ⟦radius⟧;"]
+
+[locations.local.hover]
+markdown = '''
+**field** `radius` · struct `(anonymous namespace)::Local`
+
+```cpp
+double radius
+```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "double ⟦radius⟧;"
+
+[locations.scoped]
+wrong = "should list shape.radius in base.h, which twice<Scoped> reads, as it does once the file is indexed"
+definition = ["double ⟦radius⟧ = 0;"]
+declaration = ["double ⟦radius⟧ = 0;"]
+references = ["double ⟦radius⟧ = 0;"]
+
+[locations.scoped.hover]
+markdown = '''
+**field** `radius` · struct `Scoped`
+
+```cpp
+double radius = 0
+```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "double ⟦radius⟧ = 0;"
+
+[locations.made]
+definition = ["include/base.h │ double ⟦value⟧;"]
+declaration = ["include/base.h │ double ⟦value⟧;"]
+references = [
+    "include/base.h │ double ⟦value⟧;",
+    "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;",
+]
+
+[locations.made.hover]
+markdown = '''
+**field** `value` · struct `Made`
+
+```cpp
+double value
+```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;"
+
+[locations.helper]
+definition = ["include/base.h │ static double ⟦helper⟧(double value) {"]
+declaration = ["include/base.h │ static double ⟦helper⟧(double value) {"]
+references = [
+    "include/base.h │ static double ⟦helper⟧(double value) {",
+    "include/extra.h │ return twice(Ring{⟦helper⟧(scale)});",
+    "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();",
+]
+
+[locations.helper.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+static double helper(double value)
+```
+'''
+range = "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();"
+
+[locations.scale]
+definition = ["include/base.h │ const double ⟦scale⟧ = 2.0;"]
+declaration = ["include/base.h │ const double ⟦scale⟧ = 2.0;"]
+references = [
+    "include/base.h │ const double ⟦scale⟧ = 2.0;",
+    "include/base.h │ return value * ⟦scale⟧;",
+    "include/extra.h │ return twice(Ring{helper(⟦scale⟧)});",
+    "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();",
+]
+
+[locations.scale.hover]
+markdown = '''
+**variable** `scale`
+
+```cpp
+const double scale = 2.0
+```
+Value: `2`
+Passed as `value` by value
+'''
+range = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();"
+
+[locations.hidden]
+wrong = "should list where twice<Hidden> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+definition = ["include/base.h │ double ⟦radius⟧;"]
+declaration = ["include/base.h │ double ⟦radius⟧;"]
+references = [
+    "include/base.h │ double ⟦radius⟧;",
+    "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();",
+]
+
+[locations.hidden.hover]
+markdown = '''
+**field** `radius` · struct `(anonymous namespace)::Hidden`
+
+```cpp
+double radius
+```
+Value: `2`
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();"
+
+[locations.ring]
+wrong = "should list where twice<Ring> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+definition = ["include/extra.h │ double ⟦radius⟧;"]
+declaration = ["include/extra.h │ double ⟦radius⟧;"]
+references = [
+    "include/extra.h │ double ⟦radius⟧;",
+    "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();",
+]
+
+[locations.ring.hover]
+markdown = '''
+**field** `radius` · struct `(anonymous namespace)::Ring`
+
+```cpp
+double radius
+```
+Value: `3`
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();"
+
+[locations.ring_twice]
+definition = ["include/extra.h │ static double ⟦ring_twice⟧() {"]
+declaration = ["include/extra.h │ static double ⟦ring_twice⟧() {"]
+references = [
+    "include/extra.h │ static double ⟦ring_twice⟧() {",
+    "total += helper(scale) + ⟦ring_twice⟧() + hidden_twice();",
+    "return total + Hidden{2.0}.radius + Ring{3.0}.radius + ⟦ring_twice⟧();",
+]
+
+[locations.ring_twice.hover]
+markdown = '''
+**function** `ring_twice`
+
+```cpp
+static double ring_twice()
+```
+'''
+range = "return total + Hidden{2.0}.radius + Ring{3.0}.radius + ⟦ring_twice⟧();"
+
+["indexed locations"."main.cpp"]
+diagnostics = []
+
+["indexed locations".local]
+definition = ["double ⟦radius⟧;"]
+declaration = ["double ⟦radius⟧;"]
+references = ["include/base.h │ return 2 * shape.⟦radius⟧;", "double ⟦radius⟧;"]
+
+["indexed locations".local.hover]
+markdown = '''
+**field** `radius` · struct `(anonymous namespace)::Local`
+
+```cpp
+double radius
+```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "double ⟦radius⟧;"
+
+["indexed locations".scoped]
+definition = ["double ⟦radius⟧ = 0;"]
+declaration = ["double ⟦radius⟧ = 0;"]
+references = ["include/base.h │ return 2 * shape.⟦radius⟧;", "double ⟦radius⟧ = 0;"]
+
+["indexed locations".scoped.hover]
+markdown = '''
+**field** `radius` · struct `Scoped`
+
+```cpp
+double radius = 0
+```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "double ⟦radius⟧ = 0;"
+
+["indexed locations".made]
+definition = ["include/base.h │ double ⟦value⟧;"]
+declaration = ["include/base.h │ double ⟦value⟧;"]
+references = [
+    "include/base.h │ double ⟦value⟧;",
+    "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;",
+]
+
+["indexed locations".made.hover]
+markdown = '''
+**field** `value` · struct `Made`
+
+```cpp
+double value
+```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;"
+
+["indexed locations".helper]
+definition = ["include/base.h │ static double ⟦helper⟧(double value) {"]
+declaration = ["include/base.h │ static double ⟦helper⟧(double value) {"]
+references = [
+    "include/base.h │ static double ⟦helper⟧(double value) {",
+    "include/extra.h │ return twice(Ring{⟦helper⟧(scale)});",
+    "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();",
+]
+
+["indexed locations".helper.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+static double helper(double value)
+```
+'''
+range = "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();"
+
+["indexed locations".scale]
+definition = ["include/base.h │ const double ⟦scale⟧ = 2.0;"]
+declaration = ["include/base.h │ const double ⟦scale⟧ = 2.0;"]
+references = [
+    "include/base.h │ const double ⟦scale⟧ = 2.0;",
+    "include/base.h │ return value * ⟦scale⟧;",
+    "include/extra.h │ return twice(Ring{helper(⟦scale⟧)});",
+    "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();",
+]
+
+["indexed locations".scale.hover]
+markdown = '''
+**variable** `scale`
+
+```cpp
+const double scale = 2.0
+```
+Value: `2`
+Passed as `value` by value
+'''
+range = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();"
+
+["indexed locations".hidden]
+wrong = "should list where twice<Hidden> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+definition = ["include/base.h │ double ⟦radius⟧;"]
+declaration = ["include/base.h │ double ⟦radius⟧;"]
+references = [
+    "include/base.h │ double ⟦radius⟧;",
+    "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();",
+]
+
+["indexed locations".hidden.hover]
+markdown = '''
+**field** `radius` · struct `(anonymous namespace)::Hidden`
+
+```cpp
+double radius
+```
+Value: `2`
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();"
+
+["indexed locations".ring]
+wrong = "should list where twice<Ring> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+definition = ["include/extra.h │ double ⟦radius⟧;"]
+declaration = ["include/extra.h │ double ⟦radius⟧;"]
+references = [
+    "include/extra.h │ double ⟦radius⟧;",
+    "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();",
+]
+
+["indexed locations".ring.hover]
+markdown = '''
+**field** `radius` · struct `(anonymous namespace)::Ring`
+
+```cpp
+double radius
+```
+Value: `3`
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "return total + Hidden{2.0}.radius + Ring{3.0}.⟦radius⟧ + ring_twice();"
+
+["indexed locations".ring_twice]
+definition = ["include/extra.h │ static double ⟦ring_twice⟧() {"]
+declaration = ["include/extra.h │ static double ⟦ring_twice⟧() {"]
+references = [
+    "include/extra.h │ static double ⟦ring_twice⟧() {",
+    "total += helper(scale) + ⟦ring_twice⟧() + hidden_twice();",
+    "return total + Hidden{2.0}.radius + Ring{3.0}.radius + ⟦ring_twice⟧();",
+]
+
+["indexed locations".ring_twice.hover]
+markdown = '''
+**function** `ring_twice`
+
+```cpp
+static double ring_twice()
+```
+'''
+range = "return total + Hidden{2.0}.radius + Ring{3.0}.radius + ⟦ring_twice⟧();"
+
+[index."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:5:12 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#e713b5aad0f6b40b path:${WS}/main.cpp",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 17,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    double radius;",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:11:16 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#98af58599e6797e0 path:${WS}/main.cpp",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 17,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 11,
+        "context": "        double radius = 0;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:65 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Field",
+    "symbol": "#f5915bf4d051d504 path:${WS}/include/base.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 22,
+        "context": "        double value;",
+        "function": "make"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    double total = twice(Local{1.0}) + twice(Scoped{}) + make().value;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:14 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#8b4bf7016d613881 path:${WS}/include/base.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 5,
+        "context": "static double helper(double value) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 12,
+        "context": "    return twice(Ring{helper(scale)});",
+        "function": "ring_twice"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += helper(scale) + ring_twice() + hidden_twice();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:21 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "scale",
+    "kind": "Variable",
+    "symbol": "#be54be463be22747 path:${WS}/include/base.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 3,
+        "context": "const double scale = 2.0;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 6,
+        "context": "    return value * scale;",
+        "function": "helper"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 12,
+        "context": "    return twice(Ring{helper(scale)});",
+        "function": "ring_twice"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += helper(scale) + ring_twice() + hidden_twice();",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:32 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#eea344cbaa4a6723 path:${WS}/include/base.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 11,
+        "context": "    double radius;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 17,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + Hidden{2.0}.radius + Ring{3.0}.radius + ring_twice();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:51 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#085ea94849e87b9a path:${WS}/include/extra.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 17,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 7,
+        "context": "    double radius;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + Hidden{2.0}.radius + Ring{3.0}.radius + ring_twice();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:60 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "ring_twice",
+    "kind": "Function",
+    "symbol": "#b20bf57606ce5a2e path:${WS}/include/extra.h",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 11,
+        "context": "static double ring_twice() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += helper(scale) + ring_twice() + hidden_twice();",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + Hidden{2.0}.radius + Ring{3.0}.radius + ring_twice();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice index #2"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:5:12 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#e713b5aad0f6b40b path:${WS}/main.cpp",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 17,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    double radius;",
+        "function": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:11:16 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#98af58599e6797e0 path:${WS}/main.cpp",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 17,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 11,
+        "context": "        double radius = 0;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:65 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Field",
+    "symbol": "#f5915bf4d051d504 path:${WS}/include/base.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 22,
+        "context": "        double value;",
+        "function": "make"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    double total = twice(Local{1.0}) + twice(Scoped{}) + make().value;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:14 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#8b4bf7016d613881 path:${WS}/include/base.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 5,
+        "context": "static double helper(double value) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 12,
+        "context": "    return twice(Ring{helper(scale)});",
+        "function": "ring_twice"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += helper(scale) + ring_twice() + hidden_twice();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:21 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "scale",
+    "kind": "Variable",
+    "symbol": "#be54be463be22747 path:${WS}/include/base.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 3,
+        "context": "const double scale = 2.0;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 6,
+        "context": "    return value * scale;",
+        "function": "helper"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 12,
+        "context": "    return twice(Ring{helper(scale)});",
+        "function": "ring_twice"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += helper(scale) + ring_twice() + hidden_twice();",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:32 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#eea344cbaa4a6723 path:${WS}/include/base.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 11,
+        "context": "    double radius;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 17,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + Hidden{2.0}.radius + Ring{3.0}.radius + ring_twice();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:51 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "radius",
+    "kind": "Field",
+    "symbol": "#085ea94849e87b9a path:${WS}/include/extra.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 17,
+        "context": "    return 2 * shape.radius;",
+        "function": "twice",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 7,
+        "context": "    double radius;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + Hidden{2.0}.radius + Ring{3.0}.radius + ring_twice();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:60 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "ring_twice",
+    "kind": "Function",
+    "symbol": "#b20bf57606ce5a2e path:${WS}/include/extra.h",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 11,
+        "context": "static double ring_twice() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += helper(scale) + ring_twice() + hidden_twice();",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + Hidden{2.0}.radius + Ring{3.0}.radius + ring_twice();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0

@@ -1,0 +1,34 @@
+["a header of the base changes".edited]
+errors = [
+    {
+        at = '#include ⟦"extra.h"⟧',
+        severity = "error",
+        message = "In included file: no matching function for call to 'area'",
+        source = "clang",
+        code = "err_ovl_no_viable_function_in_call",
+    },
+    {
+        at = "return ⟦area⟧(3) + twice_area(2);",
+        severity = "error",
+        message = "no matching function for call to 'area'",
+        source = "clang",
+        code = "err_ovl_no_viable_function_in_call",
+    },
+]
+
+["two edits in a row".definition]
+definition = ["include/base.h │ inline int ⟦area⟧(long side) {"]
+
+["the base fails to build".broken]
+diagnostics = [
+    {
+        at = '⟦⟧#include "extra.h"',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]
+
+["the base is gone while the server runs".definition]
+definition = ["include/base.h │ inline int ⟦area⟧(int side) {"]

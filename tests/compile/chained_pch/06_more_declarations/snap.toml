@@ -1,0 +1,1311 @@
+[features.plain]
+highlights = [
+    { at = "static_assert(!Measurable<⟦Plain⟧>);", kind = "text" },
+    { at = "⟦Plain⟧ plain{1};", kind = "text" },
+    { at = "⟦Plain⟧ other = plain;", kind = "text" },
+]
+
+[features.plain.hover]
+markdown = '''
+**struct** `Plain`
+
+```cpp
+struct Plain {
+  int a;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "⟦Plain⟧ other = plain;"
+
+[features.wrap]
+highlights = [
+    { at = 'Wrap ⟦wrapped⟧{"text"};', kind = "text" },
+]
+
+[features.wrap.hover]
+markdown = '''
+**variable** `wrapped` · function `run`
+
+```cpp
+Wrap wrapped{"text"}
+```
+Type: `Wrap<Name>`
+'''
+range = 'Wrap ⟦wrapped⟧{"text"};'
+
+[features.item]
+highlights = [
+    { at = "⟦Item⟧ item{4};", kind = "text" },
+]
+
+[features.item.hover]
+markdown = '''
+**struct** `Item` · namespace `lib`
+
+```cpp
+struct Item {
+  int weight;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "⟦Item⟧ item{4};"
+
+[features.legacy]
+highlights = [
+    { at = "⟦legacy⟧();", kind = "text" },
+]
+
+[features.legacy.hover]
+markdown = '''
+**function** `legacy`
+
+Deprecated: gone
+```cpp
+[[deprecated("gone")]]
+void legacy()
+```
+'''
+range = "⟦legacy⟧();"
+
+[features.peek]
+highlights = [
+    { at = "int total = ⟦peek⟧(token) + ::peek(token) + cell.get();", kind = "text" },
+    { at = "int total = peek(token) + ::⟦peek⟧(token) + cell.get();", kind = "text" },
+]
+
+[features.peek.hover]
+markdown = '''
+**function** `peek`
+
+```cpp
+int peek(Token token)
+```
+'''
+range = "int total = ⟦peek⟧(token) + ::peek(token) + cell.get();"
+
+[features.qualified]
+highlights = [
+    { at = "int total = ⟦peek⟧(token) + ::peek(token) + cell.get();", kind = "text" },
+    { at = "int total = peek(token) + ::⟦peek⟧(token) + cell.get();", kind = "text" },
+]
+
+[features.qualified.hover]
+markdown = '''
+**function** `peek`
+
+```cpp
+int peek(Token token)
+```
+'''
+range = "int total = peek(token) + ::⟦peek⟧(token) + cell.get();"
+
+[features.cell]
+highlights = [
+    { at = "int total = peek(token) + ::peek(token) + cell.⟦get⟧();", kind = "text" },
+]
+
+[features.cell.hover]
+markdown = '''
+**method** `get` · struct `Cell<int>`
+
+Trivial accessor for `value`.
+
+```cpp
+int get() const
+```
+'''
+range = "int total = peek(token) + ::peek(token) + cell.⟦get⟧();"
+
+[features.weight]
+highlights = [
+    { at = "return total + item.⟦weight⟧ + other.a + copy_plain(plain).a;", kind = "read" },
+]
+
+[features.weight.hover]
+markdown = '''
+**field** `weight` · struct `lib::Item`
+
+```cpp
+int weight
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return total + item.⟦weight⟧ + other.a + copy_plain(plain).a;"
+
+[features.copied]
+highlights = [
+    { at = "return total + item.weight + other.⟦a⟧ + copy_plain(plain).a;", kind = "read" },
+    { at = "return total + item.weight + other.a + copy_plain(plain).⟦a⟧;", kind = "read" },
+]
+
+[features.copied.hover]
+markdown = '''
+**field** `a` · struct `Plain`
+
+```cpp
+int a
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return total + item.weight + other.⟦a⟧ + copy_plain(plain).a;"
+
+[features.symbols]
+document_symbols = [
+    {
+        name = "run",
+        kind = "Function",
+        at = "int ⟦run⟧() {",
+        children = [
+            { name = "plain", kind = "Variable", at = "Plain ⟦plain⟧{1};" },
+            { name = "other", kind = "Variable", at = "Plain ⟦other⟧ = plain;" },
+            { name = "token", kind = "Variable", at = "Token ⟦token⟧{2};" },
+            { name = "wrapped", kind = "Variable", at = 'Wrap ⟦wrapped⟧{"text"};' },
+            { name = "cell", kind = "Variable", at = "Cell<int> ⟦cell⟧{3};" },
+            { name = "item", kind = "Variable", at = "Item ⟦item⟧{4};" },
+            { name = "total", kind = "Variable", at = "int ⟦total⟧ = peek(token) + ::peek(token) + cell.get();" },
+        ],
+    },
+]
+
+[features.tokens]
+semantic_tokens = [
+    { at = '⟦#include⟧ "extra.h"', type = "directive" },
+    { at = '#include ⟦"extra.h"⟧', type = "header" },
+    { at = "⟦static_assert⟧(Measurable<Ruler>);", type = "keyword" },
+    {
+        at = "static_assert(⟦Measurable⟧<Ruler>);",
+        type = "concept",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    { at = "static_assert(Measurable⟦<⟧Ruler>);", type = "bracket" },
+    { at = "static_assert(Measurable<⟦Ruler⟧>);", type = "struct", modifiers = ["global"] },
+    { at = "static_assert(Measurable<Ruler⟦>⟧);", type = "bracket" },
+    { at = "⟦static_assert⟧(!Measurable<Plain>);", type = "keyword" },
+    { at = "static_assert(⟦!⟧Measurable<Plain>);", type = "operator" },
+    {
+        at = "static_assert(!⟦Measurable⟧<Plain>);",
+        type = "concept",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    { at = "static_assert(!Measurable⟦<⟧Plain>);", type = "bracket" },
+    { at = "static_assert(!Measurable<⟦Plain⟧>);", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "static_assert(!Measurable<Plain⟦>⟧);", type = "bracket" },
+    { at = "⟦int⟧ run() {", type = "primitive" },
+    { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦Plain⟧ plain{1};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "Plain ⟦plain⟧{1};", type = "variable", modifiers = ["definition", "local"] },
+    { at = "Plain plain{⟦1⟧};", type = "number" },
+    { at = "⟦Plain⟧ other = plain;", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "Plain ⟦other⟧ = plain;", type = "variable", modifiers = ["definition", "local"] },
+    { at = "Plain other ⟦=⟧ plain;", type = "operator" },
+    { at = "Plain other = ⟦plain⟧;", type = "variable", modifiers = ["local"] },
+    { at = "⟦Token⟧ token{2};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "Token ⟦token⟧{2};", type = "variable", modifiers = ["definition", "local"] },
+    { at = "Token token{⟦2⟧};", type = "number" },
+    { at = '⟦Wrap⟧ wrapped{"text"};', type = "struct", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = 'Wrap ⟦wrapped⟧{"text"};', type = "variable", modifiers = ["definition", "local"] },
+    { at = 'Wrap wrapped{⟦"text"⟧};', type = "string" },
+    { at = "⟦Cell⟧<int> cell{3};", type = "struct", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "Cell⟦<⟧int> cell{3};", type = "bracket" },
+    { at = "Cell<⟦int⟧> cell{3};", type = "primitive" },
+    { at = "Cell<int⟦>⟧ cell{3};", type = "bracket" },
+    { at = "Cell<int> ⟦cell⟧{3};", type = "variable", modifiers = ["definition", "local"] },
+    { at = "Cell<int> cell{⟦3⟧};", type = "number" },
+    { at = "⟦Item⟧ item{4};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "Item ⟦item⟧{4};", type = "variable", modifiers = ["definition", "local"] },
+    { at = "Item item{⟦4⟧};", type = "number" },
+    { at = "⟦legacy⟧();", type = "function", modifiers = ["deprecated", "defaultLibrary", "global"] },
+    { at = "⟦int⟧ total = peek(token) + ::peek(token) + cell.get();", type = "primitive" },
+    {
+        at = "int ⟦total⟧ = peek(token) + ::peek(token) + cell.get();",
+        type = "variable",
+        modifiers = ["definition", "local"],
+    },
+    { at = "int total ⟦=⟧ peek(token) + ::peek(token) + cell.get();", type = "operator" },
+    {
+        at = "int total = ⟦peek⟧(token) + ::peek(token) + cell.get();",
+        type = "function",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    { at = "int total = peek(⟦token⟧) + ::peek(token) + cell.get();", type = "variable", modifiers = ["local"] },
+    { at = "int total = peek(token) ⟦+⟧ ::peek(token) + cell.get();", type = "operator" },
+    {
+        at = "int total = peek(token) + ::⟦peek⟧(token) + cell.get();",
+        type = "function",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    { at = "int total = peek(token) + ::peek(⟦token⟧) + cell.get();", type = "variable", modifiers = ["local"] },
+    { at = "int total = peek(token) + ::peek(token) ⟦+⟧ cell.get();", type = "operator" },
+    { at = "int total = peek(token) + ::peek(token) + ⟦cell⟧.get();", type = "variable", modifiers = ["local"] },
+    {
+        at = "int total = peek(token) + ::peek(token) + cell.⟦get⟧();",
+        type = "method",
+        modifiers = ["readonly", "defaultLibrary", "member"],
+    },
+    {
+        at = "⟦return⟧ total + item.weight + other.a + copy_plain(plain).a;",
+        type = "keyword",
+        modifiers = ["controlFlow"],
+    },
+    { at = "return ⟦total⟧ + item.weight + other.a + copy_plain(plain).a;", type = "variable", modifiers = ["local"] },
+    { at = "return total ⟦+⟧ item.weight + other.a + copy_plain(plain).a;", type = "operator" },
+    { at = "return total + ⟦item⟧.weight + other.a + copy_plain(plain).a;", type = "variable", modifiers = ["local"] },
+    { at = "return total + item.⟦weight⟧ + other.a + copy_plain(plain).a;", type = "field", modifiers = ["member"] },
+    { at = "return total + item.weight ⟦+⟧ other.a + copy_plain(plain).a;", type = "operator" },
+    { at = "return total + item.weight + ⟦other⟧.a + copy_plain(plain).a;", type = "variable", modifiers = ["local"] },
+    {
+        at = "return total + item.weight + other.⟦a⟧ + copy_plain(plain).a;",
+        type = "field",
+        modifiers = ["defaultLibrary", "member"],
+    },
+    { at = "return total + item.weight + other.a ⟦+⟧ copy_plain(plain).a;", type = "operator" },
+    { at = "return total + item.weight + other.a + ⟦copy_plain⟧(plain).a;", type = "function", modifiers = ["global"] },
+    { at = "return total + item.weight + other.a + copy_plain(⟦plain⟧).a;", type = "variable", modifiers = ["local"] },
+    {
+        at = "return total + item.weight + other.a + copy_plain(plain).⟦a⟧;",
+        type = "field",
+        modifiers = ["defaultLibrary", "member"],
+    },
+]
+
+[features.hints]
+inlay_hints = [
+    { line = "Plain plain{⟨.a=⟩1};" },
+    { line = "Token token{⟨.id=⟩2};" },
+    { line = 'Wrap⟨<Name>⟩ wrapped{⟨.value=⟩"text"};' },
+    { line = "Cell<int> cell{⟨.value=⟩3};" },
+    { line = "Item item{⟨.weight=⟩4};" },
+]
+
+[features.links]
+document_links = [
+    { at = '#include ⟦"extra.h"⟧', target = "include/extra.h" },
+]
+
+[locations."main.cpp"]
+diagnostics = [
+    {
+        at = "⟦legacy⟧();",
+        severity = "warning",
+        message = "'legacy' is deprecated: gone",
+        source = "clang",
+        code = "-Wdeprecated-declarations",
+    },
+]
+
+[locations.plain]
+definition = ["include/base.h │ struct ⟦Plain⟧ {"]
+declaration = ["include/base.h │ struct ⟦Plain⟧ {"]
+references = [
+    "include/base.h │ struct ⟦Plain⟧ {",
+    "include/extra.h │ inline ⟦Plain⟧ copy_plain(const Plain& plain) {",
+    "include/extra.h │ inline Plain copy_plain(const ⟦Plain⟧& plain) {",
+    "include/extra.h │ ⟦Plain⟧ copy = plain;",
+    "static_assert(!Measurable<⟦Plain⟧>);",
+    "⟦Plain⟧ plain{1};",
+    "⟦Plain⟧ other = plain;",
+]
+
+[locations.plain.hover]
+markdown = '''
+**struct** `Plain`
+
+```cpp
+struct Plain {
+  int a;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "⟦Plain⟧ other = plain;"
+
+[locations.wrap]
+definition = ['Wrap ⟦wrapped⟧{"text"};']
+declaration = ['Wrap ⟦wrapped⟧{"text"};']
+references = ['Wrap ⟦wrapped⟧{"text"};']
+
+[locations.wrap.hover]
+markdown = '''
+**variable** `wrapped` · function `run`
+
+```cpp
+Wrap wrapped{"text"}
+```
+Type: `Wrap<Name>`
+'''
+range = 'Wrap ⟦wrapped⟧{"text"};'
+
+[locations.item]
+definition = ["include/extra.h │ struct ⟦Item⟧ {"]
+declaration = ["include/base.h │ struct ⟦Item⟧;", "include/extra.h │ struct ⟦Item⟧ {"]
+references = ["include/base.h │ struct ⟦Item⟧;", "include/extra.h │ struct ⟦Item⟧ {", "⟦Item⟧ item{4};"]
+
+[locations.item.hover]
+markdown = '''
+**struct** `Item` · namespace `lib`
+
+```cpp
+struct Item {
+  int weight;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "⟦Item⟧ item{4};"
+
+[locations.legacy]
+definition = ["include/base.h │ void ⟦legacy⟧();", 'include/extra.h │ [[deprecated("gone")]] void ⟦legacy⟧();']
+declaration = ["include/base.h │ void ⟦legacy⟧();", 'include/extra.h │ [[deprecated("gone")]] void ⟦legacy⟧();']
+references = [
+    "include/base.h │ void ⟦legacy⟧();",
+    'include/extra.h │ [[deprecated("gone")]] void ⟦legacy⟧();',
+    "⟦legacy⟧();",
+]
+
+[locations.legacy.hover]
+markdown = '''
+**function** `legacy`
+
+Deprecated: gone
+```cpp
+[[deprecated("gone")]]
+void legacy()
+```
+'''
+range = "⟦legacy⟧();"
+
+[locations.peek]
+definition = ["include/base.h │ friend int ⟦peek⟧(Token token) {"]
+declaration = ["include/base.h │ friend int ⟦peek⟧(Token token) {", "include/extra.h │ int ⟦peek⟧(Token token);"]
+references = [
+    "include/base.h │ friend int ⟦peek⟧(Token token) {",
+    "include/extra.h │ int ⟦peek⟧(Token token);",
+    "int total = ⟦peek⟧(token) + ::peek(token) + cell.get();",
+    "int total = peek(token) + ::⟦peek⟧(token) + cell.get();",
+]
+
+[locations.peek.hover]
+markdown = '''
+**function** `peek`
+
+```cpp
+int peek(Token token)
+```
+'''
+range = "int total = ⟦peek⟧(token) + ::peek(token) + cell.get();"
+
+[locations.qualified]
+definition = ["include/base.h │ friend int ⟦peek⟧(Token token) {"]
+declaration = ["include/base.h │ friend int ⟦peek⟧(Token token) {", "include/extra.h │ int ⟦peek⟧(Token token);"]
+references = [
+    "include/base.h │ friend int ⟦peek⟧(Token token) {",
+    "include/extra.h │ int ⟦peek⟧(Token token);",
+    "int total = ⟦peek⟧(token) + ::peek(token) + cell.get();",
+    "int total = peek(token) + ::⟦peek⟧(token) + cell.get();",
+]
+
+[locations.qualified.hover]
+markdown = '''
+**function** `peek`
+
+```cpp
+int peek(Token token)
+```
+'''
+range = "int total = peek(token) + ::⟦peek⟧(token) + cell.get();"
+
+[locations.cell]
+definition = ["include/base.h │ T ⟦get⟧() const {"]
+declaration = ["include/base.h │ T ⟦get⟧() const {"]
+references = ["include/base.h │ T ⟦get⟧() const {", "int total = peek(token) + ::peek(token) + cell.⟦get⟧();"]
+
+[locations.cell.hover]
+markdown = '''
+**method** `get` · struct `Cell<int>`
+
+Trivial accessor for `value`.
+
+```cpp
+int get() const
+```
+'''
+range = "int total = peek(token) + ::peek(token) + cell.⟦get⟧();"
+
+[locations.weight]
+definition = ["include/extra.h │ int ⟦weight⟧;"]
+declaration = ["include/extra.h │ int ⟦weight⟧;"]
+references = ["include/extra.h │ int ⟦weight⟧;", "return total + item.⟦weight⟧ + other.a + copy_plain(plain).a;"]
+
+[locations.weight.hover]
+markdown = '''
+**field** `weight` · struct `lib::Item`
+
+```cpp
+int weight
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return total + item.⟦weight⟧ + other.a + copy_plain(plain).a;"
+
+[locations.copied]
+definition = ["include/base.h │ int ⟦a⟧;"]
+declaration = ["include/base.h │ int ⟦a⟧;"]
+references = [
+    "include/base.h │ int ⟦a⟧;",
+    "return total + item.weight + other.⟦a⟧ + copy_plain(plain).a;",
+    "return total + item.weight + other.a + copy_plain(plain).⟦a⟧;",
+]
+
+[locations.copied.hover]
+markdown = '''
+**field** `a` · struct `Plain`
+
+```cpp
+int a
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return total + item.weight + other.⟦a⟧ + copy_plain(plain).a;"
+
+["indexed locations"."main.cpp"]
+diagnostics = [
+    {
+        at = "⟦legacy⟧();",
+        severity = "warning",
+        message = "'legacy' is deprecated: gone",
+        source = "clang",
+        code = "-Wdeprecated-declarations",
+    },
+]
+
+["indexed locations".plain]
+definition = ["include/base.h │ struct ⟦Plain⟧ {"]
+declaration = ["include/base.h │ struct ⟦Plain⟧ {"]
+references = [
+    "include/base.h │ struct ⟦Plain⟧ {",
+    "include/extra.h │ inline ⟦Plain⟧ copy_plain(const Plain& plain) {",
+    "include/extra.h │ inline Plain copy_plain(const ⟦Plain⟧& plain) {",
+    "include/extra.h │ ⟦Plain⟧ copy = plain;",
+    "static_assert(!Measurable<⟦Plain⟧>);",
+    "⟦Plain⟧ plain{1};",
+    "⟦Plain⟧ other = plain;",
+]
+
+["indexed locations".plain.hover]
+markdown = '''
+**struct** `Plain`
+
+```cpp
+struct Plain {
+  int a;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "⟦Plain⟧ other = plain;"
+
+["indexed locations".wrap]
+definition = ['Wrap ⟦wrapped⟧{"text"};']
+declaration = ['Wrap ⟦wrapped⟧{"text"};']
+references = ['Wrap ⟦wrapped⟧{"text"};']
+
+["indexed locations".wrap.hover]
+markdown = '''
+**variable** `wrapped` · function `run`
+
+```cpp
+Wrap wrapped{"text"}
+```
+Type: `Wrap<Name>`
+'''
+range = 'Wrap ⟦wrapped⟧{"text"};'
+
+["indexed locations".item]
+definition = ["include/extra.h │ struct ⟦Item⟧ {"]
+declaration = ["include/base.h │ struct ⟦Item⟧;", "include/extra.h │ struct ⟦Item⟧ {"]
+references = ["include/base.h │ struct ⟦Item⟧;", "include/extra.h │ struct ⟦Item⟧ {", "⟦Item⟧ item{4};"]
+
+["indexed locations".item.hover]
+markdown = '''
+**struct** `Item` · namespace `lib`
+
+```cpp
+struct Item {
+  int weight;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "⟦Item⟧ item{4};"
+
+["indexed locations".legacy]
+definition = ["include/base.h │ void ⟦legacy⟧();", 'include/extra.h │ [[deprecated("gone")]] void ⟦legacy⟧();']
+declaration = ["include/base.h │ void ⟦legacy⟧();", 'include/extra.h │ [[deprecated("gone")]] void ⟦legacy⟧();']
+references = [
+    "include/base.h │ void ⟦legacy⟧();",
+    'include/extra.h │ [[deprecated("gone")]] void ⟦legacy⟧();',
+    "⟦legacy⟧();",
+]
+
+["indexed locations".legacy.hover]
+markdown = '''
+**function** `legacy`
+
+Deprecated: gone
+```cpp
+[[deprecated("gone")]]
+void legacy()
+```
+'''
+range = "⟦legacy⟧();"
+
+["indexed locations".peek]
+definition = ["include/base.h │ friend int ⟦peek⟧(Token token) {"]
+declaration = ["include/base.h │ friend int ⟦peek⟧(Token token) {", "include/extra.h │ int ⟦peek⟧(Token token);"]
+references = [
+    "include/base.h │ friend int ⟦peek⟧(Token token) {",
+    "include/extra.h │ int ⟦peek⟧(Token token);",
+    "int total = ⟦peek⟧(token) + ::peek(token) + cell.get();",
+    "int total = peek(token) + ::⟦peek⟧(token) + cell.get();",
+]
+
+["indexed locations".peek.hover]
+markdown = '''
+**function** `peek`
+
+```cpp
+int peek(Token token)
+```
+'''
+range = "int total = ⟦peek⟧(token) + ::peek(token) + cell.get();"
+
+["indexed locations".qualified]
+definition = ["include/base.h │ friend int ⟦peek⟧(Token token) {"]
+declaration = ["include/base.h │ friend int ⟦peek⟧(Token token) {", "include/extra.h │ int ⟦peek⟧(Token token);"]
+references = [
+    "include/base.h │ friend int ⟦peek⟧(Token token) {",
+    "include/extra.h │ int ⟦peek⟧(Token token);",
+    "int total = ⟦peek⟧(token) + ::peek(token) + cell.get();",
+    "int total = peek(token) + ::⟦peek⟧(token) + cell.get();",
+]
+
+["indexed locations".qualified.hover]
+markdown = '''
+**function** `peek`
+
+```cpp
+int peek(Token token)
+```
+'''
+range = "int total = peek(token) + ::⟦peek⟧(token) + cell.get();"
+
+["indexed locations".cell]
+definition = ["include/base.h │ T ⟦get⟧() const {"]
+declaration = ["include/base.h │ T ⟦get⟧() const {"]
+references = ["include/base.h │ T ⟦get⟧() const {", "int total = peek(token) + ::peek(token) + cell.⟦get⟧();"]
+
+["indexed locations".cell.hover]
+markdown = '''
+**method** `get` · struct `Cell<int>`
+
+Trivial accessor for `value`.
+
+```cpp
+int get() const
+```
+'''
+range = "int total = peek(token) + ::peek(token) + cell.⟦get⟧();"
+
+["indexed locations".weight]
+definition = ["include/extra.h │ int ⟦weight⟧;"]
+declaration = ["include/extra.h │ int ⟦weight⟧;"]
+references = ["include/extra.h │ int ⟦weight⟧;", "return total + item.⟦weight⟧ + other.a + copy_plain(plain).a;"]
+
+["indexed locations".weight.hover]
+markdown = '''
+**field** `weight` · struct `lib::Item`
+
+```cpp
+int weight
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return total + item.⟦weight⟧ + other.a + copy_plain(plain).a;"
+
+["indexed locations".copied]
+definition = ["include/base.h │ int ⟦a⟧;"]
+declaration = ["include/base.h │ int ⟦a⟧;"]
+references = [
+    "include/base.h │ int ⟦a⟧;",
+    "return total + item.weight + other.⟦a⟧ + copy_plain(plain).a;",
+    "return total + item.weight + other.a + copy_plain(plain).⟦a⟧;",
+]
+
+["indexed locations".copied.hover]
+markdown = '''
+**field** `a` · struct `Plain`
+
+```cpp
+int a
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return total + item.weight + other.⟦a⟧ + copy_plain(plain).a;"
+
+[index."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 24 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:8:5 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "Plain",
+    "kind": "Struct",
+    "symbol": "#07ad6641aea426ed",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 3,
+        "context": "struct Plain {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 5,
+        "context": "inline Plain copy_plain(const Plain& plain) {",
+        "function": "copy_plain"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 5,
+        "context": "inline Plain copy_plain(const Plain& plain) {",
+        "function": "copy_plain"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 6,
+        "context": "    Plain copy = plain;",
+        "function": "copy_plain"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "static_assert(!Measurable<Plain>);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 7,
+        "context": "    Plain plain{1};",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 8,
+        "context": "    Plain other = plain;",
+        "function": "run"
+      }
+    ],
+    "total": 7
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:10:10 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "wrapped",
+    "kind": "Variable",
+    "symbol": "#873c8e625d62555c path:${WS}/main.cpp",
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 10,
+        "context": "    Wrap wrapped{\"text\"};",
+        "function": "run"
+      }
+    ],
+    "total": 1
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:12:5 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "Item",
+    "kind": "Struct",
+    "symbol": "#b011586cd18b9f2f",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 38,
+        "context": "struct Item;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 30,
+        "context": "struct Item {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    Item item{4};",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:5 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "legacy",
+    "kind": "Function",
+    "symbol": "#eab473f99989542a",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 20,
+        "context": "void legacy();",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 18,
+        "context": "[[deprecated(\"gone\")]] void legacy();",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    legacy();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:17 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "peek",
+    "kind": "Function",
+    "symbol": "#deb7e11b23209117",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 10,
+        "context": "    friend int peek(Token token) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 10,
+        "context": "int peek(Token token);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    int total = peek(token) + ::peek(token) + cell.get();",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    int total = peek(token) + ::peek(token) + cell.get();",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:33 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "peek",
+    "kind": "Function",
+    "symbol": "#deb7e11b23209117",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 10,
+        "context": "    friend int peek(Token token) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 10,
+        "context": "int peek(Token token);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    int total = peek(token) + ::peek(token) + cell.get();",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    int total = peek(token) + ::peek(token) + cell.get();",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:52 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "get",
+    "kind": "Method",
+    "symbol": "#613b34c67d0b0ad0",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 26,
+        "context": "    T get() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    int total = peek(token) + ::peek(token) + cell.get();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:25 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "weight",
+    "kind": "Field",
+    "symbol": "#a1187bbf37731080",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 31,
+        "context": "    int weight;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + item.weight + other.a + copy_plain(plain).a;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:40 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "a",
+    "kind": "Field",
+    "symbol": "#2aee8b5abae860a7",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 4,
+        "context": "    int a;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + item.weight + other.a + copy_plain(plain).a;",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + item.weight + other.a + copy_plain(plain).a;",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice index #2"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 24 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:8:5 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "Plain",
+    "kind": "Struct",
+    "symbol": "#07ad6641aea426ed",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 3,
+        "context": "struct Plain {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 5,
+        "context": "inline Plain copy_plain(const Plain& plain) {",
+        "function": "copy_plain"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 5,
+        "context": "inline Plain copy_plain(const Plain& plain) {",
+        "function": "copy_plain"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 6,
+        "context": "    Plain copy = plain;",
+        "function": "copy_plain"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "static_assert(!Measurable<Plain>);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 7,
+        "context": "    Plain plain{1};",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 8,
+        "context": "    Plain other = plain;",
+        "function": "run"
+      }
+    ],
+    "total": 7
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:10:10 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "wrapped",
+    "kind": "Variable",
+    "symbol": "#873c8e625d62555c path:${WS}/main.cpp",
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 10,
+        "context": "    Wrap wrapped{\"text\"};",
+        "function": "run"
+      }
+    ],
+    "total": 1
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:12:5 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "Item",
+    "kind": "Struct",
+    "symbol": "#b011586cd18b9f2f",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 38,
+        "context": "struct Item;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 30,
+        "context": "struct Item {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    Item item{4};",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:5 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "legacy",
+    "kind": "Function",
+    "symbol": "#eab473f99989542a",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 20,
+        "context": "void legacy();",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 18,
+        "context": "[[deprecated(\"gone\")]] void legacy();",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    legacy();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:17 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "peek",
+    "kind": "Function",
+    "symbol": "#deb7e11b23209117",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 10,
+        "context": "    friend int peek(Token token) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 10,
+        "context": "int peek(Token token);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    int total = peek(token) + ::peek(token) + cell.get();",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    int total = peek(token) + ::peek(token) + cell.get();",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:33 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "peek",
+    "kind": "Function",
+    "symbol": "#deb7e11b23209117",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 10,
+        "context": "    friend int peek(Token token) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 10,
+        "context": "int peek(Token token);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    int total = peek(token) + ::peek(token) + cell.get();",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    int total = peek(token) + ::peek(token) + cell.get();",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:52 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "get",
+    "kind": "Method",
+    "symbol": "#613b34c67d0b0ad0",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 26,
+        "context": "    T get() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    int total = peek(token) + ::peek(token) + cell.get();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:25 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "weight",
+    "kind": "Field",
+    "symbol": "#a1187bbf37731080",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 31,
+        "context": "    int weight;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + item.weight + other.a + copy_plain(plain).a;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:40 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "a",
+    "kind": "Field",
+    "symbol": "#2aee8b5abae860a7",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 4,
+        "context": "    int a;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + item.weight + other.a + copy_plain(plain).a;",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    return total + item.weight + other.a + copy_plain(plain).a;",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0

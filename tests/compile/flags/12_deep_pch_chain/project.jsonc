@@ -1,0 +1,5 @@
+{
+  // A hand-written build chaining two PCHs: beta.pch is built over
+  // alpha.pch, and main.cpp loads beta.pch alone.
+  "databases": {}
+}

@@ -1,0 +1,78 @@
+["header context"."widget.h"]
+diagnostics = []
+
+["header context".host]
+definition = ["include/extra.h │ struct ⟦Host⟧ {"]
+
+["header context".host.hover]
+markdown = '''
+**struct** `Host`
+
+```cpp
+struct Host {
+  int h;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "⟦Host⟧ host;"
+
+["header context".point]
+definition = ["include/base.h │ struct ⟦Point⟧ {"]
+
+["header context".point.hover]
+markdown = '''
+**struct** `Point` · namespace `geo`
+
+```cpp
+struct Point {
+  int x;
+  int y;
+}
+```
+Size: 8 bytes, alignment 4 bytes
+'''
+range = "geo::⟦Point⟧ origin;"
+
+["header context".scale]
+definition = ["include/base.h │ inline int ⟦scale⟧(int value, int factor = 2) {"]
+
+["header context".scale.hover]
+markdown = '''
+**function** `scale` · namespace `geo`
+
+```cpp
+inline int scale(int value, int factor = 2)
+```
+'''
+range = "return Widget{geo::⟦scale⟧(2), Host{1}, {0, 0}};"
+
+["header context".x]
+definition = ["include/base.h │ int ⟦x⟧;"]
+
+["header context".x.hover]
+markdown = '''
+**field** `x` · struct `geo::Point`
+
+```cpp
+int x
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return widget.origin.⟦x⟧ * widget.size + geo::scale(1);"
+
+["header context".size]
+definition = ["int ⟦size⟧;"]
+
+["header context".size.hover]
+markdown = '''
+**field** `size` · struct `Widget`
+
+```cpp
+int size
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return widget.origin.x * widget.⟦size⟧ + geo::scale(1);"

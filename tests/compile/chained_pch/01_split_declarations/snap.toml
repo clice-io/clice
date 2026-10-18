@@ -1,0 +1,1889 @@
+[features.move]
+highlights = [
+    { at = "geo::⟦move⟧(point, 3);", kind = "text" },
+]
+
+[features.move.hover]
+markdown = '''
+**function** `move` · namespace `geo`
+
+```cpp
+void move(Point &point, int dx)
+```
+'''
+range = "geo::⟦move⟧(point, 3);"
+
+[features.adl]
+highlights = [
+    { at = "⟦move⟧(point, 4L);", kind = "text" },
+]
+
+[features.adl.hover]
+markdown = '''
+**function** `move` · namespace `geo`
+
+```cpp
+void move(Point &point, long dx)
+```
+'''
+range = "⟦move⟧(point, 4L);"
+
+[features.scale]
+highlights = [
+    { at = "int scaled = geo::⟦scale⟧(4);", kind = "text" },
+]
+
+[features.scale.hover]
+markdown = '''
+**function** `scale` · namespace `geo`
+
+```cpp
+int scale(int value, int factor = 2)
+```
+'''
+range = "int scaled = geo::⟦scale⟧(4);"
+
+[features.s_scale.signature_help]
+signatures = ["scale(⟦int value⟧, int factor = 2) -> int"]
+active = 0
+
+[features.red]
+highlights = [
+    { at = "geo::Color color = geo::Color::⟦red⟧;", kind = "text" },
+]
+
+[features.red.hover]
+markdown = '''
+**enumerator** `red` · enum `geo::Color`
+
+```cpp
+red
+```
+Value: `0`
+'''
+range = "geo::Color color = geo::Color::⟦red⟧;"
+
+[features.report]
+highlights = [
+    { at = "use::⟦report⟧(2.0);", kind = "text" },
+]
+
+[features.report.hover]
+markdown = '''
+**function** `report` · namespace `ext`
+
+```cpp
+void report(int code)
+```
+'''
+range = "use::⟦report⟧(2.0);"
+
+[features.size]
+highlights = [
+    { at = "geo::⟦Size⟧ size{2, 3};", kind = "text" },
+]
+
+[features.size.hover]
+markdown = '''
+**struct** `Size` · namespace `geo`
+
+```cpp
+struct Size {
+  int width;
+  int height;
+}
+```
+Size: 8 bytes, alignment 4 bytes
+'''
+range = "geo::⟦Size⟧ size{2, 3};"
+
+[features.x]
+highlights = [
+    { at = "int total = scaled + point.⟦x⟧ + geo::counter2 + static_cast<int>(color);", kind = "read" },
+]
+
+[features.x.hover]
+markdown = '''
+**field** `x` · struct `geo::Point`
+
+```cpp
+int x
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "int total = scaled + point.⟦x⟧ + geo::counter2 + static_cast<int>(color);"
+
+[features.c_geo.completion]
+items = [
+    { label = "counter", kind = "Variable", detail = "int" },
+    { label = "counter2", kind = "Variable", detail = "int" },
+    { label = "local_bonus()", kind = "Function", detail = "int" },
+    { label = "local_seed()", kind = "Function", detail = "int" },
+    { label = "scale(int value, int factor = 2)", kind = "Function", detail = "int" },
+    { label = "Color", kind = "Enum" },
+    { label = "Circle", kind = "Class" },
+    { label = "Point", kind = "Class" },
+    { label = "Registry", kind = "Class" },
+    { label = "Shape", kind = "Class" },
+]
+more = 2
+
+[features.area]
+highlights = [
+    { at = "total += static_cast<int>(circle.⟦area⟧()) + base_area(size);", kind = "text" },
+]
+
+[features.area.hover]
+markdown = '''
+**method** `area` · struct `geo::Circle`
+
+```cpp
+double area() const override
+```
+Overrides: `geo::Shape::area`
+'''
+range = "total += static_cast<int>(circle.⟦area⟧()) + base_area(size);"
+
+[features.base_area]
+highlights = [
+    { at = "total += static_cast<int>(circle.area()) + ⟦base_area⟧(size);", kind = "text" },
+]
+
+[features.base_area.hover]
+markdown = '''
+**function** `base_area`
+
+```cpp
+inline int base_area(const geo::Size &size)
+```
+'''
+range = "total += static_cast<int>(circle.area()) + ⟦base_area⟧(size);"
+
+[features.count]
+highlights = [
+    { at = "total += geo::Registry::⟦count⟧ + geo::Registry::limit;", kind = "read" },
+]
+
+[features.count.hover]
+markdown = '''
+**variable** `count` · struct `geo::Registry`
+
+```cpp
+int count = 0
+```
+Value: `0`
+'''
+range = "total += geo::Registry::⟦count⟧ + geo::Registry::limit;"
+
+[features.limit]
+highlights = [
+    { at = "total += geo::Registry::count + geo::Registry::⟦limit⟧;", kind = "read" },
+]
+
+[features.limit.hover]
+markdown = '''
+**variable** `limit` · struct `geo::Registry`
+
+```cpp
+static constexpr int limit = 8
+```
+Value: `8`
+'''
+range = "total += geo::Registry::count + geo::Registry::⟦limit⟧;"
+
+[features.bonus]
+highlights = [
+    { at = "total += geo::⟦local_bonus⟧() + geo::local_seed();", kind = "text" },
+]
+
+[features.bonus.hover]
+markdown = '''
+**function** `local_bonus` · namespace `geo::(anonymous)`
+
+```cpp
+inline int local_bonus()
+```
+'''
+range = "total += geo::⟦local_bonus⟧() + geo::local_seed();"
+
+[features.seed]
+highlights = [
+    { at = "total += geo::local_bonus() + geo::⟦local_seed⟧();", kind = "text" },
+]
+
+[features.seed.hover]
+markdown = '''
+**function** `local_seed` · namespace `geo::(anonymous)`
+
+```cpp
+inline int local_seed()
+```
+'''
+range = "total += geo::local_bonus() + geo::⟦local_seed⟧();"
+
+[features.virtual]
+highlights = [
+    { at = "total += static_cast<int>(shape.⟦area⟧()) + point.y;", kind = "text" },
+]
+
+[features.virtual.hover]
+markdown = '''
+**method** `area` · struct `geo::Shape`
+
+```cpp
+virtual double area() const = 0
+```
+'''
+range = "total += static_cast<int>(shape.⟦area⟧()) + point.y;"
+
+[features.c_point.completion]
+items = [
+    { label = "x", kind = "Field", detail = "int" },
+    { label = "y", kind = "Field", detail = "int" },
+]
+
+[features.symbols]
+document_symbols = [
+    {
+        name = "run",
+        kind = "Function",
+        at = "int ⟦run⟧() {",
+        children = [
+            { name = "point", kind = "Variable", at = "geo::Point ⟦point⟧{1, 2};" },
+            { name = "scaled", kind = "Variable", at = "int ⟦scaled⟧ = geo::scale(4);" },
+            { name = "color", kind = "Variable", at = "geo::Color ⟦color⟧ = geo::Color::red;" },
+            { name = "circle", kind = "Variable", at = "geo::Circle ⟦circle⟧{};" },
+            { name = "size", kind = "Variable", at = "geo::Size ⟦size⟧{2, 3};" },
+            {
+                name = "total",
+                kind = "Variable",
+                at = "int ⟦total⟧ = scaled + point.x + geo::counter2 + static_cast<int>(color);",
+            },
+            { name = "shape", kind = "Variable", at = "geo::Shape& ⟦shape⟧ = circle;" },
+        ],
+    },
+]
+
+[features.tokens]
+semantic_tokens = [
+    { at = '⟦#include⟧ "extra.h"', type = "directive" },
+    { at = '#include ⟦"extra.h"⟧', type = "header" },
+    { at = "⟦int⟧ run() {", type = "primitive" },
+    { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦geo⟧::Point point{1, 2};", type = "namespace", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::⟦Point⟧ point{1, 2};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::Point ⟦point⟧{1, 2};", type = "variable", modifiers = ["definition", "local"] },
+    { at = "geo::Point point{⟦1⟧, 2};", type = "number" },
+    { at = "geo::Point point{1, ⟦2⟧};", type = "number" },
+    { at = "⟦geo⟧::move(point, 3);", type = "namespace", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::⟦move⟧(point, 3);", type = "function", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::move(⟦point⟧, 3);", type = "variable", modifiers = ["modification", "local"] },
+    { at = "geo::move(point, ⟦3⟧);", type = "number" },
+    { at = "⟦move⟧(point, 4L);", type = "function", modifiers = ["global"] },
+    { at = "move(⟦point⟧, 4L);", type = "variable", modifiers = ["modification", "local"] },
+    { at = "move(point, ⟦4⟧L);", type = "number" },
+    { at = "move(point, 4⟦L⟧);", type = "number", modifiers = ["affix"] },
+    { at = "⟦int⟧ scaled = geo::scale(4);", type = "primitive" },
+    { at = "int ⟦scaled⟧ = geo::scale(4);", type = "variable", modifiers = ["definition", "local"] },
+    { at = "int scaled ⟦=⟧ geo::scale(4);", type = "operator" },
+    { at = "int scaled = ⟦geo⟧::scale(4);", type = "namespace", modifiers = ["defaultLibrary", "global"] },
+    { at = "int scaled = geo::⟦scale⟧(4);", type = "function", modifiers = ["defaultLibrary", "global"] },
+    { at = "int scaled = geo::scale(⟦4⟧);", type = "number" },
+    { at = "⟦geo⟧::Color color = geo::Color::red;", type = "namespace", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::⟦Color⟧ color = geo::Color::red;", type = "enum", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::Color ⟦color⟧ = geo::Color::red;", type = "variable", modifiers = ["definition", "local"] },
+    { at = "geo::Color color ⟦=⟧ geo::Color::red;", type = "operator" },
+    { at = "geo::Color color = ⟦geo⟧::Color::red;", type = "namespace", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::Color color = geo::⟦Color⟧::red;", type = "enum", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::Color color = geo::Color::⟦red⟧;", type = "enumMember", modifiers = ["readonly", "global"] },
+    { at = "⟦geo⟧::Circle circle{};", type = "namespace", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::⟦Circle⟧ circle{};", type = "struct", modifiers = ["global", "virtual"] },
+    { at = "geo::Circle ⟦circle⟧{};", type = "variable", modifiers = ["definition", "local"] },
+    { at = "⟦use⟧::report(2.0);", type = "namespace", modifiers = ["defaultLibrary", "global"] },
+    { at = "use::⟦report⟧(2.0);", type = "function", modifiers = ["defaultLibrary", "global"] },
+    { at = "use::report(⟦2.0⟧);", type = "number" },
+    { at = "⟦geo⟧::Size size{2, 3};", type = "namespace", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::⟦Size⟧ size{2, 3};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "geo::Size ⟦size⟧{2, 3};", type = "variable", modifiers = ["definition", "local"] },
+    { at = "geo::Size size{⟦2⟧, 3};", type = "number" },
+    { at = "geo::Size size{2, ⟦3⟧};", type = "number" },
+    { at = "⟦int⟧ total = scaled + point.x + geo::counter2 + static_cast<int>(color);", type = "primitive" },
+    {
+        at = "int ⟦total⟧ = scaled + point.x + geo::counter2 + static_cast<int>(color);",
+        type = "variable",
+        modifiers = ["definition", "local"],
+    },
+    { at = "int total ⟦=⟧ scaled + point.x + geo::counter2 + static_cast<int>(color);", type = "operator" },
+    {
+        at = "int total = ⟦scaled⟧ + point.x + geo::counter2 + static_cast<int>(color);",
+        type = "variable",
+        modifiers = ["local"],
+    },
+    { at = "int total = scaled ⟦+⟧ point.x + geo::counter2 + static_cast<int>(color);", type = "operator" },
+    {
+        at = "int total = scaled + ⟦point⟧.x + geo::counter2 + static_cast<int>(color);",
+        type = "variable",
+        modifiers = ["local"],
+    },
+    {
+        at = "int total = scaled + point.⟦x⟧ + geo::counter2 + static_cast<int>(color);",
+        type = "field",
+        modifiers = ["member"],
+    },
+    { at = "int total = scaled + point.x ⟦+⟧ geo::counter2 + static_cast<int>(color);", type = "operator" },
+    {
+        at = "int total = scaled + point.x + ⟦geo⟧::counter2 + static_cast<int>(color);",
+        type = "namespace",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "int total = scaled + point.x + geo::⟦counter2⟧ + static_cast<int>(color);",
+        type = "variable",
+        modifiers = ["global"],
+    },
+    { at = "int total = scaled + point.x + geo::counter2 ⟦+⟧ static_cast<int>(color);", type = "operator" },
+    { at = "int total = scaled + point.x + geo::counter2 + ⟦static_cast<⟧int>(color);", type = "operator" },
+    { at = "int total = scaled + point.x + geo::counter2 + static_cast<⟦int⟧>(color);", type = "primitive" },
+    { at = "int total = scaled + point.x + geo::counter2 + static_cast<int⟦>⟧(color);", type = "operator" },
+    {
+        at = "int total = scaled + point.x + geo::counter2 + static_cast<int>(⟦color⟧);",
+        type = "variable",
+        modifiers = ["local"],
+    },
+    {
+        at = "⟦total⟧ += static_cast<int>(circle.area()) + base_area(size);",
+        type = "variable",
+        modifiers = ["modification", "local"],
+    },
+    { at = "total ⟦+=⟧ static_cast<int>(circle.area()) + base_area(size);", type = "operator" },
+    { at = "total += ⟦static_cast<⟧int>(circle.area()) + base_area(size);", type = "operator" },
+    { at = "total += static_cast<⟦int⟧>(circle.area()) + base_area(size);", type = "primitive" },
+    { at = "total += static_cast<int⟦>⟧(circle.area()) + base_area(size);", type = "operator" },
+    { at = "total += static_cast<int>(⟦circle⟧.area()) + base_area(size);", type = "variable", modifiers = ["local"] },
+    {
+        at = "total += static_cast<int>(circle.⟦area⟧()) + base_area(size);",
+        type = "method",
+        modifiers = ["readonly", "member", "virtual"],
+    },
+    { at = "total += static_cast<int>(circle.area()) ⟦+⟧ base_area(size);", type = "operator" },
+    {
+        at = "total += static_cast<int>(circle.area()) + ⟦base_area⟧(size);",
+        type = "function",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    { at = "total += static_cast<int>(circle.area()) + base_area(⟦size⟧);", type = "variable", modifiers = ["local"] },
+    {
+        at = "⟦total⟧ += geo::Registry::count + geo::Registry::limit;",
+        type = "variable",
+        modifiers = ["modification", "local"],
+    },
+    { at = "total ⟦+=⟧ geo::Registry::count + geo::Registry::limit;", type = "operator" },
+    {
+        at = "total += ⟦geo⟧::Registry::count + geo::Registry::limit;",
+        type = "namespace",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "total += geo::⟦Registry⟧::count + geo::Registry::limit;",
+        type = "struct",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "total += geo::Registry::⟦count⟧ + geo::Registry::limit;",
+        type = "variable",
+        modifiers = ["static", "defaultLibrary", "member"],
+    },
+    { at = "total += geo::Registry::count ⟦+⟧ geo::Registry::limit;", type = "operator" },
+    {
+        at = "total += geo::Registry::count + ⟦geo⟧::Registry::limit;",
+        type = "namespace",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "total += geo::Registry::count + geo::⟦Registry⟧::limit;",
+        type = "struct",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "total += geo::Registry::count + geo::Registry::⟦limit⟧;",
+        type = "variable",
+        modifiers = ["readonly", "static", "defaultLibrary", "member", "constexpr"],
+    },
+    {
+        at = "⟦total⟧ += geo::local_bonus() + geo::local_seed();",
+        type = "variable",
+        modifiers = ["modification", "local"],
+    },
+    { at = "total ⟦+=⟧ geo::local_bonus() + geo::local_seed();", type = "operator" },
+    {
+        at = "total += ⟦geo⟧::local_bonus() + geo::local_seed();",
+        type = "namespace",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    { at = "total += geo::⟦local_bonus⟧() + geo::local_seed();", type = "function", modifiers = ["internal"] },
+    { at = "total += geo::local_bonus() ⟦+⟧ geo::local_seed();", type = "operator" },
+    {
+        at = "total += geo::local_bonus() + ⟦geo⟧::local_seed();",
+        type = "namespace",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "total += geo::local_bonus() + geo::⟦local_seed⟧();",
+        type = "function",
+        modifiers = ["defaultLibrary", "internal"],
+    },
+    { at = "⟦geo⟧::Shape& shape = circle;", type = "namespace", modifiers = ["defaultLibrary", "global"] },
+    {
+        at = "geo::⟦Shape⟧& shape = circle;",
+        type = "struct",
+        modifiers = ["abstract", "defaultLibrary", "global", "virtual"],
+    },
+    { at = "geo::Shape⟦&⟧ shape = circle;", type = "operator", modifiers = ["declarator"] },
+    { at = "geo::Shape& ⟦shape⟧ = circle;", type = "variable", modifiers = ["definition", "local"] },
+    { at = "geo::Shape& shape ⟦=⟧ circle;", type = "operator" },
+    { at = "geo::Shape& shape = ⟦circle⟧;", type = "variable", modifiers = ["local"] },
+    {
+        at = "⟦total⟧ += static_cast<int>(shape.area()) + point.y;",
+        type = "variable",
+        modifiers = ["modification", "local"],
+    },
+    { at = "total ⟦+=⟧ static_cast<int>(shape.area()) + point.y;", type = "operator" },
+    { at = "total += ⟦static_cast<⟧int>(shape.area()) + point.y;", type = "operator" },
+    { at = "total += static_cast<⟦int⟧>(shape.area()) + point.y;", type = "primitive" },
+    { at = "total += static_cast<int⟦>⟧(shape.area()) + point.y;", type = "operator" },
+    { at = "total += static_cast<int>(⟦shape⟧.area()) + point.y;", type = "variable", modifiers = ["local"] },
+    {
+        at = "total += static_cast<int>(shape.⟦area⟧()) + point.y;",
+        type = "method",
+        modifiers = ["readonly", "abstract", "defaultLibrary", "member", "virtual"],
+    },
+    { at = "total += static_cast<int>(shape.area()) ⟦+⟧ point.y;", type = "operator" },
+    { at = "total += static_cast<int>(shape.area()) + ⟦point⟧.y;", type = "variable", modifiers = ["local"] },
+    { at = "total += static_cast<int>(shape.area()) + point.⟦y⟧;", type = "field", modifiers = ["member"] },
+    { at = "⟦return⟧ total;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦total⟧;", type = "variable", modifiers = ["local"] },
+]
+
+[features.hints]
+inlay_hints = [
+    { line = "geo::Point point{⟨.x=⟩1, ⟨.y=⟩2};" },
+    { line = "geo::move(⟨&:⟩point, ⟨dx:⟩3);" },
+    { line = "move(⟨&:⟩point, ⟨dx:⟩4L);" },
+    { line = "int scaled = geo::scale(⟨value:⟩4);" },
+    { line = "use::report(⟨code:⟩2.0);" },
+    { line = "geo::Size size{⟨.width=⟩2, ⟨.height=⟩3};" },
+]
+
+[features.links]
+document_links = [
+    { at = '#include ⟦"extra.h"⟧', target = "include/extra.h" },
+]
+
+[locations."main.cpp"]
+diagnostics = []
+
+[locations.move]
+definition = ["include/base.h │ void ⟦move⟧(Point& point, int dx);"]
+declaration = ["include/base.h │ void ⟦move⟧(Point& point, int dx);"]
+references = ["include/base.h │ void ⟦move⟧(Point& point, int dx);", "geo::⟦move⟧(point, 3);"]
+
+[locations.move.hover]
+markdown = '''
+**function** `move` · namespace `geo`
+
+```cpp
+void move(Point &point, int dx)
+```
+'''
+range = "geo::⟦move⟧(point, 3);"
+
+[locations.adl]
+definition = ["include/extra.h │ void ⟦move⟧(Point& point, long dx);"]
+declaration = ["include/extra.h │ void ⟦move⟧(Point& point, long dx);"]
+references = ["include/extra.h │ void ⟦move⟧(Point& point, long dx);", "⟦move⟧(point, 4L);"]
+
+[locations.adl.hover]
+markdown = '''
+**function** `move` · namespace `geo`
+
+```cpp
+void move(Point &point, long dx)
+```
+'''
+range = "⟦move⟧(point, 4L);"
+
+[locations.scale]
+definition = [
+    "include/base.h │ int ⟦scale⟧(int value, int factor);",
+    "include/extra.h │ int ⟦scale⟧(int value, int factor = 2);",
+]
+declaration = [
+    "include/base.h │ int ⟦scale⟧(int value, int factor);",
+    "include/extra.h │ int ⟦scale⟧(int value, int factor = 2);",
+]
+references = [
+    "include/base.h │ int ⟦scale⟧(int value, int factor);",
+    "include/extra.h │ int ⟦scale⟧(int value, int factor = 2);",
+    "int scaled = geo::⟦scale⟧(4);",
+]
+
+[locations.scale.hover]
+markdown = '''
+**function** `scale` · namespace `geo`
+
+```cpp
+int scale(int value, int factor = 2)
+```
+'''
+range = "int scaled = geo::⟦scale⟧(4);"
+
+[locations.red]
+definition = ["include/extra.h │ enum class Color : int { ⟦red⟧, green };"]
+declaration = ["include/extra.h │ enum class Color : int { ⟦red⟧, green };"]
+references = ["include/extra.h │ enum class Color : int { ⟦red⟧, green };", "geo::Color color = geo::Color::⟦red⟧;"]
+
+[locations.red.hover]
+markdown = '''
+**enumerator** `red` · enum `geo::Color`
+
+```cpp
+red
+```
+Value: `0`
+'''
+range = "geo::Color color = geo::Color::⟦red⟧;"
+
+[locations.report]
+definition = ["include/base.h │ void ⟦report⟧(int code);"]
+declaration = ["include/base.h │ void ⟦report⟧(int code);"]
+references = [
+    "include/base.h │ void ⟦report⟧(int code);",
+    "include/base.h │ using ext::⟦report⟧;",
+    "use::⟦report⟧(2.0);",
+]
+
+[locations.report.hover]
+markdown = '''
+**function** `report` · namespace `ext`
+
+```cpp
+void report(int code)
+```
+'''
+range = "use::⟦report⟧(2.0);"
+
+[locations.size]
+definition = ["include/base.h │ struct ⟦Size⟧ {"]
+declaration = ["include/base.h │ struct ⟦Size⟧ {", "include/extra.h │ struct ⟦Size⟧;"]
+references = [
+    "include/base.h │ struct ⟦Size⟧ {",
+    "include/base.h │ inline int base_area(const geo::⟦Size⟧& size) {",
+    "include/extra.h │ struct ⟦Size⟧;",
+    "geo::⟦Size⟧ size{2, 3};",
+]
+
+[locations.size.hover]
+markdown = '''
+**struct** `Size` · namespace `geo`
+
+```cpp
+struct Size {
+  int width;
+  int height;
+}
+```
+Size: 8 bytes, alignment 4 bytes
+'''
+range = "geo::⟦Size⟧ size{2, 3};"
+
+[locations.x]
+definition = ["include/extra.h │ int ⟦x⟧;"]
+declaration = ["include/extra.h │ int ⟦x⟧;"]
+references = ["include/extra.h │ int ⟦x⟧;", "int total = scaled + point.⟦x⟧ + geo::counter2 + static_cast<int>(color);"]
+
+[locations.x.hover]
+markdown = '''
+**field** `x` · struct `geo::Point`
+
+```cpp
+int x
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "int total = scaled + point.⟦x⟧ + geo::counter2 + static_cast<int>(color);"
+
+[locations.area]
+definition = ["include/extra.h │ double ⟦area⟧() const override {"]
+declaration = ["include/extra.h │ double ⟦area⟧() const override {"]
+references = [
+    "include/extra.h │ double ⟦area⟧() const override {",
+    "total += static_cast<int>(circle.⟦area⟧()) + base_area(size);",
+    "total += static_cast<int>(shape.⟦area⟧()) + point.y;",
+]
+
+[locations.area.hover]
+markdown = '''
+**method** `area` · struct `geo::Circle`
+
+```cpp
+double area() const override
+```
+Overrides: `geo::Shape::area`
+'''
+range = "total += static_cast<int>(circle.⟦area⟧()) + base_area(size);"
+
+[locations.base_area]
+definition = ["include/base.h │ inline int ⟦base_area⟧(const geo::Size& size) {"]
+declaration = ["include/base.h │ inline int ⟦base_area⟧(const geo::Size& size) {"]
+references = [
+    "include/base.h │ inline int ⟦base_area⟧(const geo::Size& size) {",
+    "total += static_cast<int>(circle.area()) + ⟦base_area⟧(size);",
+]
+
+[locations.base_area.hover]
+markdown = '''
+**function** `base_area`
+
+```cpp
+inline int base_area(const geo::Size &size)
+```
+'''
+range = "total += static_cast<int>(circle.area()) + ⟦base_area⟧(size);"
+
+[locations.count]
+definition = ["include/extra.h │ int Registry::⟦count⟧ = 0;"]
+declaration = ["include/base.h │ static int ⟦count⟧;", "include/extra.h │ int Registry::⟦count⟧ = 0;"]
+references = [
+    "include/base.h │ static int ⟦count⟧;",
+    "include/extra.h │ int Registry::⟦count⟧ = 0;",
+    "total += geo::Registry::⟦count⟧ + geo::Registry::limit;",
+]
+
+[locations.count.hover]
+markdown = '''
+**variable** `count` · struct `geo::Registry`
+
+```cpp
+int count = 0
+```
+Value: `0`
+'''
+range = "total += geo::Registry::⟦count⟧ + geo::Registry::limit;"
+
+[locations.limit]
+definition = ["include/base.h │ static constexpr int ⟦limit⟧ = 8;"]
+declaration = ["include/base.h │ static constexpr int ⟦limit⟧ = 8;"]
+references = [
+    "include/base.h │ static constexpr int ⟦limit⟧ = 8;",
+    "total += geo::Registry::count + geo::Registry::⟦limit⟧;",
+]
+
+[locations.limit.hover]
+markdown = '''
+**variable** `limit` · struct `geo::Registry`
+
+```cpp
+static constexpr int limit = 8
+```
+Value: `8`
+'''
+range = "total += geo::Registry::count + geo::Registry::⟦limit⟧;"
+
+[locations.bonus]
+definition = ["include/extra.h │ inline int ⟦local_bonus⟧() {"]
+declaration = ["include/extra.h │ inline int ⟦local_bonus⟧() {"]
+references = ["include/extra.h │ inline int ⟦local_bonus⟧() {", "total += geo::⟦local_bonus⟧() + geo::local_seed();"]
+
+[locations.bonus.hover]
+markdown = '''
+**function** `local_bonus` · namespace `geo::(anonymous)`
+
+```cpp
+inline int local_bonus()
+```
+'''
+range = "total += geo::⟦local_bonus⟧() + geo::local_seed();"
+
+[locations.seed]
+definition = ["include/base.h │ inline int ⟦local_seed⟧() {"]
+declaration = ["include/base.h │ inline int ⟦local_seed⟧() {"]
+references = [
+    "include/base.h │ inline int ⟦local_seed⟧() {",
+    "include/extra.h │ return ⟦local_seed⟧() + 1;",
+    "total += geo::local_bonus() + geo::⟦local_seed⟧();",
+]
+
+[locations.seed.hover]
+markdown = '''
+**function** `local_seed` · namespace `geo::(anonymous)`
+
+```cpp
+inline int local_seed()
+```
+'''
+range = "total += geo::local_bonus() + geo::⟦local_seed⟧();"
+
+[locations.virtual]
+definition = ["include/base.h │ virtual double ⟦area⟧() const = 0;"]
+declaration = ["include/base.h │ virtual double ⟦area⟧() const = 0;"]
+references = [
+    "include/base.h │ virtual double ⟦area⟧() const = 0;",
+    "total += static_cast<int>(shape.⟦area⟧()) + point.y;",
+]
+
+[locations.virtual.hover]
+markdown = '''
+**method** `area` · struct `geo::Shape`
+
+```cpp
+virtual double area() const = 0
+```
+'''
+range = "total += static_cast<int>(shape.⟦area⟧()) + point.y;"
+
+["indexed locations"."main.cpp"]
+diagnostics = []
+
+["indexed locations".move]
+definition = ["include/base.h │ void ⟦move⟧(Point& point, int dx);"]
+declaration = ["include/base.h │ void ⟦move⟧(Point& point, int dx);"]
+references = ["include/base.h │ void ⟦move⟧(Point& point, int dx);", "geo::⟦move⟧(point, 3);"]
+
+["indexed locations".move.hover]
+markdown = '''
+**function** `move` · namespace `geo`
+
+```cpp
+void move(Point &point, int dx)
+```
+'''
+range = "geo::⟦move⟧(point, 3);"
+
+["indexed locations".adl]
+definition = ["include/extra.h │ void ⟦move⟧(Point& point, long dx);"]
+declaration = ["include/extra.h │ void ⟦move⟧(Point& point, long dx);"]
+references = ["include/extra.h │ void ⟦move⟧(Point& point, long dx);", "⟦move⟧(point, 4L);"]
+
+["indexed locations".adl.hover]
+markdown = '''
+**function** `move` · namespace `geo`
+
+```cpp
+void move(Point &point, long dx)
+```
+'''
+range = "⟦move⟧(point, 4L);"
+
+["indexed locations".scale]
+definition = [
+    "include/base.h │ int ⟦scale⟧(int value, int factor);",
+    "include/extra.h │ int ⟦scale⟧(int value, int factor = 2);",
+]
+declaration = [
+    "include/base.h │ int ⟦scale⟧(int value, int factor);",
+    "include/extra.h │ int ⟦scale⟧(int value, int factor = 2);",
+]
+references = [
+    "include/base.h │ int ⟦scale⟧(int value, int factor);",
+    "include/extra.h │ int ⟦scale⟧(int value, int factor = 2);",
+    "int scaled = geo::⟦scale⟧(4);",
+]
+
+["indexed locations".scale.hover]
+markdown = '''
+**function** `scale` · namespace `geo`
+
+```cpp
+int scale(int value, int factor = 2)
+```
+'''
+range = "int scaled = geo::⟦scale⟧(4);"
+
+["indexed locations".red]
+definition = ["include/extra.h │ enum class Color : int { ⟦red⟧, green };"]
+declaration = ["include/extra.h │ enum class Color : int { ⟦red⟧, green };"]
+references = ["include/extra.h │ enum class Color : int { ⟦red⟧, green };", "geo::Color color = geo::Color::⟦red⟧;"]
+
+["indexed locations".red.hover]
+markdown = '''
+**enumerator** `red` · enum `geo::Color`
+
+```cpp
+red
+```
+Value: `0`
+'''
+range = "geo::Color color = geo::Color::⟦red⟧;"
+
+["indexed locations".report]
+definition = ["include/base.h │ void ⟦report⟧(int code);"]
+declaration = ["include/base.h │ void ⟦report⟧(int code);"]
+references = [
+    "include/base.h │ void ⟦report⟧(int code);",
+    "include/base.h │ using ext::⟦report⟧;",
+    "use::⟦report⟧(2.0);",
+]
+
+["indexed locations".report.hover]
+markdown = '''
+**function** `report` · namespace `ext`
+
+```cpp
+void report(int code)
+```
+'''
+range = "use::⟦report⟧(2.0);"
+
+["indexed locations".size]
+definition = ["include/base.h │ struct ⟦Size⟧ {"]
+declaration = ["include/base.h │ struct ⟦Size⟧ {", "include/extra.h │ struct ⟦Size⟧;"]
+references = [
+    "include/base.h │ struct ⟦Size⟧ {",
+    "include/base.h │ inline int base_area(const geo::⟦Size⟧& size) {",
+    "include/extra.h │ struct ⟦Size⟧;",
+    "geo::⟦Size⟧ size{2, 3};",
+]
+
+["indexed locations".size.hover]
+markdown = '''
+**struct** `Size` · namespace `geo`
+
+```cpp
+struct Size {
+  int width;
+  int height;
+}
+```
+Size: 8 bytes, alignment 4 bytes
+'''
+range = "geo::⟦Size⟧ size{2, 3};"
+
+["indexed locations".x]
+definition = ["include/extra.h │ int ⟦x⟧;"]
+declaration = ["include/extra.h │ int ⟦x⟧;"]
+references = ["include/extra.h │ int ⟦x⟧;", "int total = scaled + point.⟦x⟧ + geo::counter2 + static_cast<int>(color);"]
+
+["indexed locations".x.hover]
+markdown = '''
+**field** `x` · struct `geo::Point`
+
+```cpp
+int x
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "int total = scaled + point.⟦x⟧ + geo::counter2 + static_cast<int>(color);"
+
+["indexed locations".area]
+definition = ["include/extra.h │ double ⟦area⟧() const override {"]
+declaration = ["include/extra.h │ double ⟦area⟧() const override {"]
+references = [
+    "include/extra.h │ double ⟦area⟧() const override {",
+    "total += static_cast<int>(circle.⟦area⟧()) + base_area(size);",
+    "total += static_cast<int>(shape.⟦area⟧()) + point.y;",
+]
+
+["indexed locations".area.hover]
+markdown = '''
+**method** `area` · struct `geo::Circle`
+
+```cpp
+double area() const override
+```
+Overrides: `geo::Shape::area`
+'''
+range = "total += static_cast<int>(circle.⟦area⟧()) + base_area(size);"
+
+["indexed locations".base_area]
+definition = ["include/base.h │ inline int ⟦base_area⟧(const geo::Size& size) {"]
+declaration = ["include/base.h │ inline int ⟦base_area⟧(const geo::Size& size) {"]
+references = [
+    "include/base.h │ inline int ⟦base_area⟧(const geo::Size& size) {",
+    "total += static_cast<int>(circle.area()) + ⟦base_area⟧(size);",
+]
+
+["indexed locations".base_area.hover]
+markdown = '''
+**function** `base_area`
+
+```cpp
+inline int base_area(const geo::Size &size)
+```
+'''
+range = "total += static_cast<int>(circle.area()) + ⟦base_area⟧(size);"
+
+["indexed locations".count]
+definition = ["include/extra.h │ int Registry::⟦count⟧ = 0;"]
+declaration = ["include/base.h │ static int ⟦count⟧;", "include/extra.h │ int Registry::⟦count⟧ = 0;"]
+references = [
+    "include/base.h │ static int ⟦count⟧;",
+    "include/extra.h │ int Registry::⟦count⟧ = 0;",
+    "total += geo::Registry::⟦count⟧ + geo::Registry::limit;",
+]
+
+["indexed locations".count.hover]
+markdown = '''
+**variable** `count` · struct `geo::Registry`
+
+```cpp
+int count = 0
+```
+Value: `0`
+'''
+range = "total += geo::Registry::⟦count⟧ + geo::Registry::limit;"
+
+["indexed locations".limit]
+definition = ["include/base.h │ static constexpr int ⟦limit⟧ = 8;"]
+declaration = ["include/base.h │ static constexpr int ⟦limit⟧ = 8;"]
+references = [
+    "include/base.h │ static constexpr int ⟦limit⟧ = 8;",
+    "total += geo::Registry::count + geo::Registry::⟦limit⟧;",
+]
+
+["indexed locations".limit.hover]
+markdown = '''
+**variable** `limit` · struct `geo::Registry`
+
+```cpp
+static constexpr int limit = 8
+```
+Value: `8`
+'''
+range = "total += geo::Registry::count + geo::Registry::⟦limit⟧;"
+
+["indexed locations".bonus]
+definition = ["include/extra.h │ inline int ⟦local_bonus⟧() {"]
+declaration = ["include/extra.h │ inline int ⟦local_bonus⟧() {"]
+references = ["include/extra.h │ inline int ⟦local_bonus⟧() {", "total += geo::⟦local_bonus⟧() + geo::local_seed();"]
+
+["indexed locations".bonus.hover]
+markdown = '''
+**function** `local_bonus` · namespace `geo::(anonymous)`
+
+```cpp
+inline int local_bonus()
+```
+'''
+range = "total += geo::⟦local_bonus⟧() + geo::local_seed();"
+
+["indexed locations".seed]
+definition = ["include/base.h │ inline int ⟦local_seed⟧() {"]
+declaration = ["include/base.h │ inline int ⟦local_seed⟧() {"]
+references = [
+    "include/base.h │ inline int ⟦local_seed⟧() {",
+    "include/extra.h │ return ⟦local_seed⟧() + 1;",
+    "total += geo::local_bonus() + geo::⟦local_seed⟧();",
+]
+
+["indexed locations".seed.hover]
+markdown = '''
+**function** `local_seed` · namespace `geo::(anonymous)`
+
+```cpp
+inline int local_seed()
+```
+'''
+range = "total += geo::local_bonus() + geo::⟦local_seed⟧();"
+
+["indexed locations".virtual]
+definition = ["include/base.h │ virtual double ⟦area⟧() const = 0;"]
+declaration = ["include/base.h │ virtual double ⟦area⟧() const = 0;"]
+references = [
+    "include/base.h │ virtual double ⟦area⟧() const = 0;",
+    "total += static_cast<int>(shape.⟦area⟧()) + point.y;",
+]
+
+["indexed locations".virtual.hover]
+markdown = '''
+**method** `area` · struct `geo::Shape`
+
+```cpp
+virtual double area() const = 0
+```
+'''
+range = "total += static_cast<int>(shape.⟦area⟧()) + point.y;"
+
+[index."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 33 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:5:10 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "move",
+    "kind": "Function",
+    "symbol": "#9d562403fe609ade",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 14,
+        "context": "void move(Point& point, int dx);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    geo::move(point, 3);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:6:5 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "move",
+    "kind": "Function",
+    "symbol": "#46f8f1fcf0389bbe",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 17,
+        "context": "void move(Point& point, long dx);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 6,
+        "context": "    move(point, 4L);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:7:23 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "scale",
+    "kind": "Function",
+    "symbol": "#72d8278d67bdf498",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 13,
+        "context": "int scale(int value, int factor);",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 16,
+        "context": "int scale(int value, int factor = 2);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 7,
+        "context": "    int scaled = geo::scale(4);",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:8:36 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "red",
+    "kind": "EnumMember",
+    "symbol": "#7c5a84159e8b1849",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 12,
+        "context": "enum class Color : int { red, green };",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 8,
+        "context": "    geo::Color color = geo::Color::red;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:10:10 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "report",
+    "kind": "Function",
+    "symbol": "#9acd35056f14daf8",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 37,
+        "context": "void report(int code);",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 41,
+        "context": "using ext::report;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 10,
+        "context": "    use::report(2.0);",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:11:10 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "Size",
+    "kind": "Struct",
+    "symbol": "#ff2c4f6de1fb583e",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 8,
+        "context": "struct Size {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 44,
+        "context": "inline int base_area(const geo::Size& size) {",
+        "function": "base_area"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 14,
+        "context": "struct Size;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 11,
+        "context": "    geo::Size size{2, 3};",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:12:32 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "x",
+    "kind": "Field",
+    "symbol": "#be5be7db5c97908a",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 8,
+        "context": "    int x;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = scaled + point.x + geo::counter2 + static_cast<int>(color);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:38 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "area",
+    "kind": "Method",
+    "symbol": "#c0e2440a8fb54846",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 22,
+        "context": "    double area() const override {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    total += static_cast<int>(circle.area()) + base_area(size);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 17,
+        "context": "    total += static_cast<int>(shape.area()) + point.y;",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:48 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "base_area",
+    "kind": "Function",
+    "symbol": "#98018d67d6e43a72",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 44,
+        "context": "inline int base_area(const geo::Size& size) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    total += static_cast<int>(circle.area()) + base_area(size);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:29 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "count",
+    "kind": "Variable",
+    "symbol": "#b55ef864c7f2abee",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 24,
+        "context": "    static int count;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 29,
+        "context": "int Registry::count = 0;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += geo::Registry::count + geo::Registry::limit;",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:52 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "limit",
+    "kind": "Variable",
+    "symbol": "#88315f9c88005880",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 25,
+        "context": "    static constexpr int limit = 8;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += geo::Registry::count + geo::Registry::limit;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:19 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "local_bonus",
+    "kind": "Function",
+    "symbol": "#843382fc2fca3292 path:${WS}/include/extra.h",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 32,
+        "context": "inline int local_bonus() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    total += geo::local_bonus() + geo::local_seed();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:40 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "local_seed",
+    "kind": "Function",
+    "symbol": "#47d11d795b674d79 path:${WS}/include/base.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 29,
+        "context": "inline int local_seed() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 33,
+        "context": "    return local_seed() + 1;",
+        "function": "geo::local_bonus"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    total += geo::local_bonus() + geo::local_seed();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:17:37 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "area",
+    "kind": "Method",
+    "symbol": "#e73e38d51c1057aa",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 18,
+        "context": "    virtual double area() const = 0;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 17,
+        "context": "    total += static_cast<int>(shape.area()) + point.y;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice index #2"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 33 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:5:10 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "move",
+    "kind": "Function",
+    "symbol": "#9d562403fe609ade",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 14,
+        "context": "void move(Point& point, int dx);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    geo::move(point, 3);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:6:5 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "move",
+    "kind": "Function",
+    "symbol": "#46f8f1fcf0389bbe",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 17,
+        "context": "void move(Point& point, long dx);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 6,
+        "context": "    move(point, 4L);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:7:23 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "scale",
+    "kind": "Function",
+    "symbol": "#72d8278d67bdf498",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 13,
+        "context": "int scale(int value, int factor);",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 16,
+        "context": "int scale(int value, int factor = 2);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 7,
+        "context": "    int scaled = geo::scale(4);",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:8:36 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "red",
+    "kind": "EnumMember",
+    "symbol": "#7c5a84159e8b1849",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 12,
+        "context": "enum class Color : int { red, green };",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 8,
+        "context": "    geo::Color color = geo::Color::red;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:10:10 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "report",
+    "kind": "Function",
+    "symbol": "#9acd35056f14daf8",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 37,
+        "context": "void report(int code);",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 41,
+        "context": "using ext::report;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 10,
+        "context": "    use::report(2.0);",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:11:10 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "Size",
+    "kind": "Struct",
+    "symbol": "#ff2c4f6de1fb583e",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 8,
+        "context": "struct Size {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 44,
+        "context": "inline int base_area(const geo::Size& size) {",
+        "function": "base_area"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 14,
+        "context": "struct Size;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 11,
+        "context": "    geo::Size size{2, 3};",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:12:32 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "x",
+    "kind": "Field",
+    "symbol": "#be5be7db5c97908a",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 8,
+        "context": "    int x;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 12,
+        "context": "    int total = scaled + point.x + geo::counter2 + static_cast<int>(color);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:38 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "area",
+    "kind": "Method",
+    "symbol": "#c0e2440a8fb54846",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 22,
+        "context": "    double area() const override {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    total += static_cast<int>(circle.area()) + base_area(size);",
+        "function": "run"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 17,
+        "context": "    total += static_cast<int>(shape.area()) + point.y;",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:13:48 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "base_area",
+    "kind": "Function",
+    "symbol": "#98018d67d6e43a72",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 44,
+        "context": "inline int base_area(const geo::Size& size) {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 13,
+        "context": "    total += static_cast<int>(circle.area()) + base_area(size);",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:29 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "count",
+    "kind": "Variable",
+    "symbol": "#b55ef864c7f2abee",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 24,
+        "context": "    static int count;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 29,
+        "context": "int Registry::count = 0;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += geo::Registry::count + geo::Registry::limit;",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:14:52 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "limit",
+    "kind": "Variable",
+    "symbol": "#88315f9c88005880",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 25,
+        "context": "    static constexpr int limit = 8;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 14,
+        "context": "    total += geo::Registry::count + geo::Registry::limit;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:19 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "local_bonus",
+    "kind": "Function",
+    "symbol": "#843382fc2fca3292 path:${WS}/include/extra.h",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 32,
+        "context": "inline int local_bonus() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    total += geo::local_bonus() + geo::local_seed();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:15:40 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "local_seed",
+    "kind": "Function",
+    "symbol": "#47d11d795b674d79 path:${WS}/include/base.h",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 29,
+        "context": "inline int local_seed() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 33,
+        "context": "    return local_seed() + 1;",
+        "function": "geo::local_bonus"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 15,
+        "context": "    total += geo::local_bonus() + geo::local_seed();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:17:37 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "area",
+    "kind": "Method",
+    "symbol": "#e73e38d51c1057aa",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 18,
+        "context": "    virtual double area() const = 0;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 17,
+        "context": "    total += static_cast<int>(shape.area()) + point.y;",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

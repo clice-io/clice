@@ -1,0 +1,35 @@
+["instantiation point"."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 7 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["instantiation point"."$ clice query references main.cpp:4:12 --include-declaration"]
+wrong = "ill-formed, no diagnostic required: instantiated at the end of main.cpp, apply<Early> would call helper(Early) from helper(value) in base.h"
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#7e62fe4108f3584c",
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 1,
+        "context": "int helper(Early);",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "    return helper(early) + base_use();",
+        "function": "probe"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

@@ -1,0 +1,167 @@
+[features.use]
+highlights = [
+    { at = "return ⟦base_use⟧();", kind = "text" },
+]
+
+[features.use.hover]
+markdown = '''
+**function** `base_use`
+
+```cpp
+inline int base_use()
+```
+'''
+range = "return ⟦base_use⟧();"
+
+[features.symbols]
+document_symbols = [
+    { name = "run", kind = "Function", at = "int ⟦run⟧() {" },
+]
+
+[features.tokens]
+semantic_tokens = [
+    { at = '⟦#include⟧ "extra.h"', type = "directive" },
+    { at = '#include ⟦"extra.h"⟧', type = "header" },
+    { at = "⟦int⟧ run() {", type = "primitive" },
+    { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦return⟧ base_use();", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦base_use⟧();", type = "function", modifiers = ["defaultLibrary", "global"] },
+]
+
+[features.hints]
+inlay_hints = []
+
+[features.links]
+document_links = [
+    { at = '#include ⟦"extra.h"⟧', target = "include/extra.h" },
+]
+
+[locations."main.cpp"]
+diagnostics = [
+    {
+        at = '#include ⟦"extra.h"⟧',
+        severity = "error",
+        message = "In included file: explicit specialization of 'Traits<Unit>' after instantiation",
+        source = "clang",
+        code = "err_specialization_after_instantiation",
+    },
+]
+
+[locations.use]
+definition = ["include/base.h │ inline int ⟦base_use⟧() {"]
+declaration = ["include/base.h │ inline int ⟦base_use⟧() {"]
+references = ["include/base.h │ inline int ⟦base_use⟧() {", "return ⟦base_use⟧();"]
+
+[locations.use.hover]
+markdown = '''
+**function** `base_use`
+
+```cpp
+inline int base_use()
+```
+'''
+range = "return ⟦base_use⟧();"
+
+["indexed locations"."main.cpp"]
+diagnostics = [
+    {
+        at = '#include ⟦"extra.h"⟧',
+        severity = "error",
+        message = "In included file: explicit specialization of 'Traits<Unit>' after instantiation",
+        source = "clang",
+        code = "err_specialization_after_instantiation",
+    },
+]
+
+["indexed locations".use]
+definition = ["include/base.h │ inline int ⟦base_use⟧() {"]
+declaration = ["include/base.h │ inline int ⟦base_use⟧() {"]
+references = ["include/base.h │ inline int ⟦base_use⟧() {", "return ⟦base_use⟧();"]
+
+["indexed locations".use.hover]
+markdown = '''
+**function** `base_use`
+
+```cpp
+inline int base_use()
+```
+'''
+range = "return ⟦base_use⟧();"
+
+[index."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 11 symbols.
+1 translation unit compiled with errors; the index holds what parsed:
+  ${WS}/main.cpp
+    ${WS}/include/extra.h:11:8: explicit specialization of 'Traits<Unit>' after instantiation
+    and 2 more errors
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:4:12 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "base_use",
+    "kind": "Function",
+    "symbol": "#ac732b62174b36be",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 18,
+        "context": "inline int base_use() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "    return base_use();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice index #2"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 11 symbols.
+1 translation unit compiled with errors; the index holds what parsed:
+  ${WS}/main.cpp
+    ${WS}/include/extra.h:11:8: explicit specialization of 'Traits<Unit>' after instantiation
+    and 2 more errors
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:4:12 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "base_use",
+    "kind": "Function",
+    "symbol": "#ac732b62174b36be",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 18,
+        "context": "inline int base_use() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "    return base_use();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

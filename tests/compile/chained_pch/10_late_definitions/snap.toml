@@ -1,0 +1,594 @@
+[features.run]
+highlights = [
+    { at = "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();", kind = "text" },
+]
+
+[features.run.hover]
+markdown = '''
+**method** `run` · struct `Lazy<int>`
+
+```cpp
+int run() const
+```
+'''
+range = "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();"
+
+[features.square]
+highlights = [
+    { at = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();", kind = "read" },
+]
+
+[features.square.hover]
+markdown = '''
+**variable** `square`
+
+```cpp
+inline auto square = [](int x) { ... }
+```
+Type: `int (int)`
+'''
+range = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();"
+
+[features.get]
+highlights = [
+    { at = "return total + IntTraits::⟦get⟧() + Probe{}.later();", kind = "text" },
+]
+
+[features.get.hover]
+markdown = '''
+**method** `get` · struct `IntTraits`
+
+```cpp
+static int get()
+```
+'''
+range = "return total + IntTraits::⟦get⟧() + Probe{}.later();"
+
+[features.later]
+highlights = [
+    { at = "return total + IntTraits::get() + Probe{}.⟦later⟧();", kind = "text" },
+]
+
+[features.later.hover]
+markdown = '''
+**method** `later` · struct `Probe`
+
+```cpp
+int later() const
+```
+'''
+range = "return total + IntTraits::get() + Probe{}.⟦later⟧();"
+
+[features.symbols]
+document_symbols = [
+    {
+        name = "run",
+        kind = "Function",
+        at = "int ⟦run⟧() {",
+        children = [
+            { name = "lazy", kind = "Variable", at = "Lazy<int> ⟦lazy⟧;" },
+            {
+                name = "total",
+                kind = "Variable",
+                at = "int ⟦total⟧ = lazy.run() + square(2) + base_run() + top_run();",
+            },
+        ],
+    },
+]
+
+[features.tokens]
+semantic_tokens = [
+    { at = '⟦#include⟧ "extra.h"', type = "directive" },
+    { at = '#include ⟦"extra.h"⟧', type = "header" },
+    { at = "⟦int⟧ run() {", type = "primitive" },
+    { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦Lazy⟧<int> lazy;", type = "struct", modifiers = ["defaultLibrary", "global", "template"] },
+    { at = "Lazy⟦<⟧int> lazy;", type = "bracket" },
+    { at = "Lazy<⟦int⟧> lazy;", type = "primitive" },
+    { at = "Lazy<int⟦>⟧ lazy;", type = "bracket" },
+    { at = "Lazy<int> ⟦lazy⟧;", type = "variable", modifiers = ["definition", "local"] },
+    { at = "⟦int⟧ total = lazy.run() + square(2) + base_run() + top_run();", type = "primitive" },
+    {
+        at = "int ⟦total⟧ = lazy.run() + square(2) + base_run() + top_run();",
+        type = "variable",
+        modifiers = ["definition", "local"],
+    },
+    { at = "int total ⟦=⟧ lazy.run() + square(2) + base_run() + top_run();", type = "operator" },
+    { at = "int total = ⟦lazy⟧.run() + square(2) + base_run() + top_run();", type = "variable", modifiers = ["local"] },
+    {
+        at = "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();",
+        type = "method",
+        modifiers = ["readonly", "defaultLibrary", "member"],
+    },
+    { at = "int total = lazy.run() ⟦+⟧ square(2) + base_run() + top_run();", type = "operator" },
+    {
+        at = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();",
+        type = "variable",
+        modifiers = ["defaultLibrary", "global", "callable"],
+    },
+    {
+        at = "int total = lazy.run() + square⟦(⟧2) + base_run() + top_run();",
+        type = "operator",
+        modifiers = ["readonly", "defaultLibrary", "member", "constexpr", "userDefined"],
+    },
+    { at = "int total = lazy.run() + square(⟦2⟧) + base_run() + top_run();", type = "number" },
+    {
+        at = "int total = lazy.run() + square(2⟦)⟧ + base_run() + top_run();",
+        type = "operator",
+        modifiers = ["readonly", "defaultLibrary", "member", "constexpr", "userDefined"],
+    },
+    { at = "int total = lazy.run() + square(2) ⟦+⟧ base_run() + top_run();", type = "operator" },
+    {
+        at = "int total = lazy.run() + square(2) + ⟦base_run⟧() + top_run();",
+        type = "function",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    { at = "int total = lazy.run() + square(2) + base_run() ⟦+⟧ top_run();", type = "operator" },
+    {
+        at = "int total = lazy.run() + square(2) + base_run() + ⟦top_run⟧();",
+        type = "function",
+        modifiers = ["global"],
+    },
+    { at = "⟦return⟧ total + IntTraits::get() + Probe{}.later();", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦total⟧ + IntTraits::get() + Probe{}.later();", type = "variable", modifiers = ["local"] },
+    { at = "return total ⟦+⟧ IntTraits::get() + Probe{}.later();", type = "operator" },
+    { at = "return total + ⟦IntTraits⟧::get() + Probe{}.later();", type = "struct", modifiers = ["global"] },
+    { at = "return total + IntTraits::⟦get⟧() + Probe{}.later();", type = "method", modifiers = ["static", "member"] },
+    { at = "return total + IntTraits::get() ⟦+⟧ Probe{}.later();", type = "operator" },
+    {
+        at = "return total + IntTraits::get() + ⟦Probe⟧{}.later();",
+        type = "struct",
+        modifiers = ["defaultLibrary", "global"],
+    },
+    {
+        at = "return total + IntTraits::get() + Probe{}.⟦later⟧();",
+        type = "method",
+        modifiers = ["readonly", "member"],
+    },
+]
+
+[features.hints]
+inlay_hints = []
+
+[features.links]
+document_links = [
+    { at = '#include ⟦"extra.h"⟧', target = "include/extra.h" },
+]
+
+[locations."main.cpp"]
+diagnostics = []
+
+[locations.run]
+definition = ["include/extra.h │ int Lazy<T>::⟦run⟧() const {"]
+declaration = ["include/base.h │ int ⟦run⟧() const;", "include/extra.h │ int Lazy<T>::⟦run⟧() const {"]
+references = [
+    "include/base.h │ int ⟦run⟧() const;",
+    "include/base.h │ return Lazy<int>{}.⟦run⟧();",
+    "include/extra.h │ int Lazy<T>::⟦run⟧() const {",
+    "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();",
+]
+
+[locations.run.hover]
+markdown = '''
+**method** `run` · struct `Lazy<int>`
+
+```cpp
+int run() const
+```
+'''
+range = "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();"
+
+[locations.square]
+definition = ["include/base.h │ inline auto ⟦square⟧ = [](int x) { return x * x; };"]
+declaration = ["include/base.h │ inline auto ⟦square⟧ = [](int x) { return x * x; };"]
+references = [
+    "include/base.h │ inline auto ⟦square⟧ = [](int x) { return x * x; };",
+    "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();",
+]
+
+[locations.square.hover]
+markdown = '''
+**variable** `square`
+
+```cpp
+inline auto square = [](int x) { ... }
+```
+Type: `int (int)`
+'''
+range = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();"
+
+[locations.get]
+wrong = "should list where Lazy<int>::run() reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+definition = ["include/extra.h │ static int ⟦get⟧() {"]
+declaration = ["include/extra.h │ static int ⟦get⟧() {"]
+references = ["include/extra.h │ static int ⟦get⟧() {", "return total + IntTraits::⟦get⟧() + Probe{}.later();"]
+
+[locations.get.hover]
+markdown = '''
+**method** `get` · struct `IntTraits`
+
+```cpp
+static int get()
+```
+'''
+range = "return total + IntTraits::⟦get⟧() + Probe{}.later();"
+
+[locations.later]
+wrong = "should list where dependent<Probe> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+definition = ["include/extra.h │ int ⟦later⟧() const {"]
+declaration = ["include/extra.h │ int ⟦later⟧() const {"]
+references = ["include/extra.h │ int ⟦later⟧() const {", "return total + IntTraits::get() + Probe{}.⟦later⟧();"]
+
+[locations.later.hover]
+markdown = '''
+**method** `later` · struct `Probe`
+
+```cpp
+int later() const
+```
+'''
+range = "return total + IntTraits::get() + Probe{}.⟦later⟧();"
+
+["indexed locations"."main.cpp"]
+diagnostics = []
+
+["indexed locations".run]
+definition = ["include/extra.h │ int Lazy<T>::⟦run⟧() const {"]
+declaration = ["include/base.h │ int ⟦run⟧() const;", "include/extra.h │ int Lazy<T>::⟦run⟧() const {"]
+references = [
+    "include/base.h │ int ⟦run⟧() const;",
+    "include/base.h │ return Lazy<int>{}.⟦run⟧();",
+    "include/extra.h │ int Lazy<T>::⟦run⟧() const {",
+    "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();",
+]
+
+["indexed locations".run.hover]
+markdown = '''
+**method** `run` · struct `Lazy<int>`
+
+```cpp
+int run() const
+```
+'''
+range = "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();"
+
+["indexed locations".square]
+definition = ["include/base.h │ inline auto ⟦square⟧ = [](int x) { return x * x; };"]
+declaration = ["include/base.h │ inline auto ⟦square⟧ = [](int x) { return x * x; };"]
+references = [
+    "include/base.h │ inline auto ⟦square⟧ = [](int x) { return x * x; };",
+    "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();",
+]
+
+["indexed locations".square.hover]
+markdown = '''
+**variable** `square`
+
+```cpp
+inline auto square = [](int x) { ... }
+```
+Type: `int (int)`
+'''
+range = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();"
+
+["indexed locations".get]
+wrong = "should list where Lazy<int>::run() reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+definition = ["include/extra.h │ static int ⟦get⟧() {"]
+declaration = ["include/extra.h │ static int ⟦get⟧() {"]
+references = ["include/extra.h │ static int ⟦get⟧() {", "return total + IntTraits::⟦get⟧() + Probe{}.later();"]
+
+["indexed locations".get.hover]
+markdown = '''
+**method** `get` · struct `IntTraits`
+
+```cpp
+static int get()
+```
+'''
+range = "return total + IntTraits::⟦get⟧() + Probe{}.later();"
+
+["indexed locations".later]
+wrong = "should list where dependent<Probe> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+definition = ["include/extra.h │ int ⟦later⟧() const {"]
+declaration = ["include/extra.h │ int ⟦later⟧() const {"]
+references = ["include/extra.h │ int ⟦later⟧() const {", "return total + IntTraits::get() + Probe{}.⟦later⟧();"]
+
+["indexed locations".later.hover]
+markdown = '''
+**method** `later` · struct `Probe`
+
+```cpp
+int later() const
+```
+'''
+range = "return total + IntTraits::get() + Probe{}.⟦later⟧();"
+
+[index."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 17 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:5:22 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "run",
+    "kind": "Method",
+    "symbol": "#af49c265ca693bdb",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 5,
+        "context": "    int run() const;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 9,
+        "context": "    return Lazy<int>{}.run();",
+        "function": "base_run"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 20,
+        "context": "int Lazy<T>::run() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    int total = lazy.run() + square(2) + base_run() + top_run();",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:5:30 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "square",
+    "kind": "Variable",
+    "symbol": "#7ec27924d2c8cc2a",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 12,
+        "context": "inline auto square = [](int x) { return x * x; };",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    int total = lazy.run() + square(2) + base_run() + top_run();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:6:31 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "get",
+    "kind": "Method",
+    "symbol": "#10497ccaeb3b8c90",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 6,
+        "context": "    static int get() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 21,
+        "context": "    return Pick<T>::type::get();",
+        "function": "Lazy::run",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 6,
+        "context": "    return total + IntTraits::get() + Probe{}.later();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:6:47 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "later",
+    "kind": "Method",
+    "symbol": "#2043a835f555b8bf",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 16,
+        "context": "    return value.later();",
+        "function": "dependent",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 25,
+        "context": "    int later() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 6,
+        "context": "    return total + IntTraits::get() + Probe{}.later();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice index #2"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 17 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:5:22 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "run",
+    "kind": "Method",
+    "symbol": "#af49c265ca693bdb",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 5,
+        "context": "    int run() const;",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/base.h",
+        "line": 9,
+        "context": "    return Lazy<int>{}.run();",
+        "function": "base_run"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 20,
+        "context": "int Lazy<T>::run() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    int total = lazy.run() + square(2) + base_run() + top_run();",
+        "function": "run"
+      }
+    ],
+    "total": 4
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:5:30 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "square",
+    "kind": "Variable",
+    "symbol": "#7ec27924d2c8cc2a",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 12,
+        "context": "inline auto square = [](int x) { return x * x; };",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "context": "    int total = lazy.run() + square(2) + base_run() + top_run();",
+        "function": "run"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:6:31 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "get",
+    "kind": "Method",
+    "symbol": "#10497ccaeb3b8c90",
+    "references": [
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 6,
+        "context": "    static int get() {",
+        "function": null
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 21,
+        "context": "    return Pick<T>::type::get();",
+        "function": "Lazy::run",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 6,
+        "context": "    return total + IntTraits::get() + Probe{}.later();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[index."$ clice query references main.cpp:6:47 --include-declaration #2"]
+stdout = '''
+{
+  "result": {
+    "name": "later",
+    "kind": "Method",
+    "symbol": "#2043a835f555b8bf",
+    "references": [
+      {
+        "file": "${WS}/include/base.h",
+        "line": 16,
+        "context": "    return value.later();",
+        "function": "dependent",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/include/extra.h",
+        "line": 25,
+        "context": "    int later() const {",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 6,
+        "context": "    return total + IntTraits::get() + Probe{}.later();",
+        "function": "run"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
