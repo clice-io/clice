@@ -172,15 +172,23 @@ function options() {
         );
         process.exit(1);
     }
+    const count = (name: string, value: string, least: number): number => {
+        const parsed = Number(value);
+        if (!Number.isInteger(parsed) || parsed < least) {
+            console.error(`--${name} takes an integer of at least ${String(least)}, not ${value}`);
+            process.exit(1);
+        }
+        return parsed;
+    };
     return {
         clice: path.resolve(
             values.clice ?? path.join(REPO_ROOT, "build/RelWithDebInfo/bin/bin/clice"),
         ),
         workspace: path.resolve(values.workspace),
         cdb: path.resolve(values.cdb),
-        positions: Number(values["max-positions"]),
-        completions: Number(values.completions),
-        jobs: Number(values.jobs),
+        positions: count("max-positions", values["max-positions"], 0),
+        completions: count("completions", values.completions, 0),
+        jobs: count("jobs", values.jobs, 1),
         json: values.json ?? null,
         files: positionals.map((file) => path.resolve(file)),
     };
@@ -413,6 +421,7 @@ async function main(): Promise<void> {
         for (const failure of failures) {
             console.log(`- ${failure}`);
         }
+        process.exitCode = 1;
     }
     if (opts.json !== null) {
         fs.writeFileSync(
