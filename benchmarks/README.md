@@ -23,8 +23,6 @@ your question:
    - `pipeline_benchmark` — per-TU stage profile (preprocess, parse, index
      build/serialize, preamble PCH build incl. preamble indexing, reparse over
      PCH incl. interactive indexing), one result per file.
-   - `pch_chain_benchmark` — monolithic vs chained PCH strategy (ported
-     from PR #405).
 
 ## Building
 
@@ -32,7 +30,7 @@ your question:
 pixi run build RelWithDebInfo -- //:benchmarks
 ```
 
-`//:benchmarks` is both; name single ones (`//:bin/pipeline_benchmark`)
+`//:benchmarks` builds every one; name single ones (`//:bin/pipeline_benchmark`)
 to build less. They land in `build/RelWithDebInfo/bin/bin`.
 
 Always benchmark `RelWithDebInfo`; Debug numbers are meaningless.
@@ -146,8 +144,3 @@ semantic nodes over `<iostream>/<vector>/<string>`):
 
 The didChange experience is parse-dominated; features and index are
 sub-millisecond next to it.
-
-**Monolithic vs chained PCH** (PR #405, LLVM 21 era, 70 stdlib headers):
-full chain build ~2× the monolithic build, but appending one header is
-~35× faster than the monolithic full rebuild, and AST-load overhead of the
-chain stays within +6% even under full deserialization.

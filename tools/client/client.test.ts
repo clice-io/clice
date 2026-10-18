@@ -36,3 +36,8 @@ test("without test defaults only the cache is pinned", () => {
         tracker: {},
     });
 });
+
+test("a cache of the caller's own", () => {
+    const options = initializationOptionsFor(ws, { cacheDir: "/cache", testDefaults: false });
+    expect(options).toEqual({ project: { cache_dir: "/cache" }, tracker: {} });
+});

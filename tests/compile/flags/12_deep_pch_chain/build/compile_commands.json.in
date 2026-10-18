@@ -1,0 +1,20 @@
+[
+  {
+    "directory": "${WS}",
+    "command": "clang++ -std=c++20 -Iinclude -x c++-header include/alpha.h -o build/alpha.pch",
+    "file": "${WS}/include/alpha.h",
+    "output": "build/alpha.pch"
+  },
+  {
+    "directory": "${WS}",
+    "command": "clang++ -std=c++20 -Iinclude -include-pch build/alpha.pch -x c++-header include/beta.h -o build/beta.pch",
+    "file": "${WS}/include/beta.h",
+    "output": "build/beta.pch"
+  },
+  {
+    "directory": "${WS}",
+    "command": "clang++ -std=c++20 -Iinclude -include-pch build/beta.pch -c main.cpp -o build/main.o",
+    "file": "${WS}/main.cpp",
+    "output": "build/main.o"
+  }
+]

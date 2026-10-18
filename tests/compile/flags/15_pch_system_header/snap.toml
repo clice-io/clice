@@ -1,0 +1,26 @@
+["system header".tokens]
+wrong = "Point, measure and norm are the project's, not the default library's: cmake_pch.hxx declares itself a system header, and with it every header it includes"
+semantic_tokens = [
+    { at = '⟦#include⟧ "extra.h"', type = "directive" },
+    { at = '#include ⟦"extra.h"⟧', type = "header" },
+    { at = "⟦int⟧ run() {", type = "primitive" },
+    { at = "int ⟦run⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦Point⟧ point{1, 2};", type = "struct", modifiers = ["defaultLibrary", "global"] },
+    { at = "Point ⟦point⟧{1, 2};", type = "variable", modifiers = ["definition", "local"] },
+    { at = "Point point{⟦1⟧, 2};", type = "number" },
+    { at = "Point point{1, ⟦2⟧};", type = "number" },
+    { at = "⟦return⟧ measure(point) + point.norm();", type = "keyword", modifiers = ["controlFlow"] },
+    {
+        at = "return ⟦measure⟧(point) + point.norm();",
+        type = "function",
+        modifiers = ["defaultLibrary", "global", "template"],
+    },
+    { at = "return measure(⟦point⟧) + point.norm();", type = "variable", modifiers = ["local"] },
+    { at = "return measure(point) ⟦+⟧ point.norm();", type = "operator" },
+    { at = "return measure(point) + ⟦point⟧.norm();", type = "variable", modifiers = ["local"] },
+    {
+        at = "return measure(point) + point.⟦norm⟧();",
+        type = "method",
+        modifiers = ["readonly", "defaultLibrary", "member"],
+    },
+]

@@ -44,6 +44,8 @@ export interface TestContext {
     /// A marker of the case's sources, valid while its file reads as the
     /// case wrote it.
     marker(name: string): MarkerAnchor;
+    /// The markers of the case's sources, in path and source order.
+    markers(): readonly MarkerAnchor[];
     /// `path:line:column` of an anchor in the copy as it reads now, the
     /// way the commands take a place.
     place(anchor: Anchor): string;
@@ -150,6 +152,10 @@ class TestRun implements TestContext {
 
     marker(name: string): MarkerAnchor {
         return markerOf(this.case, name);
+    }
+
+    markers(): readonly MarkerAnchor[] {
+        return this.case.markers;
     }
 
     place(anchor: Anchor): string {

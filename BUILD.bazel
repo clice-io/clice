@@ -160,6 +160,5 @@ release_packages()
 # The component benchmarks (benchmarks/README.md), built on request.
 benchmark_programs([
     "index_stats_benchmark",
-    "pch_chain_benchmark",
     "pipeline_benchmark",
 ])

@@ -100,6 +100,8 @@ export interface StartOptions {
 
 export interface InitializeOptions {
     initializationOptions?: Record<string, unknown> | undefined;
+    /// The server's cache directory, `.clice` in the workspace by default.
+    cacheDir?: string | undefined;
     /// Whether to overlay the test defaults — one worker of each kind,
     /// background polling off, no idle wait before background indexing, and
     /// the test hooks on — onto the initialization options.
@@ -123,13 +125,13 @@ export interface InitializeOptions {
 
 /// The initialization options a client sends for `ws`: the caller's, with
 /// the cache pinned into the workspace (so `.clice/` cleanup prevents a
-/// stale PCH) and, unless switched off, the test defaults — one worker of
-/// each kind (halves the per-test spawn cost; tests needing more pass their
-/// own counts), background polling disabled (tests drive ticks
-/// deterministically through the clice/internal/poll hook), background
-/// indexing without the idle wait that batches an editor's keystrokes
-/// (tests wait through clice/internal/sync, not the clock), and the test
-/// hooks on.
+/// stale PCH) unless the caller names another and, unless switched off,
+/// the test defaults — one worker of each kind (halves the per-test spawn
+/// cost; tests needing more pass their own counts), background polling
+/// disabled (tests drive ticks deterministically through the
+/// clice/internal/poll hook), background indexing without the idle wait
+/// that batches an editor's keystrokes (tests wait through
+/// clice/internal/sync, not the clock), and the test hooks on.
 export function initializationOptionsFor(
     ws: Workspace,
     options: InitializeOptions,
@@ -138,7 +140,7 @@ export function initializationOptionsFor(
     const project = {
         ...((initializationOptions["project"] ?? {}) as Record<string, unknown>),
     };
-    project["cache_dir"] = ws.path(".clice");
+    project["cache_dir"] = options.cacheDir ?? ws.path(".clice");
     const tracker = {
         ...((initializationOptions["tracker"] ?? {}) as Record<string, unknown>),
     };

@@ -1,0 +1,18 @@
+["late-parsed templates over the pch"."main.cpp"]
+wrong = "should be clean: clang crashes reading the target's record of base_template, which the preamble's PCH copies"
+diagnostics = [
+    {
+        at = '⟦⟧#include "extra.h"',
+        severity = "warning",
+        message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.",
+        source = "clice",
+    },
+]
+
+["late-parsed templates over the pch".crashes]
+wrong = "should be none: clang crashes reading the target's record of base_template, which the preamble's PCH copies"
+value = 3
+
+["late-parsed templates over the pch".hover]
+wrong = "should describe base_template: clang crashes reading the target's record of base_template, which the preamble's PCH copies"
+hover = {}
