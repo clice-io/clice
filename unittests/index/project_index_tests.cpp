@@ -5,13 +5,14 @@ module;
 module clice;
 
 import :index.database;
+import :index.indexer;
 import :index.project_index;
 import :index.shard;
 import :index.tu_index;
 import :unittests.utils.temp_dir;
+import :unittests.utils.tester;
 import :unittests.utils.tu_index_mirror;
 import :unittests.utils;
-import :unittests.utils.tester;
 import :vfs.cache_store;
 
 namespace clice::testing {

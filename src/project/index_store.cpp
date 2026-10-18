@@ -7,12 +7,12 @@ module;
 module clice;
 
 import :index.database;
+import :index.format;
 import :index.instantiation_shard;
-import :index.manifest;
 import :index.query;
-import :index.serialization;
 import :index.shard;
 import :index.tu_index;
+import :index.tu_manifest;
 import :project.command_resolver;
 import :project.hosting;
 import :project.index_store;

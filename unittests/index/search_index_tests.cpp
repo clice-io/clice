@@ -4,8 +4,9 @@ module;
 
 module clice;
 
+import :index.columns;
+import :index.format;
 import :index.search_index;
-import :index.serialization;
 import :index.symbol_query;
 import :support.bitmap;
 import :unittests.utils.temp_dir;

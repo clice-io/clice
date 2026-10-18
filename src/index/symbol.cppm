@@ -6,7 +6,7 @@ module;
 /// builders accumulate them, blob readers hand them out, the project
 /// table stores them.
 
-module clice:index.types;
+module clice:index.symbol;
 
 import :semantic.symbol;
 import :semantic.token_class;
@@ -17,6 +17,50 @@ namespace clice::index {
 
 using Range = LocalSourceRange;
 using SymbolHash = std::uint64_t;
+
+/// Identity of one variant of a file's index: xxh3_64 over the encoded
+/// single-variant blob bytes the worker produced. Encoding is canonical
+/// and deterministic, so two compilation contexts whose preprocessing of
+/// the file agrees produce byte-identical blobs and share one identity.
+using VariantHash = std::uint64_t;
+
+/// The identity of one resolution — the records one instantiated definition or
+/// macro expansion resolves in one file (resolution_identity).
+using ResolutionHash = std::uint64_t;
+
+/// The identity of the resolutions a TU uses in one file (use_identity). TUs
+/// using the same ones share it, and the file's blob stores them once.
+using UseHash = std::uint64_t;
+
+/// The parent of a node whose directive sits in the TU's own file, and
+/// node_of's answer for a file entered without a directive: the TU root is
+/// not itself a node.
+constexpr inline std::uint32_t no_node = ~0u;
+
+/// One include directive of an include tree: which file it names, in
+/// which file it sits (the parent node's file at `line`), and whether the
+/// preprocessor entered the file there. Multiple entries of one file
+/// (headers without guards) are distinct nodes; so is a directive whose
+/// target was skipped (guarded or `#pragma once`, entered earlier) — an
+/// edge of the document with no file entry behind it. The same nodes
+/// travel in the TU index and persist in the manifest; only `file`
+/// changes meaning at merge: a TU-local path id in the TU index, a
+/// FileVersion id (VersionID::raw) in a manifest.
+struct IncludeNode {
+    std::uint32_t file = 0;
+
+    /// Index of the including node.
+    std::uint32_t parent = no_node;
+
+    /// 1-based line of the include directive in the parent.
+    std::uint32_t line = 0;
+
+    /// The directive did not enter the file: nothing hangs off this node
+    /// and node_of never answers it.
+    bool skipped = false;
+
+    friend bool operator==(const IncludeNode&, const IncludeNode&) = default;
+};
 
 /// Visibility scope of a symbol, determining which level of the multi-level
 /// symbol table stores it.

@@ -10,6 +10,7 @@ module clice;
 
 import :compile.compilation;
 import :feature.feature;
+import :index.indexer;
 import :index.tu_index;
 import :support.logging;
 import :support.process;

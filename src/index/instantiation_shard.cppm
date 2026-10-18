@@ -4,7 +4,7 @@ module;
 
 module clice:index.instantiation_shard;
 
-import :index.types;
+import :index.symbol;
 
 namespace clice::index {
 
@@ -60,19 +60,13 @@ constexpr auto record_key(const InstantiationRecord& record) {
                       record.from);
 }
 
-/// The identity of one resolution — the records one instantiated definition or
-/// macro expansion resolves in one file: a hash over the file's content
-/// generation and the records, which must be sorted and unique.
-using ResolutionHash = std::uint64_t;
-
+/// The identity of one resolution: a hash over the file's content generation
+/// and the records, which must be sorted and unique.
 ResolutionHash resolution_identity(std::uint64_t content_hash,
                                    llvm::ArrayRef<InstantiationRecord> records);
 
-/// The identity of the resolutions a TU uses in one file — a hash over them,
-/// which must be sorted and unique. TUs using the same ones share it, and the
-/// file's blob stores them once.
-using UseHash = std::uint64_t;
-
+/// The identity of the resolutions a TU uses in one file: a hash over them,
+/// which must be sorted and unique.
 UseHash use_identity(llvm::ArrayRef<ResolutionHash> resolutions);
 
 /// What one run resolves in one file, as the worker builds it: the distinct

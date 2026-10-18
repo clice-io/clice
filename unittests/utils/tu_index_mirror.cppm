@@ -4,10 +4,9 @@ module;
 
 module clice:unittests.utils.tu_index_mirror;
 
-import :index.include_tree;
-import :index.serialization;
+import :index.format;
+import :index.symbol;
 import :index.tu_index;
-import :index.types;
 import :unittests.utils;
 
 namespace clice::testing {

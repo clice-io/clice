@@ -4,9 +4,10 @@ module;
 
 module clice;
 
-import :index.manifest;
+import :index.columns;
+import :index.format;
 import :index.project_index;
-import :index.serialization;
+import :index.tu_manifest;
 import :unittests.utils;
 
 namespace clice::testing {

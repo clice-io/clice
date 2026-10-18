@@ -5,16 +5,15 @@ module;
 module clice;
 
 import :analysis.module_graph;
+import :analysis.text;
 import :command.command;
 import :config.config;
 import :index.query;
-import :index.serialization;
 import :index.symbol_query;
 import :project.command_resolver;
 import :project.configuration;
 import :project.open_index;
 import :project.project;
-import :analysis.text;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.token;

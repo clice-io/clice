@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :index.serialization;
+import :index.columns;
 import :unittests.utils;
 
 namespace clice::testing {

@@ -6,7 +6,7 @@ module clice:server.lsp_projection;
 
 import :index.query;
 import :index.site;
-import :index.types;
+import :index.symbol;
 import :semantic.symbol;
 
 /// The LSP shapes of the index query's domain values: the one place that

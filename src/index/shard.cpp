@@ -7,7 +7,7 @@ module;
 module clice;
 
 import :index.columns;
-import :index.serialization;
+import :index.format;
 import :index.shard;
 import :semantic.token_class;
 import :support.logging;

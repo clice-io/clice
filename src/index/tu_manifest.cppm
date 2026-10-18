@@ -2,10 +2,10 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:index.manifest;
+module clice:index.tu_manifest;
 
-import :index.include_tree;
-import :index.serialization;
+import :index.format;
+import :index.symbol;
 import :vfs.file_table;
 
 namespace clice::index {

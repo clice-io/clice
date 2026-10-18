@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :index.indexer;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
@@ -17,8 +18,8 @@ import :sched.index.pump;
 import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 import :worker.pool;
 
 namespace clice::testing {

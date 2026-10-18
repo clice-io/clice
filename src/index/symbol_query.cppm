@@ -26,7 +26,7 @@ module;
 
 module clice:index.symbol_query;
 
-import :index.types;
+import :index.symbol;
 import :semantic.symbol;
 import :vfs.path;
 
@@ -111,6 +111,12 @@ struct SymbolQuery {
         return mode == Mode::Members || (mode != Mode::Subtree && absolute);
     }
 };
+
+/// A symbol's id on the command line and in JSON answers: `#<hex>`, which
+/// a JavaScript number would round.
+inline std::string symbol_id(SymbolHash hash) {
+    return std::format("#{:016x}", hash);
+}
 
 /// The locator naming a symbol back: its `#<hex>` id, followed by `path:`
 /// and `anchor` when there is one — for a symbol only some files see, a

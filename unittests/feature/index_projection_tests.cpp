@@ -6,12 +6,13 @@ module clice;
 
 import :feature.feature;
 import :feature.semantic_token_stream;
+import :index.indexer;
 import :index.tu_index;
 import :semantic.token_class;
 import :syntax.lexer;
 import :syntax.source_text;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 
 namespace clice::testing {
 

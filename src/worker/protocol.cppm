@@ -7,7 +7,7 @@ module clice:worker.protocol;
 import :compile.compilation;
 import :config.config;
 import :feature.feature;
-import :index.include_tree;
+import :index.symbol;
 import :syntax.header_context;
 import :syntax.token;
 

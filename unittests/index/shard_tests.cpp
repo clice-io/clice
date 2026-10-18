@@ -4,12 +4,14 @@ module;
 
 module clice;
 
-import :index.serialization;
+import :index.columns;
+import :index.format;
+import :index.indexer;
 import :index.shard;
 import :index.tu_index;
 import :syntax.position;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 
 namespace clice::testing {
 namespace {

@@ -5,9 +5,10 @@ module;
 module clice:unittests.utils.merge_unit;
 
 import :compile.compilation;
-import :index.manifest;
+import :index.indexer;
 import :index.shard;
 import :index.tu_index;
+import :index.tu_manifest;
 import :project.project;
 import :unittests.utils;
 

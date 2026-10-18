@@ -16,9 +16,9 @@ module;
 
 module clice:index.search_index;
 
-import :index.serialization;
+import :index.format;
+import :index.symbol;
 import :index.symbol_query;
-import :index.types;
 import :support.bitmap;
 import :support.fuzzy_matcher;
 import :vfs.path;

@@ -4,56 +4,13 @@ module;
 
 module clice;
 
-import :index.manifest;
-import :index.serialization;
+import :index.columns;
+import :index.format;
+import :index.tu_manifest;
 
 namespace clice::index {
 
 namespace {
-
-/// The manifest's persisted form. Node and contribution payloads are
-/// varint-packed by hand: a big TU enters thousands of files, and LEB128
-/// on the small ids and lines roughly halves the blob against fixed-width
-/// columns.
-struct ManifestBlob {
-    std::uint32_t format_version = 0;
-
-    std::uint64_t global_gen = 0;
-
-    std::uint64_t built_at = 0;
-
-    std::uint32_t tu_fv = 0;
-
-    std::uint32_t node_count = 0;
-
-    std::uint32_t contribution_count = 0;
-
-    /// node_count × (varint fv, varint parent, varint line): the parent 0
-    /// for the previous node's, 1 for the root, else its index plus 2; the
-    /// line shifted left by two over a bit for a skipped node and a bit for
-    /// a line stored as its distance past the previous node's — only
-    /// beside the previous node's parent, at or past its line.
-    std::vector<std::uint8_t> nodes;
-
-    /// contribution_count × (varint fv, 8-byte little-endian variant hash —
-    /// hashes are random bits, varint would only inflate them)
-    std::vector<std::uint8_t> contributions;
-
-    std::vector<std::uint32_t> absent;
-
-    std::vector<std::uint32_t> imports;
-
-    /// TUManifest::local_fanout as columns: the symbols ascending, each
-    /// one's file versions back to back.
-    std::vector<std::uint64_t> local_symbols;
-    std::vector<std::uint32_t> local_file_ends;
-    std::vector<std::uint32_t> local_files;
-
-    /// TUManifest::instantiations as columns: per file its version and its
-    /// use.
-    std::vector<std::uint32_t> instantiation_files;
-    std::vector<std::uint64_t> instantiation_uses;
-};
 
 void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value) {
     while(value >= 0x80) {

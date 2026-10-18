@@ -8,7 +8,8 @@ module clice;
 
 import :compile.diagnostic;
 import :feature.feature;
-import :index.serialization;
+import :index.format;
+import :index.indexer;
 import :index.shard;
 import :index.tu_index;
 import :semantic.identity;

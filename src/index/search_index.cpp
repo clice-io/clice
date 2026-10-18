@@ -6,17 +6,14 @@ module;
 
 module clice;
 
+import :index.columns;
+import :index.format;
 import :index.search_index;
-import :index.serialization;
 import :support.logging;
 
 namespace clice::index {
 
 namespace {
-
-/// Layout and scoring version of the search blob, apart from the index
-/// format it is derived from: a bump rebuilds the search index alone.
-constexpr std::uint32_t search_format_version = 3;
 
 constexpr std::uint32_t no_doc = ~0u;
 
@@ -24,67 +21,6 @@ constexpr std::uint32_t no_doc = ~0u;
 constexpr std::size_t max_chain = 64;
 
 using Mode = SymbolQuery::Mode;
-
-/// The persisted search index. Entries are in quality order (ties by hash),
-/// which is the doc id order every bitmap speaks; the arenas hold the
-/// names back to back with one end offset per entry; posting arenas hold
-/// posting lists over the docs (write_postings) the same way.
-struct SearchBlob {
-    std::uint32_t format_version = 0;
-    std::uint32_t search_version = 0;
-    /// See SearchSnapshot::generation.
-    std::uint64_t generation = 0;
-
-    std::vector<std::uint64_t> hashes;
-    std::string names;
-    std::vector<std::uint32_t> name_ends;
-    std::string args;
-    std::vector<std::uint32_t> args_ends;
-    /// The doc of the nearest enclosing symbol that is not an inline
-    /// namespace, or no_doc at the translation unit or when that symbol
-    /// is not in the index.
-    std::vector<std::uint32_t> parents;
-    std::vector<float> qualities;
-    /// Docs sorted by lowercase name, then name, then doc.
-    std::vector<std::uint32_t> by_lower_name;
-    /// Docs sorted by hash.
-    std::vector<std::uint32_t> by_hash;
-
-    std::vector<std::uint32_t> token_keys;
-    std::vector<std::uint32_t> token_ends;
-    std::vector<std::uint8_t> token_postings;
-
-    /// Docs with members, sorted; their members as bitmaps.
-    std::vector<std::uint32_t> container_docs;
-    std::vector<std::uint32_t> children_ends;
-    std::vector<std::uint8_t> children_postings;
-    /// The docs with no parent in the index, one posting list.
-    std::vector<std::uint8_t> top_level;
-
-    /// The docs whose name runs past the token bound (name_bound), one
-    /// posting list: their tail carries no token, so every name lookup scans
-    /// them.
-    std::vector<std::uint8_t> long_names;
-
-    /// Namespace docs, sorted; everything below each as bitmaps.
-    std::vector<std::uint32_t> subtree_docs;
-    std::vector<std::uint32_t> subtree_ends;
-    std::vector<std::uint8_t> subtree_postings;
-
-    /// One bitmap per SymbolKind value.
-    std::vector<std::uint32_t> kind_ends;
-    std::vector<std::uint8_t> kind_postings;
-
-    /// The files of the entries, one bitmap each.
-    std::vector<std::string> paths;
-    std::vector<std::uint32_t> file_ends;
-    std::vector<std::uint8_t> file_postings;
-
-    /// The docs of internal linkage, sorted, and the path each one's
-    /// entries live in.
-    std::vector<std::uint32_t> local_docs;
-    std::vector<std::uint32_t> local_paths;
-};
 
 using BlobView = kota::codec::fbs::table_view<SearchBlob>;
 

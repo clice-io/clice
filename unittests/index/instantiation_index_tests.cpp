@@ -4,10 +4,11 @@ module;
 
 module clice;
 
+import :index.indexer;
 import :index.instantiation_shard;
 import :index.tu_index;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 
 namespace clice::testing {
 namespace {

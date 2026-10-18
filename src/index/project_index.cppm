@@ -5,12 +5,12 @@ module;
 module clice:index.project_index;
 
 import :index.database;
+import :index.format;
 import :index.instantiation_shard;
-import :index.manifest;
 import :index.search_index;
-import :index.serialization;
 import :index.shard;
 import :index.tu_index;
+import :index.tu_manifest;
 import :vfs.file_table;
 
 namespace clice::index {

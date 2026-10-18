@@ -6,13 +6,13 @@ module clice:feature.feature;
 
 import :compile.compilation;
 import :compile.diagnostic;
-import :index.manifest;
 import :index.query;
 import :index.shard;
-import :index.types;
+import :index.symbol;
+import :index.tu_manifest;
 import :semantic.display;
-import :semantic.token_class;
 import :semantic.symbol;
+import :semantic.token_class;
 import :support.anomaly;
 import :support.markup;
 import :syntax.documentation;

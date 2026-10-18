@@ -6,7 +6,6 @@ module;
 
 module clice;
 
-import :index.serialization;
 import :project.hosting;
 import :project.project;
 import :support.logging;

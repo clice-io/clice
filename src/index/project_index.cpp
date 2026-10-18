@@ -7,9 +7,9 @@ module;
 module clice;
 
 import :index.columns;
+import :index.format;
 import :index.instantiation_shard;
 import :index.project_index;
-import :index.serialization;
 import :semantic.token_class;
 import :support.logging;
 
@@ -24,94 +24,6 @@ namespace {
 /// (file, content-hash) pairs), and a lineage that ever drifts there is
 /// better compacted by the rebuild the rejection triggers.
 constexpr inline std::uint32_t max_persisted_versions = 1u << 24;
-
-/// The global layer's persisted form, read in place: the FileVersion table
-/// as parallel columns, the symbol table as parallel columns in hash order
-/// with its names, arguments and reference bitmaps in arenas, and the path
-/// table those columns index.
-struct GlobalBlob {
-    std::uint32_t format_version = 0;
-
-    /// See ProjectIndex::global_generation.
-    std::uint64_t generation = 0;
-
-    std::uint32_t next_fv_id = 0;
-
-    std::vector<std::uint32_t> fv_ids;
-    std::vector<std::string> fv_paths;
-    std::vector<std::uint64_t> fv_hashes;
-
-    /// Path id -> path for every id the symbol columns reference. Ids
-    /// are dense and stable across writes: a path keeps its id for as
-    /// long as the blob lineage lives, so a base entry's bitmap image is
-    /// copied into the next blob verbatim.
-    std::vector<std::string> paths;
-
-    /// The external symbol table, sorted by hash. A symbol's reference
-    /// files are a file set (append_file_set) in the arena, one end offset
-    /// per symbol.
-    std::vector<std::uint64_t> sym_hashes;
-    std::string sym_names;
-    std::vector<std::uint32_t> sym_name_ends;
-    /// The arguments of the few symbols having them: those symbols,
-    /// ascending, and their text back to back.
-    std::vector<std::uint32_t> sym_args_docs;
-    std::string sym_args;
-    std::vector<std::uint32_t> sym_args_ends;
-    std::string sym_signatures;
-    std::vector<std::uint32_t> sym_signature_ends;
-    /// The parent's position in the table plus one; 0 for none, or for one
-    /// outside the table, which the sparse (symbol, parent hash) table names.
-    IdColumn sym_parents;
-    std::vector<std::uint32_t> sym_far_parents;
-    std::vector<std::uint64_t> sym_far_parent_hashes;
-    std::vector<std::uint8_t> sym_kinds;
-    std::vector<std::uint16_t> sym_flags;
-    std::vector<std::uint8_t> sym_token_kinds;
-    std::vector<std::uint32_t> sym_token_modifiers;
-    /// Path ids plus one, 0 for a symbol without a declaring relation.
-    IdColumn sym_files;
-    /// The files referencing each symbol, counted: at most the path count,
-    /// so they take the width of path ids.
-    IdColumn sym_reference_counts;
-    std::vector<std::uint32_t> sym_bitmap_ends;
-    std::vector<std::uint8_t> sym_bitmaps;
-    /// The files whose instantiation shards name a symbol, as file sets for
-    /// the few symbols some instantiation names, ascending.
-    std::vector<std::uint32_t> sym_instantiation_docs;
-    std::vector<std::uint32_t> sym_instantiation_ends;
-    std::vector<std::uint8_t> sym_instantiations;
-
-    /// tu_fv -> generation of every manifest current at this save.
-    /// The loader adopts a manifest blob only on an exact generation match, so
-    /// a manifest whose write failed while the global was persisted (or one that
-    /// outran a lost global write) reads as lost and its TU reindexes,
-    /// instead of an older on-disk manifest serving as current.
-    std::vector<std::uint32_t> manifest_fvs;
-    std::vector<std::uint64_t> manifest_gens;
-
-    /// The generation of the search blob this table was saved with, and
-    /// the entries and the files whose names of internal linkage (path
-    /// ids, ascending) changed since that blob was built.
-    std::uint64_t search_generation = 0;
-    std::vector<std::uint64_t> search_pending;
-    std::vector<std::uint32_t> search_pending_files;
-
-    /// The reverse include graph, for readers holding no manifests: every
-    /// file some TU contributed a variant to (path ids, ascending), and those
-    /// TUs' path ids as file sets back to back.
-    std::vector<std::uint32_t> contributed_files;
-    std::vector<std::uint32_t> contributor_ends;
-    std::vector<std::uint8_t> contributors;
-
-    /// The symbols below external scope some TU's local fanout lists
-    /// (TUManifest::local_fanout), ascending; the end of each symbol's run
-    /// of file sets; and the sets, file sets back to back.
-    std::vector<std::uint64_t> fanout_symbols;
-    std::vector<std::uint32_t> fanout_set_ends;
-    std::vector<std::uint32_t> fanout_file_ends;
-    std::vector<std::uint8_t> fanout_files;
-};
 
 using BlobView = kota::codec::fbs::table_view<GlobalBlob>;
 

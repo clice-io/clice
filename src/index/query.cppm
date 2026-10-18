@@ -5,12 +5,12 @@ module;
 module clice:index.query;
 
 import :index.instantiation_shard;
-import :index.manifest;
 import :index.project_index;
 import :index.site;
+import :index.symbol;
 import :index.symbol_query;
 import :index.tu_index;
-import :index.types;
+import :index.tu_manifest;
 import :semantic.symbol;
 import :syntax.position;
 import :vfs.file_table;

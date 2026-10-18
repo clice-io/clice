@@ -7,8 +7,8 @@ module;
 module clice;
 
 import :index.columns;
+import :index.format;
 import :index.instantiation_shard;
-import :index.serialization;
 import :support.logging;
 
 namespace clice::index {

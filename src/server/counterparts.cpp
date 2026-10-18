@@ -8,7 +8,7 @@ import :command.command;
 import :index.project_index;
 import :index.query;
 import :index.shard;
-import :index.types;
+import :index.symbol;
 import :project.project;
 import :semantic.symbol;
 import :server.counterparts;

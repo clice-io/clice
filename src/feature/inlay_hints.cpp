@@ -6,8 +6,9 @@ module clice;
 
 import :compile.compilation;
 import :feature.feature;
+import :index.indexer;
+import :index.symbol;
 import :index.tu_index;
-import :index.types;
 import :semantic.decls;
 import :semantic.designators;
 import :semantic.display;

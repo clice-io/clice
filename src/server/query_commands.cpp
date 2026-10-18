@@ -6,7 +6,6 @@ module clice;
 
 import :command.toolchain;
 import :feature.feature;
-import :index.serialization;
 import :project.build;
 import :server.query_commands;
 import :support.markup;

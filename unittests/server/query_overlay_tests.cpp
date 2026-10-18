@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :index.indexer;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
@@ -18,9 +19,9 @@ import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
 import :unittests.utils.temp_dir;
+import :unittests.utils.tester;
 import :unittests.utils.tu_index_mirror;
 import :unittests.utils;
-import :unittests.utils.tester;
 import :vfs.file_system;
 import :vfs.path;
 import :worker.pool;

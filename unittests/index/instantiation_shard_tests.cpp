@@ -4,8 +4,8 @@ module;
 
 module clice;
 
+import :index.format;
 import :index.instantiation_shard;
-import :index.serialization;
 import :unittests.utils;
 
 namespace clice::testing {

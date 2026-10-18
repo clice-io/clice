@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :feature.feature;
+import :index.indexer;
 import :index.query;
 import :index.tu_index;
 import :project.command_resolver;
@@ -18,8 +19,8 @@ import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
 import :unittests.utils.merge_unit;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 import :worker.pool;
 
 namespace clice::testing {

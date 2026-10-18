@@ -70,6 +70,11 @@ defending against ghosts.
 - Prefer designated initializers (`{.field = value}`) for aggregate
   construction.
 - West const: `const T&`, never `T const&`.
+- A class lays out its public members first, then its private member
+  functions under one `private:`, then its data members under a second
+  `private:` — functions and fields never interleave. Data members stand
+  one blank line apart, each one's comment on the lines above it, never
+  trailing it.
 
 ## Errors, Exceptions & Defense
 

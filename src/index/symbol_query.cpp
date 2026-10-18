@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :index.serialization;
+import :index.format;
 import :index.symbol_query;
 import :vfs.path;
 

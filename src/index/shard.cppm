@@ -4,17 +4,11 @@ module;
 
 module clice:index.shard;
 
-import :index.types;
+import :index.symbol;
 import :support.bitmap;
 import :syntax.position;
 
 namespace clice::index {
-
-/// Identity of one variant of a file's index: xxh3_64 over the encoded
-/// single-variant blob bytes the worker produced. Encoding is canonical
-/// and deterministic, so two compilation contexts whose preprocessing of
-/// the file agrees produce byte-identical blobs and share one identity.
-using VariantHash = std::uint64_t;
 
 struct RangeColumnsView;
 struct LiveFilter;

@@ -5,38 +5,9 @@ module;
 module clice:index.include_tree;
 
 import :compile.compilation;
+import :index.symbol;
 
 namespace clice::index {
-
-/// The parent of a node whose directive sits in the TU's own file, and
-/// node_of's answer for a file entered without a directive: the TU root is
-/// not itself a node.
-constexpr inline std::uint32_t no_node = ~0u;
-
-/// One include directive of an include tree: which file it names, in
-/// which file it sits (the parent node's file at `line`), and whether the
-/// preprocessor entered the file there. Multiple entries of one file
-/// (headers without guards) are distinct nodes; so is a directive whose
-/// target was skipped (guarded or `#pragma once`, entered earlier) — an
-/// edge of the document with no file entry behind it. The same nodes
-/// travel in the TU index and persist in the manifest; only `file`
-/// changes meaning at merge: a TU-local path id in the TU index, a
-/// FileVersion id (VersionID::raw) in a manifest.
-struct IncludeNode {
-    std::uint32_t file = 0;
-
-    /// Index of the including node.
-    std::uint32_t parent = no_node;
-
-    /// 1-based line of the include directive in the parent.
-    std::uint32_t line = 0;
-
-    /// The directive did not enter the file: nothing hangs off this node
-    /// and node_of never answers it.
-    bool skipped = false;
-
-    friend bool operator==(const IncludeNode&, const IncludeNode&) = default;
-};
 
 /// The include tree of one compilation as the TU index carries it. Path
 /// ids are TU-local; the focus file is always the last path, a convention
