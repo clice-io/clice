@@ -124,6 +124,15 @@ public:
     /// = unreadable right now.
     std::optional<DiskObservation> observe_for(Fid fid, const Status& status);
 
+    /// The hash of the bytes a build that could not hash them consumed
+    /// from the file, for a status taken after the build: an mtime no newer
+    /// than `baseline_before_ns` (stat_baseline_before_ns of the build's
+    /// start) proves the disk still holds those bytes, so their hash is the
+    /// last reliable read's — or one read's, unless the file moved between
+    /// the stat and the read, which voids the proof. 0 when nothing names
+    /// them.
+    std::uint64_t unchanged_hash(Fid fid, const Status& status, std::int64_t baseline_before_ns);
+
     /// The hash the last reliable read through this fid guarantees at
     /// exactly this stamp, recorded as a look; nullopt when someone must
     /// read. Equality, never a watermark: the hash is "the hash of the

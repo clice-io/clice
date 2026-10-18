@@ -279,22 +279,12 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         // PCM) it is the only hash naming the bytes the index describes.
         auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.content_hash(i);
 
+        // The worker had no buffer to hash a file behind a PCM, and no
+        // shard recorded one.
         if(hash != 0) {
             files.disk.consumed(file_ids_map[i], hash);
-        } else {
-            auto status = vfs::status(path);
-            if(status && status->stamp.mtime_ns <= baseline_before_ns) {
-                // The worker had no buffer to hash (e.g. behind a PCM) and
-                // no shard recorded one; the unchanged mtime proves the disk
-                // still holds the consumed bytes, so take their hash from
-                // the last reliable read — or one read, unless the file
-                // moved between the stat and the read, which voids the
-                // proof.
-                auto obs = files.disk.observe_for(file_ids_map[i], *status);
-                if(obs && obs->stamp == status->stamp) {
-                    hash = obs->hash;
-                }
-            }
+        } else if(auto status = vfs::status(path)) {
+            hash = files.disk.unchanged_hash(file_ids_map[i], *status, baseline_before_ns);
         }
 
         version_of[i] = files.intern_version(file_ids_map[i], hash);
@@ -502,9 +492,8 @@ bool ProjectIndex::file_version_stale(VersionID version_id) {
 
     // Missing and unreadable both read as stale — conservative, the
     // reindex re-observes.
-    bool stale = files.check_version(version_id) != vfs::DiskState::CheckResult::Fresh;
-    version_stale[version_id] = stale;
-    return stale;
+    cached->second = files.check_version(version_id) != vfs::DiskState::CheckResult::Fresh;
+    return cached->second;
 }
 
 bool ProjectIndex::needs_reindex(Fid file) {

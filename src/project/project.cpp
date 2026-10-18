@@ -253,22 +253,13 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
         }
 
         if(hash == 0) {
-            if(status->stamp.mtime_ns > baseline_before_ns) {
-                // The worker could not hash the consumed bytes and the file
-                // may have changed during the build — no version can name
-                // them. The dep stays version-less and reads as changed
-                // until the rebuild's capture retries.
+            // The worker could not hash the consumed bytes: when nothing
+            // else names them, the dep stays version-less and reads as
+            // changed until the rebuild's capture retries.
+            hash = files.disk.unchanged_hash(dep.path_id, *status, baseline_before_ns);
+            if(hash == 0) {
                 continue;
             }
-            // The unchanged mtime proves the disk still holds the consumed
-            // bytes, so their hash can be taken from the last reliable read
-            // — or one read, unless the file moved between the stat and the
-            // read, which voids the proof.
-            auto obs = files.disk.observe_for(dep.path_id, *status);
-            if(!obs || obs->stamp != status->stamp) {
-                continue;
-            }
-            hash = obs->hash;
         } else {
             files.disk.consumed(dep.path_id, hash);
         }
