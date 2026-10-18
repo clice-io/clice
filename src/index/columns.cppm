@@ -57,10 +57,6 @@ std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t univer
 /// bytes it would not have written.
 std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t universe);
 
-inline llvm::StringRef to_ref(std::string_view text) {
-    return {text.data(), text.size()};
-}
-
 /// A scalar array view as an ArrayRef borrowing the mapped blob.
 template <typename T>
 llvm::ArrayRef<T> to_array_ref(kota::codec::fbs::array_view<T> view) {

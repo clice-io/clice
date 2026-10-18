@@ -534,7 +534,7 @@ struct SearchIndex::View {
         if(!position) {
             return {};
         }
-        return to_ref(paths[local_paths[*position]]);
+        return paths[local_paths[*position]];
     }
 
     /// A posting list decoded; a malformed one reads as empty and marks
@@ -698,9 +698,9 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     }
     view.generation = root[&SearchIndexBlob::generation];
     view.hashes = to_array_ref(root[&SearchIndexBlob::hashes]);
-    view.names = to_ref(root[&SearchIndexBlob::names]);
+    view.names = root[&SearchIndexBlob::names];
     view.name_ends = to_array_ref(root[&SearchIndexBlob::name_ends]);
-    view.args = to_ref(root[&SearchIndexBlob::args]);
+    view.args = root[&SearchIndexBlob::args];
     view.args_ends = to_array_ref(root[&SearchIndexBlob::args_ends]);
     view.parents = to_array_ref(root[&SearchIndexBlob::parents]);
     view.qualities = to_array_ref(root[&SearchIndexBlob::qualities]);
@@ -867,7 +867,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         Bitmap allowed;
         for(std::uint32_t i = 0; i < index.paths.size(); i += 1) {
             llvm::SmallString<256> buffer;
-            auto file = path::local(to_ref(index.paths[i]), workspace, buffer);
+            auto file = path::local(index.paths[i], workspace, buffer);
             if(llvm::any_of(query.paths, [&](const std::string& wanted) {
                    return path_matches(wanted, file);
                })) {

@@ -103,7 +103,7 @@ bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob, FileTabl
     // are inert.
     bound->remap.reserve(bound->paths.size());
     for(std::uint32_t i = 0; i < bound->paths.size(); i += 1) {
-        bound->remap.push_back(files.intern(local(to_ref(bound->paths[i]))));
+        bound->remap.push_back(files.intern(local(bound->paths[i])));
     }
     bound->buffer = std::move(blob);
     base = std::move(bound);
@@ -158,7 +158,7 @@ std::expected<void, llvm::StringRef>
     }
     llvm::DenseSet<std::pair<llvm::StringRef, std::uint64_t>> blob_versions;
     for(std::size_t i = 0; i < count; i += 1) {
-        if(!blob_versions.insert({to_ref(blob.version_paths[i]), blob.version_hashes[i]}).second) {
+        if(!blob_versions.insert({blob.version_paths[i], blob.version_hashes[i]}).second) {
             return std::unexpected("duplicate file version");
         }
     }
@@ -174,7 +174,7 @@ std::expected<void, llvm::StringRef>
     // stay mapped to it.
     next_persisted_id = blob.next_version_id;
     for(std::size_t i = 0; i < count; i += 1) {
-        auto path_id = files.intern(local(to_ref(blob.version_paths[i])));
+        auto path_id = files.intern(local(blob.version_paths[i]));
         auto id = files.intern_version(path_id, blob.version_hashes[i]);
         runtime_ids.try_emplace(blob.version_ids[i], id);
         persisted_ids.try_emplace(id, blob.version_ids[i]);
@@ -566,7 +566,7 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os, const FileTable& files
     if(base) {
         blob.paths.reserve(base->paths.size());
         for(std::uint32_t i = 0; i < base->paths.size(); i += 1) {
-            blob.paths.emplace_back(to_ref(base->paths[i]));
+            blob.paths.emplace_back(base->paths[i]);
             id_of.try_emplace(base->remap[i], i);
         }
     }

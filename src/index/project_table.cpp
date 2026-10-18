@@ -63,12 +63,12 @@ std::expected<void, llvm::StringRef>
     version_hashes = to_array_ref(root[&ProjectTableBlob::version_hashes]);
     paths = root[&ProjectTableBlob::paths];
     hashes = to_array_ref(root[&ProjectTableBlob::symbol_hashes]);
-    names = to_ref(root[&ProjectTableBlob::symbol_names]);
+    names = root[&ProjectTableBlob::symbol_names];
     name_ends = to_array_ref(root[&ProjectTableBlob::symbol_name_ends]);
     args_entries = to_array_ref(root[&ProjectTableBlob::symbol_args_entries]);
-    args = to_ref(root[&ProjectTableBlob::symbol_args]);
+    args = root[&ProjectTableBlob::symbol_args];
     args_ends = to_array_ref(root[&ProjectTableBlob::symbol_args_ends]);
-    signatures = to_ref(root[&ProjectTableBlob::symbol_signatures]);
+    signatures = root[&ProjectTableBlob::symbol_signatures];
     signature_ends = to_array_ref(root[&ProjectTableBlob::symbol_signature_ends]);
     parents = ids_of(root[&ProjectTableBlob::symbol_parents], hashes.size() + 1);
     far_parents = to_array_ref(root[&ProjectTableBlob::symbol_far_parents]);

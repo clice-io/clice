@@ -259,9 +259,9 @@ struct LocalTable {
     static LocalTable of(BlobView root) {
         auto symbol_hashes = to_array_ref(root[&ShardBlob::symbol_hashes]);
         auto symbols = ids_of(root[&ShardBlob::local_symbols], symbol_hashes.size());
-        auto names = to_ref(root[&ShardBlob::local_names]);
-        auto args = to_ref(root[&ShardBlob::local_args]);
-        auto signatures = to_ref(root[&ShardBlob::local_signatures]);
+        llvm::StringRef names = root[&ShardBlob::local_names];
+        llvm::StringRef args = root[&ShardBlob::local_args];
+        llvm::StringRef signatures = root[&ShardBlob::local_signatures];
         return {
             .symbols = symbols,
             .names = names,
@@ -345,7 +345,7 @@ CheckResult line_table_ok(BlobView root) {
         return std::unexpected("CRLF line table is not canonical");
     }
     auto utf8_lines = to_array_ref(root[&ShardBlob::utf8_lines]);
-    auto utf8_text = to_ref(root[&ShardBlob::utf8_text]);
+    llvm::StringRef utf8_text = root[&ShardBlob::utf8_text];
     auto utf8_ends = to_array_ref(root[&ShardBlob::utf8_text_ends]);
     if(utf8_ends.size() != utf8_lines.size() || !covering_ends(utf8_ends, utf8_text.size())) {
         return std::unexpected("non-ASCII line columns do not line up");
@@ -987,7 +987,7 @@ PositionMap Shard::positions() const {
             line_starts(),
             crlf_lines(),
             to_array_ref(root[&ShardBlob::utf8_lines]),
-            to_ref(root[&ShardBlob::utf8_text]),
+            root[&ShardBlob::utf8_text],
             to_array_ref(root[&ShardBlob::utf8_text_ends])};
 }
 
@@ -1245,7 +1245,7 @@ ContentInfo content_info_of(BlobView root) {
         .long_line_lengths = copy(root[&ShardBlob::long_line_lengths]),
         .crlf_lines = copy(root[&ShardBlob::crlf_lines]),
         .utf8_lines = copy(root[&ShardBlob::utf8_lines]),
-        .utf8_text = to_ref(root[&ShardBlob::utf8_text]).str(),
+        .utf8_text = std::string(root[&ShardBlob::utf8_text]),
         .utf8_text_ends = copy(root[&ShardBlob::utf8_text_ends]),
     };
 }

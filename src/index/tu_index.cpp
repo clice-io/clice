@@ -48,11 +48,11 @@ struct SymbolColumns {
     static SymbolColumns of(TUIndexView root) {
         return {
             .hashes = to_array_ref(root[&TUIndexBlob::symbol_hashes]),
-            .names = to_ref(root[&TUIndexBlob::symbol_names]),
+            .names = root[&TUIndexBlob::symbol_names],
             .name_ends = to_array_ref(root[&TUIndexBlob::symbol_name_ends]),
-            .args = to_ref(root[&TUIndexBlob::symbol_args]),
+            .args = root[&TUIndexBlob::symbol_args],
             .args_ends = to_array_ref(root[&TUIndexBlob::symbol_args_ends]),
-            .signatures = to_ref(root[&TUIndexBlob::symbol_signatures]),
+            .signatures = root[&TUIndexBlob::symbol_signatures],
             .signature_ends = to_array_ref(root[&TUIndexBlob::symbol_signature_ends]),
             .parents = to_array_ref(root[&TUIndexBlob::symbol_parents]),
             .kinds = to_array_ref(root[&TUIndexBlob::symbol_kinds]),
@@ -220,7 +220,7 @@ std::uint32_t TUIndex::path_count() const {
 }
 
 llvm::StringRef TUIndex::path(std::uint32_t id) const {
-    return to_ref(view_of(data)[&TUIndexBlob::paths].at(id));
+    return view_of(data)[&TUIndexBlob::paths].at(id);
 }
 
 std::uint32_t TUIndex::absent_count() const {
@@ -228,7 +228,7 @@ std::uint32_t TUIndex::absent_count() const {
 }
 
 llvm::StringRef TUIndex::absent(std::uint32_t i) const {
-    return to_ref(view_of(data)[&TUIndexBlob::absent].at(i));
+    return view_of(data)[&TUIndexBlob::absent].at(i);
 }
 
 std::uint64_t TUIndex::content_hash(std::uint32_t id) const {
@@ -472,7 +472,7 @@ llvm::StringRef TUIndex::preamble_diagnostics() const {
     if(!loaded()) {
         return {};
     }
-    return to_ref(view_of(data)[&TUIndexBlob::diagnostics]);
+    return view_of(data)[&TUIndexBlob::diagnostics];
 }
 
 }  // namespace clice::index
