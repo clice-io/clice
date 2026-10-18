@@ -28,5 +28,8 @@ definition = ["void ⟦post⟧(int number, int value);", "void ⟦post⟧(Box bo
 [answers.braced_list]
 definition = ["void ⟦place⟧(Point point, int value);", "void ⟦place⟧(int number, int value);"]
 
+[answers.array_rvalue]
+definition = ["void ⟦fill⟧(const int (&values)[3], int value);"]
+
 [answers.pack_before]
 definition = ["void ⟦emit⟧(Color color, int code = 0);", "void ⟦emit⟧(int code, Color color);"]

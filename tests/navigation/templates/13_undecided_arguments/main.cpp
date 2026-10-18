@@ -47,11 +47,14 @@ void post(Box box, int value);
 void place(Point point, int value);
 void place(int number, int value);
 
+void fill(const int (&values)[3], int value);
+void fill(int number, int value);
+
 void emit(Color color, int code = 0);
 void emit(int code, Color color);
 
 template <typename T>
-void calls(T value, Derived& derived, Later& later, Any any) {
+void calls(T value, Derived& derived, Later& later, Any any, int (&numbers)[3]) {
     §(null_pointer)visit(nullptr, value);
     §(zero)visit(0, value);
     §(conversion_template)use(any, value);
@@ -62,6 +65,7 @@ void calls(T value, Derived& derived, Later& later, Any any) {
     §(incomplete_parameter)send(1, value);
     §(incomplete_argument)post(later, value);
     §(braced_list)place({1, 2}, value);
+    §(array_rvalue)fill(static_cast<int (&&)[3]>(numbers), value);
 }
 
 template <typename... Ts>

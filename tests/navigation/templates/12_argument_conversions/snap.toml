@@ -25,6 +25,12 @@ definition = ["void ⟦bump⟧(long counter, int value);"]
 [answers.lvalue_to_rvalue_reference]
 definition = ["void ⟦consume⟧(long number, int value);"]
 
+[answers.pointer_to_rvalue_reference]
+definition = ["void ⟦adopt⟧(const int* view, int value);"]
+
+[answers.pointer_to_other_reference]
+definition = ["void ⟦reseat⟧(const void* raw, int value);"]
+
 [answers.pointer_to_const_reference]
 definition = ["void ⟦show⟧(Base* base, int value);"]
 
@@ -49,6 +55,9 @@ definition = ["void ⟦paint⟧(int number, int value);"]
 [answers.scoped_enum_to_bool]
 definition = ["void ⟦toggle⟧(Color color, int value);"]
 
+[answers.null_to_bool]
+definition = ["void ⟦mark⟧(Base* base, int value);"]
+
 [answers.derived_pointer]
 definition = ["void ⟦visit⟧(Base* base, int value);"]
 
@@ -60,6 +69,9 @@ definition = ["void ⟦scan⟧(const char* text, int value);"]
 
 [answers.void_pointer]
 definition = ["void ⟦load⟧(void* raw, int value);"]
+
+[answers.literal_to_void_pointer]
+definition = ["void ⟦name⟧(const char* text, int value);"]
 
 [answers.null_to_integer]
 definition = ["void ⟦measure⟧(Base* base, int value);"]

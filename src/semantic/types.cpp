@@ -406,7 +406,7 @@ struct Value {
     /// A null pointer constant (`0`, `NULL`).
     bool null = false;
     /// A string literal, which clang still converts to a pointer to
-    /// non-const `char`, with a warning.
+    /// non-const `char` (`wchar_t` when wide), with a warning.
     bool literal = false;
 };
 
@@ -435,10 +435,20 @@ Kind kind_of(clang::QualType type) {
     return type->isPointerType() ? Kind::Pointer : Kind::Other;
 }
 
-/// A non-class type whose reference binds only its own type.
+/// An arithmetic, enumeration or `std::nullptr_t` type.
 bool plain(clang::QualType type) {
     auto kind = kind_of(type);
     return kind != Kind::Pointer && kind != Kind::Other;
+}
+
+/// What a pointer whose conversions are decided here points to.
+bool decided_pointee(clang::QualType type) {
+    return type->isVoidType() || type->isRecordType() || plain(type);
+}
+
+/// A non-class type whose reference bindings are decided here.
+bool decided_referee(clang::QualType type) {
+    return plain(type) || (type->isPointerType() && decided_pointee(type->getPointeeType()));
 }
 
 /// The definition of the class `type` names, null while it has none.
@@ -481,8 +491,10 @@ bool never_converts(clang::ASTContext& context, const Value& from, clang::QualTy
     auto kind = kind_of(type);
     switch(kind_of(to)) {
         case Kind::Arithmetic: {
+            /// `std::nullptr_t` converts to `bool` by direct-initialization
+            /// only.
             if(to->isBooleanType()) {
-                return kind == Kind::ScopedEnum;
+                return kind == Kind::ScopedEnum || kind == Kind::NullPointer;
             }
             return kind == Kind::ScopedEnum || kind == Kind::Pointer || kind == Kind::NullPointer;
         }
@@ -500,13 +512,12 @@ bool never_converts(clang::ASTContext& context, const Value& from, clang::QualTy
     }
     auto target = to->getPointeeType();
     auto pointee = type->getPointeeType();
-    auto decided = [](clang::QualType type) {
-        return type->isVoidType() || type->isRecordType() || plain(type);
-    };
-    if(!decided(target) || !decided(pointee)) {
+    if(!decided_pointee(target) || !decided_pointee(pointee)) {
         return false;
     }
-    if(!includes_qualifiers(target, pointee) && !from.literal) {
+    bool writable_literal = from.literal && target.getCVRQualifiers() == 0 &&
+                            (target->isCharType() || target->isWideCharType());
+    if(!includes_qualifiers(target, pointee) && !writable_literal) {
         return true;
     }
     if(target->isVoidType()) {
@@ -556,18 +567,20 @@ bool never_standard(clang::ASTContext& context, const Value& from, clang::QualTy
     if(!reference) {
         return never_converts(context, from, target);
     }
-    bool related =
-        plain(target) && plain(from.type) && context.hasSameUnqualifiedType(target, from.type);
+    bool decided = decided_referee(target) && decided_referee(from.type);
+    bool related = decided && context.hasSimilarType(target, from.type);
+    bool same = related && context.hasSameUnqualifiedType(target, from.type);
     if(binds_lvalue_only(to)) {
         if(!from.lvalue) {
             return true;
         }
-        return plain(target) && plain(from.type) &&
-               (!related || !includes_qualifiers(target, from.type));
+        return decided && (!related || (same && !includes_qualifiers(target, from.type)));
     }
-    if(related) {
-        return (from.lvalue && to->isRValueReferenceType()) ||
-               !includes_qualifiers(target, from.type);
+    if(related && from.lvalue && to->isRValueReferenceType()) {
+        return true;
+    }
+    if(same) {
+        return !includes_qualifiers(target, from.type);
     }
     return never_converts(context, from, target.getUnqualifiedType());
 }
