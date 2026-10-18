@@ -62,4 +62,13 @@ auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clan
 /// in it is one an abbreviated template invented for an `auto`.
 auto writable(clang::QualType type) -> bool;
 
+/// Whether `argument` can never copy-initialize a parameter of type
+/// `parameter`: no standard conversion, converting constructor or
+/// conversion function reaches it. False wherever that is not certain: a
+/// dependent type on either side, an incomplete class, a braced list, a
+/// constructor or conversion function template.
+auto never_initializes(clang::ASTContext& context,
+                       const clang::Expr& argument,
+                       clang::QualType parameter) -> bool;
+
 }  // namespace clice::types

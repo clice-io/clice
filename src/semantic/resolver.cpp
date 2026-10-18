@@ -8,6 +8,7 @@ module clice;
 
 import :semantic.decls;
 import :semantic.resolver;
+import :semantic.types;
 import :semantic.unifier;
 import :support.logging;
 
@@ -1627,6 +1628,45 @@ public:
         candidates.erase(removed.begin(), removed.end());
     }
 
+    /// Drop the overloads that one of the call's arguments can never
+    /// initialize a parameter of (never_initializes): both sides
+    /// non-dependent, matched by position up to an argument or a parameter
+    /// pack.
+    void drop_by_arguments(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
+                           const clang::CallExpr* expr,
+                           bool member_call) {
+        auto removed = std::ranges::remove_if(candidates, [&](const clang::NamedDecl* decl) {
+            auto FD = as_function(decl);
+            if(!FD || FD->isInvalidDecl()) {
+                return false;
+            }
+            unsigned offset = 0;
+            if(auto method = llvm::dyn_cast<clang::CXXMethodDecl>(FD);
+               method && method->isExplicitObjectMemberFunction()) {
+                if(!member_call) {
+                    return false;
+                }
+                offset = 1;
+            }
+            for(unsigned index = 0; index < expr->getNumArgs(); ++index) {
+                auto argument = expr->getArg(index);
+                if(llvm::isa<clang::PackExpansionExpr>(argument) ||
+                   index + offset >= FD->getNumParams()) {
+                    break;
+                }
+                auto param = FD->getParamDecl(index + offset);
+                if(param->isParameterPack()) {
+                    break;
+                }
+                if(never_initializes(context, *argument, param->getType())) {
+                    return true;
+                }
+            }
+            return false;
+        });
+        candidates.erase(removed.begin(), removed.end());
+    }
+
     /// Overloads that differ only in their object parameter — its cv- and
     /// ref-qualifiers, `front()` and `front() const`, `value() &` and
     /// `value() &&` — are told apart by the object, an lvalue unless
@@ -1701,11 +1741,12 @@ public:
     /// A call's candidate set: the callee clang resolved itself (a call
     /// that is only value-dependent, a member of the current
     /// instantiation), else the resolved overload set filtered down to
-    /// overloads whose parameter list can accept the call's argument count,
-    /// and for a member call those its object can bind best. Full overload
-    /// resolution needs conversion rules (Sema territory); arity and the
-    /// object's qualifiers are the safe, conversion-free subset of it. The
-    /// frames of the lookup that found the set stay on the stack.
+    /// overloads whose parameter list can accept the call's argument count
+    /// and whose parameters its arguments can initialize, and for a member
+    /// call those its object can bind best. Only what certainly fails is
+    /// dropped: ranking the rest is full overload resolution (Sema
+    /// territory). The frames of the lookup that found the set stay on the
+    /// stack.
     llvm::SmallVector<const clang::NamedDecl*, 4> call_candidates(const clang::CallExpr* expr) {
         if(auto* callee = llvm::dyn_cast_or_null<clang::NamedDecl>(expr->getCalleeDecl())) {
             return {callee};
@@ -1747,6 +1788,7 @@ public:
         if(!has_pack_argument) {
             drop_by_arity(candidates, expr->getNumArgs(), member_call);
         }
+        drop_by_arguments(candidates, expr, member_call);
         select_by_object(candidates, object, rvalue_object);
         return candidates;
     }
