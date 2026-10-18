@@ -60,6 +60,11 @@ bool open_database(Project& project, Config config, llvm::StringRef requested_co
     return true;
 }
 
+void log_unusable_format(const Project& project) {
+    LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
+              std::string_view(project.config.project.cache_dir));
+}
+
 }  // namespace
 
 bool open_index(Project& project, Config config, llvm::StringRef requested_configuration) {
@@ -67,8 +72,7 @@ bool open_index(Project& project, Config config, llvm::StringRef requested_confi
         return false;
     }
     if(!project.index.open(*project.database)) {
-        LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
-                  std::string_view(project.config.project.cache_dir));
+        log_unusable_format(project);
         return false;
     }
     return true;
@@ -85,8 +89,7 @@ std::optional<LoadedIndex> load_index(Project& project,
     // The writer's load, read-only: it never saves on a read-only database.
     auto loaded = load_saved(project, commands, {.read_only = true, .borrow = true});
     if(!loaded.decoded) {
-        LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
-                  std::string_view(project.config.project.cache_dir));
+        log_unusable_format(project);
         return std::nullopt;
     }
     // load() detaches the database when the project table exists but cannot

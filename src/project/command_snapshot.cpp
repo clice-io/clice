@@ -230,6 +230,11 @@ std::optional<std::string> CommandSnapshot::serialize(Project& project, llvm::Ar
 }
 
 void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
+    auto& project_index = project.index;
+    auto rebuild = [&](Fid unit) {
+        project_index.drop(unit, report);
+        report.add_reindex(unit);
+    };
     auto blob = project.database->read(index::BlobKind::CommandSnapshot, "cdb");
     if(!blob) {
         // Unknown baseline: nothing to diff against. Dirty the snapshot so
@@ -246,12 +251,9 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
                   std::string_view(project.config.project.cache_dir));
         dirty = true;
         llvm::SmallVector<Fid> units;
-        project.index.for_each_manifest(
+        project_index.for_each_manifest(
             [&](Fid tu, const index::TUManifest&) { units.push_back(tu); });
-        for(auto unit: units) {
-            project.index.drop(unit, report);
-            report.add_reindex(unit);
-        }
+        llvm::for_each(units, rebuild);
         return;
     }
     persisted_bytes = blob.buffer->getBuffer().str();
@@ -260,7 +262,6 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
     for(auto& entry: persisted.entries) {
         before[entry.file] = &entry;
     }
-    auto& project_index = project.index;
     auto file_of = [&](llvm::StringRef name) {
         return project.file_table.intern(project_index.local(name));
     };
@@ -288,8 +289,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         }
         LOG_INFO("Compile command changed since the last session; reindexing {}",
                  project.file_table.resolve(server_id));
-        project_index.drop(server_id, report);
-        report.add_reindex(server_id);
+        rebuild(server_id);
     }
 
     // A standalone-indexed header borrowed a host source's command and
@@ -320,8 +320,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
             if(!entry.selected.empty()) {
                 LOG_INFO("Compile command changed since the last session; reindexing {}",
                          project.file_table.resolve(server_id));
-                project_index.drop(server_id, report);
-                report.add_reindex(server_id);
+                rebuild(server_id);
             }
             continue;
         }
@@ -351,8 +350,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
             }
             LOG_INFO("Compile command or rules changed since the last session; reindexing {}",
                      project.file_table.resolve(server_id));
-            project_index.drop(server_id, report);
-            report.add_reindex(server_id);
+            rebuild(server_id);
             changed_ids.push_back(server_id);
             continue;
         }
@@ -364,8 +362,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
            old.host_selected != host_selected) {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
                      project.file_table.resolve(server_id));
-            project_index.drop(server_id, report);
-            report.add_reindex(server_id);
+            rebuild(server_id);
             continue;
         }
         // The dependency scan preceding this load saw the offline edits, so
@@ -460,8 +457,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
     for(auto header_id: hosted) {
         LOG_INFO("Host compile command changed since the last session; reindexing {}",
                  project.file_table.resolve(header_id));
-        project_index.drop(header_id, report);
-        report.add_reindex(header_id);
+        rebuild(header_id);
     }
 }
 

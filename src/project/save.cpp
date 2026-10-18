@@ -30,7 +30,6 @@ void pulse(ContextChoices& contexts) {
 /// in it survives, so the index re-persists what it holds into the database
 /// opened in its place, as does the command snapshot.
 void recover_corrupt_database(Project& project, index::IndexReport& report) {
-    LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
     project.index.recover_corrupt_database(report);
     project.command_snapshot.forget_persisted();
     // The snapshot just persisted (if any) predates this recovery's debt
@@ -43,6 +42,7 @@ void recover_corrupt_database(Project& project, index::IndexReport& report) {
 }  // namespace
 
 void reopen_fresh_database(Project& project) {
+    LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
     project.database->condemn();
     project.database.reset();
     project.database = index::open_database(*project.store, project.build.active_configuration());

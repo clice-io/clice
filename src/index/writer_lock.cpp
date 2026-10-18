@@ -71,6 +71,18 @@ std::optional<std::uint32_t> recorded_pid(llvm::StringRef lock_path) {
     return pid;
 }
 
+/// The lock file, created when missing.
+std::expected<int, std::error_code> open_lock(llvm::StringRef lock_path) {
+    int fd = -1;
+    if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
+                                                     fd,
+                                                     llvm::sys::fs::CD_OpenAlways,
+                                                     llvm::sys::fs::OF_None)) {
+        return std::unexpected(ec);
+    }
+    return fd;
+}
+
 std::string holder_name(std::optional<std::uint32_t> pid) {
     return pid ? std::format("pid {}", *pid) : std::string();
 }
@@ -79,14 +91,14 @@ std::string holder_name(std::optional<std::uint32_t> pid) {
 
 std::optional<WriterLock> WriterLock::acquire(llvm::StringRef cache_dir) {
     auto lock_path = path::join(cache_dir, lock_name);
-    int lock_fd = -1;
-    if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
-                                                     lock_fd,
-                                                     llvm::sys::fs::CD_OpenAlways,
-                                                     llvm::sys::fs::OF_None)) {
-        LOG_WARN("Failed to open the index writer lock {}: {}", lock_path, ec.message());
+    auto opened = open_lock(lock_path);
+    if(!opened) {
+        LOG_WARN("Failed to open the index writer lock {}: {}",
+                 lock_path,
+                 opened.error().message());
         return std::nullopt;
     }
+    auto lock_fd = *opened;
     if(!try_lock(lock_fd)) {
         auto holder = holder_name(recorded_pid(lock_path));
         LOG_WARN(
@@ -150,14 +162,12 @@ std::string held_writer_message(const WriterProbe& probe, llvm::StringRef cache_
 WriterProbe probe_writer(llvm::StringRef cache_dir) {
     WriterProbe probe;
     auto lock_path = path::join(cache_dir, lock_name);
-    int lock_fd = -1;
-    if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
-                                                     lock_fd,
-                                                     llvm::sys::fs::CD_OpenAlways,
-                                                     llvm::sys::fs::OF_None)) {
+    auto opened = open_lock(lock_path);
+    if(!opened) {
         // Whoever opens the database next reports the real cause.
         return probe;
     }
+    auto lock_fd = *opened;
     if(try_lock(lock_fd)) {
         // Removed under the lock: a server acquiring it right after the
         // release publishes a record this removal must not take.

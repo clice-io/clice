@@ -95,7 +95,6 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
             // session's rebuild persists instead of being redone at the
             // next start.
             if(!read_only && db.corrupted()) {
-                LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
                 reopen_fresh_database(project);
             } else {
                 // Best effort before detaching: the metadata blobs may
@@ -132,7 +131,6 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
     // the fresh database's first save on, so even a crash before their
     // rebuild finishes cannot lose them a second time.
     if(!read_only && db.corrupted()) {
-        LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
         index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
             if(project.build.entries(tu).empty()) {
                 report.add_reindex(tu);

@@ -100,6 +100,16 @@ MDB_val to_val(llvm::StringRef bytes) {
 
 // MDB_PAGE_NOTFOUND is not a key miss: a page the B-tree references is
 // absent from the file, which LMDB documents as corruption.
+/// Readers are short-lived commands that may have been killed; a dead
+/// one's slot pins its snapshot and the map only grows until it is cleared.
+void clear_dead_readers(MDB_env* env) {
+    int dead = 0;
+    mdb_reader_check(env, &dead);
+    if(dead != 0) {
+        LOG_INFO("Cleared {} stale index database readers", dead);
+    }
+}
+
 bool is_corruption(int rc) {
     return rc == MDB_CORRUPTED || rc == MDB_INVALID || rc == MDB_VERSION_MISMATCH ||
            rc == MDB_PAGE_NOTFOUND;
@@ -246,14 +256,7 @@ public:
             }
             return failed;
         };
-        // Readers are short-lived commands that may have been killed
-        // since the last batch; a dead one's slot pins its snapshot and the
-        // map only grows until it is cleared.
-        int dead = 0;
-        mdb_reader_check(env, &dead);
-        if(dead != 0) {
-            LOG_INFO("Cleared {} stale index database readers", dead);
-        }
+        clear_dead_readers(env);
         MDB_txn* wtxn = nullptr;
         if(int rc = mdb_txn_begin(env, nullptr, 0, &wtxn)) {
             return fail_all(rc, "begin");
@@ -605,11 +608,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             return nullptr;
         }
         if(!read_only) {
-            int dead = 0;
-            mdb_reader_check(env, &dead);
-            if(dead != 0) {
-                LOG_INFO("Cleared {} stale index database readers", dead);
-            }
+            clear_dead_readers(env);
         }
         MDB_txn* txn = nullptr;
         int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn);

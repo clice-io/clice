@@ -34,7 +34,7 @@ kota::task<index::IndexReport>
 /// must not report a durable index from this.
 bool has_unsaved_state(const Project& project);
 
-/// Confirmed corruption heals through rebuildability: condemn the
+/// Confirmed corruption heals through rebuildability: condemn the corrupt
 /// database (deleted on close) and continue on a freshly opened empty
 /// one, so the session's rebuild persists instead of waiting for the
 /// next start. A failed reopen leaves persistence disabled for the
