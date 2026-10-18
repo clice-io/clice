@@ -545,8 +545,9 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
         return cursor;
     }
     // The preamble region's occurrences (macro definitions and references
-    // before the bound) are served only under the main-entry gate
-    // (preamble drift, shared-PCH identity).
+    // before the bound) are served only from a preamble index built from
+    // this very file that still describes its start (preamble drift,
+    // shared-PCH identity).
     with_preamble(*source, [&](const Shard& preamble) { hit(preamble); });
     return cursor;
 }

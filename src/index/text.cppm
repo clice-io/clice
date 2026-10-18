@@ -10,6 +10,7 @@ module clice:index.text;
 import :index.query;
 import :index.site;
 import :index.symbol;
+import :semantic.symbol;
 
 namespace clice::index {
 

@@ -26,7 +26,7 @@ namespace clice::index {
 /// invariants checked — plus the container offsets the image's header carries:
 /// the in-place reader follows them instead of walking the payload, so a
 /// corrupt one would send it outside the image.
-std::optional<Bitmap> read_bitmap(const void* data, std::size_t size);
+std::optional<Bitmap> read_bitmap(const void* data, std::uint32_t size);
 
 /// Encode a bitmap as its portable image — the only format with a bounded
 /// deserializer.

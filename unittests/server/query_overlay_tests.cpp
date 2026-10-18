@@ -469,7 +469,7 @@ ZEST_CASE(PreviewFromDisk) {
     ZEXPECT(index::context_lines(disk_query, references) == std::vector<std::string>{""});
 }
 
-ZEST_CASE(PreviewLineWithoutLineEnd) {
+ZEST_CASE(PreviewDropsLineEnd) {
     // A CRLF file's preview line ends before its "\r\n".
     llvm::StringRef text = "int value = 1;\r\nint other = value;\r\n";
     dir.touch("crlf.cpp", text);

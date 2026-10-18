@@ -198,8 +198,7 @@ struct RelationTable {
 
     Cursor cursor_at(std::uint32_t entry) const {
         if(entry == size()) {
-            return {static_cast<std::uint32_t>(targets.size()),
-                    static_cast<std::uint32_t>(extent_heads.size())};
+            return {targets.size(), static_cast<std::uint32_t>(extent_heads.size())};
         }
         auto block = entry / rank_block;
         Cursor cursor{target_ranks[block], extent_ranks[block]};
@@ -292,9 +291,8 @@ struct LocalTable {
     }
 
     SymbolView at(std::uint32_t k) const {
-        auto position = static_cast<std::uint32_t>(k);
-        auto args_at = args_of.find(position);
-        auto signature_at = signatures_of.find(position);
+        auto args_at = args_of.find(k);
+        auto signature_at = signatures_of.find(k);
         return {
             .name = name_ends.slice(names, k),
             .args = args_at ? args_ends.slice(args, *args_at) : llvm::StringRef(),
@@ -1283,13 +1281,13 @@ ContentInfo content_info_of(llvm::StringRef content) {
         }
         auto text = content.slice(starts[i], next - (last ? 0 : crlf ? 2 : 1));
         if(!kota::ipc::lsp::is_ascii({text.data(), text.size()})) {
-            info.utf8_lines.push_back(static_cast<std::uint32_t>(i));
+            info.utf8_lines.push_back(i);
             info.utf8_text += text;
             info.utf8_text_ends.push_back(static_cast<std::uint32_t>(info.utf8_text.size()));
         }
         if(length >= length_escape) {
             info.line_lengths.push_back(length_escape);
-            info.long_lines.push_back(static_cast<std::uint32_t>(i));
+            info.long_lines.push_back(i);
             info.long_line_lengths.push_back(length);
         } else {
             info.line_lengths.push_back(static_cast<std::uint8_t>(length));

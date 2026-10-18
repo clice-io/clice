@@ -16,7 +16,6 @@ module;
 
 module clice:index.search_index;
 
-import :index.format;
 import :index.symbol;
 import :index.symbol_query;
 import :support.bitmap;

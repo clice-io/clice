@@ -11,12 +11,9 @@ import :index.text;
 import :syntax.doc_comment;
 import :syntax.documentation;
 import :syntax.lexer;
-import :syntax.lexical_scan;
 import :syntax.source_text;
 
 namespace clice::index {
-
-namespace {}  // namespace
 
 std::optional<DeclaredText>
     declared_text(const IndexQuery& index, SymbolHash hash, Fid anchor, RelationKind kind) {
@@ -154,8 +151,6 @@ auto copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, ll
 }
 
 std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<Site> sites) {
-    // Each file's text, read once: the serving source's when it has it,
-    // else the file on disk while it still holds the indexed text.
     struct Text {
         std::unique_ptr<llvm::MemoryBuffer> kept;
         std::optional<SourceText> source;

@@ -49,7 +49,7 @@ bool offsets_canonical(const std::uint8_t* image) {
     const std::uint8_t* offsets = at;
     at += count * sizeof(std::uint32_t);
     for(std::uint32_t i = 0; i < count; i += 1) {
-        if(read32(offsets + i * sizeof(std::uint32_t)) != static_cast<std::size_t>(at - image)) {
+        if(read32(offsets + i * sizeof(std::uint32_t)) != static_cast<std::uint32_t>(at - image)) {
             return false;
         }
         std::uint32_t cardinality = read16(headers + i * 2 * sizeof(std::uint16_t) + 2) + 1u;
@@ -228,7 +228,7 @@ std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uin
     return result;
 }
 
-std::optional<Bitmap> read_bitmap(const void* data, std::size_t size) {
+std::optional<Bitmap> read_bitmap(const void* data, std::uint32_t size) {
     const auto* image = static_cast<const char*>(data);
     if(size == 0 || roaring::api::roaring_bitmap_portable_deserialize_size(image, size) != size ||
        !offsets_canonical(reinterpret_cast<const std::uint8_t*>(image))) {

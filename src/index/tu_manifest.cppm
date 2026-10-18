@@ -4,7 +4,6 @@ module;
 
 module clice:index.tu_manifest;
 
-import :index.format;
 import :index.symbol;
 import :vfs.file_table;
 

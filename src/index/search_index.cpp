@@ -37,10 +37,6 @@ bool reserved_name(llvm::StringRef name) {
     return name.size() > 1 && name[0] == '_' && (name[1] == '_' || llvm::isUpper(name[1]));
 }
 
-bool strictly_ascending_entries(llvm::ArrayRef<std::uint32_t> entries, std::uint32_t count) {
-    return strictly_ascending(entries) && (entries.empty() || entries.back() < count);
-}
-
 /// The hits held while a search runs: the worst on top of the heap, so
 /// a full set drops it for a better arrival.
 struct TopHits {
@@ -763,13 +759,11 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
        !strictly_ascending(view.token_keys)) {
         return std::unexpected("token columns do not line up");
     }
-    if(view.container_entries.size() != view.children_ends.size() ||
-       !strictly_ascending_entries(view.container_entries, count) ||
+    if(!sparse_ok(view.container_entries, view.children_ends.size(), count) ||
        !monotone_ends(view.children_ends, view.children_postings.size())) {
         return std::unexpected("container columns do not line up");
     }
-    if(view.subtree_entries.size() != view.subtree_ends.size() ||
-       !strictly_ascending_entries(view.subtree_entries, count) ||
+    if(!sparse_ok(view.subtree_entries, view.subtree_ends.size(), count) ||
        !monotone_ends(view.subtree_ends, view.subtree_postings.size())) {
         return std::unexpected("subtree columns do not line up");
     }
@@ -780,8 +774,7 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
        !monotone_ends(view.file_ends, view.file_postings.size())) {
         return std::unexpected("file columns do not line up");
     }
-    if(view.local_entries.size() != view.local_paths.size() ||
-       !strictly_ascending_entries(view.local_entries, count) ||
+    if(!sparse_ok(view.local_entries, view.local_paths.size(), count) ||
        llvm::any_of(view.local_paths,
                     [&](std::uint32_t path) { return path >= view.paths.size(); })) {
         return std::unexpected("local columns do not line up");

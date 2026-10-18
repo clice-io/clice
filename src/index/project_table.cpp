@@ -104,13 +104,9 @@ std::expected<void, llvm::StringRef>
     if(!std::ranges::is_sorted(version_ids)) {
         return std::unexpected("file version ids are not ascending");
     }
-    if(contributor_ends.size() != contributed_files.size() ||
+    if(!sparse_ok(contributed_files, contributor_ends.size(), paths.size()) ||
        !monotone_ends(contributor_ends, contributors.size())) {
         return std::unexpected("contributor columns do not line up");
-    }
-    if(!strictly_ascending(contributed_files) ||
-       (!contributed_files.empty() && contributed_files.back() >= paths.size())) {
-        return std::unexpected("contributed files are not ascending path ids");
     }
     if(shared_local_set_ends.size() != shared_local_symbols.size() ||
        !covering_ends(shared_local_set_ends, shared_local_file_ends.size()) ||
