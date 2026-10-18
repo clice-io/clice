@@ -5,3 +5,7 @@ active = 0
 [answers.call_operator.signature_help]
 signatures = ["pick() -> float", "pick() -> int"]
 active = 0
+
+[answers.template_call_operator.signature_help]
+signatures = ["choose() -> float", "choose() -> int"]
+active = 0

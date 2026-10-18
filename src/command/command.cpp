@@ -893,7 +893,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         // Some build systems emit non-C-family files (e.g. .rc, .asm, .S, .def)
         // into compile_commands.json: skipped, unless the command's -x
         // says what clang does not know the extension for (a `.ixx`
-        // module interface).
+        // module interface); one clang knows as another language stays
+        // skipped, as the server and inspect skip it.
         bool c_family = is_c_family_file(file_ref);
 
         Spelling file(file_ref, directory);
@@ -935,7 +936,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             normalized = normalize(working, path_id, llvm::StringRef(cmd_sv.data(), cmd_sv.size()));
         }
 
-        if(!normalized || (!c_family && !forces_c_family(*normalized))) {
+        if(!normalized || is_other_language_path(file_ref) ||
+           (!c_family && !forces_c_family(*normalized))) {
             continue;
         }
         new_entries.push_back({.file = path_id,

@@ -15,12 +15,17 @@
     },
     {
       "path": "compile_commands.json",
-      "text": "[\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/entry.S\",\n    \"arguments\": [\"clang\", \"-D__ASSEMBLY__\", \"-c\", \"${WS}/entry.S\", \"-o\", \"entry.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/boot.s\",\n    \"arguments\": [\"clang\", \"-c\", \"${WS}/boot.s\", \"-o\", \"boot.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/start.S\",\n    \"arguments\": [\"clang\", \"-x\", \"assembler-with-cpp\", \"-c\", \"${WS}/start.S\", \"-o\", \"start.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/main.c\",\n    \"arguments\": [\"clang\", \"-c\", \"${WS}/main.c\", \"-o\", \"main.o\"]\n  }\n]\n",
+      "text": "[\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/entry.S\",\n    \"arguments\": [\"clang\", \"-D__ASSEMBLY__\", \"-c\", \"${WS}/entry.S\", \"-o\", \"entry.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/boot.s\",\n    \"arguments\": [\"clang\", \"-c\", \"${WS}/boot.s\", \"-o\", \"boot.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/start.S\",\n    \"arguments\": [\"clang\", \"-x\", \"assembler-with-cpp\", \"-c\", \"${WS}/start.S\", \"-o\", \"start.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/forced.S\",\n    \"arguments\": [\"clang\", \"-x\", \"c\", \"-c\", \"${WS}/forced.S\", \"-o\", \"forced.o\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/main.c\",\n    \"arguments\": [\"clang\", \"-c\", \"${WS}/main.c\", \"-o\", \"main.o\"]\n  }\n]\n",
       "markers": []
     },
     {
       "path": "entry.S",
       "text": "#define SIZE 8\n# Copyright 2003 Pavel Machek <pavel@suse.cz\n.text\n# Hooray, we are in long mode\nentry:\n    .quad SIZE\n",
+      "markers": []
+    },
+    {
+      "path": "forced.S",
+      "text": "int forced;\n",
       "markers": []
     },
     {

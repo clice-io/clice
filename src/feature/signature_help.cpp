@@ -95,10 +95,17 @@ const clang::FunctionDecl* shown(const clang::FunctionDecl* function) {
 /// declared ones for a call with no argument written yet, after those, in
 /// the order Sema declares them: Sema leaves them where its lookup found
 /// them, which depends on when something first needed one, in a
-/// preamble's PCH or later in the file. Templates, which Sema ranks after
-/// both, stay last.
+/// preamble's PCH or later in the file. Constructor templates, which Sema
+/// ranks after both, stay last.
 void place_implicit(
     llvm::MutableArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates) {
+    auto implicit = [](const clang::CodeCompleteConsumer::OverloadCandidate& candidate) {
+        const auto* function = candidate.getFunction();
+        return function && function->isImplicit() && llvm::isa<clang::CXXConstructorDecl>(function);
+    };
+    if(llvm::none_of(candidates, implicit)) {
+        return;
+    }
     auto rank = [](const clang::CodeCompleteConsumer::OverloadCandidate& candidate) {
         const auto* function = candidate.getFunction();
         if(function &&

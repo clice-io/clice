@@ -16,6 +16,11 @@
   },
   {
     "directory": "${WS}",
+    "file": "${WS}/forced.S",
+    "arguments": ["clang", "-x", "c", "-c", "${WS}/forced.S", "-o", "forced.o"]
+  },
+  {
+    "directory": "${WS}",
     "file": "${WS}/main.c",
     "arguments": ["clang", "-c", "${WS}/main.c", "-o", "main.o"]
   }
