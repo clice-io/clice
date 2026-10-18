@@ -36,6 +36,15 @@ inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
     return buffer;
 }
 
+/// Append `value` as a varint: seven bits a byte, low bits first, the high
+/// bit set on every byte but the last.
+void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value);
+
+/// The varint at `at` in `bytes`, moving `at` past it; nullopt for bytes
+/// write_varint would not have written — cut short, a needless trailing
+/// zero byte, more than 64 bits.
+std::optional<std::uint64_t> read_varint(llvm::ArrayRef<std::uint8_t> bytes, std::size_t& at);
+
 /// An ascending set of ids below `universe` as an Elias–Fano list, about
 /// 2 + log2(universe / count) bits an id: the count as a varint; then
 /// the low log2(universe / count) bits of each id, back to back; then a
