@@ -149,16 +149,30 @@ struct IdColumn {
     std::vector<std::uint32_t> ids32;
 };
 
-/// One side of the blob's entry storage (occurrences or relations).
+/// Entries per block of a delta-encoded begin column.
+constexpr inline std::uint32_t delta_block = 16;
+
+/// One side of a blob's entry storage (occurrences, relations, records).
 ///
-/// Ranges use exactly one of two self-describing encodings:
-///   - packed: `(begin << 8) | length` per entry (content < 16MB)
-///   - wide: begin u32 + length u8 columns
-/// Lengths >= 255 escape to the sparse (entry, end) table in either encoding.
+/// Ranges use exactly one of three self-describing encodings:
+///   - delta, for a side sorted by begin (occurrences): the begin of every
+///     `delta_block`-th entry, then per entry the distance from the
+///     previous entry's begin (0 at a block's start) as a u8 — 255
+///     escaping to the sparse (entry, begin) table — and its length u8;
+///   - packed, for an unsorted side of content < 16MB: `(begin << 8) |
+///     length` per entry;
+///   - wide: begin u32 + length u8 columns.
+/// Lengths >= 255 escape to the sparse (entry, end) table in every
+/// encoding.
 ///
 /// Variant masks are absent for a single variant, then u8 / u16 / u32 /
 /// u64 / concatenated roaring bitmaps by variant count.
 struct RangeColumns {
+    std::vector<std::uint32_t> block_begins;
+    std::vector<std::uint8_t> deltas;
+    std::vector<std::uint32_t> far_entries;
+    std::vector<std::uint32_t> far_begins;
+
     std::vector<std::uint32_t> packed;
 
     std::vector<std::uint32_t> begins;
@@ -265,7 +279,7 @@ struct ShardBlob {
     std::vector<std::uint8_t> local_token_kinds;
     std::vector<std::uint32_t> local_token_modifiers;
 
-    /// Occurrences sorted by (begin, end, symbol hash).
+    /// Occurrences sorted by (begin, end, symbol hash), delta-encoded.
     RangeColumns occs;
     IdColumn occ_syms;
 

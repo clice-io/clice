@@ -150,7 +150,7 @@ CheckResult symbols_ok(BlobView root) {
 CheckResult records_ok(BlobView root) {
     auto table = RecordTable::of(root);
     auto content_size = root[&InstantiationBlob::content_size];
-    if(auto ok = range_encoding_ok(table.columns, content_size); !ok) {
+    if(auto ok = range_encoding_ok(table.columns, content_size, false); !ok) {
         return ok;
     }
     if(!table.columns.masks8.empty() || !table.columns.masks16.empty() ||
@@ -541,7 +541,7 @@ void emit(const Draft& draft, llvm::raw_ostream& os) {
                                           blob.sym_hashes.begin());
     };
 
-    RangeWriter ranges{.side = blob.records, .narrow = draft.content_size <= packed_range_limit};
+    RangeWriter ranges{.side = blob.records, .encoding = unsorted_encoding(draft.content_size)};
     auto targets = id_writer(blob.record_targets, blob.sym_hashes.size());
     auto froms = id_writer(blob.record_froms, blob.sym_hashes.size());
     std::vector<std::vector<std::uint32_t>> members(draft.resolutions.size());

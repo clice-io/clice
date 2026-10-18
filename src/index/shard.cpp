@@ -432,10 +432,11 @@ CheckResult symbol_table_ok(BlobView root) {
 
 CheckResult range_encodings_ok(BlobView root) {
     auto content_size = root[&ShardBlob::content_size];
-    for(auto columns: {columns_of(root[&ShardBlob::occs]), columns_of(root[&ShardBlob::rels])}) {
-        if(auto ok = range_encoding_ok(columns, content_size); !ok) {
-            return ok;
-        }
+    if(auto ok = range_encoding_ok(columns_of(root[&ShardBlob::occs]), content_size, true); !ok) {
+        return ok;
+    }
+    if(auto ok = range_encoding_ok(columns_of(root[&ShardBlob::rels]), content_size, false); !ok) {
+        return ok;
     }
     return {};
 }
@@ -456,24 +457,22 @@ CheckResult occurrences_ok(BlobView root) {
         return ok;
     }
     auto content_size = root[&ShardBlob::content_size];
-    std::uint32_t prev_begin = 0;
-    std::uint32_t prev_end = 0;
+    LocalSourceRange prev{0, 0};
     std::uint32_t prev_sym = 0;
-    for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
-        auto begin = table.columns.begin_of(entry);
-        auto end = table.columns.end_of(entry);
+    CheckResult result;
+    table.columns.for_each_range([&](std::uint32_t entry, LocalSourceRange range) {
         auto sym = table.syms[entry];
-        if(begin < prev_begin || end < prev_end || end < begin || end > content_size) {
-            return std::unexpected("occurrence rows are out of order or past the content");
+        if(range.begin < prev.begin || range.end < prev.end || range.end < range.begin ||
+           range.end > content_size) {
+            result = std::unexpected("occurrences are out of order or past the content");
+        } else if(entry != 0 && range == prev && sym <= prev_sym) {
+            result = std::unexpected("occurrences of one range are not strictly ascending");
         }
-        if(entry != 0 && begin == prev_begin && end == prev_end && sym <= prev_sym) {
-            return std::unexpected("occurrence rows of one range are not strictly ascending");
-        }
-        prev_begin = begin;
-        prev_end = end;
+        prev = range;
         prev_sym = sym;
-    }
-    return {};
+        return result.has_value();
+    });
+    return result;
 }
 
 CheckResult relations_ok(BlobView root) {
@@ -935,11 +934,9 @@ void Shard::for_each_occurrence(llvm::function_ref<bool(const Occurrence&)> call
     }
     auto table = OccurrenceTable::of(root_of(*buffer));
     auto is_live = live_filter(table.columns);
-    for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
-        if(is_live(entry) && !callback(table.at(entry))) {
-            return;
-        }
-    }
+    table.columns.for_each_range([&](std::uint32_t entry, LocalSourceRange range) {
+        return !is_live(entry) || callback({range, table.sym_hashes[table.syms[entry]]});
+    });
 }
 
 void
@@ -1214,13 +1211,16 @@ std::vector<OccurrenceEntry<MaskT>> decode_occurrences(const OccurrenceTable& ta
                                                        MaskOf mask_of) {
     std::vector<OccurrenceEntry<MaskT>> entries;
     entries.reserve(table.size());
-    for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
+    table.columns.for_each_range([&](std::uint32_t entry, LocalSourceRange range) {
         auto mask = mask_of(entry);
-        if(mask_empty(mask)) {
-            continue;
+        if(!mask_empty(mask)) {
+            entries.push_back({
+                {range, table.sym_hashes[table.syms[entry]]},
+                std::move(mask)
+            });
         }
-        entries.push_back({table.at(entry), std::move(mask)});
-    }
+        return true;
+    });
     return entries;
 }
 
@@ -1525,10 +1525,9 @@ void emit_blob(const MergedEntries<MaskT>& merged,
     write_ids(blob.local_parents, parents, blob.sym_hashes.size() + 1);
 
     auto encoding = encoding_of(blob.variants.empty() ? 1 : blob.variants.size());
-    bool narrow = content.size <= packed_range_limit;
 
     SideWriter occs{
-        .ranges = {.side = blob.occs, .narrow = narrow},
+        .ranges = {.side = blob.occs, .encoding = RangeEncoding::Delta},
         .encoding = encoding,
     };
     auto occ_syms = id_writer(blob.occ_syms, blob.sym_hashes.size());
@@ -1541,7 +1540,7 @@ void emit_blob(const MergedEntries<MaskT>& merged,
     // Relation groups follow symbol-table order; a symbol with occurrences
     // only gets an empty slice.
     SideWriter rels{
-        .ranges = {.side = blob.rels, .narrow = narrow},
+        .ranges = {.side = blob.rels, .encoding = unsorted_encoding(content.size)},
         .encoding = encoding,
     };
     std::vector<std::uint32_t> rel_offsets;

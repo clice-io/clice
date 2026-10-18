@@ -660,6 +660,36 @@ void fill_content(index::ShardBlob& blob, llvm::StringRef text) {
     }
 }
 
+/// Occurrence ranges in the delta encoding as the writer lays it out —
+/// (begin, stored length) pairs — with a begin before its predecessor's
+/// escaped the way no writer does.
+void set_occurrences(index::ShardBlob& blob,
+                     std::initializer_list<std::pair<std::uint32_t, std::uint8_t>> entries) {
+    auto& occs = blob.occs;
+    occs.block_begins.clear();
+    occs.deltas.clear();
+    occs.far_entries.clear();
+    occs.far_begins.clear();
+    occs.lengths.clear();
+    std::uint32_t previous = 0;
+    std::uint32_t entry = 0;
+    for(auto [begin, length]: entries) {
+        if(entry % index::delta_block == 0) {
+            occs.block_begins.push_back(begin);
+            occs.deltas.push_back(0);
+        } else if(begin < previous || begin - previous >= 255) {
+            occs.deltas.push_back(255);
+            occs.far_entries.push_back(entry);
+            occs.far_begins.push_back(begin);
+        } else {
+            occs.deltas.push_back(static_cast<std::uint8_t>(begin - previous));
+        }
+        occs.lengths.push_back(length);
+        previous = begin;
+        entry += 1;
+    }
+}
+
 ZEST_CASE(CorruptBlobRejected) {
     ZASSERT(!index::Shard::from_bytes("not a flatbuffer").loaded());
 
@@ -807,7 +837,11 @@ ZEST_CASE(MisorderedEntriesRejected) {
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.rel_offsets.ids8 = {0, 0};
-    blob.occs.packed = {index::pack_range(0, 3), index::pack_range(8, index::length_escape)};
+    set_occurrences(blob,
+                    {
+                        {0, 3                   },
+                        {8, index::length_escape}
+    });
     blob.occs.long_entries = {1};
     blob.occs.long_ends = {12};
     blob.occ_syms.ids8 = {0, 0};
@@ -820,19 +854,75 @@ ZEST_CASE(MisorderedEntriesRejected) {
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
-    // Begins out of order.
-    blob.occs.packed = {index::pack_range(8, index::length_escape), index::pack_range(0, 3)};
+    // Begins out of order, in a block and across blocks.
+    set_occurrences(blob,
+                    {
+                        {8, index::length_escape},
+                        {0, 3                   }
+    });
     blob.occs.long_entries = {0};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+    set_occurrences(blob,
+                    {
+                        {0,  1},
+                        {1,  1},
+                        {2,  1},
+                        {3,  1},
+                        {4,  1},
+                        {5,  1},
+                        {6,  1},
+                        {7,  1},
+                        {8,  1},
+                        {9,  1},
+                        {10, 1},
+                        {11, 1},
+                        {12, 1},
+                        {13, 1},
+                        {14, 1},
+                        {15, 1},
+                        {15, 1}
+    });
+    blob.occs.long_entries = {};
+    blob.occs.long_ends = {};
+    blob.occ_syms.ids8.assign(17, 0);
+    blob.sym_hashes = {111, 222};
+    blob.rel_offsets.ids8 = {0, 0, 0};
+    blob.occ_syms.ids8.back() = 1;
+    ZASSERT(make_shard(bytes_of()).loaded());
+    blob.occs.block_begins = {0, 14};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+    blob.sym_hashes = {111};
+    blob.rel_offsets.ids8 = {0, 0};
+    blob.occ_syms.ids8 = {0, 0};
+
+    // A begin escaped though it moved less than the escape distance: a
+    // second spelling of the same occurrences.
+    set_occurrences(blob,
+                    {
+                        {0, 3                   },
+                        {8, index::length_escape}
+    });
+    blob.occs.deltas = {0, 255};
+    blob.occs.far_entries = {1};
+    blob.occs.far_begins = {8};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // Begins sorted, but the escaped end regresses below the entry before.
-    blob.occs.packed = {index::pack_range(0, index::length_escape), index::pack_range(8, 3)};
+    set_occurrences(blob,
+                    {
+                        {0, index::length_escape},
+                        {8, 3                   }
+    });
     blob.occs.long_entries = {0};
     blob.occs.long_ends = {14};  // ends decode to {14, 11}
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // An escaped end before its own begin.
-    blob.occs.packed = {index::pack_range(0, 3), index::pack_range(8, index::length_escape)};
+    set_occurrences(blob,
+                    {
+                        {0, 3                   },
+                        {8, index::length_escape}
+    });
     blob.occs.long_entries = {1};
     blob.occs.long_ends = {5};  // entry 1: begin 8, end 5
     ZASSERT(!make_shard(bytes_of()).loaded());
@@ -849,7 +939,11 @@ ZEST_CASE(DuplicateOccKeyRejected) {
     blob.variants = {1};
     blob.sym_hashes = {111, 222};
     blob.rel_offsets.ids8 = {0, 0, 0};
-    blob.occs.packed = {index::pack_range(0, 3), index::pack_range(0, 3)};
+    set_occurrences(blob,
+                    {
+                        {0, 3},
+                        {0, 3}
+    });
     blob.occ_syms.ids8 = {0, 1};
 
     auto bytes_of = [&] {
@@ -911,7 +1005,10 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.rel_offsets.ids8 = {0, 0};
-    blob.occs.packed = {index::pack_range(0, index::length_escape)};
+    set_occurrences(blob,
+                    {
+                        {0, index::length_escape}
+    });
     blob.occs.long_entries = {0};
     blob.occs.long_ends = {260};
     blob.occ_syms.ids8 = {0};
@@ -930,13 +1027,19 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // A sparse entry pointing at an unescaped occurrence.
-    blob.occs.packed = {index::pack_range(0, 3)};
+    set_occurrences(blob,
+                    {
+                        {0, 3}
+    });
     blob.occs.long_entries = {0};
     blob.occs.long_ends = {260};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // The relation escape table is validated alike.
-    blob.occs.packed = {index::pack_range(0, index::length_escape)};
+    set_occurrences(blob,
+                    {
+                        {0, index::length_escape}
+    });
     blob.rel_offsets.ids8 = {0, 1};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
     blob.rels.packed = {index::pack_range(0, index::length_escape)};
@@ -956,7 +1059,10 @@ ZEST_CASE(RangesBeyondContentRejected) {
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.rel_offsets.ids8 = {0, 1};
-    blob.occs.packed = {index::pack_range(0, 3)};
+    set_occurrences(blob,
+                    {
+                        {0, 3}
+    });
     blob.occ_syms.ids8 = {0};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
     blob.rels.packed = {index::pack_range(0, 3)};
@@ -972,15 +1078,24 @@ ZEST_CASE(RangesBeyondContentRejected) {
     ZASSERT(make_shard(bytes_of()).loaded());
 
     // A plain length overruns the 16-byte content.
-    blob.occs.packed = {index::pack_range(0, 100)};
+    set_occurrences(blob,
+                    {
+                        {0, 100}
+    });
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // An escaped end does too.
-    blob.occs.packed = {index::pack_range(0, index::length_escape)};
+    set_occurrences(blob,
+                    {
+                        {0, index::length_escape}
+    });
     blob.occs.long_entries = {0};
     blob.occs.long_ends = {600};
     ZASSERT(!make_shard(bytes_of()).loaded());
-    blob.occs.packed = {index::pack_range(0, 3)};
+    set_occurrences(blob,
+                    {
+                        {0, 3}
+    });
     blob.occs.long_entries = {};
     blob.occs.long_ends = {};
 
@@ -1005,8 +1120,9 @@ ZEST_CASE(RangesBeyondContentRejected) {
 }
 
 ZEST_CASE(WrongRangeEncodingRejected) {
-    // The range encoding is a strict function of the content size — a second
-    // encoding of the same entries would fork the byte identity.
+    // The range encoding is a strict function of the side and the content
+    // size — a second encoding of the same entries would fork the byte
+    // identity.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     fill_content(blob, "aaaaaaaaaaaaaaaa");
@@ -1017,10 +1133,24 @@ ZEST_CASE(WrongRangeEncodingRejected) {
     blob.occs.lengths = {3};
     blob.occ_syms.ids8 = {0};
 
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::serialize_blob(blob, os);
-    ZASSERT(!make_shard(bytes).loaded());
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ZASSERT(!make_shard(bytes_of()).loaded());
+
+    blob.occs = {};
+    blob.occs.packed = {index::pack_range(0, 3)};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+
+    blob.occs = {};
+    set_occurrences(blob,
+                    {
+                        {0, 3}
+    });
+    ZASSERT(make_shard(bytes_of()).loaded());
 }
 
 ZEST_CASE(WrongSymWidthRejected) {
@@ -1032,7 +1162,10 @@ ZEST_CASE(WrongSymWidthRejected) {
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.rel_offsets.ids8 = {0, 0};
-    blob.occs.packed = {index::pack_range(0, 3)};
+    set_occurrences(blob,
+                    {
+                        {0, 3}
+    });
     blob.occ_syms.ids16 = {0};
 
     std::string bytes;
@@ -1097,7 +1230,10 @@ ZEST_CASE(StraySymbolIdRejected) {
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.rel_offsets.ids8 = {0, 1};
-    blob.occs.packed = {index::pack_range(0, 3)};
+    set_occurrences(blob,
+                    {
+                        {0, 3}
+    });
     blob.occ_syms.ids8 = {0};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base) | index::payload_bit};
     blob.rels.packed = {index::pack_range(4, 3)};
@@ -1193,7 +1329,10 @@ ZEST_CASE(OwnerlessMaskRejected) {
     blob.variants = {1, 2};
     blob.sym_hashes = {111};
     blob.rel_offsets.ids8 = {0, 0};
-    blob.occs.packed = {index::pack_range(0, 3)};
+    set_occurrences(blob,
+                    {
+                        {0, 3}
+    });
     blob.occ_syms.ids8 = {0};
     blob.occs.masks8 = {0b01};
 
@@ -1272,7 +1411,10 @@ ZEST_CASE(CorruptRoaringMaskRejected) {
     }
     blob.sym_hashes = {111};
     blob.rel_offsets.ids8 = {0, 0};
-    blob.occs.packed = {index::pack_range(0, 3)};
+    set_occurrences(blob,
+                    {
+                        {0, 3}
+    });
     blob.occ_syms.ids8 = {0};
 
     clice::Bitmap mask;
