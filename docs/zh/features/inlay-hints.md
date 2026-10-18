@@ -353,7 +353,7 @@ tests/inlay_hints/type_hints/22_library_aliases
 
 库留给自己使用的类型以其公开名称显示，没有公开名称则不显示
 
-位于命名空间 `std` 或以保留名称命名的命名空间中的保留名称，以及以保留名称命名的类的成员，都属于库自己：`__alloc_traits<allocator<int>>::value_type &` 显示为 `int &`。算法返回库自己的类时，提示改用算法实参或初始化器所属的类中指代它的成员别名，例如 `__normal_iterator<int *, vector<int>>` 显示为 `vector<int>::iterator`；没有任何公开名称指代的类不显示提示。
+位于命名空间 `std` 或以保留名称命名的命名空间中的保留名称，以及以保留名称命名的类的成员，都属于库自己：`__alloc_traits<allocator<int>>::value_type &` 显示为 `int &`。算法返回库自己的类时，提示改用该类的模板实参或初始化器中的类里指代它的成员别名，例如 `__normal_iterator<int *, vector<int>>` 显示为 `vector<int>::iterator`；没有任何公开名称指代的类不显示提示。
 
 ```case
 tests/inlay_hints/type_hints/23_library_internals

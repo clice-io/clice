@@ -319,9 +319,9 @@ tests/hover/deduced_types/06_generic_lambdas
 
 **库中的别名**
 
-变量的类型保留初始化器写出的别名，但不保留库留给自己使用的别名
+变量的类型保留初始化器写出的别名，但不保留类型特征的结果，也不保留库留给自己使用的别名
 
-`values.size()` 显示为 `std::vector<int>::size_type`，后面跟着它所代表的类型；`front()` 返回的 `__alloc_traits` 成员别名显示为 `int &`，类型特征的结果 `invoke_result_t<…>` 则显示为它计算出的类型。别名所代表的类若是库留给自己使用的，就在别名后写出这个类：`std::vector<int>::iterator` 即 `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`。
+`values.size()` 显示为 `std::vector<int>::size_type`，后面跟着它所代表的类型；`front()` 返回的 `__alloc_traits` 成员别名显示为 `int &`，类型特征的结果 `invoke_result_t<…>` 则显示为它计算出的类型。别名所代表的类若是库留给自己使用的，就在别名后写出这个类：`std::vector<int>::iterator` 即 `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`。这类类的结构化绑定从初始化器取得别名：`ids.insert(1)` 的 `position` 是 `std::set<int>::iterator`。
 
 ```case
 tests/hover/deduced_types/14_library_aliases
