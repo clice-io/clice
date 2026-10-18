@@ -58,6 +58,28 @@ t x and y;)";
     ZEXPECT(text.kind(tokens[4]) == clang::tok::semi);
 }
 
+ZEST_CASE(OwnedReadLater) {
+    // An owned text answers positions before it is read in a dialect.
+    SourceText text(std::string("int x;\nint y;\n"));
+    ZEXPECT(text.positions().position(7, PositionEncoding::UTF16)->line == 1U);
+    text.set_dialect(dialect_of());
+    ZEXPECT(text.lexical().tokens.size() == 6U);
+}
+
+ZEST_CASE(DialectChangeRescans) {
+    // `R"(` opens a raw string in C++, not in C11; `class` is a keyword in
+    // C++ only.
+    SourceText text(std::string(R"code(class R"(a)";)code"));
+    text.set_dialect(dialect_of());
+    ZASSERT(text.lexical().tokens.size() == 3U);
+    ZEXPECT(text.kind(text.lexical().tokens[0]) == clang::tok::kw_class);
+
+    text.set_dialect(dialect_of("main.c", true, "c11"));
+    const auto& tokens = text.lexical().tokens;
+    ZASSERT(tokens.size() == 4U);
+    ZEXPECT(text.kind(tokens[0]) == clang::tok::identifier);
+}
+
 };  // ZEST_SUITE(SourceText)
 
 }  // namespace

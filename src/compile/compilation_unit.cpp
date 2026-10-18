@@ -370,6 +370,10 @@ bool FocusFile::contains(clang::FileID fid) {
     return fid == file() || (fid.isValid() && fid == unit.SM().getPreambleFileID());
 }
 
+auto FocusFile::text() -> SourceText& {
+    return unit.file_text(file());
+}
+
 auto FocusFile::content() -> llvm::StringRef {
     return unit.file_content(file());
 }

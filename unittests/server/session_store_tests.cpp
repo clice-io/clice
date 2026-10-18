@@ -11,7 +11,6 @@ namespace clice::testing {
 namespace {
 
 namespace protocol = kota::ipc::protocol;
-namespace lsp = kota::ipc::lsp;
 
 protocol::TextDocumentContentChangeEvent partial_change(std::uint32_t start_line,
                                                         std::uint32_t start_char,
@@ -35,8 +34,7 @@ ZEST_CASE(ApplyOpenInitializesBuffer) {
     store.apply_open(*session, "int a;\nint b;\n", 3);
 
     ZASSERT(session->version == 3);
-    ZASSERT(session->text == "int a;\nint b;\n");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "int a;\nint b;\n");
     ZASSERT(session->generation == 1u);
 }
 
@@ -48,8 +46,7 @@ ZEST_CASE(RangeReplace) {
     auto change = partial_change(1, 4, 1, 5, "value");
     store.apply_change(*session, change, 2);
 
-    ZASSERT(session->text == "int a;\nint value;\n");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "int a;\nint value;\n");
     ZASSERT(session->version == 2);
     ZASSERT(session->generation == 2u);
 }
@@ -66,8 +63,7 @@ ZEST_CASE(SequentialChangesFold) {
     };
     store.apply_change(*session, changes, 2);
 
-    ZASSERT(session->text == "axyz\nQd\n");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "axyz\nQd\n");
     ZASSERT(session->generation == 2u);
 }
 
@@ -80,8 +76,7 @@ ZEST_CASE(WholeDocumentReplace) {
         protocol::TextDocumentContentChangeWholeDocument{.text = "brand\nnew\n"};
     store.apply_change(*session, change, 2);
 
-    ZASSERT(session->text == "brand\nnew\n");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "brand\nnew\n");
 }
 
 ZEST_CASE(InvertedRangeSpans) {
@@ -94,8 +89,7 @@ ZEST_CASE(InvertedRangeSpans) {
     auto change = partial_change(1, 0, 0, 0, "X");
     store.apply_change(*session, change, 2);
 
-    ZASSERT(session->text == "Xcd\n");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "Xcd\n");
 }
 
 ZEST_CASE(InsideSurrogatePair) {
@@ -108,15 +102,13 @@ ZEST_CASE(InsideSurrogatePair) {
     auto change = partial_change(0, 1, 0, 1, "Y");
     store.apply_change(*session, change, 2);
 
-    ZASSERT(session->text == "Y\xf0\x9f\x98\x80x\n");
-    ZASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
+    ZASSERT(session->text() == "Y\xf0\x9f\x98\x80x\n");
 }
 
 ZEST_CASE(NonASCIILinesTracked) {
     SessionStore store;
     auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
-    ZASSERT(session->non_ascii_lines.empty());
 
     // The second change addresses line 1 after the first made line 0
     // non-ASCII; the positions count UTF-16 units over the new text.
@@ -126,10 +118,9 @@ ZEST_CASE(NonASCIILinesTracked) {
     };
     store.apply_change(*session, changes, 2);
 
-    ZASSERT(session->text ==
+    ZASSERT(session->text() ==
             "\xc3\xa9"
             "aZ\ncd\n");
-    ZASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
 }
 
 ZEST_CASE(SelectAllDeleteClamped) {
@@ -142,8 +133,7 @@ ZEST_CASE(SelectAllDeleteClamped) {
     auto change = partial_change(0, 0, 99999, 0, "");
     store.apply_change(*session, change, 2);
 
-    ZASSERT(session->text == "");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "");
     ZASSERT(session->version == 2);
     ZASSERT(session->generation == 2u);
 }
@@ -158,8 +148,7 @@ ZEST_CASE(InsertPastLastLine) {
     auto change = partial_change(2, 0, 2, 0, "int b;\n");
     store.apply_change(*session, change, 2);
 
-    ZASSERT(session->text == "int a;\nint b;\n");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "int a;\nint b;\n");
 }
 
 ZEST_CASE(InsertPastLineEnd) {
@@ -171,8 +160,7 @@ ZEST_CASE(InsertPastLineEnd) {
     auto change = partial_change(0, 9999, 0, 9999, "X");
     store.apply_change(*session, change, 2);
 
-    ZASSERT(session->text == "abX\ncd\n");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "abX\ncd\n");
 }
 
 ZEST_CASE(ClampedChangeFolds) {
@@ -188,8 +176,7 @@ ZEST_CASE(ClampedChangeFolds) {
     };
     store.apply_change(*session, changes, 2);
 
-    ZASSERT(session->text == "axyz\ncd\n!");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "axyz\ncd\n!");
 }
 
 ZEST_CASE(EmptyDocumentClamped) {
@@ -200,8 +187,7 @@ ZEST_CASE(EmptyDocumentClamped) {
     auto change = partial_change(5, 3, 8, 0, "int x;");
     store.apply_change(*session, change, 2);
 
-    ZASSERT(session->text == "int x;");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "int x;");
 }
 
 ZEST_CASE(RangeEndPastEof) {
@@ -214,8 +200,7 @@ ZEST_CASE(RangeEndPastEof) {
     auto change = partial_change(1, 0, 2, 1, "");
     store.apply_change(*session, change, 2);
 
-    ZASSERT(session->text == "int a;\n");
-    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text() == "int a;\n");
 }
 
 ZEST_CASE(ReopenBumpsGeneration) {
@@ -296,7 +281,7 @@ ZEST_CASE(NoopEditNoRetry) {
 
     // A whole-document change carrying identical bytes is a no-op too.
     protocol::TextDocumentContentChangeWholeDocument whole;
-    whole.text = session->text;
+    whole.text = session->text().str();
     store.apply_change(*session, protocol::TextDocumentContentChangeEvent(whole), 5);
     ZASSERT(session->quarantine->barred(0, later));
 

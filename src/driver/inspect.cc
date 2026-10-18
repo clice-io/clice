@@ -24,6 +24,7 @@ import :project.load;
 import :project.project;
 import :semantic.symbol;
 import :syntax.lexer;
+import :syntax.source_text;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -209,22 +210,19 @@ struct TokenCheck {
 std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& unit,
                                                                const Config& config) {
     auto legend = feature::semantic_token_legend(config.semantic_tokens);
-    auto focus = unit.focus_file();
-    auto content = focus.content();
+    auto& source = unit.focus_file().text();
+    auto content = source.text();
     auto ast =
-        named_tokens(feature::semantic_token_stream(focus.lexical().tokens,
-                                                    content,
-                                                    unit.lang_options(),
-                                                    unit.keywords(),
+        named_tokens(feature::semantic_token_stream(source,
                                                     feature::semantic_token_facts(unit, {}, true),
                                                     config.semantic_tokens),
                      legend);
     auto bytes = index::build_tu_index(unit);
     auto tu = index::TUIndex::from_bytes(bytes);
+    SourceText served(content, unit.lang_options());
     auto projected =
         named_tokens(feature::index_semantic_tokens(
-                         content,
-                         unit.lang_options(),
+                         served,
                          feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
                          [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
                              auto identity = tu.find_symbol(hash);
@@ -330,9 +328,9 @@ std::optional<kota::codec::RawValue> run_document_symbol_check(CompilationUnit& 
     auto ast = feature::document_symbols(unit, config.document_symbols);
     auto bytes = index::build_tu_index(unit);
     auto tu = index::TUIndex::from_bytes(bytes);
+    SourceText served(unit.focus_file().content(), unit.lang_options());
     auto projected = feature::index_document_symbols(
-        unit.focus_file().content(),
-        unit.lang_options(),
+        served,
         feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
         [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
             auto identity = tu.find_symbol(hash);

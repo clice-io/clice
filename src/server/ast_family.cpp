@@ -217,8 +217,8 @@ static void note_provider_choices(std::vector<feature::FileDiagnostic>& diagnost
         // At the import when it is the file's own; an import through an
         // included file sits at the include, one of the command line's or
         // the implicit one of an implementation unit at the top.
-        if(offset < session.text.size()) {
-            auto end = std::min(session.text.find('\n', offset), session.text.size());
+        if(offset < session.text().size()) {
+            auto end = std::min(session.text().find('\n', offset), session.text().size());
             if(auto range = session.positions().range({offset, static_cast<std::uint32_t>(end)},
                                                       PositionEncoding::UTF16)) {
                 warning.range = *range;
@@ -885,7 +885,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             project.config.project.standard_library_instantiations;
         params.path = file_path;
         params.version = session->version;
-        params.text = session->text;
+        params.text = session->text().str();
         params.workspace = project.config.workspace_root.str();
         if(tidy_attempt) {
             params.tidy = tidy_config->params;

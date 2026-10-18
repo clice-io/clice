@@ -4,11 +4,22 @@ module;
 
 module clice;
 
+import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.source_text;
 
 namespace clice {
+
+void SourceText::set_dialect(const clang::LangOptions& dialect) {
+    if(options == &dialect) {
+        return;
+    }
+    options = &dialect;
+    table = &keywords(dialect);
+    scan.reset();
+    comment_scan.reset();
+}
 
 auto SourceText::positions() -> PositionMap {
     if(!lines) {
@@ -23,7 +34,7 @@ auto SourceText::positions() -> PositionMap {
 
 auto SourceText::lexical() -> const LexicalInfo& {
     if(!scan) {
-        scan = lexical_scan(content, dialect);
+        scan = lexical_scan(content, dialect());
     }
     return *scan;
 }
@@ -33,7 +44,7 @@ auto SourceText::comments() -> llvm::ArrayRef<LexicalInfo::Comment> {
         return scan->comments;
     }
     if(!comment_scan) {
-        comment_scan = scan_comments(content, dialect);
+        comment_scan = scan_comments(content, dialect());
     }
     return *comment_scan;
 }

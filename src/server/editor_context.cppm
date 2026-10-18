@@ -56,6 +56,20 @@ struct EditorContext {
                                std::string& directory,
                                std::vector<std::string>& arguments);
 
+    /// The host source of a header: the user's persisted choice, else the
+    /// resolved header context, else its best-ranked includer; invalid for
+    /// a file without any.
+    Fid host_of(Fid path_id) const;
+
+    /// The dialect the server lexes a file's text in: an open file's for
+    /// its index projections, hover's directive lookup and completion's
+    /// context checks, any file's for `clice query`'s outline. An explicit
+    /// -x in the file's own CDB entry decides outright; a header follows its
+    /// active context's host when one exists; otherwise C when the file is a
+    /// C source or every TU contributing its indexed entries is one, C++
+    /// else (mixed inclusion favors the superset).
+    const clang::LangOptions& dialect(Fid path_id);
+
     /// The file's selection, or nullptr.
     const Selection* selection(Fid path_id) const {
         auto it = selections.find(path_id);

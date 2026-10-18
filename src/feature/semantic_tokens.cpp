@@ -747,13 +747,7 @@ auto semantic_tokens(CompilationUnit& unit,
                      llvm::ArrayRef<std::uint32_t> inactive_regions,
                      const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
     auto facts = semantic_token_facts(unit, inactive_regions, false);
-    auto focus = unit.focus_file();
-    return semantic_token_stream(focus.lexical().tokens,
-                                 focus.content(),
-                                 unit.lang_options(),
-                                 unit.keywords(),
-                                 facts,
-                                 options);
+    return semantic_token_stream(unit.focus_file().text(), facts, options);
 }
 
 auto semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& options)

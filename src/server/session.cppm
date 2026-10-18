@@ -6,6 +6,7 @@ module clice:server.session;
 
 import :server.quarantine;
 import :syntax.position;
+import :syntax.source_text;
 import :vfs.file_table;
 
 namespace clice {
@@ -63,27 +64,28 @@ struct Session {
     /// LSP document version, incremented by the client on each edit.
     int version = 0;
 
-    /// Current buffer content (may differ from disk until saved).
-    std::string text;
+    /// Current buffer content (may differ from disk until saved) and what
+    /// is derived from it, read in the dialect Features::text_of sets.
+    /// Behind a pointer: a SourceText stays where it was made, its text
+    /// pointing into itself, and an alias document's session moves.
+    std::unique_ptr<SourceText> source = std::make_unique<SourceText>(std::string());
 
-    /// xxh3 of `text`, rewritten with it: what "the buffer holds these
+    /// xxh3 of the text, rewritten with it: what "the buffer holds these
     /// bytes" is compared by against disk observations and index shards.
     std::uint64_t hash = 0;
 
-    /// The line tables of `text`: where each line starts, and which lines
-    /// hold a byte past ASCII.
-    std::vector<std::uint32_t> line_starts;
-    std::vector<std::uint64_t> non_ascii_lines;
-
-    /// Rewrite `hash` and the line tables after `text` changed.
-    void sync_text() {
-        hash = llvm::xxh3_64bits(text);
-        line_starts = kota::ipc::lsp::line_starts(text);
-        non_ascii_lines = kota::ipc::lsp::non_ascii_lines(text);
+    llvm::StringRef text() const {
+        return source->text();
     }
 
     PositionMap positions() const {
-        return {text, line_starts, non_ascii_lines};
+        return source->positions();
+    }
+
+    /// Replace the text, and with it everything derived from it.
+    void set_text(std::string text) {
+        source = std::make_unique<SourceText>(std::move(text));
+        hash = llvm::xxh3_64bits(source->text());
     }
 
     /// Monotonic generation counter, incremented on every didChange and on close.

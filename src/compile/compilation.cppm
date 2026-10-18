@@ -654,6 +654,9 @@ public:
     /// recorded, where the preamble's directives point.
     bool contains(clang::FileID fid);
 
+    /// The text itself, for what reads a SourceText whole.
+    auto text() -> SourceText&;
+
     auto content() -> llvm::StringRef;
 
     auto positions() -> PositionMap;
