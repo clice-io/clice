@@ -342,19 +342,8 @@ std::vector<PlacedHighlight> document_highlights(const IndexQuery& index,
             }
         }
     };
-    // The preamble index lives only as long as the visit.
-    bool placed = false;
-    if(source->kind == IndexSource::Kind::SessionShard) {
-        index.live_sources()->for_each_preamble([&](const IndexSource& preamble) {
-            if(preamble.file != cursor.site.file) {
-                return true;
-            }
-            place({source->shard, preamble.shard});
-            placed = true;
-            return false;
-        });
-    }
-    if(!placed) {
+    if(!index.with_preamble(*source,
+                            [&](const Shard& preamble) { place({source->shard, &preamble}); })) {
         place({source->shard});
     }
     return result;
@@ -438,16 +427,9 @@ bool names_weakly(const IndexQuery& index, const IndexQuery::Cursor& cursor, Sym
         });
         return found;
     };
-    if(hit(*source->shard) || source->kind != IndexSource::Kind::SessionShard) {
-        return found;
+    if(!hit(*source->shard)) {
+        index.with_preamble(*source, [&](const Shard& preamble) { hit(preamble); });
     }
-    index.live_sources()->for_each_preamble([&](const IndexSource& preamble) {
-        if(preamble.file != cursor.site.file) {
-            return true;
-        }
-        hit(*preamble.shard);
-        return false;
-    });
     return found;
 }
 

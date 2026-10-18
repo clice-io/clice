@@ -288,6 +288,13 @@ public:
     /// `file` right now, with the coordinates it is expressed in.
     std::optional<IndexSource> serving(Fid file) const;
 
+    /// Visit the preamble index paired with an open buffer's source: the
+    /// PCH's overlay of the buffer's preamble region, in the buffer's
+    /// coordinates, which the per-edit index leaves out. It lives only as
+    /// long as the visit. False when the source has none.
+    bool with_preamble(const IndexSource& source,
+                       llvm::function_ref<void(const Shard&)> visit) const;
+
     /// Whether the project index holds a shard of `file`.
     bool indexes(Fid file) const {
         return index.shards.contains(file);

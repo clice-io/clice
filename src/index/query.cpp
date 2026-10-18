@@ -239,6 +239,23 @@ std::optional<IndexSource> IndexQuery::serving(Fid file) const {
     return source;
 }
 
+bool IndexQuery::with_preamble(const IndexSource& source,
+                               llvm::function_ref<void(const Shard&)> visit) const {
+    if(source.kind != IndexSource::Kind::SessionShard) {
+        return false;
+    }
+    bool found = false;
+    live->for_each_preamble([&](const IndexSource& preamble) {
+        if(preamble.file != source.file) {
+            return true;
+        }
+        visit(*preamble.shard);
+        found = true;
+        return false;
+    });
+    return found;
+}
+
 const InstantiationShard* IndexQuery::instantiations_of(Fid file, const Shard& shard) const {
     if(!with_instantiations) {
         return nullptr;
@@ -548,21 +565,10 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     if(hit(*source->shard)) {
         return cursor;
     }
-    if(source->kind != IndexSource::Kind::SessionShard) {
-        return std::nullopt;
-    }
-    // The preamble region is compiled into the PCH and invisible to the
-    // per-edit index; its occurrences (macro definitions and references
-    // before the bound) live in the PCH's overlay, in the same buffer
-    // coordinates — served only under the main-entry gate (preamble
-    // drift, shared-PCH identity).
-    live->for_each_preamble([&](const IndexSource& preamble) {
-        if(preamble.file != file) {
-            return true;
-        }
-        hit(*preamble.shard);
-        return false;
-    });
+    // The preamble region's occurrences (macro definitions and references
+    // before the bound) are served only under the main-entry gate
+    // (preamble drift, shared-PCH identity).
+    with_preamble(*source, [&](const Shard& preamble) { hit(preamble); });
     return cursor;
 }
 
