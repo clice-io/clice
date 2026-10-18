@@ -224,8 +224,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     }
 
     if(blob.local_file_ends.size() != blob.local_symbols.size() ||
-       !monotone_ends(blob.local_file_ends, blob.local_files.size()) ||
-       (!blob.local_file_ends.empty() && blob.local_file_ends.back() != blob.local_files.size())) {
+       !covering_ends(blob.local_file_ends, blob.local_files.size())) {
         return std::nullopt;
     }
     if(llvm::any_of(blob.local_files,

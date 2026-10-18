@@ -72,7 +72,7 @@ public:
 
     /// Whether `text` is the exact content the shard was built from —
     /// the freshness comparison for disk state. Compares by size and
-    /// hash, so it works for ASCII blobs, whose text is not stored.
+    /// hash: the shard does not keep the content.
     bool matches_content(llvm::StringRef text) const;
 
     /// The same comparison for a caller that already holds the disk
@@ -158,7 +158,8 @@ private:
 /// non-External names end up in the blob's local-name table (External names
 /// live in the ProjectIndex); returned name refs must stay valid for the
 /// duration of the call. `content` is the text the indexing compile
-/// consumed; pure-ASCII content is hashed and measured but not stored.
+/// consumed; the blob keeps its hash, size and line table, and the text of
+/// its non-ASCII lines only.
 void write_shard(const FileIndex& file_index,
                  llvm::function_ref<std::optional<SymbolIdentity>(SymbolHash)> symbols,
                  llvm::StringRef content,

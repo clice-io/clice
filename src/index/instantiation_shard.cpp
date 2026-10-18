@@ -34,8 +34,8 @@ std::uint8_t kind_byte(const InstantiationRecord& record) {
 struct RecordTable {
     RangeColumnsView columns;
     llvm::ArrayRef<std::uint8_t> kinds;
-    SymIds targets;
-    SymIds froms;
+    IdColumnView targets;
+    IdColumnView froms;
     llvm::ArrayRef<std::uint64_t> sym_hashes;
 
     static RecordTable of(BlobView root) {
@@ -77,7 +77,7 @@ struct RecordTable {
 struct ResolutionTable {
     llvm::ArrayRef<std::uint64_t> hashes;
     llvm::ArrayRef<std::uint32_t> ends;
-    SymIds records;
+    IdColumnView records;
 
     static ResolutionTable of(BlobView root) {
         return {
@@ -97,7 +97,7 @@ struct ResolutionTable {
 struct UseTable {
     llvm::ArrayRef<std::uint64_t> hashes;
     llvm::ArrayRef<std::uint32_t> ends;
-    SymIds resolutions;
+    IdColumnView resolutions;
 
     static UseTable of(BlobView root) {
         return {
@@ -123,9 +123,9 @@ struct UseTable {
 
 struct KeyTable {
     llvm::ArrayRef<std::uint64_t> keys;
-    SymIds patterns;
-    SymIds resolutions;
-    SymIds producers;
+    IdColumnView patterns;
+    IdColumnView resolutions;
+    IdColumnView producers;
     llvm::ArrayRef<std::uint64_t> sym_hashes;
     llvm::ArrayRef<std::uint64_t> resolution_hashes;
     llvm::ArrayRef<std::uint64_t> producer_units;
@@ -184,7 +184,7 @@ CheckResult symbols_ok(BlobView root) {
 CheckResult records_ok(BlobView root) {
     auto table = RecordTable::of(root);
     auto content_size = root[&InstantiationBlob::content_size];
-    if(auto ok = range_encoding_ok(table.columns, content_size, false); !ok) {
+    if(auto ok = range_encoding_ok(table.columns, content_size, true); !ok) {
         return ok;
     }
     if(!table.columns.masks8.empty() || !table.columns.masks16.empty() ||
@@ -196,10 +196,10 @@ CheckResult records_ok(BlobView root) {
     if(table.kinds.size() != count) {
         return std::unexpected("record kinds do not match the record count");
     }
-    if(auto ok = sym_ids_ok(table.targets, count, table.sym_hashes.size()); !ok) {
+    if(auto ok = ids_ok(table.targets, count, table.sym_hashes.size()); !ok) {
         return ok;
     }
-    if(auto ok = sym_ids_ok(table.froms, count, table.sym_hashes.size()); !ok) {
+    if(auto ok = ids_ok(table.froms, count, table.sym_hashes.size()); !ok) {
         return ok;
     }
     std::tuple<std::uint32_t, std::uint32_t, InstantiationKind, bool, std::uint32_t, std::uint32_t>
@@ -243,12 +243,10 @@ CheckResult resolutions_ok(BlobView root) {
         return std::unexpected("a reserved resolution hash");
     }
     if(table.ends.size() != table.hashes.size() ||
-       !monotone_ends(table.ends, table.records.size()) ||
-       (table.ends.empty() ? table.records.size() != 0
-                           : table.ends.back() != table.records.size())) {
+       !covering_ends(table.ends, table.records.size())) {
         return std::unexpected("resolution record lists are not a partition");
     }
-    if(auto ok = sym_ids_ok(table.records, table.records.size(), record_count); !ok) {
+    if(auto ok = ids_ok(table.records, table.records.size(), record_count); !ok) {
         return ok;
     }
     std::vector<bool> owned(record_count);
@@ -282,12 +280,10 @@ CheckResult uses_ok(BlobView root) {
         return std::unexpected("uses are not strictly ascending");
     }
     if(table.ends.size() != table.hashes.size() ||
-       !monotone_ends(table.ends, table.resolutions.size()) ||
-       (table.ends.empty() ? table.resolutions.size() != 0
-                           : table.ends.back() != table.resolutions.size())) {
+       !covering_ends(table.ends, table.resolutions.size())) {
         return std::unexpected("use resolution lists are not a partition");
     }
-    if(auto ok = sym_ids_ok(table.resolutions, table.resolutions.size(), resolutions.size()); !ok) {
+    if(auto ok = ids_ok(table.resolutions, table.resolutions.size(), resolutions.size()); !ok) {
         return ok;
     }
     std::vector<ResolutionHash> members;
@@ -312,10 +308,10 @@ CheckResult keys_ok(BlobView root) {
     if(!std::ranges::is_sorted(table.keys, std::less_equal{})) {
         return std::unexpected("keys are not strictly ascending");
     }
-    if(auto ok = sym_ids_ok(table.patterns, count, table.sym_hashes.size()); !ok) {
+    if(auto ok = ids_ok(table.patterns, count, table.sym_hashes.size()); !ok) {
         return ok;
     }
-    if(auto ok = sym_ids_ok(table.resolutions, count, table.resolution_hashes.size() + 1); !ok) {
+    if(auto ok = ids_ok(table.resolutions, count, table.resolution_hashes.size() + 1); !ok) {
         return ok;
     }
     auto producers = table.producer_units.size();
@@ -333,7 +329,7 @@ CheckResult keys_ok(BlobView root) {
     }
     // A worker's blob names no producer; a stored one names one per key.
     if(producers == 0 ? table.producers.size() != 0
-                      : !sym_ids_ok(table.producers, count, producers).has_value()) {
+                      : !ids_ok(table.producers, count, producers).has_value()) {
         return std::unexpected("key producers do not line up");
     }
     return {};
@@ -652,7 +648,7 @@ void emit(const Draft& draft, llvm::raw_ostream& os) {
                                           blob.sym_hashes.begin());
     };
 
-    RangeWriter ranges{.side = blob.records, .encoding = unsorted_encoding(draft.content_size)};
+    RangeWriter ranges{.side = blob.records, .encoding = RangeEncoding::Delta};
     auto targets = id_writer(blob.record_targets, blob.sym_hashes.size());
     auto froms = id_writer(blob.record_froms, blob.sym_hashes.size());
     std::vector<std::vector<std::uint32_t>> members(draft.resolutions.size());

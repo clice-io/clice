@@ -35,7 +35,7 @@ std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
     return content.slice(line_start, line_end).str();
 }
 
-/// The disk bytes of a pure-ASCII blob's file, served only while their
+/// The disk bytes of a shard's file, served only while their
 /// hash still matches what the shard was built from — a moved-on file
 /// degrades to no text rather than slicing mismatched text.
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,

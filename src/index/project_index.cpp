@@ -173,15 +173,15 @@ struct ProjectIndex::Base {
     llvm::ArrayRef<std::uint32_t> args_ends;
     llvm::StringRef signatures;
     llvm::ArrayRef<std::uint32_t> signature_ends;
-    SymIds parents;
+    IdColumnView parents;
     llvm::ArrayRef<std::uint32_t> far_parents;
     llvm::ArrayRef<std::uint64_t> far_parent_hashes;
     llvm::ArrayRef<std::uint8_t> kinds;
     llvm::ArrayRef<std::uint16_t> flags;
     llvm::ArrayRef<std::uint8_t> token_kinds;
     llvm::ArrayRef<std::uint32_t> token_modifiers;
-    SymIds files;
-    SymIds reference_counts;
+    IdColumnView files;
+    IdColumnView reference_counts;
     llvm::ArrayRef<std::uint32_t> bitmap_ends;
     llvm::ArrayRef<std::uint8_t> bitmaps;
     llvm::ArrayRef<std::uint32_t> instantiation_docs;
@@ -386,11 +386,10 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     if(!all_token_kinds(token_kinds)) {
         return std::unexpected("a symbol's token kind is out of range");
     }
-    if(!sym_ids_ok(parents, count, count + 1) || !sym_ids_ok(files, count, paths.size() + 1) ||
-       !sym_ids_ok(reference_counts, count, paths.size() + 1)) {
+    if(!ids_ok(parents, count, count + 1) || !ids_ok(files, count, paths.size() + 1) ||
+       !ids_ok(reference_counts, count, paths.size() + 1)) {
         return std::unexpected("symbol id columns do not line up");
     }
-    // The sparse columns list symbols strictly ascending inside the table.
     auto sparse = [&](llvm::ArrayRef<std::uint32_t> docs, std::size_t values) {
         return sparse_ok(docs, values, count);
     };

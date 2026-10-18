@@ -193,8 +193,8 @@ private:
 
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
-    /// A bit per record some live resolution holds; empty while every resolution
-    /// is live.
+    /// A bit per record some live resolution holds; empty unless
+    /// has_dead_uses().
     std::vector<std::uint64_t> live_records;
     bool dead_uses = false;
 

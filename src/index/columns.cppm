@@ -2,10 +2,10 @@ module;
 
 #include "modules/prelude.h"
 
-/// The column encodings the per-file blobs share — shard blobs and
-/// instantiation blobs: entry ranges in whichever encoding the side and the
-/// content size pick, id columns in whichever width their table picks, and
-/// the load-time checks that let readers trust them.
+/// The column encodings the blobs share: entry ranges in whichever
+/// encoding the side and the content size pick (shard and instantiation
+/// blobs), id columns in whichever width their table picks (those and the
+/// global blob), and the load-time checks that let readers trust them.
 
 module clice:index.columns;
 
@@ -34,7 +34,7 @@ inline std::uint8_t id_width(std::size_t table_size) {
 }
 
 /// An id column read in the width its table picks (IdColumn).
-struct SymIds {
+struct IdColumnView {
     llvm::ArrayRef<std::uint8_t> bytes;
     std::uint8_t width = 1;
 
@@ -59,22 +59,16 @@ struct SymIds {
         }
     }
 
-    /// The first position whose id is not below `id`, in an ascending
-    /// column.
-    std::size_t lower_bound(std::uint32_t id) const {
-        auto positions = std::views::iota(std::size_t(0), size());
-        auto it =
-            std::ranges::lower_bound(positions, id, {}, [&](std::size_t i) { return (*this)[i]; });
-        return static_cast<std::size_t>(it - positions.begin());
-    }
-
     /// Whether an ascending column holds `id`, and where.
     std::optional<std::size_t> find(std::uint32_t id) const {
-        auto i = lower_bound(id);
-        if(i == size() || (*this)[i] != id) {
+        auto positions = std::views::iota(std::size_t(0), size());
+        auto it = std::ranges::lower_bound(positions, id, {}, [&](std::size_t position) {
+            return (*this)[position];
+        });
+        if(it == positions.end() || (*this)[*it] != id) {
             return std::nullopt;
         }
-        return i;
+        return *it;
     }
 
     /// Entry `i` of a text whose entries end at the offsets of this column,
@@ -87,7 +81,7 @@ struct SymIds {
 
 /// One side of a blob's entry storage as contiguous column refs,
 /// encoding-agnostic: the range accessors read whichever range encoding the
-/// blob stores, the mask columns whichever mask encoding.
+/// side stores, the mask columns whichever mask encoding.
 struct RangeColumnsView {
     llvm::ArrayRef<std::uint32_t> block_begins;
     llvm::ArrayRef<std::uint8_t> deltas;
@@ -207,7 +201,8 @@ inline RangeColumnsView columns_of(kota::codec::fbs::table_view<RangeColumns> vi
 }
 
 /// The ids of a column into a table of `table_size` entries.
-inline SymIds ids_of(kota::codec::fbs::array_view<std::uint8_t> view, std::size_t table_size) {
+inline IdColumnView ids_of(kota::codec::fbs::array_view<std::uint8_t> view,
+                           std::size_t table_size) {
     return {to_array_ref(view), id_width(table_size)};
 }
 
@@ -318,7 +313,7 @@ inline bool sparse_ok(llvm::ArrayRef<std::uint32_t> entries,
 /// One id per entry in the width the table's size picks, every id inside
 /// the table. The width was picked from a table size read before
 /// validation, which this table size may contradict.
-inline CheckResult sym_ids_ok(const SymIds& ids, std::size_t count, std::size_t table_size) {
+inline CheckResult ids_ok(const IdColumnView& ids, std::size_t count, std::size_t table_size) {
     if(ids.width != id_width(table_size) || ids.bytes.size() != count * ids.width) {
         return std::unexpected("id column does not match the entry count");
     }
@@ -332,9 +327,11 @@ inline CheckResult sym_ids_ok(const SymIds& ids, std::size_t count, std::size_t 
 
 /// An ascending column of `count` ids into a table of `table_size`;
 /// `strict` forbids repeats.
-inline CheckResult
-    ascending_ids_ok(const SymIds& ids, std::size_t count, std::size_t table_size, bool strict) {
-    if(auto ok = sym_ids_ok(ids, count, table_size); !ok) {
+inline CheckResult ascending_ids_ok(const IdColumnView& ids,
+                                    std::size_t count,
+                                    std::size_t table_size,
+                                    bool strict) {
+    if(auto ok = ids_ok(ids, count, table_size); !ok) {
         return ok;
     }
     for(std::size_t i = 1; i < count; i += 1) {
@@ -347,7 +344,7 @@ inline CheckResult
 
 /// The end offsets of `count` entries of a text of `text_size` bytes, back
 /// to back.
-inline CheckResult ends_ok(const SymIds& ends, std::size_t count, std::size_t text_size) {
+inline CheckResult ends_ok(const IdColumnView& ends, std::size_t count, std::size_t text_size) {
     if(auto ok = ascending_ids_ok(ends, count, text_size + 1, false); !ok) {
         return ok;
     }
@@ -359,7 +356,7 @@ inline CheckResult ends_ok(const SymIds& ends, std::size_t count, std::size_t te
 
 /// Appends ids in the width chosen for the whole column from its table's
 /// size.
-struct SymIdWriter {
+struct IdColumnWriter {
     IdColumn& column;
     std::uint8_t width;
 
@@ -383,7 +380,7 @@ struct SymIdWriter {
 };
 
 /// A writer of `column` for ids into a table of `table_size` entries.
-inline SymIdWriter id_writer(IdColumn& column, std::size_t table_size) {
+inline IdColumnWriter id_writer(IdColumn& column, std::size_t table_size) {
     return {.column = column, .width = id_width(table_size)};
 }
 

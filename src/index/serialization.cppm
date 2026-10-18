@@ -102,8 +102,8 @@ inline std::string symbol_id(SymbolHash hash) {
 /// index misses; v37: what instantiations and macro expansions resolve
 /// lives in per-file instantiation blobs, manifests list the resolutions of
 /// those they use, symbols the files whose instantiation blobs name them,
-/// and no entry resolves through a template's only instantiation; v38: every
-/// id and offset column is as narrow as its table allows, masks as their
+/// and no entry resolves through a template's only instantiation; v38: id
+/// and offset columns are as narrow as their tables allow, masks as their
 /// variant count, occurrences store their begins as deltas, relation payloads
 /// are placed by kind bits and block counts, shards keep only the text of
 /// their non-ASCII lines, the global table's file sets of one or two files
@@ -157,7 +157,7 @@ constexpr inline std::uint32_t delta_block = 16;
 /// One side of a blob's entry storage (occurrences, relations, records).
 ///
 /// Ranges use exactly one of three self-describing encodings:
-///   - delta, for a side sorted by begin (occurrences): the begin of every
+///   - delta, for a side sorted by begin (occurrences, records): the begin of every
 ///     `delta_block`-th entry, then per entry the distance from the
 ///     previous entry's begin (0 at a block's start) as a u8 — 255
 ///     escaping to the sparse (entry, begin) table — and its length u8;
@@ -466,6 +466,12 @@ inline bool monotone_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_
         last = end;
     }
     return true;
+}
+
+/// monotone_ends whose entries cover the whole arena.
+inline bool covering_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_size) {
+    return monotone_ends(ends, arena_size) &&
+           (ends.empty() ? arena_size == 0 : ends.back() == arena_size);
 }
 
 /// Entry `i` of an "entries back to back" column pair: the arena between

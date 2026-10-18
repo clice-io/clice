@@ -510,7 +510,7 @@ ZEST_CASE(LocalSymbolNames) {
     ZASSERT(!shard.find_symbol(external).has_value());
 }
 
-ZEST_CASE(LocalSymbolParentsAndSignatures) {
+ZEST_CASE(LocalParentsAndSignatures) {
     // A local's parent is an id into the blob's own symbol table, so the
     // parent joins the table even where no entry names it; signatures and
     // arguments are stored for the few locals having them.

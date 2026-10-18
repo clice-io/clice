@@ -49,13 +49,16 @@ InstantiationShard write(const FileInstantiations& instantiations) {
     return make(bytes);
 }
 
-InstantiationShard merge(
-    const InstantiationShard& old,
-    llvm::ArrayRef<index::UseHash> keep,
-    const InstantiationShard* fresh,
-    Producer producer,
-    llvm::function_ref<bool(const Producer&)> keep_producer = [](const Producer&) { return true; },
-    std::optional<index::AddedUse> added = std::nullopt) {
+constexpr auto any_producer = [](const Producer&) {
+    return true;
+};
+
+InstantiationShard merge(const InstantiationShard& old,
+                         llvm::ArrayRef<index::UseHash> keep,
+                         const InstantiationShard* fresh,
+                         Producer producer,
+                         llvm::function_ref<bool(const Producer&)> keep_producer = any_producer,
+                         std::optional<index::AddedUse> added = std::nullopt) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::merge_instantiations(old, keep, keep_producer, fresh, producer, added, os);
@@ -66,10 +69,6 @@ InstantiationShard merge(
 index::AddedUse use_of(const InstantiationShard& shard) {
     return {.use = index::use_identity(shard.resolutions()), .resolutions = shard.resolutions()};
 }
-
-constexpr auto any_producer = [](const Producer&) {
-    return true;
-};
 
 std::vector<InstantiationRecord> records_of(const InstantiationShard& shard) {
     std::vector<InstantiationRecord> records;
@@ -264,7 +263,9 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.content_hash = generation;
     blob.content_size = size;
     blob.sym_hashes = {11};
-    blob.records.packed = {index::pack_range(10, 3)};
+    blob.records.block_begins = {10};
+    blob.records.deltas = {0};
+    blob.records.lengths = {3};
     blob.record_kinds = {0};
     blob.record_targets = {0};
     blob.record_froms = {0};
@@ -287,9 +288,9 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.resolution_records = {0};
 
     // A record past the content.
-    blob.records.packed = {index::pack_range(size, 3)};
+    blob.records.block_begins = {size};
     ZEXPECT(!make(bytes_of()).loaded());
-    blob.records.packed = {index::pack_range(10, 3)};
+    blob.records.block_begins = {10};
 
     // A key whose resolution is not stored.
     blob.keys = {1};

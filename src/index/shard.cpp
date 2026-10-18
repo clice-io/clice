@@ -112,7 +112,7 @@ namespace {
 /// The occurrence table: each occurrence's range and the symbol it names.
 struct OccurrenceTable {
     RangeColumnsView columns;
-    SymIds syms;
+    IdColumnView syms;
     llvm::ArrayRef<std::uint64_t> sym_hashes;
 
     static OccurrenceTable of(BlobView root) {
@@ -153,9 +153,9 @@ bool fits_extent_columns(LocalSourceRange range, LocalSourceRange extent) {
 struct RelationTable {
     RangeColumnsView columns;
     llvm::ArrayRef<std::uint8_t> kinds;
-    SymIds target_ranks;
-    SymIds extent_ranks;
-    SymIds targets;
+    IdColumnView target_ranks;
+    IdColumnView extent_ranks;
+    IdColumnView targets;
     llvm::ArrayRef<std::uint16_t> extent_heads;
     llvm::ArrayRef<std::uint16_t> extent_lengths;
     llvm::ArrayRef<std::uint32_t> far_extents;
@@ -163,7 +163,7 @@ struct RelationTable {
     llvm::ArrayRef<std::uint32_t> far_ends;
     llvm::ArrayRef<std::uint64_t> sym_hashes;
     /// Entry i's relations occupy [offsets[i], offsets[i + 1]).
-    SymIds offsets;
+    IdColumnView offsets;
 
     static RelationTable of(BlobView root) {
         auto columns = columns_of(root[&ShardBlob::rels]);
@@ -256,18 +256,18 @@ struct RelationTable {
 /// The local-name table: the symbols whose identities live in no other
 /// table, sparse over the symbol table in ascending id order.
 struct LocalTable {
-    SymIds syms;
+    IdColumnView syms;
     llvm::StringRef names;
-    SymIds name_ends;
-    SymIds args_of;
+    IdColumnView name_ends;
+    IdColumnView args_of;
     llvm::StringRef args;
-    SymIds args_ends;
-    SymIds signatures_of;
+    IdColumnView args_ends;
+    IdColumnView signatures_of;
     llvm::StringRef signatures;
-    SymIds signature_ends;
+    IdColumnView signature_ends;
     llvm::ArrayRef<std::uint8_t> kinds;
     llvm::ArrayRef<std::uint8_t> scopes;
-    SymIds parents;
+    IdColumnView parents;
     llvm::ArrayRef<std::uint16_t> flags;
     llvm::ArrayRef<std::uint8_t> token_kinds;
     llvm::ArrayRef<std::uint32_t> token_modifiers;
@@ -313,9 +313,9 @@ struct LocalTable {
     }
 
     SymbolIdentity at(std::size_t k) const {
-        auto id = static_cast<std::uint32_t>(k);
-        auto args_at = args_of.find(id);
-        auto signature_at = signatures_of.find(id);
+        auto position = static_cast<std::uint32_t>(k);
+        auto args_at = args_of.find(position);
+        auto signature_at = signatures_of.find(position);
         return {
             .name = name_ends.slice(names, k),
             .args = args_at ? args_ends.slice(args, *args_at) : llvm::StringRef(),
@@ -394,8 +394,7 @@ CheckResult utf8_lines_ok(BlobView root) {
     auto ends = to_array_ref(root[&ShardBlob::utf8_text_ends]);
     auto line_lengths = to_array_ref(root[&ShardBlob::line_lengths]);
     auto crlf_lines = to_array_ref(root[&ShardBlob::crlf_lines]);
-    if(ends.size() != lines.size() || !monotone_ends(ends, text.size()) ||
-       (ends.empty() ? !text.empty() : ends.back() != text.size()) ||
+    if(ends.size() != lines.size() || !covering_ends(ends, text.size()) ||
        !std::ranges::is_sorted(lines, std::less_equal{}) ||
        (!lines.empty() && lines.back() >= line_lengths.size())) {
         return std::unexpected("non-ASCII line columns do not line up");
@@ -464,7 +463,7 @@ CheckResult range_encodings_ok(BlobView root) {
 // id order stands in for hash order.
 CheckResult occurrences_ok(BlobView root) {
     auto table = OccurrenceTable::of(root);
-    if(auto ok = sym_ids_ok(table.syms, table.size(), table.sym_hashes.size()); !ok) {
+    if(auto ok = ids_ok(table.syms, table.size(), table.sym_hashes.size()); !ok) {
         return ok;
     }
     auto content_size = root[&ShardBlob::content_size];
@@ -513,9 +512,9 @@ CheckResult relations_ok(BlobView root) {
         }
     }
 
-    // The payload counts before every block, then the payload columns: a
-    // target per targeting payload, an extent per extent payload, each
-    // escape paired with its bounds and every extent inside the content.
+    // Readers place a payload by its block's counts and the payload bits
+    // before it, trusting both: one wrong count would hand every later
+    // relation of the block another relation's payload.
     RelationTable::Cursor counted;
     auto blocks = (table.size() + rank_block - 1) / rank_block;
     if(table.target_ranks.size() != blocks || table.extent_ranks.size() != blocks) {
@@ -528,13 +527,13 @@ CheckResult relations_ok(BlobView root) {
         }
         table.advance(counted, entry);
     }
-    if(auto ok = sym_ids_ok(table.target_ranks, blocks, counted.target + 1); !ok) {
+    if(auto ok = ids_ok(table.target_ranks, blocks, counted.target + 1); !ok) {
         return ok;
     }
-    if(auto ok = sym_ids_ok(table.extent_ranks, blocks, counted.extent + 1); !ok) {
+    if(auto ok = ids_ok(table.extent_ranks, blocks, counted.extent + 1); !ok) {
         return ok;
     }
-    if(auto ok = sym_ids_ok(table.targets, counted.target, table.sym_hashes.size()); !ok) {
+    if(auto ok = ids_ok(table.targets, counted.target, table.sym_hashes.size()); !ok) {
         return ok;
     }
     if(table.extent_heads.size() != counted.extent ||
@@ -600,7 +599,8 @@ CheckResult locals_ok(BlobView root) {
     }
     // The few locals with arguments or a signature: ascending positions,
     // each text non-empty — an empty one is the absent entry's to spell.
-    auto texts_ok = [&](const SymIds& of, llvm::StringRef text, const SymIds& ends) -> CheckResult {
+    auto texts_ok =
+        [&](const IdColumnView& of, llvm::StringRef text, const IdColumnView& ends) -> CheckResult {
         if(auto ok = ascending_ids_ok(of, of.size(), count, true); !ok) {
             return ok;
         }
@@ -620,7 +620,7 @@ CheckResult locals_ok(BlobView root) {
     if(auto ok = texts_ok(table.signatures_of, table.signatures, table.signature_ends); !ok) {
         return ok;
     }
-    if(auto ok = sym_ids_ok(table.parents, count, table_size + 1); !ok) {
+    if(auto ok = ids_ok(table.parents, count, table_size + 1); !ok) {
         return ok;
     }
     // A local symbol's parent becomes a DenseSet key in a query's container
@@ -1384,7 +1384,8 @@ void collect_locals(BlobView root, llvm::DenseMap<SymbolHash, LocalSymbol>& loca
 }
 
 /// Appends one side's entries in the encodings chosen for the whole blob:
-/// the range encoding by content size, the mask encoding by variant count.
+/// the range encoding by the side's order and the content size, the mask
+/// encoding by variant count.
 struct SideWriter {
     RangeWriter ranges;
     MaskEncoding encoding;
@@ -1454,7 +1455,7 @@ struct SideWriter {
 
 /// Encode merged entries, locals and content into canonical blob bytes. The
 /// only entry point that writes a ShardBlob: every self-describing choice
-/// (range encoding, id width, mask encoding, content omission) is made here, from
+/// (range encoding, id width, mask encoding) is made here, from
 /// the data, so equal inputs produce equal bytes.
 template <typename MaskT>
 void emit_blob(const MergedEntries<MaskT>& merged,

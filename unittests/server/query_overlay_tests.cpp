@@ -120,9 +120,8 @@ std::string header_path(llvm::StringRef basename) {
 }
 
 /// Merge the full TU index into the workspace's disk index, installing
-/// each section's blob verbatim as background indexing would.
-/// Merge the full index as the disk index; `focus_on_disk` names the focus
-/// file by a copy of it on disk instead.
+/// each section's blob verbatim as background indexing would;
+/// `focus_on_disk` names the focus file by a copy of it on disk instead.
 void merge_disk_index(llvm::StringRef focus_on_disk = {}) {
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
@@ -407,9 +406,9 @@ int main() { return 0; }
     }
 }
 
-ZEST_CASE(AsciiPreviewFromDisk) {
-    // The ASCII preview happy path: the blob omits the text, the disk
-    // still holds the exact bytes, so definition text and context lines
+ZEST_CASE(PreviewFromDisk) {
+    // The preview happy path: the disk still holds the exact bytes the
+    // shard was built from, so definition text and context lines
     // serve from the re-read; once the file moves on, the hash check
     // degrades both back to positions-only.
     llvm::StringRef text = "int value = 1;\nint other = value;\n";
