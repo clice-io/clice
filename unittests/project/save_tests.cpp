@@ -59,6 +59,65 @@ ZEST_CASE(ContextsBlobRoundTrip) {
     ZASSERT(!f.project.contexts.dirty);
 }
 
+ZEST_CASE(CorruptSaveKeepsTicket) {
+    // A write that commits the context choices into a database it then
+    // finds corrupt made nothing durable: the ticket stays open until the
+    // database opened in its place takes them.
+    struct CorruptAfterWrite final : index::BlobDatabase {
+        bool written = false;
+
+        index::ReadBlob read(index::BlobKind, llvm::StringRef) override {
+            return {};
+        }
+
+        bool contains(index::BlobKind, llvm::StringRef) override {
+            return false;
+        }
+
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob>,
+                                               llvm::ArrayRef<index::BlobKey>) override {
+            written = true;
+            return {};
+        }
+
+        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 1;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return written;
+        }
+    };
+
+    TempDir tmp;
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    f.project.database = std::make_unique<CorruptAfterWrite>();
+    f.project.contexts.bytes = "choices";
+    f.project.contexts.dirty = true;
+    f.project.contexts.ticket += 1;
+    auto ticket = f.project.contexts.ticket;
+
+    f.save();
+    ZASSERT(f.project.contexts.committed_ticket < ticket);
+    ZASSERT(f.project.contexts.dirty);
+
+    f.save();
+    ZASSERT(f.project.contexts.committed_ticket == ticket);
+    auto kept = f.project.database->read(index::BlobKind::ContextChoices, "contexts");
+    ZASSERT(bool(kept));
+    ZASSERT(kept.buffer->getBuffer() == "choices");
+}
+
 ZEST_CASE(UnownedContextsPassThrough) {
     // A process with no editor (the batch commands) never rewrites the
     // context choices, yet carries their bytes into a database replacing a
