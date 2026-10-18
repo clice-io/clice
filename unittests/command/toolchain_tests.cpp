@@ -120,7 +120,7 @@ ZEST_CASE(KeyIgnoresDriverIgnored) {
     ZEXPECT(f.key(base) == f.key(seed_b));
 }
 
-ZEST_CASE(KeyIgnoresPreprocessorDependencyFile) {
+ZEST_CASE(KeyIgnoresPreprocessorDepfile) {
     /// Kbuild writes `-Wp,-MMD,<depfile>` into every command: keying on the
     /// file would spawn one probe per unit of the kernel.
     Fixture f;

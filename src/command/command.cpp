@@ -72,12 +72,27 @@ llvm::StringRef anchored(unsigned id,
     return strings.save(Spelling(value, anchor).str());
 }
 
-/// Whether clice discards every option of `args`, none of them unknown.
-bool discards_all(llvm::ArrayRef<const char*> args) {
+/// Whether `args` hold dependency file options alone. The preprocessor's -MD
+/// and -MMD take the file they write as their argument, which the table
+/// reads as an input.
+bool dependency_options(llvm::ArrayRef<const char*> args) {
     auto options = kota::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
-    return ranges::all_of(option::table().parse(args, options), [](const auto& parsed) {
-        return parsed && parsed->id != option::OPT_UNKNOWN && is_discarded_option(parsed->id);
-    });
+    bool file_next = false;
+    for(auto& parsed: option::table().parse(args, options)) {
+        if(!parsed) {
+            return false;
+        }
+        if(file_next && parsed->id == option::OPT_INPUT) {
+            file_next = false;
+            continue;
+        }
+        if(auto opt = option::table().option(parsed->id);
+           !opt || !opt->matches(option::OPT_M_Group)) {
+            return false;
+        }
+        file_next = parsed->id == option::OPT_MD || parsed->id == option::OPT_MMD;
+    }
+    return true;
 }
 
 ArgClass classify(unsigned id, llvm::ArrayRef<const char*> values) {
@@ -88,11 +103,10 @@ ArgClass classify(unsigned id, llvm::ArrayRef<const char*> values) {
         bool named = values.size() == 1 && llvm::StringRef(values[0]).contains('=');
         return named ? ArgClass::Discarded : ArgClass::Semantic;
     }
-    /// -Wp hands its values to the preprocessor, whose -MD and -MMD take the
-    /// file they write as their argument (the table reads it as an input):
-    /// Kbuild's `-Wp,-MMD,<depfile>`, in every command, goes as
-    /// `-MMD -MF <depfile>` does, or each command would key a probe of its own.
-    if(id == option::OPT_Wp_COMMA && discards_all(values)) {
+    /// Kbuild hands the preprocessor `-Wp,-MMD,<depfile>` in every command:
+    /// it goes as `-MMD -MF <depfile>` does, or each command would key a
+    /// probe of its own.
+    if(id == option::OPT_Wp_COMMA && dependency_options(values)) {
         return ArgClass::Discarded;
     }
     if(is_discarded_option(id)) {

@@ -279,9 +279,10 @@ struct ReferencesConfig {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Maximum number of locations a references request "
-                         "answers with, those in the file it is asked from "
-                         "first; `0` means no limit. `clice query references` "
-                         "lists every one.")
+                         "answers with; `0` means no limit. A reply cut short "
+                         "keeps the locations in the file it is asked from "
+                         "before any other. `clice query references` lists "
+                         "every one.")
     <std::uint32_t> limit = 1000;
 };
 

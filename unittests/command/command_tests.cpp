@@ -856,6 +856,7 @@ ZEST_CASE(PreprocessorDependencyFilter) {
     EXPECT_STRIP("g++ -Wp,-D_FORTIFY_SOURCE=2 main.cpp", "g++ -Wp,-D_FORTIFY_SOURCE=2 {}");
     EXPECT_STRIP("g++ -Wp,-MMD,main.d,-DNDEBUG main.cpp", "g++ -Wp,-MMD,main.d,-DNDEBUG {}");
     EXPECT_STRIP("g++ -Wp,-fclice-unknown main.cpp", "g++ -Wp,-fclice-unknown {}");
+    EXPECT_STRIP("g++ -Wp,-include -Wp,config.h main.cpp", "g++ -Wp,-include -Wp,config.h {}");
 };
 
 ZEST_CASE(ModuleFilter) {
