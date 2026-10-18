@@ -715,7 +715,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
         std::map<std::string, Counts> per_file;
         for(auto& [path_id, shard]: project.project_index.shards) {
             auto count = [&](RelationKind kind, std::size_t Counts::* field) {
-                shard.lookup(hash, kind, [&](const index::Relation&) {
+                shard.relations_of(hash, kind, [&](const index::Relation&) {
                     per_file[project.file_table.display(path_id)].*field += 1;
                     return true;
                 });

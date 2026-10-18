@@ -162,8 +162,8 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query,
         }
     }
     if(index.live_sources()) {
-        index.live_sources()->each_session_index([&](const TUIndex& state) {
-            state.iterate_symbols([&](SymbolHash hash,
+        index.live_sources()->for_each_session_index([&](const TUIndex& state) {
+            state.for_each_symbol([&](SymbolHash hash,
                                       const SymbolView& identity,
                                       llvm::ArrayRef<std::uint32_t>) {
                 llvm::StringRef path;
@@ -268,7 +268,7 @@ Completables completables(const IndexQuery& index, llvm::StringRef prefix,
     }
     if(auto preamble = index.preamble_index(file)) {
         NameRanker ranker(query);
-        preamble->iterate_symbols(
+        preamble->for_each_symbol(
             [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t>) {
                 if(!has_flag(identity.flags, SymbolFlags::Completable) ||
                    identity.scope != SymbolScope::External || !is_searchable_kind(identity.kind) ||

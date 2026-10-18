@@ -258,7 +258,7 @@ std::uint32_t ProjectIndex::reference_count(SymbolHash hash) const {
     return 0;
 }
 
-void ProjectIndex::each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const {
+void ProjectIndex::for_each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const {
     auto own = [&](const Symbol& symbol) {
         for(auto id: symbol.reference_files) {
             visit(Fid{id});
@@ -292,7 +292,7 @@ void ProjectIndex::each_reference_file(SymbolHash hash, llvm::function_ref<void(
     }
 }
 
-void ProjectIndex::each_instantiation_file(SymbolHash hash,
+void ProjectIndex::for_each_instantiation_file(SymbolHash hash,
                                            llvm::function_ref<void(Fid)> visit) const {
     auto own = [&](const Symbol& symbol) {
         for(auto id: symbol.instantiation_files) {
@@ -441,7 +441,7 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
         current = incoming.str();
         return true;
     };
-    index.iterate_symbols([&](SymbolHash hash,
+    index.for_each_symbol([&](SymbolHash hash,
                               const SymbolView& identity,
                               llvm::ArrayRef<std::uint32_t> references) {
         if(identity.scope != SymbolScope::External) {
@@ -495,7 +495,7 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
         }
         return true;
     });
-    index.iterate_instantiation_files([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
+    index.for_each_instantiation_file([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
         auto& target = touch(hash);
         for(auto file: files) {
             target.instantiation_files.add(file_ids_map[file].raw);
@@ -936,7 +936,7 @@ llvm::SmallVector<std::uint64_t> ProjectIndex::live_uses(Fid path_id) const {
     return distinct_hashes(instantiation_uses, path_id);
 }
 
-void ProjectIndex::each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const {
+void ProjectIndex::for_each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const {
     if(!db) {
         if(auto it = contributions.find(file); it != contributions.end()) {
             for(auto tu: llvm::make_first_range(it->second)) {

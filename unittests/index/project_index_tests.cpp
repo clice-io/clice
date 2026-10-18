@@ -45,7 +45,7 @@ index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRe
 std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
                                            index::SymbolHash hash) {
     std::vector<std::uint32_t> files;
-    project.each_reference_file(hash, [&](Fid file) { files.push_back(file.raw); });
+    project.for_each_reference_file(hash, [&](Fid file) { files.push_back(file.raw); });
     return files;
 }
 
@@ -470,7 +470,7 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
         ZEXPECT(index.reference_count(10) == 1u);
         ZEXPECT(index.reference_count(30) == 4u);
         std::vector<std::uint32_t> referencing;
-        index.each_reference_file(30, [&](Fid file) { referencing.push_back(file.raw); });
+        index.for_each_reference_file(30, [&](Fid file) { referencing.push_back(file.raw); });
         std::ranges::sort(referencing);
         std::vector<std::uint32_t> expected{id_of("/proj/0.h"),
                                             id_of("/proj/1.h"),
@@ -479,10 +479,10 @@ ZEST_CASE(GlobalColumnsRoundTrip) {
         std::ranges::sort(expected);
         ZEXPECT(referencing == expected);
         std::vector<std::uint32_t> instantiating;
-        index.each_instantiation_file(30, [&](Fid file) { instantiating.push_back(file.raw); });
+        index.for_each_instantiation_file(30, [&](Fid file) { instantiating.push_back(file.raw); });
         ZEXPECT(instantiating == std::vector{id_of("/proj/3.h")});
         std::size_t none = 0;
-        index.each_instantiation_file(20, [&](Fid) { none += 1; });
+        index.for_each_instantiation_file(20, [&](Fid) { none += 1; });
         ZEXPECT(none == 0u);
     };
 

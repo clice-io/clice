@@ -85,20 +85,20 @@ public:
     virtual std::optional<IndexSource> buffer_index(Fid file) const = 0;
 
     /// Every open buffer whose file index serves it (clause 3), as its index.
-    virtual void each_session(llvm::function_ref<bool(const IndexSource&)> visit) const = 0;
+    virtual void for_each_session(llvm::function_ref<bool(const IndexSource&)> visit) const = 0;
 
     /// The same buffers' TU indexes, which name (find_symbol) every
     /// symbol of the unsaved text and hold the declarations of what it
     /// names from imported modules.
-    virtual void each_session_index(llvm::function_ref<bool(const TUIndex&)> visit) const = 0;
+    virtual void for_each_session_index(llvm::function_ref<bool(const TUIndex&)> visit) const = 0;
 
     /// Every open buffer's preamble index whose overlay was built from that
     /// very file and still describes the buffer's start.
-    virtual void each_preamble(llvm::function_ref<bool(const IndexSource&)> visit) const = 0;
+    virtual void for_each_preamble(llvm::function_ref<bool(const IndexSource&)> visit) const = 0;
 
     /// Each distinct PCH overlay index once (buffers sharing a preamble
     /// share one).
-    virtual void each_overlay(llvm::function_ref<bool(const TUIndex&)> visit) const = 0;
+    virtual void for_each_overlay(llvm::function_ref<bool(const TUIndex&)> visit) const = 0;
 
     /// An open buffer's PCH index while the buffer still starts with
     /// the exact preamble the index was built from; null otherwise.
@@ -369,12 +369,12 @@ public:
     /// symbol, each once: what a buffer its own compile serves knows before
     /// the project table does — the table hears of the buffer only once it
     /// closes.
-    void each_live_file(SymbolHash hash,
+    void for_each_live_file(SymbolHash hash,
                         RelationKind kind,
                         llvm::function_ref<void(Fid)> visit) const;
 
     /// The file defining an external symbol: an open buffer defining it
-    /// (each_live_file) first, else the definition the project table
+    /// (for_each_live_file) first, else the definition the project table
     /// records, while that file's shard still holds it. Invalid when neither
     /// knows one; of several files defining the symbol, one. Never walks
     /// the files referencing the symbol, so it costs the same for a symbol
@@ -486,7 +486,7 @@ private:
 
     /// The disk files holding the symbol's entries, by its scope (see the
     /// class comment on anchors).
-    void each_disk_file(SymbolHash hash, Fid anchor, llvm::function_ref<void(Fid)> visit) const;
+    void for_each_disk_file(SymbolHash hash, Fid anchor, llvm::function_ref<void(Fid)> visit) const;
 
     /// The `kind` relations of `hash` in the entries of a live TU index's
     /// other files than its focus file (an overlay's headers, a buffer's

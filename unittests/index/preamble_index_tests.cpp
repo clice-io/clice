@@ -61,7 +61,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
                           std::source_location location = std::source_location::current()) {
     index::SymbolHash hash = 0;
     std::uint32_t count = 0;
-    state->iterate_symbols([&](index::SymbolHash symbol_id,
+    state->for_each_symbol([&](index::SymbolHash symbol_id,
                                const index::SymbolView& symbol,
                                llvm::ArrayRef<std::uint32_t>) {
         if(symbol.name == name) {
@@ -85,7 +85,7 @@ void lookup_headers(index::SymbolHash hash,
             continue;
         }
         bool keep = true;
-        state->shard_of(path_id).lookup(hash, kind, [&](const index::Relation& r) {
+        state->shard_of(path_id).relations_of(hash, kind, [&](const index::Relation& r) {
             keep = callback(state->path(path_id), r);
             return keep;
         });
@@ -187,7 +187,7 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 
     // Occurrence lookup by offset in the preamble entry.
     bool found_occurrence = false;
-    preamble.lookup(point("ref"), [&](const index::Occurrence& occurrence) {
+    preamble.occurrences_at(point("ref"), [&](const index::Occurrence& occurrence) {
         ZEXPECT(occurrence.target == foo);
         ZEXPECT(occurrence.range == range("ref"));
         found_occurrence = true;
@@ -197,7 +197,7 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 
     // Relation lookup by symbol in the preamble entry.
     bool found_relation = false;
-    preamble.lookup(foo, RelationKind::Reference, [&](const index::Relation& r) {
+    preamble.relations_of(foo, RelationKind::Reference, [&](const index::Relation& r) {
         ZEXPECT(r.range == range("ref"));
         found_relation = true;
         return false;

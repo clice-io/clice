@@ -88,9 +88,9 @@ public:
     /// that the next serialization of this file should compact.
     bool has_dead_variants() const;
 
-    void lookup(std::uint32_t offset, llvm::function_ref<bool(const Occurrence&)> callback) const;
+    void occurrences_at(std::uint32_t offset, llvm::function_ref<bool(const Occurrence&)> callback) const;
 
-    void lookup(SymbolHash symbol,
+    void relations_of(SymbolHash symbol,
                 RelationKind kind,
                 llvm::function_ref<bool(const Relation&)> callback) const;
 

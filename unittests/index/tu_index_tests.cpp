@@ -90,7 +90,7 @@ void decode_index(const std::string& bytes) {
         symbol.file = identity.file;
         return &symbol;
     };
-    view.iterate_symbols([&](index::SymbolHash hash,
+    view.for_each_symbol([&](index::SymbolHash hash,
                              const index::SymbolView& identity,
                              llvm::ArrayRef<std::uint32_t> references) {
         record(hash, identity)->reference_files.addMany(references.size(), references.data());
@@ -1357,7 +1357,7 @@ ZEST_CASE(KnownVariantsSkipped) {
     std::vector<std::uint64_t> known = {full_view.section_hash(header)};
     auto table_names = [](const index::TUIndex& view) {
         std::vector<std::string> names;
-        view.iterate_symbols([&](index::SymbolHash,
+        view.for_each_symbol([&](index::SymbolHash,
                                  const index::SymbolView& identity,
                                  llvm::ArrayRef<std::uint32_t>) {
             names.emplace_back(identity.name);
@@ -1417,7 +1417,7 @@ ZEST_CASE(LookupOccurrence) {
 
     auto x_range = range("x");
     std::optional<index::Occurrence> found;
-    shard.lookup(point("x"), [&](const index::Occurrence& occ) {
+    shard.occurrences_at(point("x"), [&](const index::Occurrence& occ) {
         found = occ;
         return true;
     });
@@ -1426,7 +1426,7 @@ ZEST_CASE(LookupOccurrence) {
     ZEXPECT(found->range.end == x_range.end);
 
     found.reset();
-    shard.lookup(point("ref"), [&](const index::Occurrence& occ) {
+    shard.occurrences_at(point("ref"), [&](const index::Occurrence& occ) {
         found = occ;
         return true;
     });
@@ -1434,7 +1434,7 @@ ZEST_CASE(LookupOccurrence) {
     ZEXPECT(found->target == fi.occurrences.front().target);
 
     found.reset();
-    shard.lookup(0, [&](const index::Occurrence& occ) {
+    shard.occurrences_at(0, [&](const index::Occurrence& occ) {
         found = occ;
         return false;
     });
@@ -1451,7 +1451,7 @@ ZEST_CASE(LookupRelation) {
     ZASSERT(shard.loaded());
 
     std::optional<index::Occurrence> occ;
-    shard.lookup(point("decl"), [&](const index::Occurrence& o) {
+    shard.occurrences_at(point("decl"), [&](const index::Occurrence& o) {
         occ = o;
         return false;
     });
@@ -1459,7 +1459,7 @@ ZEST_CASE(LookupRelation) {
 
     auto def_range = range("def");
     bool found_def = false;
-    shard.lookup(occ->target, RelationKind::Definition, [&](const index::Relation& r) {
+    shard.relations_of(occ->target, RelationKind::Definition, [&](const index::Relation& r) {
         found_def = true;
         ZEXPECT(r.range.begin == def_range.begin);
         ZEXPECT(r.range.end == def_range.end);
@@ -1468,7 +1468,7 @@ ZEST_CASE(LookupRelation) {
     ZEXPECT(found_def);
 
     bool found_any = false;
-    shard.lookup(occ->target, RelationKind::Caller, [&](const index::Relation&) {
+    shard.relations_of(occ->target, RelationKind::Caller, [&](const index::Relation&) {
         found_any = true;
         return false;
     });

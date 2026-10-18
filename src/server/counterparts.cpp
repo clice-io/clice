@@ -161,17 +161,17 @@ struct Pairing {
             auto consider = [&](Fid other) {
                 return other != file && side_of(other) == Side::Interface;
             };
-            ctx.query.each_live_file(hash, RelationKind::Declaration, [&](Fid other) {
+            ctx.query.for_each_live_file(hash, RelationKind::Declaration, [&](Fid other) {
                 if(consider(other)) {
                     declaring.insert(other);
                 }
             });
-            ctx.project.project_index.each_reference_file(hash, [&](Fid other) {
+            ctx.project.project_index.for_each_reference_file(hash, [&](Fid other) {
                 auto* other_shard = consider(other) ? shard_of(other) : nullptr;
                 if(!other_shard) {
                     return;
                 }
-                other_shard->lookup(hash, RelationKind::Declaration, [&](const index::Relation&) {
+                other_shard->relations_of(hash, RelationKind::Declaration, [&](const index::Relation&) {
                     declaring.insert(other);
                     return false;
                 });

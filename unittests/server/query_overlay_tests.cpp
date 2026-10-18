@@ -100,7 +100,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
                           std::source_location location = std::source_location::current()) {
     index::SymbolHash hash = 0;
     std::uint32_t count = 0;
-    full_index.iterate_symbols([&](index::SymbolHash symbol_id,
+    full_index.for_each_symbol([&](index::SymbolHash symbol_id,
                                    const index::SymbolView& symbol,
                                    llvm::ArrayRef<std::uint32_t>) {
         if(symbol.name == name) {

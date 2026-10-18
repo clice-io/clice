@@ -58,7 +58,7 @@ llvm::SmallVector<SymbolInfo, 4>
 bool declares(const Shard& shard, SymbolHash hash) {
     bool found = false;
     for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
-        shard.lookup(hash, kind, [&](const Relation&) {
+        shard.relations_of(hash, kind, [&](const Relation&) {
             found = true;
             return false;
         });
@@ -88,7 +88,7 @@ bool resolved_relations(const InstantiationShard& shard,
                         RelationKind kind,
                         llvm::function_ref<bool(const Relation&, bool expansion)> visit) {
     bool completed = true;
-    shard.lookup(symbol, [&](const InstantiationRecord& record) {
+    shard.records_of(symbol, [&](const InstantiationRecord& record) {
         std::optional<Relation> relation;
         bool names = record.target == symbol;
         switch(record.kind) {
@@ -154,7 +154,7 @@ std::optional<Named> named_at(const Shard& shard,
                               std::uint32_t offset,
                               llvm::function_ref<bool(SymbolHash)> is_macro) {
     llvm::SmallVector<Occurrence, 2> candidates;
-    shard.lookup(offset, [&](const Occurrence& occurrence) {
+    shard.occurrences_at(offset, [&](const Occurrence& occurrence) {
         if(!candidates.empty() && !(candidates.front().range == occurrence.range)) {
             return false;
         }
@@ -182,7 +182,7 @@ std::optional<Named> named_at(const Shard& shard,
 void add_resolved(const InstantiationShard& shard,
                   std::uint32_t offset,
                   std::optional<Named>& named) {
-    shard.lookup(offset, [&](const InstantiationRecord& record) {
+    shard.records_at(offset, [&](const InstantiationRecord& record) {
         if(record.kind == InstantiationKind::Call ||
            record.kind == InstantiationKind::TypeDefinition ||
            (named && !(named->range == record.range))) {
@@ -305,7 +305,7 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
         }
         auto& shard = state.section_shard(i);
         std::optional<IndexSource> source;
-        shard.lookup(hash, kind, [&](const Relation& relation) {
+        shard.relations_of(hash, kind, [&](const Relation& relation) {
             // An overlay spans hundreds of headers and few hold relations of
             // any one symbol: resolving every entry's file up front dominated
             // each lookup.
@@ -327,11 +327,11 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
     return !stopped;
 }
 
-void IndexQuery::each_disk_file(SymbolHash hash,
+void IndexQuery::for_each_disk_file(SymbolHash hash,
                                 Fid anchor,
                                 llvm::function_ref<void(Fid)> visit) const {
     if(index.find_symbol(hash)) {
-        index.each_reference_file(hash, visit);
+        index.for_each_reference_file(hash, visit);
     } else if(anchor.valid()) {
         index.for_each_file_of_local(hash, anchor, visit);
     }
@@ -345,7 +345,7 @@ void IndexQuery::for_each_relation(SymbolHash hash,
                                    RelationVisitor visitor) const {
     bool stopped = false;
     auto emit = [&](const IndexSource& source) {
-        source.shard->lookup(hash, kind, [&](const Relation& relation) {
+        source.shard->relations_of(hash, kind, [&](const Relation& relation) {
             if(!visitor(source, relation)) {
                 stopped = true;
                 return false;
@@ -390,9 +390,9 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             }
             completed = emit(*source);
         };
-        each_disk_file(hash, anchor, visit);
+        for_each_disk_file(hash, anchor, visit);
         if(with_instantiations) {
-            index.each_instantiation_file(hash, visit);
+            index.for_each_instantiation_file(hash, visit);
         }
         return completed;
     };
@@ -400,14 +400,14 @@ void IndexQuery::for_each_relation(SymbolHash hash,
         if(!mask.session || !live) {
             return true;
         }
-        live->each_session(emit);
+        live->for_each_session(emit);
         return !stopped;
     };
     auto preambles = [&] {
         if(!mask.preamble || !live) {
             return true;
         }
-        live->each_preamble(emit);
+        live->for_each_preamble(emit);
         return !stopped;
     };
     auto overlays = [&] {
@@ -418,9 +418,9 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             stopped = !visit_overlay_relations(state, hash, kind, visitor);
             return !stopped;
         };
-        live->each_overlay(visit);
+        live->for_each_overlay(visit);
         if(!stopped) {
-            live->each_session_index(visit);
+            live->for_each_session_index(visit);
         }
         return !stopped;
     };
@@ -444,7 +444,7 @@ const Shard* IndexQuery::declaring_shard(Fid file) const {
     return live && live->is_open(file) ? index.shard(file) : nullptr;
 }
 
-void IndexQuery::each_live_file(SymbolHash hash,
+void IndexQuery::for_each_live_file(SymbolHash hash,
                                 RelationKind kind,
                                 llvm::function_ref<void(Fid)> visit) const {
     // One source's relations arrive together.
@@ -465,7 +465,7 @@ void IndexQuery::each_live_file(SymbolHash hash,
 
 Fid IndexQuery::definition_file(SymbolHash hash) const {
     Fid found;
-    each_live_file(hash, RelationKind::Definition, [&](Fid file) {
+    for_each_live_file(hash, RelationKind::Definition, [&](Fid file) {
         if(!found.valid()) {
             found = file;
         }
@@ -483,7 +483,7 @@ Fid IndexQuery::definition_file(SymbolHash hash) const {
     auto* shard = declaring_shard(file);
     bool defines = false;
     if(shard) {
-        shard->lookup(hash, RelationKind::Definition, [&](const Relation&) {
+        shard->relations_of(hash, RelationKind::Definition, [&](const Relation&) {
             defines = true;
             return false;
         });
@@ -556,7 +556,7 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     // before the bound) live in the PCH's overlay, in the same buffer
     // coordinates — served only under the main-entry gate (preamble
     // drift, shared-PCH identity).
-    live->each_preamble([&](const IndexSource& preamble) {
+    live->for_each_preamble([&](const IndexSource& preamble) {
         if(preamble.file != file) {
             return true;
         }
@@ -589,7 +589,7 @@ std::optional<SymbolInfo> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) c
 
     // Open sessions first: they hold every symbol of their unsaved buffers.
     if(live) {
-        live->each_session_index([&](const TUIndex& state) {
+        live->for_each_session_index([&](const TUIndex& state) {
             if(auto identity = state.find_symbol(hash)) {
                 adopt(*identity);
             }
@@ -607,7 +607,7 @@ std::optional<SymbolInfo> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) c
     // A symbol that exists only under an open buffer's context (or in
     // headers no disk TU has been indexed with) is in no disk table.
     if(live) {
-        live->each_overlay([&](const TUIndex& state) {
+        live->for_each_overlay([&](const TUIndex& state) {
             if(auto identity = state.find_symbol(hash)) {
                 adopt(*identity);
             }
@@ -740,12 +740,12 @@ std::optional<IndexQuery::Placed> IndexQuery::canonical_placed(SymbolHash hash, 
     // deleted since its report leaves no such relation behind.
     if(reported_defined(hash, anchor)) {
         bool unavailable = false;
-        each_disk_file(hash, anchor, [&](Fid file) {
+        for_each_disk_file(hash, anchor, [&](Fid file) {
             auto* shard = index.shard(file);
             if(unavailable || !shard || serving(file) || files.disk.seen_missing(file)) {
                 return;
             }
-            shard->lookup(hash, RelationKind::Definition, [&](const Relation&) {
+            shard->relations_of(hash, RelationKind::Definition, [&](const Relation&) {
                 unavailable = true;
                 return false;
             });

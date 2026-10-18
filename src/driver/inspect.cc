@@ -520,7 +520,7 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnit& unit,
                 auto path_id = i == 0 ? focus : i - 1;
                 const auto& shard = tu.shard_of(path_id);
                 std::optional<LocalSourceRange> found;
-                shard.lookup(symbol, kind, [&](const index::Relation& relation) {
+                shard.relations_of(symbol, kind, [&](const index::Relation& relation) {
                     found = relation.range;
                     return false;
                 });

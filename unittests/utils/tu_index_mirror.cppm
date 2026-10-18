@@ -90,12 +90,12 @@ struct TUIndexMirror {
             mirror.nodes.push_back(view.node(i));
         }
         llvm::DenseMap<index::SymbolHash, llvm::ArrayRef<std::uint32_t>> instantiation_files;
-        view.iterate_instantiation_files(
+        view.for_each_instantiation_file(
             [&](index::SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
                 instantiation_files[hash] = files;
                 return true;
             });
-        view.iterate_symbols([&](index::SymbolHash hash,
+        view.for_each_symbol([&](index::SymbolHash hash,
                                  const index::SymbolView& identity,
                                  llvm::ArrayRef<std::uint32_t> references) {
             mirror.add_symbol(hash, identity, references, instantiation_files.lookup(hash));

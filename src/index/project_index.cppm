@@ -102,10 +102,10 @@ struct ProjectIndex {
     std::uint32_t reference_count(SymbolHash hash) const;
 
     /// The files referencing the symbol, as the file table's ids.
-    void each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
+    void for_each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
 
     /// The files whose instantiation shards name the symbol.
-    void each_instantiation_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
+    void for_each_instantiation_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
 
     /// Every symbol, base entries and changed entries alike, in no particular
     /// order; `visit` returns false to stop.
@@ -235,7 +235,7 @@ struct ProjectIndex {
     /// The TUs that contributed a variant to `file`: from `contributions` in a
     /// writer, from the global blob's persisted copy in a reader, which
     /// holds no manifests to derive it from.
-    void each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
+    void for_each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
 
     /// The files holding entries of a symbol below external scope: `anchor`,
     /// a file that holds some, and the files of every TU's shared local

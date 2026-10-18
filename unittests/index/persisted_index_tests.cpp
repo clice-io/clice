@@ -217,7 +217,7 @@ index::ProjectIndex build_project(clice::FileTable& pool,
 std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
                                            index::SymbolHash hash) {
     std::vector<std::uint32_t> files;
-    project.each_reference_file(hash, [&](Fid file) { files.push_back(file.raw); });
+    project.for_each_reference_file(hash, [&](Fid file) { files.push_back(file.raw); });
     return files;
 }
 

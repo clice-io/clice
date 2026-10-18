@@ -175,7 +175,7 @@ CheckResult symbols_ok(BlobView root) {
     return {};
 }
 
-// lookup(offset) narrows its scan by begin order and the merge decodes
+// records_at narrows its scan by begin order and the merge decodes
 // records by their key.
 CheckResult records_ok(BlobView root) {
     auto table = RecordTable::of(root);
@@ -509,7 +509,7 @@ void InstantiationShard::for_each_key(llvm::function_ref<bool(const Key&)> callb
     }
 }
 
-void InstantiationShard::lookup(
+void InstantiationShard::records_at(
     std::uint32_t offset,
     llvm::function_ref<bool(const InstantiationRecord&)> callback) const {
     if(!buffer) {
@@ -530,7 +530,7 @@ void InstantiationShard::lookup(
     });
 }
 
-void InstantiationShard::lookup(
+void InstantiationShard::records_of(
     SymbolHash symbol,
     llvm::function_ref<bool(const InstantiationRecord&)> callback) const {
     if(!buffer) {

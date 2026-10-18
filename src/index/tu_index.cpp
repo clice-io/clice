@@ -370,7 +370,7 @@ std::optional<std::uint32_t> TUIndex::instantiation_section_of(std::uint32_t pat
     return *it;
 }
 
-void TUIndex::iterate_instantiation_files(
+void TUIndex::for_each_instantiation_file(
     llvm::function_ref<bool(SymbolHash, llvm::ArrayRef<std::uint32_t>)> callback) const {
     if(!loaded()) {
         return;
@@ -384,7 +384,7 @@ void TUIndex::iterate_instantiation_files(
     }
 }
 
-void TUIndex::iterate_symbols(
+void TUIndex::for_each_symbol(
     llvm::function_ref<bool(SymbolHash, const SymbolView&, llvm::ArrayRef<std::uint32_t>)>
         callback) const {
     if(!loaded()) {
@@ -419,7 +419,7 @@ std::optional<SymbolView> TUIndex::find_symbol(SymbolHash hash) const {
 std::optional<std::vector<TUSharedLocal>> TUIndex::shared_locals(const llvm::BitVector& held) const {
     std::vector<TUSharedLocal> result;
     bool valid = true;
-    iterate_symbols(
+    for_each_symbol(
         [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t> files) {
             if(identity.scope == SymbolScope::External || files.size() < 2) {
                 return true;

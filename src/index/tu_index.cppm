@@ -127,7 +127,7 @@ public:
     /// Visit every symbol of the table that instantiation sections name, in
     /// ascending hash order, with those sections' path ids. Return false
     /// to stop.
-    void iterate_instantiation_files(
+    void for_each_instantiation_file(
         llvm::function_ref<bool(SymbolHash, llvm::ArrayRef<std::uint32_t> files)> callback) const;
 
     /// Visit every symbol of the table in ascending hash order: hash,
@@ -136,7 +136,7 @@ public:
     /// external symbols only sections left empty name
     /// (TUIndexOptions::known_variants). Return false from the callback to
     /// stop.
-    void iterate_symbols(
+    void for_each_symbol(
         llvm::function_ref<bool(SymbolHash,
                                 const SymbolView&,
                                 llvm::ArrayRef<std::uint32_t> reference_files)> callback) const;

@@ -442,7 +442,7 @@ ZEST_CASE(LocalClassNamesHeader) {
     // A function's own class is named in the header the instantiation
     // resolves in: the table lists it with both files.
     std::optional<std::size_t> files;
-    view.iterate_symbols([&](index::SymbolHash hash,
+    view.for_each_symbol([&](index::SymbolHash hash,
                              const index::SymbolView& identity,
                              llvm::ArrayRef<std::uint32_t> references) {
         if(identity.name == "go") {
@@ -463,7 +463,7 @@ ZEST_CASE(SymbolsNameTheirFiles) {
     )");
     auto focus_path = view.path_count() - 1;
     bool named = false;
-    view.iterate_instantiation_files(
+    view.for_each_instantiation_file(
         [&](index::SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
             if(name_of(hash) == "go") {
                 named = files == llvm::ArrayRef<std::uint32_t>{focus_path};

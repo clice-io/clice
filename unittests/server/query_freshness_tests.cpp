@@ -76,7 +76,7 @@ void merge_into_workspace() {
 /// The symbol hash at an offset in a file's merged shard.
 index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
     index::SymbolHash result = 0;
-    project.project_index.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
+    project.project_index.shards[path_id].occurrences_at(offset, [&](const index::Occurrence& o) {
         result = o.target;
         return false;
     });

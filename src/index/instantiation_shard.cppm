@@ -167,11 +167,11 @@ public:
     void for_each_key(llvm::function_ref<bool(const Key&)> callback) const;
 
     /// The live records whose range touches `offset`, in stored order.
-    void lookup(std::uint32_t offset,
+    void records_at(std::uint32_t offset,
                 llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 
     /// The live records naming `symbol` as their target or their `from`.
-    void lookup(SymbolHash symbol,
+    void records_of(SymbolHash symbol,
                 llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 
     /// Every live record, in stored order.
@@ -191,7 +191,7 @@ private:
     /// stored use and resolution is live.
     std::vector<std::uint64_t> live_records;
 
-    /// The length of the longest record, which bounds lookup(offset)'s scan.
+    /// The length of the longest record, which bounds records_at's scan.
     std::uint32_t longest = 0;
 };
 

@@ -999,7 +999,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             // pasted where the macro is defined.
             if(!facts.files[owner].source) {
                 ConfiguringMacro configuring{.entity = id};
-                index.each_reference_file(hash, [&](Fid file) {
+                index.for_each_reference_file(hash, [&](Fid file) {
                     if(id_of(file) != none || index.manifests.contains(file)) {
                         return;
                     }

@@ -72,7 +72,7 @@ index::Shard append_variant(const index::Shard& old,
 
 index::SymbolHash hash_at(const index::Shard& shard, std::uint32_t offset) {
     index::SymbolHash result = 0;
-    shard.lookup(offset, [&](const index::Occurrence& o) {
+    shard.occurrences_at(offset, [&](const index::Occurrence& o) {
         result = o.target;
         return false;
     });
@@ -99,7 +99,7 @@ ZEST_CASE(RoundtripLookups) {
 
     auto expected = range("ref");
     bool found = false;
-    shard.lookup(point("ref"), [&](const index::Occurrence& o) {
+    shard.occurrences_at(point("ref"), [&](const index::Occurrence& o) {
         found = true;
         ZEXPECT(o.range.begin == expected.begin);
         return false;
@@ -111,7 +111,7 @@ ZEST_CASE(RoundtripLookups) {
     auto symbol = hash_at(shard, point("ref"));
     ZASSERT(symbol != 0);
     bool has_definition = false;
-    shard.lookup(symbol, RelationKind::Definition, [&](const index::Relation& r) {
+    shard.relations_of(symbol, RelationKind::Definition, [&](const index::Relation& r) {
         has_definition = true;
         ZEXPECT(r.range.begin == range("def").begin);
         return false;
@@ -377,7 +377,7 @@ index::Shard grow_variants(std::uint32_t count) {
 
 std::size_t reference_count(const index::Shard& shard, index::SymbolHash symbol) {
     std::size_t count = 0;
-    shard.lookup(symbol, RelationKind::Reference, [&](const index::Relation&) {
+    shard.relations_of(symbol, RelationKind::Reference, [&](const index::Relation&) {
         count += 1;
         return true;
     });
@@ -434,7 +434,7 @@ ZEST_CASE(LongTokenEscape) {
     auto shard = make_shard(write_fresh(file_index, content));
 
     bool found = false;
-    shard.lookup(299, [&](const index::Occurrence& o) {
+    shard.occurrences_at(299, [&](const index::Occurrence& o) {
         found = true;
         ZEXPECT(o.range.end == 300u);
         return false;
@@ -461,7 +461,7 @@ ZEST_CASE(RelationPayloadRoundtrip) {
     auto shard = make_shard(write_fresh(file_index, std::string(60, 'z')));
 
     bool checked_definition = false;
-    shard.lookup(111, RelationKind::Definition, [&](const index::Relation& r) {
+    shard.relations_of(111, RelationKind::Definition, [&](const index::Relation& r) {
         checked_definition = true;
         auto extent = index::Relation(r).extent();
         ZEXPECT(extent.begin == 0u);
@@ -471,7 +471,7 @@ ZEST_CASE(RelationPayloadRoundtrip) {
     ZASSERT(checked_definition);
 
     bool checked_reference = false;
-    shard.lookup(111, RelationKind::Reference, [&](const index::Relation& r) {
+    shard.relations_of(111, RelationKind::Reference, [&](const index::Relation& r) {
         checked_reference = true;
         ZEXPECT(r.target == 0u);
         return false;
@@ -479,7 +479,7 @@ ZEST_CASE(RelationPayloadRoundtrip) {
     ZASSERT(checked_reference);
 
     bool checked_pair = false;
-    shard.lookup(333, RelationKind::Base, [&](const index::Relation& r) {
+    shard.relations_of(333, RelationKind::Base, [&](const index::Relation& r) {
         checked_pair = true;
         ZEXPECT(r.target == 444u);
         return false;
@@ -528,7 +528,7 @@ ZEST_CASE(PayloadsAcrossBlocks) {
     ZASSERT(shard.loaded());
 
     std::uint32_t seen = 0;
-    shard.lookup(111, RelationKind::Definition, [&](const index::Relation& r) {
+    shard.relations_of(111, RelationKind::Definition, [&](const index::Relation& r) {
         auto i = r.range.begin / 100;
         auto extent = index::Relation(r).extent();
         ZEXPECT(extent.begin == extent_of(i).begin);
@@ -542,7 +542,7 @@ ZEST_CASE(PayloadsAcrossBlocks) {
             std::pair{333u, 1000u}
     }) {
         seen = 0;
-        shard.lookup(symbol, RelationKind::Base, [&](const index::Relation& r) {
+        shard.relations_of(symbol, RelationKind::Base, [&](const index::Relation& r) {
             ZEXPECT(r.target == first + r.range.begin / 100);
             seen += 1;
             return true;
@@ -647,7 +647,7 @@ ZEST_CASE(LocalSymbolNames) {
     // External names live in the ProjectIndex, never in the blob.
     auto external = [&] {
         index::SymbolHash result = 0;
-        tu_index.iterate_symbols([&](index::SymbolHash hash,
+        tu_index.for_each_symbol([&](index::SymbolHash hash,
                                      const index::SymbolView& symbol,
                                      llvm::ArrayRef<std::uint32_t>) {
             if(symbol.name == "visible") {
@@ -774,8 +774,8 @@ ZEST_CASE(WideSymbolIds) {
 
 ZEST_CASE(UnloadedShardNoops) {
     index::Shard shard;
-    shard.lookup(0, [&](const index::Occurrence&) { return true; });
-    shard.lookup(1, RelationKind::Reference, [&](const index::Relation&) { return true; });
+    shard.occurrences_at(0, [&](const index::Occurrence&) { return true; });
+    shard.relations_of(1, RelationKind::Reference, [&](const index::Relation&) { return true; });
     ZASSERT(!shard.find_symbol(1).has_value());
     ZASSERT(shard.line_starts().empty());
 }
@@ -1483,7 +1483,7 @@ ZEST_CASE(RelationPayloadColumnsRejected) {
     };
     auto extent_of = [&](const index::Shard& shard) {
         LocalSourceRange extent;
-        shard.lookup(111, RelationKind::Definition, [&](const index::Relation& relation) {
+        shard.relations_of(111, RelationKind::Definition, [&](const index::Relation& relation) {
             extent = relation.extent();
             return false;
         });

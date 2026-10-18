@@ -82,7 +82,7 @@ std::optional<index::IndexSource> ServerLiveSources::buffer_index(Fid file) cons
     return buffer_source(index::IndexSource::Kind::Shard, file, *session, it->second);
 }
 
-void ServerLiveSources::each_session(
+void ServerLiveSources::for_each_session(
     llvm::function_ref<bool(const index::IndexSource&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
         auto* shard = session_shard(file, session);
@@ -91,7 +91,7 @@ void ServerLiveSources::each_session(
     });
 }
 
-void ServerLiveSources::each_session_index(
+void ServerLiveSources::for_each_session_index(
     llvm::function_ref<bool(const index::TUIndex&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
         return !session_shard(file, session) || visit(*projections.projection(file)->index);
@@ -108,7 +108,7 @@ std::shared_ptr<index::TUIndex> ServerLiveSources::overlay_of(Fid file) const {
     return pch.preamble_state(*projection->pch_key);
 }
 
-void ServerLiveSources::each_preamble(
+void ServerLiveSources::for_each_preamble(
     llvm::function_ref<bool(const index::IndexSource&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
         auto state = overlay_of(file);
@@ -133,7 +133,7 @@ void ServerLiveSources::each_preamble(
     });
 }
 
-void ServerLiveSources::each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const {
+void ServerLiveSources::for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const {
     // Sessions with identical preambles share one blob; visit it once. A
     // preamble's PCH built over the build's precompiled header indexes
     // only what it adds: that header's blob is visited too.

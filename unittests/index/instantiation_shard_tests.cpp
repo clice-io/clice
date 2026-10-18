@@ -81,7 +81,7 @@ std::vector<InstantiationRecord> records_of(const InstantiationShard& shard) {
 
 std::vector<InstantiationRecord> at(const InstantiationShard& shard, std::uint32_t offset) {
     std::vector<InstantiationRecord> records;
-    shard.lookup(offset, [&](const InstantiationRecord& record) {
+    shard.records_at(offset, [&](const InstantiationRecord& record) {
         records.push_back(record);
         return true;
     });
@@ -90,7 +90,7 @@ std::vector<InstantiationRecord> at(const InstantiationShard& shard, std::uint32
 
 std::vector<InstantiationRecord> naming(const InstantiationShard& shard, index::SymbolHash symbol) {
     std::vector<InstantiationRecord> records;
-    shard.lookup(symbol, [&](const InstantiationRecord& record) {
+    shard.records_of(symbol, [&](const InstantiationRecord& record) {
         records.push_back(record);
         return true;
     });

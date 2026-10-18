@@ -42,9 +42,9 @@ struct CountingSessions : index::LiveSources {
         return std::nullopt;
     }
 
-    void each_session(llvm::function_ref<bool(const index::IndexSource&)>) const override {}
+    void for_each_session(llvm::function_ref<bool(const index::IndexSource&)>) const override {}
 
-    void each_session_index(llvm::function_ref<bool(const index::TUIndex&)> visit) const override {
+    void for_each_session_index(llvm::function_ref<bool(const index::TUIndex&)> visit) const override {
         for(auto& table: tables) {
             visits += 1;
             if(!visit(table)) {
@@ -53,9 +53,9 @@ struct CountingSessions : index::LiveSources {
         }
     }
 
-    void each_preamble(llvm::function_ref<bool(const index::IndexSource&)>) const override {}
+    void for_each_preamble(llvm::function_ref<bool(const index::IndexSource&)>) const override {}
 
-    void each_overlay(llvm::function_ref<bool(const index::TUIndex&)>) const override {}
+    void for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)>) const override {}
 
     std::shared_ptr<index::TUIndex> preamble_index(Fid) const override {
         return nullptr;
@@ -115,7 +115,7 @@ ZEST_CASE(DefinitionAcrossFiles) {
 
     auto hit_offset = point("use");
     index::SymbolHash symbol = 0;
-    project.project_index.shards[focus_id].lookup(hit_offset, [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].occurrences_at(hit_offset, [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -137,7 +137,7 @@ ZEST_CASE(ReferencesAcrossFiles) {
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.project_index.shards[focus_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].occurrences_at(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -321,7 +321,7 @@ ZEST_CASE(UnnamedScopes) {
 
     auto at = [&](llvm::StringRef name) {
         index::SymbolHash found = 0;
-        project.project_index.shards[focus_id].lookup(point(name), [&](const index::Occurrence& o) {
+        project.project_index.shards[focus_id].occurrences_at(point(name), [&](const index::Occurrence& o) {
             found = o.target;
             return false;
         });
@@ -350,7 +350,7 @@ ZEST_CASE(QualifiedNames) {
     index_workspace();
 
     index::SymbolHash method = 0;
-    project.project_index.shards[focus_id].lookup(point("method"), [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].occurrences_at(point("method"), [&](const index::Occurrence& o) {
         method = o.target;
         return false;
     });
@@ -385,7 +385,7 @@ ZEST_CASE(QualifiedNames) {
     ZASSERT(query.container_name(versioned.front().symbol.hash) == "outer");
     ZASSERT(query.qualified_name(versioned.front().symbol.hash) == "outer::versioned");
     index::SymbolHash hidden = 0;
-    project.project_index.shards[focus_id].lookup(point("hidden"), [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].occurrences_at(point("hidden"), [&](const index::Occurrence& o) {
         hidden = o.target;
         return false;
     });
@@ -444,7 +444,7 @@ ZEST_CASE(LocalSymbolName) {
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.project_index.shards[focus_id].lookup(point("local"), [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].occurrences_at(point("local"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -564,7 +564,7 @@ ZEST_CASE(StaleContributionSuppressed) {
     index_workspace();
 
     index::SymbolHash symbol = 0;
-    project.project_index.shards[focus_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    project.project_index.shards[focus_id].occurrences_at(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });

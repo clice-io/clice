@@ -93,7 +93,7 @@ std::vector<Highlight>
     std::vector<Highlight> result;
     auto add = [&](SymbolHash symbol, RelationKind relation, HighlightKind kind) {
         for(auto* shard: shards) {
-            shard->lookup(symbol, relation, [&](const Relation& found) {
+            shard->relations_of(symbol, relation, [&](const Relation& found) {
                 result.push_back({.range = found.range, .kind = kind});
                 return true;
             });
@@ -119,7 +119,7 @@ std::vector<Highlight>
         if(kind && is_class(*kind)) {
             llvm::SmallVector<SymbolHash> constructors;
             for(auto* shard: shards) {
-                shard->lookup(symbol, RelationKind::Constructor, [&](const Relation& found) {
+                shard->relations_of(symbol, RelationKind::Constructor, [&](const Relation& found) {
                     constructors.push_back(found.target);
                     return true;
                 });
@@ -132,7 +132,7 @@ std::vector<Highlight>
     }
     for(auto* shard: instantiations) {
         for(auto symbol: symbols) {
-            shard->lookup(symbol, [&](const InstantiationRecord& record) {
+            shard->records_of(symbol, [&](const InstantiationRecord& record) {
                 if(record.target == symbol && (record.kind == InstantiationKind::Reference ||
                                                record.kind == InstantiationKind::Base)) {
                     result.push_back({.range = record.range, .kind = HighlightKind::Text});
@@ -161,7 +161,7 @@ std::vector<Site> definition_sites(const IndexQuery& index, SymbolHash hash, Fid
     if(auto identity = index.project().find_symbol(hash); identity && identity->file != no_file) {
         if(auto source = index.serving(Fid{identity->file})) {
             std::optional<Site> first;
-            source->shard->lookup(hash, RelationKind::Definition, [&](const Relation& relation) {
+            source->shard->relations_of(hash, RelationKind::Definition, [&](const Relation& relation) {
                 if(!first || relation.range.begin < first->range.begin) {
                     if(auto site = source->site(relation.range)) {
                         first = std::move(*site);
@@ -333,7 +333,7 @@ std::vector<PlacedHighlight>
     // The preamble index lives only as long as the visit.
     bool placed = false;
     if(source->kind == IndexSource::Kind::SessionShard) {
-        index.live_sources()->each_preamble([&](const IndexSource& preamble) {
+        index.live_sources()->for_each_preamble([&](const IndexSource& preamble) {
             if(preamble.file != cursor.site.file) {
                 return true;
             }
@@ -352,7 +352,7 @@ std::vector<Site> type_definition(const IndexQuery& index, const IndexQuery::Cur
     auto anchor = cursor.site.file;
     llvm::SmallVector<IndexQuery::Target> found;
     if(auto source = index.serving(anchor)) {
-        source->shard->lookup(symbol, RelationKind::TypeDefinition, [&](const Relation& relation) {
+        source->shard->relations_of(symbol, RelationKind::TypeDefinition, [&](const Relation& relation) {
             if(relation.range.contains(cursor.site.range)) {
                 found.push_back({.symbol = relation.target, .anchor = anchor});
             }
@@ -415,7 +415,7 @@ bool names_weakly(const IndexQuery& index, const IndexQuery::Cursor& cursor, Sym
     }
     bool found = false;
     auto hit = [&](const Shard& shard) {
-        shard.lookup(symbol, RelationKind::WeakReference, [&](const Relation& relation) {
+        shard.relations_of(symbol, RelationKind::WeakReference, [&](const Relation& relation) {
             found = relation.range == cursor.site.range;
             return !found;
         });
@@ -424,7 +424,7 @@ bool names_weakly(const IndexQuery& index, const IndexQuery::Cursor& cursor, Sym
     if(hit(*source->shard) || source->kind != IndexSource::Kind::SessionShard) {
         return found;
     }
-    index.live_sources()->each_preamble([&](const IndexSource& preamble) {
+    index.live_sources()->for_each_preamble([&](const IndexSource& preamble) {
         if(preamble.file != cursor.site.file) {
             return true;
         }

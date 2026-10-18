@@ -423,7 +423,7 @@ CheckResult range_encodings_ok(BlobView root) {
                              unsorted_encoding(content_size));
 }
 
-// lookup(offset) binary-searches the decoded end column and stops its
+// occurrences_at binary-searches the decoded end column and stops its
 // containment walk on begin order, which the delta encoding proves; ends out
 // of order (a corrupt escaped end included) would silently miss or
 // misresolve occurrences on every query, forever — reject the blob so it is
@@ -796,7 +796,7 @@ LiveFilter Shard::live_filter(const RangeColumnsView& columns) const {
     };
 }
 
-void Shard::lookup(std::uint32_t offset,
+void Shard::occurrences_at(std::uint32_t offset,
                    llvm::function_ref<bool(const Occurrence&)> callback) const {
     if(!buffer) {
         return;
@@ -863,7 +863,7 @@ bool visit_relation_entries(const RelationTable& table,
 
 }  // namespace
 
-void Shard::lookup(SymbolHash symbol,
+void Shard::relations_of(SymbolHash symbol,
                    RelationKind kind,
                    llvm::function_ref<bool(const Relation&)> callback) const {
     if(!buffer) {
