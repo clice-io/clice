@@ -703,7 +703,8 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
     auto probe_body = [&]() -> kota::task<> {
         auto& table = project.index;
         for(auto hash: merged) {
-            findable &= table.search_index().contains(hash) || table.search_pending().contains(hash);
+            findable &=
+                table.search_index().contains(hash) || table.search_pending().contains(hash);
         }
         co_return;
     };
@@ -1212,7 +1213,7 @@ ZEST_CASE(FailedWriteNotCounted) {
         void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 0;
+            return 1;
         }
 
         void retire_old_snapshot() override {}
@@ -1265,18 +1266,26 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
         bool* condemned;
         bool fail = false;
         bool poisoned = false;
+        std::map<std::pair<index::BlobKind, std::string>, std::string> stored;
 
-        index::ReadBlob read(index::BlobKind, llvm::StringRef) override {
-            return {};
+        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
+            auto it = stored.find({kind, key.str()});
+            if(it == stored.end()) {
+                return {};
+            }
+            return {.buffer = llvm::MemoryBuffer::getMemBufferCopy(it->second), .generation = 1};
         }
 
-        bool contains(index::BlobKind, llvm::StringRef) override {
-            return false;
+        bool contains(index::BlobKind kind, llvm::StringRef key) override {
+            return stored.contains({kind, key.str()});
         }
 
         llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
                                              llvm::ArrayRef<index::BlobKey>) override {
             if(!fail) {
+                for(auto& put: puts) {
+                    stored[{put.kind, put.key}] = put.bytes;
+                }
                 return {};
             }
             poisoned = true;
@@ -1290,7 +1299,7 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
         void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 0;
+            return 1;
         }
 
         void retire_old_snapshot() override {}
@@ -2084,7 +2093,7 @@ ZEST_CASE(CorruptTableCondemnsDatabase) {
         void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 0;
+            return 1;
         }
 
         void retire_old_snapshot() override {}
@@ -2163,7 +2172,7 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
         }
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 0;
+            return 1;
         }
 
         void retire_old_snapshot() override {}
@@ -2248,7 +2257,7 @@ ZEST_CASE(UnreadableTablePreserved) {
         }
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 0;
+            return 1;
         }
 
         void retire_old_snapshot() override {}
@@ -3652,7 +3661,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
         void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 0;
+            return 1;
         }
 
         void retire_old_snapshot() override {}

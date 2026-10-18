@@ -447,14 +447,9 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
         // pointers with identical meaning. Shards whose write just failed
         // are dirty again by now (their bytes never committed) and stay
         // memory-backed until a later save.
-        auto advanced = db.advance_read_snapshot();
-        if(!advanced) {
+        if(auto advanced = db.advance_read_snapshot(); !advanced) {
             LOG_WARN("Index read-snapshot advance failed: {}", advanced.error());
             co_return !db.corrupted();
-        }
-        if(*advanced == 0) {
-            // Filesystem backend: buffers are immortal, nothing to migrate.
-            co_return true;
         }
     }
 

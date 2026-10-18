@@ -439,8 +439,7 @@ public:
     /// memory onto a fresh read snapshot (growing the map first when the
     /// write hit a full one), then retire the previous snapshot. False when
     /// the database turned out corrupt: the caller recovers
-    /// (recover_corrupt_database). Filesystem-backed databases return at
-    /// once: their buffers are immortal.
+    /// (recover_corrupt_database).
     kota::task<bool> migrate_views(BlobDatabase& db, kota::event_loop& loop, IndexReport& report);
 
     /// The index's part of the recovery from a corrupt database, whose
