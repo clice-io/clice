@@ -856,6 +856,15 @@ ZEST_CASE(GCCOnlyWarnings) {
     EXPECT_STRIP("clang++ -Wlogical-op main.cpp", "clang++ -Wlogical-op {}");
 };
 
+ZEST_CASE(LTOModes) {
+    /// The LTO modes clang takes stay; g++'s job count goes.
+    EXPECT_STRIP("clang++ -flto main.cpp", "clang++ -flto=full {}");
+    EXPECT_STRIP("clang++ -flto=thin main.cpp", "clang++ -flto=thin {}");
+    EXPECT_STRIP("clang++ -flto=auto main.cpp", "clang++ -flto=full {}");
+    EXPECT_STRIP("g++ -flto=jobserver main.cpp", "g++ -flto=full {}");
+    EXPECT_STRIP("g++ -flto=8 main.cpp", "g++ {}");
+};
+
 ZEST_CASE(DependencyScanFilter) {
     FileTable file_table;
     CompilationDatabase database{file_table};

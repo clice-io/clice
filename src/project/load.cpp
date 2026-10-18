@@ -149,11 +149,13 @@ BuildLoad load_build(Project& project,
         std::ranges::sort(stable, {}, key);
         paths.append(stable.begin(), stable.end());
     }
-    // One source per database, however many of its spellings were found:
-    // the root's link to build/compile_commands.json is that database.
+    // One source per database, however many of its spellings discovery
+    // found: the root's link to build/compile_commands.json is that
+    // database. A rule's spelling stays its own, which its patterns rank.
     llvm::SmallVector<SourceID> sources;
     for(auto& path: paths) {
-        if(!project.cdb.find_source(path) && project.cdb.find_same_file(path)) {
+        if(!project.build.declares_sources() && !project.cdb.find_source(path) &&
+           project.cdb.find_same_file(path)) {
             continue;
         }
         if(auto id = project.cdb.add_source(path); !llvm::is_contained(sources, id)) {

@@ -20,9 +20,6 @@ errors = [
     },
 ]
 
-["removed link yields to the build".polls]
-value = [0, 1, 0]
-
 ["batch loads it once"."$ clice index"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.

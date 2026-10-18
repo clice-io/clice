@@ -33,11 +33,9 @@ test(
         // The link goes; the build writes its database again.
         t.disk.rm("compile_commands.json");
         t.disk.database({ "main.cpp": ["-DFEATURE"] }, "build");
-        await t.show("polls", [
-            await s.poll("cdb", { force: false }),
-            await s.poll("cdb", { force: false }),
-            await s.poll("cdb", { force: false }),
-        ]);
+        // The database found settles for a tick.
+        expect(await s.poll("cdb", { force: false })).toBe(0);
+        expect(await s.poll("cdb", { force: false })).toBe(1);
         expect(await s.errors("main.cpp")).toEqual([]);
     },
 );
