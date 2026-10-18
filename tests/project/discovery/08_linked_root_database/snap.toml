@@ -8,3 +8,10 @@ errors = [
         code = "err_pp_hash_error",
     },
 ]
+
+["batch loads it once"."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0

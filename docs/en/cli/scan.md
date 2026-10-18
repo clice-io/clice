@@ -6,7 +6,7 @@
 
 **Usage**: `clice scan [--workspace <dir>] [--configuration <tag>] [--json | --runs <n>]`
 
-The build is the one its compilation databases list: the databases the rules name, else every `compile_commands.json` below the workspace. The summary counts the files the scan reached, the translation units among them and the includes it resolved, and lists every include no search found. `--json` prints every scanned file instead: whether it is a translation unit, the modules it provides, the headers it includes and the includes it could not resolve, as written.
+The build is the one its compilation databases list: the databases the rules name, else the `compile_commands.json` at the workspace root and in its direct subdirectories, as the server finds them at startup; when there is none, the error names the deeper ones and the rule that would load them. The summary counts the files the scan reached, the translation units among them and the includes it resolved, and lists every include no search found. `--json` prints every scanned file instead: whether it is a translation unit, the modules it provides, the headers it includes and the includes it could not resolve, as written.
 
 `--runs <n>` times the scan: each run loads the build from scratch and scans it (cold, as at startup), then scans it again over what the first scan kept (warm, as after a database reload), and prints both times; the last line gives their minimum and median.
 

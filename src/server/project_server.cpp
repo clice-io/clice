@@ -11,6 +11,7 @@ module clice;
 import :command.command;
 import :index.writer_lock;
 import :project.build;
+import :project.load;
 import :sched.bootstrap;
 import :server.control_server;
 import :server.file_tracker;
@@ -177,8 +178,9 @@ void ProjectServer::start() {
             LOG_GUIDANCE(
                 "No compile_commands.json found in workspace {}. Compile commands will be "
                 "guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for "
-                "setup.",
-                project.file_table.display(root));
+                "setup.{}",
+                project.file_table.display(root),
+                deeper_databases(project));
         }
     }
 

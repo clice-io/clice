@@ -382,9 +382,10 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root);
 /// CDBWatcher keeps watching the places.
 llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root);
 
-/// Every `compile_commands.json` under `workspace_root` (`.git` and the
-/// cache directory skipped): what the one-shot batch commands, which
-/// open no file, discover instead of waiting for a didOpen.
+/// Every `compile_commands.json` under `workspace_root` down to three
+/// directories below it (`.git` and the cache directory skipped): where
+/// the guidance of a workspace without a database looks for the ones
+/// discovery passes over.
 llvm::SmallVector<Spelling> compile_commands_below(CanonicalRef workspace_root,
                                                    CanonicalRef cache_dir);
 

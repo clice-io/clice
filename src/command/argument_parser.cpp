@@ -291,13 +291,13 @@ bool is_codegen_option(unsigned id) {
         case OPT_fstack_protector_all:
         case OPT_fno_stack_protector:
 
-        /// Section splitting, LTO, semantic interposition — pure codegen/linker.
+        /// Section splitting, semantic interposition — pure codegen/linker.
+        /// Not LTO: the driver allows -fsanitize=cfi and
+        /// -fwhole-program-vtables only with it.
         case OPT_fdata_sections:
         case OPT_fno_data_sections:
         case OPT_ffunction_sections:
         case OPT_fno_function_sections:
-        case OPT_flto_EQ:
-        case OPT_fno_lto:
         case OPT_fsemantic_interposition:
         case OPT_fno_semantic_interposition:
         case OPT_fvisibility_inlines_hidden:

@@ -188,8 +188,8 @@ ZEST_CASE(AppendUnknownValue) {
 };
 
 ZEST_CASE(AppendBeforeSlot) {
-    /// Appends insert before the input slot, so they always govern the
-    /// compile — even when the CDB command carries flags after the input.
+    /// Appends go before the input slot, so an appended selector governs
+    /// the input; the CDB's selector after it still governs none.
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.c", "clang -x c a.c -x none"sv);
@@ -205,6 +205,20 @@ ZEST_CASE(AppendBeforeSlot) {
     auto applied =
         database.apply_rules(database.candidate_entries(fake("a.c")).front().config, options);
     ZEXPECT(llvm::StringRef(database.input_kind(applied, "a.c").value) == "c++");
+};
+
+ZEST_CASE(AppendAfterInputFlags) {
+    /// An append overrides a flag the CDB writes after its input.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "a.c", "clang -c a.c -std=c11"sv);
+
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Append, {"-std=c17"}}
+    };
+    CommandOptions options{.edits = edits};
+    ZEXPECT(print_argv(render_entry(database, fake("a.c"), options)) ==
+            std::format("clang -std=c11 -std=c17 {}", fake("a.c")));
 };
 
 ZEST_CASE(SelectorHistoryRestored) {
@@ -803,7 +817,7 @@ ZEST_CASE(CodegenFilter) {
         "/fake",
         "main.cpp",
         "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong "
-        "-fdata-sections -ffunction-sections -flto -fcolor-diagnostics -g main.cpp"sv);
+        "-fdata-sections -ffunction-sections -fcolor-diagnostics -g main.cpp"sv);
 
     auto argv = print_argv(render_entry(database, fake("main.cpp")));
 
@@ -814,7 +828,6 @@ ZEST_CASE(CodegenFilter) {
     EXPECT_NOT_CONTAINS(argv, "-fstack-protector");
     EXPECT_NOT_CONTAINS(argv, "-fdata-sections");
     EXPECT_NOT_CONTAINS(argv, "-ffunction-sections");
-    EXPECT_NOT_CONTAINS(argv, "-flto");
     EXPECT_NOT_CONTAINS(argv, "-fcolor-diagnostics");
     EXPECT_NOT_CONTAINS(argv, "-g");
 
@@ -822,7 +835,7 @@ ZEST_CASE(CodegenFilter) {
     auto full = print_argv(
         database.render_full(database.candidate_entries(fake("main.cpp")).front().config));
     EXPECT_CONTAINS(full, "-fPIC");
-    EXPECT_CONTAINS(full, "-flto");
+    EXPECT_CONTAINS(full, "-fdata-sections");
 };
 
 ZEST_CASE(FlangOnlyWarnings) {
@@ -830,6 +843,17 @@ ZEST_CASE(FlangOnlyWarnings) {
     EXPECT_STRIP("clang++ -Wall -Wextra -Wconversion main.cpp",
                  "clang++ -Wall -Wextra -Wconversion {}");
     EXPECT_STRIP("clang-cl /W4 -Wextra /c main.cpp", "clang-cl /W4 -Wextra {}");
+};
+
+ZEST_CASE(GCCOnlyWarnings) {
+    /// A GCC command's warnings clang does not know drop; those it knows
+    /// stay, in every form clang reads.
+    EXPECT_STRIP(
+        "g++ -Wall -Wlogical-op -Wno-useless-cast -Werror=duplicated-cond "
+        "-Wformat=2 -Wno-error=unused-variable -Werror -Wfatal-errors main.cpp",
+        "g++ -Wall -Wformat=2 -Wno-error=unused-variable -Werror -Wfatal-errors {}");
+    /// Clang's own commands keep them: clang itself reports them.
+    EXPECT_STRIP("clang++ -Wlogical-op main.cpp", "clang++ -Wlogical-op {}");
 };
 
 ZEST_CASE(DependencyScanFilter) {

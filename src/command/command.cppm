@@ -39,7 +39,7 @@ enum class ArgClass : std::uint8_t {
     /// warnings are emitted but never the token stream.
     Diagnostics,
 
-    /// Pure backend/linker concerns (-g, -fPIC, -flto, ...): kept for the
+    /// Pure backend/linker concerns (-g, -fPIC, ...): kept for the
     /// Full view, skipped by compile renders and identity hashes.
     Codegen,
 
@@ -331,6 +331,9 @@ public:
     /// is read until load_source().
     SourceID add_source(const Spelling& path);
 
+    /// The registered source `path` names: spelled the same, or the same
+    /// file — a link to a registered database, or the database a
+    /// registered link names.
     std::optional<SourceID> find_source(const Spelling& path) const;
 
     llvm::StringRef source_path(SourceID id) const;
@@ -395,7 +398,7 @@ public:
     /// Entry identity is the entry hash (Frontend view + directory), the
     /// same identity the rest of the system uses to pin a CDB entry (e.g.
     /// clice/switchContext). A change confined to codegen-only flags (-g,
-    /// -fPIC, -flto, ...) is therefore not reported as `changed` — this is
+    /// -fPIC, ...) is therefore not reported as `changed` — this is
     /// deliberate. (Optimization level -O* is semantic, not codegen-only: it
     /// defines __OPTIMIZE__, so changing it does count.)
     ///

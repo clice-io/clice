@@ -100,6 +100,31 @@ bool dependency_options(llvm::ArrayRef<const char*> args) {
     return true;
 }
 
+/// Whether clang knows the warning option `-W<value>`, read the way its
+/// frontend reads one (clang/lib/Basic/Warnings.cpp): a warning group,
+/// negated or not, or one of the forms that name none.
+bool clang_warning(llvm::StringRef value) {
+    auto group = [](llvm::StringRef name) {
+        return clang::DiagnosticIDs::getGroupForWarningOption(name).has_value();
+    };
+    if(value == "format=0") {
+        return true;
+    }
+    value.consume_front("no-");
+    if(value == "system-headers" || value == "everything") {
+        return true;
+    }
+    if(value.consume_front("error")) {
+        return value.empty() || value == "-implicit-function-declaration" ||
+               (value.consume_front("=") && (value.empty() || group(value)));
+    }
+    if(value.consume_front("fatal-errors")) {
+        return value.empty() ||
+               ((value.consume_front("=") || value.consume_front("-")) && group(value));
+    }
+    return group(value);
+}
+
 ArgClass classify(unsigned id, llvm::ArrayRef<const char*> values) {
     /// -fmodule-file has two shapes: `name=path` names a prebuilt module
     /// (clice builds its own PCMs — irrelevant), a bare path is a header
@@ -570,6 +595,13 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
 
         auto local = local_arg(parsed, parse_args);
 
+        /// g++ knows warnings clang does not (-Wlogical-op, -Wuseless-cast),
+        /// each of which clang would report as unknown on every file.
+        if(config.family == CompilerFamily::GCC && id == option::OPT_W_Joined &&
+           !clang_warning(local.values[0])) {
+            local.cls = ArgClass::Discarded;
+        }
+
         /// Path values absolutize where the compile runs, so the config
         /// keeps meaning when consumed away from it: the toolchain probe
         /// runs elsewhere.
@@ -768,7 +800,8 @@ void CompilationDatabase::rebuild_entry_list() {
 /// every spelling of that directory finds the same source, while a
 /// database file symlinked elsewhere is still read through the link. So
 /// is a directory that is itself a symlink (build -> out/debug): switching
-/// the link switches the database.
+/// the link switches the database. A link and the file it names are still
+/// one database (find_source).
 static Spelling source_key(const Spelling& path) {
     auto file =
         path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
@@ -795,6 +828,12 @@ std::optional<SourceID> CompilationDatabase::find_source(const Spelling& path) c
     auto key = source_key(path);
     for(std::size_t i = 0; i < source_files.size(); i += 1) {
         if(source_files[i].path == key.str()) {
+            return SourceID(i);
+        }
+    }
+    CanonicalPath file(key);
+    for(std::size_t i = 0; i < source_files.size(); i += 1) {
+        if(CanonicalPath(Spelling::absolute(source_files[i].path)) == file) {
             return SourceID(i);
         }
     }
@@ -1364,32 +1403,36 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     };
 
     /// Rebuild the sequence: prepends first, base args with removes
-    /// cancelled, appends inserted before the input slot — an append always
-    /// takes effect for the compile, and with the common input-at-end CDB
-    /// the byte order matches the old tail-append exactly.
+    /// cancelled, appends, then the input slot — so an append always takes
+    /// effect for the compile, even over a flag the CDB writes after its
+    /// input. Only a -x the CDB writes after the input stays after the slot:
+    /// it governs no input before it.
     std::vector<LocalArg> edited;
+    std::vector<LocalArg> trailing_selectors;
     edited.reserve(prepend_args.size() + cfg.args.size() + append_args.size());
     for(auto& local: prepend_args) {
         edited.push_back(local);
     }
+    bool after_slot = false;
     for(auto& arg: cfg.args) {
         if(arg.cls == ArgClass::Input) {
-            for(auto& local: append_args) {
-                edited.push_back(local);
-            }
-            edited.push_back({.opt_id = option::OPT_INPUT, .cls = ArgClass::Input});
+            after_slot = true;
             continue;
         }
         if(matches_remove(arg)) {
             continue;
         }
-        edited.push_back({
+        auto& into = after_slot && arg.opt_id == option::OPT_x ? trailing_selectors : edited;
+        into.push_back({
             .opt_id = arg.opt_id,
             .cls = arg.cls,
             .spelling = arg.spelling,
             .values = {arg.values.begin(), arg.values.end()}
         });
     }
+    llvm::append_range(edited, append_args);
+    edited.push_back({.opt_id = option::OPT_INPUT, .cls = ArgClass::Input});
+    llvm::append_range(edited, trailing_selectors);
 
     /// An appended -gencode adds its architecture next to the base's, the
     /// way nvcc itself accumulates them — resolve them to the newest.

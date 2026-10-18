@@ -1,0 +1,11 @@
+[test."$ clice format"]
+stdout = "Formatted 1 file in #s."
+exit = 0
+
+[test."$ clice format".files]
+"src/main.cpp" = '''
+ #include "foo.h"
+
+-int   main(){return foo(1);}
++int main() { return foo(1); }
+'''

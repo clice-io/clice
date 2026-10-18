@@ -140,12 +140,19 @@ llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_roo
 
 llvm::SmallVector<Spelling> compile_commands_below(CanonicalRef workspace_root,
                                                    CanonicalRef cache_dir) {
+    // Deep enough for a CMake preset's out/build/<preset> and a nested
+    // project's build directory, and no deeper: a workspace with no
+    // database at all may be a home directory.
+    constexpr std::size_t depth = 3;
     llvm::SmallVector<Spelling> found;
     vfs::walk(workspace_root, [&](const vfs::Entry& entry) {
         auto spelled = Spelling::absolute(entry.path);
         if(entry.type == llvm::sys::fs::file_type::directory_file) {
+            auto below = llvm::StringRef(spelled).drop_front(workspace_root.size());
+            auto levels = llvm::count_if(below, [](char c) { return path::is_separator(c); });
             return path::filename(spelled.str()) != ".git" &&
-                   workspace_root.entry(spelled) != cache_dir;
+                   workspace_root.entry(spelled) != cache_dir &&
+                   static_cast<std::size_t>(levels) <= depth;
         }
         if(path::filename(spelled.str()) == "compile_commands.json") {
             found.push_back(std::move(spelled));

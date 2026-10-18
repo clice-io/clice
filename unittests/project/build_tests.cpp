@@ -511,8 +511,8 @@ ZEST_CASE(DiscoverEveryNearby) {
 
 #ifndef _WIN32
 ZEST_CASE(DiscoverSymlinkedBuild) {
-    /// A build directory symlinked elsewhere keeps its database, for the
-    /// server's discovery and the batch commands' walk alike.
+    /// A build directory symlinked elsewhere keeps its database, for
+    /// discovery and the walk below it alike.
     TempDir tmp;
     tmp.touch("elsewhere/build/compile_commands.json", "[]");
     tmp.mkdir("ws");
@@ -544,6 +544,20 @@ ZEST_CASE(LinkedBuildKeyedByLink) {
     ZASSERT(::unlink(tmp.path("build").c_str()) == 0);
     ZASSERT(::symlink(tmp.path("out/release").c_str(), tmp.path("build").c_str()) == 0);
     ZEXPECT(cdb.add_source(build) == first);
+};
+
+ZEST_CASE(LinkedDatabaseOneSource) {
+    /// The root's link to the build's database is that database: either
+    /// spelling finds the source the other registered.
+    TempDir tmp;
+    tmp.touch("build/compile_commands.json", "[]");
+    ZASSERT(::symlink(tmp.path("build/compile_commands.json").c_str(),
+                      tmp.path("compile_commands.json").c_str()) == 0);
+    FileTable files;
+    CompilationDatabase cdb{files};
+    auto link = cdb.add_source(Spelling::absolute(tmp.path("compile_commands.json")));
+    ZEXPECT(cdb.add_source(Spelling::absolute(tmp.path("build/compile_commands.json"))) == link);
+    ZEXPECT(cdb.source_count() == 1u);
 };
 #endif
 

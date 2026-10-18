@@ -36,13 +36,11 @@ BuildLoad load_build(Project& project,
                      llvm::ArrayRef<Spelling> nearby = {},
                      llvm::ArrayRef<Spelling> provisional = {});
 
-/// The databases a batch command, which opens no file, finds by searching
-/// the tree below `root` once (compile_commands_below): load_build's
-/// `nearby`. None when the rules of `configuration` declare the build's
-/// sources.
-llvm::SmallVector<Spelling> compile_commands_in_tree(Project& project,
-                                                     CanonicalRef root,
-                                                     llvm::StringRef configuration);
+/// What to add to the guidance of a workspace without a database:
+/// a sentence naming the compile_commands.json files deeper in it than
+/// discovery looks (compile_commands_below), as the rule that loads them;
+/// empty when there is none, or the rules declare the build's sources.
+std::string deeper_databases(const Project& project);
 
 /// What load_project found and did.
 struct ProjectLoad {
@@ -78,15 +76,10 @@ struct ProjectLoad {
 /// `read_only_index` loads the persisted index without queueing any
 /// reconciliation or removal writes, so a later save commits nothing — for
 /// runs whose product must not touch the index (plain `clice lint`).
-///
-/// `scan_tree` makes discovery search the whole tree once
-/// (compile_commands_in_tree) instead of waiting for a didOpen: for the
-/// batch commands, which open no file.
 ProjectLoad load_project(Project& project,
                          IndexStore& store,
                          CanonicalRef root,
                          llvm::StringRef requested_configuration,
-                         bool read_only_index = false,
-                         bool scan_tree = false);
+                         bool read_only_index = false);
 
 }  // namespace clice
