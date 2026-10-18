@@ -13,178 +13,10 @@ import :unittests.utils;
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(PersistedIndex) {
+ZEST_SUITE(ProjectTable) {
 
 llvm::StringRef bytes_of(const std::vector<std::uint8_t>& blob) {
     return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
-}
-
-ZEST_CASE(ManifestRoundTrip) {
-    index::TUManifest manifest;
-    manifest.table_generation = 7;
-    manifest.built_at = 1234567;
-    manifest.tu_version = VersionID{300};
-    // A root node, a multi-byte-varint line, a parent that FOLLOWS its child
-    // (the include tree resolves parent chains after appending), and runs of
-    // siblings — skipped or not, lines ascending or not, under a node or the
-    // root.
-    manifest.nodes = {
-        {300, ~0u, 1,     false},
-        {301, 2,   70000, false},
-        {302, 0,   12,    false},
-        {303, 0,   14,    true },
-        {304, 0,   14,    true },
-        {305, 0,   3,     true },
-        {306, 0,   90000, false},
-        {307, ~0u, 5,     true },
-        {308, ~0u, 2,     false},
-    };
-    manifest.instantiations = {
-        {.file = VersionID{301}, .use = 0x1234},
-        {.file = VersionID{302}, .use = 0x5678},
-    };
-    manifest.contributions = {
-        {VersionID{300}, 0xdeadbeefdeadbeefull},
-        {VersionID{302}, 42                   },
-    };
-    manifest.absent = {VersionID{303}};
-    manifest.imports = {VersionID{304}, VersionID{305}};
-    manifest.shared_locals = {
-        {.symbol = 5, .files = {VersionID{300}, VersionID{302}}},
-        {.symbol = 9, .files = {VersionID{302}, VersionID{301}}},
-    };
-
-    llvm::SmallString<256> buf;
-    llvm::raw_svector_ostream os(buf);
-    index::serialize_manifest(manifest, os);
-
-    auto loaded = index::deserialize_manifest(buf.str());
-    ZASSERT(loaded);
-    ZASSERT(*loaded == manifest);
-}
-
-ZEST_CASE(ManifestJunkRejected) {
-    ZASSERT(!index::deserialize_manifest("not a flatbuffer").has_value());
-}
-
-/// Field order MUST mirror TUManifestBlob (manifest.cpp).
-struct ManifestBlobMirror {
-    std::uint32_t format_version = 0;
-    std::uint64_t table_generation = 0;
-    std::uint64_t built_at = 0;
-    std::uint32_t tu_version = 0;
-    std::uint32_t node_count = 0;
-    std::uint32_t contribution_count = 0;
-    std::vector<std::uint8_t> nodes;
-    std::vector<std::uint8_t> contributions;
-    std::vector<std::uint32_t> absent;
-    std::vector<std::uint32_t> imports;
-    std::vector<std::uint64_t> local_symbols;
-    std::vector<std::uint32_t> local_file_ends;
-    std::vector<std::uint32_t> local_files;
-    std::vector<std::uint32_t> instantiation_files;
-    std::vector<std::uint64_t> instantiation_uses;
-};
-
-ZEST_CASE(ManifestSharedLocalRejected) {
-    ManifestBlobMirror valid;
-    valid.format_version = index::index_format_version;
-    valid.contribution_count = 1;
-    valid.contributions = {1, 0, 0, 0, 0, 0, 0, 0, 0};
-    valid.local_symbols = {5, 7};
-    valid.local_file_ends = {1, 2};
-    valid.local_files = {0, 0};
-
-    auto decodes = [&](const ManifestBlobMirror& mirror) {
-        auto blob = kota::codec::fbs::to_bytes(mirror);
-        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
-    };
-    ZASSERT(decodes(valid));
-
-    auto mirror = valid;
-    mirror.local_symbols = {7, 5};
-    ZASSERT(!decodes(mirror));
-
-    mirror = valid;
-    mirror.local_file_ends = {1};
-    ZASSERT(!decodes(mirror));
-
-    mirror = valid;
-    mirror.local_file_ends = {1, 1};
-    ZASSERT(!decodes(mirror));
-
-    // The symbols key a DenseMap at load.
-    mirror = valid;
-    mirror.local_symbols = {5, ~0ull};
-    ZASSERT(!decodes(mirror));
-}
-
-ZEST_CASE(ManifestCorruptUsesRejected) {
-    // A use the manifest names keys a DenseMap at load: a sentinel value
-    // must not decode, nor a use no file lists.
-    ManifestBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
-    mirror.instantiation_files = {1};
-    mirror.instantiation_uses = {42};
-    auto decodes = [&] {
-        auto blob = kota::codec::fbs::to_bytes(mirror);
-        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
-    };
-    ZASSERT(decodes());
-    mirror.instantiation_uses = {~0ull};
-    ZEXPECT(!decodes());
-    mirror.instantiation_uses = {~0ull - 1};
-    ZEXPECT(!decodes());
-    mirror.instantiation_files = {};
-    mirror.instantiation_uses = {42};
-    ZEXPECT(!decodes());
-}
-
-ZEST_CASE(ManifestNodeCodesRejected) {
-    // A node can stand beside the previous node's parent only after one, and
-    // only beside it can its line be a distance.
-    ManifestBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
-    mirror.node_count = 1;
-    auto decodes = [&] {
-        auto blob = kota::codec::fbs::to_bytes(mirror);
-        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
-    };
-    mirror.nodes = {7, 1, 5 << 2};
-    ZASSERT(decodes());
-    mirror.nodes = {7, 0, 5 << 2};
-    ZEXPECT(!decodes());
-    mirror.nodes = {7, 1, (5 << 2) | 1};
-    ZEXPECT(!decodes());
-    mirror.nodes = {7, 3, 5 << 2};
-    ZEXPECT(!decodes());
-}
-
-ZEST_CASE(ManifestCountMismatchRejected) {
-    // A node count reporting more nodes than the payload holds must not
-    // decode.
-    ManifestBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
-    mirror.node_count = 2;
-    mirror.nodes = {1, 0, 5};  // one node's worth of varints
-
-    auto blob = kota::codec::fbs::to_bytes(mirror);
-    ZASSERT(blob);
-    ZASSERT(!index::deserialize_manifest(bytes_of(*blob)).has_value());
-}
-
-ZEST_CASE(ManifestVarintOverflowRejected) {
-    // A ten-byte varint whose last byte carries more than value bit 63
-    // would silently shift the excess out and decode to an unrelated small
-    // id, redirecting contributions to another file.
-    ManifestBlobMirror mirror;
-    mirror.format_version = index::index_format_version;
-    mirror.node_count = 1;
-    mirror.nodes = {0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02, 0x00, 0x00};
-
-    auto blob = kota::codec::fbs::to_bytes(mirror);
-    ZASSERT(blob);
-    ZASSERT(!index::deserialize_manifest(bytes_of(*blob)).has_value());
 }
 
 /// A project whose FileVersion for `path` is referenced by one manifest of
@@ -221,7 +53,7 @@ std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
     return files;
 }
 
-ZEST_CASE(GlobalRoundTripRemap) {
+ZEST_CASE(TableRoundTripRemap) {
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     project.table_generation = 9;
@@ -259,7 +91,7 @@ ZEST_CASE(GlobalRoundTripRemap) {
     ZASSERT(fresh.version_ids.contains({*id, std::uint64_t(0xabcd)}));
 }
 
-ZEST_CASE(GlobalRebaseKeepsChanges) {
+ZEST_CASE(TableRebaseKeepsChanges) {
     // The entries a write serialized read from the committed blob afterwards,
     // while entries changed across the write stay changed — and a write that
     // never committed gives its entries back.
@@ -299,7 +131,7 @@ ZEST_CASE(GlobalRebaseKeepsChanges) {
                                fresh.find(Spelling::absolute("/proj/other.h"))->raw));
 }
 
-ZEST_CASE(GlobalCollectsGarbage) {
+ZEST_CASE(TableCollectsGarbage) {
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     // Interned but referenced by no manifest — must not reach disk. The
@@ -320,7 +152,7 @@ ZEST_CASE(GlobalCollectsGarbage) {
     ZASSERT(fresh.find(Spelling::absolute("/proj/used.h")));
 }
 
-ZEST_CASE(GlobalVersionGate) {
+ZEST_CASE(TableVersionGate) {
     // Only the version slot is written: every other field reads back absent,
     // which is structurally valid — the result must hinge on the value.
     struct VersionOnly {
@@ -361,79 +193,40 @@ std::vector<std::uint8_t> file_set(const clice::Bitmap& ids) {
     return bytes;
 }
 
-/// Field order MUST mirror ProjectTableBlob (project_index.cpp).
-struct ProjectTableBlobMirror {
-    std::uint32_t format_version = index::index_format_version;
-    std::uint64_t generation = 0;
-    std::uint32_t next_version_id = 0;
-    std::vector<std::uint32_t> version_ids;
-    std::vector<std::string> version_paths;
-    std::vector<std::uint64_t> version_hashes;
-    std::vector<std::string> paths;
-    std::vector<std::uint64_t> symbol_hashes;
-    std::string symbol_names;
-    std::vector<std::uint32_t> symbol_name_ends;
-    std::vector<std::uint32_t> symbol_args_entries;
-    std::string symbol_args;
-    std::vector<std::uint32_t> symbol_args_ends;
-    std::string symbol_signatures;
-    std::vector<std::uint32_t> symbol_signature_ends;
-    index::IdColumn symbol_parents;
-    std::vector<std::uint32_t> symbol_far_parents;
-    std::vector<std::uint64_t> symbol_far_parent_hashes;
-    std::vector<std::uint8_t> symbol_kinds;
-    std::vector<std::uint16_t> symbol_flags;
-    std::vector<std::uint8_t> symbol_token_kinds;
-    std::vector<std::uint32_t> symbol_token_modifiers;
-    index::IdColumn symbol_files;
-    index::IdColumn symbol_reference_counts;
-    std::vector<std::uint32_t> symbol_bitmap_ends;
-    std::vector<std::uint8_t> symbol_bitmaps;
-    std::vector<std::uint32_t> symbol_instantiation_entries;
-    std::vector<std::uint32_t> symbol_instantiation_ends;
-    std::vector<std::uint8_t> symbol_instantiations;
-    std::vector<std::uint32_t> manifest_versions;
-    std::vector<std::uint64_t> manifest_generations;
-    std::uint64_t search_generation = 0;
-    std::vector<std::uint64_t> search_pending;
-    std::vector<std::uint32_t> search_pending_files;
-    std::vector<std::uint32_t> contributed_files;
-    std::vector<std::uint32_t> contributor_ends;
-    std::vector<std::uint8_t> contributors;
-    std::vector<std::uint64_t> shared_local_symbols;
-    std::vector<std::uint32_t> shared_local_set_ends;
-    std::vector<std::uint32_t> shared_local_file_ends;
-    std::vector<std::uint8_t> shared_local_files;
+/// An empty project table blob of the current format.
+index::ProjectTableBlob project_table_blob() {
+    return {.format_version = index::index_format_version};
+}
 
-    /// Append an entry, its parent outside the table; hashes must arrive
-    /// ascending, at most 255 of them.
-    void add_symbol(std::uint64_t hash,
-                    llvm::StringRef name,
-                    llvm::ArrayRef<std::uint8_t> image,
-                    std::uint64_t parent = 0,
-                    std::uint32_t file = index::no_file) {
-        if(parent != 0) {
-            symbol_far_parents.push_back(static_cast<std::uint32_t>(symbol_hashes.size()));
-            symbol_far_parent_hashes.push_back(parent);
-        }
-        symbol_hashes.push_back(hash);
-        symbol_names += name;
-        symbol_name_ends.push_back(static_cast<std::uint32_t>(symbol_names.size()));
-        symbol_signature_ends.push_back(static_cast<std::uint32_t>(symbol_signatures.size()));
-        symbol_parents.push_back(0);
-        symbol_kinds.push_back(0);
-        symbol_flags.push_back(0);
-        symbol_token_kinds.push_back(0);
-        symbol_token_modifiers.push_back(0);
-        symbol_files.push_back(static_cast<std::uint8_t>(file == index::no_file ? 0 : file + 1));
-        symbol_reference_counts.push_back(0);
-        symbol_bitmaps.insert(symbol_bitmaps.end(), image.begin(), image.end());
-        symbol_bitmap_ends.push_back(static_cast<std::uint32_t>(symbol_bitmaps.size()));
+/// Append an entry, its parent outside the table; hashes must arrive
+/// ascending, at most 255 of them.
+void add_symbol(index::ProjectTableBlob& blob,
+                std::uint64_t hash,
+                llvm::StringRef name,
+                llvm::ArrayRef<std::uint8_t> image,
+                std::uint64_t parent = 0,
+                std::uint32_t file = index::no_file) {
+    if(parent != 0) {
+        blob.symbol_far_parents.push_back(static_cast<std::uint32_t>(blob.symbol_hashes.size()));
+        blob.symbol_far_parent_hashes.push_back(parent);
     }
-};
+    blob.symbol_hashes.push_back(hash);
+    blob.symbol_names += name;
+    blob.symbol_name_ends.push_back(static_cast<std::uint32_t>(blob.symbol_names.size()));
+    blob.symbol_signature_ends.push_back(static_cast<std::uint32_t>(blob.symbol_signatures.size()));
+    blob.symbol_parents.push_back(0);
+    blob.symbol_kinds.push_back(0);
+    blob.symbol_flags.push_back(0);
+    blob.symbol_token_kinds.push_back(0);
+    blob.symbol_token_modifiers.push_back(0);
+    blob.symbol_files.push_back(static_cast<std::uint8_t>(file == index::no_file ? 0 : file + 1));
+    blob.symbol_reference_counts.push_back(0);
+    blob.symbol_bitmaps.insert(blob.symbol_bitmaps.end(), image.begin(), image.end());
+    blob.symbol_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.symbol_bitmaps.size()));
+}
 
-auto encode(const ProjectTableBlobMirror& mirror) {
-    return kota::codec::fbs::to_bytes(mirror);
+auto encode(const index::ProjectTableBlob& blob) {
+    return kota::codec::fbs::to_bytes(blob);
 }
 
 /// A path table covering ids 0..3, with the reference under test at 3.
@@ -441,19 +234,19 @@ std::vector<std::string> four_paths() {
     return {"/proj/0.h", "/proj/1.h", "/proj/2.h", "/proj/ref.h"};
 }
 
-ZEST_CASE(GlobalBitmapPayloadGate) {
+ZEST_CASE(TableBitmapPayloadGate) {
     // A malformed reference bitmap must fail the whole load: normalized to
     // empty it would silently lose the symbol's reference files, with
     // nothing ever rebuilding them.
     clice::Bitmap bits;
     bits.add(3);
-    ProjectTableBlobMirror mirror;
-    mirror.paths = four_paths();
-    mirror.add_symbol(42, "sym", file_set(bits));
+    auto layout = project_table_blob();
+    layout.paths = four_paths();
+    add_symbol(layout, 42, "sym", file_set(bits));
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto valid = encode(mirror);
+    auto valid = encode(layout);
     ZASSERT(valid);
     index::ProjectIndex loaded;
     ZASSERT(loaded.load_table(bytes_of(*valid), pool, pins));
@@ -464,12 +257,12 @@ ZEST_CASE(GlobalBitmapPayloadGate) {
     // A malformed image after columns that decoded fine: the reject must
     // leave no partial state — file versions or symbols — that later
     // merges would build on and the next save persist.
-    mirror.next_version_id = 8;
-    mirror.version_ids = {7};
-    mirror.version_paths = {"/proj/partial.h"};
-    mirror.version_hashes = {0x1};
-    mirror.add_symbol(43, "other", std::vector<std::uint8_t>{0xff, 0xff, 0xff});
-    auto corrupt = encode(mirror);
+    layout.next_version_id = 8;
+    layout.version_ids = {7};
+    layout.version_paths = {"/proj/partial.h"};
+    layout.version_hashes = {0x1};
+    add_symbol(layout, 43, "other", std::vector<std::uint8_t>{0xff, 0xff, 0xff});
+    auto corrupt = encode(layout);
     ZASSERT(corrupt);
     index::ProjectIndex rejecting;
     clice::FileTable untouched;
@@ -485,56 +278,56 @@ ZEST_CASE(UncoveredBitmapIdRejected) {
     // reference files while every manifest stays fresh.
     clice::Bitmap bits;
     bits.add(3);
-    ProjectTableBlobMirror mirror;
-    mirror.paths = {"/proj/0.h"};
-    mirror.add_symbol(42, "sym", file_set(bits));
+    auto layout = project_table_blob();
+    layout.paths = {"/proj/0.h"};
+    add_symbol(layout, 42, "sym", file_set(bits));
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto uncovered = encode(mirror);
+    auto uncovered = encode(layout);
     ZASSERT(uncovered);
     index::ProjectIndex loaded;
     ZASSERT(!loaded.load_table(bytes_of(*uncovered), pool, pins).has_value());
     ZASSERT(loaded.symbol_count() == 0u);
 
-    mirror.paths = four_paths();
-    auto covered = encode(mirror);
+    layout.paths = four_paths();
+    auto covered = encode(layout);
     ZASSERT(covered);
     ZASSERT(loaded.load_table(bytes_of(*covered), pool, pins));
     ZASSERT(loaded.find_symbol(42));
 }
 
-ZEST_CASE(GlobalDuplicateVersionsRejected) {
+ZEST_CASE(TableDuplicateVersionsRejected) {
     // Version-table ids and (path, hash) pairs are both map keys in the
     // writer; a repeated id in particular would intern the earlier pair to
     // an id whose record names the later path, attributing contributions
     // to the wrong file.
-    ProjectTableBlobMirror mirror;
-    mirror.next_version_id = 9;
-    mirror.version_ids = {7, 7};
-    mirror.version_paths = {"/proj/a.h", "/proj/b.h"};
-    mirror.version_hashes = {0x1, 0x2};
+    auto layout = project_table_blob();
+    layout.next_version_id = 9;
+    layout.version_ids = {7, 7};
+    layout.version_paths = {"/proj/a.h", "/proj/b.h"};
+    layout.version_hashes = {0x1, 0x2};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto dup_id = encode(mirror);
+    auto dup_id = encode(layout);
     ZASSERT(dup_id);
     index::ProjectIndex loaded;
     ZASSERT(!loaded.load_table(bytes_of(*dup_id), pool, pins).has_value());
     ZASSERT(pool.versions.empty());
 
-    mirror.version_ids = {7, 8};
-    mirror.version_paths = {"/proj/a.h", "/proj/a.h"};
-    mirror.version_hashes = {0x1, 0x1};
-    auto dup_pair = encode(mirror);
+    layout.version_ids = {7, 8};
+    layout.version_paths = {"/proj/a.h", "/proj/a.h"};
+    layout.version_hashes = {0x1, 0x1};
+    auto dup_pair = encode(layout);
     ZASSERT(dup_pair);
     ZASSERT(!loaded.load_table(bytes_of(*dup_pair), pool, pins).has_value());
 
     // The same path under two content hashes is the legitimate shape: two
     // observed versions of one file. Only the ids the blob carries map
     // into the table; the ones the writer garbage-collected map nowhere.
-    mirror.version_hashes = {0x1, 0x2};
-    auto distinct = encode(mirror);
+    layout.version_hashes = {0x1, 0x2};
+    auto distinct = encode(layout);
     ZASSERT(distinct);
     ZASSERT(loaded.load_table(bytes_of(*distinct), pool, pins));
     ZASSERT(pool.versions.size() == std::size_t(2));
@@ -543,44 +336,44 @@ ZEST_CASE(GlobalDuplicateVersionsRejected) {
     ZASSERT(!loaded.runtime_version(0).has_value());
 }
 
-ZEST_CASE(GlobalBadCounterRejected) {
+ZEST_CASE(TableBadCounterRejected) {
     // Ids are handed out from the counter, so a legit writer's ids all sit
     // below it; a lagging counter would alias stored ids on the next
     // intern, and a sentinel one would insert a DenseMap reserved key.
-    ProjectTableBlobMirror mirror;
-    mirror.next_version_id = 8;
-    mirror.version_ids = {7};
-    mirror.version_paths = {"/proj/a.h"};
-    mirror.version_hashes = {0x1};
+    auto layout = project_table_blob();
+    layout.next_version_id = 8;
+    layout.version_ids = {7};
+    layout.version_paths = {"/proj/a.h"};
+    layout.version_hashes = {0x1};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto ahead = encode(mirror);
+    auto ahead = encode(layout);
     ZASSERT(ahead);
     index::ProjectIndex loaded;
     ZASSERT(loaded.load_table(bytes_of(*ahead), pool, pins));
 
-    mirror.next_version_id = 7;
-    auto lagging = encode(mirror);
+    layout.next_version_id = 7;
+    auto lagging = encode(layout);
     ZASSERT(lagging);
     ZASSERT(!loaded.load_table(bytes_of(*lagging), pool, pins).has_value());
 
-    mirror.next_version_id = std::numeric_limits<std::uint32_t>::max() - 1;
-    mirror.version_ids = {};
-    mirror.version_paths = {};
-    mirror.version_hashes = {};
-    auto reserved = encode(mirror);
+    layout.next_version_id = std::numeric_limits<std::uint32_t>::max() - 1;
+    layout.version_ids = {};
+    layout.version_paths = {};
+    layout.version_hashes = {};
+    auto reserved = encode(layout);
     ZASSERT(reserved);
     ZASSERT(!loaded.load_table(bytes_of(*reserved), pool, pins).has_value());
 
     // A garbage high-water mark far beyond any real lineage rejects.
-    mirror.next_version_id = 0xf0000000;
-    auto oversized = encode(mirror);
+    layout.next_version_id = 0xf0000000;
+    auto oversized = encode(layout);
     ZASSERT(oversized);
     ZASSERT(!loaded.load_table(bytes_of(*oversized), pool, pins).has_value());
 }
 
-ZEST_CASE(GlobalRoundTripSymbolFacts) {
+ZEST_CASE(TableRoundTripSymbolFacts) {
     clice::FileTable pool;
     index::ProjectIndex project;
     auto file = pool.intern(Spelling::absolute("/proj/facts.h"));
@@ -622,18 +415,18 @@ ZEST_CASE(UncoveredFileIdRejected) {
     // A file id the path table does not cover would resolve to whatever
     // this session interned at that id: reject it like an uncovered
     // bitmap id.
-    ProjectTableBlobMirror mirror;
-    mirror.add_symbol(42, "sym", file_set(clice::Bitmap{}));
+    auto layout = project_table_blob();
+    add_symbol(layout, 42, "sym", file_set(clice::Bitmap{}));
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto control = encode(mirror);
+    auto control = encode(layout);
     ZASSERT(control);
     index::ProjectIndex loaded;
     ZASSERT(loaded.load_table(bytes_of(*control), pool, pins));
 
-    mirror.symbol_files = {6};
-    auto uncovered = encode(mirror);
+    layout.symbol_files = {6};
+    auto uncovered = encode(layout);
     ZASSERT(uncovered);
     index::ProjectIndex rejecting;
     ZASSERT(!rejecting.load_table(bytes_of(*uncovered), pool, pins).has_value());
@@ -644,119 +437,119 @@ ZEST_CASE(SharedLocalFilesRejected) {
     // A reader binary-searches the symbols for the file sets the shared locals
     // list: symbols out of order, or ends that misplace a symbol's sets or
     // a set's files, must not load.
-    ProjectTableBlobMirror mirror;
-    mirror.paths = {"/proj/a.h", "/proj/a.cpp"};
-    mirror.shared_local_symbols = {5, 9};
-    mirror.shared_local_set_ends = {1, 2};
-    mirror.shared_local_files = {0, 0, 0, 0, 1, 0, 0, 0};
-    mirror.shared_local_file_ends = {4, 8};
+    auto layout = project_table_blob();
+    layout.paths = {"/proj/a.h", "/proj/a.cpp"};
+    layout.shared_local_symbols = {5, 9};
+    layout.shared_local_set_ends = {1, 2};
+    layout.shared_local_files = {0, 0, 0, 0, 1, 0, 0, 0};
+    layout.shared_local_file_ends = {4, 8};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto loads = [&](const ProjectTableBlobMirror& blob) {
+    auto loads = [&](const index::ProjectTableBlob& blob) {
         auto bytes = encode(blob);
         ZASSERT(bytes);
         index::ProjectIndex loaded;
         return loaded.load_table(bytes_of(*bytes), pool, pins).has_value();
     };
-    ZASSERT(loads(mirror));
+    ZASSERT(loads(layout));
 
-    auto unordered = mirror;
+    auto unordered = layout;
     unordered.shared_local_symbols = {9, 5};
     ZEXPECT(!loads(unordered));
 
-    auto misplaced = mirror;
+    auto misplaced = layout;
     misplaced.shared_local_file_ends = {4, 7};
     ZEXPECT(!loads(misplaced));
 
-    auto overrun = mirror;
+    auto overrun = layout;
     overrun.shared_local_set_ends = {1, 3};
     ZEXPECT(!loads(overrun));
 }
 
-ZEST_CASE(GlobalSparseColumnsRejected) {
+ZEST_CASE(TableSparseColumnsRejected) {
     // The sparse columns name symbols by position: one past the table or
     // out of order would hand a symbol another's arguments or parent.
-    ProjectTableBlobMirror mirror;
-    mirror.add_symbol(42, "a", file_set(clice::Bitmap{}));
-    mirror.add_symbol(43, "b", file_set(clice::Bitmap{}));
-    mirror.symbol_args_entries = {1};
-    mirror.symbol_args = "<int>";
-    mirror.symbol_args_ends = {5};
+    auto layout = project_table_blob();
+    add_symbol(layout, 42, "a", file_set(clice::Bitmap{}));
+    add_symbol(layout, 43, "b", file_set(clice::Bitmap{}));
+    layout.symbol_args_entries = {1};
+    layout.symbol_args = "<int>";
+    layout.symbol_args_ends = {5};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto loads = [&] {
-        auto bytes = encode(mirror);
+        auto bytes = encode(layout);
         index::ProjectIndex loaded;
         return bytes && loaded.load_table(bytes_of(*bytes), pool, pins).has_value();
     };
     ZASSERT(loads());
-    mirror.symbol_args_entries = {2};
+    layout.symbol_args_entries = {2};
     ZEXPECT(!loads());
-    mirror.symbol_args_entries = {1};
+    layout.symbol_args_entries = {1};
 
-    mirror.symbol_far_parents = {1, 0};
-    mirror.symbol_far_parent_hashes = {7, 8};
+    layout.symbol_far_parents = {1, 0};
+    layout.symbol_far_parent_hashes = {7, 8};
     ZEXPECT(!loads());
-    mirror.symbol_far_parents = {0, 1};
+    layout.symbol_far_parents = {0, 1};
     ZEXPECT(loads());
 }
 
-ZEST_CASE(GlobalDuplicateSymbolRejected) {
+ZEST_CASE(TableDuplicateSymbolRejected) {
     // Entries are looked up by binary search over the hash column, so it
     // must ascend strictly; a repeated hash would let one entry shadow the
     // other's identity and reference bitmap while every manifest still
     // loads as fresh.
     clice::Bitmap bits;
     bits.add(3);
-    ProjectTableBlobMirror mirror;
-    mirror.paths = four_paths();
-    mirror.add_symbol(42, "sym", file_set(bits));
-    mirror.add_symbol(42, "impostor", file_set(bits));
+    auto layout = project_table_blob();
+    layout.paths = four_paths();
+    add_symbol(layout, 42, "sym", file_set(bits));
+    add_symbol(layout, 42, "impostor", file_set(bits));
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto dup = encode(mirror);
+    auto dup = encode(layout);
     ZASSERT(dup);
     index::ProjectIndex loaded;
     ZASSERT(!loaded.load_table(bytes_of(*dup), pool, pins).has_value());
     ZASSERT(loaded.symbol_count() == 0u);
 
-    mirror.symbol_hashes = {42, 43};
-    auto distinct = encode(mirror);
+    layout.symbol_hashes = {42, 43};
+    auto distinct = encode(layout);
     ZASSERT(distinct);
     ZASSERT(loaded.load_table(bytes_of(*distinct), pool, pins));
     ZASSERT(loaded.symbol_count() == std::size_t(2));
 
-    mirror.symbol_hashes = {43, 42};
-    auto descending = encode(mirror);
+    layout.symbol_hashes = {43, 42};
+    auto descending = encode(layout);
     ZASSERT(descending);
     ZASSERT(!loaded.load_table(bytes_of(*descending), pool, pins).has_value());
 }
 
-ZEST_CASE(GlobalTokenKindRejected) {
+ZEST_CASE(TableTokenKindRejected) {
     // A symbol's token kind indexes the legend's tables: one past the enum
     // marks a corrupt blob.
-    ProjectTableBlobMirror mirror;
-    mirror.paths = four_paths();
-    mirror.add_symbol(42, "sym", file_set(clice::Bitmap{}));
-    mirror.symbol_token_kinds = {200};
+    auto layout = project_table_blob();
+    layout.paths = four_paths();
+    add_symbol(layout, 42, "sym", file_set(clice::Bitmap{}));
+    layout.symbol_token_kinds = {200};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    auto corrupt = encode(mirror);
+    auto corrupt = encode(layout);
     ZASSERT(corrupt);
     index::ProjectIndex loaded;
     ZASSERT(!loaded.load_table(bytes_of(*corrupt), pool, pins).has_value());
 
-    mirror.symbol_token_kinds = {0};
-    auto valid = encode(mirror);
+    layout.symbol_token_kinds = {0};
+    auto valid = encode(layout);
     ZASSERT(valid);
     ZASSERT(loaded.load_table(bytes_of(*valid), pool, pins));
 }
 
-ZEST_CASE(GlobalReservedKeysRejected) {
+ZEST_CASE(TableReservedKeysRejected) {
     // The two DenseMap sentinel key values can never sit in the in-memory
     // tables, so the writer can never emit them; a blob carrying one is
     // corrupt, and inserting it would corrupt (or assert in) the loader's
@@ -766,35 +559,35 @@ ZEST_CASE(GlobalReservedKeysRejected) {
     index::ProjectIndex loaded;
 
     {
-        ProjectTableBlobMirror mirror;
-        mirror.version_ids = {0xffffffffu};
-        mirror.version_paths = {"/proj/a.h"};
-        mirror.version_hashes = {0x1};
-        auto bytes = encode(mirror);
+        auto layout = project_table_blob();
+        layout.version_ids = {0xffffffffu};
+        layout.version_paths = {"/proj/a.h"};
+        layout.version_hashes = {0x1};
+        auto bytes = encode(layout);
         ZASSERT(bytes);
         ZASSERT(!loaded.load_table(bytes_of(*bytes), pool, pins).has_value());
     }
     {
         clice::Bitmap bits;
         bits.add(3);
-        ProjectTableBlobMirror mirror;
-        mirror.paths = four_paths();
-        mirror.add_symbol(~std::uint64_t(0), "sym", file_set(bits));
-        auto bytes = encode(mirror);
+        auto layout = project_table_blob();
+        layout.paths = four_paths();
+        add_symbol(layout, ~std::uint64_t(0), "sym", file_set(bits));
+        auto bytes = encode(layout);
         ZASSERT(bytes);
         ZASSERT(!loaded.load_table(bytes_of(*bytes), pool, pins).has_value());
     }
     {
-        ProjectTableBlobMirror mirror;
-        mirror.add_symbol(42, "sym", file_set(clice::Bitmap{}), ~std::uint64_t(0));
-        auto bytes = encode(mirror);
+        auto layout = project_table_blob();
+        add_symbol(layout, 42, "sym", file_set(clice::Bitmap{}), ~std::uint64_t(0));
+        auto bytes = encode(layout);
         ZASSERT(bytes);
         ZASSERT(!loaded.load_table(bytes_of(*bytes), pool, pins).has_value());
     }
     {
-        ProjectTableBlobMirror mirror;
-        mirror.paths = {""};
-        auto bytes = encode(mirror);
+        auto layout = project_table_blob();
+        layout.paths = {""};
+        auto bytes = encode(layout);
         ZASSERT(bytes);
         ZASSERT(!loaded.load_table(bytes_of(*bytes), pool, pins).has_value());
     }
@@ -803,12 +596,12 @@ ZEST_CASE(GlobalReservedKeysRejected) {
 }
 
 ZEST_CASE(UnknownFileVersionsDetected) {
-    ProjectTableBlobMirror mirror;
-    mirror.next_version_id = 4;
-    mirror.version_ids = {3};
-    mirror.version_paths = {"/proj/a.h"};
-    mirror.version_hashes = {0x1};
-    auto bytes = encode(mirror);
+    auto layout = project_table_blob();
+    layout.next_version_id = 4;
+    layout.version_ids = {3};
+    layout.version_paths = {"/proj/a.h"};
+    layout.version_hashes = {0x1};
+    auto bytes = encode(layout);
     ZASSERT(bytes);
 
     clice::FileTable pool;
@@ -891,7 +684,7 @@ ZEST_CASE(SharedTableLineages) {
     ZASSERT(second_loaded.export_manifest(imported) == persisted);
 }
 
-};  // ZEST_SUITE(PersistedIndex)
+};  // ZEST_SUITE(ProjectTable)
 
 }  // namespace
 }  // namespace clice::testing

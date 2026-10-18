@@ -17,9 +17,9 @@ std::optional<Bitmap> view_of(const std::vector<std::byte>& image) {
     return read_bitmap(image.data(), image.size());
 }
 
-ZEST_SUITE(BitmapImage) {
+ZEST_SUITE(Columns) {
 
-ZEST_CASE(ViewMatchesBitmap) {  // Array containers alone (no run cookie, offsets stored), one run
+ZEST_CASE(ReadBitmapMatches) {  // Array containers alone (no run cookie, offsets stored), one run
     // container (too few containers to store offsets), and bitset, run
     // and array containers together (offsets stored).
     Bitmap arrays;
@@ -58,7 +58,7 @@ ZEST_CASE(ViewMatchesBitmap) {  // Array containers alone (no run cookie, offset
     ZEXPECT(view_of(empty)->isEmpty());
 }
 
-ZEST_CASE(ViewRejectsMalformed) {
+ZEST_CASE(ReadBitmapRejectsMalformed) {
     Bitmap bitmap;
     bitmap.add(1);
     bitmap.add(2);
@@ -94,7 +94,7 @@ ZEST_CASE(ViewRejectsMalformed) {
     ZEXPECT(!view_of(unsorted).has_value());
 }
 
-};  // ZEST_SUITE(BitmapImage)
+};  // ZEST_SUITE(Columns)
 
 }  // namespace
 }  // namespace clice::testing

@@ -138,40 +138,6 @@ std::vector<std::string> names(const Corpus& corpus,
 
 using Names = std::vector<std::string>;
 
-/// SearchIndexBlob field for field, to damage a built blob's posting lists.
-struct SearchBlobMirror {
-    std::uint32_t format_version = 0;
-    std::uint32_t search_version = 0;
-    std::uint64_t generation = 0;
-    std::vector<std::uint64_t> hashes;
-    std::string names;
-    std::vector<std::uint32_t> name_ends;
-    std::string args;
-    std::vector<std::uint32_t> args_ends;
-    std::vector<std::uint32_t> parents;
-    std::vector<float> qualities;
-    std::vector<std::uint32_t> by_lower_name;
-    std::vector<std::uint32_t> by_hash;
-    std::vector<std::uint32_t> token_keys;
-    std::vector<std::uint32_t> token_ends;
-    std::vector<std::uint8_t> token_postings;
-    std::vector<std::uint32_t> container_entries;
-    std::vector<std::uint32_t> children_ends;
-    std::vector<std::uint8_t> children_postings;
-    std::vector<std::uint8_t> top_level;
-    std::vector<std::uint8_t> long_names;
-    std::vector<std::uint32_t> subtree_entries;
-    std::vector<std::uint32_t> subtree_ends;
-    std::vector<std::uint8_t> subtree_postings;
-    std::vector<std::uint32_t> kind_ends;
-    std::vector<std::uint8_t> kind_postings;
-    std::vector<std::string> paths;
-    std::vector<std::uint32_t> file_ends;
-    std::vector<std::uint8_t> file_postings;
-    std::vector<std::uint32_t> local_entries;
-    std::vector<std::uint32_t> local_paths;
-};
-
 ZEST_SUITE(SearchIndex) {
 
 ZEST_CASE(Loads) {
@@ -193,7 +159,7 @@ ZEST_CASE(Loads) {
 
 ZEST_CASE(DamagedPosting) {
     auto corpus = sample();
-    SearchBlobMirror blob;
+    index::SearchIndexBlob blob;
     ZASSERT(index::deserialize_blob(index::build_search_blob(corpus.snapshot), blob));
     // Bytes no posting list starts with: the blob's structure stays
     // intact and every token's list is undecodable.
