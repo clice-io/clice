@@ -129,19 +129,19 @@ bool rarely_accessed(const clang::NamedDecl* decl) {
 
 /// The declaration an item shows of what Sema offers, whichever of its
 /// declarations Sema met first, but never a friend's, which names the
-/// parameters for itself and gives them no defaults: a function's newest
-/// one, with the prototype and the defaults of those before it; the first
-/// one of anything else, as a variable's later one is its out-of-line
-/// definition, its type spelled through its class. Under a preamble's
-/// PCH, the friend an instantiation of another class template declared
-/// before the class itself is the first declaration of the class template.
+/// parameters for itself and gives them no defaults: the newest one, with
+/// the prototype and the defaults of those before it; a variable's first
+/// one, as its later one is its out-of-line definition, its type spelled
+/// through its class. Under a preamble's PCH, the friend an instantiation
+/// of another class template declared before the class itself is the
+/// first declaration of the class template.
 const clang::NamedDecl* shown_declaration(const clang::NamedDecl* decl) {
-    bool newest = decl->getAsFunction() != nullptr;
+    bool first = llvm::isa<clang::VarDecl, clang::VarTemplateDecl>(decl);
     const clang::Decl* shown = decl;
     for(const clang::Decl* each = decl->getMostRecentDecl(); each; each = each->getPreviousDecl()) {
         if(each->getFriendObjectKind() == clang::Decl::FOK_None) {
             shown = each;
-            if(newest) {
+            if(!first) {
                 break;
             }
         }

@@ -8,3 +8,10 @@ int payroll(Employee one, int count) {
     };
     return pay(one) + pay(count);
 }
+
+int failed(int count) {
+    auto pay = [](auto& §(only_failed)e) {
+        return e.salary;
+    };
+    return pay(count);
+}

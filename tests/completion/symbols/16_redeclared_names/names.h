@@ -26,3 +26,9 @@ union attr {
 
 void reset(int);
 void reset(int level = 0);
+
+template <class T>
+struct Later;
+
+template <class T = int>
+struct Later {};

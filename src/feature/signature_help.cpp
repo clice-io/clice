@@ -91,49 +91,31 @@ const clang::FunctionDecl* shown(const clang::FunctionDecl* function) {
     return function;
 }
 
-/// Orders the candidates Sema ranks alike for a call with no argument
-/// written yet, which it leaves in the order its lookup found them: a
-/// class's implicit constructors join that order when something first
-/// needs one, in a preamble's PCH or later in the file. The declared
-/// functions go first, as the code declares them, then the implicit ones
-/// in the order Sema declares them, then the templates, which Sema ranks
-/// last.
-void
-    order_unranked(llvm::MutableArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates,
-                   const clang::SourceManager& sources) {
-    auto group = [](const clang::FunctionDecl* function) {
-        if(!function) {
+/// Puts a class's implicit constructors, which Sema ranks alike with the
+/// declared ones for a call with no argument written yet, after those, in
+/// the order Sema declares them: Sema leaves them where its lookup found
+/// them, which depends on when something first needed one, in a
+/// preamble's PCH or later in the file. Templates, which Sema ranks after
+/// both, stay last.
+void place_implicit(
+    llvm::MutableArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates) {
+    auto rank = [](const clang::CodeCompleteConsumer::OverloadCandidate& candidate) {
+        const auto* function = candidate.getFunction();
+        if(function &&
+           (function->getPrimaryTemplate() || function->getDescribedFunctionTemplate())) {
+            return 4;
+        }
+        const auto* constructor = llvm::dyn_cast_or_null<clang::CXXConstructorDecl>(function);
+        if(!constructor || !constructor->isImplicit()) {
             return 0;
         }
-        if(function->getPrimaryTemplate() || function->getDescribedFunctionTemplate()) {
-            return 3;
-        }
-        return function->isImplicit() ? 2 : 1;
-    };
-    auto special = [](const clang::FunctionDecl* function) {
-        const auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(function);
-        if(!constructor) {
-            return 3;
-        }
-        return constructor->isDefaultConstructor() ? 0
-               : constructor->isCopyConstructor()  ? 1
-               : constructor->isMoveConstructor()  ? 2
-                                                   : 3;
+        return constructor->isDefaultConstructor() ? 1
+               : constructor->isCopyConstructor()  ? 2
+               : constructor->isMoveConstructor()  ? 3
+                                                   : 0;
     };
     llvm::stable_sort(candidates, [&](const auto& left, const auto& right) {
-        const auto* lhs = left.getFunction();
-        const auto* rhs = right.getFunction();
-        if(group(lhs) != group(rhs)) {
-            return group(lhs) < group(rhs);
-        }
-        if(!lhs) {
-            return false;
-        }
-        if(lhs->isImplicit()) {
-            return special(lhs) < special(rhs);
-        }
-        return sources.isBeforeInTranslationUnit(shown(lhs)->getLocation(),
-                                                 shown(rhs)->getLocation());
+        return rank(left) < rank(right);
     });
 }
 
@@ -246,17 +228,8 @@ public:
         policy = display::printing_policy(*context, options);
 
         bool ranked = object_written(sema, open_paren);
-        // A call on an object ranks its member functions by the object
-        // even before any argument: `pick(` takes the non-const overload
-        // of `operator()` on a non-const `pick`.
-        auto by_object = [](const OverloadCandidate& candidate) {
-            const auto* method =
-                llvm::dyn_cast_or_null<clang::CXXMethodDecl>(candidate.getFunction());
-            return method && method->isInstance() && !llvm::isa<clang::CXXConstructorDecl>(method);
-        };
-        if(current_arg == 0 && !ranked &&
-           llvm::none_of(llvm::ArrayRef(candidates, candidate_count), by_object)) {
-            order_unranked({candidates, candidate_count}, sema.getSourceManager());
+        if(current_arg == 0) {
+            place_implicit({candidates, candidate_count});
         }
         llvm::SmallVector<const clang::FunctionDecl*> listed;
         for(auto& candidate: llvm::make_range(candidates, candidates + candidate_count)) {
