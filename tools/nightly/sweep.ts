@@ -251,11 +251,21 @@ interface Answer {
     stopped?: "hang" | "crash";
 }
 
-async function answer(client: Client, ask: Ask): Promise<Answer> {
+/// What of an answer the sweep keeps until the file is done: what is
+/// compared and shown on a mismatch, the value alone (the errors a file
+/// opens with), or nothing (navigation, which can list thousands of places
+/// over a large index).
+type Keep = "compared" | "value" | "nothing";
+
+async function answer(client: Client, ask: Ask, keep: Keep): Promise<Answer> {
     const reply = ask.ask(client);
     try {
         const value: unknown = await withTimeout(reply as Promise<unknown>, REQUEST_MS, ask.label);
-        return { reply, raw: value, value: JSON.stringify(value) };
+        return keep === "compared"
+            ? { reply, value: JSON.stringify(value) }
+            : keep === "value"
+              ? { raw: value }
+              : {};
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const stopped = message.includes("timed out after")
@@ -356,7 +366,7 @@ async function sweepFile(
                 if ([...answers.values()].some((each) => each.stopped !== undefined)) {
                     break;
                 }
-                answers.set(ask.label, await answer(clientOf(ask), ask));
+                answers.set(ask.label, await answer(clientOf(ask), ask, "compared"));
             }
             // A file importing a module through a header compiles with
             // errors alone, which every answer of it shows.
@@ -388,7 +398,8 @@ async function sweepFile(
             if (!alive() || [...answers.values()].some((each) => each.stopped === "hang")) {
                 break;
             }
-            answers.set(ask.label, await answer(server, ask));
+            const keep = ask === opened ? "value" : compared.includes(ask) ? "compared" : "nothing";
+            answers.set(ask.label, await answer(server, ask, keep));
         }
         try {
             server.close(file);

@@ -206,7 +206,7 @@ async function indexStep(
     } else if (report === undefined || (run.status !== 0 && run.status !== 1)) {
         results.failures.push({
             kind: "crash",
-            detail: `clice index ended with ${run.signal ?? `exit ${String(run.status)}`}:\n${run.stderr}`,
+            detail: `clice index ended with ${run.signal ?? `exit ${String(run.status)}`}, its processes at ${String(run.memory.total)} MB at most:\n${run.stderr}`,
             repro: again,
         });
     } else if (report.completed === undefined) {
