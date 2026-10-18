@@ -184,6 +184,7 @@ describe("report", () => {
         };
         const results: Results = {
             job: "p",
+            platform: "linux",
             about: "v1",
             commit: "c",
             clice: "k",
@@ -200,7 +201,7 @@ describe("report", () => {
             failures: [],
             index: { ...index, seconds: 90 },
         });
-        expect(text).toContain("# p: 1 failures");
+        expect(text).toContain("# p on linux: 1 failures");
         expect(text).toContain("| index | 2.0 min | 90 s |");
         expect(text).toContain("## Units clice reports errors on, which the compiler compiles (1)");
         expect(text).toContain("run it");
@@ -216,6 +217,7 @@ describe("report", () => {
         });
         const text = report({
             job: "p",
+            platform: "linux",
             about: "v1",
             commit: "c",
             clice: "k",
@@ -234,6 +236,7 @@ describe("report", () => {
     test("a detail holding a code block keeps its fence", () => {
         const results: Results = {
             job: "p",
+            platform: "linux",
             about: "v1",
             commit: "c",
             clice: "k",

@@ -447,7 +447,8 @@ an exemption naming nothing uncovered fails too.
 - **`nightly/projects.json`**: real projects, each pinned to a commit (clice
   itself at the commit under test) with how its compilation database is made,
   a project too large for one runner split into parts. Every night a free
-  runner per project or part (`nightly-projects.yml`) prepares it, indexes it
+  runner per project or part and platform (Linux, macOS, Windows; a project
+  names the ones it builds on) (`nightly-projects.yml`) prepares it, indexes it
   from a cold cache and asks the features on sampled files: inspect and a
   server the same requests at the same places, the server also navigation.
   The job fails on a preparation that fails, a crash, a hang, an index run

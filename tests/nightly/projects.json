@@ -51,6 +51,7 @@
       "about": "v7.2, x86_64 defconfig, built in full: the database comes from the build's command files",
       "repository": "https://github.com/torvalds/linux",
       "commit": "8d3ae59288f1e7d58d76558a6ee96d533bc5019f",
+      "platforms": ["linux"],
       "packages": ["libelf-dev"],
       "prepare": [
         ["make", "LLVM=1", "HOSTCC=gcc", "HOSTCXX=g++", "defconfig"],
@@ -63,6 +64,7 @@
     {
       "name": "clice",
       "about": "clice itself at the commit under test: one C++23 module, its database from Bazel",
+      "platforms": ["linux", "macos"],
       "prepare": [
         [
           "npx",
@@ -71,7 +73,8 @@
           "@compdb//:refresh",
           "--",
           "--output_groups=+compilation_prerequisites_INTERNAL_"
-        ]
+        ],
+        ["npx", "bazel", "shutdown"]
       ],
       "database": "compile_commands.json",
       "sample": 20

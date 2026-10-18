@@ -10,9 +10,28 @@ import { REPO_ROOT } from "../repo.ts";
 const PROJECTS_FILE = path.join(REPO_ROOT, "tests", "nightly", "projects.json");
 
 /// A command run in the checkout, an argv in which `${JOBS}` reads the
-/// machine's core count and `${CHECKOUT}` the checkout's path; or the
+/// machine's core count and `${CHECKOUT}` the checkout's path (with `/`); or the
 /// generated sources of a CMake build directory using Ninja.
 export type Step = string[] | { generated: string };
+
+export const PLATFORMS = ["linux", "macos", "windows"] as const;
+export type Platform = (typeof PLATFORMS)[number];
+
+/// The platform this process runs on.
+export function currentPlatform(): Platform {
+    switch (process.platform) {
+        case "linux":
+            return "linux";
+        case "darwin":
+            return "macos";
+        case "win32":
+            return "windows";
+        default:
+            throw new Error(
+                `the nightly jobs run on Linux, macOS and Windows, not ${process.platform}`,
+            );
+    }
+}
 
 export interface Project {
     name: string;
@@ -22,7 +41,9 @@ export interface Project {
     /// under test, has neither.
     repository?: string;
     commit?: string;
-    /// The system packages the preparation needs.
+    /// The platforms the project runs on, all of them when absent.
+    platforms?: Platform[];
+    /// The Debian packages the preparation needs on Linux.
     packages?: string[];
     prepare: Step[];
     /// The compilation database the preparation writes, checkout-relative.
@@ -56,6 +77,10 @@ export function loadProjects(): Project[] {
         names.add(project.name);
         if ((project.repository === undefined) !== (project.commit === undefined)) {
             fail(`${project.name} names a repository without a commit, or a commit without one`);
+        }
+        const unknown = (project.platforms ?? []).filter((each) => !PLATFORMS.includes(each));
+        if (unknown.length > 0) {
+            fail(`${project.name} names unknown platforms: ${unknown.join(", ")}`);
         }
         if (project.commit !== undefined && !/^[0-9a-f]{40}$/.test(project.commit)) {
             fail(`${project.name} pins ${project.commit}, not a full commit hash`);

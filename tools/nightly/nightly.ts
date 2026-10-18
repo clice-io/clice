@@ -16,7 +16,7 @@ import { jobDatabase } from "./database.ts";
 import { runIndex } from "./index.ts";
 import type { PeakMemory } from "./memory.ts";
 import { prepare } from "./prepare.ts";
-import type { Job } from "./projects.ts";
+import type { Job, Platform } from "./projects.ts";
 import { sampleFiles, sweep, type Request } from "./sweep.ts";
 
 export type Step = "index" | "sweep";
@@ -43,6 +43,7 @@ export interface Failure {
 
 export interface Results {
     job: string;
+    platform: Platform;
     about: string;
     /// The project's pinned commit, and clice's.
     commit: string;
@@ -56,7 +57,8 @@ export interface Results {
         shardBytes: number;
         symbols: number;
         cacheBytes: number;
-        memory: PeakMemory;
+        /// Measured on Linux only.
+        memory?: PeakMemory;
         compiledWithErrors: number;
         failed: number;
     };
@@ -76,6 +78,7 @@ export interface Results {
 
 export interface NightlyOptions {
     job: Job;
+    platform: Platform;
     /// Where projects are checked out.
     dir: string;
     /// The clice under test, as reproduction commands name it; the job runs
@@ -203,10 +206,16 @@ async function indexStep(
             detail: `no unit finished for half an hour; in flight:\n${run.hung.join("\n")}`,
             repro: again,
         });
+    } else if (run.overTime !== undefined) {
+        results.failures.push({
+            kind: "unfinished",
+            detail: `clice index was stopped at its three-hour bound, at ${run.overTime} units`,
+            repro: again,
+        });
     } else if (report === undefined || (run.status !== 0 && run.status !== 1)) {
         results.failures.push({
             kind: "crash",
-            detail: `clice index ended with ${run.signal ?? `exit ${String(run.status)}`}, its processes at ${String(run.memory.total)} MB at most:\n${run.stderr}`,
+            detail: `clice index ended with ${run.signal ?? `exit ${String(run.status)}`}${run.memory === undefined ? "" : `, its processes at ${String(run.memory.total)} MB at most`}:\n${run.stderr}`,
             repro: again,
         });
     } else if (report.completed === undefined) {
@@ -233,7 +242,7 @@ async function indexStep(
         shardBytes: report.shardBytes,
         symbols: report.symbolCount,
         cacheBytes: run.cacheBytes,
-        memory: run.memory,
+        ...(run.memory === undefined ? {} : { memory: run.memory }),
         compiledWithErrors: report.compiledWithErrors.length,
         failed: report.failed.length,
     };
@@ -323,6 +332,7 @@ export async function runNightly(options: NightlyOptions): Promise<Results> {
     const { job } = options;
     const results: Results = {
         job: job.name,
+        platform: options.platform,
         about: job.project.about,
         commit: job.project.commit ?? cliceCommit(),
         clice: cliceCommit(),

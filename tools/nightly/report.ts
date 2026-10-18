@@ -1,6 +1,7 @@
 /// A job's results as a person reads them: what failed, each with the
 /// command that reproduces it, and the numbers beside the previous night's.
 
+import type { PeakMemory } from "./memory.ts";
 import type { Failure, Results } from "./nightly.ts";
 
 const KINDS: Record<Failure["kind"], string> = {
@@ -16,6 +17,12 @@ const KINDS: Record<Failure["kind"], string> = {
     anomaly: "Anomalies",
     runner: "Errors of the nightly runner itself",
 };
+
+function memory(peak: PeakMemory | undefined): string {
+    return peak === undefined
+        ? ""
+        : `${String(peak.root)} / ${String(peak.child)} / ${String(peak.total)} MB`;
+}
 
 function megabytes(bytes: number): string {
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -49,13 +56,7 @@ function rows(now: Results, before: Results | undefined): string[][] {
                 megabytes(index.cacheBytes),
                 old === undefined ? "" : megabytes(old.cacheBytes),
             ],
-            [
-                "peak memory: master / worker / all",
-                `${String(index.memory.root)} / ${String(index.memory.child)} / ${String(index.memory.total)} MB`,
-                old === undefined
-                    ? ""
-                    : `${String(old.memory.root)} / ${String(old.memory.child)} / ${String(old.memory.total)} MB`,
-            ],
+            ["peak memory: master / worker / all", memory(index.memory), memory(old?.memory)],
             [
                 "units with errors / failed",
                 `${String(index.compiledWithErrors)} / ${String(index.failed)}`,
@@ -97,7 +98,7 @@ function fence(text: string): string {
 
 export function report(now: Results, before?: Results): string {
     const lines = [
-        `# ${now.job}: ${now.failures.length === 0 ? "green" : `${String(now.failures.length)} failures`}`,
+        `# ${now.job} on ${now.platform}: ${now.failures.length === 0 ? "green" : `${String(now.failures.length)} failures`}`,
         "",
         `${now.about}, commit \`${now.commit}\`; clice \`${now.clice}\`; sample seed \`${now.seed}\`.`,
         "",

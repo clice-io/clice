@@ -27,7 +27,7 @@ import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { cliceExecutable } from "../client/session.ts";
 import { runNightly, type Results, type Step } from "./nightly.ts";
-import { findJob, jobs, loadProjects } from "./projects.ts";
+import { currentPlatform, findJob, jobs, loadProjects, PLATFORMS } from "./projects.ts";
 import { report } from "./report.ts";
 import { NAVIGATION, REQUESTS, type Request } from "./sweep.ts";
 
@@ -45,22 +45,18 @@ const { values, positionals } = parseArgs({
     allowPositionals: true,
 });
 
-// Memory is read from /proc, the kernel builds on Linux only, and the
-// runners are Linux.
-if (process.platform !== "linux") {
-    console.error("the nightly jobs run on Linux");
-    process.exit(2);
-}
-
 const projects = loadProjects();
 if (values.jobs) {
     console.log(
         JSON.stringify(
-            jobs(projects).map((job) => ({
-                name: job.name,
-                artifact: job.name.replaceAll("/", "-"),
-                packages: (job.project.packages ?? []).join(" "),
-            })),
+            jobs(projects).flatMap((job) =>
+                (job.project.platforms ?? PLATFORMS).map((platform) => ({
+                    name: job.name,
+                    platform,
+                    artifact: `${job.name.replaceAll("/", "-")}-${platform}`,
+                    packages: platform === "linux" ? (job.project.packages ?? []).join(" ") : "",
+                })),
+            ),
         ),
     );
     process.exit(0);
@@ -121,11 +117,21 @@ process.on("unhandledRejection", (reason) => {
     }
 });
 
+const platform = currentPlatform();
+const job = findJob(projects, name);
+if (!(job.project.platforms ?? PLATFORMS).includes(platform)) {
+    console.error(`${job.name} does not run on ${platform}`);
+    process.exit(2);
+}
 const clice = cliceExecutable();
-process.env["CLICE_EXECUTABLE"] = killedFirst(clice);
+// Only Linux lets a process choose to be killed first.
+if (platform === "linux") {
+    process.env["CLICE_EXECUTABLE"] = killedFirst(clice);
+}
 
 const results = await runNightly({
-    job: findJob(projects, name),
+    job,
+    platform,
     dir,
     clice,
     steps,

@@ -70,7 +70,8 @@ async function checkout(project: Project, target: string): Promise<boolean> {
     fs.mkdirSync(target, { recursive: true });
     await stream("git", ["init", "-q"], target);
     await stream("git", ["fetch", "-q", "--depth", "1", repository, commit], target);
-    await stream("git", ["checkout", "-q", "FETCH_HEAD"], target);
+    // Windows bounds a path at 260 characters unless git is told otherwise.
+    await stream("git", ["-c", "core.longpaths=true", "checkout", "-q", "FETCH_HEAD"], target);
     return false;
 }
 
@@ -96,15 +97,19 @@ async function buildGenerated(build: string): Promise<void> {
     }
     fs.writeFileSync(ninja, out.join("\n"));
     const targets = (await output("ninja", ["-t", "targets", "rule", "CUSTOM_COMMAND"], build))
-        .split("\n")
-        .filter((target) => !target.startsWith("/") && /\.(cpp|h|inc)$/.test(target));
-    await stream("ninja", ["-k", "0", ...targets], build);
+        .split(/\r?\n/)
+        .filter((target) => !path.isAbsolute(target) && /\.(cpp|h|inc)$/.test(target));
+    // A few hundred targets a command: Windows bounds a command line at
+    // 32767 characters, and LLVM has over a thousand.
+    for (let i = 0; i < targets.length; i += 300) {
+        await stream("ninja", ["-k", "0", ...targets.slice(i, i + 300)], build);
+    }
 }
 
 function expand(arg: string, target: string): string {
     return arg
         .replaceAll("${JOBS}", String(os.availableParallelism()))
-        .replaceAll("${CHECKOUT}", target);
+        .replaceAll("${CHECKOUT}", target.split(path.sep).join("/"));
 }
 
 async function run(step: Step, target: string): Promise<void> {

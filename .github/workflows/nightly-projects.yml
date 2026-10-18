@@ -49,17 +49,25 @@ jobs:
           pixi run -e node install-tests
           echo "jobs=$(pixi run -e node node tools/nightly/run.ts --jobs)" >> "$GITHUB_OUTPUT"
 
-  run:
-    needs: jobs
-    name: ${{ matrix.name }}
+  # clice for each platform, as test-leg.yml builds it: Windows's on Linux
+  # with xclang's toolchain for the target.
+  build:
+    name: build ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.jobs.outputs.jobs) }}
-    runs-on: ubuntu-24.04
-    # A job's own hang detection stops it well before; this is the runner's
-    # six hours.
-    timeout-minutes: 350
+        include:
+          - platform: linux
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - platform: macos
+            os: macos-15
+            target: aarch64-apple-darwin
+          - platform: windows
+            os: ubuntu-24.04
+            target: x86_64-w64-mingw32
+            cross: true
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -68,7 +76,7 @@ jobs:
 
       - uses: ./.github/actions/setup-pixi
 
-      # Only restored: the cache is main's CI's (test-leg.yml saves it).
+      # Only restored: the caches are main's CI's (test-leg.yml saves them).
       - name: Restore Bazel caches
         uses: actions/cache/restore@v6
         with:
@@ -76,20 +84,80 @@ jobs:
             ${{ runner.temp }}/bazel-disk
             ${{ runner.temp }}/bazel-repo
             /var/tmp/xclang-thinlto
-          key: bazel-x86_64-unknown-linux-gnu-RelWithDebInfo-${{ github.sha }}
+          key: bazel-${{ matrix.target }}-RelWithDebInfo-${{ github.sha }}
           restore-keys: |
-            bazel-x86_64-unknown-linux-gnu-RelWithDebInfo-
+            bazel-${{ matrix.target }}-RelWithDebInfo-
 
-      - name: Build clice
+      - name: Build
         run: |
           {
             echo "common --disk_cache=$RUNNER_TEMP/bazel-disk"
             echo "common --repository_cache=$RUNNER_TEMP/bazel-repo"
           } > user.bazelrc
-          pixi run build RelWithDebInfo
-          pixi run install-tests
-          # Its server would keep a gigabyte the job needs.
-          pixi run npx bazel shutdown
+          pixi run -e default build RelWithDebInfo -- \
+            ${{ matrix.cross && format('--platforms=@xclang//platforms:{0}', matrix.target) || '' }}
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-${{ matrix.target }}-RelWithDebInfo
+          include-hidden-files: true
+          path: |
+            build/RelWithDebInfo/bin/bin/
+            build/RelWithDebInfo/bin/lib/
+            !build/RelWithDebInfo/bin/bin/*.runfiles
+            !build/RelWithDebInfo/bin/bin/bin/*.dSYM
+          if-no-files-found: error
+          retention-days: 3
+
+  run:
+    needs: [jobs, build]
+    name: ${{ matrix.name }} (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.jobs.outputs.jobs) }}
+    runs-on: ${{ fromJSON('{"linux":"ubuntu-24.04","macos":"macos-15","windows":"windows-2025"}')[matrix.platform] }}
+    # A job's own bounds stop it well before; this is the runner's six
+    # hours.
+    timeout-minutes: 350
+    env:
+      TARGET: ${{ fromJSON('{"linux":"x86_64-unknown-linux-gnu","macos":"aarch64-apple-darwin","windows":"x86_64-w64-mingw32"}')[matrix.platform] }}
+      # Windows has no build environment, as in the test legs.
+      PIXI_ENV: ${{ matrix.platform == 'windows' && 'test-run' || 'default' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/download-programs
+        with:
+          target: ${{ env.TARGET }}
+          build_type: RelWithDebInfo
+          environments: ${{ env.PIXI_ENV }}
+          activate-environment: ${{ env.PIXI_ENV }}
+
+      # clice's own project: its database comes from Bazel.
+      - name: Restore Bazel caches
+        if: matrix.name == 'clice'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
+            /var/tmp/xclang-thinlto
+          key: bazel-${{ env.TARGET }}-RelWithDebInfo-${{ github.sha }}
+          restore-keys: |
+            bazel-${{ env.TARGET }}-RelWithDebInfo-
+
+      - name: Install the tools
+        run: |
+          {
+            echo "common --disk_cache=$RUNNER_TEMP/bazel-disk"
+            echo "common --repository_cache=$RUNNER_TEMP/bazel-repo"
+          } > user.bazelrc
+          pixi run -e "$PIXI_ENV" install-tests
 
       - name: Install the project's packages
         if: matrix.packages != ''
@@ -114,13 +182,13 @@ jobs:
       # exhausts it is killed there (first, run.ts sees to that) and the job
       # reports the crash, while the runner's agent keeps memory enough to
       # stay up; on the whole machine the agent dies and nothing is reported.
+      # Linux alone has such scopes.
       - name: Run
         env:
           CLICE_EXECUTABLE: ${{ github.workspace }}/build/RelWithDebInfo/bin/bin/clice
         run: >-
-          sudo -E env "PATH=$PATH" systemd-run --scope --quiet --uid="$(id -u)" --gid="$(id -g)"
-          -p MemoryMax=14G -p MemorySwapMax=0 -p OOMPolicy=continue --
-          pixi run node tools/nightly/run.ts "${{ matrix.name }}"
+          ${{ runner.os == 'Linux' && 'sudo -E env "PATH=$PATH" systemd-run --scope --quiet --uid="$(id -u)" --gid="$(id -g)" -p MemoryMax=14G -p MemorySwapMax=0 -p OOMPolicy=continue --' || '' }}
+          pixi run -e "$PIXI_ENV" node tools/nightly/run.ts "${{ matrix.name }}"
           --dir "$RUNNER_TEMP/projects"
           --out "$RUNNER_TEMP/out"
           --previous "$RUNNER_TEMP/previous/results.json"
