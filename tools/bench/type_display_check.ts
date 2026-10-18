@@ -71,7 +71,7 @@ const BUILTIN_INTEGER =
     /^(?:const )?(?:unsigned |signed )?(?:char|short|int|long|long long|long int|unsigned)(?: [*&]+)?$/;
 
 /// The kinds of spelling `text` holds.
-export function kinds(text: string): string[] {
+function kinds(text: string): string[] {
     const found: string[] = [];
     const tag = (kind: string, matched: boolean) => {
         if (matched) {

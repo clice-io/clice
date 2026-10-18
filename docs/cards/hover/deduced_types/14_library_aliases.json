@@ -3,43 +3,49 @@
   "topic": "hover",
   "subtopic": "deduced_types",
   "title": "Library aliases",
-  "summary": "The type of a variable keeps the alias its initializer names, but none the library keeps to itself",
-  "prose": "`values.size()` reads as `std::vector<int>::size_type` with what it stands for after it; the member alias of `__alloc_traits` that `front()` returns reads as `int &`, and a trait's result, `invoke_result_t<…>`, as what it computes. An alias over a class the library keeps to itself names that class after it: `std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`.",
+  "summary": "The type of a variable keeps the alias its initializer names, but not a trait's result or one the library keeps to itself",
+  "prose": "`values.size()` reads as `std::vector<int>::size_type` with what it stands for after it; the member alias of `__alloc_traits` that `front()` returns reads as `int &`, and a trait's result, `invoke_result_t<…>`, as what it computes. An alias over a class the library keeps to itself names that class after it: `std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`. A binding of such a class takes the alias from its initializer: `position` of `ids.insert(1)` is a `std::set<int>::iterator`.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace __gnu_cxx {\ntemplate <class Pointer, class Container>\nstruct __normal_iterator {};\n\ntemplate <class Alloc>\nstruct __alloc_traits {\n    typedef typename Alloc::value_type value_type;\n};\n}  // namespace __gnu_cxx\n\nnamespace std {\ntypedef unsigned long size_t;\n\ntemplate <class T>\nstruct allocator {\n    typedef T value_type;\n};\n\ntemplate <class T, class Alloc = allocator<T>>\nstruct vector {\n    typedef typename __gnu_cxx::__alloc_traits<Alloc>::value_type& reference;\n    typedef size_t size_type;\n    typedef __gnu_cxx::__normal_iterator<T*, vector> iterator;\n    reference front();\n    size_type size() const;\n    iterator begin();\n};\n\ntemplate <class F>\nstruct invoke_result {\n    typedef decltype(static_cast<F (*)()>(nullptr)()()) type;\n};\n\ntemplate <class F>\nusing invoke_result_t = typename invoke_result<F>::type;\n\ntemplate <class F>\ninvoke_result_t<F> invoke(F function);\n}  // namespace std\n\nint answer();\n\nvoid use(std::vector<int>& values) {\n    auto count = values.size();\n    auto& first = values.front();\n    auto it = values.begin();\n    auto result = std::invoke(answer);\n    auto copy = std::invoke(answer);\n}\n",
+      "text": "namespace __gnu_cxx {\ntemplate <class Pointer, class Container>\nstruct __normal_iterator {};\n\ntemplate <class Alloc>\nstruct __alloc_traits {\n    typedef typename Alloc::value_type value_type;\n};\n}  // namespace __gnu_cxx\n\nnamespace std {\ntypedef unsigned long size_t;\n\ntemplate <class T>\nstruct allocator {\n    typedef T value_type;\n};\n\ntemplate <class T, class Alloc = allocator<T>>\nstruct vector {\n    typedef typename __gnu_cxx::__alloc_traits<Alloc>::value_type& reference;\n    typedef size_t size_type;\n    typedef __gnu_cxx::__normal_iterator<T*, vector> iterator;\n    reference front();\n    size_type size() const;\n    iterator begin();\n};\n\ntemplate <class T>\nstruct __tree_iterator {};\n\ntemplate <class First, class Second>\nstruct pair {\n    First first;\n    Second second;\n};\n\ntemplate <class T>\nstruct set {\n    typedef __tree_iterator<T> iterator;\n    pair<iterator, bool> insert(const T& value);\n};\n\ntemplate <class F>\nstruct invoke_result {\n    typedef decltype(static_cast<F (*)()>(nullptr)()()) type;\n};\n\ntemplate <class F>\nusing invoke_result_t = typename invoke_result<F>::type;\n\ntemplate <class F>\ninvoke_result_t<F> invoke(F function);\n}  // namespace std\n\nint answer();\n\nvoid use(std::vector<int>& values, std::set<int>& ids) {\n    auto count = values.size();\n    auto& first = values.front();\n    auto it = values.begin();\n    auto result = std::invoke(answer);\n    auto copy = std::invoke(answer);\n    auto [position, added] = ids.insert(1);\n}\n",
       "markers": [
         {
           "name": "count",
-          "begin": 973,
-          "end": 973,
+          "begin": 1257,
+          "end": 1257,
           "range": false
         },
         {
           "name": "first",
-          "begin": 1006,
-          "end": 1006,
+          "begin": 1290,
+          "end": 1290,
           "range": false
         },
         {
           "name": "iterator",
-          "begin": 1039,
-          "end": 1039,
+          "begin": 1323,
+          "end": 1323,
           "range": false
         },
         {
           "name": "result",
-          "begin": 1069,
-          "end": 1069,
+          "begin": 1353,
+          "end": 1353,
           "range": false
         },
         {
           "name": "keyword",
-          "begin": 1103,
-          "end": 1103,
+          "begin": 1387,
+          "end": 1387,
+          "range": false
+        },
+        {
+          "name": "binding",
+          "begin": 1430,
+          "end": 1430,
           "range": false
         }
       ]
@@ -60,11 +66,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 43,
+                    "line": 58,
                     "character": 9
                   },
                   "end": {
-                    "line": 43,
+                    "line": 58,
                     "character": 14
                   }
                 }
@@ -83,11 +89,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 44,
+                    "line": 59,
                     "character": 10
                   },
                   "end": {
-                    "line": 44,
+                    "line": 59,
                     "character": 15
                   }
                 }
@@ -106,11 +112,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 45,
+                    "line": 60,
                     "character": 9
                   },
                   "end": {
-                    "line": 45,
+                    "line": 60,
                     "character": 11
                   }
                 }
@@ -129,11 +135,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 46,
+                    "line": 61,
                     "character": 9
                   },
                   "end": {
-                    "line": 46,
+                    "line": 61,
                     "character": 15
                   }
                 }
@@ -152,12 +158,35 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 47,
+                    "line": 62,
                     "character": 4
                   },
                   "end": {
-                    "line": 47,
+                    "line": 62,
                     "character": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "binding",
+          "marker": "binding",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `position` · function `use`\n\n```cpp\nauto [position, added] = ids.insert(1)\n```\nType: `std::set<int>::iterator` (aka `std::__tree_iterator<int>`)",
+              "range": {
+                "$place": "auto [⟦position⟧, added] = ids.insert(1);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 63,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 63,
+                    "character": 18
                   }
                 }
               }

@@ -10,13 +10,20 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace __gnu_cxx {\ntemplate <class Pointer, class Container>\nstruct __normal_iterator {};\n\ntemplate <class Alloc>\nstruct __alloc_traits {\n    typedef typename Alloc::value_type value_type;\n};\n}  // namespace __gnu_cxx\n\nnamespace std {\ntemplate <class T>\nstruct allocator {\n    typedef T value_type;\n};\n\ntemplate <class T, class Alloc = allocator<T>>\nstruct vector {\n    typedef typename __gnu_cxx::__alloc_traits<Alloc>::value_type& reference;\n    typedef __gnu_cxx::__normal_iterator<T*, vector> iterator;\n    reference front();\n    iterator begin();\n};\n\ntemplate <class Pointer>\nstruct __wrap_iter {};\n\ntemplate <class T>\nstruct span {\n    typedef __wrap_iter<T*> iterator;\n    iterator begin();\n    iterator end();\n};\n\ntemplate <class Iterator>\nIterator next(Iterator it);\n\ntemplate <class Iterator>\nIterator find(Iterator first, Iterator last);\n\nstruct _Bind_front {};\n_Bind_front bind_front();\n}  // namespace std\n\nvoid use(std::vector<int>& values, std::span<int> items) {\n    auto& first = values.front();\n    auto after = std::next(values.begin());\n    auto found = std::find(items.begin(), items.end());\n    auto bound = std::bind_front();\n}\n",
+      "text": "namespace __gnu_cxx {\ntemplate <class Pointer, class Container>\nstruct __normal_iterator {};\n\ntemplate <class Alloc>\nstruct __alloc_traits {\n    typedef typename Alloc::value_type value_type;\n};\n}  // namespace __gnu_cxx\n\nnamespace std {\ntemplate <class T>\nstruct allocator {\n    typedef T value_type;\n};\n\ntemplate <class T, class Alloc = allocator<T>>\nstruct vector {\n    typedef typename __gnu_cxx::__alloc_traits<Alloc>::value_type& reference;\n    typedef __gnu_cxx::__normal_iterator<T*, vector> iterator;\n    reference front();\n    iterator begin();\n};\n\ntemplate <class Container, bool Const>\nstruct __bit_iterator {};\n\ntemplate <class Alloc>\nstruct vector<bool, Alloc> {\n    typedef __bit_iterator<vector, false> pointer;\n    typedef pointer iterator;\n    iterator begin();\n};\n\ntemplate <class Pointer>\nstruct __wrap_iter {};\n\ntemplate <class Iterator>\nstruct reverse_iterator {\n    typedef Iterator iterator_type;\n    iterator_type base();\n};\n\ntemplate <class T>\nstruct span {\n    typedef __wrap_iter<T*> iterator;\n    iterator begin();\n    iterator end();\n    reverse_iterator<iterator> rbegin();\n};\n\ntemplate <class Iterator>\nIterator next(Iterator it);\n\ntemplate <class Iterator>\nIterator find(Iterator first, Iterator last);\n\nstruct _Bind_front {};\n_Bind_front bind_front();\n}  // namespace std\n\nvoid use(std::vector<int>& values, std::span<int> items, std::vector<bool>& flags) {\n    auto& first = values.front();\n    auto after = std::next(values.begin());\n    std::vector<int>::iterator start = values.begin();\n    auto second = std::next(start);\n    auto flag = flags.begin();\n    auto set = std::find(flags.begin(), flags.begin());\n    auto backwards = items.rbegin();\n    auto forwards = std::next(backwards.base());\n    auto found = std::find(items.begin(), items.end());\n    auto bound = std::bind_front();\n}\n",
       "markers": []
     }
   ],
   "tests": [
     {
       "name": "answers",
+      "config": {
+        "inlay_hints": {
+          "max_length": {
+            "types": 0
+          }
+        }
+      },
       "blocks": [
         {
           "label": "main.cpp",
@@ -28,11 +35,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 45,
+                      "line": 62,
                       "character": 4
                     },
                     "end": {
-                      "line": 45,
+                      "line": 62,
                       "character": 33
                     }
                   }
@@ -44,12 +51,92 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 46,
+                      "line": 63,
                       "character": 4
                     },
                     "end": {
-                      "line": 46,
+                      "line": 63,
                       "character": 43
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto second⟨: vector<int>::iterator⟩ = std::next(⟨it:⟩start);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 65,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 65,
+                      "character": 35
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto flag⟨: vector<bool>::iterator⟩ = flags.begin();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 66,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 66,
+                      "character": 30
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto set⟨: vector<bool>::iterator⟩ = std::find(⟨first:⟩flags.begin(), ⟨last:⟩flags.begin());",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 67,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 67,
+                      "character": 55
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto backwards⟨: reverse_iterator<span<int>::iterator>⟩ = items.rbegin();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 68,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 68,
+                      "character": 36
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto forwards = std::next(⟨it:⟩backwards.base());",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 69,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 69,
+                      "character": 48
                     }
                   }
                 }
@@ -60,11 +147,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 47,
+                      "line": 70,
                       "character": 4
                     },
                     "end": {
-                      "line": 47,
+                      "line": 70,
                       "character": 55
                     }
                   }

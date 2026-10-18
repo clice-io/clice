@@ -1,0 +1,65 @@
+[answers.back.hover]
+markdown = '''
+**method** `back` · struct `std::vector<std::string>`
+
+```cpp
+string &back()
+```
+`string` is `basic_string<char>`
+'''
+range = "names.⟦back⟧();"
+
+[answers.push_back.hover]
+markdown = '''
+**method** `push_back` · struct `std::vector<std::string>`
+
+```cpp
+void push_back(const string &value)
+```
+`string` is `basic_string<char>`
+'''
+range = "names.⟦push_back⟧(name);"
+
+[answers.emplace_back.hover]
+markdown = '''
+**method** `emplace_back` · struct `std::vector<std::string>`
+
+```cpp
+template <> string &emplace_back<string &, int>(string &args, int &&args)
+```
+`string` is `basic_string<char>`
+'''
+range = "names.⟦emplace_back⟧(name, 1);"
+
+[answers.data.hover]
+markdown = '''
+**method** `data` · struct `std::vector<std::string>`
+
+```cpp
+static constexpr string *data(unsigned int offset = 0) noexcept
+```
+`string` is `basic_string<char>`
+'''
+range = "names.⟦data⟧();"
+
+[answers.at.hover]
+markdown = '''
+**method** `at` · struct `std::vector<std::string>`
+
+```cpp
+auto at(unsigned int index) const -> const string &
+```
+`string` is `basic_string<char>`
+'''
+range = "names.⟦at⟧(0);"
+
+[answers.max.hover]
+markdown = '''
+**function** `max` · namespace `std`
+
+```cpp
+template <> const string &max<string>(const string &a, const string &b)
+```
+`string` is `basic_string<char>`
+'''
+range = "std::⟦max⟧(name, name);"

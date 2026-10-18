@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto it⟨: iterator⟩ = find(⟨key:⟩1);" },
+    { line = "auto first⟨: exception_ptr⟩ = errors.front();" },
+    { line = "auto found⟨: Root::iterator⟩ = leaf.find();" },
+    { line = "auto top⟨: vector<int>::iterator⟩ = stack.begin();" },
+]

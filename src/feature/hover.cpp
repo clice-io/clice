@@ -546,18 +546,14 @@ void add_macros(HoverInfo& info,
 auto accessed_specialization(const SelectionTree::Node& node, CompilationUnit& unit)
     -> const clang::TemplateSpecializationType* {
     if(const auto* access = node.get<clang::CXXDependentScopeMemberExpr>()) {
-        return access->isImplicitAccess()
-                   ? nullptr
-                   : types::accessed_specialization(*access->getBase(),
-                                                    access->isArrow(),
-                                                    unit.get<types::TemplateResolver>());
+        return types::accessed_specialization(*access, unit.get<types::TemplateResolver>());
     }
     const auto* loc = node.get<clang::TypeLoc>();
     const auto* name = loc ? loc->getType()->getAs<clang::DependentNameType>() : nullptr;
-    auto qualifier = name ? name->getQualifier() : clang::NestedNameSpecifier();
-    return qualifier.getKind() == clang::NestedNameSpecifier::Kind::Type
-               ? qualifier.getAsType()->getAs<clang::TemplateSpecializationType>()
-               : nullptr;
+    if(!name || name->getQualifier().getKind() != clang::NestedNameSpecifier::Kind::Type) {
+        return nullptr;
+    }
+    return name->getQualifier().getAsType()->getAs<clang::TemplateSpecializationType>();
 }
 
 /// The card of a declaration.

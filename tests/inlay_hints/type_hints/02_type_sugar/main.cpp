@@ -36,6 +36,21 @@ struct Defaulted {};
 
 Defaulted<float> make_defaulted();
 
+template <typename T>
+struct Capacity {
+    static constexpr unsigned value = 4;
+};
+
+template <typename T, unsigned N = Capacity<T>::value>
+struct Small {};
+
+template <typename T>
+struct Box {
+    T& front();
+};
+
+Box<Small<int>>& boxes();
+
 void use() {
     auto aliased = make_alias();
     auto shortened = make_compact();
@@ -45,4 +60,5 @@ void use() {
     auto dropped = make_far();
     auto callback = make_callback();
     auto defaulted = make_defaulted();
+    auto& small = boxes().front();
 }

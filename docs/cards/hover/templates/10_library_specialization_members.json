@@ -10,12 +10,12 @@
   "files": [
     {
       "path": "lib.h",
-      "text": "#pragma once\n\nnamespace lib {\ntemplate <class _Tp>\nstruct vector {\n    using value_type = _Tp;\n    void push_back(const value_type& __x);\n    _Tp& front();\n};\n\ntemplate <class _T1, class _T2>\nstruct pair {\n    _T1 first;\n    _T2 second;\n};\n\ntemplate <class _Key, class _Val>\nstruct map {\n    pair<const _Key, _Val>* find(const _Key& key);\n};\n}  // namespace lib\n",
+      "text": "#pragma once\n\nnamespace lib {\ntemplate <class _Tp>\nstruct vector {\n    using value_type = _Tp;\n    void push_back(const value_type& __x);\n    _Tp& front();\n    vector& append(const vector& __other);\n};\n\ntemplate <class _T1, class _T2>\nstruct pair {\n    _T1 first;\n    _T2 second;\n};\n\ntemplate <class _Key, class _Val>\nstruct map {\n    pair<const _Key, _Val>* find(const _Key& key);\n};\n}  // namespace lib\n",
       "markers": []
     },
     {
       "path": "main.cpp",
-      "text": "#include \"lib.h\"\n\ntemplate <class T>\nstruct Point {\n    T x;\n};\n\ntemplate <class T>\nvoid f(lib::vector<Point<T>>& pts, lib::map<int, T>& m) {\n    pts.push_back(Point<T>{});\n    auto value = m.find(1)->second;\n    typename lib::vector<Point<T>>::value_type copy = pts.front();\n}\n",
+      "text": "#include \"lib.h\"\n\ntemplate <class T>\nstruct Point {\n    T x;\n};\n\ntemplate <class T>\nvoid f(lib::vector<Point<T>>& pts, lib::map<int, T>& m) {\n    pts.push_back(Point<T>{});\n    pts.append(pts);\n    auto value = m.find(1)->second;\n    typename lib::vector<Point<T>>::value_type copy = pts.front();\n}\n",
       "markers": [
         {
           "name": "push_back",
@@ -24,15 +24,21 @@
           "range": false
         },
         {
+          "name": "append",
+          "begin": 181,
+          "end": 181,
+          "range": false
+        },
+        {
           "name": "second",
-          "begin": 201,
-          "end": 201,
+          "begin": 222,
+          "end": 222,
           "range": false
         },
         {
           "name": "value_type",
-          "begin": 245,
-          "end": 245,
+          "begin": 266,
+          "end": 266,
           "range": false
         }
       ]
@@ -66,6 +72,29 @@
           }
         },
         {
+          "label": "append",
+          "marker": "append",
+          "value": {
+            "hover": {
+              "markdown": "**method** `append` · struct `lib::vector<Point<T>>`\n\n```cpp\nlib::vector<Point<T>> &append(const lib::vector<Point<T>> &__other)\n```",
+              "range": {
+                "$place": "pts.⟦append⟧(pts);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
           "label": "second",
           "marker": "second",
           "value": {
@@ -76,11 +105,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 10,
+                    "line": 11,
                     "character": 28
                   },
                   "end": {
-                    "line": 10,
+                    "line": 11,
                     "character": 34
                   }
                 }
@@ -99,11 +128,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 11,
+                    "line": 12,
                     "character": 36
                   },
                   "end": {
-                    "line": 11,
+                    "line": 12,
                     "character": 46
                   }
                 }

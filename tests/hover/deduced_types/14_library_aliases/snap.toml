@@ -51,3 +51,14 @@ int
 ```
 '''
 range = "⟦auto⟧ copy = std::invoke(answer);"
+
+[answers.binding.hover]
+markdown = '''
+**variable** `position` · function `use`
+
+```cpp
+auto [position, added] = ids.insert(1)
+```
+Type: `std::set<int>::iterator` (aka `std::__tree_iterator<int>`)
+'''
+range = "auto [⟦position⟧, added] = ids.insert(1);"

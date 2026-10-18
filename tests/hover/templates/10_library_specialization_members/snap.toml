@@ -9,6 +9,16 @@ void push_back(const value_type &__x)
 '''
 range = "pts.⟦push_back⟧(Point<T>{});"
 
+[answers.append.hover]
+markdown = '''
+**method** `append` · struct `lib::vector<Point<T>>`
+
+```cpp
+lib::vector<Point<T>> &append(const lib::vector<Point<T>> &__other)
+```
+'''
+range = "pts.⟦append⟧(pts);"
+
 [answers.second.hover]
 markdown = '''
 **field** `second` · struct `lib::pair<const int, T>`

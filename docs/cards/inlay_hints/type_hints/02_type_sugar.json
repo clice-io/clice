@@ -4,7 +4,7 @@
   "subtopic": "type_hints",
   "title": "Type sugar length limits",
   "summary": "Aliases keep their spelling, and an over-long type keeps what of it fits",
-  "prose": "A type too long for the limit falls back to its sugared name, then writes the template arguments that do not fit as `…`, keeping its outermost name; a type whose outermost name does not fit shows nothing. Default template arguments never print. The limit is `inlay_hints.max_length.types`; `0` lifts it.",
+  "prose": "A type too long for the limit writes the template arguments that do not fit as `…`, keeping its outermost name; a type whose outermost name does not fit shows nothing. Default template arguments never print. The limit is `inlay_hints.max_length.types`; `0` lifts it.",
   "status": "supported",
   "issues": [
     "clangd#1298",
@@ -14,7 +14,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "using Integer = int;\n\nInteger make_alias();\n\ntemplate <typename A, typename B, typename C>\nstruct extremely_long_template_name {};\n\nusing Compact = extremely_long_template_name<int, char, bool>;\n\nCompact make_compact();\n\nextremely_long_template_name<Integer, Integer, Integer> make_long();\n\ntemplate <typename... Ts>\nstruct tuple {};\n\ntuple<int, double, extremely_long_template_name<int, char, bool>> make_mixed();\n\ntemplate <typename A, typename B>\nstruct Pair {};\n\ntuple<int, Pair<long, extremely_long_template_name<int, char, bool>>> make_nested();\n\ntemplate <typename T>\nstruct an_extraordinarily_long_class_name {};\n\nan_extraordinarily_long_class_name<int> make_far();\n\ntemplate <typename F>\nstruct function {};\n\nfunction<auto(const char*)->bool> make_callback();\n\ntemplate <typename T, typename U = int>\nstruct Defaulted {};\n\nDefaulted<float> make_defaulted();\n\nvoid use() {\n    auto aliased = make_alias();\n    auto shortened = make_compact();\n    auto elided = make_long();\n    auto mixed = make_mixed();\n    auto nested = make_nested();\n    auto dropped = make_far();\n    auto callback = make_callback();\n    auto defaulted = make_defaulted();\n}\n",
+      "text": "using Integer = int;\n\nInteger make_alias();\n\ntemplate <typename A, typename B, typename C>\nstruct extremely_long_template_name {};\n\nusing Compact = extremely_long_template_name<int, char, bool>;\n\nCompact make_compact();\n\nextremely_long_template_name<Integer, Integer, Integer> make_long();\n\ntemplate <typename... Ts>\nstruct tuple {};\n\ntuple<int, double, extremely_long_template_name<int, char, bool>> make_mixed();\n\ntemplate <typename A, typename B>\nstruct Pair {};\n\ntuple<int, Pair<long, extremely_long_template_name<int, char, bool>>> make_nested();\n\ntemplate <typename T>\nstruct an_extraordinarily_long_class_name {};\n\nan_extraordinarily_long_class_name<int> make_far();\n\ntemplate <typename F>\nstruct function {};\n\nfunction<auto(const char*)->bool> make_callback();\n\ntemplate <typename T, typename U = int>\nstruct Defaulted {};\n\nDefaulted<float> make_defaulted();\n\ntemplate <typename T>\nstruct Capacity {\n    static constexpr unsigned value = 4;\n};\n\ntemplate <typename T, unsigned N = Capacity<T>::value>\nstruct Small {};\n\ntemplate <typename T>\nstruct Box {\n    T& front();\n};\n\nBox<Small<int>>& boxes();\n\nvoid use() {\n    auto aliased = make_alias();\n    auto shortened = make_compact();\n    auto elided = make_long();\n    auto mixed = make_mixed();\n    auto nested = make_nested();\n    auto dropped = make_far();\n    auto callback = make_callback();\n    auto defaulted = make_defaulted();\n    auto& small = boxes().front();\n}\n",
       "markers": []
     }
   ],
@@ -32,11 +32,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 39,
+                      "line": 54,
                       "character": 4
                     },
                     "end": {
-                      "line": 39,
+                      "line": 54,
                       "character": 32
                     }
                   }
@@ -48,11 +48,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 40,
+                      "line": 55,
                       "character": 4
                     },
                     "end": {
-                      "line": 40,
+                      "line": 55,
                       "character": 36
                     }
                   }
@@ -64,11 +64,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 41,
+                      "line": 56,
                       "character": 4
                     },
                     "end": {
-                      "line": 41,
+                      "line": 56,
                       "character": 30
                     }
                   }
@@ -80,11 +80,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 42,
+                      "line": 57,
                       "character": 4
                     },
                     "end": {
-                      "line": 42,
+                      "line": 57,
                       "character": 30
                     }
                   }
@@ -96,11 +96,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 43,
+                      "line": 58,
                       "character": 4
                     },
                     "end": {
-                      "line": 43,
+                      "line": 58,
                       "character": 32
                     }
                   }
@@ -112,11 +112,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 45,
+                      "line": 60,
                       "character": 4
                     },
                     "end": {
-                      "line": 45,
+                      "line": 60,
                       "character": 36
                     }
                   }
@@ -128,12 +128,28 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 46,
+                      "line": 61,
                       "character": 4
                     },
                     "end": {
-                      "line": 46,
+                      "line": 61,
                       "character": 38
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto& small⟨: Small<int> &⟩ = boxes().front();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 62,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 62,
+                      "character": 34
                     }
                   }
                 }
@@ -163,11 +179,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 39,
+                      "line": 54,
                       "character": 4
                     },
                     "end": {
-                      "line": 39,
+                      "line": 54,
                       "character": 32
                     }
                   }
@@ -179,11 +195,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 40,
+                      "line": 55,
                       "character": 4
                     },
                     "end": {
-                      "line": 40,
+                      "line": 55,
                       "character": 36
                     }
                   }
@@ -195,11 +211,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 41,
+                      "line": 56,
                       "character": 4
                     },
                     "end": {
-                      "line": 41,
+                      "line": 56,
                       "character": 30
                     }
                   }
@@ -211,11 +227,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 42,
+                      "line": 57,
                       "character": 4
                     },
                     "end": {
-                      "line": 42,
+                      "line": 57,
                       "character": 30
                     }
                   }
@@ -227,11 +243,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 43,
+                      "line": 58,
                       "character": 4
                     },
                     "end": {
-                      "line": 43,
+                      "line": 58,
                       "character": 32
                     }
                   }
@@ -243,11 +259,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 44,
+                      "line": 59,
                       "character": 4
                     },
                     "end": {
-                      "line": 44,
+                      "line": 59,
                       "character": 30
                     }
                   }
@@ -259,11 +275,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 45,
+                      "line": 60,
                       "character": 4
                     },
                     "end": {
-                      "line": 45,
+                      "line": 60,
                       "character": 36
                     }
                   }
@@ -275,12 +291,28 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 46,
+                      "line": 61,
                       "character": 4
                     },
                     "end": {
-                      "line": 46,
+                      "line": 61,
                       "character": 38
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto& small⟨: Small<int> &⟩ = boxes().front();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 62,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 62,
+                      "character": 34
                     }
                   }
                 }

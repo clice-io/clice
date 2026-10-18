@@ -4,7 +4,7 @@
   "subtopic": "type_hints",
   "title": "Binding aliases",
   "summary": "The bindings of a container's elements keep the aliases the container was declared with",
-  "prose": "Iterating a `std::map<std::string, Point>` shows each key as a\n`const std::string`, not as `basic_string<char>`. Two aliases of one type,\nor an alias and the type itself, leave it unaliased.",
+  "prose": "Iterating a `std::map<std::string, Point>` shows each key as a\n`const string`, not as `basic_string<char>`. Two aliases of one type,\nor an alias and the type itself, leave it unaliased.",
   "status": "supported",
   "issues": [],
   "files": [

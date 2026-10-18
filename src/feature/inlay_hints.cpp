@@ -1780,9 +1780,9 @@ private:
     LocalSourceRange restrict_range;
     const InlayHintsOptions& options;
 
-    // Suppress scopes to keep type names short. Not setting
-    // PrintCanonicalTypes for "auto" allows SuppressDefaultTemplateArgs (set
-    // by default) to have an effect.
+    // Types named as a hint names them (display::Options::hint_types). Not
+    // setting PrintCanonicalTypes for "auto" allows SuppressDefaultTemplateArgs
+    // (set by default) to have an effect.
     display::Options display_options = {.suppress_scope = true, .hint_types = true};
 
     // If/else chains are tricky.

@@ -9,7 +9,6 @@ import :feature.feature;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
-import :semantic.types;
 import :support.fuzzy_matcher;
 import :support.markup;
 import :syntax.documentation;
@@ -1299,6 +1298,10 @@ public:
                     return false;
                 }
                 object = resolver.member_object(base, arrow);
+                /// The members of a dependent specialization read its
+                /// template's parameters as its arguments.
+                display_options.specialization =
+                    object.isNull() ? nullptr : object->getAs<clang::TemplateSpecializationType>();
                 tag = object.isNull() ? nullptr : resolver.resolve_tag(object);
                 /// The code after the completion point instantiates the
                 /// template the completion is in, a generic lambda as the
@@ -1439,19 +1442,7 @@ public:
         if(resolving) {
             resolved_candidates |= candidate_count > 0;
         } else {
-            /// The members of a dependent specialization read its template's
-            /// parameters as its arguments.
-            const auto* base = context.getBaseExpr();
-            bool access = context.getKind() == clang::CodeCompletionContext::CCC_DotMemberAccess ||
-                          context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess;
-            types::TemplateResolver resolver(sema.getASTContext());
-            display_options.specialization =
-                access && base && base->isTypeDependent()
-                    ? types::accessed_specialization(
-                          *base,
-                          context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess,
-                          resolver)
-                    : nullptr;
+            display_options.specialization = nullptr;
             if(complete_resolved(sema, context)) {
                 return;
             }

@@ -374,9 +374,13 @@ auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clan
     return type ? type->desugar() : clang::QualType();
 }
 
-auto accessed_specialization(const clang::Expr& base, bool arrow, TemplateResolver& resolver)
+auto accessed_specialization(const clang::CXXDependentScopeMemberExpr& access,
+                             TemplateResolver& resolver)
     -> const clang::TemplateSpecializationType* {
-    auto object = resolver.member_object(&base, arrow);
+    if(access.isImplicitAccess()) {
+        return nullptr;
+    }
+    auto object = resolver.member_object(access.getBase(), access.isArrow());
     return object.isNull() ? nullptr : object->getAs<clang::TemplateSpecializationType>();
 }
 

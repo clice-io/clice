@@ -1,5 +1,0 @@
-{
-  // The standard library is the case's own: a host's names its types its
-  // own way.
-  "flags": ["-nostdinc"]
-}

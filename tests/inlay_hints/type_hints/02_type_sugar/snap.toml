@@ -7,6 +7,7 @@ inlay_hints = [
     { line = "auto nested⟨: tuple<int, Pair<long, …>>⟩ = make_nested();" },
     { line = "auto callback⟨: function<…>⟩ = make_callback();" },
     { line = "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();" },
+    { line = "auto& small⟨: Small<int> &⟩ = boxes().front();" },
 ]
 
 [configured."main.cpp"]
@@ -19,4 +20,5 @@ inlay_hints = [
     { line = "auto dropped⟨: an_extraordinarily_long_class_name<int>⟩ = make_far();" },
     { line = "auto callback⟨: function<auto (const char *) -> bool>⟩ = make_callback();" },
     { line = "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();" },
+    { line = "auto& small⟨: Small<int> &⟩ = boxes().front();" },
 ]

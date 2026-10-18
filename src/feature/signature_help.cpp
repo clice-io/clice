@@ -895,11 +895,7 @@ auto signature_help(CompilationParams params,
                 .dependent(unit->context(),
                            candidates,
                            static_cast<std::uint32_t>(call->written.size()),
-                           access && !access->isImplicitAccess()
-                               ? types::accessed_specialization(*access->getBase(),
-                                                                access->isArrow(),
-                                                                resolver)
-                               : nullptr);
+                           access ? types::accessed_specialization(*access, resolver) : nullptr);
         }
     }
 

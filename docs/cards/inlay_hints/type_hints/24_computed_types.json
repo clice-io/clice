@@ -10,13 +10,20 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace std {\ntemplate <bool Condition, class T = void>\nstruct enable_if {};\n\ntemplate <class T>\nstruct enable_if<true, T> {\n    typedef T type;\n};\n\ntemplate <bool Condition, class T = void>\nusing enable_if_t = typename enable_if<Condition, T>::type;\n\ntemplate <class... Ts>\nstruct common_type;\n\ntemplate <class T>\nstruct common_type<T, T> {\n    typedef T type;\n};\n\nnamespace chrono {\ntemplate <class Rep>\nstruct duration {};\n\ntypedef duration<long> seconds;\n\ntemplate <class Rep>\ntypename common_type<duration<Rep>, duration<Rep>>::type operator-(duration<Rep>, duration<Rep>);\n}  // namespace chrono\n\ntemplate <class T>\nenable_if_t<true, T> identity(T value);\n\ntemplate <unsigned Index, class... Ts>\n__type_pack_element<Index, Ts...> pick(Ts... values);\n}  // namespace std\n\nvoid use(std::chrono::seconds earlier, std::chrono::seconds later) {\n    auto elapsed = later - earlier;\n    auto same = std::identity(1);\n    auto first = std::pick<0>(1, 2.0);\n}\n",
+      "text": "namespace std {\ntemplate <bool Condition, class T = void>\nstruct enable_if {};\n\ntemplate <class T>\nstruct enable_if<true, T> {\n    typedef T type;\n};\n\ntemplate <bool Condition, class T = void>\nusing enable_if_t = typename enable_if<Condition, T>::type;\n\ntemplate <class... Ts>\nstruct common_type;\n\ntemplate <class T>\nstruct common_type<T, T> {\n    typedef T type;\n};\n\ntemplate <long Num, long Den = 1>\nstruct ratio {\n    static constexpr long num = Num;\n    static constexpr long den = Den;\n    typedef ratio<num, den> type;\n};\n\nnamespace chrono {\ntemplate <class Rep, class Period = ratio<1>>\nstruct duration {};\n\ntypedef duration<long> seconds;\n}  // namespace chrono\n\ntemplate <class Rep, class Period>\nstruct common_type<chrono::duration<Rep, Period>, chrono::duration<Rep, Period>> {\n    typedef chrono::duration<Rep, typename Period::type> type;\n};\n\nnamespace chrono {\ntemplate <class Rep, class Period>\ntypename common_type<duration<Rep, Period>, duration<Rep, Period>>::type\n    operator-(duration<Rep, Period>, duration<Rep, Period>);\n}  // namespace chrono\n\ntemplate <class T>\nenable_if_t<true, T> identity(T value);\n\ntemplate <unsigned Index, class... Ts>\n__type_pack_element<Index, Ts...> pick(Ts... values);\n}  // namespace std\n\nvoid use(std::chrono::seconds earlier,\n         std::chrono::seconds later,\n         std::chrono::duration<double, std::ratio<1, 1000>> start,\n         std::chrono::duration<double, std::ratio<1, 1000>> stop) {\n    auto elapsed = later - earlier;\n    auto measured = stop - start;\n    auto same = std::identity(1);\n    auto first = std::pick<0>(1, 2.0);\n}\n",
       "markers": []
     }
   ],
   "tests": [
     {
       "name": "answers",
+      "config": {
+        "inlay_hints": {
+          "max_length": {
+            "types": 0
+          }
+        }
+      },
       "blocks": [
         {
           "label": "main.cpp",
@@ -28,12 +35,28 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 38,
+                      "line": 56,
                       "character": 4
                     },
                     "end": {
-                      "line": 38,
+                      "line": 56,
                       "character": 35
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto measured⟨: chrono::duration<double, ratio<1, 1000>>⟩ = stop - start;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 57,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 57,
+                      "character": 33
                     }
                   }
                 }
@@ -44,11 +67,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 39,
+                      "line": 58,
                       "character": 4
                     },
                     "end": {
-                      "line": 39,
+                      "line": 58,
                       "character": 33
                     }
                   }
@@ -60,11 +83,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 40,
+                      "line": 59,
                       "character": 4
                     },
                     "end": {
-                      "line": 40,
+                      "line": 59,
                       "character": 38
                     }
                   }

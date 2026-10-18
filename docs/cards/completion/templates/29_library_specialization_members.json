@@ -10,17 +10,23 @@
   "files": [
     {
       "path": "lib.h",
-      "text": "#pragma once\n\nnamespace lib {\ntemplate <class _Tp>\nstruct vector {\n    using value_type = _Tp;\n    void push_back(const value_type& __x);\n    _Tp& front();\n};\n\ntemplate <class _T1, class _T2>\nstruct pair {\n    _T1 first;\n    _T2 second;\n};\n\ntemplate <class _Key, class _Val>\nstruct map {\n    pair<const _Key, _Val>* find(const _Key& key);\n};\n}  // namespace lib\n",
+      "text": "#pragma once\n\nnamespace lib {\ntemplate <class _Tp>\nstruct vector {\n    using value_type = _Tp;\n    void push_back(const value_type& __x);\n    _Tp& front();\n    vector& append(const vector& __other);\n};\n\ntemplate <class _T1, class _T2>\nstruct pair {\n    _T1 first;\n    _T2 second;\n};\n\ntemplate <class _Key, class _Val>\nstruct map {\n    pair<const _Key, _Val>* find(const _Key& key);\n};\n}  // namespace lib\n",
       "markers": []
     },
     {
       "path": "main.cpp",
-      "text": "#include \"lib.h\"\n\ntemplate <class T>\nvoid f(lib::map<int, T>& m) {\n    m.find(1)->;\n}\n",
+      "text": "#include \"lib.h\"\n\ntemplate <class T>\nstruct Point {\n    T x;\n};\n\ntemplate <class T>\nvoid f(lib::vector<Point<T>>& pts, lib::map<int, T>& m) {\n    m.find(1)->;\n    pts.;\n}\n",
       "markers": [
         {
           "name": "members",
-          "begin": 82,
-          "end": 82,
+          "begin": 157,
+          "end": 157,
+          "range": false
+        },
+        {
+          "name": "dot",
+          "begin": 167,
+          "end": 167,
           "range": false
         }
       ]
@@ -45,6 +51,35 @@
                   "label": "second",
                   "kind": "Field",
                   "detail": "T"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "dot",
+          "marker": "dot",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "append(const lib::vector<Point<T>> &other)",
+                  "kind": "Method",
+                  "detail": "lib::vector<Point<T>> &"
+                },
+                {
+                  "label": "front()",
+                  "kind": "Method",
+                  "detail": "Point<T> &"
+                },
+                {
+                  "label": "push_back(const value_type &x)",
+                  "kind": "Method",
+                  "detail": "void"
                 },
                 {
                   "label": "template",

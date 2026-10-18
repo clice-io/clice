@@ -26,6 +26,21 @@ struct vector {
     iterator begin();
 };
 
+template <class T>
+struct __tree_iterator {};
+
+template <class First, class Second>
+struct pair {
+    First first;
+    Second second;
+};
+
+template <class T>
+struct set {
+    typedef __tree_iterator<T> iterator;
+    pair<iterator, bool> insert(const T& value);
+};
+
 template <class F>
 struct invoke_result {
     typedef decltype(static_cast<F (*)()>(nullptr)()()) type;
@@ -40,10 +55,11 @@ invoke_result_t<F> invoke(F function);
 
 int answer();
 
-void use(std::vector<int>& values) {
+void use(std::vector<int>& values, std::set<int>& ids) {
     auto §(count)count = values.size();
     auto& §(first)first = values.front();
     auto §(iterator)it = values.begin();
     auto §(result)result = std::invoke(answer);
     §(keyword)auto copy = std::invoke(answer);
+    auto [§(binding)position, added] = ids.insert(1);
 }

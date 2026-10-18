@@ -245,8 +245,7 @@ public:
     /// `vector<int>::iterator`).
     auto underlying(clang::QualType type,
                     const clang::DeclContext* scope,
-                    const clang::TemplateSpecializationType* specialization = nullptr)
-        -> clang::QualType;
+                    const clang::TemplateSpecializationType* specialization) -> clang::QualType;
 
     /// A name a library keeps to itself: a reserved one, or a member of a
     /// class or namespace with one, within namespace std or a reserved one
@@ -322,12 +321,16 @@ private:
     bool hinted;
 
     /// Whether a class the library keeps to itself gives way to the alias
-    /// naming it; not while underlying() names what a type is.
+    /// naming it, and a standard class to its standard alias; not while
+    /// underlying() names what a type is.
     bool aliasing = true;
 
     /// The dependent specialization whose template's parameters the call in
     /// progress reads as its arguments.
     const clang::TemplateSpecializationType* substitution = nullptr;
+
+    /// The classes the call in progress names by a public alias.
+    llvm::SmallPtrSet<const clang::TagDecl*, 4> naming;
 
     /// The alias found for a specialization or a compiler's internal type,
     /// null when there is none.

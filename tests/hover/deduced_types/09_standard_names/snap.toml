@@ -5,6 +5,7 @@ markdown = '''
 ```cpp
 std::string
 ```
+`std::string` is `std::basic_string<char>`
 '''
 range = "⟦auto⟧& name = names.front();"
 
@@ -15,6 +16,7 @@ markdown = '''
 ```cpp
 std::pmr::string
 ```
+`std::pmr::string` is `std::basic_string<char, std::pmr::polymorphic_allocator<char>>`
 '''
 range = "⟦auto⟧& text = texts.front();"
 
