@@ -83,11 +83,7 @@ struct ProjectTable {
     }
 
     std::optional<std::uint32_t> find(SymbolHash hash) const {
-        auto it = std::ranges::lower_bound(hashes, hash);
-        if(it == hashes.end() || *it != hash) {
-            return std::nullopt;
-        }
-        return static_cast<std::uint32_t>(it - hashes.begin());
+        return sorted_find(hashes, hash);
     }
 
     llvm::StringRef name(std::uint32_t entry) const {
@@ -95,22 +91,22 @@ struct ProjectTable {
     }
 
     llvm::StringRef arguments(std::uint32_t entry) const {
-        auto it = std::ranges::lower_bound(args_entries, entry);
-        if(it == args_entries.end() || *it != entry) {
+        auto position = sorted_find(args_entries, entry);
+        if(!position) {
             return {};
         }
-        return slice(args, args_ends, static_cast<std::uint32_t>(it - args_entries.begin()));
+        return slice(args, args_ends, *position);
     }
 
     SymbolHash parent(std::uint32_t entry) const {
         if(parents[entry] != 0) {
             return hashes[parents[entry] - 1];
         }
-        auto it = std::ranges::lower_bound(far_parents, entry);
-        if(it == far_parents.end() || *it != entry) {
+        auto position = sorted_find(far_parents, entry);
+        if(!position) {
             return 0;
         }
-        return far_parent_hashes[it - far_parents.begin()];
+        return far_parent_hashes[*position];
     }
 
     /// The symbol's file as a path id of the blob, or no_file.
@@ -132,13 +128,11 @@ struct ProjectTable {
 
     /// Empty for a symbol no instantiation names.
     llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t entry) const {
-        auto it = std::ranges::lower_bound(instantiation_entries, entry);
-        if(it == instantiation_entries.end() || *it != entry) {
+        auto position = sorted_find(instantiation_entries, entry);
+        if(!position) {
             return {};
         }
-        return slice(instantiation_images,
-                     instantiation_ends,
-                     static_cast<std::uint32_t>(it - instantiation_entries.begin()));
+        return slice(instantiation_images, instantiation_ends, *position);
     }
 
     std::optional<Bitmap> instantiation_bitmap(std::uint32_t entry) const {
@@ -164,11 +158,11 @@ struct ProjectTable {
     /// corrupt one is left out.
     llvm::SmallVector<Bitmap> shared_local_sets_of(SymbolHash symbol) const {
         llvm::SmallVector<Bitmap> sets;
-        auto it = std::ranges::lower_bound(shared_local_symbols, symbol);
-        if(it == shared_local_symbols.end() || *it != symbol) {
+        auto found = sorted_find(shared_local_symbols, symbol);
+        if(!found) {
             return sets;
         }
-        auto position = static_cast<std::uint32_t>(it - shared_local_symbols.begin());
+        auto position = *found;
         for(auto set = position == 0 ? 0 : shared_local_set_ends[position - 1];
             set < shared_local_set_ends[position];
             set += 1) {

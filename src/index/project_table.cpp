@@ -111,16 +111,14 @@ std::expected<void, llvm::StringRef>
        !monotone_ends(contributor_ends, contributors.size())) {
         return std::unexpected("contributor columns do not line up");
     }
-    for(std::size_t i = 0; i < contributed_files.size(); i += 1) {
-        if(contributed_files[i] >= paths.size() ||
-           (i > 0 && contributed_files[i] <= contributed_files[i - 1])) {
-            return std::unexpected("contributed files are not ascending path ids");
-        }
+    if(!strictly_ascending(contributed_files) ||
+       (!contributed_files.empty() && contributed_files.back() >= paths.size())) {
+        return std::unexpected("contributed files are not ascending path ids");
     }
     if(shared_local_set_ends.size() != shared_local_symbols.size() ||
        !covering_ends(shared_local_set_ends, shared_local_file_ends.size()) ||
        !covering_ends(shared_local_file_ends, shared_local_files.size()) ||
-       !std::ranges::is_sorted(shared_local_symbols, std::less_equal{})) {
+       !strictly_ascending(shared_local_symbols)) {
         return std::unexpected("shared local columns do not line up");
     }
     if(manifest_versions.size() != manifest_generations.size()) {
@@ -156,10 +154,8 @@ std::expected<void, llvm::StringRef>
     // Hashes, parents and pending entries become table keys downstream, which
     // reserve two sentinel values; a repeated hash would let one entry shadow
     // another.
-    for(std::size_t i = 0; i < count; i += 1) {
-        if(reserved_key(hashes[i]) || (i > 0 && hashes[i] <= hashes[i - 1])) {
-            return std::unexpected("symbol hashes are not ascending");
-        }
+    if(!strictly_ascending(hashes) || llvm::any_of(hashes, reserved_key<SymbolHash>)) {
+        return std::unexpected("symbol hashes are not ascending");
     }
     for(std::size_t k = 0; k < far_parents.size(); k += 1) {
         if(parents[far_parents[k]] != 0 || reserved_key(far_parent_hashes[k])) {

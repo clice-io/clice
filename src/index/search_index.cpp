@@ -42,12 +42,7 @@ bool reserved_name(llvm::StringRef name) {
 }
 
 bool strictly_ascending_entries(llvm::ArrayRef<std::uint32_t> entries, std::size_t count) {
-    for(std::size_t i = 0; i < entries.size(); i += 1) {
-        if(entries[i] >= count || (i > 0 && entries[i] <= entries[i - 1])) {
-            return false;
-        }
-    }
-    return true;
+    return strictly_ascending(entries) && (entries.empty() || entries.back() < count);
 }
 
 /// The hits held while a search runs: the worst on top of the heap, so
@@ -540,11 +535,11 @@ struct SearchIndex::View {
     /// The portable name of the file an entry of internal linkage lives in;
     /// empty for any other entry.
     llvm::StringRef local_file(std::uint32_t entry) const {
-        auto it = std::ranges::lower_bound(local_entries, entry);
-        if(it == local_entries.end() || *it != entry) {
+        auto position = sorted_find(local_entries, entry);
+        if(!position) {
             return {};
         }
-        return to_ref(paths[local_paths[it - local_entries.begin()]]);
+        return to_ref(paths[local_paths[*position]]);
     }
 
     /// A posting list decoded; a malformed one reads as empty and marks
@@ -576,12 +571,11 @@ struct SearchIndex::View {
 
     /// The entries carrying a token, null when none does.
     const Bitmap* token(NameToken key) const {
-        auto it = std::ranges::lower_bound(token_keys, key);
-        if(it == token_keys.end() || *it != key) {
+        auto i = sorted_find(token_keys, key);
+        if(!i) {
             return nullptr;
         }
-        auto i = static_cast<std::uint32_t>(it - token_keys.begin());
-        return &cached(token_cache, token_postings, token_ends, i);
+        return &cached(token_cache, token_postings, token_ends, *i);
     }
 
     /// The direct members of a container, the top level for no_entry.
@@ -593,13 +587,12 @@ struct SearchIndex::View {
             }
             return *top_level_cache;
         }
-        auto it = std::ranges::lower_bound(container_entries, container);
-        if(it == container_entries.end() || *it != container) {
+        auto i = sorted_find(container_entries, container);
+        if(!i) {
             const static Bitmap none;
             return none;
         }
-        auto i = static_cast<std::uint32_t>(it - container_entries.begin());
-        return cached(children_cache, children_postings, children_ends, i);
+        return cached(children_cache, children_postings, children_ends, *i);
     }
 
     /// The entries whose name outruns the token bound.
@@ -623,10 +616,8 @@ struct SearchIndex::View {
             all.addRange(0, count());
             return all;
         }
-        auto it = std::ranges::lower_bound(subtree_entries, container);
-        if(it != subtree_entries.end() && *it == container) {
-            auto i = static_cast<std::uint32_t>(it - subtree_entries.begin());
-            return cached(subtree_cache, subtree_postings, subtree_ends, i);
+        if(auto i = sorted_find(subtree_entries, container)) {
+            return cached(subtree_cache, subtree_postings, subtree_ends, *i);
         }
         Bitmap below = children(container);
         llvm::SmallVector<std::uint32_t> pending(below.begin(), below.end());
@@ -775,8 +766,7 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(BlobView root) {
     }
     if(view.token_keys.size() != view.token_ends.size() ||
        !monotone_ends(view.token_ends, view.token_postings.size()) ||
-       !std::ranges::is_sorted(view.token_keys, std::less<>{}) ||
-       std::ranges::adjacent_find(view.token_keys) != view.token_keys.end()) {
+       !strictly_ascending(view.token_keys)) {
         return std::unexpected("token columns do not line up");
     }
     if(view.container_entries.size() != view.children_ends.size() ||

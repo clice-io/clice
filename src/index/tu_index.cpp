@@ -71,11 +71,7 @@ struct SymbolColumns {
     }
 
     std::optional<std::uint32_t> find(SymbolHash hash) const {
-        auto it = std::ranges::lower_bound(hashes, hash);
-        if(it == hashes.end() || *it != hash) {
-            return std::nullopt;
-        }
-        return static_cast<std::uint32_t>(it - hashes.begin());
+        return sorted_find(hashes, hash);
     }
 
     SymbolView view(std::uint32_t entry) const {
@@ -200,8 +196,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
         auto section = instantiations.at(i);
         auto path_id = section[&InstantiationSection::path_id];
         if(path_id >= count || (i != 0 && path_id <= previous_path_id) ||
-           !std::ranges::is_sorted(to_array_ref(section[&InstantiationSection::skipped]),
-                                   std::less_equal{})) {
+           !strictly_ascending(to_array_ref(section[&InstantiationSection::skipped]))) {
             LOG_DEBUG("Rejecting TU index: instantiation sections are not strictly ascending");
             return {};
         }

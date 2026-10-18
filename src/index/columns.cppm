@@ -88,6 +88,22 @@ Arena slice(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
     return arena.drop_front(begin).take_front(ends[i] - begin);
 }
 
+/// The position of `value` in an ascending column; nullopt when it is absent.
+template <typename T>
+std::optional<std::uint32_t> sorted_find(llvm::ArrayRef<std::type_identity_t<T>> column, T value) {
+    auto it = std::ranges::lower_bound(column, value);
+    if(it == column.end() || *it != value) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint32_t>(it - column.begin());
+}
+
+/// Whether a column ascends strictly, which sorted_find relies on.
+template <std::ranges::forward_range Column>
+bool strictly_ascending(Column&& column) {
+    return std::ranges::adjacent_find(column, std::greater_equal{}) == std::ranges::end(column);
+}
+
 /// Load-time verification outcome: the violated invariant, spelled for the
 /// log, or success.
 using CheckResult = std::expected<void, llvm::StringRef>;
@@ -433,7 +449,7 @@ inline CheckResult range_encoding_ok(const RangeColumnsView& columns,
 inline bool sparse_ok(llvm::ArrayRef<std::uint32_t> entries,
                       std::size_t values,
                       std::size_t count) {
-    return entries.size() == values && std::ranges::is_sorted(entries, std::less_equal{}) &&
+    return entries.size() == values && strictly_ascending(entries) &&
            (entries.empty() || entries.back() < count);
 }
 

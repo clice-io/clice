@@ -110,11 +110,7 @@ struct SetTable {
     }
 
     std::optional<std::uint32_t> find(std::uint64_t hash) const {
-        auto it = std::ranges::lower_bound(hashes, hash);
-        if(it == hashes.end() || *it != hash) {
-            return std::nullopt;
-        }
-        return static_cast<std::uint32_t>(it - hashes.begin());
+        return sorted_find(hashes, hash);
     }
 };
 
@@ -167,7 +163,7 @@ struct KeyTable {
 // DenseMaps (reserved_key).
 CheckResult symbols_ok(BlobView root) {
     auto hashes = to_array_ref(root[&InstantiationShardBlob::symbol_hashes]);
-    if(!std::ranges::is_sorted(hashes, std::less_equal{})) {
+    if(!strictly_ascending(hashes)) {
         return std::unexpected("symbol hashes are not strictly ascending");
     }
     if(llvm::any_of(hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
@@ -232,7 +228,7 @@ CheckResult records_ok(BlobView root) {
 // Identities key DenseMaps once decoded and are found by binary search; an
 // empty set is a key's "nothing here" in disguise.
 CheckResult sets_ok(const SetTable& table) {
-    if(!std::ranges::is_sorted(table.hashes, std::less_equal{}) ||
+    if(!strictly_ascending(table.hashes) ||
        llvm::any_of(table.hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
         return std::unexpected("set identities are not strictly ascending");
     }
@@ -245,7 +241,7 @@ CheckResult sets_ok(const SetTable& table) {
     }
     for(std::uint32_t set = 0; set < table.hashes.size(); set += 1) {
         auto members = table.members_of(set);
-        if(members.empty() || !std::ranges::is_sorted(members, std::less_equal{})) {
+        if(members.empty() || !strictly_ascending(members)) {
             return std::unexpected("a set's members are not strictly ascending");
         }
     }
@@ -292,7 +288,7 @@ CheckResult uses_ok(BlobView root) {
 CheckResult keys_ok(BlobView root) {
     auto table = KeyTable::of(root);
     auto count = table.keys.size();
-    if(!std::ranges::is_sorted(table.keys, std::less_equal{})) {
+    if(!strictly_ascending(table.keys)) {
         return std::unexpected("keys are not strictly ascending");
     }
     if(auto ok = ids_ok(table.patterns, count, table.symbol_hashes.size()); !ok) {
@@ -491,11 +487,11 @@ std::optional<InstantiationShard::Key> InstantiationShard::find_key(SymbolHash k
         return std::nullopt;
     }
     auto table = KeyTable::of(view_of(bytes()));
-    auto it = std::ranges::lower_bound(table.keys, key);
-    if(it == table.keys.end() || *it != key) {
+    auto position = sorted_find(table.keys, key);
+    if(!position) {
         return std::nullopt;
     }
-    return table.at(static_cast<std::uint32_t>(it - table.keys.begin()));
+    return table.at(*position);
 }
 
 void InstantiationShard::for_each_key(llvm::function_ref<bool(const Key&)> callback) const {
@@ -538,11 +534,11 @@ void InstantiationShard::records_of(
         return;
     }
     auto table = RecordTable::of(view_of(bytes()));
-    auto it = std::ranges::lower_bound(table.symbol_hashes, symbol);
-    if(it == table.symbol_hashes.end() || *it != symbol) {
+    auto found = sorted_find(table.symbol_hashes, symbol);
+    if(!found) {
         return;
     }
-    auto id = static_cast<std::uint32_t>(it - table.symbol_hashes.begin());
+    auto id = *found;
     table.columns.for_each_range([&](std::uint32_t record, LocalSourceRange range) {
         bool names = table.targets[record] == id ||
                      (has_from(table.kind_of(record)) && table.froms[record] == id);
@@ -621,8 +617,7 @@ void emit(const Draft& draft, llvm::raw_ostream& os) {
     blob.symbol_hashes.assign(referenced.begin(), referenced.end());
     std::ranges::sort(blob.symbol_hashes);
     auto symbol_index = [&](SymbolHash hash) {
-        return static_cast<std::uint32_t>(std::ranges::lower_bound(blob.symbol_hashes, hash) -
-                                          blob.symbol_hashes.begin());
+        return *sorted_find(llvm::ArrayRef(blob.symbol_hashes), hash);
     };
 
     RangeWriter ranges{.side = blob.records, .encoding = RangeEncoding::Delta};
@@ -653,10 +648,9 @@ void emit(const Draft& draft, llvm::raw_ostream& os) {
     for(auto& [use, resolutions]: draft.uses) {
         blob.uses.push_back(use);
         for(auto resolution: resolutions) {
-            auto it = std::ranges::lower_bound(blob.resolutions, resolution);
-            assert(it != blob.resolutions.end() && *it == resolution &&
-                   "a use's resolutions are stored");
-            use_resolutions.push_back(static_cast<std::uint32_t>(it - blob.resolutions.begin()));
+            auto position = sorted_find(llvm::ArrayRef(blob.resolutions), resolution);
+            assert(position && "a use's resolutions are stored");
+            use_resolutions.push_back(*position);
         }
         blob.use_ends.push_back(static_cast<std::uint32_t>(use_resolutions.size()));
     }
@@ -686,10 +680,9 @@ void emit(const Draft& draft, llvm::raw_ostream& os) {
         patterns.add(symbol_index(key.pattern));
         std::uint32_t resolution = 0;
         if(key.resolution) {
-            auto it = std::ranges::lower_bound(blob.resolutions, *key.resolution);
-            assert(it != blob.resolutions.end() && *it == *key.resolution &&
-                   "a key's resolution is stored");
-            resolution = static_cast<std::uint32_t>(it - blob.resolutions.begin()) + 1;
+            auto position = sorted_find(llvm::ArrayRef(blob.resolutions), *key.resolution);
+            assert(position && "a key's resolution is stored");
+            resolution = *position + 1;
         }
         resolutions.add(resolution);
         if(key.producer) {

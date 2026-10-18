@@ -636,16 +636,13 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os, const FileTable& files
         blob.symbol_signatures += identity.signature;
         blob.symbol_signature_ends.push_back(
             static_cast<std::uint32_t>(blob.symbol_signatures.size()));
-        auto parent = std::ranges::lower_bound(blob.symbol_hashes, identity.parent);
-        if(identity.parent != 0 && parent != blob.symbol_hashes.end() &&
-           *parent == identity.parent) {
-            parents.push_back(static_cast<std::uint32_t>(parent - blob.symbol_hashes.begin()) + 1);
-        } else {
-            parents.push_back(0);
-            if(identity.parent != 0) {
-                blob.symbol_far_parents.push_back(i);
-                blob.symbol_far_parent_hashes.push_back(identity.parent);
-            }
+        auto parent = identity.parent == 0
+                          ? std::nullopt
+                          : sorted_find(llvm::ArrayRef(blob.symbol_hashes), identity.parent);
+        parents.push_back(parent ? *parent + 1 : 0);
+        if(identity.parent != 0 && !parent) {
+            blob.symbol_far_parents.push_back(i);
+            blob.symbol_far_parent_hashes.push_back(identity.parent);
         }
         blob.symbol_kinds.push_back(identity.kind.value());
         blob.symbol_flags.push_back(static_cast<std::uint16_t>(identity.flags));

@@ -405,7 +405,7 @@ CheckResult symbol_table_ok(BlobView root) {
     if(table.offsets[0] != 0 || table.offsets[symbol_hashes.size()] != relations) {
         return std::unexpected("relation offsets are not a partition of the relations");
     }
-    if(!std::ranges::is_sorted(symbol_hashes, std::less_equal{})) {
+    if(!strictly_ascending(symbol_hashes)) {
         return std::unexpected("symbol hashes are not strictly ascending");
     }
     return {};
@@ -872,11 +872,11 @@ void Shard::relations_of(SymbolHash symbol,
         return;
     }
     auto table = RelationTable::of(root_of(*buffer));
-    auto it = std::ranges::lower_bound(table.symbol_hashes, symbol);
-    if(it == table.symbol_hashes.end() || *it != symbol) [[unlikely]] {
+    auto found = sorted_find(table.symbol_hashes, symbol);
+    if(!found) [[unlikely]] {
         return;
     }
-    auto id = static_cast<std::uint32_t>(it - table.symbol_hashes.begin());
+    auto id = *found;
     auto cursor = table.cursor_at(table.offsets[id]);
     visit_relation_entries(table,
                            table.offsets[id],
@@ -930,11 +930,11 @@ std::optional<SymbolView> Shard::find_symbol(SymbolHash hash) const {
         return std::nullopt;
     }
     auto table = LocalTable::of(root_of(*buffer));
-    auto it = std::ranges::lower_bound(table.symbol_hashes, hash);
-    if(it == table.symbol_hashes.end() || *it != hash) {
+    auto position = sorted_find(table.symbol_hashes, hash);
+    if(!position) {
         return std::nullopt;
     }
-    auto local = table.symbols.find(static_cast<std::uint32_t>(it - table.symbol_hashes.begin()));
+    auto local = table.symbols.find(*position);
     if(!local) {
         return std::nullopt;
     }
@@ -1447,8 +1447,7 @@ void emit_blob(const MergedEntries<MaskT>& merged,
     blob.symbol_hashes.assign(symbols.begin(), symbols.end());
     std::ranges::sort(blob.symbol_hashes);
     auto symbol_index = [&](SymbolHash hash) {
-        return static_cast<std::uint32_t>(std::ranges::lower_bound(blob.symbol_hashes, hash) -
-                                          blob.symbol_hashes.begin());
+        return *sorted_find(llvm::ArrayRef(blob.symbol_hashes), hash);
     };
 
     std::vector<std::uint32_t> local_ids;
