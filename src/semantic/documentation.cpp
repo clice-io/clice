@@ -122,6 +122,7 @@ llvm::SmallVector<DocumentedParameter> documented_parameters(CompilationUnit& un
     for(const auto& comment: found.comments) {
         auto text = found.content.slice(comment.range.begin, comment.range.end);
         if(!is_doc_comment(text)) {
+            scanner.end_run();
             continue;
         }
         for(const auto& part: scanner.scan(text)) {
