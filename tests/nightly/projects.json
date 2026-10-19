@@ -41,10 +41,10 @@
       "database": "build/compile_commands.json",
       "parts": {
         "llvm": ["llvm/", "third-party/", "build/"],
-        "clang": ["clang/", "clang-tools-extra/"],
-        "mlir": ["mlir/"],
-        "flang": ["flang/"],
-        "lldb": ["lldb/", "lld/", "bolt/", "polly/"]
+        "clang": ["clang/", "clang-tools-extra/", "build/tools/clang/"],
+        "mlir": ["mlir/", "build/tools/mlir/"],
+        "flang": ["flang/", "build/tools/flang/"],
+        "lldb": ["lldb/", "lld/", "bolt/", "polly/", "build/tools/lldb/", "build/tools/lld/"]
       },
       "sample": 40
     },

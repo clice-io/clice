@@ -82,27 +82,30 @@ describe("database", () => {
         }
     });
 
-    test("a part takes the units under its prefixes", () => {
+    test("a part takes the units under its longest prefixes", () => {
         const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "clice-nightly-")));
         try {
-            const entries = ["one/a.cpp", "two/b.cpp", "two/c.cpp"].map((file) => ({
-                directory: root,
-                file: path.join(root, file),
-                arguments: ["clang++", "-c", file],
-            }));
+            const entries = ["one/a.cpp", "two/b.cpp", "two/c.cpp", "one/two/d.cpp"].map(
+                (file) => ({
+                    directory: root,
+                    file: path.join(root, file),
+                    arguments: ["clang++", "-c", file],
+                }),
+            );
             fs.writeFileSync(path.join(root, "db.json"), JSON.stringify(entries));
             const project: Project = {
                 name: "p",
                 about: "",
                 prepare: [],
                 database: "db.json",
-                parts: { one: ["one/"], two: ["two/"] },
+                parts: { one: ["one/"], two: ["two/", "one/two/"] },
                 sample: 1,
             };
             const own = jobDatabase({ name: "p/two", project, part: "two" }, root);
             expect(own.map((entry) => path.relative(root, entry.file))).toEqual([
                 "two/b.cpp",
                 "two/c.cpp",
+                "one/two/d.cpp",
             ]);
             expect(fs.readFileSync(path.join(root, "clice.toml"), "utf8")).toBe(
                 '[[rules]]\ncompile_commands = [".nightly/compile_commands.json"]\n',
@@ -111,6 +114,10 @@ describe("database", () => {
             expect(() =>
                 jobDatabase({ name: "p/one", project: uncovered, part: "one" }, root),
             ).toThrow(/two\/b.cpp is in no part/);
+            const shared = { ...project, parts: { one: ["one/", "two/"], two: ["two/"] } };
+            expect(() =>
+                jobDatabase({ name: "p/one", project: shared, part: "one" }, root),
+            ).toThrow(/two\/b.cpp is in the parts one, two/);
         } finally {
             fs.rmSync(root, { recursive: true });
         }

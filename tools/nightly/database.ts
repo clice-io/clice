@@ -14,19 +14,24 @@ export function readEntries(file: string): DatabaseEntry[] {
     return JSON.parse(fs.readFileSync(file, "utf8")) as DatabaseEntry[];
 }
 
-/// The part whose prefixes hold `source`; every unit is in exactly one.
+/// The part whose longest prefix holds `source`: a part may take a
+/// directory from inside another's, as a subproject its generated sources.
 function partOf(parts: Record<string, string[]>, checkout: string, source: string): string {
     const relative = path.relative(checkout, source).split(path.sep).join("/");
-    const holding = Object.entries(parts)
-        .filter(([, prefixes]) => prefixes.some((prefix) => relative.startsWith(prefix)))
-        .map(([name]) => name);
-    const [only] = holding;
-    if (holding.length !== 1 || only === undefined) {
+    const holding = Object.entries(parts).flatMap(([name, prefixes]) =>
+        prefixes
+            .filter((prefix) => relative.startsWith(prefix))
+            .map((prefix) => ({ name, length: prefix.length })),
+    );
+    const longest = Math.max(...holding.map((part) => part.length));
+    const closest = holding.filter((part) => part.length === longest);
+    const [only] = closest;
+    if (closest.length !== 1 || only === undefined) {
         throw new Error(
-            `${relative} is in ${holding.length === 0 ? "no part" : `the parts ${holding.join(", ")}`}: the parts must divide the database`,
+            `${relative} is in ${closest.length === 0 ? "no part" : `the parts ${closest.map((part) => part.name).join(", ")}`}: the parts must divide the database`,
         );
     }
-    return only;
+    return only.name;
 }
 
 /// The job's units, and the database clice reads them from in place.
