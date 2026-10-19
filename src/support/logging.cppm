@@ -68,9 +68,9 @@ import :support.format;
 /// pcm, index_ms/teardown_ms for a turun),
 /// "index_query" (master-side index lookups: kind=relations|search),
 /// "index_detail" (inside one index pass: op=build splits the semantics
-/// table from projection and finishing, op=serialize splits the path-id
-/// rekeying copy from the flatbuffers pack, op=preamble the document
-/// links and the pch.idx index). Use stable key=value pairs and
+/// table from projection, instantiations, finishing and the encoding of
+/// the shards and the TU index, op=preamble the document links and the
+/// pch.idx index). Use stable key=value pairs and
 /// `_ms` suffixes for durations — scripts aggregate these lines
 /// (tools/bench/perf_report.ts).
 ///

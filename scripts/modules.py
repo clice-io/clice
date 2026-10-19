@@ -108,7 +108,6 @@ def partition(output_base, clice):
         "simdjson+",
         "kotatsu+",
         "croaring+",
-        "flatbuffers+",
         "tomlplusplus+",
         "spdlog+",
         "lmdb+",

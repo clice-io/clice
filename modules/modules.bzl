@@ -17,7 +17,6 @@ MODULE_COPTS = [
 # them; which target provides an include root is the build's knowledge.
 LIBRARIES = [
     "@croaring",
-    "@kotatsu//:codec_flatbuffers",
     "@kotatsu//:codec_json",
     "@kotatsu//:codec_toml",
     "@kotatsu//:deco",

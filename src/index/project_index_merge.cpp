@@ -133,9 +133,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
             // Same generation, new variant: merge it in, keeping every
             // stored variant — dead ones stay masked until the next save
             // compacts them.
-            std::string merged;
-            llvm::raw_string_ostream os(merged);
-            merge_shards(*shard, shard->variants(), llvm::ArrayRef(fresh), os);
+            auto merged = merge_shards(*shard, shard->variants(), llvm::ArrayRef(fresh));
             replacement = Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(merged));
             assert(replacement.loaded() && "a freshly merged shard blob must verify");
             appended += 1;
@@ -215,18 +213,15 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         }
         const static InstantiationShard none;
         const auto& old = stored ? *stored : none;
-        std::string merged;
-        llvm::raw_string_ostream os(merged);
-        merge_instantiations(
+        auto merged = merge_instantiations(
             old,
             old.uses(),
             [&](const Producer& run) { return current_run(run); },
             fresh ? &*fresh : nullptr,
             producer,
-            added,
-            os);
-        auto replacement =
-            InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(merged));
+            added);
+        auto replacement = InstantiationShard::from_buffer(
+            llvm::MemoryBuffer::getMemBufferCopy(merged.value_or("")));
         assert(replacement.loaded() && "a freshly merged instantiation blob must verify");
         instantiation_replacements.emplace_back(global_id, std::move(replacement));
     }

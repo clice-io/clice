@@ -14,6 +14,7 @@ module;
 module clice:index.columns;
 
 import :index.format;
+import :support.archive;
 import :support.bitmap;
 import :syntax.token;
 
@@ -85,10 +86,10 @@ Arena slice_arena(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t
 /// Entry `i` of an "entries back to back" column pair: the arena between
 /// the previous entry's end and its own. One overload per arena a column
 /// pair holds, so a blob's columns convert to it as they are.
-inline llvm::StringRef slice(llvm::StringRef arena,
+inline llvm::StringRef slice(std::string_view arena,
                              llvm::ArrayRef<std::uint32_t> ends,
                              std::uint32_t i) {
-    return slice_arena(arena, ends, i);
+    return slice_arena(llvm::StringRef(arena), ends, i);
 }
 
 inline llvm::ArrayRef<std::uint8_t> slice(llvm::ArrayRef<std::uint8_t> arena,
@@ -173,9 +174,9 @@ struct IdColumnView {
 
     /// Entry `i` of a text whose entries end at the offsets of this column,
     /// back to back.
-    inline llvm::StringRef slice(llvm::StringRef text, std::uint32_t i) const {
+    inline llvm::StringRef slice(std::string_view text, std::uint32_t i) const {
         auto begin = i == 0 ? 0 : (*this)[i - 1];
-        return text.slice(begin, (*this)[i]);
+        return llvm::StringRef(text).slice(begin, (*this)[i]);
     }
 };
 
@@ -186,157 +187,123 @@ inline std::uint32_t escape_position(llvm::ArrayRef<std::uint32_t> entries, std:
     return static_cast<std::uint32_t>(std::ranges::lower_bound(entries, entry) - entries.begin());
 }
 
-/// One side of a blob's entries as contiguous column refs,
-/// encoding-agnostic: the range accessors read whichever range encoding the
-/// side stores, the mask columns whichever mask encoding.
-struct RangeColumnsView {
-    llvm::ArrayRef<std::uint32_t> block_begins;
-    llvm::ArrayRef<std::uint8_t> deltas;
-    llvm::ArrayRef<std::uint32_t> far_entries;
-    llvm::ArrayRef<std::uint32_t> far_begins;
-    llvm::ArrayRef<std::uint32_t> packed;
-    llvm::ArrayRef<std::uint32_t> begins;
-    llvm::ArrayRef<std::uint8_t> lengths;
-    llvm::ArrayRef<std::uint32_t> long_entries;
-    llvm::ArrayRef<std::uint32_t> long_ends;
-    llvm::ArrayRef<std::uint8_t> masks8;
-    llvm::ArrayRef<std::uint16_t> masks16;
-    llvm::ArrayRef<std::uint32_t> masks32;
-    llvm::ArrayRef<std::uint64_t> masks64;
-    llvm::ArrayRef<std::uint32_t> roaring_offsets;
-    llvm::ArrayRef<std::uint8_t> roaring;
+/// One side of a blob's entries read in place. The range functions below
+/// read whichever range encoding the side stores, the mask columns
+/// whichever mask encoding.
+using ArchivedRanges = archive::Archived<RangeColumns>;
 
-    inline std::uint32_t size() const {
-        return packed.empty() ? lengths.size() : packed.size();
+inline std::uint32_t entry_count(const ArchivedRanges& side) {
+    return side.packed.empty() ? side.lengths.size() : side.packed.size();
+}
+
+/// The begin of `entry` given the begin of the entry before it, in the
+/// delta encoding.
+inline std::uint32_t next_begin(const ArchivedRanges& side,
+                                std::uint32_t entry,
+                                std::uint32_t previous) {
+    if(entry % delta_block == 0) {
+        return side.block_begins[entry / delta_block];
     }
-
-    /// The begin of `entry` given the begin of the entry before it, in the
-    /// delta encoding.
-    inline std::uint32_t next_begin(std::uint32_t entry, std::uint32_t previous) const {
-        if(entry % delta_block == 0) {
-            return block_begins[entry / delta_block];
-        }
-        return deltas[entry] == delta_escape ? far_begins[escape_position(far_entries, entry)]
-                                             : previous + deltas[entry];
+    if(side.deltas[entry] == delta_escape) {
+        return side.far_begins[escape_position(side.far_entries, entry)];
     }
+    return previous + side.deltas[entry];
+}
 
-    /// The begin of `entry` of an unsorted side; a delta-encoded one is
-    /// walked (for_each_range).
-    inline std::uint32_t begin_of(std::uint32_t entry) const {
-        assert(deltas.empty() && "a delta-encoded side is walked");
-        if(!packed.empty()) {
-            return packed[entry] == packed_sentinel ? ~std::uint32_t(0) : packed[entry] >> 8;
-        }
-        return begins[entry];
+/// The begin of `entry` of an unsorted side; a delta-encoded one is walked
+/// (for_each_range).
+inline std::uint32_t begin_of(const ArchivedRanges& side, std::uint32_t entry) {
+    assert(side.deltas.empty() && "a delta-encoded side is walked");
+    if(!side.packed.empty()) {
+        return side.packed[entry] == packed_sentinel ? ~std::uint32_t(0) : side.packed[entry] >> 8;
     }
+    return side.begins[entry];
+}
 
-    /// The length byte of `entry`: its length, or length_escape for one
-    /// whose end the escape table holds.
-    inline std::uint8_t stored_length(std::uint32_t entry) const {
-        return packed.empty() ? lengths[entry] : static_cast<std::uint8_t>(packed[entry] & 0xff);
+/// The length byte of `entry`: its length, or length_escape for one whose
+/// end the escape table holds.
+inline std::uint8_t stored_length(const ArchivedRanges& side, std::uint32_t entry) {
+    return side.packed.empty() ? side.lengths[entry]
+                               : static_cast<std::uint8_t>(side.packed[entry] & 0xff);
+}
+
+/// The end of `entry`, which begins at `begin`.
+inline std::uint32_t end_of(const ArchivedRanges& side, std::uint32_t entry, std::uint32_t begin) {
+    if(!side.packed.empty() && side.packed[entry] == packed_sentinel) {
+        return ~std::uint32_t(0);
     }
-
-    /// The end of `entry`, which begins at `begin`.
-    inline std::uint32_t end_of(std::uint32_t entry, std::uint32_t begin) const {
-        if(!packed.empty() && packed[entry] == packed_sentinel) {
-            return ~std::uint32_t(0);
-        }
-        auto length = stored_length(entry);
-        if(length == length_escape) {
-            return long_ends[escape_position(long_entries, entry)];
-        }
-        return begin + length;
+    auto length = stored_length(side, entry);
+    if(length == length_escape) {
+        return side.long_ends[escape_position(side.long_entries, entry)];
     }
+    return begin + length;
+}
 
-    inline LocalSourceRange range_of(std::uint32_t entry) const {
-        auto begin = begin_of(entry);
-        return {begin, end_of(entry, begin)};
-    }
+inline LocalSourceRange range_of(const ArchivedRanges& side, std::uint32_t entry) {
+    auto begin = begin_of(side, entry);
+    return {begin, end_of(side, entry, begin)};
+}
 
-    /// The first entry whose range `below` rejects, in a delta-encoded side
-    /// where `below` holds for a prefix of the entries: a binary search over
-    /// the block starts, whose begins are stored, then a scan of one block.
-    template <typename Below>
-    std::uint32_t partition_point(Below&& below) const {
-        auto blocks =
-            std::views::iota(std::uint32_t(0), static_cast<std::uint32_t>(block_begins.size()));
-        auto block = static_cast<std::uint32_t>(
-            std::ranges::partition_point(
-                blocks,
-                [&](std::uint32_t b) {
-                    auto begin = block_begins[b];
-                    return below(LocalSourceRange{begin, end_of(b * delta_block, begin)});
-                }) -
-            blocks.begin());
-        if(block == 0) {
-            return 0;
-        }
-        auto point = static_cast<std::uint32_t>(size());
-        for_each_range((block - 1) * delta_block + 1,
-                       [&](std::uint32_t entry, LocalSourceRange range) {
-                           if(below(range)) {
-                               return true;
-                           }
-                           point = entry;
-                           return false;
-                       });
-        return point;
-    }
-
-    /// Visit the range of every entry from `first` on in entry order, the
-    /// delta encoding decoded in one pass from the start of `first`'s block;
-    /// `visit` returns false to stop.
-    template <typename Visit>
-    void for_each_range(std::uint32_t first, Visit&& visit) const {
-        std::uint32_t begin = 0;
-        for(auto entry = deltas.empty() ? first : first - first % delta_block; entry < size();
-            entry += 1) {
-            begin = deltas.empty() ? begin_of(entry) : next_begin(entry, begin);
-            if(entry >= first && !visit(entry, LocalSourceRange{begin, end_of(entry, begin)})) {
-                return;
-            }
+/// Visit the range of every entry from `first` on in entry order, the delta
+/// encoding decoded in one pass from the start of `first`'s block; `visit`
+/// returns false to stop.
+template <typename Visit>
+void for_each_range(const ArchivedRanges& side, std::uint32_t first, Visit&& visit) {
+    bool delta = !side.deltas.empty();
+    std::uint32_t begin = 0;
+    for(auto entry = delta ? first - first % delta_block : first; entry < entry_count(side);
+        entry += 1) {
+        begin = delta ? next_begin(side, entry, begin) : begin_of(side, entry);
+        if(entry >= first && !visit(entry, LocalSourceRange{begin, end_of(side, entry, begin)})) {
+            return;
         }
     }
+}
 
-    template <typename Visit>
-    void for_each_range(Visit&& visit) const {
-        for_each_range(0, std::forward<Visit>(visit));
-    }
+template <typename Visit>
+void for_each_range(const ArchivedRanges& side, Visit&& visit) {
+    for_each_range(side, 0, std::forward<Visit>(visit));
+}
 
-    /// The slice bounds were validated monotonic and in-bounds at load, and
-    /// every slice proven to decode, so this cannot fail.
-    Bitmap bitmap_of(std::uint32_t entry) const {
-        auto begin = roaring_offsets[entry];
-        return *read_bitmap(roaring.data() + begin, roaring_offsets[entry + 1] - begin);
+/// The first entry whose range `below` rejects, in a delta-encoded side
+/// where `below` holds for a prefix of the entries: a binary search over the
+/// block starts, whose begins are stored, then a scan of one block.
+template <typename Below>
+std::uint32_t partition_point(const ArchivedRanges& side, Below&& below) {
+    auto blocks = std::views::iota(std::uint32_t(0), side.block_begins.size());
+    auto block = static_cast<std::uint32_t>(
+        std::ranges::partition_point(
+            blocks,
+            [&](std::uint32_t b) {
+                auto begin = side.block_begins[b];
+                return below(LocalSourceRange{begin, end_of(side, b * delta_block, begin)});
+            }) -
+        blocks.begin());
+    if(block == 0) {
+        return 0;
     }
-};
+    auto point = entry_count(side);
+    for_each_range(side,
+                   (block - 1) * delta_block + 1,
+                   [&](std::uint32_t entry, LocalSourceRange range) {
+                       if(below(range)) {
+                           return true;
+                       }
+                       point = entry;
+                       return false;
+                   });
+    return point;
+}
 
-inline RangeColumnsView columns_of(kota::codec::fbs::table_view<RangeColumns> view) {
-    if(!view.valid()) {
-        return {};
-    }
-    return {
-        view[&RangeColumns::block_begins],
-        view[&RangeColumns::deltas],
-        view[&RangeColumns::far_entries],
-        view[&RangeColumns::far_begins],
-        view[&RangeColumns::packed],
-        view[&RangeColumns::begins],
-        view[&RangeColumns::lengths],
-        view[&RangeColumns::long_entries],
-        view[&RangeColumns::long_ends],
-        view[&RangeColumns::masks8],
-        view[&RangeColumns::masks16],
-        view[&RangeColumns::masks32],
-        view[&RangeColumns::masks64],
-        view[&RangeColumns::roaring_offsets],
-        view[&RangeColumns::roaring],
-    };
+/// The slice bounds were validated monotonic and in-bounds at load, and
+/// every slice proven to decode, so this cannot fail.
+inline Bitmap bitmap_of(const ArchivedRanges& side, std::uint32_t entry) {
+    auto begin = side.roaring_offsets[entry];
+    return *read_bitmap(side.roaring.data() + begin, side.roaring_offsets[entry + 1] - begin);
 }
 
 /// The ids of a column into a table of `table_size` entries.
-inline IdColumnView ids_of(kota::codec::fbs::array_view<std::uint8_t> view,
-                           std::uint32_t table_size) {
+inline IdColumnView ids_of(llvm::ArrayRef<std::uint8_t> view, std::uint32_t table_size) {
     return {view, id_width(table_size)};
 }
 
@@ -344,8 +311,8 @@ inline IdColumnView ids_of(kota::codec::fbs::array_view<std::uint8_t> view,
 /// values: readers trust the pairing, and a sentinel missing its entry
 /// (or a stray entry masking one elsewhere) can pass every range bound
 /// while serving a wrong value forever.
-template <typename T, typename Escape, typename Projection = std::identity>
-bool escapes_ok(llvm::ArrayRef<T> column,
+template <typename Column, typename Escape, typename Projection = std::identity>
+bool escapes_ok(const Column& column,
                 Escape escape,
                 llvm::ArrayRef<std::uint32_t> escaped,
                 std::uint32_t escape_values,
@@ -385,31 +352,31 @@ inline RangeEncoding unsorted_encoding(std::uint32_t content_size) {
 /// 255 or more. Every range is served as a source range into the content,
 /// so it lies inside it — but for the no-range sentinel of pair relations,
 /// which only an unsorted side holds.
-inline CheckResult range_encoding_ok(const RangeColumnsView& columns,
+inline CheckResult range_encoding_ok(const ArchivedRanges& side,
                                      std::uint32_t content_size,
                                      RangeEncoding encoding) {
-    bool delta_empty = columns.block_begins.empty() && columns.deltas.empty() &&
-                       columns.far_entries.empty() && columns.far_begins.empty();
+    auto& deltas = side.deltas;
+    auto& packed = side.packed;
+    auto& begins = side.begins;
+    auto& lengths = side.lengths;
+    bool delta_empty = side.block_begins.empty() && deltas.empty() && side.far_entries.empty() &&
+                       side.far_begins.empty();
     bool encoding_ok = false;
     switch(encoding) {
         case RangeEncoding::Delta: {
-            auto count = columns.deltas.size();
-            encoding_ok = columns.packed.empty() && columns.begins.empty() &&
-                          columns.lengths.size() == count &&
-                          columns.block_begins.size() == (count + delta_block - 1) / delta_block &&
-                          escapes_ok(columns.deltas,
-                                     delta_escape,
-                                     columns.far_entries,
-                                     columns.far_begins.size());
+            auto count = deltas.size();
+            encoding_ok =
+                packed.empty() && begins.empty() && lengths.size() == count &&
+                side.block_begins.size() == (count + delta_block - 1) / delta_block &&
+                escapes_ok(deltas, delta_escape, side.far_entries, side.far_begins.size());
             break;
         }
         case RangeEncoding::Packed: {
-            encoding_ok = delta_empty && columns.begins.empty() && columns.lengths.empty();
+            encoding_ok = delta_empty && begins.empty() && lengths.empty();
             break;
         }
         case RangeEncoding::Wide: {
-            encoding_ok = delta_empty && columns.packed.empty() &&
-                          columns.lengths.size() == columns.begins.size();
+            encoding_ok = delta_empty && packed.empty() && lengths.size() == begins.size();
             break;
         }
     }
@@ -421,23 +388,22 @@ inline CheckResult range_encoding_ok(const RangeColumnsView& columns,
     auto packed_length = [](std::uint32_t word) {
         return word == packed_sentinel ? std::uint8_t(0) : static_cast<std::uint8_t>(word & 0xff);
     };
-    bool escaped_ok = columns.packed.empty() ? escapes_ok(columns.lengths,
-                                                          length_escape,
-                                                          columns.long_entries,
-                                                          columns.long_ends.size())
-                                             : escapes_ok(columns.packed,
-                                                          length_escape,
-                                                          columns.long_entries,
-                                                          columns.long_ends.size(),
-                                                          packed_length);
+    bool escaped_ok =
+        packed.empty()
+            ? escapes_ok(lengths, length_escape, side.long_entries, side.long_ends.size())
+            : escapes_ok(packed,
+                         length_escape,
+                         side.long_entries,
+                         side.long_ends.size(),
+                         packed_length);
     if(!escaped_ok) {
         return std::unexpected("range escape table does not pair with its entries");
     }
     std::uint32_t previous = 0;
     CheckResult result;
-    columns.for_each_range([&](std::uint32_t entry, LocalSourceRange range) {
+    for_each_range(side, [&](std::uint32_t entry, LocalSourceRange range) {
         if(encoding == RangeEncoding::Delta) {
-            auto delta = columns.deltas[entry];
+            auto delta = deltas[entry];
             if((entry != 0 && range.begin < previous) ||
                (entry % delta_block == 0
                     ? delta != 0
@@ -451,7 +417,7 @@ inline CheckResult range_encoding_ok(const RangeColumnsView& columns,
         }
         if(range.end < range.begin || range.end > content_size) {
             result = std::unexpected("range past the content");
-        } else if(columns.stored_length(entry) == length_escape && range.length() < length_escape) {
+        } else if(stored_length(side, entry) == length_escape && range.length() < length_escape) {
             result = std::unexpected("escaped length below the escape threshold");
         }
         return result.has_value();

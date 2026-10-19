@@ -10,6 +10,7 @@ import :index.project_index;
 import :index.tu_manifest;
 import :project.project;
 import :sched.index.pending_table;
+import :support.archive;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -35,10 +36,7 @@ std::string planted_blob(llvm::StringRef text, std::uint64_t variant) {
     blob.variants = {variant};
     blob.symbol_hashes = {111};
     blob.relation_offsets = {0, 0};
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::serialize_blob(blob, os);
-    return bytes;
+    return archive::encode(blob);
 }
 
 ZEST_SUITE(ProjectIndexLoad) {
@@ -303,9 +301,7 @@ ZEST_CASE(LoadDropsNewerManifest) {
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
         auto raced = *f.project.index.held_manifest(tu_id);
         raced.table_generation = f.project.index.table_generation() + 1;
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_manifest(f.project.index.export_manifest(raced), os);
+        auto bytes = index::serialize_manifest(f.project.index.export_manifest(raced));
         // Keyed by the interned (canonical) spelling, like save() itself:
         // on Windows the raw TempDir spelling hashes to a different key.
         f.project.database->write(
@@ -349,9 +345,7 @@ ZEST_CASE(LoadDropsLostManifest) {
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
         auto lost = *f.project.index.held_manifest(tu_id);
         lost.table_generation = f.project.index.table_generation() - 1;
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_manifest(f.project.index.export_manifest(lost), os);
+        auto bytes = index::serialize_manifest(f.project.index.export_manifest(lost));
         f.project.database->write(
             {
                 {index::BlobKind::TUManifest,
@@ -404,9 +398,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
         stale.tu_version = header_version;
         stale = f.project.index.export_manifest(stale);
         stale.nodes.push_back({.file = 9999});
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_manifest(stale, os);
+        auto bytes = index::serialize_manifest(stale);
         f.project.database->write(
             {
                 {index::BlobKind::TUManifest, index::blob_key(header), std::move(bytes)}
@@ -464,9 +456,7 @@ ZEST_CASE(FreshWriteBeatsRemoval) {
         index::TUManifest stale;
         stale.tu_version = VersionID{999999};
         stale.nodes.push_back({.file = 9999});
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_manifest(stale, os);
+        auto bytes = index::serialize_manifest(stale);
         f.project.database->write(
             {
                 {index::BlobKind::TUManifest, key, std::move(bytes)}

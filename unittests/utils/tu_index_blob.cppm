@@ -7,6 +7,7 @@ module clice:unittests.utils.tu_index_blob;
 import :index.format;
 import :index.symbol;
 import :index.tu_index;
+import :support.archive;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -88,9 +89,7 @@ inline index::TUIndexBlob tu_index_blob(const index::TUIndex& view) {
 
 /// The blob's bytes, as a worker sends them.
 inline std::string tu_index_bytes(const index::TUIndexBlob& blob) {
-    auto encoded = kota::codec::fbs::to_bytes(blob);
-    ZASSERT(encoded);
-    return std::string(encoded->begin(), encoded->end());
+    return archive::encode(blob);
 }
 
 }  // namespace clice::testing

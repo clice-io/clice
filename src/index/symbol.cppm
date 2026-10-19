@@ -114,10 +114,9 @@ struct Occurrence {
 /// One file's index while a build accumulates it; encoded into a shard
 /// blob (index/shard.cppm) at build end and consumed as bytes from then on.
 struct FileIndex {
-    /// The braces matter: fbs decode value-constructs map entries with
-    /// `FileIndex{}`, and without an initializer this member would be
-    /// copy-initialized from an empty list, which DenseMap's explicit
-    /// default constructor rejects.
+    /// The braces matter: `FileIndex{}` would otherwise copy-initialize
+    /// this member from an empty list, which DenseMap's explicit default
+    /// constructor rejects.
     llvm::DenseMap<SymbolHash, std::vector<Relation>> relations{};
 
     std::vector<Occurrence> occurrences;

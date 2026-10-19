@@ -9,6 +9,7 @@ import :index.format;
 import :index.indexer;
 import :index.shard;
 import :index.tu_index;
+import :support.archive;
 import :syntax.position;
 import :unittests.utils.tester;
 import :unittests.utils;
@@ -30,10 +31,7 @@ void build_index(llvm::StringRef code,
 }
 
 std::string write_fresh(const index::FileIndex& file_index, llvm::StringRef content) {
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::write_shard(file_index, {}, content, os);
-    return bytes;
+    return index::write_shard(file_index, {}, content);
 }
 
 /// The focus file's worker-encoded blob, straight from the TU index.
@@ -50,9 +48,7 @@ index::Shard make_shard(llvm::StringRef bytes) {
 index::Shard merge(const index::Shard& old,
                    llvm::ArrayRef<index::VariantHash> keep,
                    std::vector<index::Shard> fresh) {
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::merge_shards(old, keep, fresh, os);
+    auto bytes = index::merge_shards(old, keep, fresh);
     return make_shard(bytes);
 }
 
@@ -712,9 +708,7 @@ ZEST_CASE(MergedLocalFlagsUnion) {
         auto file_index = simple_index({
             {{11, 17}, 7}
         });
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::write_shard(
+        auto bytes = index::write_shard(
             file_index,
             [&](index::SymbolHash) -> std::optional<index::SymbolView> {
                 return index::SymbolView{.name = "helper",
@@ -723,8 +717,7 @@ ZEST_CASE(MergedLocalFlagsUnion) {
                                          .flags = flags,
                                          .token_class = {.kind = token_kind}};
             },
-            content,
-            os);
+            content);
         return make_shard(bytes);
     };
     auto defining = variant(index::SymbolFlags::HasDefinition, SemanticTokenKind::Class);
@@ -855,28 +848,15 @@ void set_occurrences(index::ShardBlob& blob,
 }
 
 ZEST_CASE(CorruptBlobRejected) {
-    ZASSERT(!index::Shard::from_bytes("not a flatbuffer").loaded());
+    ZASSERT(!index::Shard::from_bytes("not an archive").loaded());
 
-    // A valid blob cut mid-structure must fail verification, not be
-    // misread. (One trailing byte can be alignment padding, so the cut
-    // must reach real data.)
+    // A valid blob cut short must fail verification, not be misread.
     auto file_index = simple_index({
         {{0, 3}, 111}
     });
     auto bytes = write_fresh(file_index, "aaaa");
     ZASSERT(
         !index::Shard::from_bytes(llvm::StringRef(bytes).take_front(bytes.size() / 2)).loaded());
-
-    // A structurally valid table of the current version with no line table
-    // at all cannot be writer output.
-    struct VersionOnly {
-        std::uint32_t format_version = 0;
-    };
-
-    auto stale = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
-    ZASSERT(stale);
-    auto data = llvm::StringRef(reinterpret_cast<const char*>(stale->data()), stale->size());
-    ZASSERT(!index::Shard::from_bytes(data).loaded());
 }
 
 ZEST_CASE(ReservedLocalParentRejected) {
@@ -899,10 +879,7 @@ ZEST_CASE(ReservedLocalParentRejected) {
     blob.local_token_modifiers = {0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -943,10 +920,7 @@ ZEST_CASE(NonAsciiLineMismatchRejected) {
     blob.relation_offsets = {0, 0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -977,16 +951,20 @@ ZEST_CASE(LineTableMismatchRejected) {
     blob.relation_offsets = {0, 0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
     blob.line_lengths = {4, 3};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
+    blob.line_lengths = {};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+
+    // Empty content is one empty line: no line table at all sums to its size
+    // but cannot be writer output.
+    fill_content(blob, "");
+    ZASSERT(make_shard(bytes_of()).loaded());
     blob.line_lengths = {};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
@@ -1011,10 +989,7 @@ ZEST_CASE(MisorderedEntriesRejected) {
     blob.occurrence_symbols = {0, 0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1117,10 +1092,7 @@ ZEST_CASE(DuplicateOccKeyRejected) {
     blob.occurrence_symbols = {0, 1};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     // Positive control: one range with ascending symbols loads.
     ZASSERT(make_shard(bytes_of()).loaded());
@@ -1150,10 +1122,7 @@ ZEST_CASE(UnsortedRelationsRejected) {
     blob.relation_extent_ranks = {0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1184,10 +1153,7 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     blob.occurrence_symbols = {0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1236,10 +1202,7 @@ ZEST_CASE(ShortEscapedLengthRejected) {
     blob.occurrence_symbols = {0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1282,10 +1245,7 @@ ZEST_CASE(RangesBeyondContentRejected) {
     blob.relation_extent_ranks = {0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1347,10 +1307,7 @@ ZEST_CASE(WrongRangeEncodingRejected) {
     blob.occurrence_symbols = {0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(!make_shard(bytes_of()).loaded());
 
@@ -1381,9 +1338,7 @@ ZEST_CASE(WrongSymWidthRejected) {
     });
     blob.occurrence_symbols = {0, 0};
 
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::serialize_blob(blob, os);
+    auto bytes = archive::encode(blob);
     ZASSERT(!make_shard(bytes).loaded());
 }
 
@@ -1399,10 +1354,7 @@ ZEST_CASE(DuplicateSymbolHashRejected) {
     blob.relation_offsets = {0, 0, 0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1422,10 +1374,7 @@ ZEST_CASE(DuplicateVariantRejected) {
     blob.relation_offsets = {0, 0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1455,10 +1404,7 @@ ZEST_CASE(StraySymbolIdRejected) {
     blob.relation_targets = {0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1490,10 +1436,7 @@ ZEST_CASE(RelationPayloadColumnsRejected) {
     blob.relation_extent_lengths = {8};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     auto extent_of = [&](const index::Shard& shard) {
         LocalSourceRange extent;
@@ -1552,10 +1495,7 @@ ZEST_CASE(OwnerlessMaskRejected) {
     blob.occurrences.masks8 = {0b01};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1645,10 +1585,7 @@ ZEST_CASE(CorruptRoaringMaskRejected) {
     blob.relations.roaring_offsets = {0};
 
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 

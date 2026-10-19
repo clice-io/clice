@@ -9,6 +9,7 @@ import :index.format;
 import :index.symbol;
 import :semantic.symbol;
 import :semantic.token_class;
+import :support.archive;
 import :support.bitmap;
 import :vfs.ids;
 
@@ -28,7 +29,7 @@ struct ProjectTable {
 
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
-    kota::codec::fbs::bound_view<Blob> columns;
+    const archive::Archived<Blob>* columns = nullptr;
 
     IdColumnView parents;
 
@@ -43,11 +44,11 @@ struct ProjectTable {
     mutable llvm::DenseMap<Fid, std::uint32_t> contributed_index;
 
     llvm::ArrayRef<std::uint64_t> hashes() const {
-        return columns[&Blob::symbol_hashes];
+        return columns->symbol_hashes;
     }
 
-    const kota::codec::fbs::array_view<std::string>& paths() const {
-        return columns[&Blob::paths];
+    const archive::Vec<archive::Vec<char>>& paths() const {
+        return columns->paths;
     }
 
     std::uint32_t count() const {
@@ -59,26 +60,26 @@ struct ProjectTable {
     }
 
     llvm::StringRef name(std::uint32_t entry) const {
-        return slice(columns[&Blob::symbol_names], columns[&Blob::symbol_name_ends], entry);
+        return slice(columns->symbol_names, columns->symbol_name_ends, entry);
     }
 
     llvm::StringRef arguments(std::uint32_t entry) const {
-        auto position = sorted_find(columns[&Blob::symbol_args_entries], entry);
+        auto position = sorted_find(columns->symbol_args_entries, entry);
         if(!position) {
             return {};
         }
-        return slice(columns[&Blob::symbol_args], columns[&Blob::symbol_args_ends], *position);
+        return slice(columns->symbol_args, columns->symbol_args_ends, *position);
     }
 
     SymbolHash parent(std::uint32_t entry) const {
         if(parents[entry] != 0) {
             return hashes()[parents[entry] - 1];
         }
-        auto position = sorted_find(columns[&Blob::symbol_far_parents], entry);
+        auto position = sorted_find(columns->symbol_far_parents, entry);
         if(!position) {
             return 0;
         }
-        return columns[&Blob::symbol_far_parent_hashes][*position];
+        return columns->symbol_far_parent_hashes[*position];
     }
 
     /// The symbol's file as a path id of the blob, or no_file.
@@ -87,13 +88,11 @@ struct ProjectTable {
     }
 
     llvm::StringRef signature(std::uint32_t entry) const {
-        return slice(columns[&Blob::symbol_signatures],
-                     columns[&Blob::symbol_signature_ends],
-                     entry);
+        return slice(columns->symbol_signatures, columns->symbol_signature_ends, entry);
     }
 
     llvm::ArrayRef<std::uint8_t> image(std::uint32_t entry) const {
-        return slice(columns[&Blob::symbol_bitmaps], columns[&Blob::symbol_bitmap_ends], entry);
+        return slice(columns->symbol_bitmaps, columns->symbol_bitmap_ends, entry);
     }
 
     std::optional<Bitmap> bitmap(std::uint32_t entry) const {
@@ -102,13 +101,11 @@ struct ProjectTable {
 
     /// Empty for a symbol no instantiation names.
     llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t entry) const {
-        auto position = sorted_find(columns[&Blob::symbol_instantiation_entries], entry);
+        auto position = sorted_find(columns->symbol_instantiation_entries, entry);
         if(!position) {
             return {};
         }
-        return slice(columns[&Blob::symbol_instantiations],
-                     columns[&Blob::symbol_instantiation_ends],
-                     *position);
+        return slice(columns->symbol_instantiations, columns->symbol_instantiation_ends, *position);
     }
 
     std::optional<Bitmap> instantiation_bitmap(std::uint32_t entry) const {
@@ -119,7 +116,7 @@ struct ProjectTable {
     /// none did or the image fails to decode.
     std::optional<Bitmap> contributors_of(Fid file) const {
         if(contributed_index.empty()) {
-            auto& contributed = columns[&Blob::contributed_files];
+            auto& contributed = columns->contributed_files;
             for(std::uint32_t i = 0; i < contributed.size(); i += 1) {
                 contributed_index.try_emplace(remap[contributed[i]], i);
             }
@@ -128,25 +125,23 @@ struct ProjectTable {
         if(it == contributed_index.end()) {
             return std::nullopt;
         }
-        return read_file_set(
-            slice(columns[&Blob::contributors], columns[&Blob::contributor_ends], it->second));
+        return read_file_set(slice(columns->contributors, columns->contributor_ends, it->second));
     }
 
     /// The file sets the shared locals list for `symbol`, as path ids; a
     /// corrupt one is left out.
     llvm::SmallVector<Bitmap> shared_local_sets_of(SymbolHash symbol) const {
         llvm::SmallVector<Bitmap> sets;
-        auto found = sorted_find(columns[&Blob::shared_local_symbols], symbol);
+        auto found = sorted_find(columns->shared_local_symbols, symbol);
         if(!found) {
             return sets;
         }
         auto position = *found;
-        auto& set_ends = columns[&Blob::shared_local_set_ends];
+        auto& set_ends = columns->shared_local_set_ends;
         for(auto set = position == 0 ? 0 : set_ends[position - 1]; set < set_ends[position];
             set += 1) {
-            if(auto files = read_file_set(slice(columns[&Blob::shared_local_files],
-                                                columns[&Blob::shared_local_file_ends],
-                                                set))) {
+            if(auto files = read_file_set(
+                   slice(columns->shared_local_files, columns->shared_local_file_ends, set))) {
                 sets.push_back(std::move(*files));
             }
         }
@@ -160,19 +155,19 @@ struct ProjectTable {
             .args = arguments(entry),
             .signature = signature(entry),
             .parent = parent(entry),
-            .kind = SymbolKind(columns[&Blob::symbol_kinds][entry]),
+            .kind = SymbolKind(columns->symbol_kinds[entry]),
             .scope = SymbolScope::External,
-            .flags = static_cast<SymbolFlags>(columns[&Blob::symbol_flags][entry]),
+            .flags = static_cast<SymbolFlags>(columns->symbol_flags[entry]),
             .file = file == no_file ? no_file : remap[file].raw,
-            .token_class = {.kind = static_cast<SemanticTokenKind>(
-                                columns[&Blob::symbol_token_kinds][entry]),
-                            .modifiers = columns[&Blob::symbol_token_modifiers][entry]},
+            .token_class = {.kind =
+                                static_cast<SemanticTokenKind>(columns->symbol_token_kinds[entry]),
+                            .modifiers = columns->symbol_token_modifiers[entry]},
         };
     }
 
     /// Bind the columns of a blob verify_root accepted, checking they line
     /// up.
-    std::expected<void, llvm::StringRef> bind(kota::codec::fbs::table_view<Blob> root);
+    std::expected<void, llvm::StringRef> bind(const archive::Archived<Blob>& root);
 };
 
 }  // namespace clice::index
