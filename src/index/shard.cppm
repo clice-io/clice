@@ -122,9 +122,6 @@ public:
     /// blob's line-length columns on first use.
     std::span<const std::uint32_t> line_starts() const;
 
-    /// Which lines end in "\r\n" (ShardBlob::crlf_lines), read in place.
-    std::span<const std::uint64_t> crlf_lines() const;
-
     /// The positions of the text the shard was built from, over its line
     /// table and the text of its lines holding non-ASCII bytes. Text
     /// previews read the file from disk under a content_hash check.

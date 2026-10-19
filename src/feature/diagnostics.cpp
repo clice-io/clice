@@ -172,7 +172,7 @@ public:
 private:
     /// Locate the diagnostic in the focus file. One from another file moves
     /// there: to the instantiation the focus file requested, else an error
-    /// to the #include that brought its file in, else to the top of the
+    /// to the #include or import that brought its file in, else to the top of the
     /// file — saying where it happened and pointing back at it; any other
     /// to its first note in the focus file. A borrowed includer context is the host's
     /// code: an error raised there moves to where the focus file takes part
@@ -225,7 +225,16 @@ private:
                     return relocate(main, diagnostic, {0, 0}, DiagnosticOrigin::IncluderContext);
                 }
             } else if(auto include = include_range(main.fid)) {
-                return relocate(main, diagnostic, *include, DiagnosticOrigin::IncludedFile);
+                // A module unit's files are entered at the import that
+                // loaded its module.
+                auto& sources = unit.context().getSourceManager();
+                bool imported = sources.getModuleImportLoc(sources.getLocForStartOfFile(main.fid))
+                                    .first.isValid();
+                return relocate(main,
+                                diagnostic,
+                                *include,
+                                imported ? DiagnosticOrigin::ImportedModule
+                                         : DiagnosticOrigin::IncludedFile);
             } else {
                 // What the command line brought in (-include, -D) sits on
                 // no #include: it stays at the top of the file, like the
@@ -272,8 +281,8 @@ private:
         return true;
     }
 
-    /// The filename of the #include in the focus file that `fid` was
-    /// entered through, directly or not.
+    /// The filename of the #include, or the import, in the focus file that
+    /// `fid` was entered through, directly or not.
     std::optional<LocalSourceRange> include_range(clang::FileID fid) {
         for(auto location = unit.include_location(fid); location.isValid();
             location = unit.include_location(fid)) {
@@ -386,6 +395,7 @@ protocol::Diagnostic to_protocol(const FileDiagnostic& diagnostic, bool related_
         case DiagnosticOrigin::File: break;
         case DiagnosticOrigin::Template: message = "In template: "; break;
         case DiagnosticOrigin::IncludedFile: message = "In included file: "; break;
+        case DiagnosticOrigin::ImportedModule: message = "In imported module: "; break;
         case DiagnosticOrigin::IncluderContext: message = "In includer context: "; break;
     }
     message += diagnostic.message;

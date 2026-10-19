@@ -1380,7 +1380,7 @@ ZEST_CASE(KnownVariantsSkipped) {
     auto& view = tu_index.view;
     ZASSERT(view.section_hash(header) == known.front());
     ZASSERT(view.section_blob(header).empty());
-    ZASSERT(!view.section_blob(*view.section_of(focus_id)).empty());
+    ZASSERT(view.shard_of(focus_id).loaded());
     ZASSERT(table_names(view) == std::vector<std::string>{"internal", "shared", "user"});
 }
 
@@ -3164,6 +3164,19 @@ ZEST_CASE(AbbreviatedParameterDeduced) {
                               {"auto", Deduced, "A"},
                               {"value", TypeDefinition, "A", "value"},
     });
+}
+
+ZEST_CASE(AbbreviatedPackDeduced) {
+    build(R"(
+        struct A {};
+        struct B {};
+        void take(auto... values) {}
+        void use() { take(A{}, B{}); }
+    )");
+    auto records = resolved();
+    for(auto type: {"A", "B"}) {
+        ZEXPECT(llvm::is_contained(records, Resolved{"values", TypeDefinition, type, "values"}));
+    }
 }
 
 ZEST_CASE(PackParametersMapped) {

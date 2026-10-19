@@ -6,6 +6,7 @@ module clice;
 
 import :support.markup;
 import :syntax.documentation;
+import :syntax.lexer;
 
 namespace clice {
 
@@ -245,6 +246,47 @@ bool inline_kind(Kind kind) {
 
 bool identifier_char(char c) {
     return llvm::isAlnum(c) || c == '_';
+}
+
+/// The name of a documentation command whose marker is right before
+/// `text`: a word, or one of the formula delimiters and the group braces.
+llvm::StringRef doc_command_name(llvm::StringRef text) {
+    if(text.size() >= 2 && text[0] == 'f' && llvm::StringRef("$[]{}()").contains(text[1])) {
+        return text.take_front(2);
+    }
+    if(text.starts_with("{") || text.starts_with("}")) {
+        return text.take_front(1);
+    }
+    if(text.empty() || !llvm::isAlpha(text[0])) {
+        return {};
+    }
+    return text.take_while(identifier_char);
+}
+
+/// Whether a documentation command may start at `index`: Doxygen reads `@`
+/// and `\` as one only at the start of a word, as `user@example.com` and
+/// `C:\path` show.
+bool at_doc_word_start(llvm::StringRef line, std::size_t index) {
+    return index == 0 || llvm::isSpace(line[index - 1]) ||
+           llvm::StringRef("([{\"'*_").contains(line[index - 1]);
+}
+
+/// Where `closer`, the command ending a raw block, is written in `text`
+/// with either marker (`@endcode`, `\endcode`) and no longer name; npos if
+/// nowhere.
+std::size_t find_doc_closer(llvm::StringRef text, llvm::StringRef closer) {
+    auto end = llvm::StringRef::npos;
+    for(llvm::StringRef marker: {"\\", "@"}) {
+        auto at = text.find((marker + closer).str());
+        if(at == llvm::StringRef::npos) {
+            continue;
+        }
+        auto after = text.substr(at + 1 + closer.size());
+        if(after.empty() || !identifier_char(after.front())) {
+            end = std::min(end, at);
+        }
+    }
+    return end;
 }
 
 /// The word an inline command takes from `text`: up to the next blank,
@@ -1122,55 +1164,81 @@ private:
 
 }  // namespace
 
-llvm::StringRef doc_command_name(llvm::StringRef text) {
-    if(text.size() >= 2 && text[0] == 'f' && llvm::StringRef("$[]{}()").contains(text[1])) {
-        return text.take_front(2);
-    }
-    if(text.starts_with("{") || text.starts_with("}")) {
-        return text.take_front(1);
-    }
-    if(text.empty() || !llvm::isAlpha(text[0])) {
-        return {};
-    }
-    return text.take_while(identifier_char);
-}
-
-bool at_doc_word_start(llvm::StringRef line, std::size_t index) {
-    return index == 0 || llvm::isSpace(line[index - 1]) ||
-           llvm::StringRef("([{\"'*_").contains(line[index - 1]);
-}
-
-std::size_t find_doc_closer(llvm::StringRef text, llvm::StringRef closer) {
-    auto end = llvm::StringRef::npos;
-    for(llvm::StringRef marker: {"\\", "@"}) {
-        auto at = text.find((marker + closer).str());
-        if(at == llvm::StringRef::npos) {
-            continue;
-        }
-        auto after = text.substr(at + 1 + closer.size());
-        if(after.empty() || !identifier_char(after.front())) {
-            end = std::min(end, at);
-        }
-    }
-    return end;
-}
-
-llvm::StringRef doc_raw_end(llvm::StringRef name) {
-    auto it = commands().find(name);
-    if(it == commands().end()) {
-        return {};
-    }
-    auto kind = it->second.kind;
-    return kind == Kind::Code || kind == Kind::Hidden || kind == Kind::Formula ? it->second.end
-                                                                               : llvm::StringRef();
-}
-
-bool is_doc_command(llvm::StringRef name) {
-    return commands().contains(name);
-}
-
 Documentation parse_documentation(llvm::StringRef text, CopiedDocLookup lookup) {
     return Parser(lookup).run(text);
+}
+
+auto DocCommandScanner::scan(llvm::StringRef text) -> llvm::SmallVector<Part> {
+    llvm::SmallVector<Part> parts;
+    // The comment's text starts a word right past its marker, `///` or
+    // a trailing one, `///<`.
+    std::size_t payload = text.size() > 3 && text[3] == '<' ? 4 : 3;
+    for(std::size_t i = payload; i < text.size(); i += 1) {
+        if(!raw_end.empty()) {
+            auto close = find_doc_closer(text.substr(i), raw_end);
+            if(close == llvm::StringRef::npos) {
+                break;
+            }
+            i += close;
+            parts.push_back(
+                {.kind = Part::Kind::Command, .begin = i, .end = i + 1 + raw_end.size()});
+            i = parts.back().end - 1;
+            raw_end = {};
+            continue;
+        }
+        if((text[i] != '@' && text[i] != '\\') || (i > payload && !at_doc_word_start(text, i))) {
+            continue;
+        }
+        auto name = doc_command_name(text.substr(i + 1));
+        auto command = commands().find(name);
+        if(command == commands().end()) {
+            continue;
+        }
+        auto command_end = i + 1 + name.size();
+        parts.push_back({.kind = Part::Kind::Command, .begin = i, .end = command_end});
+        i = command_end - 1;
+        // No command is read in a block's code, hidden text or a formula.
+        auto kind = command->second.kind;
+        if(kind == Kind::Code || kind == Kind::Hidden || kind == Kind::Formula) {
+            raw_end = command->second.end;
+            continue;
+        }
+        if(kind != Kind::Param && kind != Kind::TParam) {
+            continue;
+        }
+        // `@param name`, `@param[in] name`, `@param [in] first,second`.
+        auto blanks_from = [&](std::size_t at) {
+            while(at < text.size() && (text[at] == ' ' || text[at] == '\t')) {
+                at += 1;
+            }
+            return at;
+        };
+        auto word = blanks_from(command_end);
+        if(word < text.size() && text[word] == '[') {
+            auto close = text.find(']', word);
+            word = blanks_from(close == llvm::StringRef::npos ? text.size() : close + 1);
+        }
+        while(true) {
+            auto word_end = word;
+            while(word_end < text.size() && is_identifier_char(text[word_end])) {
+                word_end += 1;
+            }
+            if(word_end == word) {
+                break;
+            }
+            parts.push_back({
+                .kind = kind == Kind::Param ? Part::Kind::Parameter : Part::Kind::TemplateParameter,
+                .begin = word,
+                .end = word_end,
+            });
+            i = word_end - 1;
+            if(kind != Kind::Param || word_end == text.size() || text[word_end] != ',') {
+                break;
+            }
+            word = word_end + 1;
+        }
+    }
+    return parts;
 }
 
 std::optional<CopiedName> parse_copied_name(llvm::StringRef name) {

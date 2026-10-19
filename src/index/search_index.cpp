@@ -199,6 +199,12 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     for(std::uint32_t id = 0; id < count; id += 1) {
         id_of.try_emplace(entry_of(id).hash, id);
     }
+
+    struct Scope {
+        SymbolFlags flags;
+        SymbolHash parent;
+    };
+
     // The chain a qualified name spells skips transparent scopes: inline
     // namespaces are documents, anonymous scopes are not, so their parents
     // are kept apart.
@@ -208,25 +214,25 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
             anonymous_parents.try_emplace(entry.hash, entry.parent);
         }
     }
-    auto parent_of = [&](std::uint32_t id) {
-        auto parent = entry_of(id).parent;
-        for(std::uint32_t depth = 0; parent != 0 && depth < max_chain; depth += 1) {
-            if(auto anonymous = anonymous_parents.find(parent);
-               anonymous != anonymous_parents.end()) {
-                parent = anonymous->second;
-                continue;
-            }
-            auto it = id_of.find(parent);
-            if(it == id_of.end()) {
-                return no_entry;
-            }
-            auto& candidate = entry_of(it->second);
-            if(!has_flag(candidate.flags, SymbolFlags::InlineNamespace)) {
-                return it->second;
-            }
-            parent = candidate.parent;
+    auto scope_of = [&](SymbolHash hash) -> std::optional<Scope> {
+        if(auto anonymous = anonymous_parents.find(hash); anonymous != anonymous_parents.end()) {
+            return Scope{SymbolFlags::AnonymousScope, anonymous->second};
         }
-        return no_entry;
+        auto it = id_of.find(hash);
+        if(it == id_of.end()) {
+            return std::nullopt;
+        }
+        auto& entry = entry_of(it->second);
+        return Scope{entry.flags, entry.parent};
+    };
+    auto parent_of = [&](std::uint32_t id) {
+        auto parent = no_entry;
+        auto& entry = entry_of(id);
+        for_each_spelled_scope(entry.hash, entry.parent, scope_of, [&](SymbolHash scope, Scope&) {
+            parent = id_of.find(scope)->second;
+            return false;
+        });
+        return parent;
     };
 
     SearchIndexBlob blob;

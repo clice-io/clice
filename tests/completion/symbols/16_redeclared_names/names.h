@@ -32,3 +32,17 @@ struct Later;
 
 template <class T = int>
 struct Later {};
+
+struct status {
+    int code;
+};
+
+int status(struct status* out);
+
+struct Ticket {
+    int number;
+};
+
+struct Holder {
+    friend void Ticket(Holder);
+};

@@ -234,19 +234,18 @@ const clang::CodeCompletionString&
     return *builder.TakeString();
 }
 
-/// Whether a typedef of the tag's own name in its scope names it, as C
-/// headers write `typedef union attr attr;`: where names of both kinds
-/// complete, Sema offers the tag only when it meets the tag before the
-/// typedef, and the typedef either way.
-bool named_by_typedef(const clang::TagDecl* tag) {
+/// Whether a declaration of the tag's own name in its scope hides it: a
+/// function, a variable or a typedef, as C headers write `struct stat`
+/// beside `stat` and `typedef union attr attr;`. Sema hides the tag only
+/// when it meets the other first, which depends on how its scope's lookup
+/// lists them: a preamble's PCH lists them otherwise than a parse does.
+bool hidden_tag(const clang::TagDecl* tag) {
     const auto* scope = tag->getDeclContext()->getRedeclContext();
     if(!tag->getDeclName() || !scope->isFileContext()) {
         return false;
     }
-    return llvm::any_of(scope->lookup(tag->getDeclName()), [&](const clang::NamedDecl* found) {
-        const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(found);
-        const auto* named = alias ? alias->getUnderlyingType()->getAsTagDecl() : nullptr;
-        return named && named->getCanonicalDecl() == tag->getCanonicalDecl();
+    return llvm::any_of(scope->lookup(tag->getDeclName()), [](const clang::NamedDecl* found) {
+        return found->isInIdentifierNamespace(clang::Decl::IDNS_Ordinary);
     });
 }
 
@@ -1435,7 +1434,13 @@ public:
                                     clang::CodeCompletionContext context,
                                     clang::CodeCompletionResult* candidates,
                                     unsigned candidate_count) final {
-        if(context.getKind() == clang::CodeCompletionContext::CCC_Recovery) {
+        // In a conditional block the build turns off, clang lexes raw and
+        // offers the names of whatever scope the parser stood in when its
+        // lookahead reached the block: the scope a preamble's PCH leaves
+        // differs from the one a whole parse does.
+        auto* lexer = sema.getPreprocessor().getCurrentFileLexer();
+        if(context.getKind() == clang::CodeCompletionContext::CCC_Recovery ||
+           (lexer && lexer->isLexingRawMode())) {
             return;
         }
 
@@ -1799,7 +1804,7 @@ public:
         /// `relevance` scales what the context makes of the candidate.
         auto add_declaration = [&](clang::CodeCompletionResult& candidate, float relevance) {
             if(auto* tag = llvm::dyn_cast<clang::TagDecl>(candidate.Declaration);
-               tag && !tags_only && named_by_typedef(tag)) {
+               tag && !tags_only && hidden_tag(tag)) {
                 return;
             }
             candidate.Declaration = shown_declaration(candidate.Declaration);

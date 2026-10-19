@@ -15,6 +15,7 @@ import :index.shard;
 import :index.symbol;
 import :semantic.decls;
 import :semantic.display;
+import :semantic.documentation;
 import :semantic.identity;
 import :semantic.resolver;
 import :semantic.semantics;
@@ -461,6 +462,23 @@ public:
         index->relations[hash].emplace_back(relation);
     }
 
+    /// Record a relation of `decl` in the index of `fid`, `target` naming
+    /// the symbol it leads to. A file file_index drops takes the relation
+    /// with it, and neither symbol is registered.
+    void relate(clang::FileID fid,
+                const clang::NamedDecl* decl,
+                Relation relation,
+                const clang::NamedDecl* target = nullptr) {
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
+        if(target) {
+            relation.target = ensure_symbol(decls::normalize(target));
+        }
+        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+    }
+
     /// A Definition/Declaration/Reference relation mirroring an occurrence:
     /// it spans the whole written name the occurrence lies in, and decl/def
     /// relations also carry the declaration's full extent.
@@ -468,11 +486,6 @@ public:
                            RelationKind kind,
                            clang::SourceRange name) {
         auto [fid, range] = *unit.written_range(name);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-
         Relation relation{.kind = kind, .range = range, .target = 0};
 
         if(kind.isDeclOrDef()) {
@@ -489,8 +502,7 @@ public:
                 }
             }
         }
-
-        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+        relate(fid, decl, relation);
     }
 
     /// The Instantiation relation of an explicit instantiation, at its name
@@ -498,17 +510,12 @@ public:
     void add_instantiation(const clang::ExplicitInstantiationDecl& directive) {
         auto location = unit.context().getSourceManager().getFileLoc(directive.getNameLoc());
         auto [fid, range] = *unit.written_range(location);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
         Relation relation{.kind = RelationKind::Instantiation, .range = range, .target = 0};
         if(auto [extent_fid, extent] = unit.produced_range(directive.getSourceRange());
            extent_fid == fid) {
             relation.set_extent(extent);
         }
-        index->relations[ensure_symbol(decls::normalize(directive.getSpecialization()))]
-            .emplace_back(relation);
+        relate(fid, directive.getSpecialization(), relation);
     }
 
     /// A symbol-to-symbol relation (type-of, inheritance, overrides, ctor/dtor
@@ -519,17 +526,7 @@ public:
                            clang::SourceRange anchor) {
         // The anchor only routes the relation to a file's index; symbol pairs
         // carry no range of their own.
-        auto fid = unit.produced_at(anchor.getBegin()).file;
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-
-        Relation relation{
-            .kind = kind,
-            .target = ensure_symbol(decls::normalize(target)),
-        };
-        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+        relate(unit.produced_at(anchor.getBegin()).file, decl, {.kind = kind}, target);
     }
 
     /// The TypeDefinition relations of a value (a function's: its return
@@ -567,23 +564,14 @@ public:
         if(!target) {
             return;
         }
-        target = decls::normalize(target);
         auto* declared = type_definition_of(llvm::cast<clang::ValueDecl>(pattern), resolver);
-        if(declared && unit.get<EntityTable>().entity(decls::normalize(declared)) ==
-                           unit.get<EntityTable>().entity(target)) {
+        auto& entities = unit.get<EntityTable>();
+        if(declared && entities.entity(decls::normalize(declared)) ==
+                           entities.entity(decls::normalize(target))) {
             return;
         }
         auto [fid, range] = *unit.written_range(name);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-        Relation relation{
-            .kind = RelationKind::TypeDefinition,
-            .range = range,
-            .target = ensure_symbol(target),
-        };
-        index->relations[ensure_symbol(pattern)].emplace_back(relation);
+        relate(fid, decl, {.kind = RelationKind::TypeDefinition, .range = range}, target);
     }
 
     /// A call edge, recorded at the call expression's location.
@@ -592,17 +580,7 @@ public:
                            const clang::NamedDecl* target,
                            clang::SourceRange range) {
         auto [fid, relation_range] = unit.produced_range(range);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-
-        Relation relation{
-            .kind = kind,
-            .range = relation_range,
-            .target = ensure_symbol(decls::normalize(target)),
-        };
-        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+        relate(fid, decl, {.kind = kind, .range = relation_range}, target);
     }
 
     /// Module names are indexed like macro names: an occurrence plus a
@@ -790,12 +768,7 @@ public:
             return;
         }
         auto [fid, range] = *unit.written_range(include);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-        Relation relation{.kind = RelationKind::Pasted, .range = range, .target = 0};
-        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+        relate(fid, decl, {.kind = RelationKind::Pasted, .range = range});
     }
 
     /// Decl-pair relation facts: type definitions, inheritance, overrides,
@@ -1204,6 +1177,18 @@ public:
                                     name.getBegin());
             }
         }
+        // The focus file's comments alone: scanning every header's would
+        // cost each unit's index a lex of all it includes, and a header the
+        // editor opens has a compile of its own.
+        if(const auto* decl = semantics.node(i).node.get<clang::Decl>();
+           decl && !semantics.node(i).flags.in_instantiation &&
+           unit.file_id(decl->getLocation()) == unit.focus_file().file()) {
+            for(auto& documented: documented_parameters(unit, decl)) {
+                add_name({.decl = documented.parameter,
+                          .kind = RelationKind::Reference,
+                          .location = documented.location});
+            }
+        }
 
         project_placeholder(semantics, i);
         project_relations(semantics, i);
@@ -1211,14 +1196,17 @@ public:
 
     /// In an instantiation, a variable or a parameter its template declares
     /// with a placeholder type (`auto x`, an abbreviated template's `auto`
-    /// parameter): the types go-to-type-definition reaches from it, at its
-    /// name — beside the template's own, which carries none.
+    /// parameter or pack): the types go-to-type-definition reaches from it,
+    /// at its name — beside the template's own, which carries none.
     void add_deduced_type(const clang::ValueDecl* decl) {
         if(!llvm::isa<clang::VarDecl>(decl)) {
             return;
         }
         const auto* pattern = llvm::cast<clang::ValueDecl>(in_pattern(decl));
         auto declared = pattern->getType();
+        if(const auto* expansion = declared->getAs<clang::PackExpansionType>()) {
+            declared = expansion->getPattern();
+        }
         const auto* parameter = types::unwrap(declared)->getAs<clang::TemplateTypeParmType>();
         if(pattern == decl ||
            (!declared->getContainedDeducedType() &&
@@ -1233,13 +1221,8 @@ public:
             return;
         }
         auto [fid, range] = *written;
-        auto* index = file_index(fid);
-        auto symbol = ensure_symbol(decls::normalize(decl));
         auto add = [&](const clang::NamedDecl* type_decl) {
-            Relation relation{.kind = RelationKind::TypeDefinition,
-                              .range = range,
-                              .target = ensure_symbol(decls::normalize(type_decl))};
-            index->relations[symbol].emplace_back(relation);
+            relate(fid, decl, {.kind = RelationKind::TypeDefinition, .range = range}, type_decl);
         };
         add(target);
         // A smart pointer leads on to its pointee, as add_type_definitions.
@@ -1351,6 +1334,50 @@ public:
             walked.push_back(decl);
         }
         return walked;
+    }
+
+    /// The top-level declarations the focus file does not own that expand a
+    /// macro it defines: `#define TYPE isl_space` before `#include
+    /// "templ.c"`, or `static` before an `#include` writing the rest of the
+    /// function. What the body names there is a resolution of the focus
+    /// file, which a walk of its own declarations does not reach.
+    std::vector<const clang::Decl*> expanding_decls() {
+        auto& SM = unit.context().getSourceManager();
+        auto focus = unit.focus_file();
+        std::vector<clang::SourceLocation> expansions;
+        for(unsigned i = 0; i < SM.local_sloc_entry_size(); i += 1) {
+            const auto& entry = SM.getLocalSLocEntry(i);
+            if(!entry.isExpansion() || entry.getExpansion().isMacroArgExpansion() ||
+               !focus.contains(SM.getFileID(entry.getExpansion().getSpellingLoc()))) {
+                continue;
+            }
+            expansions.push_back(SM.getExpansionLoc(entry.getExpansion().getExpansionLocStart()));
+        }
+        if(expansions.empty()) {
+            return {};
+        }
+        auto before = [&](clang::SourceLocation left, clang::SourceLocation right) {
+            return SM.isBeforeInTranslationUnit(left, right);
+        };
+        llvm::sort(expansions, before);
+        llvm::DenseSet<const clang::Decl*> own(unit.top_level_decls().begin(),
+                                               unit.top_level_decls().end());
+        std::vector<const clang::Decl*> decls;
+        for(const auto* decl: unit.context().getTranslationUnitDecl()->noload_decls()) {
+            if(decl->isFromASTFile() || own.contains(decl)) {
+                continue;
+            }
+            // The declarations clang makes for itself are written nowhere.
+            auto range = SM.getExpansionRange(decl->getSourceRange());
+            if(range.isInvalid()) {
+                continue;
+            }
+            auto first = llvm::lower_bound(expansions, range.getBegin(), before);
+            if(first != expansions.end() && !before(range.getEnd(), *first)) {
+                decls.push_back(decl);
+            }
+        }
+        return decls;
     }
 
     /// The written relations of one file, by what a record would say: an
@@ -1613,6 +1640,28 @@ public:
         }
     }
 
+    /// What the written declarations of a focus compile's other files
+    /// name through the focus file's `#define` bodies; their own entries
+    /// are their files' to index.
+    void collect_focus_body_names(const Semantics& semantics) {
+        auto& SM = unit.context().getSourceManager();
+        auto entries = semantics.node_entries();
+        auto roots = semantics.instantiation_roots();
+        auto written_end = roots.empty() ? entries.size() : roots.front().begin;
+        for(std::uint32_t i = 0; i < written_end; i += 1) {
+            if(!entries[i].node.is_ast()) {
+                continue;
+            }
+            for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
+                if(occurrence.location.isMacroID() &&
+                   unit.focus_file().contains(
+                       SM.getFileID(SM.getSpellingLoc(occurrence.location)))) {
+                    body_names.push_back({occurrence.decl, occurrence.kind, occurrence.location});
+                }
+            }
+        }
+    }
+
     void project_semantics(const Semantics& semantics) {
         auto entries = semantics.node_entries();
         auto roots = semantics.instantiation_roots();
@@ -1651,20 +1700,24 @@ public:
         // The focus-only shape is the one features share, cached on the
         // unit; the whole-TU shape is transient — projected and dropped.
         // Both phases below share the one build. A focus compile walks its
-        // instantiations in a build of their own.
+        // instantiations, and the declarations of other files that expand
+        // its macros, in a build of their own.
         std::optional<Semantics> full;
         if(!focus_only) {
             full.emplace(Semantics::build(unit, {.all_files = true, .instantiations = walked}));
-        } else if(!walked.empty()) {
+        } else if(auto expanding = expanding_decls(); !walked.empty() || !expanding.empty()) {
             full.emplace(Semantics::build(
                 unit,
-                {.all_files = true, .instantiations = walked, .only_instantiations = true}));
+                {.all_files = true, .instantiations = walked, .written = expanding}));
         }
         const Semantics& semantics = focus_only ? unit.get<Semantics>() : *full;
         auto semantics_ms = semantics_timer.ms_f();
 
         ScopedTimer project_timer;
         project_semantics(semantics);
+        if(focus_only && full) {
+            collect_focus_body_names(*full);
+        }
 
         index_modules(semantics);
         project_imported();

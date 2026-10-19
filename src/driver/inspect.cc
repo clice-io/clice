@@ -1854,6 +1854,8 @@ auto check_hover_definitions(const CompilationInput& input,
     first_input.arguments.push_back("0");
     // A twin uses what its original uses.
     first_input.arguments.push_back("-Wno-deprecated-declarations");
+    // Twins go into the headers' text, which a PCH would stand in for.
+    first_input.pch = {};
     auto unit = compile({.kind = CompilationKind::Content, .input = first_input});
     // The input compiled once already, for the clean-code gate.
     assert(unit->completed());
@@ -2083,12 +2085,11 @@ auto check_hover_definitions(const CompilationInput& input,
             content += originals[path].substr(copied[path]);
         }
 
-        CompilationInput probe_input = input;
+        CompilationInput probe_input = first_input;
         auto focus_spelling = unit->file_path(unit->context().getSourceManager().getMainFileID());
         for(auto& [path, content]: contents) {
             probe_input.buffers[path == focus_spelling ? focus_path : path] = content;
         }
-        probe_input.arguments = first_input.arguments;
         auto probe = compile({.kind = CompilationKind::Content, .input = probe_input});
         // A twin the compile stops at leaves all of them unmatched.
         if(!probe->completed()) {
@@ -2372,12 +2373,24 @@ struct SourceFile {
     FileMarkers markers;
 };
 
+/// The command of the unit writing the precompiled header a command reads
+/// (Build::pch_unit).
+struct PCHWriter {
+    std::string file;
+    std::string directory;
+    std::vector<std::string> arguments;
+};
+
 /// The compile command for one file.
 struct FileCommand {
     std::vector<std::string> arguments;
     std::string directory;
     std::string workspace;
     std::shared_ptr<const SynthesizedContext> synthesized;
+    std::optional<PCHWriter> pch_writer;
+
+    /// clice's build of pch_writer's header, which the compile loads.
+    std::string pch;
 };
 
 /// The workspace the inspected file's directory belongs to: itself or the
@@ -2411,7 +2424,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
                                         const std::string& file,
                                         llvm::ArrayRef<std::string> flags,
                                         llvm::StringRef flags_directory,
-                                        FileTable& files,
+                                        Project& project,
                                         CommandResolver& commands) {
     namespace types = clang::driver::types;
     auto type = suffix_type(file);
@@ -2453,20 +2466,64 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         return command;
     }
 
-    command.synthesized = commands
-                              .resolve_command(files.intern(Spelling::absolute(file)),
-                                               command.directory,
-                                               command.arguments)
-                              .synthesized;
+    auto path_id = project.file_table.intern(Spelling::absolute(file));
+    auto resolution = commands.resolve_command(path_id, command.directory, command.arguments);
+    command.synthesized = resolution.synthesized;
+    if(auto writer = commands.pch_unit(path_id, resolution)) {
+        auto argv = project.cdb.render(*writer);
+        command.pch_writer = PCHWriter{
+            .file = std::string(project.file_table.resolve(writer->file)),
+            .directory = project.cdb.config(writer->config).directory,
+            .arguments = {argv.begin(), argv.end()},
+        };
+    }
     return command;
+}
+
+/// clice's build of the precompiled header the command reads, as the server
+/// builds it: under its writer's command the header set holds what the
+/// compiler compiled, which the unit's own flags may not (a target reusing
+/// another target's PCH). Empty when it does not build, or when it reads
+/// `file` itself, whose text its guard would then skip.
+std::string build_pch(const PCHWriter& writer,
+                      llvm::StringRef file,
+                      llvm::StringRef workspace,
+                      FileTable& files) {
+    auto output = vfs::temp_file("clice-inspect", "pch");
+    if(!output) {
+        LOG_WARN("cannot create a temporary PCH: {}", output.error().message());
+        return {};
+    }
+    auto unit = clice::compile({
+        .kind = CompilationKind::PrecompiledHeader,
+        .input = {.arguments = writer.arguments,
+                  .directory = writer.directory,
+                  .workspace = workspace.str()},
+        .output_file = *output,
+    });
+    // The writer's own source is no dep of its unit, but the PCH holds it.
+    auto self = files.intern(Spelling::absolute(file));
+    bool reads = files.intern(Spelling::absolute(writer.file)) == self ||
+                 llvm::any_of(unit->deps(), [&](const DepFile& dep) {
+                     return files.intern(Spelling::absolute(dep.path)) == self;
+                 });
+    bool built = unit->has_output() && !reads;
+    // Destroying the unit writes the PCH to disk.
+    unit.reset();
+    if(!built) {
+        vfs::remove(*output);
+        return {};
+    }
+    return *output;
 }
 
 /// Run the feature over the file and fill its entry. The compile is one
 /// pass, deliberately without the preamble PCH the server uses: a shared
 /// snapshot pins that the PCH split does not change feature results, so any
 /// divergence between the two paths shows as a snapshot mismatch instead of
-/// hiding in the preamble. With `diagnostics.clang_tidy` the compile runs
-/// the file's clang-tidy configuration as the server's does.
+/// hiding in the preamble. The precompiled header the build declares it
+/// loads (build_pch). With `diagnostics.clang_tidy` the compile runs the
+/// file's clang-tidy configuration as the server's does.
 void run_feature(FileEntry& entry,
                  const FeatureSpec& spec,
                  const SourceFile& file,
@@ -2480,6 +2537,9 @@ void run_feature(FileEntry& entry,
     input.add_focus(file.path, file.content);
     if(command.synthesized) {
         input.add_synthesized(command.synthesized->files);
+    }
+    if(!command.pch.empty()) {
+        input.pch = {command.pch, 0};
     }
 
     CompilationParams params{.kind = CompilationKind::Content, .input = input};
@@ -2739,10 +2799,17 @@ int run_inspect(const InspectOptions& opts, const FeatureSpec& spec) {
     InspectOutput output;
     output.feature = spec.name.str();
     auto& entry = output.files[name];
-    auto command = file_command(entry, file.path, flags, directory, file_table, commands);
+    auto command = file_command(entry, file.path, flags, directory, project, commands);
     if(command) {
         command->workspace = project.config.workspace_root.str();
+        if(command->pch_writer) {
+            command->pch =
+                build_pch(*command->pch_writer, file.path, command->workspace, file_table);
+        }
         run_feature(entry, spec, file, *command, project.config);
+        if(!command->pch.empty()) {
+            vfs::remove(command->pch);
+        }
     }
 
     auto json = kota::codec::json::to_string<InspectJsonConfig>(output);

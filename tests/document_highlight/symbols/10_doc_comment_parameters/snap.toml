@@ -1,0 +1,26 @@
+[answers.comment]
+wrong = "the doc comment names the parameter without reading it: its highlight is text"
+highlights = [
+    { at = "/// @param ⟦value⟧ what to clamp", kind = "read" },
+    { at = "int clamp(int ⟦value⟧, int limit) {", kind = "text" },
+    { at = "return ⟦value⟧ < limit ? value : limit;", kind = "read" },
+    { at = "return value < limit ? ⟦value⟧ : limit;", kind = "read" },
+]
+
+[answers.direction]
+wrong = "the doc comment names the parameter without reading it: its highlight is text"
+highlights = [
+    { at = "/// @param[in] ⟦limit⟧ the most it may be", kind = "read" },
+    { at = "int clamp(int value, int ⟦limit⟧) {", kind = "text" },
+    { at = "return value < ⟦limit⟧ ? value : limit;", kind = "read" },
+    { at = "return value < limit ? value : ⟦limit⟧;", kind = "read" },
+]
+
+[answers.declared]
+wrong = "the doc comment names the parameter without reading it: its highlight is text"
+highlights = [
+    { at = "/// @param ⟦value⟧ what to clamp", kind = "read" },
+    { at = "int clamp(int ⟦value⟧, int limit) {", kind = "text" },
+    { at = "return ⟦value⟧ < limit ? value : limit;", kind = "read" },
+    { at = "return value < limit ? ⟦value⟧ : limit;", kind = "read" },
+]

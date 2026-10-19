@@ -223,7 +223,9 @@ FileResult profile_file(llvm::StringRef file,
                                             llvm::sys::path::filename(file).str(),
                                             static_cast<std::uint32_t>(llvm::xxh3_64bits(file))));
         if(auto error = llvm::timeTraceProfilerWrite(trace_path, file)) {
-            LOG_WARN("Failed to write time trace {}: {}", trace_path, error);
+            LOG_WARN("Failed to write time trace {}: {}",
+                     trace_path,
+                     llvm::toString(std::move(error)));
         }
         llvm::timeTraceProfilerCleanup();
     }

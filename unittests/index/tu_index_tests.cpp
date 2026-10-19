@@ -44,8 +44,7 @@ ZEST_CASE(TUIndexSections) {
     for(std::uint32_t i = 1; i < view.section_count(); i += 1) {
         ZASSERT(view.section_path(i - 1) < view.section_path(i));
     }
-    auto focus_section = view.section_of(view.path_count() - 1);
-    ZASSERT(focus_section);
+    ZASSERT(view.shard_of(view.path_count() - 1).loaded());
 
     // Every section's hash is the byte identity of its blob, the blob
     // loads as a self-contained single-variant shard under that identity,

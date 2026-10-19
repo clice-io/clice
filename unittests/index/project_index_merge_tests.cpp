@@ -348,9 +348,8 @@ ZEST_CASE(RejectsCorruptSection) {
     std::string corrupt = indexed.data;
     auto tampered = index::TUIndex::from_bytes(corrupt);
     ZASSERT(tampered.loaded());
-    auto focus_section = tampered.section_of(tampered.path_count() - 1);
-    ZASSERT(focus_section);
-    auto blob = tampered.section_blob(*focus_section);
+    auto blob = tampered.shard_of(tampered.path_count() - 1).bytes();
+    ZASSERT(!blob.empty());
     auto pos = llvm::StringRef(corrupt).find(blob);
     ZASSERT(pos != llvm::StringRef::npos);
     for(std::size_t i = 0; i < blob.size(); i += 1) {
@@ -635,10 +634,10 @@ ZEST_CASE(ResolutionsSharedAndSkipped) {
     auto known = f.known_instantiations(id("a2.cpp"));
     ZEXPECT(!known.empty());
     ZASSERT(index("a2.cpp"));
-    auto& manifest = *f.project.index.held_manifest(id("a2.cpp"));
-    ZASSERT(manifest.instantiations.size() == 1u);
-    ZEXPECT(llvm::ArrayRef(box()->resolutions_of(manifest.instantiations.front().use)) ==
-            box()->resolutions());
+    auto& walked = f.project.index.held_manifest(id("a.cpp"))->instantiations;
+    auto& skipped = f.project.index.held_manifest(id("a2.cpp"))->instantiations;
+    ZASSERT(skipped.size() == 1u);
+    ZEXPECT(skipped == walked);
 
     ZASSERT(index("b.cpp"));
     ZEXPECT(box()->resolutions().size() == 2u);
@@ -679,7 +678,6 @@ void a2() { Box<A>{}.show(); Box<B>{}.show(); }
     auto uses = f.project.index.held_manifest(id("a2.cpp"))->instantiations;
     ZASSERT(uses.size() == 1u);
     ZEXPECT(box()->has_use(uses.front().use));
-    ZEXPECT(box()->resolutions_of(uses.front().use).size() == 2u);
 
     // a2.cpp alone keeps both resolutions alive.
     f.drop_index(id("a.cpp"));

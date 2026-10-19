@@ -77,7 +77,9 @@ struct ArtifactRecords {
 
     std::vector<CachePCMEntry> pcm;
 
-    std::vector<CacheModeEntry> header_modes;
+    /// The headers that need a context, named for the modes older records
+    /// stored beside each one, so those records still load.
+    std::vector<ContextHeaderEntry> header_modes;
 };
 
 }  // namespace
@@ -135,7 +137,7 @@ std::string serialize_artifact_records(Project& project, CommandResolver& comman
         data.pcm.push_back(std::move(entry));
     }
 
-    commands.dump_mode_slices(data.header_modes, intern);
+    commands.dump_context_headers(data.header_modes, intern);
 
     auto json = kota::codec::json::to_string<PathJsonConfig>(data);
     if(!json) {
@@ -228,7 +230,7 @@ void load_artifact_records(Project& project, CommandResolver& commands, llvm::St
         st.deps = load_deps(entry.deps);
     }
 
-    commands.load_mode_slices(data.header_modes, file_of);
+    commands.load_context_headers(data.header_modes, file_of);
 
     LOG_INFO("Loaded artifact metadata: {} PCH entries, {} PCM entries",
              project.pch_cache.size(),

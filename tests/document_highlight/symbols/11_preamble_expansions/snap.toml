@@ -1,0 +1,34 @@
+[open.inspect.in_body]
+highlights = [
+    { at = "#define GBR_LP struct ⟦tab_lp⟧", kind = "text" },
+    { at = "struct ⟦tab_lp⟧* current;", kind = "text" },
+]
+
+[open.inspect.use]
+highlights = [
+    { at = "#define GBR_LP struct ⟦tab_lp⟧", kind = "text" },
+    { at = "struct ⟦tab_lp⟧* current;", kind = "text" },
+]
+
+[open.server]
+wrong = "the #define body names tab_lp at its expansion in templ.inc, as inspect and the indexed server show"
+
+[open.server.in_body]
+highlights = []
+
+[open.server.use]
+highlights = [
+    { at = "struct ⟦tab_lp⟧* current;", kind = "text" },
+]
+
+[indexed.in_body]
+highlights = [
+    { at = "#define GBR_LP struct ⟦tab_lp⟧", kind = "text" },
+    { at = "struct ⟦tab_lp⟧* current;", kind = "text" },
+]
+
+[indexed.use]
+highlights = [
+    { at = "#define GBR_LP struct ⟦tab_lp⟧", kind = "text" },
+    { at = "struct ⟦tab_lp⟧* current;", kind = "text" },
+]

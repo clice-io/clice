@@ -985,13 +985,6 @@ std::span<const std::uint32_t> Shard::line_starts() const {
     return line_starts_cache;
 }
 
-std::span<const std::uint64_t> Shard::crlf_lines() const {
-    if(!buffer) {
-        return {};
-    }
-    return view_of(buffer->getBuffer())[&ShardBlob::crlf_lines];
-}
-
 PositionMap Shard::positions() const {
     if(!buffer) {
         return {0, {}, {}};
@@ -999,7 +992,7 @@ PositionMap Shard::positions() const {
     auto root = view_of(buffer->getBuffer());
     return {content_size(),
             line_starts(),
-            crlf_lines(),
+            root[&ShardBlob::crlf_lines],
             root[&ShardBlob::utf8_lines],
             root[&ShardBlob::utf8_text],
             root[&ShardBlob::utf8_text_ends]};

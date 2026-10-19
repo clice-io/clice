@@ -268,9 +268,10 @@ struct SemanticsOptions {
     /// flagged in_instantiation.
     llvm::ArrayRef<const clang::Decl*> instantiations;
 
-    /// Traverse the instantiations alone: a Content compile's written
-    /// declarations have the shape features share.
-    bool only_instantiations = false;
+    /// With all_files, the written declarations to traverse in place of
+    /// everything the unit parsed: a Content compile's own have the shape
+    /// features share.
+    std::optional<llvm::ArrayRef<const clang::Decl*>> written;
 };
 
 /// The semantic map of the focus file, built once after a successful

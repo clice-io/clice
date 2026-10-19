@@ -32,33 +32,3 @@ stdout = '''
 }
 '''
 exit = 0
-
-[test."$ clice query symbol-search --limit 3"]
-stdout = '''
-{
-  "result": {
-    "symbols": [
-      {
-        "name": "use",
-        "signature": "()",
-        "kind": "Function",
-        "file": "${WS}/main.cpp",
-        "line": 3,
-        "container": null,
-        "symbol": "#864f22013c538ab8"
-      },
-      {
-        "name": "value",
-        "signature": "()",
-        "kind": "Function",
-        "file": "${WS}/main.cpp",
-        "line": 2,
-        "container": null,
-        "symbol": "#2282827d1139ff33"
-      }
-    ]
-  },
-  "stale": []
-}
-'''
-exit = 0

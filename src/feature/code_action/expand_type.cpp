@@ -56,7 +56,9 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         return;
     }
     auto deduced = types::deduced_type(clang::DynTypedNode::create(inner), owner);
-    if(deduced.isNull() || deduced->isDependentType()) {
+    // `auto x;` leaves its placeholder undeduced, a type that desugars to
+    // itself.
+    if(deduced.isNull() || deduced->isDependentType() || deduced->isUndeducedType()) {
         return;
     }
     // `auto&&` bound to an lvalue deduces a reference: the written `&&`

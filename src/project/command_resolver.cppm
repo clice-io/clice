@@ -9,12 +9,15 @@ import :project.project;
 
 namespace clice {
 
-/// A persisted header-mode result in the artifact records. Mirrors the
-/// on-disk JSON layout field for field — changing it changes the format.
-struct CacheModeEntry {
-    std::uint32_t file;          // index into the cache path table
-    std::uint32_t mode;          // HeaderMode
-    std::uint64_t content_hash;  // header contents the result was scored on
+/// A header the artifact records persist as needing an includer's context.
+/// Mirrors the on-disk JSON layout field for field — changing it changes
+/// the format.
+struct ContextHeaderEntry {
+    /// Index into the records' path table.
+    std::uint32_t file;
+
+    /// The header contents the result was scored on.
+    std::uint64_t content_hash;
 };
 
 /// What one resolution asks for beyond the file itself. The editor fields
@@ -137,18 +140,17 @@ public:
     /// persisted result is dropped.
     void reset_header_mode(Fid path_id);
 
-    /// Fill the validation slice of the artifact records (header-mode
-    /// results, content-hash gated at load). @param intern_id maps a
-    /// runtime path id into the blob's path table; interning order is part
-    /// of the on-disk format.
-    void dump_mode_slices(std::vector<CacheModeEntry>& modes,
-                          llvm::function_ref<std::uint32_t(Fid)> intern_id) const;
+    /// Fill the artifact records' headers that need a context (content-hash
+    /// gated at load). @param intern_id maps a runtime path id into the
+    /// blob's path table; interning order is part of the on-disk format.
+    void dump_context_headers(std::vector<ContextHeaderEntry>& headers,
+                              llvm::function_ref<std::uint32_t(Fid)> intern_id) const;
 
-    /// Restore header-mode results. @param file_of maps a path table
-    /// index back to the file it names (nullopt when the index is
+    /// Restore the headers that need a context. @param file_of maps a path
+    /// table index back to the file it names (nullopt when the index is
     /// invalid).
-    void load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
-                          llvm::function_ref<std::optional<Fid>(std::uint32_t)> file_of);
+    void load_context_headers(llvm::ArrayRef<ContextHeaderEntry> headers,
+                              llvm::function_ref<std::optional<Fid>(std::uint32_t)> file_of);
 
     /// Fill compile arguments for a file and report where they came from.
     /// Tries, in order: the pinned host, the file's own command, a header
@@ -194,7 +196,7 @@ private:
                                                              const CommandRequest& request,
                                                              bool synthesize);
 
-    /// What dump_mode_slices would emit for this file (0 = nothing) — the
+    /// What dump_context_headers would emit for this file (0 = nothing) — the
     /// before/after probe record and reset compare to mark the artifacts
     /// blob dirty exactly when the persisted slice changes. A persisted
     /// result must not outlive its in-memory drop: the header's own

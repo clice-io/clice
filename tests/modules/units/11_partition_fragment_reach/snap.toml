@@ -1,0 +1,35 @@
+[test."impl.cpp"]
+wrong = "impl.cpp imports :bits through :set, so Roaring from its global module fragment is reachable and the unit should compile clean (llvm#229189)"
+errors = [
+    {
+        at = "⟦import⟧ :set;",
+        severity = "error",
+        message = "In imported module: missing '#include'; 'Roaring' must be defined before it is used",
+        source = "clang",
+        code = "err_module_unimported_use_header",
+    },
+    {
+        at = "return set.bits⟦.⟧size;",
+        severity = "error",
+        message = "missing '#include'; 'Roaring' must be defined before it is used",
+        source = "clang",
+        code = "err_module_unimported_use_header",
+    },
+    {
+        at = "return set.bits⟦.⟧size;",
+        severity = "error",
+        message = "missing '#include'; 'Roaring' must be defined before it is used",
+        source = "clang",
+        code = "err_module_unimported_use_header",
+    },
+    {
+        at = "return set.bits.⟦size⟧;",
+        severity = "error",
+        message = "no member named 'size' in 'Roaring'",
+        source = "clang",
+        code = "err_no_member",
+    },
+]
+
+[test."set.cppm"]
+errors = []

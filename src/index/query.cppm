@@ -437,9 +437,6 @@ public:
         Site extent;
     };
 
-    /// first_site with the declaration's extent.
-    std::optional<Placed> first_placed(SymbolHash hash, Fid anchor, RelationKind kind) const;
-
     /// The symbol's canonical site: its definition, or a declaration when
     /// nothing defines it (pure virtuals, externs, decl-only APIs).
     std::optional<Placed> canonical_placed(SymbolHash hash, Fid anchor) const;
@@ -472,6 +469,9 @@ public:
     }
 
 private:
+    /// first_site with the declaration's extent.
+    std::optional<Placed> first_placed(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
     /// Whether some unit reported a definition of the symbol: an open
     /// session's table knows only its own unit, the project table all.
     bool reported_defined(SymbolHash hash, Fid anchor) const;

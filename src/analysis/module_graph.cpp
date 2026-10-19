@@ -373,19 +373,14 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             return std::string();
         }
         auto name = index::SymbolInfo::from(hash, *identity).display_name();
-        // A persisted parent column can be cyclic; the tables only reject
-        // reserved values.
-        llvm::DenseSet<index::SymbolHash> visited{hash};
-        for(auto parent = identity->parent; parent != 0 && visited.insert(parent).second;) {
-            auto scope = find_symbol(parent, shard);
-            if(!scope) {
-                break;
-            }
-            if(!index::transparent_scope(scope->flags)) {
-                name = index::SymbolInfo::from(parent, *scope).display_name() + "::" + name;
-            }
-            parent = scope->parent;
-        }
+        index::for_each_spelled_scope(
+            hash,
+            identity->parent,
+            [&](index::SymbolHash scope) { return find_symbol(scope, shard); },
+            [&](index::SymbolHash scope, const index::SymbolView& view) {
+                name = index::SymbolInfo::from(scope, view).display_name() + "::" + name;
+                return true;
+            });
         return name;
     };
 

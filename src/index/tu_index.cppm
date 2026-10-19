@@ -84,10 +84,6 @@ public:
     /// a variant the receiver already stores (TUIndexOptions::known_variants).
     llvm::StringRef section_blob(std::uint32_t i) const;
 
-    /// The section holding `path_id`'s entries, or nullopt when the file had
-    /// none (no entries means no contribution). Sections ascend by path id.
-    std::optional<std::uint32_t> section_of(std::uint32_t path_id) const;
-
     /// section_shard of `path_id`'s section, or an empty shard when the
     /// file has none.
     const Shard& shard_of(std::uint32_t path_id) const;
@@ -176,6 +172,11 @@ public:
     /// array of LSP diagnostics); empty for an ordinary TU index. Borrows
     /// the TU index.
     llvm::StringRef preamble_diagnostics() const;
+
+private:
+    /// The section holding `path_id`'s entries, or nullopt when the file had
+    /// none (no entries means no contribution). Sections ascend by path id.
+    std::optional<std::uint32_t> section_of(std::uint32_t path_id) const;
 
 private:
     /// The verified TU index bytes (owned iff `owned` is set); accessors

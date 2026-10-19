@@ -102,6 +102,13 @@ struct Producer {
     friend bool operator==(const Producer&, const Producer&) = default;
 };
 
+/// A use a merge adds: its identity and its resolutions, ascending, each one
+/// stored in the merged blob.
+struct AddedUse {
+    UseHash use = 0;
+    llvm::ArrayRef<ResolutionHash> resolutions;
+};
+
 /// Zero-copy reader over an instantiation blob, plus the live-resolution set
 /// the indexer maintains: a resolution no live use holds any more stops
 /// serving at once, and the next save's compaction erases it.
@@ -140,9 +147,6 @@ public:
 
     bool has_use(UseHash use) const;
 
-    /// The resolutions of a stored use, ascending.
-    std::vector<ResolutionHash> resolutions_of(UseHash use) const;
-
     /// Restrict queries to the resolutions of the given uses (the ones some
     /// manifest names); uses the blob does not store are ignored.
     void set_live(llvm::ArrayRef<UseHash> live);
@@ -179,8 +183,19 @@ public:
     void for_each_record(llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 
 private:
+    friend bool merge_instantiations(const InstantiationShard& old,
+                                     llvm::ArrayRef<UseHash> keep,
+                                     llvm::function_ref<bool(const Producer&)> keep_producer,
+                                     const InstantiationShard* fresh,
+                                     Producer producer,
+                                     std::optional<AddedUse> added,
+                                     llvm::raw_ostream& os);
+
     explicit InstantiationShard(std::unique_ptr<llvm::MemoryBuffer> buffer) :
         buffer(std::move(buffer)) {}
+
+    /// The resolutions of a stored use, ascending.
+    std::vector<ResolutionHash> resolutions_of(UseHash use) const;
 
     bool live(std::uint32_t record) const {
         return live_records.empty() || ((live_records[record / 64] >> (record % 64)) & 1) != 0;
@@ -203,13 +218,6 @@ void write_instantiations(const FileInstantiations& instantiations,
                           std::uint64_t content_hash,
                           std::uint32_t content_size,
                           llvm::raw_ostream& os);
-
-/// A use a merge adds: its identity and its resolutions, ascending, each one
-/// stored in the merged blob.
-struct AddedUse {
-    UseHash use = 0;
-    llvm::ArrayRef<ResolutionHash> resolutions;
-};
 
 /// Merge into one blob of the same content generation: the uses of `old` in
 /// `keep` with their resolutions, the keys of `old` whose producer

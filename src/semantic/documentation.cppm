@@ -23,6 +23,18 @@ std::string doc_comment(CompilationUnit& unit, const clang::NamedDecl* decl, boo
 auto doc_comment_range(CompilationUnit& unit, const clang::Decl* decl)
     -> std::optional<std::pair<clang::FileID, LocalSourceRange>>;
 
+/// A name a `@param` or `@tparam` writes, and the parameter it names.
+struct DocumentedParameter {
+    const clang::NamedDecl* parameter;
+    clang::SourceLocation location;
+};
+
+/// The parameters and template parameters the comment documenting this one
+/// declaration (documenting_comments) names with `@param` and `@tparam`,
+/// at each name it writes.
+llvm::SmallVector<DocumentedParameter> documented_parameters(CompilationUnit& unit,
+                                                             const clang::Decl* decl);
+
 /// The text of the comment documenting a macro: above its `#define`, or
 /// after it on its line.
 std::string doc_comment(CompilationUnit& unit, const clang::MacroInfo* macro);
