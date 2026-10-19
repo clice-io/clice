@@ -150,8 +150,9 @@ public:
     SearchIndex(SearchIndex&&) noexcept;
     SearchIndex& operator=(SearchIndex&&) noexcept;
 
-    /// Adopt a blob. False — and the index stays empty — when the bytes
-    /// are not a search blob of this build's formats or are inconsistent.
+    /// Adopt a blob, copied when it is not readable_in_place. False — and
+    /// the index stays empty — when the bytes are not a search blob of this
+    /// build's formats or are inconsistent.
     bool load(std::unique_ptr<llvm::MemoryBuffer> blob);
 
     bool loaded() const;

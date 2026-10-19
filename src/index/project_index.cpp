@@ -104,6 +104,7 @@ bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob) {
     if(!blob) {
         return false;
     }
+    blob = in_place_buffer(std::move(blob));
     auto root = verify_root<ProjectTableBlob>(blob->getBuffer(), "project table");
     if(!root) {
         return false;

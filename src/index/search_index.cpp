@@ -751,6 +751,7 @@ bool SearchIndex::load(std::unique_ptr<llvm::MemoryBuffer> blob) {
     if(!blob) {
         return false;
     }
+    blob = in_place_buffer(std::move(blob));
     auto root = verify_root<SearchIndexBlob>(blob->getBuffer(), "search blob");
     if(!root) {
         return false;
