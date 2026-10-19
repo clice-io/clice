@@ -57,10 +57,16 @@ struct IndexerFixture {
     /// stopped, its frame does not outlive the loop.
     ~IndexerFixture() {
         if(pump.indexing_scheduled) {
-            auto task = pump.stop();
-            loop.schedule(task);
-            loop.run();
+            stop_pump();
         }
+    }
+
+    /// Stop the pump: a round a read scheduled never runs, and the test
+    /// takes the lost data itself when it chooses (take_lost).
+    void stop_pump() {
+        auto task = pump.stop();
+        loop.schedule(task);
+        loop.run();
     }
 
     /// Merge a worker result and take its report, as the TURun round does.

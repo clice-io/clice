@@ -425,6 +425,40 @@ ZEST_CASE(LoadDropsLostManifest) {
     ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
+ZEST_CASE(MergeReplacesLostManifest) {
+    // A unit whose persisted manifest was found lost and that merged since
+    // is whole again: taking the loss later, past a save that wrote it into
+    // the base, must not drop it.
+    TempDir tmp;
+    tmp.touch("main.cpp", "int lone() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    std::string key;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, src);
+        ZASSERT(f.merge(indexed.data));
+        f.save();
+        key = index::blob_key(f.project.file_table.resolve(
+            f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
+    }
+    inject_blob(tmp, index::BlobKind::TUManifest, key, "corrupted beyond decoding");
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    auto indexed = index_file(tmp, src);
+    auto tu_id = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
+    ZASSERT(!f.project.index.manifest(tu_id));
+    ZASSERT(f.merge(indexed.data));
+    f.stop_pump();
+    f.save();
+    f.take_lost();
+    ZASSERT(f.project.index.has_manifest(tu_id));
+    ZASSERT(f.project.index.manifest(tu_id));
+    ZASSERT(!f.pump.pending_reason(tu_id));
+}
+
 ZEST_CASE(LoadRequeuesStaleManifest) {
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");

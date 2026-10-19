@@ -1075,6 +1075,9 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(Fid tu_path_id, TUManifest m
     }
     units[unit_hash(tu_path_id)] = tu_path_id;
     manifests[tu_path_id] = std::move(manifest);
+    // The persisted manifest this one replaces may have been found lost,
+    // also by the removal above: it no longer stands for the unit.
+    lost_manifests.erase(tu_path_id);
 
     llvm::sort(affected);
     affected.erase(llvm::unique(affected), affected.end());
