@@ -672,9 +672,9 @@ private:
     /// counting (overridden, overridden_ids, units).
     void hide_base_unit(Fid tu);
 
-    /// Take a TU out of the base, returning the files it contributed to or
-    /// used resolutions in: from its persisted manifest, else from the
-    /// base's own tables.
+    /// Take a TU out of the base, returning the files its persisted
+    /// manifest says it contributed to or used resolutions in; none when
+    /// that manifest is lost.
     llvm::SmallVector<Fid> override_unit(Fid tu);
 
     /// The base units judged stale this round (needs_reindex).
