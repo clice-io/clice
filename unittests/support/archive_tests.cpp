@@ -105,18 +105,33 @@ struct ProbeOf {
 
 using Probe = ProbeOf<archive::Owned>;
 
+/// Alike in fields and size, but for where `third` sits.
+struct Near {
+    std::uint64_t first = 0;
+    std::uint16_t second = 0;
+    std::uint16_t third = 0;
+};
+
+struct Far {
+    std::uint64_t first = 0;
+    std::uint16_t second = 0;
+    alignas(4) std::uint16_t third = 0;
+};
+
+static_assert(sizeof(Near) == sizeof(Far));
+
 /// Bytes the archive is read from, at the alignment it asks for.
 struct Aligned {
     std::vector<std::uint64_t> words;
 
     std::uint32_t size = 0;
 
-    explicit Aligned(llvm::StringRef bytes) :
+    explicit Aligned(std::string_view bytes) :
         words((bytes.size() + 7) / 8 + 1), size(static_cast<std::uint32_t>(bytes.size())) {
         std::memcpy(words.data(), bytes.data(), bytes.size());
     }
 
-    llvm::StringRef bytes() const {
+    std::string_view bytes() const {
         return {reinterpret_cast<const char*>(words.data()), size};
     }
 
@@ -142,10 +157,11 @@ ZEST_CASE(RoundTrip) {
     ZEXPECT(root.color == Color::Green);
     ZEXPECT(root.first == 11u);
     ZEXPECT(root.second == 22u);
-    ZEXPECT(llvm::StringRef(root.text) == "hello");
+    std::string_view text = root.text;
+    ZEXPECT(text == "hello");
     ZEXPECT(root.empty_text.empty());
-    ZEXPECT(llvm::ArrayRef<std::uint32_t>(root.numbers) ==
-            llvm::ArrayRef<std::uint32_t>({1, 2, 3}));
+    std::span<const std::uint32_t> numbers = root.numbers;
+    ZEXPECT(std::ranges::equal(numbers, std::array{1u, 2u, 3u}));
     ZEXPECT(root.empty_numbers.empty());
 
     auto& names = root.names;
@@ -154,13 +170,12 @@ ZEST_CASE(RoundTrip) {
     ZEXPECT(names[1].empty());
     ZEXPECT(names[2].str() == "ccc");
 
-    ZEXPECT(llvm::ArrayRef<Point>(root.points) == llvm::ArrayRef(value.points));
+    ZEXPECT(std::ranges::equal(root.points, value.points));
 
     auto& leaves = root.leaves;
     ZASSERT(leaves.size() == 3u);
     ZEXPECT(leaves[0].name.str() == "x");
-    ZEXPECT(llvm::ArrayRef<std::uint16_t>(leaves[0].values) ==
-            llvm::ArrayRef<std::uint16_t>({1, 2}));
+    ZEXPECT(std::ranges::equal(leaves[0].values, std::array<std::uint16_t, 2>{1, 2}));
     ZEXPECT(leaves[1].values.empty());
     ZEXPECT(leaves[2].name.str() == "zz");
 
@@ -184,8 +199,8 @@ ZEST_CASE(ReadInPlace) {
                            static_cast<const void*>(root.points.data()),
                            static_cast<const void*>(root.bytes.data())}) {
         auto at = static_cast<const char*>(data);
-        ZEXPECT(at >= bytes.begin());
-        ZEXPECT(at < bytes.end());
+        ZEXPECT(at >= bytes.data());
+        ZEXPECT(at < bytes.data() + bytes.size());
         ZEXPECT(reinterpret_cast<std::uintptr_t>(at) % archive::alignment == 0u);
     }
 }
@@ -200,7 +215,7 @@ ZEST_CASE(NestedArchiveInPlace) {
     ZASSERT(verified);
     auto& held = (*verified)->bytes;
     auto nested = archive::verify<Inner>(
-        llvm::StringRef(reinterpret_cast<const char*>(held.data()), held.size()));
+        std::string_view(reinterpret_cast<const char*>(held.data()), held.size()));
     ZASSERT(nested);
     ZEXPECT((*nested)->label.str() == "seven");
 }
@@ -235,14 +250,18 @@ ZEST_CASE(RejectsOtherBytes) {
 
     // Every cut, and one byte past the end.
     for(std::uint32_t size = 0; size < bytes.size(); size += 1) {
-        ZEXPECT(!archive::verify<Sample>(buffer.bytes().take_front(size)));
+        ZEXPECT(!archive::verify<Sample>(buffer.bytes().substr(0, size)));
     }
     Aligned longer(bytes + '\0');
     ZEXPECT(!archive::verify<Sample>(longer.bytes()));
 
     // Bytes off the alignment an archive is read at.
     Aligned shifted(" " + bytes);
-    ZEXPECT(!archive::verify<Sample>(shifted.bytes().drop_front(1)));
+    ZEXPECT(!archive::verify<Sample>(shifted.bytes().substr(1)));
+
+    // A layout that differs only in a field's offset.
+    Aligned far(archive::encode(Far{1, 2, 3}));
+    ZEXPECT(!archive::verify<Near>(far.bytes()));
 }
 
 ZEST_CASE(RejectsMisplacedParts) {
@@ -285,11 +304,11 @@ ZEST_CASE(MeasuresFields) {
     Aligned buffer(archive::encode(sample()));
     auto verified = archive::verify<Sample>(buffer.bytes());
     ZASSERT(verified);
-    archive::measure(**verified, [&](llvm::StringRef path, std::uint64_t bytes) {
+    archive::measure(**verified, [&](std::string_view path, std::uint64_t bytes) {
         if(!parts.empty() && parts.back().first == path) {
             parts.back().second += bytes;
         } else {
-            parts.emplace_back(path.str(), bytes);
+            parts.emplace_back(std::string(path), bytes);
         }
     });
     std::vector<std::pair<std::string, std::uint64_t>> expected = {

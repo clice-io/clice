@@ -239,17 +239,14 @@ struct LocalTable {
     static LocalTable of(const Root& root) {
         auto& symbol_hashes = root.symbol_hashes;
         auto symbols = ids_of(root.local_symbols, symbol_hashes.size());
-        llvm::StringRef names = root.local_names;
-        llvm::StringRef args = root.local_args;
-        llvm::StringRef signatures = root.local_signatures;
         return {
             .root = root,
             .symbols = symbols,
-            .name_ends = ids_of(root.local_name_ends, names.size() + 1),
+            .name_ends = ids_of(root.local_name_ends, root.local_names.size() + 1),
             .args_of = ids_of(root.local_args_of, symbols.size()),
-            .args_ends = ids_of(root.local_args_ends, args.size() + 1),
+            .args_ends = ids_of(root.local_args_ends, root.local_args.size() + 1),
             .signatures_of = ids_of(root.local_signatures_of, symbols.size()),
-            .signature_ends = ids_of(root.local_signature_ends, signatures.size() + 1),
+            .signature_ends = ids_of(root.local_signature_ends, root.local_signatures.size() + 1),
             .parents = ids_of(root.local_parents, symbol_hashes.size() + 1),
         };
     }
@@ -333,7 +330,7 @@ CheckResult line_table_ok(const Root& root) {
         return std::unexpected("CRLF line table is not canonical");
     }
     auto& utf8_lines = root.utf8_lines;
-    llvm::StringRef utf8_text = root.utf8_text;
+    auto& utf8_text = root.utf8_text;
     auto& utf8_ends = root.utf8_text_ends;
     if(utf8_ends.size() != utf8_lines.size() || !covering_ends(utf8_ends, utf8_text.size())) {
         return std::unexpected("non-ASCII line columns do not line up");
@@ -529,8 +526,9 @@ CheckResult locals_ok(const Root& root) {
     }
     // The few locals with arguments or a signature: ascending positions,
     // each text non-empty — an empty one is the absent entry's to spell.
-    auto texts_ok =
-        [&](const IdColumnView& of, llvm::StringRef text, const IdColumnView& ends) -> CheckResult {
+    auto texts_ok = [&](const IdColumnView& of,
+                        std::string_view text,
+                        const IdColumnView& ends) -> CheckResult {
         if(auto ok = ascending_ids_ok(of, of.size(), count, true); !ok) {
             return ok;
         }
@@ -962,7 +960,7 @@ PositionMap Shard::positions() const {
             line_starts(),
             root.crlf_lines,
             root.utf8_lines,
-            root.utf8_text,
+            llvm::StringRef(root.utf8_text),
             root.utf8_text_ends};
 }
 

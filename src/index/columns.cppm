@@ -86,10 +86,10 @@ Arena slice_arena(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t
 /// Entry `i` of an "entries back to back" column pair: the arena between
 /// the previous entry's end and its own. One overload per arena a column
 /// pair holds, so a blob's columns convert to it as they are.
-inline llvm::StringRef slice(llvm::StringRef arena,
+inline llvm::StringRef slice(std::string_view arena,
                              llvm::ArrayRef<std::uint32_t> ends,
                              std::uint32_t i) {
-    return slice_arena(arena, ends, i);
+    return slice_arena(llvm::StringRef(arena), ends, i);
 }
 
 inline llvm::ArrayRef<std::uint8_t> slice(llvm::ArrayRef<std::uint8_t> arena,
@@ -174,9 +174,9 @@ struct IdColumnView {
 
     /// Entry `i` of a text whose entries end at the offsets of this column,
     /// back to back.
-    inline llvm::StringRef slice(llvm::StringRef text, std::uint32_t i) const {
+    inline llvm::StringRef slice(std::string_view text, std::uint32_t i) const {
         auto begin = i == 0 ? 0 : (*this)[i - 1];
-        return text.slice(begin, (*this)[i]);
+        return llvm::StringRef(text).slice(begin, (*this)[i]);
     }
 };
 

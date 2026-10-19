@@ -52,9 +52,7 @@ constexpr inline std::uint32_t alignment = 8;
 
 /// A string (`Vec<char>`) or a sequence read in place. Its offset counts
 /// from its own address, so it is never copied out of the archive: bind a
-/// reference to it, or read it as an llvm::ArrayRef or llvm::StringRef —
-/// naming the element type, since `llvm::ArrayRef(vec)` deduces a
-/// one-element array of the Vec itself.
+/// reference to it, or read it as a std::span or a std::string_view.
 template <typename T>
 class Vec {
 public:
@@ -96,11 +94,7 @@ public:
         return data() + length;
     }
 
-    operator llvm::ArrayRef<T>() const {
-        return {data(), length};
-    }
-
-    operator llvm::StringRef() const
+    operator std::string_view() const
         requires std::is_same_v<T, char>
     {
         return {data(), length};
@@ -280,7 +274,14 @@ consteval std::uint32_t mix(std::uint32_t hash, std::string_view text) {
     return hash;
 }
 
-/// A hash of A's layout: its kinds, sizes and field names.
+consteval std::uint32_t mix_number(std::uint32_t hash, std::uint64_t number) {
+    for(std::uint32_t shift = 0; shift < 64; shift += 8) {
+        hash = (hash ^ static_cast<std::uint8_t>(number >> shift)) * 16777619u;
+    }
+    return hash;
+}
+
+/// A hash of A's layout: its kinds, sizes, field names and field offsets.
 template <typename A>
 consteval std::uint32_t fingerprint(std::uint32_t hash = 2166136261u) {
     if constexpr(kind_of<A>() == Kind::Scalar) {
@@ -300,10 +301,11 @@ consteval std::uint32_t fingerprint(std::uint32_t hash = 2166136261u) {
         hash = mix(hash, "{");
         for_each_index<A>([&](auto index) {
             hash = mix(hash, kota::meta::field_name<index(), A>());
+            hash = mix_number(hash, kota::meta::field_offset<A>(index()));
             hash = fingerprint<field_t<A, index()>>(mix(hash, ":"));
             hash = mix(hash, ";");
         });
-        return mix(hash, "}");
+        return mix_number(mix(hash, "}"), sizeof(A));
     }
 }
 
@@ -340,7 +342,7 @@ public:
                                            kota::meta::field_of<index()>(value));
             });
         } else if constexpr(is_string_v<A>) {
-            llvm::StringRef text(value);
+            std::string_view text(value);
             if(text.empty()) {
                 return;
             }
@@ -380,7 +382,7 @@ private:
 
 class Checker {
 public:
-    explicit Checker(llvm::StringRef bytes) : base(bytes.data()), size(bytes.size()) {}
+    explicit Checker(std::string_view bytes) : base(bytes.data()), size(bytes.size()) {}
 
     /// Check the archived A at `at`, inside bytes already placed, and place
     /// its out-of-line parts.
@@ -424,7 +426,7 @@ public:
     /// Where the next out-of-line part begins, give or take its alignment.
     std::uint64_t cursor = 0;
 
-    llvm::StringRef error;
+    std::string_view error;
 
 private:
     struct Placed {
@@ -475,7 +477,7 @@ std::string encode(const T& value) {
 /// layout, which then reads in place with no further check; the reason
 /// otherwise. The bytes must start at `alignment`.
 template <typename T>
-std::expected<const Archived<T>*, llvm::StringRef> verify(llvm::StringRef bytes) {
+std::expected<const Archived<T>*, std::string_view> verify(std::string_view bytes) {
     using A = Archived<T>;
     static_assert(detail::kind_of<A>() == detail::Kind::Record, "an archive's root is a record");
     if(reinterpret_cast<std::uintptr_t>(bytes.data()) % alignment != 0) {
@@ -503,7 +505,7 @@ std::expected<const Archived<T>*, llvm::StringRef> verify(llvm::StringRef bytes)
 
 /// The archived root of bytes verify accepted.
 template <typename T>
-const Archived<T>& view(llvm::StringRef bytes) {
+const Archived<T>& view(std::string_view bytes) {
     return *reinterpret_cast<const Archived<T>*>(bytes.data() + detail::header_size);
 }
 
@@ -530,19 +532,16 @@ void decode(const Archived<T>& in, T& out) {
     }
 }
 
-/// Visit each out-of-line part of the archived `in` with the path of the
-/// field holding it (`ranges.packed`; a sequence's elements count under the
-/// sequence) and its bytes — what a field costs beyond the inline parts and
-/// the padding.
-template <typename A>
-void measure(const A& in,
-             llvm::function_ref<void(llvm::StringRef path, std::uint64_t bytes)> visit,
-             llvm::StringRef prefix = {}) {
+/// Call `visit(path, bytes)` for each out-of-line part of the archived `in`
+/// with the path of the field holding it (`ranges.packed`; a sequence's
+/// elements count under the sequence) and its bytes — what a field costs
+/// beyond the inline parts and the padding.
+template <typename A, typename Visit>
+void measure(const A& in, Visit&& visit, std::string_view prefix = {}) {
     detail::for_each_index<A>([&](auto index) {
         using F = detail::field_t<A, index()>;
         if constexpr(!detail::is_plain<F>()) {
-            auto path =
-                std::format("{}{}", std::string_view(prefix), kota::meta::field_name<index(), A>());
+            auto path = std::format("{}{}", prefix, kota::meta::field_name<index(), A>());
             auto& field = kota::meta::field_of<index()>(in);
             if constexpr(detail::kind_of<F>() == detail::Kind::Record) {
                 measure(field, visit, path + ".");

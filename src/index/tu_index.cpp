@@ -173,7 +173,7 @@ std::uint32_t TUIndex::path_count() const {
 }
 
 llvm::StringRef TUIndex::path(std::uint32_t id) const {
-    return view_of(data).paths[id];
+    return llvm::StringRef(view_of(data).paths[id]);
 }
 
 std::uint32_t TUIndex::absent_count() const {
@@ -181,7 +181,7 @@ std::uint32_t TUIndex::absent_count() const {
 }
 
 llvm::StringRef TUIndex::absent(std::uint32_t i) const {
-    return view_of(data).absent[i];
+    return llvm::StringRef(view_of(data).absent[i]);
 }
 
 std::uint64_t TUIndex::content_hash(std::uint32_t id) const {
@@ -422,7 +422,7 @@ llvm::StringRef TUIndex::preamble_diagnostics() const {
     if(!loaded()) {
         return {};
     }
-    return view_of(data).diagnostics;
+    return llvm::StringRef(view_of(data).diagnostics);
 }
 
 }  // namespace clice::index

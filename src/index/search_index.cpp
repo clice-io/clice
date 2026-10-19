@@ -509,7 +509,7 @@ struct SearchIndex::View {
         if(!position) {
             return {};
         }
-        return columns->paths[columns->local_paths[*position]];
+        return llvm::StringRef(columns->paths[columns->local_paths[*position]]);
     }
 
     /// A posting list decoded; a malformed one reads as empty and marks
@@ -817,7 +817,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         Bitmap allowed;
         for(std::uint32_t i = 0; i < index.columns->paths.size(); i += 1) {
             llvm::SmallString<256> buffer;
-            auto file = path::local(index.columns->paths[i], workspace, buffer);
+            auto file = path::local(llvm::StringRef(index.columns->paths[i]), workspace, buffer);
             if(llvm::any_of(query.paths, [&](const std::string& wanted) {
                    return path_matches(wanted, file);
                })) {
