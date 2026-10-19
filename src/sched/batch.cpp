@@ -11,6 +11,7 @@ import :command.command;
 import :compile.tidy;
 import :config.config;
 import :feature.feature;
+import :index.database;
 import :index.project_index;
 import :index.shard;
 import :index.tu_manifest;
@@ -297,14 +298,24 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
 
     result.completed = true;
     result.indexed_tus = stack.sched.pump.indexed_files();
-    project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
+    project.index.for_each_unit([&](Fid tu) {
         if(!project.build.unit(tu)) {
             result.standalone_headers += 1;
         }
     });
-    result.shard_count = project.index.shard_count();
-    project.index.for_each_shard(
-        [&](Fid, const index::Shard& shard) { result.shard_bytes += shard.bytes().size(); });
+    // The sizes the database keeps, without reading the blobs; a session
+    // keeping no database holds every shard.
+    project.index.for_each_indexed_file([&](Fid file) {
+        result.shard_count += 1;
+        if(!project.database) {
+            if(auto* shard = project.index.shard(file)) {
+                result.shard_bytes += shard->bytes().size();
+            }
+        } else if(auto blob =
+                      project.database->read(index::BlobKind::Shard, project.index.key_of(file))) {
+            result.shard_bytes += blob.buffer->getBufferSize();
+        }
+    });
     result.symbol_count = project.index.symbol_count();
     for(auto file: stack.sched.pump.failed()) {
         result.failed.emplace_back(project.file_table.display(file));

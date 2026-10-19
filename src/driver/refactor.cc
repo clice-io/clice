@@ -237,7 +237,7 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
         }
         all.insert(all.end(), ctx.unindexed.begin(), ctx.unindexed.end());
         all.insert(all.end(), failed.begin(), failed.end());
-        for(auto unit: loaded->dropped) {
+        for(auto unit: project.index.lost_units()) {
             all.emplace_back(files.display(unit));
         }
         std::ranges::sort(all);

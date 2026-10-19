@@ -32,7 +32,7 @@ namespace clice {
 /// rebuilds an excluded unit.
 static void retire_excluded(Project& project, index::IndexReport& report) {
     llvm::SmallVector<Fid> excluded;
-    project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
+    project.index.for_each_unit([&](Fid tu) {
         if(!project.build.indexed(project.file_table.resolve(tu))) {
             excluded.push_back(tu);
         }
@@ -99,6 +99,7 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
                 load_metadata();
                 LOG_WARN(
                     "Index project table unreadable; disabling index persistence this session");
+                project.index.attach(nullptr);
                 project.database.reset();
             }
             return result;
@@ -115,20 +116,19 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
         project.command_snapshot.reconcile(project, report);
     }
 
-    // The reads above touch every adopted manifest and shard, so page
-    // corruption anywhere in the database has latched by now; heal it like
+    // Page corruption the reads above met has latched by now; heal it like
     // the unreadable-table case above instead of writing into a damaged
-    // tree every session. The adopted state unwinds wholesale: the shard
-    // views borrow from the condemned environment, and manifests kept
-    // without their views would read as fresh and gate the rebuild pass
-    // off exactly the files whose shards were lost. Standalone-indexed TUs
-    // re-enqueue first — the CDB pass that rebuilds everything else never
-    // covers them, and the condemned database is deleting their only
-    // persistent record. The dirtied snapshot carries them as debt from
-    // the fresh database's first save on, so even a crash before their
-    // rebuild finishes cannot lose them a second time.
+    // tree every session. The loaded state unwinds wholesale: the units'
+    // blobs live in the condemned environment, and units kept without them
+    // would read as fresh and gate the rebuild pass off exactly the files
+    // whose shards were lost. Standalone-indexed TUs re-enqueue first — the
+    // CDB pass that rebuilds everything else never covers them, and the
+    // condemned database is deleting their only persistent record. The
+    // dirtied snapshot carries them as debt from the fresh database's first
+    // save on, so even a crash before their rebuild finishes cannot lose
+    // them a second time.
     if(!read_only && db.corrupted()) {
-        index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
+        index.for_each_unit([&](Fid tu) {
             if(project.build.entries(tu).empty()) {
                 report.add_reindex(tu);
             }
@@ -141,17 +141,14 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
 
     retire_snapshot();
 
-    if(index.shard_count() != 0) {
-        LOG_INFO("Loaded {} index shards, {} manifests, {} symbols",
-                 index.shard_count(),
-                 index.manifest_count(),
-                 index.symbol_count());
+    auto units = index.unit_count();
+    if(units != 0) {
+        LOG_INFO("Loaded the index of {} units, {} symbols", units, index.symbol_count());
     }
     LOG_PERF("startup",
-             "phase=index_load symbols={} shards={} manifests={} elapsed_ms={}",
+             "phase=index_load symbols={} units={} elapsed_ms={}",
              index.symbol_count(),
-             index.shard_count(),
-             index.manifest_count(),
+             units,
              timer.ms());
     return result;
 }
@@ -224,7 +221,7 @@ ProjectLoad load_project(Project& project,
     // A unit deleted while no server ran keeps its index until a look finds
     // it missing (see FreshnessGate).
     llvm::SmallVector<Fid> units;
-    project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) { units.push_back(tu); });
+    project.index.for_each_unit([&](Fid tu) { units.push_back(tu); });
     project.file_table.disk.find_missing(units);
     return report;
 }

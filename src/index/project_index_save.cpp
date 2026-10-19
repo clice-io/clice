@@ -41,7 +41,7 @@ bool ProjectIndex::search_rebuild_due(SearchRebuild rebuild) const {
     }
     // A twentieth of the units, so a small project refreshes on any
     // merge and a large one every twenty at most.
-    return merges_since_search_build > std::min<std::uint32_t>(20, manifests.size() / 20);
+    return merges_since_search_build > std::min<std::uint32_t>(20, unit_count() / 20);
 }
 
 kota::task<> ProjectIndex::rebuild_search(SearchRebuild rebuild) {
@@ -83,32 +83,50 @@ kota::task<> ProjectIndex::rebuild_search(SearchRebuild rebuild) {
         });
         return true;
     });
-    // The symbols of internal linkage are in no table but the shards of
-    // the files declaring them.
-    for(auto& [file, shard]: shards) {
-        if(!shard.loaded()) {
+    // The symbols of internal linkage are in no table but the shards of the
+    // files declaring them: the previous build's carry over for the files
+    // whose names did not change since, and the shards of the rest are read.
+    auto add_local = [&](Fid file, SearchEntry entry) {
+        auto [path, inserted] =
+            path_index.try_emplace(file.raw, static_cast<std::uint32_t>(snapshot.paths.size()));
+        if(inserted) {
+            snapshot.paths.push_back(portable(files.resolve(file)));
+        }
+        entry.file = path->second;
+        snapshot.entries.push_back(std::move(entry));
+    };
+    llvm::DenseSet<Fid> reread;
+    if(search.loaded()) {
+        reread.insert(pending_files.begin(), pending_files.end());
+        search.for_each_local([&](llvm::StringRef path, const SearchEntry& entry) {
+            auto file = files.intern(local(path));
+            if(!reread.contains(file)) {
+                add_local(file, entry);
+            }
+        });
+    } else {
+        for_each_indexed_file([&](Fid file) { reread.insert(file); });
+    }
+    for(auto file: reread) {
+        auto* shard = this->shard(file);
+        if(!shard) {
             continue;
         }
-        shard.for_each_local_symbol([&](SymbolHash hash, const SymbolView& symbol) {
+        shard->for_each_local_symbol([&](SymbolHash hash, const SymbolView& symbol) {
             if(symbol.scope != SymbolScope::Internal || !is_searchable_kind(symbol.kind) ||
-               symbol.name.empty() || !shard.declares(hash)) {
+               symbol.name.empty() || !shard->declares(hash)) {
                 return true;
             }
-            auto [path, inserted] =
-                path_index.try_emplace(file.raw, static_cast<std::uint32_t>(snapshot.paths.size()));
-            if(inserted) {
-                snapshot.paths.push_back(portable(files.resolve(file)));
-            }
-            snapshot.entries.push_back({
-                .hash = hash,
-                .name = symbol.name.str(),
-                .args = symbol.args.str(),
-                .parent = symbol.parent,
-                .kind = symbol.kind,
-                .flags = symbol.flags,
-                .file = path->second,
-                .local = true,
-            });
+            add_local(file,
+                      {
+                          .hash = hash,
+                          .name = symbol.name.str(),
+                          .args = symbol.args.str(),
+                          .parent = symbol.parent,
+                          .kind = symbol.kind,
+                          .flags = symbol.flags,
+                          .local = true,
+                      });
             return true;
         });
     }
@@ -167,9 +185,29 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     // already does. The pinning TUs are re-enqueued: no in-process event
     // would rebuild their variants otherwise (a reverted file even reads fresh
     // by hash), only a restart reaching load()'s re-enqueue.
-    llvm::SmallVector<Fid> retired;
+    // The candidates are the shards read so far and the files a TU's
+    // removal touched, read now: a blob nothing reads was compacted when it
+    // was written.
+    llvm::DenseSet<Fid> shrunk_files = std::move(shrunk);
+    shrunk.clear();
+    llvm::SmallVector<Fid> candidates(shrunk_files.begin(), shrunk_files.end());
     for(auto& [path_id, shard]: shards) {
+        if(shard.loaded() && !shrunk_files.contains(path_id)) {
+            candidates.push_back(path_id);
+        }
+    }
+    llvm::SmallVector<Fid> retired;
+    for(auto path_id: candidates) {
         auto live = live_variants(path_id);
+        if(live.empty()) {
+            retired.push_back(path_id);
+            continue;
+        }
+        // A blob found lost here heals through take_lost.
+        if(!this->shard(path_id)) {
+            continue;
+        }
+        auto& shard = shards.find(path_id)->second;
         if(llvm::none_of(live, [&](std::uint64_t hash) { return shard.has_variant(hash); })) {
             retired.push_back(path_id);
             continue;
@@ -197,11 +235,22 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     auto is_current = [&](const Producer& run) {
         return current_run(run);
     };
-    llvm::SmallVector<Fid> retired_files;
+    llvm::SmallVector<Fid> instantiation_candidates;
+    for(auto path_id: shrunk_files) {
+        if(this->instantiation_shard(path_id)) {
+            instantiation_candidates.push_back(path_id);
+        }
+    }
     for(auto& [path_id, held]: instantiations) {
-        auto shard = shards.find(path_id);
-        if(shard == shards.end() || !shard->second.loaded() ||
-           shard->second.content_hash() != held.content_hash()) {
+        if(held.loaded() && !shrunk_files.contains(path_id)) {
+            instantiation_candidates.push_back(path_id);
+        }
+    }
+    llvm::SmallVector<Fid> retired_files;
+    for(auto path_id: instantiation_candidates) {
+        auto& held = instantiations.find(path_id)->second;
+        auto generations = generations_of(path_id);
+        if(generations.size() != 1 || generations.front() != held.content_hash()) {
             retired_files.push_back(path_id);
             continue;
         }
@@ -381,9 +430,10 @@ void ProjectIndex::finish_save(SaveBatch& batch, llvm::ArrayRef<std::uint32_t> f
             search_bytes = std::move(batch.blobs[i].bytes);
         }
     }
-    // The entries the committed blob holds now read from it; a failed project
-    // table write keeps them aside for the retry.
+    // The entries and the units the committed blob holds now read from it;
+    // a failed project table write keeps them aside for the retry.
     if(batch.table_slot) {
+        fold_written();
         rebase(llvm::MemoryBuffer::getMemBufferCopy(batch.blobs[*batch.table_slot].bytes));
     } else if(batch.had_table) {
         restore_unwritten();
@@ -410,15 +460,13 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
     auto grown = db.grow();
     if(!grown) {
         // Degenerate (address space exhausted): borrowed views may already
-        // be dead, so everything borrowed is shed rather than left
-        // dangling. The shed shards' persisted bytes stay intact but their
-        // manifests still read fresh — only the owner requeue rebuilds
-        // their resident shards this session.
+        // be dead, so every one is dropped rather than left dangling. Their
+        // persisted bytes stay intact for the next read to fetch again.
         LOG_ERROR("Index database growth failed: {}", grown.error());
         if(db.corrupted()) {
             co_return false;
         }
-        shed_borrowed_shards(report);
+        drop_borrowed_views();
         co_return true;
     }
     bool grew = *grown;
@@ -442,8 +490,8 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
 
     constexpr std::uint32_t rebind_batch = 512;
     llvm::SmallVector<Fid> resident;
-    for(auto path_id: llvm::make_first_range(shards)) {
-        if(!dirty_shards.contains(path_id)) {
+    for(auto& [path_id, shard]: shards) {
+        if(shard.loaded() && !dirty_shards.contains(path_id)) {
             resident.push_back(path_id);
         }
     }
@@ -476,8 +524,8 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
         }
     }
     llvm::SmallVector<Fid> resident_instantiations;
-    for(auto path_id: llvm::make_first_range(instantiations)) {
-        if(!dirty_instantiations.contains(path_id)) {
+    for(auto& [path_id, held]: instantiations) {
+        if(held.loaded() && !dirty_instantiations.contains(path_id)) {
             resident_instantiations.push_back(path_id);
         }
     }
@@ -513,35 +561,60 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
     co_return true;
 }
 
-void ProjectIndex::shed_borrowed_shards(IndexReport& report) {
+llvm::SmallVector<Fid> ProjectIndex::drop_borrowed_views() {
+    llvm::SmallVector<Fid> dropped;
     llvm::SmallVector<Fid> shed;
-    for(auto path_id: llvm::make_first_range(shards)) {
+    for(auto& [path_id, shard]: shards) {
         if(!dirty_shards.contains(path_id)) {
             shed.push_back(path_id);
         }
     }
     for(auto path_id: shed) {
+        if(shards.find(path_id)->second.loaded()) {
+            dropped.push_back(path_id);
+        }
         shards.erase(path_id);
-        report.add_index_changed(path_id);
-        requeue_owners(path_id, report);
     }
-    // Their users are the TUs including the file, which contribute to it.
-    llvm::SmallVector<Fid> shed_instantiations;
-    for(auto path_id: llvm::make_first_range(instantiations)) {
+    shed.clear();
+    for(auto& [path_id, held]: instantiations) {
         if(!dirty_instantiations.contains(path_id)) {
-            shed_instantiations.push_back(path_id);
+            shed.push_back(path_id);
         }
     }
-    for(auto path_id: shed_instantiations) {
+    for(auto path_id: shed) {
+        if(instantiations.find(path_id)->second.loaded()) {
+            dropped.push_back(path_id);
+        }
         instantiations.erase(path_id);
-        report.add_index_changed(path_id);
-        requeue_owners(path_id, report);
     }
+    return dropped;
 }
 
 void ProjectIndex::recover_corrupt_database(IndexReport& report) {
     saved_shards = 0;
-    shed_borrowed_shards(report);
+    // The dropped views' bytes lived in the condemned database alone. An
+    // instantiation shard's users are the TUs including the file, which
+    // contribute to it.
+    for(auto path_id: drop_borrowed_views()) {
+        report.add_index_changed(path_id);
+        requeue_owners(path_id, report);
+    }
+    // The manifests and blobs of the units the session did not merge lived
+    // in the condemned database alone: those units leave the table and
+    // reindex.
+    for(auto tu: base_units()) {
+        if(!base_unit(tu)) {
+            continue;
+        }
+        overridden.insert(tu);
+        if(auto id = base->path_id(tu)) {
+            overridden_ids.add(*id);
+        }
+        units.erase(unit_hash(tu));
+        report.add_reindex(tu);
+    }
+    stale_units.reset();
+    db = nullptr;
     for(auto tu_path_id: llvm::make_first_range(manifests)) {
         dirty_manifests.insert(tu_path_id);
     }

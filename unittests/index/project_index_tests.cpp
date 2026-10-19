@@ -360,7 +360,7 @@ ZEST_CASE(RepeatedAbsentPlace) {
     manifest.absent = {place, place};
 
     project.apply_manifest(tu, std::move(manifest));
-    auto* held = project.held_manifest(tu);
+    auto held = project.manifest(tu);
     ZASSERT(held);
     ZASSERT(held->absent.size() == 1u);
     auto lookups = [&] {
@@ -423,8 +423,7 @@ ZEST_CASE(TableRoundTripWithRealMerge) {
 
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
-    llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(buf, pins));
+    ZASSERT(loaded.load_table(buf));
 
     auto symbol = find_symbol(loaded, "global_value");
     ZASSERT(symbol != 0);
@@ -504,15 +503,125 @@ ZEST_CASE(TableColumnsRoundTrip) {
     auto first = project.serialize_table();
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
-    llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(first, pins));
+    ZASSERT(loaded.load_table(first));
     check(loaded, fresh);
 
     auto second = loaded.serialize_table();
     clice::FileTable again;
     index::ProjectIndex reloaded{again};
-    ZASSERT(reloaded.load_table(second, pins));
+    ZASSERT(reloaded.load_table(second));
     check(reloaded, again);
+}
+
+ZEST_CASE(UnitTablesRoundTrip) {
+    // What each unit's manifest says reads back from the written table per
+    // file, place, input and shared local; a rewrite after one unit left
+    // keeps only the other's word, and the versions only it named go.
+    clice::FileTable pool;
+    index::ProjectIndex project{pool};
+    auto path = [](llvm::StringRef name) {
+        return Spelling::absolute(std::format("/proj/{}", std::string_view(name)));
+    };
+    auto add_unit = [&](llvm::StringRef tu, std::uint64_t variant, std::uint64_t use) {
+        auto shared = pool.intern_version(pool.intern(path("shared.h")), 2);
+        index::TUManifest manifest;
+        manifest.tu_version = pool.intern_version(pool.intern(path(tu)), 1);
+        manifest.nodes = {
+            {manifest.tu_version.raw, ~0u, 0},
+            {shared.raw,              0,   1}
+        };
+        manifest.contributions = {
+            {manifest.tu_version, variant},
+            {shared,              variant}
+        };
+        manifest.absent = {pool.intern_version(pool.intern(path("gen.h")), 0)};
+        manifest.imports = {pool.intern_version(pool.intern(path("input.h")), 3)};
+        manifest.shared_locals = {
+            {.symbol = 77, .files = {manifest.tu_version, shared}}
+        };
+        manifest.instantiations = {
+            {.file = shared, .use = use}
+        };
+        project.apply_manifest(pool.intern(path(tu)), std::move(manifest));
+    };
+    add_unit("a.cpp", 20, 30);
+    add_unit("b.cpp", 21, 31);
+
+    using Units = std::vector<std::pair<std::uint32_t, std::uint64_t>>;
+    auto check = [&](const index::ProjectIndex& index,
+                     const clice::FileTable& table,
+                     llvm::ArrayRef<std::pair<llvm::StringRef, std::uint64_t>> units) {
+        auto id = [&](llvm::StringRef name) {
+            return *table.find(path(name));
+        };
+        Units expected;
+        Units tus;
+        for(auto [tu, variant]: units) {
+            expected.emplace_back(id(tu).raw, variant);
+            tus.emplace_back(id(tu).raw, 0);
+        }
+        std::ranges::sort(expected);
+        ZEXPECT(index.unit_count() == units.size());
+        Units contributions;
+        index.for_each_contribution(id("shared.h"), [&](Fid tu, std::uint64_t variant) {
+            contributions.emplace_back(tu.raw, variant);
+        });
+        std::ranges::sort(contributions);
+        ZEXPECT(contributions == expected);
+        auto listed = [&](auto for_each) {
+            Units found;
+            for_each([&](Fid tu) { found.emplace_back(tu.raw, 0); });
+            std::ranges::sort(found);
+            return found;
+        };
+        std::ranges::sort(tus);
+        ZEXPECT(listed([&](auto visit) { index.for_each_absent_lookup(id("gen.h"), visit); }) ==
+                tus);
+        ZEXPECT(listed([&](auto visit) { index.for_each_importer(id("input.h"), visit); }) == tus);
+        Units files;
+        index.for_each_file_of_local(77, id("shared.h"), [&](Fid file) {
+            files.emplace_back(file.raw, 0);
+        });
+        std::ranges::sort(files);
+        auto local = tus;
+        local.emplace_back(id("shared.h").raw, 0);
+        std::ranges::sort(local);
+        ZEXPECT(files == local);
+        llvm::SmallVector<std::uint64_t> uses;
+        for(auto [tu, variant]: units) {
+            uses.push_back(variant + 10);
+        }
+        ZEXPECT(index.live_uses(id("shared.h")) == uses);
+    };
+
+    auto first = project.serialize_table();
+    clice::FileTable fresh;
+    index::ProjectIndex loaded{fresh};
+    ZASSERT(loaded.load_table(first));
+    check(loaded,
+          fresh,
+          {
+              {"a.cpp", 20},
+              {"b.cpp", 21}
+    });
+
+    loaded.remove_manifest(*fresh.find(path("a.cpp")));
+    check(loaded,
+          fresh,
+          {
+              {"b.cpp", 21}
+    });
+    auto second = loaded.serialize_table();
+    clice::FileTable again;
+    index::ProjectIndex reloaded{again};
+    ZASSERT(reloaded.load_table(second));
+    check(reloaded,
+          again,
+          {
+              {"b.cpp", 21}
+    });
+    ZEXPECT(!again.version_ids.contains({*again.find(path("a.cpp")), std::uint64_t(1)}));
+    ZEXPECT(again.version_ids.contains({*again.find(path("b.cpp")), std::uint64_t(1)}));
 }
 
 ZEST_CASE(WidePathIds) {
@@ -538,8 +647,7 @@ ZEST_CASE(WidePathIds) {
     auto bytes = project.serialize_table();
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
-    llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(bytes, pins));
+    ZASSERT(loaded.load_table(bytes));
     auto identity = loaded.find_symbol(10);
     ZASSERT(identity);
     ZEXPECT(fresh.find(Spelling::absolute("/proj/0.h")) == Fid{identity->file});
@@ -556,13 +664,6 @@ ZEST_CASE(LazyShardsStayPut) {
     auto db = index::open_database(*store, "");
     ZASSERT(db != nullptr);
 
-    clice::FileTable writer_files;
-    index::ProjectIndex writer{writer_files};
-    writer.edit(7).name = "x";
-    std::vector<index::BlobDatabase::Blob> puts;
-    auto table = writer.serialize_table();
-    puts.push_back({index::BlobKind::ProjectTable, "global", table});
-
     constexpr std::uint32_t count = 300;
     llvm::StringRef content = "int x = 1;\n";
     index::FileIndex file_index;
@@ -571,16 +672,32 @@ ZEST_CASE(LazyShardsStayPut) {
         .range = {4, 5}
     });
     auto shard = index::write_shard(file_index, {}, content);
-    clice::FileTable files;
-    index::ProjectIndex project{files};
+
+    // One unit contributes the shard's variant to every file.
+    clice::FileTable writer_files;
+    index::ProjectIndex writer{writer_files};
+    writer.edit(7).name = "x";
+    std::vector<index::BlobDatabase::Blob> puts;
+    index::TUManifest manifest;
+    auto tu = writer_files.intern(Spelling::absolute("/proj/tu.cpp"));
+    manifest.tu_version = writer_files.intern_version(tu, 1);
     for(std::uint32_t i = 0; i < count; i += 1) {
-        auto file = files.intern(Spelling::absolute(std::format("/proj/f{}.cpp", i)));
-        puts.push_back({index::BlobKind::Shard, project.key_of(file), shard});
+        auto file = writer_files.intern(Spelling::absolute(std::format("/proj/f{}.cpp", i)));
+        manifest.contributions.emplace_back(
+            writer_files.intern_version(file, llvm::xxh3_64bits(content)),
+            llvm::xxh3_64bits(shard));
+        puts.push_back({index::BlobKind::Shard, writer.key_of(file), shard});
     }
+    writer.apply_manifest(tu, std::move(manifest));
+    puts.push_back({index::BlobKind::ProjectTable, "global", writer.serialize_table()});
     ZASSERT(db->write(puts, {}).empty());
     ZASSERT(db->advance_read_snapshot());
 
-    ZASSERT(project.open(*db));
+    clice::FileTable files;
+    index::ProjectIndex project{files};
+    index::IndexReport report;
+    ZASSERT(project.load(*db, {.read_only = true, .borrow = true}, report) ==
+            index::LoadOutcome::Loaded);
     auto first = files.intern(Spelling::absolute("/proj/f0.cpp"));
     const auto* held = project.shard(first);
     ZASSERT(held != nullptr);
@@ -664,7 +781,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
 
     std::vector<index::BlobDatabase::Blob> puts;
     for(auto tu: units) {
-        auto exported = writer.export_manifest(*writer.held_manifest(tu));
+        auto exported = writer.export_manifest(*writer.manifest(tu));
         // The shared local names its files by persisted ids, as the nodes do.
         ZEXPECT(exported.shared_locals[0].files ==
                 std::vector<VersionID>{exported.tu_version, VersionID{exported.nodes[1].file}});
@@ -678,7 +795,9 @@ ZEST_CASE(SharedLocalAcrossUnits) {
 
     clice::FileTable files;
     index::ProjectIndex reader{files};
-    ZASSERT(reader.open(*db));
+    index::IndexReport report;
+    ZASSERT(reader.load(*db, {.read_only = true, .borrow = true}, report) ==
+            index::LoadOutcome::Loaded);
     check(reader, files);
 
     // A unit leaving takes its set along: c.cpp's files no longer answer,

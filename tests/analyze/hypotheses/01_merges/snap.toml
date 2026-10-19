@@ -174,7 +174,7 @@ stdout = '''
   "partitionCycles": [],
   "internalHeaders": 1,
   "deepestChain": [
-    "core"
+    "app"
   ],
   "totals": {
     "baseline": 8,

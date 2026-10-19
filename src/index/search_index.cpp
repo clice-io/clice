@@ -253,6 +253,8 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
             assert(entry.file != no_file && "an entry of internal linkage names its file");
             blob.local_entries.push_back(id);
             blob.local_paths.push_back(entry.file);
+            blob.local_kinds.push_back(entry.kind.value());
+            blob.local_flags.push_back(static_cast<std::uint16_t>(entry.flags));
         }
         blob.hashes.push_back(entry.hash);
         blob.names += entry.name;
@@ -730,12 +732,36 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(const Root& root) {
        !monotone_ends(columns->file_ends, columns->file_postings.size())) {
         return std::unexpected("file columns do not line up");
     }
+    auto locals = columns->local_entries.size();
     if(!sparse_ok(columns->local_entries, columns->local_paths.size(), count) ||
+       columns->local_kinds.size() != locals || columns->local_flags.size() != locals ||
        llvm::any_of(columns->local_paths,
                     [&](std::uint32_t path) { return path >= columns->paths.size(); })) {
         return std::unexpected("local columns do not line up");
     }
     return {};
+}
+
+void SearchIndex::for_each_local(
+    llvm::function_ref<void(llvm::StringRef path, const SearchEntry& entry)> visit) const {
+    if(!view) {
+        return;
+    }
+    auto& columns = *view->columns;
+    for(std::uint32_t k = 0; k < columns.local_entries.size(); k += 1) {
+        auto entry = columns.local_entries[k];
+        auto parent = columns.parents[entry];
+        visit(llvm::StringRef(columns.paths[columns.local_paths[k]]),
+              SearchEntry{
+                  .hash = columns.hashes[entry],
+                  .name = view->name(entry).str(),
+                  .args = view->arguments(entry).str(),
+                  .parent = parent < view->count() ? columns.hashes[parent] : 0,
+                  .kind = SymbolKind(columns.local_kinds[k]),
+                  .flags = static_cast<SymbolFlags>(columns.local_flags[k]),
+                  .local = true,
+              });
+    }
 }
 
 SearchIndex::SearchIndex() = default;

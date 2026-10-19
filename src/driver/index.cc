@@ -404,9 +404,11 @@ IndexStats collect_stats(Project& project) {
             stats.name_lengths.add(symbol.name.size());
             return true;
         });
-    project_index.for_each_manifest([&](Fid tu, const index::TUManifest& manifest) {
-        stats.shared_locals += manifest.shared_locals.size();
-        stats.unit_uses += manifest.instantiations.size();
+    project_index.for_each_unit([&](Fid tu) {
+        if(auto manifest = project_index.manifest(tu)) {
+            stats.shared_locals += manifest->shared_locals.size();
+            stats.unit_uses += manifest->instantiations.size();
+        }
         if(auto blob =
                project.database->read(index::BlobKind::TUManifest, project_index.key_of(tu))) {
             stats.manifest_bytes += blob.buffer->getBufferSize();
@@ -458,7 +460,7 @@ void print_stats(const Project& project,
         driver::println("Configuration: {}", configuration);
     }
     driver::println("Translation units: {} (manifests {}), {} internal symbols spanning files",
-                    project_index.manifest_count(),
+                    project_index.unit_count(),
                     format_bytes(stats.manifest_bytes),
                     stats.shared_locals);
     driver::println("File shards: {} ({}), {} occurrences, {} relations",
@@ -591,11 +593,13 @@ void print_variants(const IndexStats& stats) {
     }
 }
 
-int run_stats(Project& project, llvm::ArrayRef<Fid> dropped, std::uint32_t top, bool variants) {
-    if(project.index.manifest_count() == 0 && project.index.shard_count() == 0) {
+int run_stats(Project& project, std::uint32_t top, bool variants) {
+    if(project.index.unit_count() == 0) {
         driver::println("Index is empty; run `clice index` to build it.");
         return 0;
     }
+    project.index.read_all();
+    auto dropped = project.index.lost_units();
     auto stats = collect_stats(project);
     print_stats(project, dropped, stats, top);
     if(variants) {
@@ -711,6 +715,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
         // table's reference bitmaps, which a file-local symbol has no entry
         // in.
         std::map<std::string, Counts> per_file;
+        project.index.read_all();
         project.index.for_each_shard([&](Fid path_id, const index::Shard& shard) {
             auto count = [&](RelationKind kind, std::size_t Counts::* field) {
                 shard.relations_of(hash, kind, [&](const index::Relation&) {
@@ -814,7 +819,7 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
     auto& files = project.file_table;
     auto tu = files.find(path);
     auto& project_index = project.index;
-    auto* found = tu ? project_index.held_manifest(*tu) : nullptr;
+    auto found = tu ? project_index.manifest(*tu) : std::nullopt;
     if(!found) {
         driver::println("No manifest for {} in the index.", files.display(CanonicalPath(path)));
         return 1;
@@ -931,7 +936,6 @@ CommandHandler build(const char* self_path) {
                 return read_index(opts.where,
                                   [&](Project& project, CommandResolver&, LoadedIndex& loaded) {
                                       return run_stats(project,
-                                                       loaded.dropped,
                                                        opts.limit.value_or(20),
                                                        static_cast<bool>(opts.variants));
                                   });

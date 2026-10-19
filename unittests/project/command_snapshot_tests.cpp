@@ -43,7 +43,7 @@ ZEST_CASE(OfflineCommandChangeReindexed) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.has_manifest(tu_id));
     ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
@@ -68,7 +68,7 @@ ZEST_CASE(UnchangedCommandKept) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.held_manifest(tu_id) != nullptr);
+    ZASSERT(f.project.index.has_manifest(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -94,7 +94,7 @@ ZEST_CASE(RemovedEntryKeepsIndex) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.held_manifest(tu_id) != nullptr);
+    ZASSERT(f.project.index.has_manifest(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -136,7 +136,7 @@ ZEST_CASE(UndeclaredSourceRetires) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.has_manifest(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -220,7 +220,7 @@ ZEST_CASE(DiscoveredRelocationRetires) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.has_manifest(tu_id));
 }
 
 ZEST_CASE(DefaultCommandKept) {
@@ -250,7 +250,7 @@ ZEST_CASE(DefaultCommandKept) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.held_manifest(tu_id) != nullptr);
+    ZASSERT(f.project.index.has_manifest(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -278,7 +278,7 @@ ZEST_CASE(UncoveredDefaultRetires) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.has_manifest(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -307,7 +307,7 @@ ZEST_CASE(ExcludedRuleDropsIndex) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.has_manifest(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -340,7 +340,7 @@ ZEST_CASE(RuleChangeReindexed) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.has_manifest(tu_id));
     ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
@@ -375,7 +375,7 @@ ZEST_CASE(HostChangeDropsHeader) {
     f.project.dep_graph.build_reverse_map();
     f.load();
 
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.has_manifest(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -405,7 +405,7 @@ ZEST_CASE(HeaderRuleChangeReindexed) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.has_manifest(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -437,7 +437,7 @@ ZEST_CASE(RecordedHostChangeDrops) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.has_manifest(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -479,7 +479,7 @@ ZEST_CASE(ExcludedHostChangeDrops) {
     f.project.dep_graph.build_reverse_map();
     f.load();
 
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.has_manifest(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -520,7 +520,7 @@ ZEST_CASE(PinnedHostKeepsHeader) {
     f.project.dep_graph.build_reverse_map();
     f.load();
 
-    ZASSERT(f.project.index.held_manifest(header_id) != nullptr);
+    ZASSERT(f.project.index.has_manifest(header_id));
     ZASSERT(!f.pump.pending_reason(header_id).has_value());
 }
 
@@ -552,7 +552,7 @@ ZEST_CASE(UnreachableHostRebuilds) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(f.project.index.held_manifest(header_id) != nullptr);
+    ZASSERT(f.project.index.has_manifest(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -616,6 +616,7 @@ ZEST_CASE(CDBWriteFailureRetried) {
     failing->real = std::move(f.project.database);
     auto* storage = failing.get();
     f.project.database = std::move(failing);
+    f.project.index.attach(f.project.database.get());
 
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
@@ -698,7 +699,7 @@ ZEST_CASE(DroppedHeaderDebtRetried) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
         f.load();
         auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-        ZASSERT(!f.project.index.held_manifest(header_id));
+        ZASSERT(!f.project.index.has_manifest(header_id));
         ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
         f.save();
     }
@@ -709,7 +710,7 @@ ZEST_CASE(DroppedHeaderDebtRetried) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.has_manifest(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 

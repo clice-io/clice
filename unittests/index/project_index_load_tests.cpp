@@ -124,20 +124,23 @@ ZEST_CASE(LoadHealsBrokenShard) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-
-    // The header's shard is unservable, so its contributing TU's manifest
-    // is dropped and the TU re-enqueued — no CDB entry would ever re-index
-    // a header otherwise. The orphan is removed.
-    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
-    ZASSERT(f.pump.pending_reason(tu_id));
-
-    // The dropped manifest also retired the TU's contribution to the
-    // OTHER header: its loaded shard's live mask must follow, or it keeps
-    // serving a variant nothing contributes any more.
     auto extra_id = f.project.file_table.intern(Spelling::absolute(tmp.path("extra.h")));
     auto* extra_it = f.project.index.shard(extra_id);
     ZASSERT(extra_it);
+
+    // The header's shard is unservable when read, so its contributing TU's
+    // manifest is dropped and the TU re-enqueued — no CDB entry would ever
+    // re-index a header otherwise. The orphan is removed.
+    auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
+    ZASSERT(!f.project.index.shard(header_id));
+    f.take_lost();
+    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
+    ZASSERT(f.project.index.unit_count() == 0);
+    ZASSERT(f.pump.pending_reason(tu_id));
+
+    // The dropped manifest also retired the TU's contribution to the
+    // OTHER header: its read shard's live mask must follow, or it keeps
+    // serving a variant nothing contributes any more.
     ZASSERT(extra_it->has_dead_variants());
 
     // Load defers blob cleanup into the first save (no synchronous
@@ -185,8 +188,11 @@ ZEST_CASE(ReadOnlyLoadKeepsDisk) {
 
     // The in-memory passes still run: the unservable header drops its
     // contributing TU's manifest and re-enqueues the TU.
+    auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
+    ZASSERT(!f.project.index.shard(header_id));
+    f.take_lost();
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
+    ZASSERT(f.project.index.unit_count() == 0);
     ZASSERT(f.pump.pending_reason(tu_id));
 
     // But every blob survives on disk — a server running concurrently may
@@ -237,8 +243,11 @@ ZEST_CASE(LoadHealsMissingVariant) {
     // set_live would silently drop the missing variant, so the shard is as
     // unservable as an unreadable one: the TU's manifest goes and the TU
     // re-enqueues.
+    ZASSERT(
+        !f.project.index.shard(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
+    f.take_lost();
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
+    ZASSERT(f.project.index.unit_count() == 0);
     ZASSERT(f.pump.pending_reason(tu_id));
 }
 
@@ -275,8 +284,11 @@ ZEST_CASE(LoadHealsWrongGeneration) {
     open_store(tmp, f.project);
     f.load();
 
+    ZASSERT(
+        !f.project.index.shard(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
+    f.take_lost();
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
+    ZASSERT(f.project.index.unit_count() == 0);
     ZASSERT(f.pump.pending_reason(tu_id));
 }
 
@@ -299,7 +311,7 @@ ZEST_CASE(LoadDropsNewerManifest) {
         // (a shard-only reindex), so only the generation can tell that the
         // global's symbols never committed.
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-        auto raced = *f.project.index.held_manifest(tu_id);
+        auto raced = *f.project.index.manifest(tu_id);
         raced.table_generation = f.project.index.table_generation() + 1;
         auto bytes = index::serialize_manifest(f.project.index.export_manifest(raced));
         // Keyed by the interned (canonical) spelling, like save() itself:
@@ -317,10 +329,12 @@ ZEST_CASE(LoadDropsNewerManifest) {
     open_store(tmp, f.project);
     f.load();
 
-    // The raced manifest is dropped and its TU re-enqueued; the reindex
-    // rewrites the manifest and the global together.
+    // The raced manifest is dropped when read and its TU re-enqueued; the
+    // reindex rewrites the manifest and the global together.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
+    ZASSERT(!f.project.index.manifest(tu_id));
+    f.take_lost();
+    ZASSERT(f.project.index.unit_count() == 0);
     ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
@@ -343,7 +357,7 @@ ZEST_CASE(LoadDropsLostManifest) {
         // reindex that changed shards or the include tree only). Only the
         // global's pin can tell it is not the manifest the save meant.
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-        auto lost = *f.project.index.held_manifest(tu_id);
+        auto lost = *f.project.index.manifest(tu_id);
         lost.table_generation = f.project.index.table_generation() - 1;
         auto bytes = index::serialize_manifest(f.project.index.export_manifest(lost));
         f.project.database->write(
@@ -359,10 +373,13 @@ ZEST_CASE(LoadDropsLostManifest) {
     open_store(tmp, f.project);
     f.load();
 
-    // The wrong-generation manifest is dropped and the TU re-enqueued instead of
-    // the previous reindex's dependency set and shards serving as current.
+    // The wrong-generation manifest is dropped when read and the TU
+    // re-enqueued instead of the previous reindex's dependency set serving as
+    // current.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
+    ZASSERT(!f.project.index.manifest(tu_id));
+    f.take_lost();
+    ZASSERT(f.project.index.unit_count() == 0);
     ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
@@ -415,7 +432,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
     // first save (load defers cleanup off the startup event loop).
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.has_manifest(header_id));
     auto save_body = [&]() -> kota::task<> {
         co_await f.async_save();
     };
@@ -430,7 +447,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
 
     // The TU whose manifest resolved is untouched.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.held_manifest(tu_id) != nullptr);
+    ZASSERT(f.project.index.has_manifest(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -498,6 +515,7 @@ ZEST_CASE(LoadServesAcrossSaves) {
         ZASSERT(store);
         project.store.emplace(std::move(*store));
         project.database = index::open_lmdb_database(*project.store, "");
+        project.index.attach(project.database.get());
         ZASSERT(project.database != nullptr);
     };
 
@@ -604,9 +622,9 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
     }
 
     // Corruption latched past the global anchor: the shard read poisons
-    // the latch while the project table stays readable. load must condemn here
-    // too, and unwind everything it adopted — the views would otherwise
-    // borrow from the condemned environment.
+    // the latch while the project table stays readable. Load reads no
+    // shard, so the first query meets it; the next save must condemn the
+    // database and continue on a fresh one.
     struct CorruptShard final : index::BlobDatabase {
         std::unique_ptr<index::BlobDatabase> real;
         bool* condemned;
@@ -662,22 +680,19 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
     f.project.database = std::move(wrapper);
 
     ZASSERT(f.load());
-    ZASSERT(condemned);
-    ZASSERT(f.project.index.shard_count() == 0);
-    ZASSERT(f.project.index.symbol_count() == 0u);
-
-    // The TU has no CDB entry, so nothing else records the debt: it is
-    // re-enqueued before the adopted state unwinds, and the fresh
-    // database's first save persists it as standalone debt.
-    ZASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tu_path))) ==
-            ReindexReason::ContentChanged);
-    ZASSERT(f.project.database != nullptr);
+    ZASSERT(!condemned);
+    auto tu_id = f.project.file_table.intern(Spelling::absolute(tu_path));
+    ZASSERT(!f.project.index.shard(tu_id));
+    f.take_lost();
+    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
     f.save();
-    auto snapshot = f.project.database->read(index::BlobKind::CommandSnapshot, "cdb");
-    ZASSERT(snapshot);
-    ZASSERT(snapshot.buffer->getBuffer().contains("main.cpp"));
-    // Beside a project table, or the next load would find no index and
-    // never read the debt back.
+    ZASSERT(condemned);
+    ZASSERT(f.project.database != nullptr);
+    ZASSERT(f.project.index.shard_count() == 0);
+
+    // The fresh database's first save writes a project table, or the next
+    // load would find no index.
+    f.save();
     ZASSERT(f.project.database->contains(index::BlobKind::ProjectTable, "global"));
 }
 
@@ -740,15 +755,15 @@ ZEST_CASE(UnreadableTablePreserved) {
         wrapper->real = std::move(f.project.database);
         f.project.database = std::move(wrapper);
         f.load();
-        ZASSERT(f.project.index.manifest_count() == 0);
+        ZASSERT(f.project.index.unit_count() == 0);
         ZASSERT(f.project.database == nullptr);
     }
 
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    ZASSERT(f.project.index.manifest_count() != 0);
-    ZASSERT(f.project.index.shard_count() != 0);
+    ZASSERT(f.project.index.unit_count() != 0);
+    ZASSERT(f.project.index.shard(f.project.file_table.intern(Spelling::absolute(src))));
 }
 
 ZEST_CASE(DropIndexEvictsPersisted) {
@@ -768,7 +783,7 @@ ZEST_CASE(DropIndexEvictsPersisted) {
         // The compile command changed: content freshness cannot see it, so
         // the TU's index is dropped wholesale and staleness flips at once.
         f.drop_index(f.project.file_table.intern(Spelling::absolute(src)));
-        ZASSERT(f.project.index.manifest_count() == 0);
+        ZASSERT(f.project.index.unit_count() == 0);
         ZASSERT(f.needs_reindex(src));
         f.save();
     }
@@ -778,8 +793,10 @@ ZEST_CASE(DropIndexEvictsPersisted) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    ZASSERT(f.project.index.manifest_count() == 0);
-    ZASSERT(f.project.index.shard_count() == 0);
+    ZASSERT(f.project.index.unit_count() == 0);
+    bool indexed = false;
+    f.project.index.for_each_indexed_file([&](Fid) { indexed = true; });
+    ZASSERT(!indexed);
     ZASSERT(f.needs_reindex(src));
 }
 

@@ -228,7 +228,7 @@ ZEST_CASE(KnownVariantByHash) {
     ZASSERT(!outdated);
     ZEXPECT(outdated.error() == index::MergeError::Outdated);
     auto b_id = project.file_table.intern(Spelling::absolute(early.tu_path));
-    ZEXPECT(!project.index.held_manifest(b_id));
+    ZEXPECT(!project.index.has_manifest(b_id));
 
     // Once the index holds it, the bare hash counts as the file's
     // contribution like the bytes would.
@@ -237,7 +237,7 @@ ZEST_CASE(KnownVariantByHash) {
     auto b_view = index::TUIndex::from_bytes(b.data);
     ZASSERT(b_view.section_blob(header_section(b_view)).empty());
     ZASSERT(merge(b.data));
-    ZEXPECT(project.index.held_manifest(b_id) != nullptr);
+    ZEXPECT(project.index.has_manifest(b_id));
     ZEXPECT(project.index.shard(header_id)->variants().size() == std::size_t(1));
     ZEXPECT(contributions_of(project.index, header_id).size() == std::size_t(2));
 }
@@ -363,7 +363,7 @@ ZEST_CASE(RejectsCorruptSection) {
     merge(corrupt);
     auto tu_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("cor.h")));
-    ZASSERT(!project.index.held_manifest(tu_id));
+    ZASSERT(!project.index.has_manifest(tu_id));
     ZASSERT(!project.index.shard(header_id));
     // No global trace either: symbol identities from an untrusted result
     // would stay canonical for their hashes forever (later merges only
@@ -374,7 +374,7 @@ ZEST_CASE(RejectsCorruptSection) {
 
     // The intact result still merges afterwards.
     merge(indexed.data);
-    ZASSERT(project.index.held_manifest(tu_id) != nullptr);
+    ZASSERT(project.index.has_manifest(tu_id));
     ZASSERT(project.index.shard(header_id) != nullptr);
 }
 
@@ -490,7 +490,7 @@ ZEST_CASE(AbsentSpellingsOnePlace) {
     f.merge(indexed.data);
     f.merge(indexed.data);
     auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
-    auto& manifest = *f.project.index.held_manifest(tu);
+    auto manifest = *f.project.index.manifest(tu);
     auto place = f.project.file_table.intern(Spelling::absolute(tmp.path("real/gen.h")));
     ZASSERT(llvm::count_if(manifest.absent, [&](VersionID version) {
                 return f.project.file_table.version(version).fid == place;
@@ -548,6 +548,52 @@ ZEST_CASE(AllDepsChecked) {
     ZASSERT(set_file_mtime(tmp.path("second.h"), recorded));
     f.begin_round();
     ZASSERT(f.needs_reindex(tmp.path("main.cpp")));
+}
+
+ZEST_CASE(PersistedUnitsJudgedByVersion) {
+    // A unit the persisted table holds is judged by the versions it depends
+    // on and the places its failed lookups looked: an edited header stales
+    // the units including it, a header appearing where a lookup failed
+    // stales its unit, and the rest stay fresh.
+    TempDir tmp;
+    tmp.touch("dep.h", R"(#pragma once
+inline int dep() { return 1; }
+)");
+    tmp.touch("main.cpp", R"(#include "dep.h"
+int use() { return dep(); }
+)");
+    tmp.touch("probe.cpp", R"(#include "gen.h"
+int probe() { return 0; }
+)");
+    tmp.touch("lone.cpp", "int lone() { return 0; }\n");
+    std::vector<std::string> units;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        for(auto name: {"main.cpp", "probe.cpp", "lone.cpp"}) {
+            auto indexed = index_file(tmp, tmp.path(name));
+            ZASSERT(!indexed.data.empty());
+            ZASSERT(f.merge(indexed.data));
+            units.push_back(indexed.tu_path);
+        }
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    ZASSERT(f.load());
+    for(auto& unit: units) {
+        ZEXPECT(!f.needs_reindex(unit));
+    }
+
+    tmp.touch("dep.h", R"(#pragma once
+inline int dep() { return 22; }
+)");
+    tmp.touch("gen.h", "int make();\n");
+    f.begin_round();
+    ZEXPECT(f.needs_reindex(units[0]));
+    ZEXPECT(f.needs_reindex(units[1]));
+    ZEXPECT(!f.needs_reindex(units[2]));
 }
 
 };  // ZEST_SUITE(ProjectIndexFreshness)
@@ -634,8 +680,8 @@ ZEST_CASE(ResolutionsSharedAndSkipped) {
     auto known = f.known_instantiations(id("a2.cpp"));
     ZEXPECT(!known.empty());
     ZASSERT(index("a2.cpp"));
-    auto& walked = f.project.index.held_manifest(id("a.cpp"))->instantiations;
-    auto& skipped = f.project.index.held_manifest(id("a2.cpp"))->instantiations;
+    auto walked = f.project.index.manifest(id("a.cpp"))->instantiations;
+    auto skipped = f.project.index.manifest(id("a2.cpp"))->instantiations;
     ZASSERT(skipped.size() == 1u);
     ZEXPECT(skipped == walked);
 
@@ -675,7 +721,7 @@ void a2() { Box<A>{}.show(); Box<B>{}.show(); }
     ZASSERT(index("a.cpp"));
     ZASSERT(index("b.cpp"));
     ZASSERT(index("a2.cpp"));
-    auto uses = f.project.index.held_manifest(id("a2.cpp"))->instantiations;
+    auto uses = f.project.index.manifest(id("a2.cpp"))->instantiations;
     ZASSERT(uses.size() == 1u);
     ZEXPECT(box()->has_use(uses.front().use));
 

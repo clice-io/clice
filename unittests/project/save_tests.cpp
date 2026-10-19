@@ -102,6 +102,7 @@ ZEST_CASE(CorruptSaveKeepsTicket) {
     open_store(tmp, f.project);
     f.load();
     f.project.database = std::make_unique<CorruptAfterWrite>();
+    f.project.index.attach(f.project.database.get());
     f.project.contexts.bytes = "choices";
     f.project.contexts.dirty = true;
     f.project.contexts.ticket += 1;

@@ -14,8 +14,8 @@ stdout = '''
       "${WS}/mid.h"
     ],
     "transitiveDependents": [
-      "${WS}/mid.cpp",
       "${WS}/main.cpp",
+      "${WS}/mid.cpp",
       "${WS}/use.cpp"
     ],
     "affectedModules": [
@@ -60,11 +60,11 @@ stdout = '''
         "depth": 1
       },
       {
-        "path": "${WS}/main.cpp",
+        "path": "${WS}/mid.cpp",
         "depth": 2
       },
       {
-        "path": "${WS}/mid.cpp",
+        "path": "${WS}/main.cpp",
         "depth": 2
       }
     ]

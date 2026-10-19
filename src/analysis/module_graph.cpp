@@ -184,36 +184,52 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         return relative.empty() ? std::string(table.display(fid)) : relative;
     };
 
+    // The manifests, read once and in path order like the files below, so
+    // no result depends on the order the index holds them in: the facts
+    // walk their include trees.
+    std::vector<std::pair<std::string, Fid>> units;
+    index.for_each_unit([&](Fid tu) { units.emplace_back(display(tu), tu); });
+    llvm::sort(units);
+    llvm::SmallVector<std::pair<Fid, index::TUManifest>> manifests;
+    for(auto tu: llvm::make_second_range(units)) {
+        if(auto manifest = index.manifest(tu)) {
+            manifests.emplace_back(tu, std::move(*manifest));
+        }
+    }
+
     // The scoped files are the indexed ones: those holding a shard, the
     // translation units, and the files their include trees enter.
     llvm::DenseMap<Fid, std::uint32_t> ids;
+    std::vector<std::pair<std::string, Fid>> scoped;
+    auto note = [&](Fid fid) {
+        if(ids.try_emplace(fid, none).second) {
+            scoped.emplace_back(display(fid), fid);
+        }
+    };
+    index.for_each_indexed_file(note);
+    for(auto& [tu, manifest]: manifests) {
+        note(tu);
+        for(auto& node: manifest.nodes) {
+            note(table.version(VersionID{node.file}).fid);
+        }
+    }
+    llvm::sort(scoped);
     std::vector<Fid> fids;
-    auto add = [&](Fid fid) {
-        auto [it, inserted] = ids.try_emplace(fid, none);
-        if(!inserted) {
-            return;
-        }
-        auto path = display(fid);
+    for(auto& [path, fid]: scoped) {
         if(!in_scope(path)) {
-            return;
+            continue;
         }
-        it->second = static_cast<std::uint32_t>(facts.files.size());
-        facts.file_ids[path] = it->second;
+        auto id = static_cast<std::uint32_t>(facts.files.size());
+        ids[fid] = id;
+        facts.file_ids[path] = id;
         facts.files.push_back({
             .path = path,
             // A header an editor indexed standalone has a manifest too.
-            .source = index.held_manifest(fid) && !is_header_path(path),
+            .source = index.has_manifest(fid) && !is_header_path(path),
             .fragment = is_context_header_path(path),
         });
         fids.push_back(fid);
-    };
-    index.for_each_shard([&](Fid file, const index::Shard&) { add(file); });
-    index.for_each_manifest([&](Fid tu, const index::TUManifest& manifest) {
-        add(tu);
-        for(auto& node: manifest.nodes) {
-            add(table.version(VersionID{node.file}).fid);
-        }
-    });
+    }
     auto id_of = [&](Fid fid) {
         auto it = ids.find(fid);
         return it == ids.end() ? none : it->second;
@@ -239,7 +255,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, Fid> include_at;
     /// (scoped includer, scoped file) -> the first directive line naming it.
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> include_lines;
-    index.for_each_manifest([&](Fid tu, const index::TUManifest& manifest) {
+    for(auto& [tu, manifest]: manifests) {
         auto unit = id_of(tu);
         llvm::DenseSet<std::uint32_t> entered;
         if(unit != none) {
@@ -277,7 +293,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
             }
         }
-    });
+    }
     for(auto& file: facts.files) {
         std::ranges::sort(file.directives);
         file.directives.erase(std::ranges::unique(file.directives).begin(), file.directives.end());
@@ -789,13 +805,13 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
             }
             bool implemented =
-                index.held_manifest(canonical) && !llvm::is_contained({SymbolKind::Class,
-                                                                       SymbolKind::Struct,
-                                                                       SymbolKind::Union,
-                                                                       SymbolKind::Enum,
-                                                                       SymbolKind::Type,
-                                                                       SymbolKind::Concept},
-                                                                      kind);
+                index.has_manifest(canonical) && !llvm::is_contained({SymbolKind::Class,
+                                                                      SymbolKind::Struct,
+                                                                      SymbolKind::Union,
+                                                                      SymbolKind::Enum,
+                                                                      SymbolKind::Type,
+                                                                      SymbolKind::Concept},
+                                                                     kind);
             if(owner == none && !implemented) {
                 if(kind == SymbolKind::Macro) {
                     foreign_macros[hash] = {canonical, identity->name.str()};
@@ -995,7 +1011,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(!facts.files[owner].source) {
                 ConfiguringMacro configuring{.entity = id};
                 index.for_each_reference_file(hash, [&](Fid file) {
-                    if(id_of(file) != none || index.held_manifest(file)) {
+                    if(id_of(file) != none || index.has_manifest(file)) {
                         return;
                     }
                     auto path = display(file);
@@ -1358,10 +1374,11 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
     if(!loaded) {
         return std::unexpected(LoadError{.message = "no usable index; run `clice index` first"});
     }
-    // A unit withheld as stale or corrupt takes its uses and edges with it.
-    if(!loaded->dropped.empty()) {
+    // A unit whose index lost data takes its uses and edges with it.
+    project.index.read_all();
+    if(auto lost = project.index.lost_units(); !lost.empty()) {
         LoadError error{.message = "the index lacks some units; run `clice index` first"};
-        for(auto unit: loaded->dropped) {
+        for(auto unit: lost) {
             error.dropped.emplace_back(files.display(unit));
         }
         std::ranges::sort(error.dropped);

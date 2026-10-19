@@ -93,8 +93,10 @@ namespace clice::index {
 /// references to those parameters, an abbreviated parameter pack carries
 /// its type definitions, and a precompiled header's diagnostics know an
 /// imported module unit from an included file; v42: every blob is an
-/// archive (support/archive) instead of a flatbuffer.
-constexpr inline std::uint32_t index_format_version = 42;
+/// archive (support/archive) instead of a flatbuffer; v43: the project table
+/// carries what the manifests say per file version, file, place, input and
+/// shared local, with the units saying it, and every unit's built_at.
+constexpr inline std::uint32_t index_format_version = 43;
 
 /// Whether `bytes` sit where an archive is read in place: a database or
 /// a message hands out bytes at whatever address it keeps them.
@@ -594,13 +596,16 @@ struct ProjectTableBlobOf {
     Seq<std::uint32_t> symbol_instantiation_ends;
     Seq<std::uint8_t> symbol_instantiations;
 
-    /// tu_version -> generation of every manifest current at this save.
-    /// The loader adopts a manifest blob only on an exact generation match, so
-    /// a manifest whose write failed while the project table was persisted (or one that
-    /// outran a lost project table write) reads as lost and its TU reindexes,
-    /// instead of an older on-disk manifest serving as current.
+    /// The units: every TU with a current manifest, ascending by its
+    /// tu_version, with the generation its manifest blob must carry and its
+    /// manifest's built_at. The loader adopts a manifest blob only on an
+    /// exact generation match, so a manifest whose write failed while the
+    /// project table was persisted (or one that outran a lost project table
+    /// write) reads as lost and its TU reindexes, instead of an older on-disk
+    /// manifest serving as current.
     Seq<std::uint32_t> manifest_versions;
     Seq<std::uint64_t> manifest_generations;
+    Seq<std::uint64_t> manifest_runs;
 
     /// The generation of the search blob this table was saved with, and
     /// the entries and the files whose names of internal linkage (path
@@ -609,27 +614,61 @@ struct ProjectTableBlobOf {
     Seq<std::uint64_t> search_pending;
     Seq<std::uint32_t> search_pending_files;
 
-    /// The reverse include graph, for readers holding no manifests: every
-    /// file some TU contributed a variant to (path ids, ascending), and those
-    /// TUs' path ids as file sets back to back.
-    Seq<std::uint32_t> contributed_files;
-    Seq<std::uint32_t> contributor_ends;
-    Seq<std::uint8_t> contributors;
+    /// What the units' manifests say, keyed the way readers ask, each set
+    /// of units the units' path ids as a file set (append_file_set), back
+    /// to back: a reader answers from here without a manifest, and a writer
+    /// reads it under the units its session changed.
+    ///
+    /// Per file version (parallel to `version_ids`), the units whose
+    /// manifest names it.
+    Seq<std::uint32_t> version_unit_ends;
+    Seq<std::uint8_t> version_units;
 
-    /// The symbols below external scope some TU's shared locals list
+    /// Every file some unit contributed a variant to (path ids, ascending),
+    /// the end of each file's run of variants, and per variant its hash,
+    /// the file version it was built from and the units contributing it.
+    Seq<std::uint32_t> contributed_files;
+    Seq<std::uint32_t> contribution_ends;
+    Seq<std::uint64_t> contribution_variants;
+    Seq<std::uint32_t> contribution_versions;
+    Seq<std::uint32_t> contribution_unit_ends;
+    Seq<std::uint8_t> contribution_units;
+
+    /// Every file holding instantiation resolutions some unit uses (path
+    /// ids, ascending), the end of each file's run of uses, and per use its
+    /// identity and the units naming it.
+    Seq<std::uint32_t> use_files;
+    Seq<std::uint32_t> use_ends;
+    Seq<std::uint64_t> use_hashes;
+    Seq<std::uint32_t> use_unit_ends;
+    Seq<std::uint8_t> use_units;
+
+    /// The places failed lookups looked (TUManifest::absent) and the inputs
+    /// read through modules and precompiled headers (TUManifest::imports),
+    /// path ids ascending, each with the units concerned.
+    Seq<std::uint32_t> absent_places;
+    Seq<std::uint32_t> absent_unit_ends;
+    Seq<std::uint8_t> absent_units;
+    Seq<std::uint32_t> import_inputs;
+    Seq<std::uint32_t> import_unit_ends;
+    Seq<std::uint8_t> import_units;
+
+    /// The symbols below external scope some unit's shared locals list
     /// (TUManifest::shared_locals), ascending; the end of each symbol's run
-    /// of file sets; and the sets, file sets back to back.
+    /// of file sets; and per set its files and the units listing it.
     Seq<std::uint64_t> shared_local_symbols;
     Seq<std::uint32_t> shared_local_set_ends;
     Seq<std::uint32_t> shared_local_file_ends;
     Seq<std::uint8_t> shared_local_files;
+    Seq<std::uint32_t> shared_local_unit_ends;
+    Seq<std::uint8_t> shared_local_units;
 };
 
 using ProjectTableBlob = ProjectTableBlobOf<archive::Owned>;
 
 /// Layout and scoring version of the search blob, apart from the index
 /// format it is derived from: a bump rebuilds the search index alone.
-constexpr std::uint32_t search_format_version = 3;
+constexpr std::uint32_t search_format_version = 4;
 
 /// The persisted search index. Entries are in quality order (ties by hash),
 /// which is the entry id order every bitmap speaks; the arenas hold the
@@ -687,10 +726,13 @@ struct SearchIndexBlobOf {
     Seq<std::uint32_t> file_ends;
     Seq<std::uint8_t> file_postings;
 
-    /// The entries of internal linkage, sorted, and the path each one's
-    /// entries live in.
+    /// The entries of internal linkage, sorted, the path each one's entries
+    /// live in, and each one's kind and flags: a rebuild carries an
+    /// unchanged file's over without reading its shard.
     Seq<std::uint32_t> local_entries;
     Seq<std::uint32_t> local_paths;
+    Seq<std::uint8_t> local_kinds;
+    Seq<std::uint16_t> local_flags;
 };
 
 using SearchIndexBlob = SearchIndexBlobOf<archive::Owned>;

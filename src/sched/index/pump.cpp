@@ -28,6 +28,9 @@ IndexPump::IndexPump(kota::event_loop& loop,
                      WorkerPool& pool) :
     loop(loop), project(project), commands(commands), turun(turun), pool(pool) {
     capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
+    // A read found lost data, mid-query or mid-merge: the next round takes
+    // it to a rebuild.
+    lost_conn = project.index.on_data_lost.connect([this] { schedule(/*immediate=*/true); });
 }
 
 void IndexPump::boost(Fid server_path_id) {
@@ -480,6 +483,7 @@ kota::task<> IndexPump::run_background_indexing() {
         co_await index_idle_timer->wait();
     }
     indexing_scheduled = false;
+    apply_report(project.index.take_lost());
 
     if(index_queue_pos >= index_queue.size()) {
         LOG_DEBUG("Background indexing: queue exhausted");
@@ -559,10 +563,11 @@ kota::task<> IndexPump::run_background_indexing() {
     indexing_active = false;
     round_ended.set();
 
-    // Files enqueued or requeued while the round ran saw their schedule()
-    // no-op against indexing_active; without this kick they would wait for
-    // the next external event — and a content-changed pending file's index
-    // stays skipped for that whole wait.
+    // Files enqueued or requeued while the round ran — lost data its merges
+    // read among them — saw their schedule() no-op against indexing_active;
+    // without this kick they would wait for the next external event — and a
+    // content-changed pending file's index stays skipped for that whole wait.
+    apply_report(project.index.take_lost());
     if(index_queue_pos < index_queue.size()) {
         schedule(/*immediate=*/true);
     }

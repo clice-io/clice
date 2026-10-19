@@ -46,6 +46,7 @@ void reopen_fresh_database(Project& project) {
     project.database->condemn();
     project.database.reset();
     project.database = index::open_database(*project.store, project.build.active_configuration());
+    project.index.attach(project.database.get());
     // The metadata blobs died with the condemned database while their
     // loaded state lives on in memory; without a re-dirty the next save
     // skips them and a restart loses the user's context choices and every

@@ -596,7 +596,7 @@ Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellati
             tokens = feature::index_semantic_tokens(
                 text_of(*session),
                 feature::extract_index_entries(*source->shard),
-                [&](index::SymbolHash hash) { return query.symbol_info(hash); },
+                [&](index::SymbolHash hash) { return query.symbol_info(hash, source->file); },
                 project.config.semantic_tokens);
             break;
         }
@@ -703,7 +703,7 @@ Features::RawResult Features::folding_range(Ticket ticket,
             auto folds = feature::index_folding_ranges(
                 text_of(*session),
                 entries.decls,
-                [&](index::SymbolHash hash) { return query.symbol_info(hash); });
+                [&](index::SymbolHash hash) { return query.symbol_info(hash, source->file); });
             session->index_served = true;
             co_return convert(folds);
         }
@@ -749,7 +749,7 @@ Features::RawResult Features::document_symbol(Ticket ticket,
             auto symbols = feature::index_document_symbols(
                 text_of(*session),
                 feature::extract_index_entries(*source->shard),
-                [&](index::SymbolHash hash) { return query.symbol_info(hash); },
+                [&](index::SymbolHash hash) { return query.symbol_info(hash, source->file); },
                 project.config.document_symbols);
             session->index_served = true;
             co_return convert(symbols);

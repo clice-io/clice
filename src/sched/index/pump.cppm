@@ -364,6 +364,8 @@ private:
 
     Signal<>::Connection capacity_conn;
 
+    Signal<>::Connection lost_conn;
+
     Progress progress_data;
 };
 

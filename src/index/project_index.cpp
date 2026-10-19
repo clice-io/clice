@@ -28,12 +28,10 @@ namespace {
 /// better compacted by the rebuild the rejection triggers.
 constexpr inline std::uint32_t max_persisted_versions = 1u << 24;
 
-/// A table derived from the manifests: file -> (TU -> the hash it names there).
-using UnitHashes = llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>>;
-
 /// Drop `unit`'s entry for `file`, and the file once no unit names it. One
 /// file's two persisted versions in a manifest reach here twice.
-void erase_unit(UnitHashes& table, Fid file, Fid unit) {
+template <typename Table>
+void erase_unit(Table& table, Fid file, Fid unit) {
     auto it = table.find(file);
     if(it == table.end()) {
         return;
@@ -44,15 +42,15 @@ void erase_unit(UnitHashes& table, Fid file, Fid unit) {
     }
 }
 
-/// The distinct hashes the units name for `file`, ascending.
-llvm::SmallVector<std::uint64_t> distinct_hashes(const UnitHashes& table, Fid file) {
-    llvm::SmallVector<std::uint64_t> hashes;
-    if(auto it = table.find(file); it != table.end()) {
-        llvm::append_range(hashes, llvm::make_second_range(it->second));
-    }
-    llvm::sort(hashes);
-    hashes.erase(llvm::unique(hashes), hashes.end());
-    return hashes;
+/// Visit the raw id of every version a manifest names but its failed
+/// lookups': what the TU depends on, which its freshness is judged by.
+void for_each_dependency(const TUManifest& manifest, llvm::function_ref<void(VersionID)> visit) {
+    llvm::DenseSet<VersionID> absent(manifest.absent.begin(), manifest.absent.end());
+    for_each_version(manifest, [&](std::uint32_t id) {
+        if(!absent.contains(VersionID{id})) {
+            visit(VersionID{id});
+        }
+    });
 }
 
 /// The files a shared local lists, ascending, two versions of one file
@@ -123,11 +121,25 @@ bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob) {
     }
     bound->buffer = std::move(blob);
     base = std::move(bound);
+    // What was looked up in the previous base names it no more.
+    base_unit_files.clear();
+    base_unit_index.clear();
+    base_units_hashed = false;
+    units.clear();
+    for(auto tu: llvm::make_first_range(manifests)) {
+        units[unit_hash(tu)] = tu;
+    }
+    overridden_ids = Bitmap();
+    for(auto tu: overridden) {
+        if(auto id = base->path_id(tu)) {
+            overridden_ids.add(*id);
+        }
+    }
+    stale_units.reset();
     return true;
 }
 
-std::expected<void, llvm::StringRef>
-    ProjectIndex::adopt_file_versions(llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
+std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions() {
     if(!base) {
         return {};
     }
@@ -137,7 +149,6 @@ std::expected<void, llvm::StringRef>
     auto& version_paths = columns->version_paths;
     llvm::ArrayRef<std::uint64_t> version_hashes = columns->version_hashes;
     llvm::ArrayRef<std::uint32_t> manifest_versions = columns->manifest_versions;
-    llvm::ArrayRef<std::uint64_t> manifest_generations = columns->manifest_generations;
     std::uint32_t next_version_id = columns->next_version_id;
     auto count = version_ids.size();
 
@@ -200,9 +211,6 @@ std::expected<void, llvm::StringRef>
         runtime_ids.try_emplace(version_ids[i], id);
         persisted_ids.try_emplace(id, version_ids[i]);
     }
-    for(std::uint32_t k = 0; k < manifest_versions.size(); k += 1) {
-        manifest_pins[runtime_ids.find(manifest_versions[k])->second] = manifest_generations[k];
-    }
     return {};
 }
 
@@ -221,17 +229,20 @@ bool ProjectIndex::verify_bitmaps() const {
     return true;
 }
 
+std::expected<void, llvm::StringRef> ProjectIndex::load_table(llvm::StringRef data) {
+    return load_table(llvm::MemoryBuffer::getMemBufferCopy(data));
+}
+
 std::expected<void, llvm::StringRef>
-    ProjectIndex::load_table(llvm::StringRef data,
-                             llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
-    if(!bind_table(llvm::MemoryBuffer::getMemBufferCopy(data))) {
+    ProjectIndex::load_table(std::unique_ptr<llvm::MemoryBuffer> buffer) {
+    if(!bind_table(std::move(buffer))) {
         return std::unexpected("not a readable project table");
     }
     if(!verify_bitmaps()) {
         base.reset();
         return std::unexpected("reference bitmap does not decode");
     }
-    if(auto adopted = adopt_file_versions(manifest_pins); !adopted) {
+    if(auto adopted = adopt_file_versions(); !adopted) {
         base.reset();
         return adopted;
     }
@@ -503,40 +514,9 @@ std::string ProjectIndex::serialize_table() {
     }
     changed.clear();
 
-    // The blob carries only the versions some manifest still references —
-    // the persisted form's garbage collection. The shared table itself is
-    // left alone: other consumers may still anchor checks on a version the
-    // index dropped, and ids are never reused either way.
-    llvm::DenseSet<VersionID> referenced;
-    for(auto& manifest: llvm::make_second_range(manifests)) {
-        for_each_version(manifest,
-                         [&](std::uint32_t version) { referenced.insert(VersionID{version}); });
-    }
-
     ProjectTableBlob blob;
     blob.format_version = index_format_version;
     blob.generation = generation;
-
-    llvm::SmallVector<std::pair<std::uint32_t, VersionID>> ids;
-    ids.reserve(referenced.size());
-    for(auto id: referenced) {
-        ids.emplace_back(persisted_id(id), id);
-    }
-    llvm::sort(ids);
-    for(auto [persisted, id]: ids) {
-        auto& record = files.version(id);
-        blob.version_ids.push_back(persisted);
-        blob.version_paths.push_back(portable(files.resolve(record.fid)));
-        blob.version_hashes.push_back(record.content_hash);
-    }
-    blob.next_version_id = next_persisted_id;
-
-    blob.manifest_versions.reserve(manifests.size());
-    blob.manifest_generations.reserve(manifests.size());
-    for(auto& manifest: llvm::make_second_range(manifests)) {
-        blob.manifest_versions.push_back(persisted_ids.find(manifest.tu_version)->second);
-        blob.manifest_generations.push_back(manifest.table_generation);
-    }
 
     // The base's path table stays as it is, so its entries' bitmap images
     // copy verbatim; files the written entries reference beyond it are
@@ -557,6 +537,107 @@ std::string ProjectIndex::serialize_table() {
         }
         return it->second;
     };
+
+    // A base unit set under the overridden units, with the session's TUs
+    // added: the base image as it is when neither changes it.
+    auto append_units = [&](std::vector<std::uint8_t>& arena,
+                            llvm::ArrayRef<std::uint8_t> image,
+                            const Bitmap& added) {
+        auto set = image.empty() ? std::optional(Bitmap()) : read_file_set(image);
+        if(set && added.isEmpty() && !set->intersect(overridden_ids)) {
+            arena.insert(arena.end(), image.begin(), image.end());
+            return;
+        }
+        Bitmap units = set ? *set - overridden_ids : Bitmap();
+        units |= added;
+        append_file_set(arena, units);
+    };
+    auto surviving = [&](llvm::ArrayRef<std::uint8_t> image) {
+        auto set = read_file_set(image);
+        return set && !(*set - overridden_ids).isEmpty();
+    };
+
+    // The blob carries only the versions some manifest still references —
+    // the persisted form's garbage collection —, each with the units
+    // depending on it. The shared table itself is left alone: other
+    // consumers may still anchor checks on a version the index dropped, and
+    // ids are never reused either way.
+    llvm::DenseMap<VersionID, Bitmap> dependents;
+    llvm::DenseSet<VersionID> referenced;
+    for(auto& [tu, manifest]: manifests) {
+        auto tu_id = path_id(tu);
+        for_each_version(manifest,
+                         [&](std::uint32_t version) { referenced.insert(VersionID{version}); });
+        for_each_dependency(manifest, [&](VersionID version) { dependents[version].add(tu_id); });
+    }
+    llvm::DenseMap<VersionID, std::uint32_t> base_rows;
+    if(base) {
+        auto& columns = *base->columns;
+        for(std::uint32_t row = 0; row < columns.version_ids.size(); row += 1) {
+            auto version = runtime_version(columns.version_ids[row]);
+            if(version && surviving(slice(columns.version_units, columns.version_unit_ends, row))) {
+                referenced.insert(*version);
+                base_rows.try_emplace(*version, row);
+            }
+        }
+        // A base unit's failed lookups name versions without bytes the
+        // dependency rows leave out.
+        for(std::uint32_t k = 0; k < columns.absent_places.size(); k += 1) {
+            if(surviving(slice(columns.absent_units, columns.absent_unit_ends, k))) {
+                referenced.insert(files.intern_version(base->remap[columns.absent_places[k]], 0));
+            }
+        }
+    }
+    llvm::SmallVector<std::pair<std::uint32_t, VersionID>> ids;
+    ids.reserve(referenced.size());
+    for(auto id: referenced) {
+        ids.emplace_back(persisted_id(id), id);
+    }
+    llvm::sort(ids);
+    for(auto [persisted, id]: ids) {
+        auto& record = files.version(id);
+        blob.version_ids.push_back(persisted);
+        blob.version_paths.push_back(portable(files.resolve(record.fid)));
+        blob.version_hashes.push_back(record.content_hash);
+        auto row = base_rows.find(id);
+        auto added = dependents.find(id);
+        append_units(
+            blob.version_units,
+            row != base_rows.end()
+                ? slice(base->columns->version_units, base->columns->version_unit_ends, row->second)
+                : llvm::ArrayRef<std::uint8_t>(),
+            added != dependents.end() ? added->second : Bitmap());
+        blob.version_unit_ends.push_back(static_cast<std::uint32_t>(blob.version_units.size()));
+    }
+    blob.next_version_id = next_persisted_id;
+
+    // The units: the base's the session left alone, and the merged ones.
+    struct Unit {
+        std::uint32_t version;
+        std::uint64_t generation;
+        std::uint64_t run;
+    };
+
+    std::vector<Unit> unit_rows;
+    for(auto tu: base_units()) {
+        if(auto unit = base_unit(tu)) {
+            auto& columns = *base->columns;
+            unit_rows.push_back({columns.manifest_versions[*unit],
+                                 columns.manifest_generations[*unit],
+                                 columns.manifest_runs[*unit]});
+        }
+    }
+    for(auto& manifest: llvm::make_second_range(manifests)) {
+        unit_rows.push_back({persisted_ids.find(manifest.tu_version)->second,
+                             manifest.table_generation,
+                             manifest.built_at});
+    }
+    std::ranges::sort(unit_rows, {}, &Unit::version);
+    for(auto& unit: unit_rows) {
+        blob.manifest_versions.push_back(unit.version);
+        blob.manifest_generations.push_back(unit.generation);
+        blob.manifest_runs.push_back(unit.run);
+    }
 
     // The table in hash order: base entries copied, written entries encoded.
     struct Entry {
@@ -665,37 +746,205 @@ std::string ProjectIndex::serialize_table() {
     }
     write_ids(blob.symbol_parents, parents, entries.size() + 1);
 
-    std::vector<std::pair<std::uint32_t, Bitmap>> reverse;
-    reverse.reserve(contributions.size());
-    for(auto& [file, units]: contributions) {
-        Bitmap tus;
-        for(auto tu: llvm::make_first_range(units)) {
-            tus.add(path_id(tu));
+    // What the units' manifests say: per key, the base's sets under the
+    // overridden units, the session's TUs added, keys and entries left with
+    // no unit dropped.
+    struct UnitSet {
+        std::uint64_t hash = 0;
+        std::uint32_t version = 0;
+        llvm::ArrayRef<std::uint8_t> image;
+        Bitmap added;
+    };
+
+    auto live = [&](const UnitSet& entry) {
+        return !entry.added.isEmpty() || (!entry.image.empty() && surviving(entry.image));
+    };
+    auto add_unit = [&](std::vector<UnitSet>& entries, std::uint64_t hash, std::uint32_t version) {
+        auto it = llvm::find_if(entries, [&](const UnitSet& entry) { return entry.hash == hash; });
+        if(it == entries.end()) {
+            entries.push_back({.hash = hash, .version = version});
+            it = std::prev(entries.end());
         }
-        reverse.emplace_back(path_id(file), std::move(tus));
+        return &it->added;
+    };
+
+    std::map<std::uint32_t, std::vector<UnitSet>> contributed;
+    std::map<std::uint32_t, std::vector<UnitSet>> used;
+    std::map<std::uint32_t, UnitSet> places;
+    std::map<std::uint32_t, UnitSet> inputs;
+    if(base) {
+        auto& columns = *base->columns;
+        for(std::uint32_t k = 0; k < columns.contributed_files.size(); k += 1) {
+            auto& entries = contributed[columns.contributed_files[k]];
+            for(auto entry = k == 0 ? 0 : columns.contribution_ends[k - 1];
+                entry < columns.contribution_ends[k];
+                entry += 1) {
+                entries.push_back({
+                    .hash = columns.contribution_variants[entry],
+                    .version = columns.contribution_versions[entry],
+                    .image =
+                        slice(columns.contribution_units, columns.contribution_unit_ends, entry),
+                });
+            }
+        }
+        for(std::uint32_t k = 0; k < columns.use_files.size(); k += 1) {
+            auto& entries = used[columns.use_files[k]];
+            for(auto entry = k == 0 ? 0 : columns.use_ends[k - 1]; entry < columns.use_ends[k];
+                entry += 1) {
+                entries.push_back({
+                    .hash = columns.use_hashes[entry],
+                    .image = slice(columns.use_units, columns.use_unit_ends, entry),
+                });
+            }
+        }
+        for(std::uint32_t k = 0; k < columns.absent_places.size(); k += 1) {
+            places[columns.absent_places[k]].image =
+                slice(columns.absent_units, columns.absent_unit_ends, k);
+        }
+        for(std::uint32_t k = 0; k < columns.import_inputs.size(); k += 1) {
+            inputs[columns.import_inputs[k]].image =
+                slice(columns.import_units, columns.import_unit_ends, k);
+        }
     }
-    std::ranges::sort(reverse, {}, [](const auto& entry) { return entry.first; });
-    for(auto& [file, tus]: reverse) {
-        blob.contributed_files.push_back(file);
-        append_file_set(blob.contributors, tus);
-        blob.contributor_ends.push_back(static_cast<std::uint32_t>(blob.contributors.size()));
+    for(auto& [file, tus]: contributions) {
+        auto& entries = contributed[path_id(file)];
+        for(auto& [tu, contributed_variant]: tus) {
+            add_unit(entries,
+                     contributed_variant.variant,
+                     persisted_id(contributed_variant.version))
+                ->add(path_id(tu));
+        }
+    }
+    for(auto& [file, tus]: instantiation_uses) {
+        auto& entries = used[path_id(file)];
+        for(auto [tu, use]: tus) {
+            add_unit(entries, use, 0)->add(path_id(tu));
+        }
+    }
+    for(auto& [place, tus]: absent_lookups) {
+        auto& entry = places[path_id(place)];
+        for(auto tu: tus) {
+            entry.added.add(path_id(tu));
+        }
+    }
+    for(auto& [input, tus]: importers) {
+        auto& entry = inputs[path_id(input)];
+        for(auto tu: tus) {
+            entry.added.add(path_id(tu));
+        }
     }
 
-    llvm::SmallVector<SymbolHash> symbols(llvm::make_first_range(shared_local_sets));
-    llvm::sort(symbols);
-    for(auto symbol: symbols) {
-        for(auto& set: llvm::make_first_range(shared_local_sets.find(symbol)->second)) {
-            Bitmap listed;
-            for(auto file: set) {
-                listed.add(path_id(file));
+    for(auto& [file, entries]: contributed) {
+        std::ranges::sort(entries, {}, &UnitSet::hash);
+        auto before = blob.contribution_variants.size();
+        for(auto& entry: entries) {
+            if(!live(entry)) {
+                continue;
             }
-            append_file_set(blob.shared_local_files, listed);
+            blob.contribution_variants.push_back(entry.hash);
+            blob.contribution_versions.push_back(entry.version);
+            append_units(blob.contribution_units, entry.image, entry.added);
+            blob.contribution_unit_ends.push_back(
+                static_cast<std::uint32_t>(blob.contribution_units.size()));
+        }
+        if(blob.contribution_variants.size() != before) {
+            blob.contributed_files.push_back(file);
+            blob.contribution_ends.push_back(
+                static_cast<std::uint32_t>(blob.contribution_variants.size()));
+        }
+    }
+    for(auto& [file, entries]: used) {
+        std::ranges::sort(entries, {}, &UnitSet::hash);
+        auto before = blob.use_hashes.size();
+        for(auto& entry: entries) {
+            if(!live(entry)) {
+                continue;
+            }
+            blob.use_hashes.push_back(entry.hash);
+            append_units(blob.use_units, entry.image, entry.added);
+            blob.use_unit_ends.push_back(static_cast<std::uint32_t>(blob.use_units.size()));
+        }
+        if(blob.use_hashes.size() != before) {
+            blob.use_files.push_back(file);
+            blob.use_ends.push_back(static_cast<std::uint32_t>(blob.use_hashes.size()));
+        }
+    }
+    for(auto& [place, entry]: places) {
+        if(live(entry)) {
+            blob.absent_places.push_back(place);
+            append_units(blob.absent_units, entry.image, entry.added);
+            blob.absent_unit_ends.push_back(static_cast<std::uint32_t>(blob.absent_units.size()));
+        }
+    }
+    for(auto& [input, entry]: inputs) {
+        if(live(entry)) {
+            blob.import_inputs.push_back(input);
+            append_units(blob.import_units, entry.image, entry.added);
+            blob.import_unit_ends.push_back(static_cast<std::uint32_t>(blob.import_units.size()));
+        }
+    }
+
+    // A shared local's sets are told apart by their files.
+    struct ListedSet {
+        Bitmap files;
+        UnitSet units;
+    };
+
+    std::map<SymbolHash, std::vector<ListedSet>> shared;
+    if(base) {
+        auto& columns = *base->columns;
+        for(std::uint32_t k = 0; k < columns.shared_local_symbols.size(); k += 1) {
+            auto& sets = shared[columns.shared_local_symbols[k]];
+            for(auto set = k == 0 ? 0 : columns.shared_local_set_ends[k - 1];
+                set < columns.shared_local_set_ends[k];
+                set += 1) {
+                if(auto listed = read_file_set(
+                       slice(columns.shared_local_files, columns.shared_local_file_ends, set))) {
+                    sets.push_back({
+                        .files = std::move(*listed),
+                        .units = {.image = slice(columns.shared_local_units,
+                                                 columns.shared_local_unit_ends,
+                                                 set)},
+                    });
+                }
+            }
+        }
+    }
+    for(auto& [symbol, listed_sets]: shared_local_sets) {
+        auto& sets = shared[symbol];
+        for(auto& [listed, tus]: listed_sets) {
+            Bitmap ids;
+            for(auto file: listed) {
+                ids.add(path_id(file));
+            }
+            auto it = llvm::find_if(sets, [&](const ListedSet& set) { return set.files == ids; });
+            if(it == sets.end()) {
+                sets.push_back({.files = std::move(ids)});
+                it = std::prev(sets.end());
+            }
+            for(auto tu: tus) {
+                it->units.added.add(path_id(tu));
+            }
+        }
+    }
+    for(auto& [symbol, sets]: shared) {
+        auto before = blob.shared_local_file_ends.size();
+        for(auto& set: sets) {
+            if(!live(set.units)) {
+                continue;
+            }
+            append_file_set(blob.shared_local_files, set.files);
             blob.shared_local_file_ends.push_back(
                 static_cast<std::uint32_t>(blob.shared_local_files.size()));
+            append_units(blob.shared_local_units, set.units.image, set.units.added);
+            blob.shared_local_unit_ends.push_back(
+                static_cast<std::uint32_t>(blob.shared_local_units.size()));
         }
-        blob.shared_local_symbols.push_back(symbol);
-        blob.shared_local_set_ends.push_back(
-            static_cast<std::uint32_t>(blob.shared_local_file_ends.size()));
+        if(blob.shared_local_file_ends.size() != before) {
+            blob.shared_local_symbols.push_back(symbol);
+            blob.shared_local_set_ends.push_back(
+                static_cast<std::uint32_t>(blob.shared_local_file_ends.size()));
+        }
     }
 
     blob.search_generation = search_generation;
@@ -716,6 +965,41 @@ void ProjectIndex::rebase(std::unique_ptr<llvm::MemoryBuffer> blob) {
     [[maybe_unused]] bool bound = bind_table(std::move(blob));
     assert(bound && "a freshly serialized project table must bind");
     written.clear();
+    // A TU merged again while the table was being written is a unit of the
+    // written table too: the session's manifest is the newer.
+    for(auto tu: llvm::make_first_range(manifests)) {
+        if(base_unit(tu)) {
+            overridden.insert(tu);
+            if(auto id = base->path_id(tu)) {
+                overridden_ids.add(*id);
+            }
+        }
+    }
+}
+
+void ProjectIndex::fold_written() {
+    llvm::SmallVector<Fid> folded;
+    for(auto tu: overridden) {
+        if(!dirty_manifests.contains(tu)) {
+            folded.push_back(tu);
+        }
+    }
+    for(auto tu: llvm::make_first_range(manifests)) {
+        if(!dirty_manifests.contains(tu) && !overridden.contains(tu)) {
+            folded.push_back(tu);
+        }
+    }
+    for(auto tu: folded) {
+        overridden.erase(tu);
+        auto it = manifests.find(tu);
+        if(it == manifests.end()) {
+            continue;
+        }
+        // The table now says what the manifest does: the live sets do not
+        // change, only where they are read.
+        erase_derived(tu, it->second);
+        manifests.erase(it);
+    }
 }
 
 void ProjectIndex::restore_unwritten() {
@@ -757,6 +1041,7 @@ TUManifest ProjectIndex::export_manifest(const TUManifest& manifest) {
 std::uint32_t ProjectIndex::persisted_id(VersionID version) {
     auto [it, inserted] = persisted_ids.try_emplace(version, next_persisted_id);
     if(inserted) {
+        runtime_ids.try_emplace(next_persisted_id, version);
         next_persisted_id += 1;
     }
     return it->second;
@@ -767,7 +1052,7 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(Fid tu_path_id, TUManifest m
 
     for(auto& [version, hash]: manifest.contributions) {
         auto path_id = files.version(version).fid;
-        contributions[path_id][tu_path_id] = hash;
+        contributions[path_id][tu_path_id] = {.variant = hash, .version = version};
         affected.push_back(path_id);
     }
     // Two spellings of one place, or two persisted versions of it, are one
@@ -781,7 +1066,7 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(Fid tu_path_id, TUManifest m
         importers[files.version(version).fid].insert(tu_path_id);
     }
     for(auto& local: manifest.shared_locals) {
-        shared_local_sets[local.symbol][listed_files(files, local)] += 1;
+        shared_local_sets[local.symbol][listed_files(files, local)].insert(tu_path_id);
     }
     for(auto& use: manifest.instantiations) {
         auto path_id = files.version(use.file).fid;
@@ -799,72 +1084,184 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(Fid tu_path_id, TUManifest m
     return affected;
 }
 
-llvm::SmallVector<Fid> ProjectIndex::remove_manifest(Fid tu_path_id) {
+llvm::SmallVector<Fid> ProjectIndex::erase_derived(Fid tu, const TUManifest& manifest) {
     llvm::SmallVector<Fid> affected;
-    auto it = manifests.find(tu_path_id);
-    if(it == manifests.end()) {
-        return affected;
-    }
-
-    for(auto& [version, hash]: it->second.contributions) {
+    for(auto version: llvm::make_first_range(manifest.contributions)) {
         auto path_id = files.version(version).fid;
-        erase_unit(contributions, path_id, tu_path_id);
+        erase_unit(contributions, path_id, tu);
         affected.push_back(path_id);
     }
-    for(auto version: it->second.absent) {
+    // apply_manifest kept each place once.
+    for(auto version: manifest.absent) {
         auto probe_it = absent_lookups.find(files.version(version).fid);
-        probe_it->second.erase(tu_path_id);
+        probe_it->second.erase(tu);
         if(probe_it->second.empty()) {
             absent_lookups.erase(probe_it);
         }
     }
     // Modules built at different times may have read different versions
     // of one file: the first of them already erased it.
-    for(auto version: it->second.imports) {
+    for(auto version: manifest.imports) {
         auto importer_it = importers.find(files.version(version).fid);
         if(importer_it == importers.end()) {
             continue;
         }
-        importer_it->second.erase(tu_path_id);
+        importer_it->second.erase(tu);
         if(importer_it->second.empty()) {
             importers.erase(importer_it);
         }
     }
-    for(auto& local: it->second.shared_locals) {
+    for(auto& local: manifest.shared_locals) {
         auto sets = shared_local_sets.find(local.symbol);
         auto set = sets->second.find(listed_files(files, local));
-        set->second -= 1;
-        if(set->second == 0) {
+        set->second.erase(tu);
+        if(set->second.empty()) {
             sets->second.erase(set);
         }
         if(sets->second.empty()) {
             shared_local_sets.erase(sets);
         }
     }
-    for(auto& use: it->second.instantiations) {
+    for(auto& use: manifest.instantiations) {
         auto path_id = files.version(use.file).fid;
-        erase_unit(instantiation_uses, path_id, tu_path_id);
+        erase_unit(instantiation_uses, path_id, tu);
         affected.push_back(path_id);
     }
+    return affected;
+}
+
+llvm::SmallVector<Fid> ProjectIndex::remove_manifest(Fid tu_path_id) {
+    auto it = manifests.find(tu_path_id);
+    if(it == manifests.end()) {
+        auto affected = override_unit(tu_path_id);
+        for(auto file: affected) {
+            shrunk.insert(file);
+            refresh_live(file);
+        }
+        return affected;
+    }
+
+    auto affected = erase_derived(tu_path_id, it->second);
     units.erase(unit_hash(tu_path_id));
     manifests.erase(it);
 
     llvm::sort(affected);
     affected.erase(llvm::unique(affected), affected.end());
     for(auto file: affected) {
+        shrunk.insert(file);
         refresh_live(file);
     }
     return affected;
 }
 
+llvm::ArrayRef<Fid> ProjectIndex::base_units() const {
+    if(base && base_unit_files.empty() && base->unit_count() != 0) {
+        // load_table proved every unit's version resolves.
+        auto& versions = base->columns->manifest_versions;
+        base_unit_files.reserve(versions.size());
+        for(std::uint32_t unit = 0; unit < versions.size(); unit += 1) {
+            auto tu_file = files.version(*runtime_version(versions[unit])).fid;
+            base_unit_files.push_back(tu_file);
+            base_unit_index.try_emplace(tu_file, unit);
+        }
+    }
+    return base_unit_files;
+}
+
+std::optional<std::uint32_t> ProjectIndex::base_unit(Fid tu) const {
+    if(!base || overridden.contains(tu)) {
+        return std::nullopt;
+    }
+    base_units();
+    auto it = base_unit_index.find(tu);
+    return it != base_unit_index.end() ? std::optional(it->second) : std::nullopt;
+}
+
+void ProjectIndex::for_each_base_unit(const Bitmap& ids,
+                                      llvm::function_ref<void(Fid)> visit) const {
+    for(auto id: ids) {
+        if(id < base->remap.size() && !overridden_ids.contains(id)) {
+            visit(base->remap[id]);
+        }
+    }
+}
+
+std::optional<TUManifest> ProjectIndex::persisted_manifest(Fid tu) const {
+    auto unit = base_unit(tu);
+    if(!unit || !db || lost_manifests.contains(tu)) {
+        return std::nullopt;
+    }
+    // A blob of another generation than the pin is a failed write the
+    // table outran, or one that outran a lost table write.
+    auto blob = db->read(BlobKind::TUManifest, key_of(tu));
+    auto manifest = blob ? deserialize_manifest(blob.buffer->getBuffer()) : std::nullopt;
+    if(!manifest || manifest->tu_version.raw != base->columns->manifest_versions[*unit] ||
+       manifest->table_generation != base->columns->manifest_generations[*unit] ||
+       !import_manifest(*manifest)) {
+        LOG_INFO("Discarding the lost manifest of {}", files.resolve(tu));
+        lose(tu, Lost::Manifest);
+        return std::nullopt;
+    }
+    return manifest;
+}
+
+llvm::SmallVector<Fid> ProjectIndex::override_unit(Fid tu) {
+    llvm::SmallVector<Fid> affected;
+    if(!base_unit(tu)) {
+        return affected;
+    }
+    auto persisted = persisted_manifest(tu);
+    overridden.insert(tu);
+    auto id = base->path_id(tu);
+    if(id) {
+        overridden_ids.add(*id);
+    }
+    units.erase(unit_hash(tu));
+    if(persisted) {
+        for(auto version: llvm::make_first_range(persisted->contributions)) {
+            affected.push_back(files.version(version).fid);
+        }
+        for(auto& use: persisted->instantiations) {
+            affected.push_back(files.version(use.file).fid);
+        }
+    } else if(id) {
+        // Its manifest is lost: the base's own tables say where it was.
+        auto& columns = *base->columns;
+        auto& contributed = columns.contributed_files;
+        auto& ends = columns.contribution_ends;
+        for(std::uint32_t k = 0; k < contributed.size(); k += 1) {
+            for(auto entry = k == 0 ? 0 : ends[k - 1]; entry < ends[k]; entry += 1) {
+                auto set = read_file_set(
+                    slice(columns.contribution_units, columns.contribution_unit_ends, entry));
+                if(set && set->contains(*id)) {
+                    affected.push_back(base->remap[contributed[k]]);
+                }
+            }
+        }
+        for(std::uint32_t k = 0; k < columns.use_files.size(); k += 1) {
+            for(auto entry = k == 0 ? 0 : columns.use_ends[k - 1]; entry < columns.use_ends[k];
+                entry += 1) {
+                auto set = read_file_set(slice(columns.use_units, columns.use_unit_ends, entry));
+                if(set && set->contains(*id)) {
+                    affected.push_back(base->remap[columns.use_files[k]]);
+                }
+            }
+        }
+    }
+    llvm::sort(affected);
+    affected.erase(llvm::unique(affected), affected.end());
+    return affected;
+}
+
 void ProjectIndex::refresh_live(Fid file) {
-    if(auto it = instantiations.find(file); it != instantiations.end()) {
+    if(auto it = instantiations.find(file); it != instantiations.end() && it->second.loaded()) {
         it->second.set_live(live_uses(file));
     }
-    if(auto it = shards.find(file); it != shards.end()) {
+    if(auto it = shards.find(file); it != shards.end() && it->second.loaded()) {
         it->second.set_live(live_variants(file));
-        search_file_changed(file);
     }
+    // Read or not, its live variants say which of its internal names live.
+    search_file_changed(file);
 }
 
 void ProjectIndex::search_file_changed(Fid file) {
@@ -875,59 +1272,191 @@ void ProjectIndex::search_file_changed(Fid file) {
 }
 
 llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(Fid path_id) const {
-    return distinct_hashes(contributions, path_id);
+    llvm::SmallVector<std::uint64_t> hashes;
+    for_each_contribution(path_id, [&](Fid, std::uint64_t variant) { hashes.push_back(variant); });
+    llvm::sort(hashes);
+    hashes.erase(llvm::unique(hashes), hashes.end());
+    return hashes;
 }
 
 llvm::SmallVector<std::uint64_t> ProjectIndex::live_uses(Fid path_id) const {
-    return distinct_hashes(instantiation_uses, path_id);
+    llvm::SmallVector<std::uint64_t> hashes;
+    if(base) {
+        for(auto& use: base->uses_of(path_id)) {
+            bool named = false;
+            for_each_base_unit(use.units, [&](Fid) { named = true; });
+            if(named) {
+                hashes.push_back(use.use);
+            }
+        }
+    }
+    if(auto it = instantiation_uses.find(path_id); it != instantiation_uses.end()) {
+        llvm::append_range(hashes, llvm::make_second_range(it->second));
+    }
+    llvm::sort(hashes);
+    hashes.erase(llvm::unique(hashes), hashes.end());
+    return hashes;
 }
 
-const TUManifest* ProjectIndex::held_manifest(Fid tu) const {
-    auto it = manifests.find(tu);
-    return it != manifests.end() ? &it->second : nullptr;
+llvm::SmallVector<std::uint64_t, 1> ProjectIndex::generations_of(Fid file) const {
+    llvm::SmallVector<std::uint64_t, 1> generations;
+    auto add = [&](VersionID version) {
+        auto hash = files.version(version).content_hash;
+        if(hash != 0 && !llvm::is_contained(generations, hash)) {
+            generations.push_back(hash);
+        }
+    };
+    if(base) {
+        for(auto& contribution: base->contributions_of(file)) {
+            bool contributed = false;
+            for_each_base_unit(contribution.units, [&](Fid) { contributed = true; });
+            if(auto version = runtime_version(contribution.version); version && contributed) {
+                add(*version);
+            }
+        }
+    }
+    if(auto it = contributions.find(file); it != contributions.end()) {
+        for(auto& contributed: llvm::make_second_range(it->second)) {
+            add(contributed.version);
+        }
+    }
+    return generations;
 }
 
-void ProjectIndex::for_each_manifest(
-    llvm::function_ref<void(Fid tu, const TUManifest&)> visit) const {
-    for(auto& [tu, manifest]: manifests) {
-        visit(tu, manifest);
+std::optional<std::uint64_t> ProjectIndex::variant_generation(Fid file,
+                                                              std::uint64_t variant) const {
+    std::optional<VersionID> version;
+    if(auto it = contributions.find(file); it != contributions.end()) {
+        for(auto& contributed: llvm::make_second_range(it->second)) {
+            if(contributed.variant == variant) {
+                version = contributed.version;
+            }
+        }
+    }
+    if(!version && base) {
+        for(auto& contribution: base->contributions_of(file)) {
+            bool contributed = false;
+            for_each_base_unit(contribution.units, [&](Fid) { contributed = true; });
+            if(contribution.variant == variant && contributed) {
+                version = runtime_version(contribution.version);
+            }
+        }
+    }
+    auto hash = version ? files.version(*version).content_hash : 0;
+    return hash != 0 ? std::optional(hash) : std::nullopt;
+}
+
+bool ProjectIndex::has_manifest(Fid tu) const {
+    return manifests.contains(tu) || base_unit(tu).has_value();
+}
+
+std::optional<TUManifest> ProjectIndex::manifest(Fid tu) const {
+    if(auto it = manifests.find(tu); it != manifests.end()) {
+        return it->second;
+    }
+    return persisted_manifest(tu);
+}
+
+void ProjectIndex::for_each_unit(llvm::function_ref<void(Fid tu)> visit) const {
+    for(auto tu: llvm::make_first_range(manifests)) {
+        visit(tu);
+    }
+    for(auto tu: base_units()) {
+        if(!overridden.contains(tu)) {
+            visit(tu);
+        }
     }
 }
 
-std::uint32_t ProjectIndex::manifest_count() const {
-    return manifests.size();
+std::uint32_t ProjectIndex::unit_count() const {
+    std::uint32_t count = 0;
+    for_each_unit([&](Fid) { count += 1; });
+    return count;
+}
+
+std::optional<Fid> ProjectIndex::find_unit(std::uint64_t hash) const {
+    if(!base_units_hashed) {
+        base_units_hashed = true;
+        for(auto tu: base_units()) {
+            if(!overridden.contains(tu)) {
+                units.try_emplace(unit_hash(tu), tu);
+            }
+        }
+    }
+    auto it = units.find(hash);
+    return it != units.end() ? std::optional(it->second) : std::nullopt;
+}
+
+bool ProjectIndex::current_run(const Producer& producer) const {
+    auto tu = find_unit(producer.unit);
+    if(!tu) {
+        return false;
+    }
+    if(auto it = manifests.find(*tu); it != manifests.end()) {
+        return it->second.built_at == producer.run;
+    }
+    auto unit = base_unit(*tu);
+    return unit && base->columns->manifest_runs[*unit] == producer.run;
 }
 
 void ProjectIndex::for_each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const {
-    if(!db) {
-        for_each_contribution(file, [&](Fid tu, std::uint64_t) { visit(tu); });
-        return;
-    }
-    if(!base) {
-        return;
-    }
-    if(auto tus = base->contributors_of(file)) {
-        for_each_remapped(*base, *tus, visit);
-    }
+    for_each_contribution(file, [&](Fid tu, std::uint64_t) { visit(tu); });
 }
 
 void ProjectIndex::for_each_contribution(
     Fid file,
     llvm::function_ref<void(Fid tu, std::uint64_t variant)> visit) const {
+    if(base) {
+        for(auto& contribution: base->contributions_of(file)) {
+            for_each_base_unit(contribution.units,
+                               [&](Fid tu) { visit(tu, contribution.variant); });
+        }
+    }
     if(auto it = contributions.find(file); it != contributions.end()) {
-        for(auto [tu, variant]: it->second) {
-            visit(tu, variant);
+        for(auto& [tu, contributed]: it->second) {
+            visit(tu, contributed.variant);
+        }
+    }
+}
+
+void ProjectIndex::for_each_indexed_file(llvm::function_ref<void(Fid)> visit) const {
+    llvm::DenseSet<Fid> seen;
+    if(base) {
+        for(auto id: base->columns->contributed_files) {
+            auto file = base->remap[id];
+            bool contributed = false;
+            for(auto& contribution: base->contributions_of(file)) {
+                for_each_base_unit(contribution.units, [&](Fid) { contributed = true; });
+            }
+            if(contributed && seen.insert(file).second) {
+                visit(file);
+            }
+        }
+    }
+    for(auto file: llvm::make_first_range(contributions)) {
+        if(seen.insert(file).second) {
+            visit(file);
         }
     }
 }
 
 void ProjectIndex::for_each_absent_lookup(Fid place, llvm::function_ref<void(Fid)> visit) const {
+    if(base) {
+        if(auto tus = base->absent_units(place)) {
+            for_each_base_unit(*tus, visit);
+        }
+    }
     if(auto it = absent_lookups.find(place); it != absent_lookups.end()) {
         llvm::for_each(it->second, visit);
     }
 }
 
 void ProjectIndex::for_each_importer(Fid input, llvm::function_ref<void(Fid)> visit) const {
+    if(base) {
+        if(auto tus = base->import_units(input)) {
+            for_each_base_unit(*tus, visit);
+        }
+    }
     if(auto it = importers.find(input); it != importers.end()) {
         llvm::for_each(it->second, visit);
     }
@@ -937,16 +1466,24 @@ void ProjectIndex::for_each_file_of_local(SymbolHash hash,
                                           Fid anchor,
                                           llvm::function_ref<void(Fid)> visit) const {
     llvm::SmallVector<llvm::SmallVector<Fid, 4>> sets;
-    if(!db) {
-        if(auto it = shared_local_sets.find(hash); it != shared_local_sets.end()) {
-            for(auto& set: llvm::make_first_range(it->second)) {
-                sets.emplace_back(set.begin(), set.end());
+    if(base) {
+        for(auto& listed: base->shared_local_sets_of(hash)) {
+            bool named = false;
+            for_each_base_unit(listed.units, [&](Fid) { named = true; });
+            if(!named) {
+                continue;
+            }
+            auto& set = sets.emplace_back();
+            for(auto id: listed.files) {
+                if(id < base->remap.size()) {
+                    set.push_back(base->remap[id]);
+                }
             }
         }
-    } else if(base) {
-        for(auto& listed: base->shared_local_sets_of(hash)) {
-            auto& set = sets.emplace_back();
-            for_each_remapped(*base, listed, [&](Fid file) { set.push_back(file); });
+    }
+    if(auto it = shared_local_sets.find(hash); it != shared_local_sets.end()) {
+        for(auto& set: llvm::make_first_range(it->second)) {
+            sets.emplace_back(set.begin(), set.end());
         }
     }
 
@@ -969,33 +1506,6 @@ void ProjectIndex::for_each_file_of_local(SymbolHash hash,
             }
         }
     }
-}
-
-const TUManifest* ProjectIndex::manifest(Fid tu) const {
-    if(!db) {
-        auto it = manifests.find(tu);
-        return it != manifests.end() ? &it->second : nullptr;
-    }
-    auto [it, inserted] = fetched_manifests.try_emplace(tu);
-    if(inserted) {
-        // A reader adopts a manifest only under the generation the bound project table
-        // pins for it, as the writer's load does; the versions it names
-        // stay persisted ids.
-        auto pinned = [&](const TUManifest& manifest) {
-            llvm::ArrayRef<std::uint32_t> versions = base->columns->manifest_versions;
-            auto pin = llvm::find(versions, manifest.tu_version.raw);
-            return pin != versions.end() &&
-                   base->columns->manifest_generations[pin - versions.begin()] ==
-                       manifest.table_generation;
-        };
-        if(auto blob = db->read(BlobKind::TUManifest, key_of(tu))) {
-            if(auto manifest = deserialize_manifest(blob.buffer->getBuffer());
-               manifest && pinned(*manifest)) {
-                it->second = std::move(*manifest);
-            }
-        }
-    }
-    return it->second ? &*it->second : nullptr;
 }
 
 std::vector<IncludeEdge> ProjectIndex::include_edges(Fid file) const {
@@ -1039,38 +1549,111 @@ std::vector<IncludeEdge> ProjectIndex::include_edges(Fid file) const {
 
     // The document's own manifest is its own context and answers alone; a
     // header reached only through source TUs has none, and its directives
-    // live in the contributing TUs' manifests instead. The generation gate
-    // above dedups divergent revisions; agreeing TUs collapse in the
+    // live in the contributing TUs' manifests instead: one TU per variant,
+    // since the TUs sharing one parsed the document alike. The generation
+    // gate above dedups divergent revisions; agreeing TUs collapse in the
     // projection's dedup.
-    if(auto manifest_it = manifests.find(file); manifest_it != manifests.end()) {
-        append(manifest_it->second);
+    if(auto own = manifest(file)) {
+        append(*own);
         return edges;
     }
-    if(auto contribution_it = contributions.find(file); contribution_it != contributions.end()) {
-        for(auto tu: llvm::make_first_range(contribution_it->second)) {
-            if(auto manifest_it = manifests.find(tu); manifest_it != manifests.end()) {
-                append(manifest_it->second);
-            }
+    llvm::SmallDenseMap<std::uint64_t, Fid, 2> readers;
+    for_each_contribution(file,
+                          [&](Fid tu, std::uint64_t variant) { readers.try_emplace(variant, tu); });
+    for(auto tu: llvm::make_second_range(readers)) {
+        if(auto contributing = manifest(tu)) {
+            append(*contributing);
         }
     }
     return edges;
 }
 
-const Shard* ProjectIndex::shard(Fid file) const {
-    auto it = shards.find(file);
-    if(it != shards.end()) {
-        return it->second.loaded() ? &it->second : nullptr;
-    }
-    if(!db) {
+std::unique_ptr<llvm::MemoryBuffer> ProjectIndex::read_blob(BlobKind kind, Fid file) const {
+    auto blob = db->read(kind, key_of(file));
+    if(!blob) {
         return nullptr;
     }
-    // A miss is remembered as an empty entry so the database is asked
-    // once per file.
-    auto& slot = shards[file];
-    if(auto blob = db->read(BlobKind::Shard, key_of(file))) {
-        slot = Shard::from_buffer(std::move(blob.buffer));
+    if(!borrow && blob.generation != 0) {
+        return llvm::MemoryBuffer::getMemBufferCopy(blob.buffer->getBuffer());
     }
-    return slot.loaded() ? &slot : nullptr;
+    return std::move(blob.buffer);
+}
+
+void ProjectIndex::lose(Fid file, Lost kind) const {
+    bool first = lost_shards.empty() && lost_instantiations.empty() && lost_manifests.empty();
+    switch(kind) {
+        case Lost::Shard: lost_shards.insert(file); break;
+        case Lost::Uses: lost_instantiations.insert(file); break;
+        case Lost::Manifest: lost_manifests.insert(file); break;
+    }
+    if(first) {
+        on_data_lost.emit();
+    }
+}
+
+Shard ProjectIndex::fetch_shard(Fid file) const {
+    auto live = live_variants(file);
+    if(live.empty() || !db) {
+        return {};
+    }
+    auto buffer = read_blob(BlobKind::Shard, file);
+    auto shard = buffer ? Shard::from_buffer(std::move(buffer)) : Shard();
+    // A blob can verify yet miss a contributed variant, or carry another
+    // content generation than the contributions pin (crash or failed write
+    // left a manifest newer than its shard): set_live would drop missing
+    // variants silently and stale content misplaces every position, so
+    // both are as lost as an unreadable blob. The generation check catches
+    // a stale shard the variant check alone cannot, when an edit past every
+    // indexed entry left the variant hash identical.
+    auto generations = generations_of(file);
+    bool servable =
+        shard.loaded() &&
+        llvm::all_of(generations,
+                     [&](std::uint64_t hash) { return hash == shard.content_hash(); }) &&
+        llvm::all_of(live, [&](std::uint64_t hash) { return shard.has_variant(hash); });
+    if(!servable) {
+        LOG_INFO("Discarding unservable shard for {}", files.resolve(file));
+        lose(file, Lost::Shard);
+        return {};
+    }
+    shard.set_live(live);
+    return shard;
+}
+
+InstantiationShard ProjectIndex::fetch_instantiations(Fid file, std::uint64_t generation) const {
+    auto uses = live_uses(file);
+    if(!db) {
+        return {};
+    }
+    auto buffer = read_blob(BlobKind::InstantiationShard, file);
+    auto loaded =
+        buffer ? InstantiationShard::from_buffer(std::move(buffer)) : InstantiationShard();
+    // A stored blob names the run behind each key; a worker's names none.
+    auto keys = loaded.keys();
+    if(loaded.loaded() && (loaded.content_hash() != generation ||
+                           (!keys.empty() && !loaded.find_key(keys.front())->producer))) {
+        LOG_INFO("Discarding unservable instantiations for {}", files.resolve(file));
+        loaded = {};
+    }
+    // A use some unit names that the file no longer stores lost what that
+    // unit's instantiations resolved there: it reindexes, keeping its index
+    // meanwhile.
+    if(llvm::any_of(uses,
+                    [&](std::uint64_t use) { return !loaded.loaded() || !loaded.has_use(use); })) {
+        lose(file, Lost::Uses);
+    }
+    if(loaded.loaded()) {
+        loaded.set_live(uses);
+    }
+    return loaded;
+}
+
+const Shard* ProjectIndex::shard(Fid file) const {
+    auto it = shards.find(file);
+    if(it == shards.end()) {
+        it = shards.emplace(file, fetch_shard(file)).first;
+    }
+    return it->second.loaded() ? &it->second : nullptr;
 }
 
 void ProjectIndex::for_each_shard(llvm::function_ref<void(Fid, const Shard&)> visit) const {
@@ -1082,22 +1665,24 @@ void ProjectIndex::for_each_shard(llvm::function_ref<void(Fid, const Shard&)> vi
 }
 
 std::uint32_t ProjectIndex::shard_count() const {
-    return shards.size();
+    return static_cast<std::uint32_t>(
+        llvm::count_if(llvm::make_second_range(shards),
+                       [](const Shard& shard) { return shard.loaded(); }));
 }
 
 const InstantiationShard* ProjectIndex::instantiation_shard(Fid file) const {
     auto it = instantiations.find(file);
-    if(it != instantiations.end()) {
-        return it->second.loaded() ? &it->second : nullptr;
+    if(it == instantiations.end()) {
+        // The generation the units say the file's shard holds, without
+        // reading the shard.
+        auto generations = generations_of(file);
+        it = instantiations
+                 .emplace(file,
+                          generations.size() == 1 ? fetch_instantiations(file, generations.front())
+                                                  : InstantiationShard())
+                 .first;
     }
-    if(!db) {
-        return nullptr;
-    }
-    auto& slot = instantiations[file];
-    if(auto blob = db->read(BlobKind::InstantiationShard, key_of(file))) {
-        slot = InstantiationShard::from_buffer(std::move(blob.buffer));
-    }
-    return slot.loaded() ? &slot : nullptr;
+    return it->second.loaded() ? &it->second : nullptr;
 }
 
 void ProjectIndex::for_each_instantiation_shard(
@@ -1109,25 +1694,81 @@ void ProjectIndex::for_each_instantiation_shard(
     }
 }
 
+void ProjectIndex::read_all() const {
+    for_each_indexed_file([&](Fid file) {
+        shard(file);
+        instantiation_shard(file);
+    });
+}
+
+llvm::SetVector<Fid> ProjectIndex::lost_owners() const {
+    // A unit merged since the loss holds its own data: a merged manifest
+    // replaces the lost one, and a merge that started a lost blob over holds
+    // the variant it contributed.
+    llvm::SetVector<Fid> owners;
+    for(auto tu: lost_manifests) {
+        if(base_unit(tu)) {
+            owners.insert(tu);
+        }
+    }
+    for(auto file: lost_shards) {
+        auto it = shards.find(file);
+        auto* current = it != shards.end() && it->second.loaded() ? &it->second : nullptr;
+        for_each_contribution(file, [&](Fid tu, std::uint64_t variant) {
+            if(!current || !current->has_variant(variant)) {
+                owners.insert(tu);
+            }
+        });
+    }
+    return owners;
+}
+
+llvm::SmallVector<Fid> ProjectIndex::lost_units() const {
+    auto lost = lost_owners();
+    for(auto file: lost_instantiations) {
+        auto it = instantiations.find(file);
+        auto* current = it != instantiations.end() && it->second.loaded() ? &it->second : nullptr;
+        auto add = [&](Fid tu, std::uint64_t use) {
+            if(!current || !current->has_use(use)) {
+                lost.insert(tu);
+            }
+        };
+        if(base) {
+            for(auto& use: base->uses_of(file)) {
+                for_each_base_unit(use.units, [&](Fid tu) { add(tu, use.use); });
+            }
+        }
+        if(auto uses = instantiation_uses.find(file); uses != instantiation_uses.end()) {
+            for(auto [tu, use]: uses->second) {
+                add(tu, use);
+            }
+        }
+    }
+    return llvm::SmallVector<Fid>(lost.begin(), lost.end());
+}
+
+IndexReport ProjectIndex::take_lost() {
+    IndexReport report;
+    for(auto tu: lost_units()) {
+        report.add_reindex(tu);
+    }
+    // An owner's variants are unservable: it loses its manifest, which
+    // retires its contributions to every file it touched.
+    for(auto tu: lost_owners()) {
+        drop(tu, report);
+    }
+    lost_shards.clear();
+    lost_instantiations.clear();
+    lost_manifests.clear();
+    return report;
+}
+
 bool ProjectIndex::bind_search(std::unique_ptr<llvm::MemoryBuffer> blob) {
     SearchIndex built;
     if(!built.load(std::move(blob)) || built.generation() != search_generation) {
         return false;
     }
     search = std::move(built);
-    return true;
-}
-
-bool ProjectIndex::open(BlobDatabase& db) {
-    auto table = db.read(BlobKind::ProjectTable, "global");
-    if(!table || !bind_table(std::move(table.buffer))) {
-        return false;
-    }
-    adopt_base();
-    if(auto blob = db.read(BlobKind::SearchIndex, "search")) {
-        bind_search(std::move(blob.buffer));
-    }
-    this->db = &db;
     return true;
 }
 

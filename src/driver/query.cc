@@ -140,7 +140,6 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
     CommandResolver commands{project};
     ContextChoices saved;
     EditorContext contexts{project, commands, saved};
-    llvm::SmallVector<Fid> dropped;
     bool opened = false;
     if(with_build) {
         if(auto loaded = load_index(project,
@@ -148,7 +147,6 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
                                     std::move(config),
                                     configuration,
                                     /*with_build=*/true)) {
-            dropped = std::move(loaded->dropped);
             saved.bytes = std::move(loaded->contexts);
             contexts.load();
             opened = true;
@@ -172,7 +170,7 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
     }
     stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
     stale.insert(stale.end(), failed.begin(), failed.end());
-    for(auto unit: dropped) {
+    for(auto unit: project.index.lost_units()) {
         stale.emplace_back(project.file_table.display(unit));
     }
     std::ranges::sort(stale);

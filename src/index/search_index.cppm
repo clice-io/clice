@@ -170,6 +170,11 @@ public:
     /// reader scans the table instead.
     bool damaged() const;
 
+    /// The entries of internal linkage, each with the portable name of the
+    /// file holding it; `file` is left unset.
+    void for_each_local(
+        llvm::function_ref<void(llvm::StringRef path, const SearchEntry& entry)> visit) const;
+
     /// At most `limit` hits, best first. Empty for a query by id or
     /// place. `workspace` is the root the index names files under
     /// relative to (ProjectIndex::workspace).

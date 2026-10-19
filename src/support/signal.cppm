@@ -81,6 +81,10 @@ public:
     Signal(const Signal&) = delete;
     Signal& operator=(const Signal&) = delete;
 
+    /// Moving keeps the subscribers; the moved-from signal is dead.
+    Signal(Signal&&) noexcept = default;
+    Signal& operator=(Signal&&) noexcept = default;
+
     [[nodiscard]] Connection connect(std::function<void(Args...)> handler) {
         assert(!state->emitting && "connect during emit is not allowed");
         auto id = state->next_id++;

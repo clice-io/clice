@@ -40,8 +40,32 @@ struct ProjectTable {
     /// Blob path id -> file table id.
     std::vector<Fid> remap;
 
-    /// File table id -> index into contributed_files, built on first use.
-    mutable llvm::DenseMap<Fid, std::uint32_t> contributed_index;
+    /// File table id -> blob path id, built on first use.
+    mutable llvm::DenseMap<Fid, std::uint32_t> path_index;
+
+    /// The variants a unit contributed to a file (contributions_of).
+    struct Contribution {
+        std::uint64_t variant = 0;
+
+        /// The file version the variant was built from, as the blob's id.
+        std::uint32_t version = 0;
+
+        Bitmap units;
+    };
+
+    /// The resolutions a unit uses in a file (uses_of).
+    struct Use {
+        std::uint64_t use = 0;
+
+        Bitmap units;
+    };
+
+    /// A set of files a shared local lists, and the units listing it.
+    struct SharedLocalSet {
+        Bitmap files;
+
+        Bitmap units;
+    };
 
     llvm::ArrayRef<std::uint64_t> hashes() const {
         return columns->symbol_hashes;
@@ -112,41 +136,44 @@ struct ProjectTable {
         return read_file_set(instantiation_image(entry));
     }
 
-    /// The TUs that contributed a variant to `file`, as path ids; nullopt when
-    /// none did or the image fails to decode.
-    std::optional<Bitmap> contributors_of(Fid file) const {
-        if(contributed_index.empty()) {
-            auto& contributed = columns->contributed_files;
-            for(std::uint32_t i = 0; i < contributed.size(); i += 1) {
-                contributed_index.try_emplace(remap[contributed[i]], i);
+    /// The blob's path id of a file; nullopt for one its path table does
+    /// not name.
+    std::optional<std::uint32_t> path_id(Fid file) const {
+        if(path_index.empty()) {
+            for(std::uint32_t id = 0; id < remap.size(); id += 1) {
+                path_index.try_emplace(remap[id], id);
             }
         }
-        auto it = contributed_index.find(file);
-        if(it == contributed_index.end()) {
-            return std::nullopt;
-        }
-        return read_file_set(slice(columns->contributors, columns->contributor_ends, it->second));
+        auto it = path_index.find(file);
+        return it != path_index.end() ? std::optional(it->second) : std::nullopt;
     }
 
-    /// The file sets the shared locals list for `symbol`, as path ids; a
-    /// corrupt one is left out.
-    llvm::SmallVector<Bitmap> shared_local_sets_of(SymbolHash symbol) const {
-        llvm::SmallVector<Bitmap> sets;
-        auto found = sorted_find(columns->shared_local_symbols, symbol);
-        if(!found) {
-            return sets;
-        }
-        auto position = *found;
-        auto& set_ends = columns->shared_local_set_ends;
-        for(auto set = position == 0 ? 0 : set_ends[position - 1]; set < set_ends[position];
-            set += 1) {
-            if(auto files = read_file_set(
-                   slice(columns->shared_local_files, columns->shared_local_file_ends, set))) {
-                sets.push_back(std::move(*files));
-            }
-        }
-        return sets;
+    std::uint32_t unit_count() const {
+        return columns->manifest_versions.size();
     }
+
+    /// The units whose manifest names file version `version` (an index
+    /// into the version columns), as path ids.
+    std::optional<Bitmap> version_units(std::uint32_t version) const {
+        return read_file_set(slice(columns->version_units, columns->version_unit_ends, version));
+    }
+
+    /// The variants units contributed to `file`; a corrupt unit set is left
+    /// out.
+    llvm::SmallVector<Contribution, 2> contributions_of(Fid file) const;
+
+    /// The resolutions units use in `file`; a corrupt unit set is left out.
+    llvm::SmallVector<Use, 2> uses_of(Fid file) const;
+
+    /// The units some failed lookup of which looked at `place`.
+    std::optional<Bitmap> absent_units(Fid place) const;
+
+    /// The units reading `input` through a module or a precompiled header.
+    std::optional<Bitmap> import_units(Fid input) const;
+
+    /// The file sets the shared locals list for `symbol` and the units
+    /// listing each, as path ids; a corrupt one is left out.
+    llvm::SmallVector<SharedLocalSet> shared_local_sets_of(SymbolHash symbol) const;
 
     SymbolView view(std::uint32_t entry) const {
         auto file = this->file(entry);

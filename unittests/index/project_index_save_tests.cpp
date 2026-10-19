@@ -85,6 +85,7 @@ WriteLog& open_logged(TempDir& tmp, Project& project, std::size_t mapsize = 0) {
     ZASSERT(log->real != nullptr);
     auto& logged = *log;
     project.database = std::move(log);
+    project.index.attach(project.database.get());
     return logged;
 }
 
@@ -189,6 +190,7 @@ ZEST_CASE(SaveMigratesShardViews) {
     ZASSERT(spy->real != nullptr);
     auto* probe = spy.get();
     project.database = std::move(spy);
+    project.index.attach(project.database.get());
 
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
@@ -219,23 +221,26 @@ ZEST_CASE(SaveMigratesShardViews) {
     ZASSERT(it->variants() == variants_before);
 }
 
-ZEST_CASE(GrowFailureShedsShards) {
+ZEST_CASE(GrowFailureDropsViews) {
     TempDir tmp;
     tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
     tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
     open_store(tmp, project);
 
-    // grow() failing is backend-independent shed territory: every clean
-    // (non-dirty, possibly borrowed) shard must go with its owner requeued
-    // — the manifests still read fresh, so nothing else would rebuild the
-    // dropped shards — while dirty ones are owned by construction and stay.
-    // The spy also fails dirty.cpp's put so it is re-dirtied by the time
-    // the migration runs.
+    // grow() failing may have killed every snapshot: every clean
+    // (non-dirty, possibly borrowed) view must go, to be fetched again from
+    // its intact bytes at the next read, while dirty ones are owned by
+    // construction and stay. The spy also fails dirty.cpp's put so it is
+    // re-dirtied by the time the migration runs.
     struct FailingGrow final : index::BlobDatabase {
         std::unique_ptr<index::BlobDatabase> real;
         std::string fail_key;
+        std::uint32_t shard_reads = 0;
 
         index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
+            if(kind == index::BlobKind::Shard) {
+                shard_reads += 1;
+            }
             return real->read(kind, key);
         }
 
@@ -267,7 +272,13 @@ ZEST_CASE(GrowFailureShedsShards) {
             real->retire_old_snapshot();
         }
 
+        // As the LMDB backend's failed resize: every snapshot dies and a
+        // fresh one opens.
         std::expected<bool, std::string> grow() override {
+            if(auto advanced = real->advance_read_snapshot(); !advanced) {
+                return std::unexpected(advanced.error());
+            }
+            real->retire_old_snapshot();
             return std::unexpected(std::string("address space exhausted"));
         }
     };
@@ -278,6 +289,7 @@ ZEST_CASE(GrowFailureShedsShards) {
     ZASSERT(!indexed_dirty.data.empty());
 
     auto spy = std::make_unique<FailingGrow>();
+    auto* probe = spy.get();
     spy->real = std::move(project.database);
     // Through the pool: the indexer keys blobs by the pool-canonical path,
     // which need not equal the raw temp path byte-for-byte (Windows 8.3
@@ -285,12 +297,12 @@ ZEST_CASE(GrowFailureShedsShards) {
     spy->fail_key = index::blob_key(project.file_table.resolve(
         project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path))));
     project.database = std::move(spy);
+    project.index.attach(project.database.get());
 
     merge(indexed_clean.data);
     merge(indexed_dirty.data);
     auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
     auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
-
     auto save_body = [&]() -> kota::task<> {
         co_await async_save();
     };
@@ -298,9 +310,12 @@ ZEST_CASE(GrowFailureShedsShards) {
     loop.schedule(task);
     loop.run();
 
-    ZASSERT(!project.index.shard(clean_id));
+    auto reads = probe->shard_reads;
+    ZASSERT(project.index.shard(clean_id) != nullptr);
+    ZASSERT(probe->shard_reads == reads + 1);
     ZASSERT(project.index.shard(dirty_id) != nullptr);
-    ZASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
+    ZASSERT(probe->shard_reads == reads + 1);
+    ZASSERT(!pump.pending_reason(clean_id));
 }
 
 ZEST_CASE(MidSaveMergeKept) {
@@ -721,6 +736,7 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
     spy->condemned = &condemned;
     auto* probe = spy.get();
     project.database = std::move(spy);
+    project.index.attach(project.database.get());
 
     auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
     auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
@@ -810,6 +826,7 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     auto spy = std::make_unique<CorruptOnRead>();
     spy->condemned = &condemned;
     project.database = std::move(spy);
+    project.index.attach(project.database.get());
 
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
@@ -892,6 +909,49 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     ZASSERT(!project.index.search_index().loaded());
 }
 
+ZEST_CASE(RebuildCarriesLocalsOver) {
+    // A rebuild takes the internal symbols of the files no merge touched from
+    // the previous search index, without reading their shards; a touched
+    // file's it reads anew.
+    TempDir tmp;
+    tmp.touch("a.cpp", R"(static int alpha_local() { return 1; }
+int a() { return alpha_local(); }
+)");
+    tmp.touch("b.cpp", R"(static int beta_local() { return 2; }
+int b() { return beta_local(); }
+)");
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        for(auto name: {"a.cpp", "b.cpp"}) {
+            auto indexed = index_file(tmp, tmp.path(name));
+            ZASSERT(f.merge(indexed.data));
+        }
+        f.save(index::SearchRebuild::Idle);
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    ZASSERT(f.load());
+    ZASSERT(f.project.index.search_index().loaded());
+    tmp.touch("b.cpp", R"(static int gamma_local() { return 3; }
+int b() { return gamma_local(); }
+)");
+    auto indexed = index_file(tmp, tmp.path("b.cpp"));
+    ZASSERT(f.merge(indexed.data));
+    f.save(index::SearchRebuild::Idle);
+
+    auto hits = [&](llvm::StringRef text) {
+        return f.project.index.search_index()
+            .search(*index::SymbolQuery::parse(text), 10, f.project.index.workspace)
+            .hits.size();
+    };
+    ZEXPECT(hits("alpha_local") == 1u);
+    ZEXPECT(hits("gamma_local") == 1u);
+    ZEXPECT(hits("beta_local") == 0u);
+    ZEXPECT(f.project.index.shard_count() == 1u);
+}
+
 ZEST_CASE(InstantiationsPersist) {
     TempDir tmp;
     tmp.touch("box.h", R"(#pragma once
@@ -970,8 +1030,13 @@ void a() { Box<A>{}.show(); }
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    ZEXPECT(
-        f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
+    auto unit = f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
+    ZASSERT(!f.project.index.instantiation_shard(
+        f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")))));
+    f.take_lost();
+    ZEXPECT(f.pump.pending_reason(unit));
+    // The unit keeps its index meanwhile.
+    ZEXPECT(f.project.index.has_manifest(unit));
 }
 
 };  // ZEST_SUITE(ProjectIndexSave)

@@ -394,7 +394,7 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
         result.files.push_back(std::move(info));
     }
     if(filter == "all" || filter == "header") {
-        ws.index.for_each_shard([&](Fid path_id, const index::Shard&) {
+        ws.index.for_each_indexed_file([&](Fid path_id) {
             auto path = ws.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header_path(path)) {
                 seen.insert(path_id);
@@ -662,7 +662,7 @@ Outcome<ReferencesResult> references(Context& ctx,
 bool units_pending(Project& project) {
     return llvm::any_of(project.build.members(), [&](Fid unit) {
         return project.build.indexed(project.file_table.resolve(unit)) &&
-               !project.index.manifest(unit);
+               !project.index.has_manifest(unit);
     });
 }
 

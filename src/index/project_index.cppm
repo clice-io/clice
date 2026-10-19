@@ -12,6 +12,7 @@ import :index.search_index;
 import :index.shard;
 import :index.tu_index;
 import :index.tu_manifest;
+import :support.signal;
 import :vfs.file_table;
 
 namespace clice::testing {
@@ -98,16 +99,15 @@ struct LoadOptions {
     /// reference.
     bool read_only = false;
 
-    /// Serve the shards straight from the opening read snapshot, pinned
-    /// for the index's lifetime, instead of copying them out and retiring
-    /// it. For a short-lived reader (`clice query`, `clice index stats`)
-    /// the copy is the whole cost of the load; a long read-only session
-    /// (batch lint) copies so a concurrent writer can reclaim its pages
-    /// meanwhile.
+    /// Serve the blobs straight from the read snapshot, pinned for the
+    /// index's lifetime, instead of copying each one fetched out of it. For
+    /// a short-lived reader (`clice query`, `clice index stats`) the copy
+    /// is wasted; a long read-only session (batch lint) copies so a
+    /// concurrent writer can reclaim the pages of the snapshot it opened.
     bool borrow = false;
 };
 
-/// What a writer's load (ProjectIndex::load) found in the database.
+/// What a load (ProjectIndex::load) found in the database.
 enum class LoadOutcome : std::uint8_t {
     /// The persisted index loaded.
     Loaded,
@@ -158,22 +158,27 @@ struct SaveBatch {
 ///   in place, plus the entries merged or changed since it was bound. A
 ///   reader never copies an entry; a writer copies only the entries it changes
 ///   and folds them into the next blob it writes,
-/// - one manifest per indexed TU (replaced wholesale by its reindex),
-/// - the tables derived from the manifests: per file, which TU contributed
-///   which variant — its distinct hashes are the file's live variants, the
-///   mask Shard queries filter by, and its emptiness is what retires a
-///   shard blob —, the places failed lookups looked, the inputs of imported
-///   modules, the shared locals' file sets and the instantiation uses,
-/// - the per-file shard blobs, fetched from the database on first use by a
-///   reader and kept whole by the writer, and beside them the per-file
-///   instantiation blobs, whose resolutions live while some manifest uses
-///   them,
+/// - one manifest per indexed TU (a unit), replaced wholesale by its
+///   reindex, and what the units' manifests say keyed the way queries ask:
+///   per file, which unit contributed which variant — its distinct hashes are
+///   the file's live variants, the mask Shard queries filter by, and its
+///   emptiness is what retires a shard blob —, the places failed lookups
+///   looked, the inputs of imported modules, the shared locals' file sets
+///   and the instantiation uses. The project table persists those tables;
+///   a session reads them there, under the units it merged or dropped, whose
+///   manifests it holds and derives the same tables from. A persisted
+///   manifest is read only when a unit's include tree or old state is
+///   wanted,
+/// - the per-file shard blobs and instantiation blobs, read from the
+///   database the first time a query or a merge wants one and checked then
+///   against what the units say they hold: one that fails is lost data,
+///   whose units a writer drops and rebuilds (take_lost),
 /// - the name search index and the entries it does not describe.
 ///
-/// The writer merges TU index results in, drops TUs, judges their
-/// freshness, and persists: compaction, the save batch and its failures,
-/// the move of borrowed bytes onto a newer read snapshot, the recovery from
-/// a corrupt database.
+/// A reader and a writer read alike; a writer merges TU index results in,
+/// drops TUs, judges their freshness, and persists: compaction, the save
+/// batch and its failures, the move of borrowed bytes onto a newer read
+/// snapshot, the recovery from a corrupt database.
 ///
 /// The FileVersion table manifests reference lives in clice::FileTable,
 /// shared with every other freshness consumer — and, in a server running
@@ -220,30 +225,29 @@ public:
 
     std::uint32_t symbol_count() const;
 
-    /// A TU's manifest: held by a writer, fetched on first use by a reader
-    /// — whose copy names its versions by persisted ids. Null when the TU
-    /// has none current.
-    const TUManifest* manifest(Fid tu) const;
+    /// Whether the TU has a current manifest.
+    bool has_manifest(Fid tu) const;
 
-    /// A TU's manifest a writer holds, in the file table's version ids;
-    /// null in a reader, which fetches them (manifest()).
-    const TUManifest* held_manifest(Fid tu) const;
+    /// A TU's current manifest, in the file table's version ids: the one
+    /// this session merged, else the persisted one. Nullopt when the TU has
+    /// none, or its persisted one is lost.
+    std::optional<TUManifest> manifest(Fid tu) const;
 
-    /// Every manifest a writer holds.
-    void for_each_manifest(llvm::function_ref<void(Fid tu, const TUManifest&)> visit) const;
+    /// Every TU with a current manifest.
+    void for_each_unit(llvm::function_ref<void(Fid tu)> visit) const;
 
-    /// How many TUs a writer holds a manifest of.
-    std::uint32_t manifest_count() const;
+    std::uint32_t unit_count() const;
 
-    /// The TUs that contributed a variant to `file`: from the manifests in a
-    /// writer, from the project table's persisted copy in a reader, which
-    /// holds no manifests to derive it from.
+    /// The TUs that contributed a variant to `file`.
     void for_each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
 
-    /// The TUs that contributed to `file` in a writer, each with the variant
-    /// it contributed.
+    /// The TUs that contributed to `file`, each with the variant it
+    /// contributed.
     void for_each_contribution(Fid file,
                                llvm::function_ref<void(Fid tu, std::uint64_t variant)> visit) const;
+
+    /// Every file some TU contributed a variant to.
+    void for_each_indexed_file(llvm::function_ref<void(Fid)> visit) const;
 
     /// The TUs some failed lookup of whose parse looked at `place`
     /// (TUManifest::absent).
@@ -255,11 +259,9 @@ public:
 
     /// The files holding entries of a symbol below external scope: `anchor`,
     /// a file that holds some, and the files of every TU's shared local
-    /// (TUManifest::shared_locals) for it that lists a file reached — from
-    /// the manifests in a writer, from the project table's persisted copy in a
-    /// reader. A `static` in a header is thus reached in every unit
-    /// including the header or reading it through a precompiled header.
-    /// Each file once.
+    /// (TUManifest::shared_locals) for it that lists a file reached. A
+    /// `static` in a header is thus reached in every unit including the
+    /// header or reading it through a precompiled header. Each file once.
     void for_each_file_of_local(SymbolHash hash,
                                 Fid anchor,
                                 llvm::function_ref<void(Fid)> visit) const;
@@ -273,23 +275,35 @@ public:
     /// indexed.
     std::vector<IncludeEdge> include_edges(Fid file) const;
 
-    /// The file's shard: held, or fetched from the database the index was
-    /// opened over. Null when the file has no index. A query keeps the
-    /// pointers to the shards it read while its fan-out fetches others.
+    /// The file's shard: held, or read from the database and checked
+    /// against the variants and the content generation the units say it
+    /// holds. Null when the file has no index, or its blob is lost
+    /// (take_lost). A query keeps the pointers to the shards it read while
+    /// its fan-out reads others.
     const Shard* shard(Fid file) const;
 
-    /// Every shard held or fetched so far: all of them in a writer.
+    /// Every shard held or read so far.
     void for_each_shard(llvm::function_ref<void(Fid, const Shard&)> visit) const;
 
     std::uint32_t shard_count() const;
 
     /// The file's instantiation shard, like shard(). One lives with its
-    /// file's shard of the same content generation.
+    /// file's shard of the same content generation, holding every use the
+    /// units name there.
     const InstantiationShard* instantiation_shard(Fid file) const;
 
-    /// Every instantiation shard held or fetched so far.
+    /// Every instantiation shard held or read so far.
     void for_each_instantiation_shard(
         llvm::function_ref<void(Fid, const InstantiationShard&)> visit) const;
+
+    /// Read every indexed file's shard and instantiation shard: for the
+    /// commands that walk the whole index.
+    void read_all() const;
+
+    /// The units whose index lost data reads found since take_lost: the
+    /// ones contributing to a lost shard, the ones using resolutions a
+    /// file's instantiation blob lost, the ones whose manifest is lost.
+    llvm::SmallVector<Fid> lost_units() const;
 
     /// The distinct variant hashes contributed to `path_id` — the file's live
     /// variant set.
@@ -327,32 +341,28 @@ public:
     }
 
     /// The TU with a manifest a unit hash names.
-    std::optional<Fid> find_unit(std::uint64_t hash) const {
-        auto it = units.find(hash);
-        return it != units.end() ? std::optional(it->second) : std::nullopt;
-    }
+    std::optional<Fid> find_unit(std::uint64_t hash) const;
 
     /// Whether the run that walked a key is its TU's current manifest: a
     /// key outlives it only until the next compaction of its file.
-    bool current_run(const Producer& producer) const {
-        auto tu = find_unit(producer.unit);
-        return tu && manifests.find(*tu)->second.built_at == producer.run;
-    }
+    bool current_run(const Producer& producer) const;
 
-    /// Open the persisted index for reading: the project table and search blobs
-    /// bound in place from the database's read snapshot — which the
-    /// caller keeps pinned for the index's lifetime — and shards fetched
-    /// from it on first use. False when there is no readable project table.
-    bool open(BlobDatabase& db);
-
-    /// Load the persisted index as the writer serves it: the project table,
-    /// the search index it pins, every manifest the table pins at its
-    /// generation, the shards and instantiation shards those manifests
-    /// expect. What does not hold together — stale or lost manifests,
-    /// shards that miss a variant or carry another content generation,
-    /// orphans — is left out, its TUs in `report`'s reindex debt and its
-    /// blobs removed at the first save unless `read_only`.
+    /// Load the persisted index: the project table and the search index it
+    /// pins; manifests, shards and instantiation shards stay in the
+    /// database until something reads them. Unless `read_only`, the blobs
+    /// no unit names leave at the first save, and the TU of a manifest
+    /// that outran its project table write goes into `report`'s reindex
+    /// debt.
     LoadOutcome load(BlobDatabase& db, LoadOptions options, IndexReport& report);
+
+    /// The lost data reads found since the last call, as a writer heals it:
+    /// the TUs whose index a lost shard held, and the TUs whose manifest is
+    /// lost, lose their manifest and are owed a reindex, as are the TUs
+    /// whose instantiation uses a file's blob lost. on_data_lost fires when
+    /// the first one since is found.
+    IndexReport take_lost();
+
+    Signal<> on_data_lost;
 
     /// Forget everything loaded and merged, as after a corrupt database:
     /// the workspace stays, and the next save writes an empty project table
@@ -399,11 +409,14 @@ public:
     /// re-judged per round anyway.
     void begin_round() {
         version_stale.clear();
+        stale_units.reset();
     }
 
     /// Check whether a file needs re-indexing: no manifest, or a stale
-    /// FileVersion among its dependencies. Valid only within one round:
-    /// the results are cleared by begin_round(), never here.
+    /// FileVersion among its dependencies, or a file at a place its failed
+    /// lookups looked. Valid only within one round: the results are cleared
+    /// by begin_round(), never here. A unit the session did not merge is
+    /// judged through the table's per-version units, never its manifest.
     bool needs_reindex(Fid file);
 
     /// Rebuild the search index from the symbol table when `search` says
@@ -436,9 +449,16 @@ public:
 
     /// The index's part of the recovery from a corrupt database, whose
     /// contents nothing survives: the shards borrowing it are shed with
-    /// their owners requeued, while every manifest and the project table
-    /// re-dirty to re-persist into the database opened in its place.
+    /// their owners requeued, the units the session did not merge leave and
+    /// reindex, while every merged manifest and the project table re-dirty
+    /// to re-persist into the database opened in its place (attach).
     void recover_corrupt_database(IndexReport& report);
+
+    /// Read blobs from `database` from now on: the one opened in place of
+    /// a corrupt one, or none.
+    void attach(BlobDatabase* database) {
+        db = database;
+    }
 
     /// Shard blobs whose write has not durably completed: dirty since the
     /// last save plus the batch a running save is committing. The gauge
@@ -471,14 +491,10 @@ public:
     /// writer proves them all with verify_bitmaps.
     bool bind_table(std::unique_ptr<llvm::MemoryBuffer> blob);
 
-    /// The writer's half of a bound blob: intern its file versions into
-    /// the file table and read the per-TU manifest
-    /// pins — `manifest_pins` maps each pinned TU's tu_version (as the table's
-    /// id) to the generation its manifest must carry to be adopted.
-    /// Rejects a blob whose version table is inconsistent, leaving the file
-    /// table untouched.
-    std::expected<void, llvm::StringRef>
-        adopt_file_versions(llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
+    /// Intern a bound blob's file versions into the file table. Rejects a
+    /// blob whose version table is inconsistent — or whose units name a
+    /// version it lacks —, leaving the file table untouched.
+    std::expected<void, llvm::StringRef> adopt_file_versions();
 
     /// Whether every reference bitmap of the base decodes and stays inside
     /// its path table — the writer's gate: a malformed image normalized to
@@ -486,10 +502,12 @@ public:
     /// ever rebuilding them, so the whole blob is rejected instead.
     bool verify_bitmaps() const;
 
-    /// bind_table, adopt_file_versions and verify_bitmaps over a copy of
-    /// `data`, all or nothing: the loader's gate for a persisted project table.
-    std::expected<void, llvm::StringRef>
-        load_table(llvm::StringRef data, llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
+    /// bind_table, adopt_file_versions and verify_bitmaps, all or nothing:
+    /// the loader's gate for a persisted project table.
+    std::expected<void, llvm::StringRef> load_table(std::unique_ptr<llvm::MemoryBuffer> buffer);
+
+    /// load_table over a copy of `data`.
+    std::expected<void, llvm::StringRef> load_table(llvm::StringRef data);
 
     /// The symbol's entry to change: the changed entry when there is one,
     /// else a copy of the base entry, else a fresh one.
@@ -606,16 +624,91 @@ private:
     /// it, and for standalone headers no restart pass would either.
     void requeue_owners(Fid file, IndexReport& report);
 
-    /// Drop every resident shard that may borrow database memory —
+    /// Drop every resident view that may borrow database memory —
     /// everything not dirty, since dirty shards own their bytes by
-    /// construction (merges install memory copies) — and requeue the
-    /// owners of the dropped shards.
-    void shed_borrowed_shards(IndexReport& report);
+    /// construction (merges install memory copies) — returning the files
+    /// whose loaded view went.
+    llvm::SmallVector<Fid> drop_borrowed_views();
 
     /// Two-layer staleness test on a FileVersion, cached per round; a hash
     /// match after a stat mismatch repairs the version's stat fast path in
     /// place for every consumer.
     bool file_version_stale(VersionID version);
+
+    /// The file table's id of every base unit's TU, overridden or not.
+    llvm::ArrayRef<Fid> base_units() const;
+
+    /// The base's position of a TU's unit, under the units the session
+    /// overrode; nullopt for a TU the base has no live unit of.
+    std::optional<std::uint32_t> base_unit(Fid tu) const;
+
+    /// The file table's ids of a base unit set, but the units the session
+    /// overrode.
+    void for_each_base_unit(const Bitmap& units, llvm::function_ref<void(Fid)> visit) const;
+
+    /// The TU's persisted manifest in the file table's version ids, when the
+    /// base pins it and the database holds it at the pinned generation.
+    std::optional<TUManifest> persisted_manifest(Fid tu) const;
+
+    /// Take a TU out of the base: what the base says of it stops counting,
+    /// and the files it contributed to or used resolutions in are returned
+    /// (from its persisted manifest; none when that is lost).
+    llvm::SmallVector<Fid> override_unit(Fid tu);
+
+    /// The base units judged stale this round (needs_reindex).
+    const llvm::DenseSet<Fid>& stale_base_units();
+
+    /// The content generations the units' variants of `file` were built
+    /// from; 0 is no generation.
+    llvm::SmallVector<std::uint64_t, 1> generations_of(Fid file) const;
+
+    /// The content generation a variant some unit contributes to `file`
+    /// was built from; nullopt when no unit contributes it, or its file
+    /// version has no content hash.
+    std::optional<std::uint64_t> variant_generation(Fid file, std::uint64_t variant) const;
+
+    /// Read a file's shard from the database and check it holds every live
+    /// variant at the units' generation; a failure is recorded as lost.
+    Shard fetch_shard(Fid file) const;
+
+    /// Read a file's instantiation shard and check it lives with the
+    /// file's shard of content generation `generation` and holds every live
+    /// use; a failure is recorded as lost.
+    InstantiationShard fetch_instantiations(Fid file, std::uint64_t generation) const;
+
+    /// What lost data a read found.
+    enum class Lost : std::uint8_t {
+        /// A file's shard: missing, corrupt, or not holding what the units
+        /// say.
+        Shard,
+        /// A use some unit names in a file's instantiation blob.
+        Uses,
+        /// A unit's manifest: missing, corrupt, or of another generation
+        /// than the table pins.
+        Manifest,
+    };
+
+    /// Record lost data, firing on_data_lost for the first since take_lost.
+    void lose(Fid file, Lost kind) const;
+
+    /// The units that lost lost_units' part of their index they cannot
+    /// serve without: whose manifest is lost, or contributing to a lost
+    /// shard.
+    llvm::SetVector<Fid> lost_owners() const;
+
+    /// What a database read hands a reader: the bytes, copied out of the
+    /// snapshot unless the session borrows it.
+    std::unique_ptr<llvm::MemoryBuffer> read_blob(BlobKind kind, Fid file) const;
+
+    /// Erase a manifest's entries from the tables derived from the merged
+    /// manifests; returns the files it contributed to or used resolutions in.
+    llvm::SmallVector<Fid> erase_derived(Fid tu, const TUManifest& manifest);
+
+    /// A committed project table holds every TU the session merged or
+    /// dropped but the ones a merge or a drop dirtied since it was
+    /// serialized: those leave the session's own tables, read from the
+    /// table once it is the base.
+    void fold_written();
 
 private:
     FileTable& files;
@@ -631,15 +724,32 @@ private:
 
     std::uint64_t generation = 0;
 
-    /// TU -> its manifest.
+    /// TU -> its manifest, for the TUs this session merged.
     llvm::DenseMap<Fid, TUManifest> manifests;
 
-    /// A reader's manifests, fetched on first use; nullopt remembers a
-    /// TU without a current one.
-    mutable llvm::DenseMap<Fid, std::optional<TUManifest>> fetched_manifests;
+    /// The TUs whose base unit no longer counts: merged (their manifest is
+    /// in `manifests`) or dropped this session.
+    llvm::DenseSet<Fid> overridden;
 
-    /// Derived from `manifests`: file -> (TU -> variant hash).
-    llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>> contributions;
+    /// The same TUs as the base's path ids, the units its sets name.
+    Bitmap overridden_ids;
+
+    /// The base's units: the file table's id of each one's TU, and back,
+    /// built on first use.
+    mutable std::vector<Fid> base_unit_files;
+
+    mutable llvm::DenseMap<Fid, std::uint32_t> base_unit_index;
+
+    /// A variant a TU contributed to a file, and the file version it was
+    /// built from.
+    struct Contributed {
+        std::uint64_t variant = 0;
+
+        VersionID version;
+    };
+
+    /// Derived from `manifests`: file -> (TU -> what it contributed there).
+    llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, Contributed, 2>> contributions;
 
     /// Derived from `manifests`: a place some TU's failed lookup looked ->
     /// those TUs.
@@ -650,32 +760,54 @@ private:
     llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> importers;
 
     /// Derived from `manifests`: a symbol below external scope -> the sets
-    /// of files the TUs' shared locals list for it, each with how many list
-    /// it. Kept apart, as two TUs can name one hash in files they do not
-    /// share: a namespace nested in an anonymous namespace has no file in
-    /// its hash.
-    llvm::DenseMap<SymbolHash, std::map<std::vector<Fid>, std::uint32_t>> shared_local_sets;
+    /// of files the TUs' shared locals list for it, each with the TUs
+    /// listing it. Kept apart, as two TUs can name one hash in files they
+    /// do not share: a namespace nested in an anonymous namespace has no
+    /// file in its hash.
+    llvm::DenseMap<SymbolHash, std::map<std::vector<Fid>, llvm::SmallDenseSet<Fid, 2>>>
+        shared_local_sets;
 
     /// Derived from `manifests`: file -> (TU -> the instantiation use it
     /// names there).
     llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>> instantiation_uses;
 
-    /// Derived from `manifests`: unit hash -> TU.
-    llvm::DenseMap<std::uint64_t, Fid> units;
+    /// Unit hash -> TU, for the base's units (built on first use) and the
+    /// merged ones.
+    mutable llvm::DenseMap<std::uint64_t, Fid> units;
+
+    mutable bool base_units_hashed = false;
+
+    /// The base units judged stale in this round, once needs_reindex asked.
+    std::optional<llvm::DenseSet<Fid>> stale_units;
+
+    /// Lost data reads found since take_lost: files whose shard is lost,
+    /// files whose instantiation blob lost a use some unit names, and units
+    /// whose manifest is lost.
+    mutable llvm::DenseSet<Fid> lost_shards;
+
+    mutable llvm::DenseSet<Fid> lost_instantiations;
+
+    mutable llvm::DenseSet<Fid> lost_manifests;
+
+    /// Files whose live variants or uses shrank since the last save: the
+    /// save compacts or retires their blobs.
+    llvm::DenseSet<Fid> shrunk;
 
     /// Per-file shard blobs keyed by the file table's ids: symbol
     /// occurrences, relations and stored content for position mapping,
-    /// served zero-copy. The writer holds every persisted shard here; a
-    /// reader opened over a database fills it on first use. A node-based
-    /// map: a query keeps pointers to the shards it read while its fan-out
-    /// fetches others.
+    /// served zero-copy — the ones merged, and the ones read since the load,
+    /// a failed read remembered as an empty entry. A node-based map: a query
+    /// keeps pointers to the shards it read while its fan-out reads others.
     mutable std::map<Fid, Shard> shards;
 
-    /// Per-file instantiation blobs, held and fetched like `shards`.
+    /// Per-file instantiation blobs, held and read like `shards`.
     mutable std::map<Fid, InstantiationShard> instantiations;
 
-    /// The database a reader fetches from, when opened over one.
+    /// The database the blobs are read from; null for an index never loaded.
     BlobDatabase* db = nullptr;
+
+    /// Whether blobs read stay in the database's snapshot (LoadOptions).
+    bool borrow = true;
 
     SearchIndex search;
 
@@ -736,8 +868,9 @@ private:
     /// handed out from `next_persisted_id` and never reused, so one file
     /// table can hold the versions of several projects' indexes. Loading
     /// maps the blob's ids to the table's (`runtime_ids`, consulted while
-    /// the manifests load); writing maps back, handing out ids to the
-    /// versions the lineage has not persisted yet.
+    /// the base and its manifests are read); writing maps back, handing
+    /// out ids to the versions the lineage has not persisted yet, which
+    /// the written table, once the base, names in turn.
     llvm::DenseMap<std::uint32_t, VersionID> runtime_ids;
 
     llvm::DenseMap<VersionID, std::uint32_t> persisted_ids;

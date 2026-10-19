@@ -6,8 +6,10 @@ module;
 
 module clice;
 
+import :index.columns;
 import :index.instantiation_shard;
 import :index.project_index;
+import :index.project_table;
 import :index.shard;
 import :index.tu_index;
 import :index.tu_manifest;
@@ -80,13 +82,22 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         auto blob_hash = view.section_hash(section);
         auto global_id = file_ids_map[local_id];
 
-        auto shard_it = shards.find(global_id);
-        auto* shard = shard_it != shards.end() ? &shard_it->second : nullptr;
-
-        // Fast path: the blob already stores this variant. The identity
-        // hashes the blob bytes, which embed the content generation, so
-        // one membership test is the whole check — no IO, no bytes read.
-        if(shard && shard->loaded() && shard->has_variant(blob_hash)) {
+        // Fast path: a unit contributes this variant, so the blob stores
+        // it. The identity hashes the blob bytes, which embed the content
+        // generation, so the units' record is the whole check — no IO, no
+        // bytes read.
+        if(auto generation = variant_generation(global_id, blob_hash)) {
+            if(!record_consumed(local_id, *generation)) {
+                return std::unexpected(MergeError::Invalid);
+            }
+            section_contributions.emplace_back(local_id, blob_hash);
+            hits += 1;
+            continue;
+        }
+        // A variant no unit contributes any more may still be stored until
+        // the next compaction.
+        auto* shard = this->shard(global_id);
+        if(shard && shard->has_variant(blob_hash)) {
             if(!record_consumed(local_id, shard->content_hash())) {
                 return std::unexpected(MergeError::Invalid);
             }
@@ -129,7 +140,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         }
 
         Shard replacement;
-        if(shard && shard->loaded() && shard->content_hash() == fresh.content_hash()) {
+        if(shard && shard->content_hash() == fresh.content_hash()) {
             // Same generation, new variant: merge it in, keeping every
             // stored variant — dead ones stay masked until the next save
             // compacts them.
@@ -164,11 +175,10 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         auto global_id = file_ids_map[local_id];
         auto generation = consumed_hashes[local_id] != 0 ? consumed_hashes[local_id]
                                                          : view.content_hash(local_id);
-        auto stored_it = instantiations.find(global_id);
-        const InstantiationShard* stored =
-            stored_it != instantiations.end() && stored_it->second.content_hash() == generation
-                ? &stored_it->second
-                : nullptr;
+        const InstantiationShard* stored = instantiation_shard(global_id);
+        if(stored && stored->content_hash() != generation) {
+            stored = nullptr;
+        }
 
         std::vector<ResolutionHash> used;
         for(auto key: view.skipped_instantiations(section)) {
@@ -342,13 +352,10 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         report.add_index_changed(global_id);
         search_file_changed(global_id);
     }
-    // A file's instantiations live with its shard of the same generation.
+    // A file's instantiations live with its shard of the same generation:
+    // a rebuilt file's stored ones, read or not, are another generation's.
     for(auto path_id: rebuilt_ids) {
-        auto it = instantiations.find(path_id);
-        if(it != instantiations.end() &&
-           it->second.content_hash() != shards.find(path_id)->second.content_hash()) {
-            retire_instantiations(path_id);
-        }
+        retire_instantiations(path_id);
     }
     for(auto& [global_id, replacement]: instantiation_replacements) {
         instantiations[global_id] = std::move(replacement);
@@ -375,11 +382,11 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // only a restart reaching load()'s re-enqueue.
     for(auto path_id: rebuilt_ids) {
         auto& shard = shards.find(path_id)->second;
-        for(auto& [tu, hash]: contributions.find(path_id)->second) {
-            if(!shard.has_variant(hash)) {
+        for_each_contribution(path_id, [&](Fid tu, std::uint64_t variant) {
+            if(!shard.has_variant(variant)) {
                 report.add_reindex(tu);
             }
-        }
+        });
     }
     dirty_manifests.insert(tu_path_id);
     table_dirty = true;
@@ -400,17 +407,17 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
 std::vector<std::uint64_t> ProjectIndex::known_variants(Fid tu,
                                                         llvm::DenseSet<Fid> include_closure) const {
     auto& expected = include_closure;
-    if(auto it = manifests.find(tu); it != manifests.end()) {
-        for(auto version: llvm::make_first_range(it->second.contributions)) {
+    if(auto last = manifest(tu)) {
+        for(auto version: llvm::make_first_range(last->contributions)) {
             expected.insert(files.version(version).fid);
         }
     }
 
+    // The live variants: what a unit contributes is stored, without
+    // reading the blobs.
     std::vector<std::uint64_t> known;
     for(auto file: expected) {
-        if(auto it = shards.find(file); it != shards.end() && it->second.loaded()) {
-            llvm::append_range(known, it->second.variants());
-        }
+        llvm::append_range(known, live_variants(file));
     }
     llvm::sort(known);
     known.erase(llvm::unique(known), known.end());
@@ -420,8 +427,8 @@ std::vector<std::uint64_t> ProjectIndex::known_variants(Fid tu,
 std::vector<std::uint64_t> ProjectIndex::known_instantiations(Fid tu,
                                                               llvm::DenseSet<Fid> include_closure) {
     auto& expected = include_closure;
-    if(auto it = manifests.find(tu); it != manifests.end()) {
-        for(auto version: llvm::make_first_range(it->second.contributions)) {
+    if(auto last = manifest(tu)) {
+        for(auto version: llvm::make_first_range(last->contributions)) {
             expected.insert(files.version(version).fid);
         }
     }
@@ -438,13 +445,11 @@ std::vector<std::uint64_t> ProjectIndex::known_instantiations(Fid tu,
     };
     std::vector<std::uint64_t> known;
     for(auto file: expected) {
-        auto it = instantiations.find(file);
-        auto shard = shards.find(file);
-        if(it == instantiations.end() || shard == shards.end() ||
-           shard->second.content_hash() != it->second.content_hash()) {
+        auto* stored = instantiation_shard(file);
+        if(!stored) {
             continue;
         }
-        it->second.for_each_key([&](const InstantiationShard::Key& key) {
+        stored->for_each_key([&](const InstantiationShard::Key& key) {
             if(walk_holds(*key.producer)) {
                 known.push_back(key.key);
             }
@@ -463,7 +468,7 @@ void ProjectIndex::retire_instantiations(Fid path_id) {
 }
 
 void ProjectIndex::drop(Fid tu_path_id, IndexReport& report) {
-    if(!manifests.contains(tu_path_id)) {
+    if(!has_manifest(tu_path_id)) {
         return;
     }
     // Dropped entries change index-served answers exactly like merged
@@ -492,10 +497,41 @@ bool ProjectIndex::file_version_stale(VersionID version_id) {
     return cached->second;
 }
 
+const llvm::DenseSet<Fid>& ProjectIndex::stale_base_units() {
+    if(stale_units) {
+        return *stale_units;
+    }
+    auto& stale = stale_units.emplace();
+    if(!base) {
+        return stale;
+    }
+    // Each version is judged once, whatever number of units depend on it.
+    auto& columns = *base->columns;
+    for(std::uint32_t row = 0; row < columns.version_ids.size(); row += 1) {
+        auto version = runtime_version(columns.version_ids[row]);
+        if(version && !file_version_stale(*version)) {
+            continue;
+        }
+        if(auto tus = base->version_units(row)) {
+            for_each_base_unit(*tus, [&](Fid tu) { stale.insert(tu); });
+        }
+    }
+    for(std::uint32_t k = 0; k < columns.absent_places.size(); k += 1) {
+        if(!files.disk.present(base->remap[columns.absent_places[k]])) {
+            continue;
+        }
+        if(auto tus = read_file_set(slice(columns.absent_units, columns.absent_unit_ends, k))) {
+            for_each_base_unit(*tus, [&](Fid tu) { stale.insert(tu); });
+        }
+    }
+    return stale;
+}
+
 bool ProjectIndex::needs_reindex(Fid file) {
     auto manifest_it = manifests.find(file);
-    if(manifest_it == manifests.end())
-        return true;
+    if(manifest_it == manifests.end()) {
+        return !base_unit(file) || stale_base_units().contains(file);
+    }
 
     // Every referenced version must be validated: whichever a partial
     // iteration skipped would keep serving a stale index behind a fresh

@@ -71,7 +71,9 @@ bool open_index(Project& project, Config config, llvm::StringRef requested_confi
     if(!open_database(project, std::move(config), requested_configuration)) {
         return false;
     }
-    if(!project.index.open(*project.database)) {
+    index::IndexReport report;
+    if(project.index.load(*project.database, {.read_only = true, .borrow = true}, report) !=
+       index::LoadOutcome::Loaded) {
         log_unusable_format(project);
         return false;
     }
@@ -100,20 +102,7 @@ std::optional<LoadedIndex> load_index(Project& project,
         return std::nullopt;
     }
     LoadedIndex result;
-    result.dropped.assign(loaded.report.reindex().begin(), loaded.report.reindex().end());
     result.contexts = std::move(project.contexts.bytes);
-    // With no pump attached the load report's debt can only be the
-    // recovery drops: every TU's blobs were missing, stale, or corrupt — a
-    // damaged cache, not a legitimately empty one.
-    if(project.index.manifest_count() == 0 && project.index.shard_count() == 0 &&
-       !result.dropped.empty()) {
-        LOG_ERROR(
-            "Index cache at {} has no servable data ({} translation units need "
-            "reindexing); run `clice index` to rebuild",
-            std::string_view(project.config.project.cache_dir),
-            result.dropped.size());
-        return std::nullopt;
-    }
     if(with_build) {
         auto remembered = CommandSnapshot::remembered(project);
         load_build(project,

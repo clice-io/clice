@@ -5,6 +5,7 @@ module;
 module clice:unittests.utils.index_internals;
 
 import :index.project_index;
+import :index.project_table;
 import :index.shard;
 import :vfs.ids;
 
@@ -21,6 +22,16 @@ struct IndexInternals {
     /// reached.
     static void plant_generation(index::ProjectIndex& index, std::uint64_t generation) {
         index.generation = generation;
+    }
+
+    /// The generation the bound project table pins a TU's manifest at.
+    static std::optional<std::uint64_t> pinned_generation(const index::ProjectIndex& index,
+                                                          Fid tu) {
+        auto unit = index.base_unit(tu);
+        if(!unit) {
+            return std::nullopt;
+        }
+        return index.base->columns->manifest_generations[*unit];
     }
 
     /// Whether the tables the manifests derive (contributions, absent

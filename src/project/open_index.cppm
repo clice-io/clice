@@ -13,27 +13,21 @@ namespace clice {
 /// Open a project's persisted index for reading: the configuration
 /// resolved (`requested_configuration` one `config` declares, see
 /// check_requested_configuration), the cache store and the blob database
-/// opened read-only, the project table and the search index bound in place
-/// from the database's read snapshot (pinned for the project's lifetime),
-/// shards fetched on first use. Nothing is decoded or copied. False — with
-/// the cause logged — when there is no usable index.
+/// opened read-only, the index loaded from the database's read snapshot
+/// (pinned for the project's lifetime) without a copy. False — with the
+/// cause logged — when there is no usable index.
 bool open_index(Project& project, Config config, llvm::StringRef requested_configuration);
 
-/// What load_index found beyond the tables: the translation units the
-/// load dropped as stale or partially written, whose index is absent
-/// until a reindex finishes, and the persisted context choices.
+/// What load_index found beyond the index: the persisted context choices.
 struct LoadedIndex {
-    llvm::SmallVector<Fid> dropped;
-
     /// The context choices as loaded (see ContextChoices).
     std::string contexts;
 };
 
-/// Open the index as the writer loads it — every manifest adopted, every
-/// shard fetched and verified, the header-mode results restored into
-/// `commands` — for the commands that walk the whole index or need the
-/// build (loaded when `with_build`). Nullopt, with the cause logged, when
-/// there is no usable index.
+/// Open the index as the writer loads it — the artifact records restored
+/// into `commands` — for the commands that need the build (loaded when
+/// `with_build`). Nullopt, with the cause logged, when there is no usable
+/// index.
 std::optional<LoadedIndex> load_index(Project& project,
                                       CommandResolver& commands,
                                       Config config,

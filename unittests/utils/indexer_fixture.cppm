@@ -53,6 +53,16 @@ struct IndexerFixture {
         turun.register_runner();
     }
 
+    /// A read that found lost data scheduled a round the test never ran:
+    /// stopped, its frame does not outlive the loop.
+    ~IndexerFixture() {
+        if(pump.indexing_scheduled) {
+            auto task = pump.stop();
+            loop.schedule(task);
+            loop.run();
+        }
+    }
+
     /// Merge a worker result and take its report, as the TURun round does.
     bool merge(llvm::StringRef data) {
         auto report = project.index.merge(data, {});
@@ -74,6 +84,11 @@ struct IndexerFixture {
         auto result = load_saved(project, commands, {.read_only = read_only});
         pump.apply_report(result.report);
         return result.decoded;
+    }
+
+    /// Take the lost data reads found to the pump, as a round does.
+    void take_lost() {
+        pump.apply_report(project.index.take_lost());
     }
 
     void drop_index(Fid id) {
@@ -237,6 +252,7 @@ inline void open_store(TempDir& tmp, Project& project) {
     ZASSERT(store);
     project.store.emplace(std::move(*store));
     project.database = index::open_lmdb_database(*project.store, "");
+    project.index.attach(project.database.get());
 }
 
 /// Plant a blob between sessions (no fixture may be alive — the writer
