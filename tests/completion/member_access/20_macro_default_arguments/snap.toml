@@ -1,0 +1,32 @@
+[answers.inspect.member.completion]
+items = [
+    { label = "as_int(int fail_value = FAIL_VALUE) const", kind = "Method", detail = "int" },
+]
+
+[answers.inspect.call.hover]
+markdown = '''
+**method** `as_int` · struct `RegisterValue`
+
+```cpp
+int as_int(int fail_value = FAIL_VALUE) const
+```
+'''
+range = "value.⟦as_int⟧();"
+
+[answers.server]
+wrong = "the default argument keeps its spelling, FAIL_VALUE, as inspect shows"
+
+[answers.server.member.completion]
+items = [
+    { label = "as_int(int fail_value = 7) const", kind = "Method", detail = "int" },
+]
+
+[answers.server.call.hover]
+markdown = '''
+**method** `as_int` · struct `RegisterValue`
+
+```cpp
+int as_int(int fail_value = 7) const
+```
+'''
+range = "value.⟦as_int⟧();"
