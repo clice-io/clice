@@ -459,6 +459,40 @@ ZEST_CASE(MergeReplacesLostManifest) {
     ZASSERT(!f.pump.pending_reason(tu_id));
 }
 
+ZEST_CASE(LostManifestRefreshesHeldShards) {
+    // What a lost manifest touched is unknown: the unit's merge refreshes
+    // every held shard, or one the new manifest no longer touches would keep
+    // serving the old unit's variant.
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+    std::string key;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, src);
+        ZASSERT(f.merge(indexed.data));
+        f.save();
+        key = index::blob_key(f.project.file_table.resolve(
+            f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
+    }
+    inject_blob(tmp, index::BlobKind::TUManifest, key, "corrupted beyond decoding");
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    auto dep_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
+    auto* shard = f.project.index.shard(dep_id);
+    ZASSERT(shard != nullptr);
+    ZASSERT(!shard->has_dead_variants());
+
+    tmp.touch("main.cpp", "int use() { return 1; }\n");
+    ZASSERT(f.merge(index_file(tmp, src).data));
+    ZASSERT(f.project.index.shard(dep_id) == shard);
+    ZEXPECT(shard->has_dead_variants());
+}
+
 ZEST_CASE(LoadRequeuesStaleManifest) {
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");

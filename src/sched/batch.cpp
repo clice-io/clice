@@ -11,7 +11,6 @@ import :command.command;
 import :compile.tidy;
 import :config.config;
 import :feature.feature;
-import :index.database;
 import :index.project_index;
 import :index.shard;
 import :index.tu_manifest;
@@ -286,6 +285,16 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     BatchLifetime lifetime(stack);
     lifetime.aux.spawn(progress_ticker(stack, options));
     co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
+    // The units the run judged fresh were never read: a blob of theirs found
+    // lost now reindexes before the run reports the cache complete.
+    if(!lifetime.stop_requested) {
+        project.index.read_all();
+        if(!project.index.lost_units().empty()) {
+            stack.sched.pump.apply_report(project.index.take_lost());
+            stack.sched.pump.schedule(/*immediate=*/true);
+            co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
+        }
+    }
     auto interrupted = co_await lifetime.finish();
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
@@ -303,19 +312,9 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
             result.standalone_headers += 1;
         }
     });
-    // The sizes the database keeps, without reading the blobs; a session
-    // keeping no database holds every shard.
-    project.index.for_each_indexed_file([&](Fid file) {
-        result.shard_count += 1;
-        if(!project.database) {
-            if(auto* shard = project.index.shard(file)) {
-                result.shard_bytes += shard->bytes().size();
-            }
-        } else if(auto blob =
-                      project.database->read(index::BlobKind::Shard, project.index.key_of(file))) {
-            result.shard_bytes += blob.buffer->getBufferSize();
-        }
-    });
+    result.shard_count = project.index.shard_count();
+    project.index.for_each_shard(
+        [&](Fid, const index::Shard& shard) { result.shard_bytes += shard.bytes().size(); });
     result.symbol_count = project.index.symbol_count();
     for(auto file: stack.sched.pump.failed()) {
         result.failed.emplace_back(project.file_table.display(file));

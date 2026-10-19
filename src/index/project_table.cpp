@@ -154,6 +154,25 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(const archive::Archived<
             return std::unexpected("pending search file outside the path table");
         }
     }
+    // The units' records are found by binary search, and their path ids
+    // index the path table.
+    auto keyed = [&](const auto& records, auto key) {
+        std::optional<std::uint64_t> previous;
+        for(auto& record: records) {
+            std::uint64_t id = record.*key;
+            if(id >= paths.size() || (previous && id <= *previous)) {
+                return false;
+            }
+            previous = id;
+        }
+        return true;
+    };
+    if(!keyed(columns->contributions, &archive::Archived<ContributedFile>::file) ||
+       !keyed(columns->uses, &archive::Archived<UsedFile>::file) ||
+       !keyed(columns->absent, &archive::Archived<UnitSet>::key) ||
+       !keyed(columns->imports, &archive::Archived<UnitSet>::key)) {
+        return std::unexpected("a unit record names a file outside the path table");
+    }
     // The writer only emits interned paths, which are never empty; an
     // empty entry marks a corrupt blob and must not become a real pool
     // entry.

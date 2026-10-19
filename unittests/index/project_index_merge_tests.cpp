@@ -785,6 +785,29 @@ int plain() { return 0; }
     ZEXPECT(f.project.index.lost_units().empty());
 }
 
+ZEST_CASE(ShardlessUsesLostAtFirstShard) {
+    // Instantiations in a file no unit holds a shard of serve nothing and
+    // leave at the save; the file's first shard finds the uses they held
+    // lost, and their unit reindexes.
+    tmp.touch("plain.cpp", R"(#include "box.h"
+int plain() { return 0; }
+)");
+    auto indexed = index_file(tmp, tmp.path("a.cpp"));
+    auto blob = tu_index_blob(index::TUIndex::from_bytes(indexed.data));
+    std::erase_if(blob.sections, [&](const index::FileSection& section) {
+        return llvm::StringRef(blob.paths[section.path_id]).ends_with("box.h");
+    });
+    ZASSERT(f.merge(tu_index_bytes(blob)));
+    ZASSERT(box());
+    f.save();
+    ZEXPECT(f.project.index.lost_units().empty());
+
+    ZASSERT(index("plain.cpp"));
+    ZASSERT(f.project.index.shard(id("box.h")));
+    ZEXPECT(!box());
+    ZEXPECT(f.project.index.lost_units() == llvm::SmallVector<Fid>{id("a.cpp")});
+}
+
 ZEST_CASE(MixedGenerationsKept) {
     // One unit catches up with an edited template while another still pins
     // the old generation: the instantiations at the shard's generation stay.

@@ -40,8 +40,8 @@ struct ProjectTable {
     /// Blob path id -> file table id.
     std::vector<Fid> remap;
 
-    /// File table id -> blob path id, built on first use.
-    mutable llvm::DenseMap<Fid, std::uint32_t> path_index;
+    /// File table id -> blob path id.
+    llvm::DenseMap<Fid, std::uint32_t> path_index;
 
     llvm::ArrayRef<std::uint64_t> hashes() const {
         return columns->symbol_hashes;
@@ -115,11 +115,6 @@ struct ProjectTable {
     /// The blob's path id of a file; nullopt for one its path table does
     /// not name.
     std::optional<std::uint32_t> path_id(Fid file) const {
-        if(path_index.empty()) {
-            for(std::uint32_t id = 0; id < remap.size(); id += 1) {
-                path_index.try_emplace(remap[id], id);
-            }
-        }
         auto it = path_index.find(file);
         return it != path_index.end() ? std::optional(it->second) : std::nullopt;
     }

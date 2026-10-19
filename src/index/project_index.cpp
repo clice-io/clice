@@ -114,10 +114,16 @@ bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob) {
         return false;
     }
     // Interning only names the paths: ids left behind by a later reject
-    // are inert.
+    // are inert. Two paths naming one file — a symlink made since the write
+    // — would key the units' records twice.
     bound->remap.reserve(bound->paths().size());
     for(std::uint32_t i = 0; i < bound->paths().size(); i += 1) {
-        bound->remap.push_back(files.intern(local(llvm::StringRef(bound->paths()[i]))));
+        auto file = files.intern(local(llvm::StringRef(bound->paths()[i])));
+        if(!bound->path_index.try_emplace(file, i).second) {
+            LOG_DEBUG("Rejecting project table: two paths name {}", files.resolve(file));
+            return false;
+        }
+        bound->remap.push_back(file);
     }
     bound->buffer = std::move(blob);
     base = std::move(bound);
@@ -161,12 +167,15 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions() {
     if(reserved_key(next_version_id) || next_version_id > max_persisted_versions) {
         return std::unexpected("file version counter out of range");
     }
-    // Ids and (path, hash) pairs are both map keys in the writer, so a
-    // repeat of either marks a corrupt blob: a repeated id in particular
-    // would map to the earlier pair while its record names the later
-    // path, attributing contributions to the wrong file.
+    // Ids and versions are both map keys in the writer, so a repeat of
+    // either marks a corrupt blob — or, for a version, two paths a symlink
+    // made since the write joins: a repeated id would map to the earlier
+    // version while its record names the later path, attributing
+    // contributions to the wrong file, and a repeated version would keep
+    // one of its ids, leaving the records naming the other unresolved.
+    // Interning the paths only names them.
     llvm::DenseSet<std::uint32_t> blob_version_ids;
-    llvm::DenseSet<std::pair<llvm::StringRef, std::uint64_t>> blob_versions;
+    llvm::DenseSet<std::pair<Fid, std::uint64_t>> blob_versions;
     for(auto& version: versions) {
         if(version.path.empty()) {
             return std::unexpected("empty file version path");
@@ -177,7 +186,8 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions() {
         if(!blob_version_ids.insert(version.id).second) {
             return std::unexpected("duplicate file version id");
         }
-        if(!blob_versions.insert({std::string_view(version.path), version.hash}).second) {
+        auto file = files.intern(local(std::string_view(version.path)));
+        if(!blob_versions.insert({file, version.hash}).second) {
             return std::unexpected("duplicate file version");
         }
     }
@@ -189,8 +199,6 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions() {
         }
     }
 
-    // Two spellings of one file intern to the same version; the ids both
-    // stay mapped to it.
     next_persisted_id = next_version_id;
     for(auto& version: versions) {
         auto path_id = files.intern(local(std::string_view(version.path)));
@@ -1132,14 +1140,25 @@ llvm::SmallVector<Fid> ProjectIndex::override_unit(Fid tu) {
     if(!base_unit(tu)) {
         return affected;
     }
-    // A lost manifest leaves the held shards' live masks to the next
-    // refresh: the unit reindexes either way.
     if(auto persisted = persisted_manifest(tu)) {
         for(auto version: llvm::make_first_range(persisted->contributions)) {
             affected.push_back(files.version(version).fid);
         }
         for(auto& use: persisted->instantiations) {
             affected.push_back(files.version(use.file).fid);
+        }
+    } else {
+        // What a lost manifest touched is unknown: every held view may
+        // serve the unit's entries.
+        for(auto& [file, shard]: shards) {
+            if(shard.loaded()) {
+                affected.push_back(file);
+            }
+        }
+        for(auto& [file, held]: instantiations) {
+            if(held.loaded()) {
+                affected.push_back(file);
+            }
         }
     }
     hide_base_unit(tu);

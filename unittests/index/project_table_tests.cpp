@@ -314,12 +314,16 @@ ZEST_CASE(TableDuplicateVersionsRejected) {
     ZASSERT(!loaded.load_table(dup_id).has_value());
     ZASSERT(pool.versions.empty());
 
+    // Two paths of one version, as a symlink made since the write leaves
+    // them, would keep one id and leave the records naming the other
+    // unresolved.
     layout.versions = {
-        {.id = 7, .path = "/proj/a.h", .hash = 0x1},
-        {.id = 8, .path = "/proj/a.h", .hash = 0x1}
+        {.id = 7, .path = "/proj/a.h",   .hash = 0x1},
+        {.id = 8, .path = "/proj/./a.h", .hash = 0x1}
     };
     auto dup_pair = encode(layout);
     ZASSERT(!loaded.load_table(dup_pair).has_value());
+    ZASSERT(pool.versions.empty());
 
     // The same path under two content hashes is the legitimate shape: two
     // observed versions of one file. Only the ids the blob carries map
@@ -415,6 +419,30 @@ ZEST_CASE(UncoveredFileIdRejected) {
     index::ProjectIndex rejecting{pool};
     ZASSERT(!rejecting.load_table(uncovered).has_value());
     ZASSERT(rejecting.symbol_count() == 0u);
+}
+
+ZEST_CASE(UnitRecordsOutsidePathsRejected) {
+    // A unit record is found by binary search and its path id indexes the
+    // path table: one past it, or out of order, rejects the table.
+    auto layout = project_table_blob();
+    layout.paths = {"/proj/a.h", "/proj/b.h"};
+    clice::FileTable pool;
+    index::ProjectIndex loaded{pool};
+
+    layout.absent = {{.key = 1}};
+    ZASSERT(loaded.load_table(encode(layout)));
+    layout.absent = {{.key = 2}};
+    ZASSERT(!loaded.load_table(encode(layout)).has_value());
+    layout.absent = {{.key = 1}, {.key = 0}};
+    ZASSERT(!loaded.load_table(encode(layout)).has_value());
+    layout.absent = {};
+    layout.contributions = {{.file = 2}};
+    ZASSERT(!loaded.load_table(encode(layout)).has_value());
+
+    // Two paths of one file would key its records twice.
+    layout.contributions = {};
+    layout.paths = {"/proj/a.h", "/proj/./a.h"};
+    ZASSERT(!loaded.load_table(encode(layout)).has_value());
 }
 
 ZEST_CASE(TableSparseColumnsRejected) {
