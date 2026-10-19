@@ -454,10 +454,13 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
                                              IndexReport& report) {
     // A full-map write left nothing committed (everything is dirty again);
     // growing retires every snapshot at once, so the rebind below must run
-    // to completion before the first yield — and the table, which every
-    // read reaches, reads a copy of its own across it.
-    if(base && db.growth_pending()) {
-        base->rebind(llvm::MemoryBuffer::getMemBufferCopy(base->buffer->getBuffer()));
+    // to completion before the first yield — and the table and the search
+    // index, which every read reaches, read copies of their own across it.
+    if(db.growth_pending()) {
+        if(base) {
+            base->own();
+        }
+        search.own();
     }
     auto grown = db.grow();
     if(!grown) {
@@ -489,8 +492,9 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
             co_return !db.corrupted();
         }
     }
-    // The table moves first, onto the bytes the save wrote or the ones it
-    // read; a copy left by a save or a growth goes with it.
+    // The table and the search index move first, onto the bytes the save
+    // wrote or the ones they read; a copy a save or a growth left goes. A
+    // search index no batch committed yet has no bytes in the database.
     if(base) {
         auto blob = db.read(BlobKind::ProjectTable, "global");
         if(!blob || !base->rebind(std::move(blob.buffer))) {
@@ -501,7 +505,18 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
             // snapshot the table borrows.
             LOG_ERROR("Index project table diverged during snapshot migration");
             assert(false && "the persisted project table must survive snapshot migration");
-            base->rebind(llvm::MemoryBuffer::getMemBufferCopy(base->buffer->getBuffer()));
+            base->own();
+        }
+    }
+    if(search.loaded() && search_bytes.empty()) {
+        auto blob = db.read(BlobKind::SearchIndex, "search");
+        if(!blob || !search.rebind(std::move(blob.buffer))) {
+            if(db.corrupted()) {
+                co_return false;
+            }
+            LOG_ERROR("Index search blob diverged during snapshot migration");
+            assert(false && "the persisted search blob must survive snapshot migration");
+            search.own();
         }
     }
 
@@ -610,9 +625,13 @@ llvm::SmallVector<Fid> ProjectIndex::drop_borrowed_views() {
 void ProjectIndex::recover_corrupt_database(IndexReport& report) {
     saved_shards = 0;
     // The table outlives the condemned database it borrows: the symbols it
-    // holds serve until the units reindex.
+    // holds serve until the units reindex. A search index read from it goes
+    // with it, and searches scan the table until it is built again.
     if(base) {
-        base->rebind(llvm::MemoryBuffer::getMemBufferCopy(base->buffer->getBuffer()));
+        base->own();
+    }
+    if(search_bytes.empty()) {
+        search = SearchIndex();
     }
     // The dropped views' bytes lived in the condemned database alone. An
     // instantiation shard's users are the TUs including the file, which

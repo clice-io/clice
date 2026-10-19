@@ -61,11 +61,9 @@ LoadOutcome ProjectIndex::load(BlobDatabase& db, LoadOptions options, IndexRepor
     }
     // The search index is derived from the table just loaded: adopt the
     // persisted one when the table pins it, else searches scan the table
-    // until the next save rebuilds it. A borrowed reader keeps the
-    // snapshot bytes; a writer copies, since its own saves retire
-    // snapshots.
+    // until the next save rebuilds it. It is borrowed like the table.
     if(auto blob = db.read(BlobKind::SearchIndex, "search")) {
-        if(!options.borrow && blob.generation != 0) {
+        if(!borrow && blob.generation != 0) {
             blob.buffer = llvm::MemoryBuffer::getMemBufferCopy(blob.buffer->getBuffer());
         }
         if(!bind_search(std::move(blob.buffer)) && !read_only) {

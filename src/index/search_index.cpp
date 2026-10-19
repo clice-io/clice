@@ -789,6 +789,20 @@ bool SearchIndex::load(std::unique_ptr<llvm::MemoryBuffer> blob) {
     return true;
 }
 
+bool SearchIndex::rebind(std::unique_ptr<llvm::MemoryBuffer> replacement) {
+    if(!view || !rebind_buffer(view->buffer, in_place_buffer(std::move(replacement)))) {
+        return false;
+    }
+    view->columns = &archive::view<SearchIndexBlob>(view->buffer->getBuffer());
+    return true;
+}
+
+void SearchIndex::own() {
+    if(view) {
+        rebind(llvm::MemoryBuffer::getMemBufferCopy(view->buffer->getBuffer()));
+    }
+}
+
 bool SearchIndex::loaded() const {
     return view != nullptr;
 }

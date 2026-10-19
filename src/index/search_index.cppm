@@ -155,6 +155,13 @@ public:
     /// build's formats or are inconsistent.
     bool load(std::unique_ptr<llvm::MemoryBuffer> blob);
 
+    /// Read the same bytes from `replacement`: another read snapshot's, or
+    /// a copy. False when its size differs.
+    bool rebind(std::unique_ptr<llvm::MemoryBuffer> replacement);
+
+    /// Read a copy of the bytes it reads now.
+    void own();
+
     bool loaded() const;
 
     /// Number of symbols in the index.

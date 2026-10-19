@@ -117,6 +117,11 @@ struct ProjectTable {
     /// a copy. False when its size differs.
     bool rebind(std::unique_ptr<llvm::MemoryBuffer> replacement);
 
+    /// Read a copy of the bytes it reads now.
+    void own() {
+        rebind(llvm::MemoryBuffer::getMemBufferCopy(buffer->getBuffer()));
+    }
+
 private:
     void point(const archive::Archived<Blob>& root);
 };
