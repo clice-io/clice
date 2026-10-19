@@ -213,7 +213,6 @@
 #include "kota/codec/bincode/bincode.h"
 #include "kota/codec/dyn/decode.h"
 #include "kota/codec/dyn/dyn.h"
-#include "kota/codec/fbs/fbs.h"
 #include "kota/codec/json/json.h"
 #include "kota/codec/json/schema.h"
 #include "kota/codec/macro.h"
