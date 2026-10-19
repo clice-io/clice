@@ -7,16 +7,13 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.tu_manifest;
+import :support.archive;
 import :unittests.utils;
 
 namespace clice::testing {
 namespace {
 
 ZEST_SUITE(TUManifest) {
-
-llvm::StringRef bytes_of(const std::vector<std::uint8_t>& blob) {
-    return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
-}
 
 ZEST_CASE(ManifestRoundTrip) {
     index::TUManifest manifest;
@@ -53,17 +50,15 @@ ZEST_CASE(ManifestRoundTrip) {
         {.symbol = 9, .files = {VersionID{302}, VersionID{301}}},
     };
 
-    llvm::SmallString<256> buf;
-    llvm::raw_svector_ostream os(buf);
-    index::serialize_manifest(manifest, os);
+    auto buf = index::serialize_manifest(manifest);
 
-    auto loaded = index::deserialize_manifest(buf.str());
+    auto loaded = index::deserialize_manifest(buf);
     ZASSERT(loaded);
     ZASSERT(*loaded == manifest);
 }
 
 ZEST_CASE(ManifestJunkRejected) {
-    ZASSERT(!index::deserialize_manifest("not a flatbuffer").has_value());
+    ZASSERT(!index::deserialize_manifest("not an archive").has_value());
 }
 
 ZEST_CASE(ManifestSharedLocalRejected) {
@@ -76,8 +71,7 @@ ZEST_CASE(ManifestSharedLocalRejected) {
     valid.local_files = {0, 0};
 
     auto decodes = [&](const index::TUManifestBlob& layout) {
-        auto blob = kota::codec::fbs::to_bytes(layout);
-        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
+        return index::deserialize_manifest(archive::encode(layout)).has_value();
     };
     ZASSERT(decodes(valid));
 
@@ -107,8 +101,7 @@ ZEST_CASE(ManifestCorruptUsesRejected) {
     layout.instantiation_files = {1};
     layout.instantiation_uses = {42};
     auto decodes = [&] {
-        auto blob = kota::codec::fbs::to_bytes(layout);
-        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
+        return index::deserialize_manifest(archive::encode(layout)).has_value();
     };
     ZASSERT(decodes());
     layout.instantiation_uses = {~0ull};
@@ -127,8 +120,7 @@ ZEST_CASE(ManifestNodeCodesRejected) {
     layout.format_version = index::index_format_version;
     layout.node_count = 1;
     auto decodes = [&] {
-        auto blob = kota::codec::fbs::to_bytes(layout);
-        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
+        return index::deserialize_manifest(archive::encode(layout)).has_value();
     };
     layout.nodes = {7, 1, 5 << 2};
     ZASSERT(decodes());
@@ -148,9 +140,7 @@ ZEST_CASE(ManifestCountMismatchRejected) {
     layout.node_count = 2;
     layout.nodes = {1, 0, 5};  // one node's worth of varints
 
-    auto blob = kota::codec::fbs::to_bytes(layout);
-    ZASSERT(blob);
-    ZASSERT(!index::deserialize_manifest(bytes_of(*blob)).has_value());
+    ZASSERT(!index::deserialize_manifest(archive::encode(layout)).has_value());
 }
 
 ZEST_CASE(ManifestVarintOverflowRejected) {
@@ -162,9 +152,7 @@ ZEST_CASE(ManifestVarintOverflowRejected) {
     layout.node_count = 1;
     layout.nodes = {0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02, 0x00, 0x00};
 
-    auto blob = kota::codec::fbs::to_bytes(layout);
-    ZASSERT(blob);
-    ZASSERT(!index::deserialize_manifest(bytes_of(*blob)).has_value());
+    ZASSERT(!index::deserialize_manifest(archive::encode(layout)).has_value());
 }
 
 };  // ZEST_SUITE(TUManifest)

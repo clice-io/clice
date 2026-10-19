@@ -54,7 +54,7 @@ PCH 构建还会实例化 Preamble 自身用到的函数模板，例如头文件
 - Preamble 内容的哈希值
 - Preamble 的字节边界（bound）
 - 依赖快照（`DepsSnapshot`，见下文）
-- 与 PCH 配对的 Preamble 状态数据块句柄；该数据块与 PCH 相邻存储并共享生命周期，包含构建时提取的 Preamble 符号索引和功能状态（文档链接、非活跃区域、未闭合的条件栈），以内存映射 FlatBuffer 的形式打开并按需查询（见[符号索引](symbol-index.md)）
+- 与 PCH 配对的 Preamble 状态数据块句柄；该数据块与 PCH 相邻存储并共享生命周期，包含构建时提取的 Preamble 符号索引和功能状态（文档链接、非活跃区域、未闭合的条件栈），以内存映射归档的形式打开并按需查询（见[符号索引](symbol-index.md)）
 
 ### 两层失效检测
 

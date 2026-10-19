@@ -9,16 +9,17 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.instantiation_shard;
+import :support.archive;
 import :support.logging;
 
 namespace clice::index {
 
 namespace {
 
-using BlobView = kota::codec::fbs::table_view<InstantiationShardBlob>;
+using Root = archive::Archived<InstantiationShardBlob>;
 
-BlobView view_of(llvm::StringRef bytes) {
-    return verified_root<InstantiationShardBlob>(bytes);
+const Root& view_of(llvm::StringRef bytes) {
+    return archive::view<InstantiationShardBlob>(bytes);
 }
 
 /// A record kind's byte: the InstantiationKind, with this bit set for a
@@ -31,36 +32,36 @@ std::uint8_t kind_byte(const InstantiationRecord& record) {
 
 /// The record table: each record's range, kind, target and `from`.
 struct RecordTable {
-    RangeColumnsView columns;
-    llvm::ArrayRef<std::uint8_t> kinds;
+    const Root& root;
+    const ArchivedRanges& columns;
     IdColumnView targets;
     IdColumnView froms;
-    llvm::ArrayRef<std::uint64_t> symbol_hashes;
 
-    static RecordTable of(BlobView root) {
-        auto symbol_hashes = root[&InstantiationShardBlob::symbol_hashes];
+    static RecordTable of(const Root& root) {
+        auto& symbol_hashes = root.symbol_hashes;
         return {
-            .columns = columns_of(root[&InstantiationShardBlob::records]),
-            .kinds = root[&InstantiationShardBlob::record_kinds],
-            .targets = ids_of(root[&InstantiationShardBlob::record_targets], symbol_hashes.size()),
-            .froms = ids_of(root[&InstantiationShardBlob::record_froms], symbol_hashes.size()),
-            .symbol_hashes = symbol_hashes,
+            .root = root,
+            .columns = root.records,
+            .targets = ids_of(root.record_targets, symbol_hashes.size()),
+            .froms = ids_of(root.record_froms, symbol_hashes.size()),
         };
     }
 
     std::uint32_t size() const {
-        return columns.size();
+        return entry_count(columns);
     }
 
     InstantiationKind kind_of(std::uint32_t record) const {
-        return static_cast<InstantiationKind>(kinds[record] & ~expansion_bit);
+        auto byte = root.record_kinds[record];
+        return static_cast<InstantiationKind>(byte & ~expansion_bit);
     }
 
     bool expansion_of(std::uint32_t record) const {
-        return (kinds[record] & expansion_bit) != 0;
+        return (root.record_kinds[record] & expansion_bit) != 0;
     }
 
     InstantiationRecord at(std::uint32_t record, LocalSourceRange range) const {
+        auto& symbol_hashes = root.symbol_hashes;
         auto kind = kind_of(record);
         return {
             .range = range,
@@ -82,23 +83,22 @@ struct SetTable {
     /// The size of the table the members index.
     std::uint32_t member_count;
 
-    static SetTable resolutions_of(BlobView root) {
-        auto records = columns_of(root[&InstantiationShardBlob::records]).size();
+    static SetTable resolutions_of(const Root& root) {
+        auto records = entry_count(root.records);
         return {
-            .hashes = root[&InstantiationShardBlob::resolutions],
-            .ends = root[&InstantiationShardBlob::resolution_ends],
-            .members = ids_of(root[&InstantiationShardBlob::resolution_records], records),
+            .hashes = root.resolutions,
+            .ends = root.resolution_ends,
+            .members = ids_of(root.resolution_records, records),
             .member_count = records,
         };
     }
 
-    static SetTable uses_of(BlobView root) {
-        auto resolutions =
-            static_cast<std::uint32_t>(root[&InstantiationShardBlob::resolutions].size());
+    static SetTable uses_of(const Root& root) {
+        auto resolutions = static_cast<std::uint32_t>(root.resolutions.size());
         return {
-            .hashes = root[&InstantiationShardBlob::uses],
-            .ends = root[&InstantiationShardBlob::use_ends],
-            .members = ids_of(root[&InstantiationShardBlob::use_resolutions], resolutions),
+            .hashes = root.uses,
+            .ends = root.use_ends,
+            .members = ids_of(root.use_resolutions, resolutions),
             .member_count = resolutions,
         };
     }
@@ -115,45 +115,37 @@ struct SetTable {
 };
 
 struct KeyTable {
-    llvm::ArrayRef<std::uint64_t> keys;
+    const Root& root;
     IdColumnView patterns;
     IdColumnView resolutions;
     IdColumnView producers;
-    llvm::ArrayRef<std::uint64_t> symbol_hashes;
-    llvm::ArrayRef<std::uint64_t> resolution_hashes;
-    llvm::ArrayRef<std::uint64_t> producer_units;
-    llvm::ArrayRef<std::uint64_t> producer_runs;
 
-    static KeyTable of(BlobView root) {
-        auto symbol_hashes = root[&InstantiationShardBlob::symbol_hashes];
-        auto resolution_hashes = root[&InstantiationShardBlob::resolutions];
-        auto producer_units = root[&InstantiationShardBlob::producer_units];
+    static KeyTable of(const Root& root) {
+        auto& symbol_hashes = root.symbol_hashes;
+        auto& resolution_hashes = root.resolutions;
+        auto& producer_units = root.producer_units;
         return {
-            .keys = root[&InstantiationShardBlob::keys],
-            .patterns = ids_of(root[&InstantiationShardBlob::key_patterns], symbol_hashes.size()),
-            .resolutions = ids_of(root[&InstantiationShardBlob::key_resolutions],
-                                  resolution_hashes.size() + 1),
-            .producers =
-                ids_of(root[&InstantiationShardBlob::key_producers], producer_units.size()),
-            .symbol_hashes = symbol_hashes,
-            .resolution_hashes = resolution_hashes,
-            .producer_units = producer_units,
-            .producer_runs = root[&InstantiationShardBlob::producer_runs],
+            .root = root,
+            .patterns = ids_of(root.key_patterns, symbol_hashes.size()),
+            .resolutions = ids_of(root.key_resolutions, resolution_hashes.size() + 1),
+            .producers = ids_of(root.key_producers, producer_units.size()),
         };
     }
 
     InstantiationShard::Key at(std::uint32_t k) const {
         InstantiationShard::Key key{
-            .key = keys[k],
-            .pattern = symbol_hashes[patterns[k]],
+            .key = root.keys[k],
+            .pattern = root.symbol_hashes[patterns[k]],
         };
         if(auto resolution = resolutions[k]; resolution != 0) {
-            key.resolution = resolution_hashes[resolution - 1];
+            key.resolution = root.resolutions[resolution - 1];
         }
         if(producers.size() != 0) {
             auto producer = producers[k];
-            key.producer =
-                Producer{.unit = producer_units[producer], .run = producer_runs[producer]};
+            key.producer = Producer{
+                .unit = root.producer_units[producer],
+                .run = root.producer_runs[producer],
+            };
         }
         return key;
     }
@@ -161,8 +153,8 @@ struct KeyTable {
 
 // Decoded symbol hashes, like resolution hashes and producer units, key
 // DenseMaps (reserved_key).
-CheckResult symbols_ok(BlobView root) {
-    auto hashes = root[&InstantiationShardBlob::symbol_hashes];
+CheckResult symbols_ok(const Root& root) {
+    auto& hashes = root.symbol_hashes;
     if(!strictly_ascending(hashes)) {
         return std::unexpected("symbol hashes are not strictly ascending");
     }
@@ -174,33 +166,31 @@ CheckResult symbols_ok(BlobView root) {
 
 // records_at narrows its scan by begin order and the merge decodes
 // records by their key.
-CheckResult records_ok(BlobView root) {
+CheckResult records_ok(const Root& root) {
     auto table = RecordTable::of(root);
-    if(auto ok = range_encoding_ok(table.columns,
-                                   root[&InstantiationShardBlob::content_size],
-                                   RangeEncoding::Delta);
-       !ok) {
+    if(auto ok = range_encoding_ok(table.columns, root.content_size, RangeEncoding::Delta); !ok) {
         return ok;
     }
-    if(!table.columns.masks8.empty() || !table.columns.masks16.empty() ||
-       !table.columns.masks32.empty() || !table.columns.masks64.empty() ||
-       !table.columns.roaring_offsets.empty() || !table.columns.roaring.empty()) {
+    auto& side = table.columns;
+    if(!side.masks8.empty() || !side.masks16.empty() || !side.masks32.empty() ||
+       !side.masks64.empty() || !side.roaring_offsets.empty() || !side.roaring.empty()) {
         return std::unexpected("mask columns on instantiation records");
     }
     auto count = table.size();
-    if(table.kinds.size() != count) {
+    if(root.record_kinds.size() != count) {
         return std::unexpected("record kinds do not match the record count");
     }
-    if(auto ok = ids_ok(table.targets, count, table.symbol_hashes.size()); !ok) {
+    auto& symbol_hashes = root.symbol_hashes;
+    if(auto ok = ids_ok(table.targets, count, symbol_hashes.size()); !ok) {
         return ok;
     }
-    if(auto ok = ids_ok(table.froms, count, table.symbol_hashes.size()); !ok) {
+    if(auto ok = ids_ok(table.froms, count, symbol_hashes.size()); !ok) {
         return ok;
     }
     std::tuple<std::uint32_t, std::uint32_t, InstantiationKind, bool, std::uint32_t, std::uint32_t>
         previous;
     CheckResult result;
-    table.columns.for_each_range([&](std::uint32_t record, LocalSourceRange range) {
+    for_each_range(table.columns, [&](std::uint32_t record, LocalSourceRange range) {
         if(table.kind_of(record) > InstantiationKind::TypeDefinition) {
             result = std::unexpected("unknown record kind");
             return false;
@@ -250,7 +240,7 @@ CheckResult sets_ok(const SetTable& table) {
 
 // Every record has a resolution: an ownerless record would serve until the
 // first dead resolution and then vanish.
-CheckResult resolutions_ok(BlobView root) {
+CheckResult resolutions_ok(const Root& root) {
     auto table = SetTable::resolutions_of(root);
     if(auto ok = sets_ok(table); !ok) {
         return ok;
@@ -266,12 +256,12 @@ CheckResult resolutions_ok(BlobView root) {
 }
 
 // Manifests name a use by its identity, so each must hash to it.
-CheckResult uses_ok(BlobView root) {
+CheckResult uses_ok(const Root& root) {
     auto table = SetTable::uses_of(root);
     if(auto ok = sets_ok(table); !ok) {
         return ok;
     }
-    auto resolutions = root[&InstantiationShardBlob::resolutions];
+    auto& resolutions = root.resolutions;
     std::vector<ResolutionHash> members;
     for(std::uint32_t use = 0; use < table.hashes.size(); use += 1) {
         members.clear();
@@ -285,28 +275,33 @@ CheckResult uses_ok(BlobView root) {
     return {};
 }
 
-CheckResult keys_ok(BlobView root) {
+CheckResult keys_ok(const Root& root) {
     auto table = KeyTable::of(root);
-    auto count = table.keys.size();
-    if(!strictly_ascending(table.keys)) {
+    auto& keys = root.keys;
+    auto count = keys.size();
+    if(!strictly_ascending(keys)) {
         return std::unexpected("keys are not strictly ascending");
     }
-    if(auto ok = ids_ok(table.patterns, count, table.symbol_hashes.size()); !ok) {
+    auto& symbol_hashes = root.symbol_hashes;
+    if(auto ok = ids_ok(table.patterns, count, symbol_hashes.size()); !ok) {
         return ok;
     }
-    if(auto ok = ids_ok(table.resolutions, count, table.resolution_hashes.size() + 1); !ok) {
+    auto& resolution_hashes = root.resolutions;
+    if(auto ok = ids_ok(table.resolutions, count, resolution_hashes.size() + 1); !ok) {
         return ok;
     }
-    auto producers = table.producer_units.size();
-    if(table.producer_runs.size() != producers) {
+    auto& producer_units = root.producer_units;
+    auto& producer_runs = root.producer_runs;
+    auto producers = producer_units.size();
+    if(producer_runs.size() != producers) {
         return std::unexpected("producer columns do not line up");
     }
-    if(llvm::any_of(table.producer_units, [](std::uint64_t unit) { return reserved_key(unit); })) {
+    if(llvm::any_of(producer_units, [](std::uint64_t unit) { return reserved_key(unit); })) {
         return std::unexpected("a reserved producer unit");
     }
     for(std::uint32_t i = 1; i < producers; i += 1) {
-        if(std::pair(table.producer_units[i - 1], table.producer_runs[i - 1]) >=
-           std::pair(table.producer_units[i], table.producer_runs[i])) {
+        if(std::pair(producer_units[i - 1], producer_runs[i - 1]) >=
+           std::pair(producer_units[i], producer_runs[i])) {
             return std::unexpected("producers are not strictly ascending");
         }
     }
@@ -322,7 +317,7 @@ CheckResult keys_ok(BlobView root) {
 /// readers dereference through raw column pointers or search by order is
 /// proven here, once. Later checks decode through columns earlier ones
 /// bounded.
-CheckResult validate(BlobView root) {
+CheckResult validate(const Root& root) {
     constexpr std::array checks = {symbols_ok, records_ok, resolutions_ok, uses_ok, keys_ok};
     for(auto check: checks) {
         if(auto ok = check(root); !ok) {
@@ -371,13 +366,13 @@ InstantiationShard InstantiationShard::from_buffer(std::unique_ptr<llvm::MemoryB
     if(!verified) {
         return {};
     }
-    auto root = *verified;
+    auto& root = *verified;
     if(auto ok = validate(root); !ok) {
         LOG_DEBUG("Rejecting instantiation blob: {}", ok.error());
         return {};
     }
     InstantiationShard shard(std::move(buffer));
-    RecordTable::of(root).columns.for_each_range([&](std::uint32_t, LocalSourceRange range) {
+    for_each_range(RecordTable::of(root).columns, [&](std::uint32_t, LocalSourceRange range) {
         shard.longest = std::max(shard.longest, range.length());
         return true;
     });
@@ -389,21 +384,21 @@ bool InstantiationShard::rebind(std::unique_ptr<llvm::MemoryBuffer> replacement)
 }
 
 std::uint64_t InstantiationShard::content_hash() const {
-    return buffer ? view_of(bytes())[&InstantiationShardBlob::content_hash] : 0;
+    return buffer ? view_of(bytes()).content_hash : 0;
 }
 
 llvm::ArrayRef<ResolutionHash> InstantiationShard::resolutions() const {
     if(!buffer) {
         return {};
     }
-    return view_of(bytes())[&InstantiationShardBlob::resolutions];
+    return view_of(bytes()).resolutions;
 }
 
 llvm::ArrayRef<UseHash> InstantiationShard::uses() const {
     if(!buffer) {
         return {};
     }
-    return view_of(bytes())[&InstantiationShardBlob::uses];
+    return view_of(bytes()).uses;
 }
 
 bool InstantiationShard::has_use(UseHash use) const {
@@ -415,9 +410,9 @@ std::vector<ResolutionHash> InstantiationShard::resolutions_of(UseHash use) cons
     if(!buffer) {
         return resolutions;
     }
-    auto root = view_of(bytes());
+    auto& root = view_of(bytes());
     auto table = SetTable::uses_of(root);
-    auto hashes = root[&InstantiationShardBlob::resolutions];
+    auto& hashes = root.resolutions;
     if(auto found = table.find(use)) {
         for(auto resolution: table.members_of(*found)) {
             resolutions.push_back(hashes[resolution]);
@@ -433,7 +428,7 @@ void InstantiationShard::set_live(llvm::ArrayRef<UseHash> live) {
     }
     llvm::SmallVector<UseHash> sorted(live);
     llvm::sort(sorted);
-    auto root = view_of(bytes());
+    auto& root = view_of(bytes());
     auto uses = SetTable::uses_of(root);
     auto resolutions = SetTable::resolutions_of(root);
     bool dead = false;
@@ -470,15 +465,16 @@ llvm::ArrayRef<SymbolHash> InstantiationShard::keys() const {
     if(!buffer) {
         return {};
     }
-    return view_of(bytes())[&InstantiationShardBlob::keys];
+    return view_of(bytes()).keys;
 }
 
 std::optional<InstantiationShard::Key> InstantiationShard::find_key(SymbolHash key) const {
     if(!buffer) {
         return std::nullopt;
     }
-    auto table = KeyTable::of(view_of(bytes()));
-    auto position = sorted_find(table.keys, key);
+    auto& root = view_of(bytes());
+    auto table = KeyTable::of(root);
+    auto position = sorted_find(root.keys, key);
     if(!position) {
         return std::nullopt;
     }
@@ -489,8 +485,10 @@ void InstantiationShard::for_each_key(llvm::function_ref<bool(const Key&)> callb
     if(!buffer) {
         return;
     }
-    auto table = KeyTable::of(view_of(bytes()));
-    for(std::uint32_t k = 0; k < table.keys.size(); k += 1) {
+    auto& root = view_of(bytes());
+    auto table = KeyTable::of(root);
+    auto count = root.keys.size();
+    for(std::uint32_t k = 0; k < count; k += 1) {
         if(!callback(table.at(k))) {
             return;
         }
@@ -509,8 +507,8 @@ void InstantiationShard::records_at(
     // before the offset for the longest of them to reach it.
     auto reach = offset - std::min(offset, longest);
     auto first =
-        table.columns.partition_point([&](LocalSourceRange range) { return range.begin < reach; });
-    table.columns.for_each_range(first, [&](std::uint32_t record, LocalSourceRange range) {
+        partition_point(table.columns, [&](LocalSourceRange range) { return range.begin < reach; });
+    for_each_range(table.columns, first, [&](std::uint32_t record, LocalSourceRange range) {
         if(range.begin > offset) {
             return false;
         }
@@ -524,13 +522,14 @@ void InstantiationShard::records_of(
     if(!buffer) {
         return;
     }
-    auto table = RecordTable::of(view_of(bytes()));
-    auto found = sorted_find(table.symbol_hashes, symbol);
+    auto& root = view_of(bytes());
+    auto table = RecordTable::of(root);
+    auto found = sorted_find(root.symbol_hashes, symbol);
     if(!found) {
         return;
     }
     auto id = *found;
-    table.columns.for_each_range([&](std::uint32_t record, LocalSourceRange range) {
+    for_each_range(table.columns, [&](std::uint32_t record, LocalSourceRange range) {
         bool names = table.targets[record] == id ||
                      (has_from(table.kind_of(record)) && table.froms[record] == id);
         return !names || !live(record) || callback(table.at(record, range));
@@ -543,7 +542,7 @@ void InstantiationShard::for_each_record(
         return;
     }
     auto table = RecordTable::of(view_of(bytes()));
-    table.columns.for_each_range([&](std::uint32_t record, LocalSourceRange range) {
+    for_each_range(table.columns, [&](std::uint32_t record, LocalSourceRange range) {
         return !live(record) || callback(table.at(record, range));
     });
 }
@@ -564,7 +563,7 @@ struct Draft {
 
 /// The single writer of InstantiationShardBlob: every encoding choice is a
 /// function of the data.
-void emit(const Draft& draft, llvm::raw_ostream& os) {
+std::string emit(const Draft& draft) {
     // The records of every resolution, each stored once.
     std::vector<std::pair<InstantiationRecord, std::uint32_t>> held;
     for(std::uint32_t resolution = 0; resolution < draft.resolutions.size(); resolution += 1) {
@@ -672,7 +671,7 @@ void emit(const Draft& draft, llvm::raw_ostream& os) {
         }
     }
 
-    serialize_blob(blob, os);
+    return archive::encode(blob);
 }
 
 using DecodedResolutions = std::vector<std::pair<ResolutionHash, std::vector<InstantiationRecord>>>;
@@ -682,11 +681,11 @@ using DecodedResolutions = std::vector<std::pair<ResolutionHash, std::vector<Ins
 void decode_resolutions(const InstantiationShard& shard,
                         llvm::function_ref<bool(ResolutionHash)> keep,
                         DecodedResolutions& out) {
-    auto root = view_of(shard.bytes());
+    auto& root = view_of(shard.bytes());
     auto records = RecordTable::of(root);
     std::vector<LocalSourceRange> ranges;
     ranges.reserve(records.size());
-    records.columns.for_each_range([&](std::uint32_t, LocalSourceRange range) {
+    for_each_range(records.columns, [&](std::uint32_t, LocalSourceRange range) {
         ranges.push_back(range);
         return true;
     });
@@ -714,10 +713,9 @@ void fold_resolutions(DecodedResolutions& resolutions) {
 
 }  // namespace
 
-void write_instantiations(const FileInstantiations& instantiations,
-                          std::uint64_t content_hash,
-                          std::uint32_t content_size,
-                          llvm::raw_ostream& os) {
+std::string write_instantiations(const FileInstantiations& instantiations,
+                                 std::uint64_t content_hash,
+                                 std::uint32_t content_size) {
     Draft draft{.content_hash = content_hash, .content_size = content_size};
     std::vector<ResolutionHash> identities;
     for(auto records: instantiations.resolutions) {
@@ -739,22 +737,22 @@ void write_instantiations(const FileInstantiations& instantiations,
     std::ranges::sort(draft.keys, {}, &InstantiationShard::Key::key);
     draft.keys.erase(std::ranges::unique(draft.keys, {}, &InstantiationShard::Key::key).begin(),
                      draft.keys.end());
-    emit(draft, os);
+    return emit(draft);
 }
 
-bool merge_instantiations(const InstantiationShard& old,
-                          llvm::ArrayRef<UseHash> keep,
-                          llvm::function_ref<bool(const Producer&)> keep_producer,
-                          const InstantiationShard* fresh,
-                          Producer producer,
-                          std::optional<AddedUse> added,
-                          llvm::raw_ostream& os) {
+std::optional<std::string>
+    merge_instantiations(const InstantiationShard& old,
+                         llvm::ArrayRef<UseHash> keep,
+                         llvm::function_ref<bool(const Producer&)> keep_producer,
+                         const InstantiationShard* fresh,
+                         Producer producer,
+                         std::optional<AddedUse> added) {
     assert((!fresh || !old.loaded() || old.content_hash() == fresh->content_hash()) &&
            "merge inputs must share one content generation");
-    auto root = view_of((fresh ? *fresh : old).bytes());
+    auto& root = view_of((fresh ? *fresh : old).bytes());
     Draft draft{
-        .content_hash = root[&InstantiationShardBlob::content_hash],
-        .content_size = root[&InstantiationShardBlob::content_size],
+        .content_hash = root.content_hash,
+        .content_size = root.content_size,
     };
 
     // The uses kept, and the added one; their resolutions are the ones of
@@ -826,10 +824,9 @@ bool merge_instantiations(const InstantiationShard& old,
                        &InstantiationShard::Key::key,
                        &InstantiationShard::Key::key);
     if(draft.resolutions.empty() && draft.keys.empty()) {
-        return false;
+        return std::nullopt;
     }
-    emit(draft, os);
-    return true;
+    return emit(draft);
 }
 
 }  // namespace clice::index

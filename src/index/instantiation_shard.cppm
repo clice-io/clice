@@ -183,13 +183,13 @@ public:
     void for_each_record(llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 
 private:
-    friend bool merge_instantiations(const InstantiationShard& old,
-                                     llvm::ArrayRef<UseHash> keep,
-                                     llvm::function_ref<bool(const Producer&)> keep_producer,
-                                     const InstantiationShard* fresh,
-                                     Producer producer,
-                                     std::optional<AddedUse> added,
-                                     llvm::raw_ostream& os);
+    friend std::optional<std::string>
+        merge_instantiations(const InstantiationShard& old,
+                             llvm::ArrayRef<UseHash> keep,
+                             llvm::function_ref<bool(const Producer&)> keep_producer,
+                             const InstantiationShard* fresh,
+                             Producer producer,
+                             std::optional<AddedUse> added);
 
     explicit InstantiationShard(std::unique_ptr<llvm::MemoryBuffer> buffer) :
         buffer(std::move(buffer)) {}
@@ -214,10 +214,9 @@ private:
 
 /// Encode one run's instantiations of one file as a worker blob: `content_hash`
 /// and `content_size` describe the text the run compiled.
-void write_instantiations(const FileInstantiations& instantiations,
-                          std::uint64_t content_hash,
-                          std::uint32_t content_size,
-                          llvm::raw_ostream& os);
+std::string write_instantiations(const FileInstantiations& instantiations,
+                                 std::uint64_t content_hash,
+                                 std::uint32_t content_size);
 
 /// Merge into one blob of the same content generation: the uses of `old` in
 /// `keep` with their resolutions, the keys of `old` whose producer
@@ -225,14 +224,14 @@ void write_instantiations(const FileInstantiations& instantiations,
 /// resolutions and keys, walked by `producer` — a fresh key replaces a
 /// stored one — and the `added` use. `old` may be empty (a first run) and
 /// `fresh` null (a compaction, or a TU adding the use of what others
-/// walked). Writes nothing and returns false when nothing survives: the
-/// caller retires the file.
-bool merge_instantiations(const InstantiationShard& old,
-                          llvm::ArrayRef<UseHash> keep,
-                          llvm::function_ref<bool(const Producer&)> keep_producer,
-                          const InstantiationShard* fresh,
-                          Producer producer,
-                          std::optional<AddedUse> added,
-                          llvm::raw_ostream& os);
+/// walked). Returns nullopt when nothing survives: the caller retires the
+/// file.
+std::optional<std::string>
+    merge_instantiations(const InstantiationShard& old,
+                         llvm::ArrayRef<UseHash> keep,
+                         llvm::function_ref<bool(const Producer&)> keep_producer,
+                         const InstantiationShard* fresh,
+                         Producer producer,
+                         std::optional<AddedUse> added);
 
 }  // namespace clice::index

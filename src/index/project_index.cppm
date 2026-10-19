@@ -513,7 +513,7 @@ public:
     /// pin of every manifest's generation, and the search index's
     /// generation and pending entries. The changed entries are held aside until
     /// rebase or restore_unwritten says whether the bytes were persisted.
-    void serialize_table(llvm::raw_ostream& os);
+    std::string serialize_table();
 
     /// The bytes serialize_table produced were persisted: they become the
     /// base, and the entries they hold leave the changed set. Entries changed

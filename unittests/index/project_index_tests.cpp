@@ -419,14 +419,12 @@ ZEST_CASE(TableRoundTripWithRealMerge) {
     manifest.tu_version = focus_version;
     project.apply_manifest(file_ids_map[view.path_count() - 1], std::move(manifest));
 
-    llvm::SmallString<4096> buf;
-    llvm::raw_svector_ostream os(buf);
-    project.serialize_table(os);
+    auto buf = project.serialize_table();
 
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(buf.str(), pins));
+    ZASSERT(loaded.load_table(buf, pins));
 
     auto symbol = find_symbol(loaded, "global_value");
     ZASSERT(symbol != 0);
@@ -503,21 +501,17 @@ ZEST_CASE(TableColumnsRoundTrip) {
         ZEXPECT(none == 0u);
     };
 
-    llvm::SmallString<4096> first;
-    llvm::raw_svector_ostream first_os(first);
-    project.serialize_table(first_os);
+    auto first = project.serialize_table();
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(first.str(), pins));
+    ZASSERT(loaded.load_table(first, pins));
     check(loaded, fresh);
 
-    llvm::SmallString<4096> second;
-    llvm::raw_svector_ostream second_os(second);
-    loaded.serialize_table(second_os);
+    auto second = loaded.serialize_table();
     clice::FileTable again;
     index::ProjectIndex reloaded{again};
-    ZASSERT(reloaded.load_table(second.str(), pins));
+    ZASSERT(reloaded.load_table(second, pins));
     check(reloaded, again);
 }
 
@@ -541,13 +535,11 @@ ZEST_CASE(WidePathIds) {
     }
     project.apply_manifest(unit, std::move(manifest));
 
-    llvm::SmallString<4096> bytes;
-    llvm::raw_svector_ostream os(bytes);
-    project.serialize_table(os);
+    auto bytes = project.serialize_table();
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(bytes.str(), pins));
+    ZASSERT(loaded.load_table(bytes, pins));
     auto identity = loaded.find_symbol(10);
     ZASSERT(identity);
     ZEXPECT(fresh.find(Spelling::absolute("/proj/0.h")) == Fid{identity->file});
@@ -568,9 +560,7 @@ ZEST_CASE(LazyShardsStayPut) {
     index::ProjectIndex writer{writer_files};
     writer.edit(7).name = "x";
     std::vector<index::BlobDatabase::Blob> puts;
-    std::string table;
-    llvm::raw_string_ostream table_os(table);
-    writer.serialize_table(table_os);
+    auto table = writer.serialize_table();
     puts.push_back({index::BlobKind::ProjectTable, "global", table});
 
     constexpr std::uint32_t count = 300;
@@ -580,9 +570,7 @@ ZEST_CASE(LazyShardsStayPut) {
         .kind = RelationKind::Definition,
         .range = {4, 5}
     });
-    std::string shard;
-    llvm::raw_string_ostream shard_os(shard);
-    index::write_shard(file_index, {}, content, shard_os);
+    auto shard = index::write_shard(file_index, {}, content);
     clice::FileTable files;
     index::ProjectIndex project{files};
     for(std::uint32_t i = 0; i < count; i += 1) {
@@ -680,14 +668,10 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         // The shared local names its files by persisted ids, as the nodes do.
         ZEXPECT(exported.shared_locals[0].files ==
                 std::vector<VersionID>{exported.tu_version, VersionID{exported.nodes[1].file}});
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_manifest(exported, os);
+        auto bytes = index::serialize_manifest(exported);
         puts.push_back({index::BlobKind::TUManifest, writer.key_of(tu), bytes});
     }
-    std::string table_bytes;
-    llvm::raw_string_ostream table_os(table_bytes);
-    writer.serialize_table(table_os);
+    auto table_bytes = writer.serialize_table();
     puts.push_back({index::BlobKind::ProjectTable, "global", table_bytes});
     ZASSERT(db->write(puts, {}).empty());
     ZASSERT(db->advance_read_snapshot());

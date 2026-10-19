@@ -6,6 +6,7 @@ module clice;
 
 import :index.format;
 import :index.instantiation_shard;
+import :support.archive;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -43,9 +44,7 @@ InstantiationShard make(llvm::StringRef bytes) {
 }
 
 InstantiationShard write(const FileInstantiations& instantiations) {
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::write_instantiations(instantiations, generation, size, os);
+    auto bytes = index::write_instantiations(instantiations, generation, size);
     return make(bytes);
 }
 
@@ -59,9 +58,8 @@ InstantiationShard merge(const InstantiationShard& old,
                          Producer producer,
                          llvm::function_ref<bool(const Producer&)> keep_producer = any_producer,
                          std::optional<index::AddedUse> added = std::nullopt) {
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::merge_instantiations(old, keep, keep_producer, fresh, producer, added, os);
+    auto bytes = index::merge_instantiations(old, keep, keep_producer, fresh, producer, added)
+                     .value_or(std::string());
     return make(bytes);
 }
 
@@ -287,9 +285,7 @@ ZEST_CASE(MisalignedBytesLoad) {
     instantiations.resolutions = {
         {reference(10, 11)},
     };
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::write_instantiations(instantiations, generation, size, os);
+    auto bytes = index::write_instantiations(instantiations, generation, size);
     std::vector<std::uint64_t> storage(bytes.size() / sizeof(std::uint64_t) + 2);
     auto* misaligned = reinterpret_cast<char*>(storage.data()) + sizeof(std::uint32_t);
     std::memcpy(misaligned, bytes.data(), bytes.size());
@@ -300,7 +296,7 @@ ZEST_CASE(MisalignedBytesLoad) {
 }
 
 ZEST_CASE(CorruptBlobRejected) {
-    ZEXPECT(!InstantiationShard::from_bytes("not a flatbuffer").loaded());
+    ZEXPECT(!InstantiationShard::from_bytes("not an archive").loaded());
 
     index::InstantiationShardBlob blob;
     blob.format_version = index::index_format_version;
@@ -317,10 +313,7 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.resolution_ends = {1};
     blob.resolution_records = {0};
     auto bytes_of = [&] {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::serialize_blob(blob, os);
-        return bytes;
+        return archive::encode(blob);
     };
     ZASSERT(make(bytes_of()).loaded());
 

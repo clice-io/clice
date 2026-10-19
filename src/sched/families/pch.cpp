@@ -259,9 +259,9 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // Commit the pair on the thread pool as one job: the fsyncs stay off
     // the event loop, and the store either publishes the whole pair or
     // retracts it (a half pair would hand adopters a PCH whose pch.idx index
-    // is gone). Opening the freshly committed blob (mmap + flatbuffer
-    // verification, which walks the whole file) also happens here so no
-    // later consumer pays that walk on the event loop.
+    // is gone). Opening the freshly committed blob (mmap + verification,
+    // which walks every section's shard) also happens here so no later
+    // consumer pays that walk on the event loop.
     struct PairCommit {
         std::optional<std::string> pch_path;
         std::optional<std::string> index_path;

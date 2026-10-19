@@ -8,6 +8,7 @@ import :index.columns;
 import :index.format;
 import :index.search_index;
 import :index.symbol_query;
+import :support.archive;
 import :support.bitmap;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -164,9 +165,7 @@ ZEST_CASE(DamagedPosting) {
     // Bytes no posting list starts with: the blob's structure stays
     // intact and every token's list is undecodable.
     std::ranges::fill(blob.token_postings, 0xff);
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::serialize_blob(blob, os);
+    auto bytes = archive::encode(blob);
     SearchIndex built;
     ZASSERT(built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
     ZEXPECT(!built.damaged());

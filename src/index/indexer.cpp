@@ -21,6 +21,7 @@ import :semantic.resolver;
 import :semantic.semantics;
 import :semantic.token_class;
 import :semantic.types;
+import :support.archive;
 import :support.logging;
 import :support.timer;
 
@@ -1928,9 +1929,7 @@ public:
             if(file_index.empty()) {
                 continue;
             }
-            std::string bytes;
-            llvm::raw_string_ostream os(bytes);
-            write_shard(file_index, resolve, unit.file_content(path_fids[path_id]), os);
+            auto bytes = write_shard(file_index, resolve, unit.file_content(path_fids[path_id]));
             auto hash = llvm::xxh3_64bits(bytes);
             if(std::ranges::binary_search(known_variants, hash)) {
                 known_paths.set(path_id);
@@ -1948,12 +1947,9 @@ public:
             InstantiationSection section{.path_id = path_id};
             if(!file.walked.empty()) {
                 auto content = unit.file_content(path_fids[path_id]);
-                std::string bytes;
-                llvm::raw_string_ostream os(bytes);
-                write_instantiations(file.walked,
-                                     llvm::xxh3_64bits(content),
-                                     static_cast<std::uint32_t>(content.size()),
-                                     os);
+                auto bytes = write_instantiations(file.walked,
+                                                  llvm::xxh3_64bits(content),
+                                                  static_cast<std::uint32_t>(content.size()));
                 section.blob.assign(bytes.begin(), bytes.end());
             }
             llvm::sort(file.skipped);
@@ -2018,9 +2014,7 @@ public:
         blob.instantiations = std::move(instantiation_sections);
 
         ScopedTimer pack_timer;
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        serialize_blob(blob, os);
+        auto bytes = archive::encode(blob);
 
         LOG_PERF("index_detail",
                  "op=build scope={} semantics_ms={:.2f} project_ms={:.2f} "
@@ -2143,11 +2137,13 @@ std::string build_preamble_index(CompilationUnit& unit,
     TUIndexBlob blob{
         .preamble_hash = llvm::xxh3_64bits(preamble_text),
         .preamble_size = static_cast<std::uint32_t>(preamble_text.size()),
-        .links = links,
-        .inactive_regions = inactive_regions,
-        .open_conditionals = open_conditionals,
+        .inactive_regions = inactive_regions.vec(),
+        .open_conditionals = open_conditionals.vec(),
         .diagnostics = diagnostics.str(),
     };
+    for(auto& link: links) {
+        blob.links.push_back({.range = link.range, .target = link.target});
+    }
     Indexer indexer(unit, {});
     return indexer.build(std::move(blob), true);
 }

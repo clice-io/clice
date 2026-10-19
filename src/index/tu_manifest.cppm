@@ -122,7 +122,7 @@ void for_each_version(Manifest& manifest, Visit&& visit) {
 
 /// Serialize a manifest (varint-packed nodes inside a small reflected
 /// wrapper).
-void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os);
+std::string serialize_manifest(const TUManifest& manifest);
 
 /// Verify and decode a manifest blob; nullopt for corrupt, truncated or
 /// old-format data. FileVersion ids are not resolved here — the loader

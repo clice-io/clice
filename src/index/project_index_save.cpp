@@ -177,9 +177,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         if(!shard.has_dead_variants()) {
             continue;
         }
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        merge_shards(shard, live, {}, os);
+        auto bytes = merge_shards(shard, live, {});
         auto replacement = Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         assert(replacement.loaded() && "a freshly written shard blob must verify");
         shard = std::move(replacement);
@@ -215,20 +213,14 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         if(!held.has_dead_uses() && !gone_runs) {
             continue;
         }
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        if(!merge_instantiations(held,
-                                 live_uses(path_id),
-                                 is_current,
-                                 nullptr,
-                                 {},
-                                 std::nullopt,
-                                 os)) {
+        auto bytes =
+            merge_instantiations(held, live_uses(path_id), is_current, nullptr, {}, std::nullopt);
+        if(!bytes) {
             retired_files.push_back(path_id);
             continue;
         }
         auto replacement =
-            InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+            InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(*bytes));
         assert(replacement.loaded() && "a freshly written instantiation blob must verify");
         held = std::move(replacement);
         dirty_instantiations.insert(path_id);
@@ -288,10 +280,9 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
             continue;
         }
         it->second.table_generation = generation;
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        serialize_manifest(export_manifest(it->second), os);
-        blobs.push_back({BlobKind::TUManifest, std::move(key), std::move(bytes)});
+        blobs.push_back({BlobKind::TUManifest,
+                         std::move(key),
+                         serialize_manifest(export_manifest(it->second))});
         batch.manifest_ids.push_back(tu_path_id);
     }
 
@@ -301,11 +292,8 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     // files whose shards never committed.
     batch.had_table = table_dirty;
     if(table_dirty) {
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        serialize_table(os);
         batch.table_slot = blobs.size();
-        blobs.push_back({BlobKind::ProjectTable, "global", std::move(bytes)});
+        blobs.push_back({BlobKind::ProjectTable, "global", serialize_table()});
     }
     // The search blob moves into the batch and back out if the write
     // never commits: it is derived state, so nothing else would re-create

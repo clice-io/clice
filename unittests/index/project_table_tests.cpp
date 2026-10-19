@@ -8,6 +8,7 @@ import :index.columns;
 import :index.format;
 import :index.project_index;
 import :index.tu_manifest;
+import :support.archive;
 import :unittests.utils.index_internals;
 import :unittests.utils;
 
@@ -15,10 +16,6 @@ namespace clice::testing {
 namespace {
 
 ZEST_SUITE(ProjectTable) {
-
-llvm::StringRef bytes_of(const std::vector<std::uint8_t>& blob) {
-    return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
-}
 
 /// A project whose FileVersion for `path` is referenced by one manifest of
 /// `tu` (so garbage collection keeps it) and whose only symbol references
@@ -63,9 +60,7 @@ ZEST_CASE(TableRoundTripRemap) {
     manifest.table_generation = 9;
     project.apply_manifest(tu, std::move(manifest));
 
-    llvm::SmallString<1024> buf;
-    llvm::raw_svector_ostream os(buf);
-    project.serialize_table(os);
+    auto buf = project.serialize_table();
 
     // The next session interns other paths first, so the same file gets a
     // different pool id; both the FileVersion table and the loaded bitmap
@@ -74,7 +69,7 @@ ZEST_CASE(TableRoundTripRemap) {
     fresh.intern(Spelling::absolute("/proj/opened-first.cpp"));
     index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(buf.str(), pins));
+    ZASSERT(loaded.load_table(buf, pins));
 
     auto id = fresh.find(Spelling::absolute("/proj/used.h"));
     ZASSERT(id);
@@ -101,9 +96,7 @@ ZEST_CASE(TableRebaseKeepsChanges) {
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     auto other = pool.intern(Spelling::absolute("/proj/other.h"));
 
-    std::string first;
-    llvm::raw_string_ostream first_os(first);
-    project.serialize_table(first_os);
+    auto first = project.serialize_table();
     project.edit(43).name = "late";
     project.edit(42).reference_files.add(other.raw);
     project.rebase(llvm::MemoryBuffer::getMemBufferCopy(first));
@@ -111,18 +104,14 @@ ZEST_CASE(TableRebaseKeepsChanges) {
     ZASSERT(project.find_symbol(43)->name == "late");
     ZASSERT(project.reference_count(42) == 2u);
 
-    std::string second;
-    llvm::raw_string_ostream second_os(second);
-    project.serialize_table(second_os);
+    auto second = project.serialize_table();
     project.restore_unwritten();
     ZASSERT(project.find_symbol(43)->name == "late");
     ZASSERT(project.reference_count(42) == 2u);
 
     // The base blob's path table is kept as it is, so a base entry's bitmap
     // survives the next write byte for byte.
-    std::string third;
-    llvm::raw_string_ostream third_os(third);
-    project.serialize_table(third_os);
+    auto third = project.serialize_table();
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
@@ -141,41 +130,39 @@ ZEST_CASE(TableCollectsGarbage) {
     auto dead_id = pool.intern(Spelling::absolute("/proj/dead.h"));
     pool.intern_version(dead_id, 0xdead);
 
-    llvm::SmallString<1024> buf;
-    llvm::raw_svector_ostream os(buf);
-    project.serialize_table(os);
+    auto buf = project.serialize_table();
     ZASSERT(pool.version_ids.contains({dead_id, std::uint64_t(0xdead)}));
 
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(buf.str(), pins));
+    ZASSERT(loaded.load_table(buf, pins));
     ZASSERT(!fresh.find(Spelling::absolute("/proj/dead.h")).has_value());
     ZASSERT(fresh.find(Spelling::absolute("/proj/used.h")));
 }
 
 ZEST_CASE(TableVersionGate) {
-    // Only the version slot is written: every other field reads back absent,
-    // which is structurally valid — the result must hinge on the value.
-    struct VersionOnly {
-        std::uint32_t format_version = 0;
-    };
-
+    // A table of another version is no table; an empty one of this version
+    // is an empty index.
     clice::FileTable pool;
     index::ProjectIndex loaded{pool};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
 
-    auto stale = kota::codec::fbs::to_bytes(VersionOnly{});
-    ZASSERT(stale);
-    ZASSERT(!loaded.load_table(bytes_of(*stale), pins).has_value());
-
-    auto current = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
-    ZASSERT(current);
-    ZASSERT(loaded.load_table(bytes_of(*current), pins));
+    index::ProjectTableBlob blob;
+    ZASSERT(!loaded.load_table(archive::encode(blob), pins).has_value());
+    blob.format_version = index::index_format_version;
+    ZASSERT(loaded.load_table(archive::encode(blob), pins));
     ZASSERT(loaded.symbol_count() == 0u);
     ZASSERT(pins.empty());
 
-    ZASSERT(!loaded.load_table("not a flatbuffer", pins).has_value());
+    // Nor is an archive of another layout carrying the version.
+    struct VersionOnly {
+        std::uint32_t format_version = 0;
+    };
+
+    ZASSERT(!loaded.load_table(archive::encode(VersionOnly{index::index_format_version}), pins)
+                 .has_value());
+    ZASSERT(!loaded.load_table("not an archive", pins).has_value());
 }
 
 /// A file set as the writer stores it: up to two path ids raw as u32s, more
@@ -227,8 +214,8 @@ void add_symbol(index::ProjectTableBlob& blob,
     blob.symbol_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.symbol_bitmaps.size()));
 }
 
-auto encode(const index::ProjectTableBlob& blob) {
-    return kota::codec::fbs::to_bytes(blob);
+std::string encode(const index::ProjectTableBlob& blob) {
+    return archive::encode(blob);
 }
 
 /// A path table covering ids 0..3, with the reference under test at 3.
@@ -249,9 +236,8 @@ ZEST_CASE(TableBitmapPayloadGate) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto valid = encode(layout);
-    ZASSERT(valid);
     index::ProjectIndex loaded{pool};
-    ZASSERT(loaded.load_table(bytes_of(*valid), pins));
+    ZASSERT(loaded.load_table(valid, pins));
     ZASSERT(loaded.find_symbol(42));
     ZASSERT(llvm::is_contained(reference_files(loaded, 42),
                                pool.find(Spelling::absolute("/proj/ref.h"))->raw));
@@ -265,10 +251,9 @@ ZEST_CASE(TableBitmapPayloadGate) {
     layout.version_hashes = {0x1};
     add_symbol(layout, 43, "other", std::vector<std::uint8_t>{0xff, 0xff, 0xff});
     auto corrupt = encode(layout);
-    ZASSERT(corrupt);
     clice::FileTable untouched;
     index::ProjectIndex rejecting{untouched};
-    ZASSERT(!rejecting.load_table(bytes_of(*corrupt), pins).has_value());
+    ZASSERT(!rejecting.load_table(corrupt, pins).has_value());
     ZASSERT(rejecting.symbol_count() == 0u);
     ZASSERT(untouched.versions.empty());
     ZASSERT(!untouched.find(Spelling::absolute("/proj/partial.h")).has_value());
@@ -287,15 +272,13 @@ ZEST_CASE(UncoveredBitmapIdRejected) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto uncovered = encode(layout);
-    ZASSERT(uncovered);
     index::ProjectIndex loaded{pool};
-    ZASSERT(!loaded.load_table(bytes_of(*uncovered), pins).has_value());
+    ZASSERT(!loaded.load_table(uncovered, pins).has_value());
     ZASSERT(loaded.symbol_count() == 0u);
 
     layout.paths = four_paths();
     auto covered = encode(layout);
-    ZASSERT(covered);
-    ZASSERT(loaded.load_table(bytes_of(*covered), pins));
+    ZASSERT(loaded.load_table(covered, pins));
     ZASSERT(loaded.find_symbol(42));
 }
 
@@ -313,25 +296,22 @@ ZEST_CASE(TableDuplicateVersionsRejected) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto dup_id = encode(layout);
-    ZASSERT(dup_id);
     index::ProjectIndex loaded{pool};
-    ZASSERT(!loaded.load_table(bytes_of(*dup_id), pins).has_value());
+    ZASSERT(!loaded.load_table(dup_id, pins).has_value());
     ZASSERT(pool.versions.empty());
 
     layout.version_ids = {7, 8};
     layout.version_paths = {"/proj/a.h", "/proj/a.h"};
     layout.version_hashes = {0x1, 0x1};
     auto dup_pair = encode(layout);
-    ZASSERT(dup_pair);
-    ZASSERT(!loaded.load_table(bytes_of(*dup_pair), pins).has_value());
+    ZASSERT(!loaded.load_table(dup_pair, pins).has_value());
 
     // The same path under two content hashes is the legitimate shape: two
     // observed versions of one file. Only the ids the blob carries map
     // into the table; the ones the writer garbage-collected map nowhere.
     layout.version_hashes = {0x1, 0x2};
     auto distinct = encode(layout);
-    ZASSERT(distinct);
-    ZASSERT(loaded.load_table(bytes_of(*distinct), pins));
+    ZASSERT(loaded.load_table(distinct, pins));
     ZASSERT(pool.versions.size() == std::size_t(2));
     ZASSERT(loaded.runtime_version(7));
     ZASSERT(loaded.runtime_version(8));
@@ -351,28 +331,24 @@ ZEST_CASE(TableBadCounterRejected) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto ahead = encode(layout);
-    ZASSERT(ahead);
     index::ProjectIndex loaded{pool};
-    ZASSERT(loaded.load_table(bytes_of(*ahead), pins));
+    ZASSERT(loaded.load_table(ahead, pins));
 
     layout.next_version_id = 7;
     auto lagging = encode(layout);
-    ZASSERT(lagging);
-    ZASSERT(!loaded.load_table(bytes_of(*lagging), pins).has_value());
+    ZASSERT(!loaded.load_table(lagging, pins).has_value());
 
     layout.next_version_id = std::numeric_limits<std::uint32_t>::max() - 1;
     layout.version_ids = {};
     layout.version_paths = {};
     layout.version_hashes = {};
     auto reserved = encode(layout);
-    ZASSERT(reserved);
-    ZASSERT(!loaded.load_table(bytes_of(*reserved), pins).has_value());
+    ZASSERT(!loaded.load_table(reserved, pins).has_value());
 
     // A garbage high-water mark far beyond any real lineage rejects.
     layout.next_version_id = 0xf0000000;
     auto oversized = encode(layout);
-    ZASSERT(oversized);
-    ZASSERT(!loaded.load_table(bytes_of(*oversized), pins).has_value());
+    ZASSERT(!loaded.load_table(oversized, pins).has_value());
 }
 
 ZEST_CASE(TableRoundTripSymbolFacts) {
@@ -390,16 +366,14 @@ ZEST_CASE(TableRoundTripSymbolFacts) {
     symbol.flags = index::SymbolFlags::HasDefinition | index::SymbolFlags::Specialization;
     symbol.file = file.raw;
 
-    llvm::SmallString<1024> buf;
-    llvm::raw_svector_ostream os(buf);
-    project.serialize_table(os);
+    auto buf = project.serialize_table();
 
     // The file column follows the path across pools like the bitmaps do.
     clice::FileTable fresh;
     fresh.intern(Spelling::absolute("/proj/opened-first.cpp"));
     index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(buf.str(), pins));
+    ZASSERT(loaded.load_table(buf, pins));
     auto restored = loaded.find_symbol(42);
     ZASSERT(restored);
     ZASSERT(restored->name == "Box");
@@ -423,15 +397,13 @@ ZEST_CASE(UncoveredFileIdRejected) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto control = encode(layout);
-    ZASSERT(control);
     index::ProjectIndex loaded{pool};
-    ZASSERT(loaded.load_table(bytes_of(*control), pins));
+    ZASSERT(loaded.load_table(control, pins));
 
     layout.symbol_files = {6};
     auto uncovered = encode(layout);
-    ZASSERT(uncovered);
     index::ProjectIndex rejecting{pool};
-    ZASSERT(!rejecting.load_table(bytes_of(*uncovered), pins).has_value());
+    ZASSERT(!rejecting.load_table(uncovered, pins).has_value());
     ZASSERT(rejecting.symbol_count() == 0u);
 }
 
@@ -450,9 +422,8 @@ ZEST_CASE(SharedLocalFilesRejected) {
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto loads = [&](const index::ProjectTableBlob& blob) {
         auto bytes = encode(blob);
-        ZASSERT(bytes);
         index::ProjectIndex loaded{pool};
-        return loaded.load_table(bytes_of(*bytes), pins).has_value();
+        return loaded.load_table(bytes, pins).has_value();
     };
     ZASSERT(loads(layout));
 
@@ -484,7 +455,7 @@ ZEST_CASE(TableSparseColumnsRejected) {
     auto loads = [&] {
         auto bytes = encode(layout);
         index::ProjectIndex loaded{pool};
-        return bytes && loaded.load_table(bytes_of(*bytes), pins).has_value();
+        return loaded.load_table(bytes, pins).has_value();
     };
     ZASSERT(loads());
     layout.symbol_args_entries = {2};
@@ -513,21 +484,18 @@ ZEST_CASE(TableDuplicateSymbolRejected) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto dup = encode(layout);
-    ZASSERT(dup);
     index::ProjectIndex loaded{pool};
-    ZASSERT(!loaded.load_table(bytes_of(*dup), pins).has_value());
+    ZASSERT(!loaded.load_table(dup, pins).has_value());
     ZASSERT(loaded.symbol_count() == 0u);
 
     layout.symbol_hashes = {42, 43};
     auto distinct = encode(layout);
-    ZASSERT(distinct);
-    ZASSERT(loaded.load_table(bytes_of(*distinct), pins));
+    ZASSERT(loaded.load_table(distinct, pins));
     ZASSERT(loaded.symbol_count() == std::size_t(2));
 
     layout.symbol_hashes = {43, 42};
     auto descending = encode(layout);
-    ZASSERT(descending);
-    ZASSERT(!loaded.load_table(bytes_of(*descending), pins).has_value());
+    ZASSERT(!loaded.load_table(descending, pins).has_value());
 }
 
 ZEST_CASE(TableTokenKindRejected) {
@@ -541,14 +509,12 @@ ZEST_CASE(TableTokenKindRejected) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto corrupt = encode(layout);
-    ZASSERT(corrupt);
     index::ProjectIndex loaded{pool};
-    ZASSERT(!loaded.load_table(bytes_of(*corrupt), pins).has_value());
+    ZASSERT(!loaded.load_table(corrupt, pins).has_value());
 
     layout.symbol_token_kinds = {0};
     auto valid = encode(layout);
-    ZASSERT(valid);
-    ZASSERT(loaded.load_table(bytes_of(*valid), pins));
+    ZASSERT(loaded.load_table(valid, pins));
 }
 
 ZEST_CASE(TableReservedKeysRejected) {
@@ -566,8 +532,7 @@ ZEST_CASE(TableReservedKeysRejected) {
         layout.version_paths = {"/proj/a.h"};
         layout.version_hashes = {0x1};
         auto bytes = encode(layout);
-        ZASSERT(bytes);
-        ZASSERT(!loaded.load_table(bytes_of(*bytes), pins).has_value());
+        ZASSERT(!loaded.load_table(bytes, pins).has_value());
     }
     {
         clice::Bitmap bits;
@@ -576,22 +541,19 @@ ZEST_CASE(TableReservedKeysRejected) {
         layout.paths = four_paths();
         add_symbol(layout, ~std::uint64_t(0), "sym", file_set(bits));
         auto bytes = encode(layout);
-        ZASSERT(bytes);
-        ZASSERT(!loaded.load_table(bytes_of(*bytes), pins).has_value());
+        ZASSERT(!loaded.load_table(bytes, pins).has_value());
     }
     {
         auto layout = project_table_blob();
         add_symbol(layout, 42, "sym", file_set(clice::Bitmap{}), ~std::uint64_t(0));
         auto bytes = encode(layout);
-        ZASSERT(bytes);
-        ZASSERT(!loaded.load_table(bytes_of(*bytes), pins).has_value());
+        ZASSERT(!loaded.load_table(bytes, pins).has_value());
     }
     {
         auto layout = project_table_blob();
         layout.paths = {""};
         auto bytes = encode(layout);
-        ZASSERT(bytes);
-        ZASSERT(!loaded.load_table(bytes_of(*bytes), pins).has_value());
+        ZASSERT(!loaded.load_table(bytes, pins).has_value());
     }
     ZASSERT(pool.versions.empty());
     ZASSERT(loaded.symbol_count() == 0u);
@@ -604,13 +566,12 @@ ZEST_CASE(UnknownFileVersionsDetected) {
     layout.version_paths = {"/proj/a.h"};
     layout.version_hashes = {0x1};
     auto bytes = encode(layout);
-    ZASSERT(bytes);
 
     clice::FileTable pool;
     pool.intern_version(pool.intern(Spelling::absolute("/proj/opened-first.cpp")), 0x9);
     index::ProjectIndex loaded{pool};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(bytes_of(*bytes), pins));
+    ZASSERT(loaded.load_table(bytes, pins));
     auto known =
         pool.version_ids.find({*pool.find(Spelling::absolute("/proj/a.h")), std::uint64_t(0x1)})
             ->second;
@@ -649,9 +610,7 @@ ZEST_CASE(SharedTableLineages) {
     // manifests back under the ids it read them with.
     clice::FileTable first_pool;
     auto first = build_project(first_pool, "/lib/used.h", "/lib/tu.cpp");
-    std::string first_bytes;
-    llvm::raw_string_ostream first_os(first_bytes);
-    first.serialize_table(first_os);
+    auto first_bytes = first.serialize_table();
 
     clice::FileTable second_pool;
     second_pool.intern_version(second_pool.intern(Spelling::absolute("/app/pad.cpp")), 0x5);
@@ -659,9 +618,7 @@ ZEST_CASE(SharedTableLineages) {
     auto* written = second.held_manifest(second_pool.intern(Spelling::absolute("/app/tu.cpp")));
     ZASSERT(written);
     auto persisted = second.export_manifest(*written);
-    std::string second_bytes;
-    llvm::raw_string_ostream second_os(second_bytes);
-    second.serialize_table(second_os);
+    auto second_bytes = second.serialize_table();
 
     clice::FileTable shared;
     index::ProjectIndex first_loaded{shared};

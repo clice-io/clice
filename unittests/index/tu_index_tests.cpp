@@ -116,7 +116,7 @@ ZEST_CASE(CorruptSectionBytesRejected) {
 }
 
 ZEST_CASE(FromRejectsHostileInput) {
-    ZASSERT(!index::TUIndex::from_bytes("not a flatbuffer at all").loaded());
+    ZASSERT(!index::TUIndex::from_bytes("not an archive at all").loaded());
 
     add_focus("main.cpp", R"(
             int foo() { return 42; }

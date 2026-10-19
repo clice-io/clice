@@ -433,9 +433,7 @@ ZEST_CASE(PreviewFromDisk) {
         .target = 0
     });
 
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::write_shard(file_index, {}, text, os);
+    auto bytes = index::write_shard(file_index, {}, text);
     IndexInternals::plant_shard(
         project.index,
         path_id,
@@ -476,9 +474,7 @@ ZEST_CASE(PreviewDropsLineEnd) {
         .range = {28, 33},
         .target = 0
     });
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::write_shard(file_index, {}, text, os);
+    auto bytes = index::write_shard(file_index, {}, text);
     IndexInternals::plant_shard(
         project.index,
         path_id,
@@ -568,9 +564,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     relation.set_extent({0, 3});
     fake.relations[foo].push_back(relation);
     auto header_id = project.file_table.intern(Spelling::absolute(header_path("foo.h")));
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::write_shard(fake, {}, "xxx\n", os);
+    auto bytes = index::write_shard(fake, {}, "xxx\n");
     IndexInternals::plant_shard(
         project.index,
         header_id,
@@ -609,7 +603,7 @@ int main() {{ gen(); return 0; }}
 }
 
 ZEST_CASE(UnreadableBlobCleared) {
-    dir.touch("junk.pch.idx", "not a flatbuffer");
+    dir.touch("junk.pch.idx", "not an archive");
 
     PCHState st;
     st.index_path = dir.path("junk.pch.idx");

@@ -54,7 +54,7 @@ The PCH build also instantiates the function templates the preamble itself uses,
 - A hash of the preamble content
 - The preamble byte boundary (bound)
 - A dependency snapshot (`DepsSnapshot`, see below)
-- A handle to the paired preamble-state blob, stored next to the PCH and sharing its lifecycle: the preamble's symbol index plus feature state extracted at build time (document links, inactive regions, the open conditional stack), opened as a memory-mapped FlatBuffer and queried lazily (see [symbol index](symbol-index.md))
+- A handle to the paired preamble-state blob, stored next to the PCH and sharing its lifecycle: the preamble's symbol index plus feature state extracted at build time (document links, inactive regions, the open conditional stack), opened as a memory-mapped archive and queried lazily (see [symbol index](symbol-index.md))
 
 ### Two-Layer Invalidation Detection
 

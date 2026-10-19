@@ -13,6 +13,7 @@ import :index.project_index;
 import :index.project_table;
 import :index.tu_manifest;
 import :semantic.token_class;
+import :support.archive;
 import :support.logging;
 
 namespace clice::index {
@@ -132,12 +133,12 @@ std::expected<void, llvm::StringRef>
     }
     using Blob = ProjectTable::Blob;
     auto& columns = base->columns;
-    llvm::ArrayRef<std::uint32_t> version_ids = columns[&Blob::version_ids];
-    auto& version_paths = columns[&Blob::version_paths];
-    llvm::ArrayRef<std::uint64_t> version_hashes = columns[&Blob::version_hashes];
-    llvm::ArrayRef<std::uint32_t> manifest_versions = columns[&Blob::manifest_versions];
-    llvm::ArrayRef<std::uint64_t> manifest_generations = columns[&Blob::manifest_generations];
-    std::uint32_t next_version_id = columns[&Blob::next_version_id];
+    llvm::ArrayRef<std::uint32_t> version_ids = columns->version_ids;
+    auto& version_paths = columns->version_paths;
+    llvm::ArrayRef<std::uint64_t> version_hashes = columns->version_hashes;
+    llvm::ArrayRef<std::uint32_t> manifest_versions = columns->manifest_versions;
+    llvm::ArrayRef<std::uint64_t> manifest_generations = columns->manifest_generations;
+    std::uint32_t next_version_id = columns->next_version_id;
     auto count = version_ids.size();
 
     // Every value check runs before the first mutation: a blob rejected
@@ -239,13 +240,13 @@ std::expected<void, llvm::StringRef>
 }
 
 void ProjectIndex::adopt_base() {
-    generation = base->columns[&ProjectTable::Blob::generation];
-    search_generation = base->columns[&ProjectTable::Blob::search_generation];
+    generation = base->columns->generation;
+    search_generation = base->columns->search_generation;
     pending_symbols.clear();
-    auto& pending = base->columns[&ProjectTable::Blob::search_pending];
+    auto& pending = base->columns->search_pending;
     pending_symbols.insert(pending.begin(), pending.end());
     pending_files.clear();
-    for(auto file: base->columns[&ProjectTable::Blob::search_pending_files]) {
+    for(auto file: base->columns->search_pending_files) {
         pending_files.insert(base->remap[file]);
     }
 }
@@ -494,7 +495,7 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
     });
 }
 
-void ProjectIndex::serialize_table(llvm::raw_ostream& os) {
+std::string ProjectIndex::serialize_table() {
     // The entries changed since the last write join the ones still held
     // aside from a write that was never persisted; the newer entry wins.
     for(auto& [hash, symbol]: changed) {
@@ -544,7 +545,7 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os) {
     if(base) {
         blob.paths.reserve(base->paths().size());
         for(std::uint32_t i = 0; i < base->paths().size(); i += 1) {
-            blob.paths.emplace_back(base->paths()[i]);
+            blob.paths.emplace_back(base->paths()[i].str());
             id_of.try_emplace(base->remap[i], i);
         }
     }
@@ -708,7 +709,7 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os) {
     write_ids(blob.symbol_files, file_ids, blob.paths.size() + 1);
     write_ids(blob.symbol_reference_counts, reference_counts, blob.paths.size() + 1);
 
-    serialize_blob(blob, os);
+    return archive::encode(blob);
 }
 
 void ProjectIndex::rebase(std::unique_ptr<llvm::MemoryBuffer> blob) {
@@ -981,12 +982,11 @@ const TUManifest* ProjectIndex::manifest(Fid tu) const {
         // pins for it, as the writer's load does; the versions it names
         // stay persisted ids.
         auto pinned = [&](const TUManifest& manifest) {
-            llvm::ArrayRef<std::uint32_t> versions =
-                base->columns[&ProjectTable::Blob::manifest_versions];
+            llvm::ArrayRef<std::uint32_t> versions = base->columns->manifest_versions;
             auto pin = llvm::find(versions, manifest.tu_version.raw);
             return pin != versions.end() &&
-                   base->columns[&ProjectTable::Blob::manifest_generations]
-                                [pin - versions.begin()] == manifest.table_generation;
+                   base->columns->manifest_generations[pin - versions.begin()] ==
+                       manifest.table_generation;
         };
         if(auto blob = db->read(BlobKind::TUManifest, key_of(tu))) {
             if(auto manifest = deserialize_manifest(blob.buffer->getBuffer());

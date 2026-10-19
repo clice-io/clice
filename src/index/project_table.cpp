@@ -54,48 +54,47 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
     return ids;
 }
 
-std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_view<Blob> root) {
-    columns = kota::codec::fbs::bound_view<Blob>(root);
-    auto& paths = columns[&Blob::paths];
+std::expected<void, llvm::StringRef> ProjectTable::bind(const archive::Archived<Blob>& root) {
+    columns = &root;
+    auto& paths = columns->paths;
     auto hashes = this->hashes();
-    parents = ids_of(columns[&Blob::symbol_parents], hashes.size() + 1);
-    files = ids_of(columns[&Blob::symbol_files], paths.size() + 1);
-    reference_counts = ids_of(columns[&Blob::symbol_reference_counts], paths.size() + 1);
+    parents = ids_of(columns->symbol_parents, hashes.size() + 1);
+    files = ids_of(columns->symbol_files, paths.size() + 1);
+    reference_counts = ids_of(columns->symbol_reference_counts, paths.size() + 1);
 
-    llvm::ArrayRef<std::uint32_t> version_ids = columns[&Blob::version_ids];
+    llvm::ArrayRef<std::uint32_t> version_ids = columns->version_ids;
     auto version_count = version_ids.size();
-    if(columns[&Blob::version_paths].size() != version_count ||
-       columns[&Blob::version_hashes].size() != version_count) {
+    if(columns->version_paths.size() != version_count ||
+       columns->version_hashes.size() != version_count) {
         return std::unexpected("file version columns do not line up");
     }
     if(!std::ranges::is_sorted(version_ids)) {
         return std::unexpected("file version ids are not ascending");
     }
-    llvm::ArrayRef<std::uint32_t> contributor_ends = columns[&Blob::contributor_ends];
-    if(!sparse_ok(columns[&Blob::contributed_files], contributor_ends.size(), paths.size()) ||
-       !monotone_ends(contributor_ends, columns[&Blob::contributors].size())) {
+    llvm::ArrayRef<std::uint32_t> contributor_ends = columns->contributor_ends;
+    if(!sparse_ok(columns->contributed_files, contributor_ends.size(), paths.size()) ||
+       !monotone_ends(contributor_ends, columns->contributors.size())) {
         return std::unexpected("contributor columns do not line up");
     }
-    llvm::ArrayRef<std::uint64_t> shared_local_symbols = columns[&Blob::shared_local_symbols];
-    llvm::ArrayRef<std::uint32_t> shared_local_set_ends = columns[&Blob::shared_local_set_ends];
-    llvm::ArrayRef<std::uint32_t> shared_local_file_ends = columns[&Blob::shared_local_file_ends];
+    llvm::ArrayRef<std::uint64_t> shared_local_symbols = columns->shared_local_symbols;
+    llvm::ArrayRef<std::uint32_t> shared_local_set_ends = columns->shared_local_set_ends;
+    llvm::ArrayRef<std::uint32_t> shared_local_file_ends = columns->shared_local_file_ends;
     if(shared_local_set_ends.size() != shared_local_symbols.size() ||
        !covering_ends(shared_local_set_ends, shared_local_file_ends.size()) ||
-       !covering_ends(shared_local_file_ends, columns[&Blob::shared_local_files].size()) ||
+       !covering_ends(shared_local_file_ends, columns->shared_local_files.size()) ||
        !strictly_ascending(shared_local_symbols)) {
         return std::unexpected("shared local columns do not line up");
     }
-    if(columns[&Blob::manifest_versions].size() != columns[&Blob::manifest_generations].size()) {
+    if(columns->manifest_versions.size() != columns->manifest_generations.size()) {
         return std::unexpected("manifest pin columns do not line up");
     }
     auto count = hashes.size();
-    llvm::ArrayRef<std::uint8_t> token_kinds = columns[&Blob::symbol_token_kinds];
-    if(columns[&Blob::symbol_name_ends].size() != count ||
-       columns[&Blob::symbol_signature_ends].size() != count ||
-       columns[&Blob::symbol_kinds].size() != count ||
-       columns[&Blob::symbol_flags].size() != count || token_kinds.size() != count ||
-       columns[&Blob::symbol_token_modifiers].size() != count ||
-       columns[&Blob::symbol_bitmap_ends].size() != count) {
+    llvm::ArrayRef<std::uint8_t> token_kinds = columns->symbol_token_kinds;
+    if(columns->symbol_name_ends.size() != count ||
+       columns->symbol_signature_ends.size() != count || columns->symbol_kinds.size() != count ||
+       columns->symbol_flags.size() != count || token_kinds.size() != count ||
+       columns->symbol_token_modifiers.size() != count ||
+       columns->symbol_bitmap_ends.size() != count) {
         return std::unexpected("symbol columns do not line up");
     }
     if(!all_token_kinds(token_kinds)) {
@@ -105,24 +104,21 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_
        !ids_ok(reference_counts, count, paths.size() + 1)) {
         return std::unexpected("symbol id columns do not line up");
     }
-    llvm::ArrayRef<std::uint32_t> far_parents = columns[&Blob::symbol_far_parents];
-    llvm::ArrayRef<std::uint64_t> far_parent_hashes = columns[&Blob::symbol_far_parent_hashes];
+    llvm::ArrayRef<std::uint32_t> far_parents = columns->symbol_far_parents;
+    llvm::ArrayRef<std::uint64_t> far_parent_hashes = columns->symbol_far_parent_hashes;
     auto sparse = [&](llvm::ArrayRef<std::uint32_t> entries, std::uint32_t values) {
         return sparse_ok(entries, values, count);
     };
-    if(!sparse(columns[&Blob::symbol_args_entries], columns[&Blob::symbol_args_ends].size()) ||
-       !sparse(columns[&Blob::symbol_instantiation_entries],
-               columns[&Blob::symbol_instantiation_ends].size()) ||
+    if(!sparse(columns->symbol_args_entries, columns->symbol_args_ends.size()) ||
+       !sparse(columns->symbol_instantiation_entries, columns->symbol_instantiation_ends.size()) ||
        !sparse(far_parents, far_parent_hashes.size())) {
         return std::unexpected("sparse symbol columns do not line up");
     }
-    if(!monotone_ends(columns[&Blob::symbol_name_ends], columns[&Blob::symbol_names].size()) ||
-       !monotone_ends(columns[&Blob::symbol_args_ends], columns[&Blob::symbol_args].size()) ||
-       !monotone_ends(columns[&Blob::symbol_signature_ends],
-                      columns[&Blob::symbol_signatures].size()) ||
-       !monotone_ends(columns[&Blob::symbol_bitmap_ends], columns[&Blob::symbol_bitmaps].size()) ||
-       !monotone_ends(columns[&Blob::symbol_instantiation_ends],
-                      columns[&Blob::symbol_instantiations].size())) {
+    if(!monotone_ends(columns->symbol_name_ends, columns->symbol_names.size()) ||
+       !monotone_ends(columns->symbol_args_ends, columns->symbol_args.size()) ||
+       !monotone_ends(columns->symbol_signature_ends, columns->symbol_signatures.size()) ||
+       !monotone_ends(columns->symbol_bitmap_ends, columns->symbol_bitmaps.size()) ||
+       !monotone_ends(columns->symbol_instantiation_ends, columns->symbol_instantiations.size())) {
         return std::unexpected("symbol arenas do not line up");
     }
     // Hashes, parents and pending entries become table keys downstream, which
@@ -136,12 +132,12 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(kota::codec::fbs::table_
             return std::unexpected("symbol parent outside the table is not canonical");
         }
     }
-    for(auto hash: columns[&Blob::search_pending]) {
+    for(auto hash: columns->search_pending) {
         if(reserved_key(hash)) {
             return std::unexpected("reserved pending search entry");
         }
     }
-    for(auto file: columns[&Blob::search_pending_files]) {
+    for(auto file: columns->search_pending_files) {
         if(file >= paths.size()) {
             return std::unexpected("pending search file outside the path table");
         }

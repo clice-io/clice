@@ -2783,7 +2783,7 @@ int main() { return 0; }
 ZEST_CASE(RejectBadBlob) {
     ZEXPECT(load_pch_index(dir.path("missing.pch.idx")) == nullptr);
 
-    dir.touch("garbage.pch.idx", "not a flatbuffer at all");
+    dir.touch("garbage.pch.idx", "not an archive at all");
     ZEXPECT(load_pch_index(dir.path("garbage.pch.idx")) == nullptr);
 }
 
