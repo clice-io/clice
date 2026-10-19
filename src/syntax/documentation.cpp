@@ -288,25 +288,6 @@ std::size_t find_doc_closer(llvm::StringRef text, llvm::StringRef closer) {
     return end;
 }
 
-/// The command closing the raw text a documentation command opens — a
-/// block's code (`@code` … `@endcode`), hidden text, an inline formula —
-/// in which no command is read; empty for any other command.
-llvm::StringRef doc_raw_end(llvm::StringRef name) {
-    auto it = commands().find(name);
-    if(it == commands().end()) {
-        return {};
-    }
-    auto kind = it->second.kind;
-    return kind == Kind::Code || kind == Kind::Hidden || kind == Kind::Formula ? it->second.end
-                                                                               : llvm::StringRef();
-}
-
-/// Whether `name`, written after `@` or `\` in a documentation comment, is a
-/// command parse_documentation reads.
-bool is_doc_command(llvm::StringRef name) {
-    return commands().contains(name);
-}
-
 /// The word an inline command takes from `text`: up to the next blank,
 /// without the punctuation that closes a sentence or a parenthesis it did
 /// not open.
@@ -1208,14 +1189,20 @@ auto DocCommandScanner::scan(llvm::StringRef text) -> llvm::SmallVector<Part> {
             continue;
         }
         auto name = doc_command_name(text.substr(i + 1));
-        if(name.empty() || !is_doc_command(name)) {
+        auto command = commands().find(name);
+        if(command == commands().end()) {
             continue;
         }
         auto command_end = i + 1 + name.size();
         parts.push_back({.kind = Part::Kind::Command, .begin = i, .end = command_end});
         i = command_end - 1;
-        raw_end = doc_raw_end(name);
-        if(!raw_end.empty() || (name != "param" && name != "tparam")) {
+        // No command is read in a block's code, hidden text or a formula.
+        auto kind = command->second.kind;
+        if(kind == Kind::Code || kind == Kind::Hidden || kind == Kind::Formula) {
+            raw_end = command->second.end;
+            continue;
+        }
+        if(kind != Kind::Param && kind != Kind::TParam) {
             continue;
         }
         // `@param name`, `@param[in] name`, `@param [in] first,second`.
@@ -1239,12 +1226,12 @@ auto DocCommandScanner::scan(llvm::StringRef text) -> llvm::SmallVector<Part> {
                 break;
             }
             parts.push_back({
-                .kind = name == "param" ? Part::Kind::Parameter : Part::Kind::TemplateParameter,
+                .kind = kind == Kind::Param ? Part::Kind::Parameter : Part::Kind::TemplateParameter,
                 .begin = word,
                 .end = word_end,
             });
             i = word_end - 1;
-            if(name != "param" || word_end == text.size() || text[word_end] != ',') {
+            if(kind != Kind::Param || word_end == text.size() || text[word_end] != ',') {
                 break;
             }
             word = word_end + 1;
