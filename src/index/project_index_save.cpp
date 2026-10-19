@@ -249,8 +249,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     llvm::SmallVector<Fid> retired_files;
     for(auto path_id: instantiation_candidates) {
         auto& held = instantiations.find(path_id)->second;
-        auto generations = generations_of(path_id);
-        if(generations.size() != 1 || generations.front() != held.content_hash()) {
+        if(shard_generation(path_id) != held.content_hash()) {
             retired_files.push_back(path_id);
             continue;
         }

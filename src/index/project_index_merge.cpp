@@ -82,23 +82,20 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         auto blob_hash = view.section_hash(section);
         auto global_id = file_ids_map[local_id];
 
-        // Fast path: a unit contributes this variant, so the blob stores
-        // it. The identity hashes the blob bytes, which embed the content
-        // generation, so the units' record is the whole check — no IO, no
-        // bytes read.
-        if(auto generation = variant_generation(global_id, blob_hash)) {
-            if(!record_consumed(local_id, *generation)) {
-                return std::unexpected(MergeError::Invalid);
-            }
-            section_contributions.emplace_back(local_id, blob_hash);
-            hits += 1;
-            continue;
+        // Fast path: the blob stores this variant, as the held shard says,
+        // else as the units' record does, which a blob is verified against
+        // when read (known_variants offers the same). The identity hashes
+        // the blob bytes, which embed the content generation, so membership
+        // is the whole check — no IO, no bytes read.
+        auto held = shards.find(global_id);
+        std::optional<std::uint64_t> generation;
+        if(held == shards.end()) {
+            generation = variant_generation(global_id, blob_hash);
+        } else if(held->second.loaded() && held->second.has_variant(blob_hash)) {
+            generation = held->second.content_hash();
         }
-        // A variant no unit contributes any more may still be stored until
-        // the next compaction.
-        auto* shard = this->shard(global_id);
-        if(shard && shard->has_variant(blob_hash)) {
-            if(!record_consumed(local_id, shard->content_hash())) {
+        if(generation) {
+            if(!record_consumed(local_id, *generation)) {
                 return std::unexpected(MergeError::Invalid);
             }
             section_contributions.emplace_back(local_id, blob_hash);
@@ -140,6 +137,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         }
 
         Shard replacement;
+        auto* shard = this->shard(global_id);
         if(shard && shard->content_hash() == fresh.content_hash()) {
             // Same generation, new variant: merge it in, keeping every
             // stored variant — dead ones stay masked until the next save
@@ -413,11 +411,16 @@ std::vector<std::uint64_t> ProjectIndex::known_variants(Fid tu,
         }
     }
 
-    // The live variants: what a unit contributes is stored, without
-    // reading the blobs.
+    // What each blob stores: the held shard's variants, else the live
+    // ones, which a blob is verified against when read — without reading
+    // the blobs.
     std::vector<std::uint64_t> known;
     for(auto file: expected) {
-        llvm::append_range(known, live_variants(file));
+        if(auto held = shards.find(file); held == shards.end()) {
+            llvm::append_range(known, live_variants(file));
+        } else if(held->second.loaded()) {
+            llvm::append_range(known, held->second.variants());
+        }
     }
     llvm::sort(known);
     known.erase(llvm::unique(known), known.end());

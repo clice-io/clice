@@ -966,13 +966,15 @@ void ProjectIndex::rebase(std::unique_ptr<llvm::MemoryBuffer> blob) {
     [[maybe_unused]] bool bound = bind_table(std::move(blob));
     assert(bound && "a freshly serialized project table must bind");
     written.clear();
-    // A TU merged again while the table was being written is a unit of the
-    // written table too: the session's manifest is the newer.
-    for(auto tu: llvm::make_first_range(manifests)) {
+    // A TU merged again or dropped while the table was being written is a
+    // unit of the written table too: the session's word is the newer.
+    auto hide = [&](Fid tu) {
         if(base_unit(tu)) {
             hide_base_unit(tu);
         }
-    }
+    };
+    llvm::for_each(llvm::make_first_range(manifests), hide);
+    llvm::for_each(dirty_manifests, hide);
 }
 
 void ProjectIndex::fold_written() {
@@ -1352,6 +1354,16 @@ std::optional<std::uint64_t> ProjectIndex::variant_generation(Fid file,
     return hash != 0 ? std::optional(hash) : std::nullopt;
 }
 
+std::optional<std::uint64_t> ProjectIndex::shard_generation(Fid file) const {
+    if(!shards.contains(file)) {
+        if(auto generations = generations_of(file); generations.size() == 1) {
+            return generations.front();
+        }
+    }
+    auto* held = shard(file);
+    return held ? std::optional(held->content_hash()) : std::nullopt;
+}
+
 bool ProjectIndex::has_manifest(Fid tu) const {
     return manifests.contains(tu) || base_unit(tu).has_value();
 }
@@ -1679,13 +1691,11 @@ std::uint32_t ProjectIndex::shard_count() const {
 const InstantiationShard* ProjectIndex::instantiation_shard(Fid file) const {
     auto it = instantiations.find(file);
     if(it == instantiations.end()) {
-        // The generation the units say the file's shard holds, without
-        // reading the shard.
-        auto generations = generations_of(file);
+        auto generation = shard_generation(file);
         it = instantiations
                  .emplace(file,
-                          generations.size() == 1 ? fetch_instantiations(file, generations.front())
-                                                  : InstantiationShard())
+                          generation ? fetch_instantiations(file, *generation)
+                                     : InstantiationShard())
                  .first;
     }
     return it->second.loaded() ? &it->second : nullptr;

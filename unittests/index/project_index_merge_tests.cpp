@@ -332,6 +332,19 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
     // ga's own fresh pin is stored: the rebuild must not re-enqueue it.
     ZASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
                  .has_value());
+
+    // The header reverts and gb reindexes: its variant, still recorded, is
+    // not in the held blob, so it is neither offered as known nor taken as
+    // stored — the bytes come in and the blob holds it again.
+    tmp.touch("gen.h",
+              "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
+              "inline int gen_fn() { return 1; }\n");
+    auto variant = contributions_of(project.index, header_id).lookup(b_tu);
+    auto known = project.index.known_variants(b_tu, {header_id});
+    ZASSERT(!llvm::is_contained(known, variant));
+    auto b2 = index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"}, known);
+    ZASSERT(merge(b2.data));
+    ZASSERT(project.index.shard(header_id)->has_variant(variant));
 }
 
 ZEST_CASE(RejectsCorruptSection) {
@@ -747,6 +760,24 @@ struct A { void print(); void print(int); };
 )");
     f.begin_round();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
+}
+
+ZEST_CASE(MixedGenerationsKept) {
+    // One unit catches up with an edited template while another still pins
+    // the old generation: the instantiations at the shard's generation stay.
+    ZASSERT(index("a.cpp"));
+    ZASSERT(index("b.cpp"));
+    tmp.touch("box.h", R"(#pragma once
+template <typename T>
+struct Box {
+    T value;
+    void show() { value.print(); value.print(); }
+};
+)");
+    ZASSERT(index("a.cpp"));
+    f.save();
+    ZASSERT(box());
+    ZEXPECT(prints() > 0u);
 }
 
 ZEST_CASE(PersistedRunsStayCurrent) {

@@ -672,6 +672,11 @@ private:
     /// version has no content hash.
     std::optional<std::uint64_t> variant_generation(Fid file, std::uint64_t variant) const;
 
+    /// The content generation of `file`'s shard: the held shard's, else the
+    /// one every unit's variant was built from, else (units built from
+    /// several) the shard's own, read. Nullopt when the file has no shard.
+    std::optional<std::uint64_t> shard_generation(Fid file) const;
+
     /// Read a file's shard from the database and check it holds every live
     /// variant at the units' generation; a failure is recorded as lost.
     Shard fetch_shard(Fid file) const;

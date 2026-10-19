@@ -124,6 +124,22 @@ ZEST_CASE(TableRebaseKeepsChanges) {
                                fresh.find(Spelling::absolute("/proj/other.h"))->raw));
 }
 
+ZEST_CASE(RebaseKeepsDroppedUnits) {
+    // A unit dropped while its first table write was in flight is in the
+    // written table: once that table is the base, the drop still stands.
+    clice::FileTable pool;
+    auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
+    auto first = project.serialize_table();
+    index::IndexReport report;
+    project.drop(pool.intern(Spelling::absolute("/proj/tu.cpp")), report);
+    project.rebase(llvm::MemoryBuffer::getMemBufferCopy(first));
+    ZASSERT(project.unit_count() == 0u);
+    bool contributed = false;
+    project.for_each_contribution(pool.intern(Spelling::absolute("/proj/used.h")),
+                                  [&](Fid, std::uint64_t) { contributed = true; });
+    ZASSERT(!contributed);
+}
+
 ZEST_CASE(TableCollectsGarbage) {
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
