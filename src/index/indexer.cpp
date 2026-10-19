@@ -1369,6 +1369,50 @@ public:
         return walked;
     }
 
+    /// The top-level declarations the focus file does not own that expand a
+    /// macro it defines: `#define TYPE isl_space` before `#include
+    /// "templ.c"`, or `static` before an `#include` writing the rest of the
+    /// function. What the body names there is a resolution of the focus
+    /// file, which a walk of its own declarations does not reach.
+    std::vector<const clang::Decl*> expanding_decls() {
+        auto& SM = unit.context().getSourceManager();
+        auto focus = unit.focus_file();
+        std::vector<clang::SourceLocation> expansions;
+        for(unsigned i = 0; i < SM.local_sloc_entry_size(); i += 1) {
+            const auto& entry = SM.getLocalSLocEntry(i);
+            if(!entry.isExpansion() || entry.getExpansion().isMacroArgExpansion() ||
+               !focus.contains(SM.getFileID(entry.getExpansion().getSpellingLoc()))) {
+                continue;
+            }
+            expansions.push_back(SM.getExpansionLoc(entry.getExpansion().getExpansionLocStart()));
+        }
+        if(expansions.empty()) {
+            return {};
+        }
+        auto before = [&](clang::SourceLocation left, clang::SourceLocation right) {
+            return SM.isBeforeInTranslationUnit(left, right);
+        };
+        llvm::sort(expansions, before);
+        llvm::DenseSet<const clang::Decl*> own(unit.top_level_decls().begin(),
+                                               unit.top_level_decls().end());
+        std::vector<const clang::Decl*> decls;
+        for(const auto* decl: unit.context().getTranslationUnitDecl()->noload_decls()) {
+            if(decl->isFromASTFile() || own.contains(decl)) {
+                continue;
+            }
+            // The declarations clang makes for itself are written nowhere.
+            auto range = SM.getExpansionRange(decl->getSourceRange());
+            if(range.isInvalid()) {
+                continue;
+            }
+            auto first = llvm::lower_bound(expansions, range.getBegin(), before);
+            if(first != expansions.end() && !before(range.getEnd(), *first)) {
+                decls.push_back(decl);
+            }
+        }
+        return decls;
+    }
+
     /// The written relations of one file, by what a record would say: an
     /// instantiation resolves only what its template's own entries leave
     /// open there. Empty for a file this run does not index — a Content
@@ -1629,6 +1673,28 @@ public:
         }
     }
 
+    /// What the written declarations of a focus compile's other files
+    /// name through the focus file's `#define` bodies; their own entries
+    /// are their files' to index.
+    void collect_focus_body_names(const Semantics& semantics) {
+        auto& SM = unit.context().getSourceManager();
+        auto entries = semantics.node_entries();
+        auto roots = semantics.instantiation_roots();
+        auto written_end = roots.empty() ? entries.size() : roots.front().begin;
+        for(std::uint32_t i = 0; i < written_end; i += 1) {
+            if(!entries[i].node.is_ast()) {
+                continue;
+            }
+            for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
+                if(occurrence.location.isMacroID() &&
+                   unit.focus_file().contains(
+                       SM.getFileID(SM.getSpellingLoc(occurrence.location)))) {
+                    body_names.push_back({occurrence.decl, occurrence.kind, occurrence.location});
+                }
+            }
+        }
+    }
+
     void project_semantics(const Semantics& semantics) {
         auto entries = semantics.node_entries();
         auto roots = semantics.instantiation_roots();
@@ -1667,20 +1733,24 @@ public:
         // The focus-only shape is the one features share, cached on the
         // unit; the whole-TU shape is transient — projected and dropped.
         // Both phases below share the one build. A focus compile walks its
-        // instantiations in a build of their own.
+        // instantiations, and the declarations of other files that expand
+        // its macros, in a build of their own.
         std::optional<Semantics> full;
         if(!focus_only) {
             full.emplace(Semantics::build(unit, {.all_files = true, .instantiations = walked}));
-        } else if(!walked.empty()) {
+        } else if(auto expanding = expanding_decls(); !walked.empty() || !expanding.empty()) {
             full.emplace(Semantics::build(
                 unit,
-                {.all_files = true, .instantiations = walked, .only_instantiations = true}));
+                {.all_files = true, .instantiations = walked, .written = expanding}));
         }
         const Semantics& semantics = focus_only ? unit.get<Semantics>() : *full;
         auto semantics_ms = semantics_timer.ms_f();
 
         ScopedTimer project_timer;
         project_semantics(semantics);
+        if(focus_only && full) {
+            collect_focus_body_names(*full);
+        }
 
         index_modules(semantics);
         project_imported();

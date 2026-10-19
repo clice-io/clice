@@ -1,0 +1,19 @@
+[test."$ clice inspect hover main.cpp --check"]
+stdout = '''
+{
+  "feature": "hover",
+  "files": {
+    "main.cpp": {
+      "result": {
+        "checked": 2,
+        "unmatched": 0,
+        "findings": []
+      },
+      "markers": null,
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
