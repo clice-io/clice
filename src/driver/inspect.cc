@@ -1854,6 +1854,8 @@ auto check_hover_definitions(const CompilationInput& input,
     first_input.arguments.push_back("0");
     // A twin uses what its original uses.
     first_input.arguments.push_back("-Wno-deprecated-declarations");
+    // Twins go into the headers' text, which a PCH would stand in for.
+    first_input.pch = {};
     auto unit = compile({.kind = CompilationKind::Content, .input = first_input});
     // The input compiled once already, for the clean-code gate.
     assert(unit->completed());
@@ -2083,12 +2085,11 @@ auto check_hover_definitions(const CompilationInput& input,
             content += originals[path].substr(copied[path]);
         }
 
-        CompilationInput probe_input = input;
+        CompilationInput probe_input = first_input;
         auto focus_spelling = unit->file_path(unit->context().getSourceManager().getMainFileID());
         for(auto& [path, content]: contents) {
             probe_input.buffers[path == focus_spelling ? focus_path : path] = content;
         }
-        probe_input.arguments = first_input.arguments;
         auto probe = compile({.kind = CompilationKind::Content, .input = probe_input});
         // A twin the compile stops at leaves all of them unmatched.
         if(!probe->completed()) {
@@ -2500,10 +2501,13 @@ std::string build_pch(const PCHWriter& writer,
                   .workspace = workspace.str()},
         .output_file = *output,
     });
+    // The writer's own source is no dep of its unit, but the PCH holds it.
     auto self = files.intern(Spelling::absolute(file));
-    bool built = unit->has_output() && llvm::none_of(unit->deps(), [&](const DepFile& dep) {
+    bool reads = files.intern(Spelling::absolute(writer.file)) == self ||
+                 llvm::any_of(unit->deps(), [&](const DepFile& dep) {
                      return files.intern(Spelling::absolute(dep.path)) == self;
                  });
+    bool built = unit->has_output() && !reads;
     // Destroying the unit writes the PCH to disk.
     unit.reset();
     if(!built) {
