@@ -104,6 +104,7 @@ bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob) {
     if(!blob) {
         return false;
     }
+    blob = in_place_buffer(std::move(blob));
     auto root = verify_root<ProjectTableBlob>(blob->getBuffer(), "project table");
     if(!root) {
         return false;
@@ -115,9 +116,9 @@ bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob) {
     }
     // Interning only names the paths: ids left behind by a later reject
     // are inert.
-    bound->remap.reserve(bound->paths.size());
-    for(std::uint32_t i = 0; i < bound->paths.size(); i += 1) {
-        bound->remap.push_back(files.intern(local(bound->paths[i])));
+    bound->remap.reserve(bound->paths().size());
+    for(std::uint32_t i = 0; i < bound->paths().size(); i += 1) {
+        bound->remap.push_back(files.intern(local(bound->paths()[i])));
     }
     bound->buffer = std::move(blob);
     base = std::move(bound);
@@ -129,15 +130,22 @@ std::expected<void, llvm::StringRef>
     if(!base) {
         return {};
     }
-    auto& blob = *base;
-    auto count = blob.version_ids.size();
+    using Blob = ProjectTable::Blob;
+    auto& columns = base->columns;
+    llvm::ArrayRef<std::uint32_t> version_ids = columns[&Blob::version_ids];
+    auto& version_paths = columns[&Blob::version_paths];
+    llvm::ArrayRef<std::uint64_t> version_hashes = columns[&Blob::version_hashes];
+    llvm::ArrayRef<std::uint32_t> manifest_versions = columns[&Blob::manifest_versions];
+    llvm::ArrayRef<std::uint64_t> manifest_generations = columns[&Blob::manifest_generations];
+    std::uint32_t next_version_id = columns[&Blob::next_version_id];
+    auto count = version_ids.size();
 
     // Every value check runs before the first mutation: a blob rejected
     // halfway through would otherwise leave partial state behind — file
     // versions whose corrupt stat stamps feed the freshness fast path —
     // while the caller treats the failed load as "no index on disk".
     for(std::uint32_t i = 0; i < count; i += 1) {
-        if(blob.version_paths[i].empty()) {
+        if(version_paths[i].empty()) {
             return std::unexpected("empty file version path");
         }
     }
@@ -147,15 +155,15 @@ std::expected<void, llvm::StringRef>
     // the writer hands ids out from it, so ids must sit below it — a
     // bound that (with the sentinels at the top of the id space) also
     // keeps every id non-reserved.
-    if(reserved_key(blob.next_version_id) || blob.next_version_id > max_persisted_versions) {
+    if(reserved_key(next_version_id) || next_version_id > max_persisted_versions) {
         return std::unexpected("file version counter out of range");
     }
-    for(auto id: blob.version_ids) {
-        if(id >= blob.next_version_id) {
+    for(auto id: version_ids) {
+        if(id >= next_version_id) {
             return std::unexpected("file version id past the counter");
         }
     }
-    for(auto version: blob.manifest_versions) {
+    for(auto version: manifest_versions) {
         if(reserved_key(version)) {
             return std::unexpected("reserved manifest pin");
         }
@@ -164,20 +172,19 @@ std::expected<void, llvm::StringRef>
     // repeat of either marks a corrupt blob: a repeated id in particular
     // would map to the earlier pair while its record names the later
     // path, attributing contributions to the wrong file.
-    llvm::DenseSet<std::uint32_t> blob_version_ids(blob.version_ids.begin(),
-                                                   blob.version_ids.end());
+    llvm::DenseSet<std::uint32_t> blob_version_ids(version_ids.begin(), version_ids.end());
     if(blob_version_ids.size() != count) {
         return std::unexpected("duplicate file version id");
     }
     llvm::DenseSet<std::pair<llvm::StringRef, std::uint64_t>> blob_versions;
     for(std::uint32_t i = 0; i < count; i += 1) {
-        if(!blob_versions.insert({blob.version_paths[i], blob.version_hashes[i]}).second) {
+        if(!blob_versions.insert({version_paths[i], version_hashes[i]}).second) {
             return std::unexpected("duplicate file version");
         }
     }
     // The writer only pins manifests whose tu_version survived the same save's
     // garbage collection, so an unresolvable pin marks a corrupt blob.
-    for(auto version: blob.manifest_versions) {
+    for(auto version: manifest_versions) {
         if(!blob_version_ids.contains(version)) {
             return std::unexpected("manifest pin names an unknown file version");
         }
@@ -185,16 +192,15 @@ std::expected<void, llvm::StringRef>
 
     // Two spellings of one file intern to the same version; the ids both
     // stay mapped to it.
-    next_persisted_id = blob.next_version_id;
+    next_persisted_id = next_version_id;
     for(std::uint32_t i = 0; i < count; i += 1) {
-        auto path_id = files.intern(local(blob.version_paths[i]));
-        auto id = files.intern_version(path_id, blob.version_hashes[i]);
-        runtime_ids.try_emplace(blob.version_ids[i], id);
-        persisted_ids.try_emplace(id, blob.version_ids[i]);
+        auto path_id = files.intern(local(version_paths[i]));
+        auto id = files.intern_version(path_id, version_hashes[i]);
+        runtime_ids.try_emplace(version_ids[i], id);
+        persisted_ids.try_emplace(id, version_ids[i]);
     }
-    for(std::uint32_t k = 0; k < blob.manifest_versions.size(); k += 1) {
-        manifest_pins[runtime_ids.find(blob.manifest_versions[k])->second] =
-            blob.manifest_generations[k];
+    for(std::uint32_t k = 0; k < manifest_versions.size(); k += 1) {
+        manifest_pins[runtime_ids.find(manifest_versions[k])->second] = manifest_generations[k];
     }
     return {};
 }
@@ -204,7 +210,7 @@ bool ProjectIndex::verify_bitmaps() const {
         return true;
     }
     auto in_paths = [&](const std::optional<Bitmap>& decoded) {
-        return decoded && (decoded->isEmpty() || decoded->maximum() < base->paths.size());
+        return decoded && (decoded->isEmpty() || decoded->maximum() < base->paths().size());
     };
     for(std::uint32_t entry = 0; entry < base->count(); entry += 1) {
         if(!in_paths(base->bitmap(entry)) || !in_paths(base->instantiation_bitmap(entry))) {
@@ -233,12 +239,13 @@ std::expected<void, llvm::StringRef>
 }
 
 void ProjectIndex::adopt_base() {
-    generation = base->generation;
-    search_generation = base->search_generation;
+    generation = base->columns[&ProjectTable::Blob::generation];
+    search_generation = base->columns[&ProjectTable::Blob::search_generation];
     pending_symbols.clear();
-    pending_symbols.insert(base->search_pending.begin(), base->search_pending.end());
+    auto& pending = base->columns[&ProjectTable::Blob::search_pending];
+    pending_symbols.insert(pending.begin(), pending.end());
     pending_files.clear();
-    for(auto file: base->search_pending_files) {
+    for(auto file: base->columns[&ProjectTable::Blob::search_pending_files]) {
         pending_files.insert(base->remap[file]);
     }
 }
@@ -338,7 +345,7 @@ void ProjectIndex::for_each_symbol(
         return;
     }
     for(std::uint32_t entry = 0; entry < base->count(); entry += 1) {
-        auto hash = base->hashes[entry];
+        auto hash = base->hashes()[entry];
         if(changed.contains(hash) || written.contains(hash)) {
             continue;
         }
@@ -535,9 +542,9 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os) {
     // appended.
     llvm::DenseMap<Fid, std::uint32_t> id_of;
     if(base) {
-        blob.paths.reserve(base->paths.size());
-        for(std::uint32_t i = 0; i < base->paths.size(); i += 1) {
-            blob.paths.emplace_back(base->paths[i]);
+        blob.paths.reserve(base->paths().size());
+        for(std::uint32_t i = 0; i < base->paths().size(); i += 1) {
+            blob.paths.emplace_back(base->paths()[i]);
             id_of.try_emplace(base->remap[i], i);
         }
     }
@@ -569,12 +576,12 @@ void ProjectIndex::serialize_table(llvm::raw_ostream& os) {
     std::uint32_t k = 0;
     auto base_count = base ? base->count() : 0;
     while(base_entry < base_count || k < keys.size()) {
-        if(k == keys.size() || (base_entry < base_count && base->hashes[base_entry] < keys[k])) {
-            entries.push_back({base->hashes[base_entry], base_entry, nullptr});
+        if(k == keys.size() || (base_entry < base_count && base->hashes()[base_entry] < keys[k])) {
+            entries.push_back({base->hashes()[base_entry], base_entry, nullptr});
             base_entry += 1;
             continue;
         }
-        if(base_entry < base_count && base->hashes[base_entry] == keys[k]) {
+        if(base_entry < base_count && base->hashes()[base_entry] == keys[k]) {
             base_entry += 1;
         }
         entries.push_back({keys[k], 0, &written.find(keys[k])->second});
@@ -974,10 +981,12 @@ const TUManifest* ProjectIndex::manifest(Fid tu) const {
         // pins for it, as the writer's load does; the versions it names
         // stay persisted ids.
         auto pinned = [&](const TUManifest& manifest) {
-            auto pin = std::ranges::find(base->manifest_versions, manifest.tu_version.raw);
-            return pin != base->manifest_versions.end() &&
-                   base->manifest_generations[pin - base->manifest_versions.begin()] ==
-                       manifest.table_generation;
+            llvm::ArrayRef<std::uint32_t> versions =
+                base->columns[&ProjectTable::Blob::manifest_versions];
+            auto pin = llvm::find(versions, manifest.tu_version.raw);
+            return pin != versions.end() &&
+                   base->columns[&ProjectTable::Blob::manifest_generations]
+                                [pin - versions.begin()] == manifest.table_generation;
         };
         if(auto blob = db->read(BlobKind::TUManifest, key_of(tu))) {
             if(auto manifest = deserialize_manifest(blob.buffer->getBuffer());

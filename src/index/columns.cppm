@@ -57,15 +57,6 @@ std::vector<std::uint8_t> write_postings(const Bitmap& ids, std::uint32_t univer
 /// bytes it would not have written.
 std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uint32_t universe);
 
-/// A scalar array view as an ArrayRef borrowing the mapped blob.
-template <typename T>
-llvm::ArrayRef<T> to_array_ref(kota::codec::fbs::array_view<T> view) {
-    if(!view.valid()) {
-        return {};
-    }
-    return {view.raw()->data(), view.raw()->size()};
-}
-
 /// Whether an end-offset column stays within its arena and never moves
 /// back: the shape of every "entries back to back" column pair.
 inline bool monotone_ends(llvm::ArrayRef<std::uint32_t> ends, std::uint32_t arena_size) {
@@ -85,12 +76,31 @@ inline bool covering_ends(llvm::ArrayRef<std::uint32_t> ends, std::uint32_t aren
            (ends.empty() ? arena_size == 0 : ends.back() == arena_size);
 }
 
-/// Entry `i` of an "entries back to back" column pair: the arena between
-/// the previous entry's end and its own.
 template <typename Arena>
-Arena slice(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
+Arena slice_arena(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
     auto begin = i == 0 ? 0 : ends[i - 1];
     return arena.drop_front(begin).take_front(ends[i] - begin);
+}
+
+/// Entry `i` of an "entries back to back" column pair: the arena between
+/// the previous entry's end and its own. One overload per arena a column
+/// pair holds, so a blob's columns convert to it as they are.
+inline llvm::StringRef slice(llvm::StringRef arena,
+                             llvm::ArrayRef<std::uint32_t> ends,
+                             std::uint32_t i) {
+    return slice_arena(arena, ends, i);
+}
+
+inline llvm::ArrayRef<std::uint8_t> slice(llvm::ArrayRef<std::uint8_t> arena,
+                                          llvm::ArrayRef<std::uint32_t> ends,
+                                          std::uint32_t i) {
+    return slice_arena(arena, ends, i);
+}
+
+inline llvm::ArrayRef<std::uint32_t> slice(llvm::ArrayRef<std::uint32_t> arena,
+                                           llvm::ArrayRef<std::uint32_t> ends,
+                                           std::uint32_t i) {
+    return slice_arena(arena, ends, i);
 }
 
 /// The position of `value` in an ascending column; nullopt when it is absent.
@@ -306,28 +316,28 @@ inline RangeColumnsView columns_of(kota::codec::fbs::table_view<RangeColumns> vi
         return {};
     }
     return {
-        to_array_ref(view[&RangeColumns::block_begins]),
-        to_array_ref(view[&RangeColumns::deltas]),
-        to_array_ref(view[&RangeColumns::far_entries]),
-        to_array_ref(view[&RangeColumns::far_begins]),
-        to_array_ref(view[&RangeColumns::packed]),
-        to_array_ref(view[&RangeColumns::begins]),
-        to_array_ref(view[&RangeColumns::lengths]),
-        to_array_ref(view[&RangeColumns::long_entries]),
-        to_array_ref(view[&RangeColumns::long_ends]),
-        to_array_ref(view[&RangeColumns::masks8]),
-        to_array_ref(view[&RangeColumns::masks16]),
-        to_array_ref(view[&RangeColumns::masks32]),
-        to_array_ref(view[&RangeColumns::masks64]),
-        to_array_ref(view[&RangeColumns::roaring_offsets]),
-        to_array_ref(view[&RangeColumns::roaring]),
+        view[&RangeColumns::block_begins],
+        view[&RangeColumns::deltas],
+        view[&RangeColumns::far_entries],
+        view[&RangeColumns::far_begins],
+        view[&RangeColumns::packed],
+        view[&RangeColumns::begins],
+        view[&RangeColumns::lengths],
+        view[&RangeColumns::long_entries],
+        view[&RangeColumns::long_ends],
+        view[&RangeColumns::masks8],
+        view[&RangeColumns::masks16],
+        view[&RangeColumns::masks32],
+        view[&RangeColumns::masks64],
+        view[&RangeColumns::roaring_offsets],
+        view[&RangeColumns::roaring],
     };
 }
 
 /// The ids of a column into a table of `table_size` entries.
 inline IdColumnView ids_of(kota::codec::fbs::array_view<std::uint8_t> view,
                            std::uint32_t table_size) {
-    return {to_array_ref(view), id_width(table_size)};
+    return {view, id_width(table_size)};
 }
 
 /// The escape table must pair one-to-one, in column order, with the sentinel

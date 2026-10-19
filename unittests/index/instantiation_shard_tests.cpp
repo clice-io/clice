@@ -282,6 +282,25 @@ ZEST_CASE(ExpansionRecordsKeptApart) {
     ZEXPECT(at(shard, 11) == std::vector{reference(10, 11), expanded});
 }
 
+ZEST_CASE(MisalignedBytesLoad) {
+    // A TU index's instantiation sections sit at whatever offset its layout
+    // gave them, while their columns are read in place.
+    FileInstantiations instantiations;
+    instantiations.resolutions = {
+        {reference(10, 11)},
+    };
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::write_instantiations(instantiations, generation, size, os);
+    std::vector<std::uint64_t> storage(bytes.size() / sizeof(std::uint64_t) + 2);
+    auto* misaligned = reinterpret_cast<char*>(storage.data()) + sizeof(std::uint32_t);
+    std::memcpy(misaligned, bytes.data(), bytes.size());
+
+    auto shard = InstantiationShard::from_bytes(llvm::StringRef(misaligned, bytes.size()));
+    ZASSERT(shard.loaded());
+    ZEXPECT(at(shard, 11) == std::vector{reference(10, 11)});
+}
+
 ZEST_CASE(CorruptBlobRejected) {
     ZEXPECT(!InstantiationShard::from_bytes("not a flatbuffer").loaded());
 

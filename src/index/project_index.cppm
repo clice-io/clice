@@ -464,11 +464,11 @@ public:
                table_dirty || !search_bytes.empty();
     }
 
-    /// Bind a project table blob as the table's base, mapping its path table into
-    /// the file table. False — and the index untouched — when the bytes are not
-    /// a project table blob of this format or are inconsistent. The base's
-    /// bitmaps are not decoded here: a reader decodes one when a query
-    /// reaches it, a writer proves them all with verify_bitmaps.
+    /// Bind a project table blob as the table's base (copied when it is not
+    /// readable_in_place), mapping its path table into the file table. False — and the index
+    /// untouched — when the bytes are not a project table blob of this format or are inconsistent.
+    /// The base's bitmaps are not decoded here: a reader decodes one when a query reaches it, a
+    /// writer proves them all with verify_bitmaps.
     bool bind_table(std::unique_ptr<llvm::MemoryBuffer> blob);
 
     /// The writer's half of a bound blob: intern its file versions into

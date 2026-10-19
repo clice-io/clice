@@ -25,22 +25,21 @@ class Shard {
 public:
     Shard() = default;
 
-    /// Wrap verified blob bytes without owning them (the caller keeps the
-    /// bytes alive). Returns an empty shard when verification fails or the
-    /// format version differs.
+    /// Read blob bytes in place, the caller keeping them alive. Returns an
+    /// empty shard when verification fails or the format version differs.
     static Shard from_bytes(llvm::StringRef data);
 
     /// Adopt an owning buffer of blob bytes (database reads, freshly
-    /// written blobs). A null buffer, corrupt bytes or a different format
-    /// version load as an empty shard; the caller treats that as "not on
-    /// disk".
+    /// written blobs), copied when they are not readable_in_place. A null
+    /// buffer, corrupt bytes or a different format version load as an empty
+    /// shard; the caller treats that as "not on disk".
     static Shard from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
-    /// Swap the backing buffer for a byte-identical one (read-snapshot
-    /// migration after a save). Verification, the live mask and the
-    /// line-start cache all describe the bytes, not the address, so they
-    /// carry over. Byte identity is the caller's contract (the exclusive
-    /// writer lock keeps every key the batch left alone byte-identical);
+    /// Swap the backing buffer for a byte-identical, readable_in_place one
+    /// (read-snapshot migration after a save, whose database reads give
+    /// that). Verification, the live mask and the
+    /// line-start cache all describe the bytes, so they carry over. Byte identity is the caller's
+    /// contract (the exclusive writer lock keeps every key the batch left alone byte-identical);
     /// only the size is checked, so migrating a resident shard never
     /// faults its content pages in. Returns false — and keeps the current
     /// buffer — when the replacement is missing or its size differs.

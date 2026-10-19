@@ -21,6 +21,7 @@ module;
 module clice;
 
 import :index.database;
+import :index.format;
 import :support.logging;
 import :support.text;
 import :vfs.cache_store;
@@ -214,12 +215,10 @@ public:
             return {};
         }
         llvm::StringRef bytes(static_cast<const char*>(value.mv_data), value.mv_size);
-        // Index blobs need an 8-aligned base (their largest scalar is
-        // u64 and the flatbuffers verifier checks offsets relative to
-        // it). LMDB only guarantees that for overflow-page values; small
-        // inline values are copied into an owned, allocator-aligned
-        // buffer and become immortal (generation 0).
-        if(reinterpret_cast<std::uintptr_t>(value.mv_data) % 8 != 0) {
+        // LMDB keeps bytes readable_in_place only for overflow-page
+        // values; a small inline value is copied and the copy is immortal
+        // (generation 0).
+        if(!readable_in_place(bytes)) {
             return {.buffer = llvm::MemoryBuffer::getMemBufferCopy(bytes)};
         }
         return {.buffer = llvm::MemoryBuffer::getMemBuffer(bytes,

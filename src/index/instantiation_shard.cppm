@@ -109,12 +109,13 @@ class InstantiationShard {
 public:
     InstantiationShard() = default;
 
-    /// Wrap verified blob bytes without owning them. Corrupt bytes or
+    /// Read blob bytes in place, as Shard::from_bytes. Corrupt bytes or
     /// another format version load as an empty shard.
     static InstantiationShard from_bytes(llvm::StringRef data);
 
-    /// Adopt an owning buffer of blob bytes; a null buffer, corrupt bytes
-    /// or another format version load as an empty shard.
+    /// Adopt an owning buffer of blob bytes, as Shard::from_buffer; a null
+    /// buffer, corrupt bytes or another format version load as an empty
+    /// shard.
     static InstantiationShard from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
     /// Swap the backing buffer for a byte-identical one, as Shard::rebind.

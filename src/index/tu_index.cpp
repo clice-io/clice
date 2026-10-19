@@ -47,24 +47,24 @@ struct SymbolColumns {
 
     static SymbolColumns of(TUIndexView root) {
         return {
-            .hashes = to_array_ref(root[&TUIndexBlob::symbol_hashes]),
+            .hashes = root[&TUIndexBlob::symbol_hashes],
             .names = root[&TUIndexBlob::symbol_names],
-            .name_ends = to_array_ref(root[&TUIndexBlob::symbol_name_ends]),
+            .name_ends = root[&TUIndexBlob::symbol_name_ends],
             .args = root[&TUIndexBlob::symbol_args],
-            .args_ends = to_array_ref(root[&TUIndexBlob::symbol_args_ends]),
+            .args_ends = root[&TUIndexBlob::symbol_args_ends],
             .signatures = root[&TUIndexBlob::symbol_signatures],
-            .signature_ends = to_array_ref(root[&TUIndexBlob::symbol_signature_ends]),
-            .parents = to_array_ref(root[&TUIndexBlob::symbol_parents]),
-            .kinds = to_array_ref(root[&TUIndexBlob::symbol_kinds]),
-            .scopes = to_array_ref(root[&TUIndexBlob::symbol_scopes]),
-            .flags = to_array_ref(root[&TUIndexBlob::symbol_flags]),
-            .token_kinds = to_array_ref(root[&TUIndexBlob::symbol_token_kinds]),
-            .token_modifiers = to_array_ref(root[&TUIndexBlob::symbol_token_modifiers]),
-            .files = to_array_ref(root[&TUIndexBlob::symbol_files]),
-            .reference_ends = to_array_ref(root[&TUIndexBlob::symbol_reference_ends]),
-            .references = to_array_ref(root[&TUIndexBlob::symbol_references]),
-            .instantiation_ends = to_array_ref(root[&TUIndexBlob::symbol_instantiation_ends]),
-            .instantiations = to_array_ref(root[&TUIndexBlob::symbol_instantiations]),
+            .signature_ends = root[&TUIndexBlob::symbol_signature_ends],
+            .parents = root[&TUIndexBlob::symbol_parents],
+            .kinds = root[&TUIndexBlob::symbol_kinds],
+            .scopes = root[&TUIndexBlob::symbol_scopes],
+            .flags = root[&TUIndexBlob::symbol_flags],
+            .token_kinds = root[&TUIndexBlob::symbol_token_kinds],
+            .token_modifiers = root[&TUIndexBlob::symbol_token_modifiers],
+            .files = root[&TUIndexBlob::symbol_files],
+            .reference_ends = root[&TUIndexBlob::symbol_reference_ends],
+            .references = root[&TUIndexBlob::symbol_references],
+            .instantiation_ends = root[&TUIndexBlob::symbol_instantiation_ends],
+            .instantiations = root[&TUIndexBlob::symbol_instantiations],
         };
     }
 
@@ -99,6 +99,9 @@ struct SymbolColumns {
 }  // namespace
 
 TUIndex TUIndex::from_bytes(llvm::StringRef data) {
+    if(!readable_in_place(data)) {
+        return from_buffer(llvm::MemoryBuffer::getMemBuffer(data, "", false));
+    }
     auto verified = verify_root<TUIndexBlob>(data, "TU index");
     if(!verified) {
         return {};
@@ -188,7 +191,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
         auto section = instantiations.at(i);
         auto path_id = section[&InstantiationSection::path_id];
         if(path_id >= count || (i != 0 && path_id <= previous_path_id) ||
-           !strictly_ascending(to_array_ref(section[&InstantiationSection::skipped]))) {
+           !strictly_ascending(section[&InstantiationSection::skipped])) {
             LOG_DEBUG("Rejecting TU index: instantiation sections are not strictly ascending");
             return {};
         }
@@ -204,6 +207,7 @@ TUIndex TUIndex::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
     if(!buffer) {
         return {};
     }
+    buffer = in_place_buffer(std::move(buffer));
     auto result = from_bytes(buffer->getBuffer());
     if(result.loaded()) {
         result.owned = std::move(buffer);
@@ -259,7 +263,7 @@ std::uint64_t TUIndex::section_hash(std::uint32_t i) const {
 }
 
 llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {
-    auto blob = to_array_ref(view_of(data)[&TUIndexBlob::sections].at(i)[&FileSection::blob]);
+    auto blob = view_of(data)[&TUIndexBlob::sections].at(i)[&FileSection::blob];
     return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
 }
 
@@ -323,14 +327,12 @@ std::uint32_t TUIndex::instantiation_path(std::uint32_t i) const {
 }
 
 llvm::StringRef TUIndex::instantiation_blob(std::uint32_t i) const {
-    auto blob = to_array_ref(
-        view_of(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::blob]);
+    auto blob = view_of(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::blob];
     return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
 }
 
 llvm::ArrayRef<std::uint64_t> TUIndex::skipped_instantiations(std::uint32_t i) const {
-    return to_array_ref(
-        view_of(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::skipped]);
+    return view_of(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::skipped];
 }
 
 const InstantiationShard& TUIndex::instantiation_shard(std::uint32_t i) const {
@@ -456,14 +458,14 @@ llvm::ArrayRef<std::uint32_t> TUIndex::inactive_regions() const {
     if(!loaded()) {
         return {};
     }
-    return to_array_ref(view_of(data)[&TUIndexBlob::inactive_regions]);
+    return view_of(data)[&TUIndexBlob::inactive_regions];
 }
 
 llvm::ArrayRef<std::uint8_t> TUIndex::open_conditionals() const {
     if(!loaded()) {
         return {};
     }
-    return to_array_ref(view_of(data)[&TUIndexBlob::open_conditionals]);
+    return view_of(data)[&TUIndexBlob::open_conditionals];
 }
 
 llvm::StringRef TUIndex::preamble_diagnostics() const {
