@@ -152,6 +152,11 @@ public:
     /// later grow() succeeds.
     virtual std::expected<bool, std::string> grow() = 0;
 
+    /// Whether the next grow() resizes the map: a write found it full.
+    virtual bool growth_pending() const {
+        return false;
+    }
+
     /// Whether the backend observed page-level corruption after open
     /// (reads failing with LMDB's corruption family). The loader uses it
     /// to tell "rebuild me" apart from a transient failure; backends

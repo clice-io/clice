@@ -373,6 +373,10 @@ public:
         return true;
     }
 
+    bool growth_pending() const override {
+        return map_full.load(std::memory_order_relaxed);
+    }
+
     bool corrupted() const override {
         return poisoned.load(std::memory_order_relaxed);
     }

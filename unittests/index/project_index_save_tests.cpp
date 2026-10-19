@@ -230,12 +230,15 @@ ZEST_CASE(GrowFailureDropsViews) {
     // grow() failing may have killed every snapshot: every clean
     // (non-dirty, possibly borrowed) view must go, to be fetched again from
     // its intact bytes at the next read, while dirty ones are owned by
-    // construction and stay. The spy also fails dirty.cpp's put so it is
-    // re-dirtied by the time the migration runs.
+    // construction and stay, and the table, borrowed since the first save,
+    // reads a copy. The spy also fails dirty.cpp's put so it is re-dirtied
+    // by the time the migration runs, and the table's, so the table the
+    // growth meets is the borrowed one.
     struct FailingGrow final : index::BlobDatabase {
         std::unique_ptr<index::BlobDatabase> real;
         std::string fail_key;
         std::uint32_t shard_reads = 0;
+        bool failing = false;
 
         index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
             if(kind == index::BlobKind::Shard) {
@@ -252,7 +255,8 @@ ZEST_CASE(GrowFailureDropsViews) {
                                                llvm::ArrayRef<index::BlobKey> removes) override {
             auto failed = real->write(puts, removes);
             for(std::size_t i = 0; i < puts.size(); i += 1) {
-                if(puts[i].key == fail_key && !llvm::is_contained(failed, i)) {
+                bool table = failing && puts[i].kind == index::BlobKind::ProjectTable;
+                if((puts[i].key == fail_key || table) && !llvm::is_contained(failed, i)) {
                     failed.push_back(i);
                 }
             }
@@ -272,9 +276,16 @@ ZEST_CASE(GrowFailureDropsViews) {
             real->retire_old_snapshot();
         }
 
+        bool growth_pending() const override {
+            return failing;
+        }
+
         // As the LMDB backend's failed resize: every snapshot dies and a
         // fresh one opens.
         std::expected<bool, std::string> grow() override {
+            if(!failing) {
+                return real->grow();
+            }
             if(auto advanced = real->advance_read_snapshot(); !advanced) {
                 return std::unexpected(advanced.error());
             }
@@ -299,17 +310,28 @@ ZEST_CASE(GrowFailureDropsViews) {
     project.database = std::move(spy);
     project.index.attach(project.database.get());
 
+    auto save = [&] {
+        auto body = [&]() -> kota::task<> {
+            co_await async_save();
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    };
     merge(indexed_clean.data);
+    save();
+    probe->failing = true;
     merge(indexed_dirty.data);
     auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
     auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
-    auto save_body = [&]() -> kota::task<> {
-        co_await async_save();
-    };
-    auto task = save_body();
-    loop.schedule(task);
-    loop.run();
+    save();
 
+    bool named = false;
+    project.index.for_each_symbol([&](index::SymbolHash, const index::SymbolView& symbol, auto) {
+        named = named || symbol.name == "clean_value";
+        return true;
+    });
+    ZASSERT(named);
     auto reads = probe->shard_reads;
     ZASSERT(project.index.shard(clean_id) != nullptr);
     ZASSERT(probe->shard_reads == reads + 1);

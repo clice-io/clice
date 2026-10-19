@@ -7,7 +7,9 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.project_index;
+import :index.symbol;
 import :index.tu_manifest;
+import :semantic.token_class;
 import :support.archive;
 import :unittests.utils.index_internals;
 import :unittests.utils;
@@ -234,11 +236,6 @@ std::string encode(const index::ProjectTableBlob& blob) {
     return archive::encode(blob);
 }
 
-/// A path table covering ids 0..3, with the reference under test at 3.
-std::vector<std::string> four_paths() {
-    return {"/proj/0.h", "/proj/1.h", "/proj/2.h", "/proj/ref.h"};
-}
-
 ZEST_CASE(BadFileSetReadsEmpty) {
     // A file set is decoded when read: one that does not decode, or a path
     // id past the path table, reads as no file.
@@ -365,25 +362,6 @@ ZEST_CASE(TableRoundTripSymbolFacts) {
     ZASSERT(loaded.find_symbol(7)->file == index::no_file);
 }
 
-ZEST_CASE(UncoveredFileIdRejected) {
-    // A file id the path table does not cover would resolve to whatever
-    // this session interned at that id: reject it like an uncovered
-    // bitmap id.
-    auto layout = project_table_blob();
-    add_symbol(layout, 42, "sym", file_set(clice::Bitmap{}));
-
-    clice::FileTable pool;
-    auto control = encode(layout);
-    index::ProjectIndex loaded{pool};
-    ZASSERT(loaded.load_table(control));
-
-    layout.symbol_files = {6};
-    auto uncovered = encode(layout);
-    index::ProjectIndex rejecting{pool};
-    ZASSERT(!rejecting.load_table(uncovered).has_value());
-    ZASSERT(rejecting.symbol_count() == 0u);
-}
-
 ZEST_CASE(UnitRecordsOutsidePathsRejected) {
     // A unit record is found by binary search and its path id indexes the
     // path table: one past it, or out of order, rejects the table.
@@ -408,78 +386,41 @@ ZEST_CASE(UnitRecordsOutsidePathsRejected) {
     ZASSERT(!loaded.load_table(encode(layout)).has_value());
 }
 
-ZEST_CASE(TableSparseColumnsRejected) {
-    // The sparse columns name symbols by position: one past the table or
-    // out of order would hand a symbol another's arguments or parent.
+ZEST_CASE(SymbolColumnsCheckedWhenRead) {
+    // The symbol columns are checked when read, so a load touches only the
+    // pages its reads reach: a value out of range reads as empty.
     auto layout = project_table_blob();
-    add_symbol(layout, 42, "a", file_set(clice::Bitmap{}));
+    layout.paths = {"/proj/a.h"};
+    add_symbol(layout, 42, "a", file_set(clice::Bitmap{}), ~std::uint64_t(0));
     add_symbol(layout, 43, "b", file_set(clice::Bitmap{}));
-    layout.symbol_args_entries = {1};
-    layout.symbol_args = "<int>";
-    layout.symbol_args_ends = {5};
+    add_symbol(layout, ~std::uint64_t(0), "c", file_set(clice::Bitmap{}));
+    layout.symbol_files = {6, 1, 0};
+    layout.symbol_parents = {0, 9, 0};
+    layout.symbol_token_kinds = {200, 0, 0};
+    layout.symbol_name_ends[1] = 100;
 
     clice::FileTable pool;
-    auto loads = [&] {
-        auto bytes = encode(layout);
-        index::ProjectIndex loaded{pool};
-        return loaded.load_table(bytes).has_value();
-    };
-    ZASSERT(loads());
-    layout.symbol_args_entries = {2};
-    ZEXPECT(!loads());
-    layout.symbol_args_entries = {1};
-
-    layout.symbol_far_parents = {1, 0};
-    layout.symbol_far_parent_hashes = {7, 8};
-    ZEXPECT(!loads());
-    layout.symbol_far_parents = {0, 1};
-    ZEXPECT(loads());
-}
-
-ZEST_CASE(TableDuplicateSymbolRejected) {
-    // Entries are looked up by binary search over the hash column, so it
-    // must ascend strictly; a repeated hash would let one entry shadow the
-    // other's identity and reference bitmap while every manifest still
-    // loads as fresh.
-    clice::Bitmap bits;
-    bits.add(3);
-    auto layout = project_table_blob();
-    layout.paths = four_paths();
-    add_symbol(layout, 42, "sym", file_set(bits));
-    add_symbol(layout, 42, "impostor", file_set(bits));
-
-    clice::FileTable pool;
-    auto dup = encode(layout);
     index::ProjectIndex loaded{pool};
-    ZASSERT(!loaded.load_table(dup).has_value());
-    ZASSERT(loaded.symbol_count() == 0u);
+    ZASSERT(loaded.load_table(encode(layout)));
+    auto a = loaded.find_symbol(42);
+    ZASSERT(a);
+    ZEXPECT(a->name == "a");
+    ZEXPECT(a->parent == 0U);
+    ZEXPECT(a->file == index::no_file);
+    ZEXPECT(a->token_class.kind == SemanticTokenKind::Plain);
+    auto b = loaded.find_symbol(43);
+    ZASSERT(b);
+    ZEXPECT(b->name.empty());
+    ZEXPECT(b->parent == 0U);
+    ZEXPECT(b->file == pool.find(Spelling::absolute("/proj/a.h"))->raw);
 
-    layout.symbol_hashes = {42, 43};
-    auto distinct = encode(layout);
-    ZASSERT(loaded.load_table(distinct));
-    ZASSERT(loaded.symbol_count() == std::size_t(2));
-
-    layout.symbol_hashes = {43, 42};
-    auto descending = encode(layout);
-    ZASSERT(!loaded.load_table(descending).has_value());
-}
-
-ZEST_CASE(TableTokenKindRejected) {
-    // A symbol's token kind indexes the legend's tables: one past the enum
-    // marks a corrupt blob.
-    auto layout = project_table_blob();
-    layout.paths = four_paths();
-    add_symbol(layout, 42, "sym", file_set(clice::Bitmap{}));
-    layout.symbol_token_kinds = {200};
-
-    clice::FileTable pool;
-    auto corrupt = encode(layout);
-    index::ProjectIndex loaded{pool};
-    ZASSERT(!loaded.load_table(corrupt).has_value());
-
-    layout.symbol_token_kinds = {0};
-    auto valid = encode(layout);
-    ZASSERT(loaded.load_table(valid));
+    // A reserved hash can be no table key: it reads as no symbol.
+    std::uint32_t symbols = 0;
+    loaded.for_each_symbol([&](index::SymbolHash, const index::SymbolView&, std::uint32_t) {
+        symbols += 1;
+        return true;
+    });
+    ZEXPECT(symbols == 2U);
 }
 
 ZEST_CASE(TableReservedKeysRejected) {
@@ -495,21 +436,6 @@ ZEST_CASE(TableReservedKeysRejected) {
         layout.versions = {
             {.id = 0xffffffffu, .path = "/proj/a.h", .hash = 0x1}
         };
-        auto bytes = encode(layout);
-        ZASSERT(!loaded.load_table(bytes).has_value());
-    }
-    {
-        clice::Bitmap bits;
-        bits.add(3);
-        auto layout = project_table_blob();
-        layout.paths = four_paths();
-        add_symbol(layout, ~std::uint64_t(0), "sym", file_set(bits));
-        auto bytes = encode(layout);
-        ZASSERT(!loaded.load_table(bytes).has_value());
-    }
-    {
-        auto layout = project_table_blob();
-        add_symbol(layout, 42, "sym", file_set(clice::Bitmap{}), ~std::uint64_t(0));
         auto bytes = encode(layout);
         ZASSERT(!loaded.load_table(bytes).has_value());
     }

@@ -454,7 +454,11 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
                                              IndexReport& report) {
     // A full-map write left nothing committed (everything is dirty again);
     // growing retires every snapshot at once, so the rebind below must run
-    // to completion before the first yield.
+    // to completion before the first yield — and the table, which every
+    // read reaches, reads a copy of its own across it.
+    if(base && db.growth_pending()) {
+        base->rebind(llvm::MemoryBuffer::getMemBufferCopy(base->buffer->getBuffer()));
+    }
     auto grown = db.grow();
     if(!grown) {
         // Degenerate (address space exhausted): borrowed views may already
@@ -483,6 +487,21 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
         if(auto advanced = db.advance_read_snapshot(); !advanced) {
             LOG_WARN("Index read-snapshot advance failed: {}", advanced.error());
             co_return !db.corrupted();
+        }
+    }
+    // The table moves first, onto the bytes the save wrote or the ones it
+    // read; a copy left by a save or a growth goes with it.
+    if(base) {
+        auto blob = db.read(BlobKind::ProjectTable, "global");
+        if(!blob || !base->rebind(std::move(blob.buffer))) {
+            if(db.corrupted()) {
+                co_return false;
+            }
+            // Unreachable under the writer lock; a copy outlives the
+            // snapshot the table borrows.
+            LOG_ERROR("Index project table diverged during snapshot migration");
+            assert(false && "the persisted project table must survive snapshot migration");
+            base->rebind(llvm::MemoryBuffer::getMemBufferCopy(base->buffer->getBuffer()));
         }
     }
 
@@ -590,6 +609,11 @@ llvm::SmallVector<Fid> ProjectIndex::drop_borrowed_views() {
 
 void ProjectIndex::recover_corrupt_database(IndexReport& report) {
     saved_shards = 0;
+    // The table outlives the condemned database it borrows: the symbols it
+    // holds serve until the units reindex.
+    if(base) {
+        base->rebind(llvm::MemoryBuffer::getMemBufferCopy(base->buffer->getBuffer()));
+    }
     // The dropped views' bytes lived in the condemned database alone. An
     // instantiation shard's users are the TUs including the file, which
     // contribute to it.

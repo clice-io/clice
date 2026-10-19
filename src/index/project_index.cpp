@@ -320,8 +320,9 @@ void ProjectIndex::for_each_symbol(
         return;
     }
     for(std::uint32_t entry = 0; entry < base->count(); entry += 1) {
+        // A hash is a table key downstream, which reserves two values.
         auto hash = base->hashes()[entry];
-        if(changed.contains(hash) || written.contains(hash)) {
+        if(reserved_key(hash) || changed.contains(hash) || written.contains(hash)) {
             continue;
         }
         if(!visit(hash, base->view(entry), base->reference_counts[entry])) {

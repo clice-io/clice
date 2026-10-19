@@ -7,7 +7,10 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.project_table;
+import :index.symbol;
+import :semantic.symbol;
 import :semantic.token_class;
+import :support.archive;
 
 namespace clice::index {
 
@@ -97,58 +100,109 @@ const archive::Archived<SharedLocalEntry>* ProjectTable::shared_local(SymbolHash
                        &archive::Archived<SharedLocalEntry>::symbol);
 }
 
-std::expected<void, llvm::StringRef> ProjectTable::bind(const archive::Archived<Blob>& root) {
-    columns = &root;
-    auto& paths = columns->paths;
-    auto hashes = this->hashes();
-    parents = ids_of(columns->symbol_parents, hashes.size() + 1);
-    files = ids_of(columns->symbol_files, paths.size() + 1);
-    reference_counts = ids_of(columns->symbol_reference_counts, paths.size() + 1);
+/// Entry `i` of an arena and its ends; empty when they do not line up.
+template <typename Arena>
+static Arena checked_slice(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
+    auto begin = i == 0 ? 0 : ends[i - 1];
+    return begin <= ends[i] && ends[i] <= arena.size() ? slice_arena(arena, ends, i) : Arena();
+}
 
-    auto count = hashes.size();
-    llvm::ArrayRef<std::uint8_t> token_kinds = columns->symbol_token_kinds;
+llvm::StringRef ProjectTable::name(std::uint32_t entry) const {
+    return checked_slice(llvm::StringRef(columns->symbol_names), columns->symbol_name_ends, entry);
+}
+
+llvm::StringRef ProjectTable::arguments(std::uint32_t entry) const {
+    auto position = sorted_find(columns->symbol_args_entries, entry);
+    if(!position) {
+        return {};
+    }
+    return checked_slice(llvm::StringRef(columns->symbol_args),
+                         columns->symbol_args_ends,
+                         *position);
+}
+
+SymbolHash ProjectTable::parent(std::uint32_t entry) const {
+    SymbolHash hash = 0;
+    if(auto id = parents[entry]; id != 0) {
+        hash = id <= count() ? hashes()[id - 1] : 0;
+    } else if(auto position = sorted_find(columns->symbol_far_parents, entry)) {
+        hash = columns->symbol_far_parent_hashes[*position];
+    }
+    // A hash becomes a table key downstream, which reserves two values.
+    return reserved_key(hash) ? 0 : hash;
+}
+
+std::uint32_t ProjectTable::file(std::uint32_t entry) const {
+    auto id = files[entry];
+    return id == 0 || id > paths().size() ? no_file : id - 1;
+}
+
+llvm::StringRef ProjectTable::signature(std::uint32_t entry) const {
+    return checked_slice(llvm::StringRef(columns->symbol_signatures),
+                         columns->symbol_signature_ends,
+                         entry);
+}
+
+llvm::ArrayRef<std::uint8_t> ProjectTable::image(std::uint32_t entry) const {
+    return checked_slice(llvm::ArrayRef<std::uint8_t>(columns->symbol_bitmaps),
+                         columns->symbol_bitmap_ends,
+                         entry);
+}
+
+llvm::ArrayRef<std::uint8_t> ProjectTable::instantiation_image(std::uint32_t entry) const {
+    auto position = sorted_find(columns->symbol_instantiation_entries, entry);
+    if(!position) {
+        return {};
+    }
+    return checked_slice(llvm::ArrayRef<std::uint8_t>(columns->symbol_instantiations),
+                         columns->symbol_instantiation_ends,
+                         *position);
+}
+
+SymbolView ProjectTable::view(std::uint32_t entry) const {
+    auto file = this->file(entry);
+    auto kind = columns->symbol_token_kinds[entry];
+    return {
+        .name = name(entry),
+        .args = arguments(entry),
+        .signature = signature(entry),
+        .parent = parent(entry),
+        .kind = SymbolKind(columns->symbol_kinds[entry]),
+        .scope = SymbolScope::External,
+        .flags = static_cast<SymbolFlags>(columns->symbol_flags[entry]),
+        .file = file == no_file ? no_file : remap[file].raw,
+        .token_class = {.kind = kind <= static_cast<std::uint8_t>(SemanticTokenKind::Plain)
+                                    ? static_cast<SemanticTokenKind>(kind)
+                                    : SemanticTokenKind::Plain,
+                        .modifiers = columns->symbol_token_modifiers[entry]},
+    };
+}
+
+void ProjectTable::point(const archive::Archived<Blob>& root) {
+    columns = &root;
+    parents = ids_of(columns->symbol_parents, count() + 1);
+    files = ids_of(columns->symbol_files, paths().size() + 1);
+    reference_counts = ids_of(columns->symbol_reference_counts, paths().size() + 1);
+}
+
+std::expected<void, llvm::StringRef> ProjectTable::bind(const archive::Archived<Blob>& root) {
+    point(root);
+    auto& paths = columns->paths;
+    auto count = this->count();
     if(columns->symbol_name_ends.size() != count ||
        columns->symbol_signature_ends.size() != count || columns->symbol_kinds.size() != count ||
-       columns->symbol_flags.size() != count || token_kinds.size() != count ||
+       columns->symbol_flags.size() != count || columns->symbol_token_kinds.size() != count ||
        columns->symbol_token_modifiers.size() != count ||
-       columns->symbol_bitmap_ends.size() != count) {
+       columns->symbol_bitmap_ends.size() != count || parents.size() != count ||
+       files.size() != count || reference_counts.size() != count) {
         return std::unexpected("symbol columns do not line up");
     }
-    if(!all_token_kinds(token_kinds)) {
-        return std::unexpected("a symbol's token kind is out of range");
-    }
-    if(!ids_ok(parents, count, count + 1) || !ids_ok(files, count, paths.size() + 1) ||
-       !ids_ok(reference_counts, count, paths.size() + 1)) {
-        return std::unexpected("symbol id columns do not line up");
-    }
-    llvm::ArrayRef<std::uint32_t> far_parents = columns->symbol_far_parents;
-    llvm::ArrayRef<std::uint64_t> far_parent_hashes = columns->symbol_far_parent_hashes;
-    auto sparse = [&](llvm::ArrayRef<std::uint32_t> entries, std::uint32_t values) {
-        return sparse_ok(entries, values, count);
-    };
-    if(!sparse(columns->symbol_args_entries, columns->symbol_args_ends.size()) ||
-       !sparse(columns->symbol_instantiation_entries, columns->symbol_instantiation_ends.size()) ||
-       !sparse(far_parents, far_parent_hashes.size())) {
+    if(columns->symbol_args_entries.size() != columns->symbol_args_ends.size() ||
+       columns->symbol_instantiation_entries.size() != columns->symbol_instantiation_ends.size() ||
+       columns->symbol_far_parents.size() != columns->symbol_far_parent_hashes.size()) {
         return std::unexpected("sparse symbol columns do not line up");
     }
-    if(!monotone_ends(columns->symbol_name_ends, columns->symbol_names.size()) ||
-       !monotone_ends(columns->symbol_args_ends, columns->symbol_args.size()) ||
-       !monotone_ends(columns->symbol_signature_ends, columns->symbol_signatures.size()) ||
-       !monotone_ends(columns->symbol_bitmap_ends, columns->symbol_bitmaps.size()) ||
-       !monotone_ends(columns->symbol_instantiation_ends, columns->symbol_instantiations.size())) {
-        return std::unexpected("symbol arenas do not line up");
-    }
-    // Hashes, parents and pending entries become table keys downstream, which
-    // reserve two sentinel values; a repeated hash would let one entry shadow
-    // another.
-    if(!strictly_ascending(hashes) || llvm::any_of(hashes, reserved_key<SymbolHash>)) {
-        return std::unexpected("symbol hashes are not ascending");
-    }
-    for(std::uint32_t k = 0; k < far_parents.size(); k += 1) {
-        if(parents[far_parents[k]] != 0 || reserved_key(far_parent_hashes[k])) {
-            return std::unexpected("symbol parent outside the table is not canonical");
-        }
-    }
+    // Pending entries become table keys, which reserve two values.
     for(auto hash: columns->search_pending) {
         if(reserved_key(hash)) {
             return std::unexpected("reserved pending search entry");
@@ -188,6 +242,14 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(const archive::Archived<
         }
     }
     return {};
+}
+
+bool ProjectTable::rebind(std::unique_ptr<llvm::MemoryBuffer> replacement) {
+    if(!rebind_buffer(buffer, in_place_buffer(std::move(replacement)))) {
+        return false;
+    }
+    point(archive::view<Blob>(buffer->getBuffer()));
+    return true;
 }
 
 }  // namespace clice::index

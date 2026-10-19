@@ -434,18 +434,19 @@ public:
     /// written becomes the base.
     void finish_save(SaveBatch& batch, llvm::ArrayRef<std::uint32_t> failed);
 
-    /// After a save committed, move the shards that borrow database
-    /// memory onto a fresh read snapshot (growing the map first when the
-    /// write hit a full one), then retire the previous snapshot. False when
-    /// the database turned out corrupt: the caller recovers
-    /// (recover_corrupt_database).
+    /// After a save committed, move the project table and the shards that
+    /// borrow database memory onto a fresh read snapshot (growing the map
+    /// first when the write hit a full one), then retire the previous
+    /// snapshot. False when the database turned out corrupt: the caller
+    /// recovers (recover_corrupt_database).
     kota::task<bool> migrate_views(BlobDatabase& db, kota::event_loop& loop, IndexReport& report);
 
     /// The index's part of the recovery from a corrupt database, whose
-    /// contents nothing survives: the shards borrowing it are shed with
-    /// their owners requeued, the units the session did not merge leave and
-    /// reindex, while every merged manifest and the project table re-dirty
-    /// to re-persist into the database opened in its place (attach).
+    /// contents nothing survives: the project table moves onto a copy, the
+    /// shards borrowing it are shed with their owners requeued, the units
+    /// the session did not merge leave and reindex, while every merged
+    /// manifest and the project table re-dirty to re-persist into the
+    /// database opened in its place (attach).
     void recover_corrupt_database(IndexReport& report);
 
     /// Read blobs from `database` from now on: the one opened in place of
@@ -481,8 +482,9 @@ public:
     /// Bind a project table blob as the table's base (copied when it is not
     /// readable_in_place), mapping its path table into the file table. False
     /// — and the index untouched — when the bytes are not a project table
-    /// blob of this format or are inconsistent. The file sets are decoded
-    /// when read; one that does not decode reads as empty.
+    /// blob of this format or are inconsistent. The values are checked when
+    /// read (ProjectTable), and a file set that does not decode reads as
+    /// empty.
     bool bind_table(std::unique_ptr<llvm::MemoryBuffer> blob);
 
     /// Intern a bound blob's file versions into the file table. Rejects a

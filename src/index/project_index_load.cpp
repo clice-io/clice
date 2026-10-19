@@ -45,11 +45,11 @@ LoadOutcome ProjectIndex::load(BlobDatabase& db, LoadOptions options, IndexRepor
         remove_all();
         return LoadOutcome::Empty;
     }
-    // A writer's saves retire the snapshot the table was read from, and a
-    // reader that does not borrow lets it retire: both copy.
-    auto bytes = read_only && options.borrow
-                     ? std::move(table.buffer)
-                     : llvm::MemoryBuffer::getMemBufferCopy(table.buffer->getBuffer());
+    // A writer moves the table onto each snapshot its saves open
+    // (migrate_views); a reader that does not borrow lets the snapshot
+    // retire, and copies.
+    auto bytes = borrow ? std::move(table.buffer)
+                        : llvm::MemoryBuffer::getMemBufferCopy(table.buffer->getBuffer());
     if(auto loaded = load_table(std::move(bytes)); !loaded) {
         LOG_INFO("Discarding the index's project table: {}", loaded.error());
         remove_all();

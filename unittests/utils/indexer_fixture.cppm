@@ -110,7 +110,10 @@ struct IndexerFixture {
 
     /// Replace the database with a fresh one, as corruption recovery does.
     void reopen_database() {
+        index::IndexReport report;
+        project.index.recover_corrupt_database(report);
         reopen_fresh_database(project);
+        pump.apply_report(report);
     }
 
     /// Record a terminally failed attempt, as run_index_task's failure

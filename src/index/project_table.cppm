@@ -23,7 +23,9 @@ void append_file_set(std::vector<std::uint8_t>& arena, const Bitmap& ids);
 std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes);
 
 /// The bound project table: its columns, and its path table mapped to the
-/// file table's ids.
+/// file table's ids. The columns are read in place and their values
+/// checked when read: an entry whose arena, id or kind is out of range
+/// reads as empty, so a load touches only the pages its reads reach.
 struct ProjectTable {
     using Blob = ProjectTableBlob;
 
@@ -59,54 +61,26 @@ struct ProjectTable {
         return sorted_find(hashes(), hash);
     }
 
-    llvm::StringRef name(std::uint32_t entry) const {
-        return slice(columns->symbol_names, columns->symbol_name_ends, entry);
-    }
+    llvm::StringRef name(std::uint32_t entry) const;
 
-    llvm::StringRef arguments(std::uint32_t entry) const {
-        auto position = sorted_find(columns->symbol_args_entries, entry);
-        if(!position) {
-            return {};
-        }
-        return slice(columns->symbol_args, columns->symbol_args_ends, *position);
-    }
+    llvm::StringRef arguments(std::uint32_t entry) const;
 
-    SymbolHash parent(std::uint32_t entry) const {
-        if(parents[entry] != 0) {
-            return hashes()[parents[entry] - 1];
-        }
-        auto position = sorted_find(columns->symbol_far_parents, entry);
-        if(!position) {
-            return 0;
-        }
-        return columns->symbol_far_parent_hashes[*position];
-    }
+    /// 0 for a symbol with no parent.
+    SymbolHash parent(std::uint32_t entry) const;
 
     /// The symbol's file as a path id of the blob, or no_file.
-    std::uint32_t file(std::uint32_t entry) const {
-        return files[entry] == 0 ? no_file : files[entry] - 1;
-    }
+    std::uint32_t file(std::uint32_t entry) const;
 
-    llvm::StringRef signature(std::uint32_t entry) const {
-        return slice(columns->symbol_signatures, columns->symbol_signature_ends, entry);
-    }
+    llvm::StringRef signature(std::uint32_t entry) const;
 
-    llvm::ArrayRef<std::uint8_t> image(std::uint32_t entry) const {
-        return slice(columns->symbol_bitmaps, columns->symbol_bitmap_ends, entry);
-    }
+    llvm::ArrayRef<std::uint8_t> image(std::uint32_t entry) const;
 
     std::optional<Bitmap> bitmap(std::uint32_t entry) const {
         return read_file_set(image(entry));
     }
 
     /// Empty for a symbol no instantiation names.
-    llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t entry) const {
-        auto position = sorted_find(columns->symbol_instantiation_entries, entry);
-        if(!position) {
-            return {};
-        }
-        return slice(columns->symbol_instantiations, columns->symbol_instantiation_ends, *position);
-    }
+    llvm::ArrayRef<std::uint8_t> instantiation_image(std::uint32_t entry) const;
 
     std::optional<Bitmap> instantiation_bitmap(std::uint32_t entry) const {
         return read_file_set(instantiation_image(entry));
@@ -133,26 +107,18 @@ struct ProjectTable {
 
     const archive::Archived<SharedLocalEntry>* shared_local(SymbolHash symbol) const;
 
-    SymbolView view(std::uint32_t entry) const {
-        auto file = this->file(entry);
-        return {
-            .name = name(entry),
-            .args = arguments(entry),
-            .signature = signature(entry),
-            .parent = parent(entry),
-            .kind = SymbolKind(columns->symbol_kinds[entry]),
-            .scope = SymbolScope::External,
-            .flags = static_cast<SymbolFlags>(columns->symbol_flags[entry]),
-            .file = file == no_file ? no_file : remap[file].raw,
-            .token_class = {.kind =
-                                static_cast<SemanticTokenKind>(columns->symbol_token_kinds[entry]),
-                            .modifiers = columns->symbol_token_modifiers[entry]},
-        };
-    }
+    SymbolView view(std::uint32_t entry) const;
 
-    /// Bind the columns of a blob verify_root accepted, checking they line
-    /// up.
+    /// Bind the columns of a blob verify_root accepted, checking the sizes
+    /// every read indexes by.
     std::expected<void, llvm::StringRef> bind(const archive::Archived<Blob>& root);
+
+    /// Read the same bytes from `replacement`: another read snapshot's, or
+    /// a copy. False when its size differs.
+    bool rebind(std::unique_ptr<llvm::MemoryBuffer> replacement);
+
+private:
+    void point(const archive::Archived<Blob>& root);
 };
 
 }  // namespace clice::index
