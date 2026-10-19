@@ -1,0 +1,4 @@
+[test."$ clice index"]
+stdout = "Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol."
+stderr = "error: Failed to create log directory ${WS}/blocker/logs/${SESSION}: Not a directory"
+exit = 0

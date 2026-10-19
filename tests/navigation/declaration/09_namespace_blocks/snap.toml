@@ -1,0 +1,3 @@
+[answers.qualifier]
+declaration = ["big.h │ namespace ⟦big⟧ {", "namespace ⟦big⟧ {"]
+definition = ["big.h │ namespace ⟦big⟧ {"]

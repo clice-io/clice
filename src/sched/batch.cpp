@@ -191,12 +191,11 @@ bool start_batch(BatchStack& stack,
         CacheStore::write_ignore_markers(cfg.cache_dir);
     }
 
-    std::string session_log_dir;
     if(!cfg.logging_dir.empty()) {
-        session_log_dir = logging::session_log_directory(cfg.logging_dir);
+        auto session_log_dir = logging::session_log_directory(cfg.logging_dir);
         if(logging::file_logger(log_tag, session_log_dir, logging::options)) {
             LOG_INFO("Session log directory: {}", session_log_dir);
-            stack.log_dir = session_log_dir;
+            stack.log_dir = std::move(session_log_dir);
         }
     }
 
@@ -207,7 +206,7 @@ bool start_batch(BatchStack& stack,
     pool_opts.stateless_count = cfg.stateless_worker_count;
     pool_opts.min_stateless = cfg.min_stateless_worker_count;
     pool_opts.max_stateless = cfg.max_stateless_worker_count;
-    pool_opts.log_dir = session_log_dir;
+    pool_opts.log_dir = stack.log_dir;
     if(!stack.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
         return false;

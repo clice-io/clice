@@ -1,0 +1,5 @@
+[answers.braces.signature_help]
+signatures = [
+    "configure(⟦Options options = {}⟧, Options tuned = {2, true}, Range range = {0, 10}, int count = {}) -> void",
+]
+active = 0

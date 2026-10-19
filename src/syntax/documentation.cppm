@@ -75,28 +75,39 @@ using CopiedDocLookup = llvm::function_ref<std::optional<Documentation>(llvm::St
 /// file, a page or a group documents no declaration: empty.
 Documentation parse_documentation(llvm::StringRef text, CopiedDocLookup lookup);
 
-/// Whether `name`, written after `@` or `\` in a documentation comment, is a
-/// command parse_documentation reads.
-bool is_doc_command(llvm::StringRef name);
+/// Reads a run of documentation comments a comment at a time, as their
+/// semantic tokens show them: the commands, and the name each `@param`
+/// and `@tparam` documents. A raw block a command opens (`@code`) goes on
+/// into the next comment of the run, and no command is read in it.
+class DocCommandScanner {
+public:
+    struct Part {
+        enum class Kind : std::uint8_t {
+            Command,
+            Parameter,
+            TemplateParameter,
+        };
 
-/// The name of a documentation command whose marker is right before
-/// `text`: a word, or one of the formula delimiters and the group braces.
-llvm::StringRef doc_command_name(llvm::StringRef text);
+        Kind kind;
 
-/// Whether a documentation command may start at `index`: Doxygen reads `@`
-/// and `\` as one only at the start of a word, as `user@example.com` and
-/// `C:\path` show.
-bool at_doc_word_start(llvm::StringRef line, std::size_t index);
+        /// Offsets into the comment's text.
+        std::size_t begin;
+        std::size_t end;
+    };
 
-/// The command closing the raw text a documentation command opens — a
-/// block's code (`@code` … `@endcode`), hidden text, an inline formula —
-/// in which no command is read; empty for any other command.
-llvm::StringRef doc_raw_end(llvm::StringRef name);
+    /// The parts of the next comment of the run, a Doxygen one
+    /// (is_doc_comment) whole with its markers, in order.
+    llvm::SmallVector<Part> scan(llvm::StringRef text);
 
-/// Where `closer`, the command ending a raw block, is written in `text`
-/// with either marker (`@endcode`, `\endcode`) and no longer name; npos if
-/// nowhere.
-std::size_t find_doc_closer(llvm::StringRef text, llvm::StringRef closer);
+    /// End the run, closing the raw block left open in it.
+    void end_run() {
+        raw_end = {};
+    }
+
+private:
+    /// The command closing the raw block open; empty for none.
+    llvm::StringRef raw_end;
+};
 
 /// A name as `@copydoc` writes it: `name`, `Class::member`,
 /// `Class#member`, `::name`, and for one overload of a function its

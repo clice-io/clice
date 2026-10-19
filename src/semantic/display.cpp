@@ -1066,11 +1066,19 @@ auto token_text(const clang::ASTContext& context,
 /// has a directive in it.
 auto as_written(clang::ASTContext& context, const clang::Expr* expr, const Options& options)
     -> std::optional<std::string> {
+    auto& sources = context.getSourceManager();
     auto range = clang::Lexer::makeFileCharRange(
         clang::CharSourceRange::getTokenRange(expr->getSourceRange()),
-        context.getSourceManager(),
+        sources,
         context.getLangOpts());
     if(range.isValid()) {
+        // A constructor call that copy-initializes a parameter or a field
+        // starts at its `=` (`std::optional<bool> sign = {}`).
+        clang::Token first;
+        if(!clang::Lexer::getRawToken(range.getBegin(), first, sources, context.getLangOpts()) &&
+           first.is(clang::tok::equal)) {
+            range.setBegin(first.getEndLoc());
+        }
         llvm::SmallVector<clang::SourceRange> bodies;
         lambda_bodies(expr, bodies);
         return token_text(context, range, bodies);

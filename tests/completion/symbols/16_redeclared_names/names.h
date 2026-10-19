@@ -32,3 +32,9 @@ struct Later;
 
 template <class T = int>
 struct Later {};
+
+struct status {
+    int code;
+};
+
+int status(struct status* out);

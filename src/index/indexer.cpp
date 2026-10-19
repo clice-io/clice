@@ -15,6 +15,7 @@ import :index.shard;
 import :index.symbol;
 import :semantic.decls;
 import :semantic.display;
+import :semantic.documentation;
 import :semantic.identity;
 import :semantic.resolver;
 import :semantic.semantics;
@@ -1204,6 +1205,18 @@ public:
                                     name.getBegin());
             }
         }
+        // The focus file's comments alone: scanning every header's would
+        // cost each unit's index a lex of all it includes, and a header the
+        // editor opens has a compile of its own.
+        if(const auto* decl = semantics.node(i).node.get<clang::Decl>();
+           decl && !semantics.node(i).flags.in_instantiation &&
+           unit.file_id(decl->getLocation()) == unit.focus_file().file()) {
+            for(auto& documented: documented_parameters(unit, decl)) {
+                add_name({.decl = documented.parameter,
+                          .kind = RelationKind::Reference,
+                          .location = documented.location});
+            }
+        }
 
         project_placeholder(semantics, i);
         project_relations(semantics, i);
@@ -1211,14 +1224,17 @@ public:
 
     /// In an instantiation, a variable or a parameter its template declares
     /// with a placeholder type (`auto x`, an abbreviated template's `auto`
-    /// parameter): the types go-to-type-definition reaches from it, at its
-    /// name — beside the template's own, which carries none.
+    /// parameter or pack): the types go-to-type-definition reaches from it,
+    /// at its name — beside the template's own, which carries none.
     void add_deduced_type(const clang::ValueDecl* decl) {
         if(!llvm::isa<clang::VarDecl>(decl)) {
             return;
         }
         const auto* pattern = llvm::cast<clang::ValueDecl>(in_pattern(decl));
         auto declared = pattern->getType();
+        if(const auto* expansion = declared->getAs<clang::PackExpansionType>()) {
+            declared = expansion->getPattern();
+        }
         const auto* parameter = types::unwrap(declared)->getAs<clang::TemplateTypeParmType>();
         if(pattern == decl ||
            (!declared->getContainedDeducedType() &&

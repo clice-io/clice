@@ -1,0 +1,15 @@
+[answers.comment]
+highlights = [
+    { at = "/// @param ⟦value⟧ what to clamp", kind = "read" },
+    { at = "int clamp(int ⟦value⟧, int limit) {", kind = "text" },
+    { at = "return ⟦value⟧ < limit ? value : limit;", kind = "read" },
+    { at = "return value < limit ? ⟦value⟧ : limit;", kind = "read" },
+]
+
+[answers.declared]
+highlights = [
+    { at = "/// @param ⟦value⟧ what to clamp", kind = "read" },
+    { at = "int clamp(int ⟦value⟧, int limit) {", kind = "text" },
+    { at = "return ⟦value⟧ < limit ? value : limit;", kind = "read" },
+    { at = "return value < limit ? ⟦value⟧ : limit;", kind = "read" },
+]

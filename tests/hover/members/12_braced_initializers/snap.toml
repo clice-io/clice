@@ -1,0 +1,23 @@
+[answers.empty.hover]
+markdown = '''
+**field** `defaults` · struct `Config`
+
+```cpp
+Options defaults = {}
+```
+Offset: 0 bytes
+Size: 1 byte, alignment 1 byte
+'''
+range = "Options ⟦defaults⟧ = {};"
+
+[answers.arguments.hover]
+markdown = '''
+**field** `tuned` · struct `Config`
+
+```cpp
+Options tuned = {2, true}
+```
+Offset: 1 byte
+Size: 1 byte, alignment 1 byte
+'''
+range = "Options ⟦tuned⟧ = {2, true};"

@@ -88,6 +88,24 @@ std::vector<Site> mismatched_declarations(const IndexQuery& index, SymbolHash ha
     return result;
 }
 
+/// The first block of a namespace in `file`.
+std::optional<Site> first_block(const IndexQuery& index, SymbolHash hash, Fid file) {
+    auto source = index.serving(file);
+    if(!source) {
+        return std::nullopt;
+    }
+    std::optional<Site> first;
+    source->shard->relations_of(hash, RelationKind::Definition, [&](const Relation& relation) {
+        if(!first || relation.range.begin < first->range.begin) {
+            if(auto site = source->site(relation.range)) {
+                first = std::move(*site);
+            }
+        }
+        return true;
+    });
+    return first;
+}
+
 }  // namespace
 
 std::vector<Highlight>
@@ -164,22 +182,8 @@ std::vector<Site> definition_sites(const IndexQuery& index, SymbolHash hash, Fid
     // The first block in the file the table names for the namespace stands
     // for every block, whichever files are open.
     if(auto identity = index.project().find_symbol(hash); identity && identity->file != no_file) {
-        if(auto source = index.serving(Fid{identity->file})) {
-            std::optional<Site> first;
-            source->shard->relations_of(hash,
-                                        RelationKind::Definition,
-                                        [&](const Relation& relation) {
-                                            if(!first ||
-                                               relation.range.begin < first->range.begin) {
-                                                if(auto site = source->site(relation.range)) {
-                                                    first = std::move(*site);
-                                                }
-                                            }
-                                            return true;
-                                        });
-            if(first) {
-                return {std::move(*first)};
-            }
+        if(auto first = first_block(index, hash, Fid{identity->file})) {
+            return {std::move(*first)};
         }
     }
     if(auto placed = index.canonical_placed(hash, anchor)) {
@@ -241,6 +245,16 @@ std::vector<Site> declaration(const IndexQuery& index, const IndexQuery::Cursor&
     ScopedTimer timer;
     std::vector<Site> result;
     for(auto symbol: cursor.symbols) {
+        // Every block of a namespace declares it: the one definition gives,
+        // and the first in the cursor's file.
+        if(auto info = index.symbol_info(symbol, cursor.site.file);
+           info && info->kind == SymbolKind::Namespace) {
+            llvm::append_range(result, definition_sites(index, symbol, cursor.site.file));
+            if(auto own = first_block(index, symbol, cursor.site.file)) {
+                result.push_back(std::move(*own));
+            }
+            continue;
+        }
         for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
             llvm::append_range(result, index.sites(symbol, cursor.site.file, kind));
         }

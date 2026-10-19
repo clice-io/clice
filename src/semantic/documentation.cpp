@@ -107,6 +107,50 @@ auto doc_comment_range(CompilationUnit& unit, const clang::Decl* decl)
         LocalSourceRange{found.comments.front().range.begin, found.comments.back().range.end});
 }
 
+llvm::SmallVector<DocumentedParameter> documented_parameters(CompilationUnit& unit,
+                                                             const clang::Decl* decl) {
+    const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
+    const auto* concept_decl = llvm::dyn_cast<clang::ConceptDecl>(decl);
+    const auto* templates =
+        concept_decl ? concept_decl->getTemplateParameters() : decl->getDescribedTemplateParams();
+    llvm::SmallVector<DocumentedParameter> result;
+    if(!function && !templates) {
+        return result;
+    }
+    auto found = documenting(unit, decl);
+    DocCommandScanner scanner;
+    for(const auto& comment: found.comments) {
+        auto text = found.content.slice(comment.range.begin, comment.range.end);
+        if(!is_doc_comment(text)) {
+            continue;
+        }
+        for(const auto& part: scanner.scan(text)) {
+            using Kind = DocCommandScanner::Part::Kind;
+            auto name = text.slice(part.begin, part.end);
+            auto named = [&](const clang::NamedDecl* parameter) {
+                return parameter->getName() == name;
+            };
+            const clang::NamedDecl* parameter = nullptr;
+            if(part.kind == Kind::Parameter && function) {
+                if(auto it = llvm::find_if(function->parameters(), named);
+                   it != function->param_end()) {
+                    parameter = *it;
+                }
+            } else if(part.kind == Kind::TemplateParameter && templates) {
+                if(auto it = llvm::find_if(*templates, named); it != templates->end()) {
+                    parameter = *it;
+                }
+            }
+            if(parameter) {
+                auto offset = comment.range.begin + static_cast<std::uint32_t>(part.begin);
+                result.push_back(
+                    {.parameter = parameter, .location = unit.create_location(found.file, offset)});
+            }
+        }
+    }
+    return result;
+}
+
 std::string doc_comment(CompilationUnit& unit, const clang::MacroInfo* macro) {
     auto [fid, extent] = *unit.written_range(
         clang::SourceRange(macro->getDefinitionLoc(), macro->getDefinitionEndLoc()));

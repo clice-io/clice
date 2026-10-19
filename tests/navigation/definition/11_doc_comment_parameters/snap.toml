@@ -1,0 +1,8 @@
+[answers.documented]
+definition = ["int scale(int ⟦value⟧, int factor);"]
+
+[answers.backslash]
+definition = ["int scale(int value, int ⟦factor⟧);"]
+
+[answers.template]
+definition = ["template <typename ⟦T⟧>"]

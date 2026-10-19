@@ -150,9 +150,10 @@ void MasterServer::initialize() {
 
     auto& first = projects.front()->project.config.project;
     if(!first.logging_dir.empty()) {
-        session_log_dir = logging::session_log_directory(first.logging_dir);
-        if(logging::file_logger("master", session_log_dir, logging::options)) {
-            LOG_INFO("Session log directory: {}", session_log_dir);
+        auto dir = logging::session_log_directory(first.logging_dir);
+        if(logging::file_logger("master", dir, logging::options)) {
+            LOG_INFO("Session log directory: {}", dir);
+            session_log_dir = std::move(dir);
         }
     }
     for(auto& project: projects) {

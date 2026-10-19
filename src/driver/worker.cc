@@ -9,6 +9,7 @@ module;
 module clice;
 
 import :driver.driver;
+import :support.logging;
 import :support.process;
 import :worker.stateful;
 import :worker.stateless;
@@ -53,6 +54,9 @@ int run_worker(std::span<std::string> args) {
 #ifndef _WIN32
         ::setpgid(0, 0);
 #endif
+        // The pool relays each line of a worker's stderr as a warning: one
+        // with no log file to write keeps its lower levels out of it.
+        logging::options.stderr_level = logging::Level::warn;
         auto name = opts.worker_name.value_or("worker");
         auto log_dir = opts.log_dir.value_or("");
         if(opts.stateful) {

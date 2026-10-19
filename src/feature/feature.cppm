@@ -874,6 +874,10 @@ enum class DiagnosticOrigin : std::uint8_t {
     /// A header the file includes: shown on its #include.
     IncludedFile,
 
+    /// A module unit the file imports, directly or not: shown on its
+    /// import.
+    ImportedModule,
+
     /// The includer's code a header's borrowed context compiles around it.
     IncluderContext,
 };

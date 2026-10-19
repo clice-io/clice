@@ -3166,6 +3166,19 @@ ZEST_CASE(AbbreviatedParameterDeduced) {
     });
 }
 
+ZEST_CASE(AbbreviatedPackDeduced) {
+    build(R"(
+        struct A {};
+        struct B {};
+        void take(auto... values) {}
+        void use() { take(A{}, B{}); }
+    )");
+    auto records = resolved();
+    for(auto type: {"A", "B"}) {
+        ZEXPECT(llvm::is_contained(records, Resolved{"values", TypeDefinition, type, "values"}));
+    }
+}
+
 ZEST_CASE(PackParametersMapped) {
     build(R"(
         struct A {};

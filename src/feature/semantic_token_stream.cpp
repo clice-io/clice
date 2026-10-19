@@ -285,7 +285,7 @@ public:
                 comment(token.range);
                 continue;
             }
-            doc_closer = {};
+            doc_commands.end_run();
             classify(token);
         }
         return std::move(tokens);
@@ -753,91 +753,32 @@ private:
         // A blank line ends a documentation comment, a raw block left open
         // in it too.
         if(content.slice(comment_end, range.begin).count('\n') > 1) {
-            doc_closer = {};
+            doc_commands.end_run();
         }
         comment_end = range.end;
         if(!is_doc_comment(text)) {
-            doc_closer = {};
+            doc_commands.end_run();
             emit(range, {{.kind = Kind::Comment}, false});
             return;
         }
-        auto documentation = mask(Modifier::Documentation);
-        auto at = [&](std::size_t offset) {
-            return range.begin + static_cast<std::uint32_t>(offset);
+        auto mark = [&](std::size_t begin, std::size_t end, Kind kind, bool semantic) {
+            auto at = [&](std::size_t offset) {
+                return range.begin + static_cast<std::uint32_t>(offset);
+            };
+            TokenClass classified{.kind = kind, .modifiers = mask(Modifier::Documentation)};
+            emit({at(begin), at(end)}, {classified, semantic});
         };
         std::size_t segment = 0;
-        auto mark = [&](std::size_t begin, std::size_t end, Kind kind, bool semantic) {
-            emit(
-                {
-                    at(segment),
-                    at(begin)
-            },
-                {{.kind = Kind::Comment, .modifiers = documentation}, false});
-            emit(
-                {
-                    at(begin),
-                    at(end)
-            },
-                {{.kind = kind, .modifiers = documentation}, semantic});
-            segment = end;
-        };
-        // The comment's text starts a word right past its marker, `///` or
-        // a trailing one, `///<`.
-        std::size_t payload = text.size() > 3 && text[3] == '<' ? 4 : 3;
-        for(std::size_t i = payload; i < text.size(); i += 1) {
-            if(!doc_closer.empty()) {
-                auto close = find_doc_closer(text.substr(i), doc_closer);
-                if(close == llvm::StringRef::npos) {
-                    break;
-                }
-                mark(i + close, i + close + 1 + doc_closer.size(), Kind::Keyword, false);
-                doc_closer = {};
-                i = segment - 1;
-                continue;
-            }
-            if((text[i] != '@' && text[i] != '\\') ||
-               (i > payload && !at_doc_word_start(text, i))) {
-                continue;
-            }
-            auto name = doc_command_name(text.substr(i + 1));
-            if(name.empty() || !is_doc_command(name)) {
-                continue;
-            }
-            mark(i, i + 1 + name.size(), Kind::Keyword, false);
-            i = segment - 1;
-            doc_closer = doc_raw_end(name);
-            if(!doc_closer.empty()) {
-                continue;
-            }
-            if(name != "param" && name != "tparam") {
-                continue;
-            }
-            // `@param[in] name`, `@param name`.
-            auto word = segment;
-            if(word < text.size() && text[word] == '[') {
-                auto close = text.find(']', word);
-                word = close == llvm::StringRef::npos ? text.size() : close + 1;
-            }
-            while(word < text.size() && (text[word] == ' ' || text[word] == '\t')) {
-                word += 1;
-            }
-            auto word_end = word;
-            while(word_end < text.size() &&
-                  (llvm::isAlnum(text[word_end]) || text[word_end] == '_')) {
-                word_end += 1;
-            }
-            if(word_end == word) {
-                continue;
-            }
-            mark(word, word_end, name == "param" ? Kind::Parameter : Kind::TypeParameter, true);
-            i = segment - 1;
+        for(auto& part: doc_commands.scan(text)) {
+            using PartKind = DocCommandScanner::Part::Kind;
+            mark(segment, part.begin, Kind::Comment, false);
+            auto kind = part.kind == PartKind::Command     ? Kind::Keyword
+                        : part.kind == PartKind::Parameter ? Kind::Parameter
+                                                           : Kind::TypeParameter;
+            mark(part.begin, part.end, kind, part.kind != PartKind::Command);
+            segment = part.end;
         }
-        emit(
-            {
-                at(segment),
-                range.end
-        },
-            {{.kind = Kind::Comment, .modifiers = documentation}, false});
+        mark(segment, text.size(), Kind::Comment, false);
     }
 
     /// Whether `range` overlaps an inactive span. Emitted ranges ascend, so
@@ -913,10 +854,10 @@ private:
     bool definition_empty = true;
     bool definition_control = false;
 
-    /// The command closing the raw text — code, a formula, hidden text — a
-    /// documentation comment opened, which may end on a later line of a
-    /// `///` block (`endcode`).
-    llvm::StringRef doc_closer;
+    /// The run of documentation comments being read, whose raw text — code,
+    /// a formula, hidden text — may end on a later line of a `///` block
+    /// (`endcode`).
+    DocCommandScanner doc_commands;
     /// Where the last comment ended.
     std::uint32_t comment_end = 0;
 

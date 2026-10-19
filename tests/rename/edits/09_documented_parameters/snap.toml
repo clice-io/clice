@@ -1,0 +1,49 @@
+[answers.parameter.rename]
+compiles = true
+
+[answers.parameter.rename.edits]
+"main.cpp" = '''
+ /// Scales a value.
+ /// @param value what to scale
+-/// @param factor how much
++/// @param ratio how much
+ /// @tparam T the value's type
+ template <typename T>
+-T scale(T value, int factor) {
+-    return value * factor;
++T scale(T value, int ratio) {
++    return value * ratio;
+ }
+'''
+
+[answers.comment.rename]
+compiles = true
+
+[answers.comment.rename.edits]
+"main.cpp" = '''
+ }
+
+-/// \param amount what to add
+-int add(int amount);
++/// \param extra what to add
++int add(int extra);
+
+ int main() { return scale(1, 2) + add(3); }
+'''
+
+[answers.template.rename]
+compiles = true
+
+[answers.template.rename.edits]
+"main.cpp" = '''
+ /// @param value what to scale
+ /// @param factor how much
+-/// @tparam T the value's type
+-template <typename T>
+-T scale(T value, int factor) {
++/// @tparam U the value's type
++template <typename U>
++U scale(U value, int factor) {
+     return value * factor;
+ }
+'''
