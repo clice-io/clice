@@ -97,8 +97,8 @@ LoadOutcome ProjectIndex::load(BlobDatabase& db, LoadOptions options, IndexRepor
         }
     });
     expected.clear();
-    for(auto id: base->columns->contributed_files) {
-        expected.insert(key_of(base->remap[id]));
+    for(auto& contributed: base->columns->contributions) {
+        expected.insert(key_of(base->remap[contributed.file]));
     }
     db.for_each_key(BlobKind::Shard, [&](llvm::StringRef key) {
         if(!expected.contains(key)) {

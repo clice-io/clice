@@ -595,6 +595,14 @@ public:
 private:
     friend struct testing::IndexInternals;
 
+    /// A variant a TU contributed to a file, and the file version it was
+    /// built from.
+    struct Contributed {
+        std::uint64_t variant = 0;
+
+        VersionID version;
+    };
+
     /// Take the bound base's generation and search state.
     void adopt_base();
 
@@ -645,7 +653,16 @@ private:
 
     /// The file table's ids of a base unit set, but the units the session
     /// overrode.
-    void for_each_base_unit(const Bitmap& units, llvm::function_ref<void(Fid)> visit) const;
+    void for_each_base_unit(llvm::ArrayRef<std::uint8_t> units,
+                            llvm::function_ref<void(Fid)> visit) const;
+
+    /// Every unit contributing to `file`, with what it contributed.
+    void for_each_contributed(Fid file,
+                              llvm::function_ref<void(Fid tu, const Contributed&)> visit) const;
+
+    /// Every unit using resolutions of `file`'s instantiation shard, with
+    /// its use.
+    void for_each_use(Fid file, llvm::function_ref<void(Fid tu, std::uint64_t use)> visit) const;
 
     /// The TU's persisted manifest in the file table's version ids, when the
     /// base pins it and the database holds it at the pinned generation.
@@ -749,14 +766,6 @@ private:
     mutable std::vector<Fid> base_unit_files;
 
     mutable llvm::DenseMap<Fid, std::uint32_t> base_unit_index;
-
-    /// A variant a TU contributed to a file, and the file version it was
-    /// built from.
-    struct Contributed {
-        std::uint64_t variant = 0;
-
-        VersionID version;
-    };
 
     /// Derived from `manifests`: file -> (TU -> what it contributed there).
     llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, Contributed, 2>> contributions;

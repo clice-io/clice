@@ -261,10 +261,9 @@ ZEST_CASE(TableBitmapPayloadGate) {
     // leave no partial state — file versions or symbols — that later
     // merges would build on and the next save persist.
     layout.next_version_id = 8;
-    layout.version_ids = {7};
-    layout.version_unit_ends.assign(layout.version_ids.size(), 0);
-    layout.version_paths = {"/proj/partial.h"};
-    layout.version_hashes = {0x1};
+    layout.versions = {
+        {.id = 7, .path = "/proj/partial.h", .hash = 0x1}
+    };
     add_symbol(layout, 43, "other", std::vector<std::uint8_t>{0xff, 0xff, 0xff});
     auto corrupt = encode(layout);
     clice::FileTable untouched;
@@ -304,10 +303,10 @@ ZEST_CASE(TableDuplicateVersionsRejected) {
     // to the wrong file.
     auto layout = project_table_blob();
     layout.next_version_id = 9;
-    layout.version_ids = {7, 7};
-    layout.version_unit_ends.assign(layout.version_ids.size(), 0);
-    layout.version_paths = {"/proj/a.h", "/proj/b.h"};
-    layout.version_hashes = {0x1, 0x2};
+    layout.versions = {
+        {.id = 7, .path = "/proj/a.h", .hash = 0x1},
+        {.id = 7, .path = "/proj/b.h", .hash = 0x2}
+    };
 
     clice::FileTable pool;
     auto dup_id = encode(layout);
@@ -315,17 +314,17 @@ ZEST_CASE(TableDuplicateVersionsRejected) {
     ZASSERT(!loaded.load_table(dup_id).has_value());
     ZASSERT(pool.versions.empty());
 
-    layout.version_ids = {7, 8};
-    layout.version_unit_ends.assign(layout.version_ids.size(), 0);
-    layout.version_paths = {"/proj/a.h", "/proj/a.h"};
-    layout.version_hashes = {0x1, 0x1};
+    layout.versions = {
+        {.id = 7, .path = "/proj/a.h", .hash = 0x1},
+        {.id = 8, .path = "/proj/a.h", .hash = 0x1}
+    };
     auto dup_pair = encode(layout);
     ZASSERT(!loaded.load_table(dup_pair).has_value());
 
     // The same path under two content hashes is the legitimate shape: two
     // observed versions of one file. Only the ids the blob carries map
     // into the table; the ones the writer garbage-collected map nowhere.
-    layout.version_hashes = {0x1, 0x2};
+    layout.versions[1].hash = 0x2;
     auto distinct = encode(layout);
     ZASSERT(loaded.load_table(distinct));
     ZASSERT(pool.versions.size() == std::size_t(2));
@@ -340,10 +339,9 @@ ZEST_CASE(TableBadCounterRejected) {
     // intern, and a sentinel one would insert a DenseMap reserved key.
     auto layout = project_table_blob();
     layout.next_version_id = 8;
-    layout.version_ids = {7};
-    layout.version_unit_ends.assign(layout.version_ids.size(), 0);
-    layout.version_paths = {"/proj/a.h"};
-    layout.version_hashes = {0x1};
+    layout.versions = {
+        {.id = 7, .path = "/proj/a.h", .hash = 0x1}
+    };
 
     clice::FileTable pool;
     auto ahead = encode(layout);
@@ -355,10 +353,7 @@ ZEST_CASE(TableBadCounterRejected) {
     ZASSERT(!loaded.load_table(lagging).has_value());
 
     layout.next_version_id = std::numeric_limits<std::uint32_t>::max() - 1;
-    layout.version_ids = {};
-    layout.version_unit_ends.assign(layout.version_ids.size(), 0);
-    layout.version_paths = {};
-    layout.version_hashes = {};
+    layout.versions = {};
     auto reserved = encode(layout);
     ZASSERT(!loaded.load_table(reserved).has_value());
 
@@ -420,39 +415,6 @@ ZEST_CASE(UncoveredFileIdRejected) {
     index::ProjectIndex rejecting{pool};
     ZASSERT(!rejecting.load_table(uncovered).has_value());
     ZASSERT(rejecting.symbol_count() == 0u);
-}
-
-ZEST_CASE(SharedLocalFilesRejected) {
-    // A reader binary-searches the symbols for the file sets the shared locals
-    // list: symbols out of order, or ends that misplace a symbol's sets or
-    // a set's files, must not load.
-    auto layout = project_table_blob();
-    layout.paths = {"/proj/a.h", "/proj/a.cpp"};
-    layout.shared_local_symbols = {5, 9};
-    layout.shared_local_set_ends = {1, 2};
-    layout.shared_local_files = {0, 0, 0, 0, 1, 0, 0, 0};
-    layout.shared_local_file_ends = {4, 8};
-    layout.shared_local_unit_ends = {0, 0};
-
-    clice::FileTable pool;
-    auto loads = [&](const index::ProjectTableBlob& blob) {
-        auto bytes = encode(blob);
-        index::ProjectIndex loaded{pool};
-        return loaded.load_table(bytes).has_value();
-    };
-    ZASSERT(loads(layout));
-
-    auto unordered = layout;
-    unordered.shared_local_symbols = {9, 5};
-    ZEXPECT(!loads(unordered));
-
-    auto misplaced = layout;
-    misplaced.shared_local_file_ends = {4, 7};
-    ZEXPECT(!loads(misplaced));
-
-    auto overrun = layout;
-    overrun.shared_local_set_ends = {1, 3};
-    ZEXPECT(!loads(overrun));
 }
 
 ZEST_CASE(TableSparseColumnsRejected) {
@@ -539,10 +501,9 @@ ZEST_CASE(TableReservedKeysRejected) {
 
     {
         auto layout = project_table_blob();
-        layout.version_ids = {0xffffffffu};
-        layout.version_unit_ends.assign(layout.version_ids.size(), 0);
-        layout.version_paths = {"/proj/a.h"};
-        layout.version_hashes = {0x1};
+        layout.versions = {
+            {.id = 0xffffffffu, .path = "/proj/a.h", .hash = 0x1}
+        };
         auto bytes = encode(layout);
         ZASSERT(!loaded.load_table(bytes).has_value());
     }
@@ -574,10 +535,9 @@ ZEST_CASE(TableReservedKeysRejected) {
 ZEST_CASE(UnknownFileVersionsDetected) {
     auto layout = project_table_blob();
     layout.next_version_id = 4;
-    layout.version_ids = {3};
-    layout.version_unit_ends.assign(layout.version_ids.size(), 0);
-    layout.version_paths = {"/proj/a.h"};
-    layout.version_hashes = {0x1};
+    layout.versions = {
+        {.id = 3, .path = "/proj/a.h", .hash = 0x1}
+    };
     auto bytes = encode(layout);
 
     clice::FileTable pool;

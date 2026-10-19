@@ -31,7 +31,7 @@ struct IndexInternals {
         if(!unit) {
             return std::nullopt;
         }
-        return index.base->columns->manifest_generations[*unit];
+        return index.base->columns->units[*unit].generation;
     }
 
     /// Whether the tables the manifests derive (contributions, absent

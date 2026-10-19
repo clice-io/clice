@@ -54,97 +54,42 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
     return ids;
 }
 
-namespace {
-
-/// The entries of key `position` of a keyed table whose runs end at `ends`.
-std::pair<std::uint32_t, std::uint32_t> run_of(llvm::ArrayRef<std::uint32_t> ends,
-                                               std::uint32_t position) {
-    return {position == 0 ? 0 : ends[position - 1], ends[position]};
+/// The record of `key` among records ascending by it; null for none.
+template <typename Record, typename Key>
+const static Record* find_record(const archive::Vec<Record>& records,
+                                 Key key,
+                                 Key Record::* field) {
+    auto it = std::ranges::lower_bound(records, key, {}, field);
+    return it != records.end() && (*it).*field == key ? &*it : nullptr;
 }
 
-/// The unit set of key `id` in a table of keys ascending, one set each.
-std::optional<Bitmap> keyed_units(llvm::ArrayRef<std::uint32_t> keys,
-                                  llvm::ArrayRef<std::uint32_t> ends,
-                                  llvm::ArrayRef<std::uint8_t> units,
-                                  std::optional<std::uint32_t> id) {
-    auto position = id ? sorted_find(keys, *id) : std::nullopt;
-    if(!position) {
-        return std::nullopt;
-    }
-    return read_file_set(slice(units, ends, *position));
-}
-
-}  // namespace
-
-llvm::SmallVector<ProjectTable::Contribution, 2> ProjectTable::contributions_of(Fid file) const {
-    llvm::SmallVector<Contribution, 2> found;
+const archive::Archived<ContributedFile>* ProjectTable::contributed(Fid file) const {
     auto id = path_id(file);
-    auto position = id ? sorted_find(columns->contributed_files, *id) : std::nullopt;
-    if(!position) {
-        return found;
-    }
-    auto [begin, end] = run_of(columns->contribution_ends, *position);
-    for(auto entry = begin; entry < end; entry += 1) {
-        if(auto units = read_file_set(
-               slice(columns->contribution_units, columns->contribution_unit_ends, entry))) {
-            found.push_back({
-                .variant = columns->contribution_variants[entry],
-                .version = columns->contribution_versions[entry],
-                .units = std::move(*units),
-            });
-        }
-    }
-    return found;
+    return id ? find_record(columns->contributions, *id, &archive::Archived<ContributedFile>::file)
+              : nullptr;
 }
 
-llvm::SmallVector<ProjectTable::Use, 2> ProjectTable::uses_of(Fid file) const {
-    llvm::SmallVector<Use, 2> found;
+const archive::Archived<UsedFile>* ProjectTable::used(Fid file) const {
     auto id = path_id(file);
-    auto position = id ? sorted_find(columns->use_files, *id) : std::nullopt;
-    if(!position) {
-        return found;
-    }
-    auto [begin, end] = run_of(columns->use_ends, *position);
-    for(auto entry = begin; entry < end; entry += 1) {
-        if(auto units = read_file_set(slice(columns->use_units, columns->use_unit_ends, entry))) {
-            found.push_back({.use = columns->use_hashes[entry], .units = std::move(*units)});
-        }
-    }
-    return found;
+    return id ? find_record(columns->uses, *id, &archive::Archived<UsedFile>::file) : nullptr;
 }
 
-std::optional<Bitmap> ProjectTable::absent_units(Fid place) const {
-    return keyed_units(columns->absent_places,
-                       columns->absent_unit_ends,
-                       columns->absent_units,
-                       path_id(place));
+const archive::Archived<UnitSet>* ProjectTable::absent(Fid place) const {
+    auto id = path_id(place);
+    return id ? find_record(columns->absent, std::uint64_t(*id), &archive::Archived<UnitSet>::key)
+              : nullptr;
 }
 
-std::optional<Bitmap> ProjectTable::import_units(Fid input) const {
-    return keyed_units(columns->import_inputs,
-                       columns->import_unit_ends,
-                       columns->import_units,
-                       path_id(input));
+const archive::Archived<UnitSet>* ProjectTable::imported(Fid input) const {
+    auto id = path_id(input);
+    return id ? find_record(columns->imports, std::uint64_t(*id), &archive::Archived<UnitSet>::key)
+              : nullptr;
 }
 
-llvm::SmallVector<ProjectTable::SharedLocalSet>
-    ProjectTable::shared_local_sets_of(SymbolHash symbol) const {
-    llvm::SmallVector<SharedLocalSet> sets;
-    auto position = sorted_find(columns->shared_local_symbols, symbol);
-    if(!position) {
-        return sets;
-    }
-    auto [begin, end] = run_of(columns->shared_local_set_ends, *position);
-    for(auto set = begin; set < end; set += 1) {
-        auto files =
-            read_file_set(slice(columns->shared_local_files, columns->shared_local_file_ends, set));
-        auto units =
-            read_file_set(slice(columns->shared_local_units, columns->shared_local_unit_ends, set));
-        if(files && units) {
-            sets.push_back({.files = std::move(*files), .units = std::move(*units)});
-        }
-    }
-    return sets;
+const archive::Archived<SharedLocalEntry>* ProjectTable::shared_local(SymbolHash symbol) const {
+    return find_record(columns->shared_locals,
+                       symbol,
+                       &archive::Archived<SharedLocalEntry>::symbol);
 }
 
 std::expected<void, llvm::StringRef> ProjectTable::bind(const archive::Archived<Blob>& root) {
@@ -155,73 +100,6 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(const archive::Archived<
     files = ids_of(columns->symbol_files, paths.size() + 1);
     reference_counts = ids_of(columns->symbol_reference_counts, paths.size() + 1);
 
-    llvm::ArrayRef<std::uint32_t> version_ids = columns->version_ids;
-    auto version_count = version_ids.size();
-    if(columns->version_paths.size() != version_count ||
-       columns->version_hashes.size() != version_count) {
-        return std::unexpected("file version columns do not line up");
-    }
-    if(!std::ranges::is_sorted(version_ids)) {
-        return std::unexpected("file version ids are not ascending");
-    }
-    if(columns->version_unit_ends.size() != version_count ||
-       !covering_ends(columns->version_unit_ends, columns->version_units.size())) {
-        return std::unexpected("file version units do not line up");
-    }
-    // A keyed table: keys ascending inside the path table, a run of
-    // entries each, and a set of units per entry.
-    auto keyed_ok = [&](llvm::ArrayRef<std::uint32_t> keys,
-                        llvm::ArrayRef<std::uint32_t> runs,
-                        std::uint32_t entries,
-                        llvm::ArrayRef<std::uint32_t> unit_ends,
-                        std::uint32_t unit_bytes) {
-        return sparse_ok(keys, runs.size(), paths.size()) && covering_ends(runs, entries) &&
-               unit_ends.size() == entries && covering_ends(unit_ends, unit_bytes);
-    };
-    auto variants = columns->contribution_variants.size();
-    if(columns->contribution_versions.size() != variants ||
-       !keyed_ok(columns->contributed_files,
-                 columns->contribution_ends,
-                 variants,
-                 columns->contribution_unit_ends,
-                 columns->contribution_units.size())) {
-        return std::unexpected("contribution columns do not line up");
-    }
-    if(!keyed_ok(columns->use_files,
-                 columns->use_ends,
-                 columns->use_hashes.size(),
-                 columns->use_unit_ends,
-                 columns->use_units.size())) {
-        return std::unexpected("instantiation use columns do not line up");
-    }
-    // One set of units per key.
-    auto sets_ok = [&](llvm::ArrayRef<std::uint32_t> keys,
-                       llvm::ArrayRef<std::uint32_t> unit_ends,
-                       std::uint32_t unit_bytes) {
-        return sparse_ok(keys, unit_ends.size(), paths.size()) &&
-               covering_ends(unit_ends, unit_bytes);
-    };
-    if(!sets_ok(columns->absent_places, columns->absent_unit_ends, columns->absent_units.size()) ||
-       !sets_ok(columns->import_inputs, columns->import_unit_ends, columns->import_units.size())) {
-        return std::unexpected("absent place or import columns do not line up");
-    }
-    llvm::ArrayRef<std::uint64_t> shared_local_symbols = columns->shared_local_symbols;
-    llvm::ArrayRef<std::uint32_t> shared_local_set_ends = columns->shared_local_set_ends;
-    llvm::ArrayRef<std::uint32_t> shared_local_file_ends = columns->shared_local_file_ends;
-    llvm::ArrayRef<std::uint32_t> shared_local_unit_ends = columns->shared_local_unit_ends;
-    if(shared_local_set_ends.size() != shared_local_symbols.size() ||
-       !covering_ends(shared_local_set_ends, shared_local_file_ends.size()) ||
-       !covering_ends(shared_local_file_ends, columns->shared_local_files.size()) ||
-       shared_local_unit_ends.size() != shared_local_file_ends.size() ||
-       !covering_ends(shared_local_unit_ends, columns->shared_local_units.size()) ||
-       !strictly_ascending(shared_local_symbols)) {
-        return std::unexpected("shared local columns do not line up");
-    }
-    auto units = columns->manifest_versions.size();
-    if(columns->manifest_generations.size() != units || columns->manifest_runs.size() != units ||
-       !strictly_ascending(columns->manifest_versions)) {
-        return std::unexpected("unit columns do not line up");
-    }
     auto count = hashes.size();
     llvm::ArrayRef<std::uint8_t> token_kinds = columns->symbol_token_kinds;
     if(columns->symbol_name_ends.size() != count ||

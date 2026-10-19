@@ -538,10 +538,92 @@ struct TUIndexBlobOf {
 
 using TUIndexBlob = TUIndexBlobOf<archive::Owned>;
 
-/// The project table's persisted form, read in place: the FileVersion table
-/// as parallel columns, the symbol table as parallel columns in hash order
-/// with its names, arguments and reference bitmaps in arenas, and the path
-/// table those columns index.
+/// A set of units under a key — a variant or a use by its hash, a place or
+/// an input by its path id —, the units as their path ids in a file set
+/// (append_file_set).
+template <template <typename> typename Seq>
+struct UnitSetOf {
+    std::uint64_t key = 0;
+
+    Seq<std::uint8_t> units;
+};
+
+/// A file version some unit's manifest names, and the units naming it.
+template <template <typename> typename Seq>
+struct PersistedVersionOf {
+    std::uint32_t id = 0;
+
+    Seq<char> path;
+
+    std::uint64_t hash = 0;
+
+    Seq<std::uint8_t> units;
+};
+
+/// A TU with a current manifest: its tu_version, the generation its manifest
+/// blob must carry and its manifest's built_at. A read adopts a manifest
+/// blob only on an exact generation match, so a manifest whose write failed
+/// while the project table was persisted (or one that outran a lost project
+/// table write) reads as lost and its TU reindexes, instead of an older
+/// on-disk manifest serving as current.
+struct PersistedUnit {
+    std::uint32_t version = 0;
+
+    std::uint64_t generation = 0;
+
+    std::uint64_t run = 0;
+};
+
+/// A variant units contributed to a file, with the file version it was
+/// built from.
+template <template <typename> typename Seq>
+struct ContributionOf {
+    std::uint64_t variant = 0;
+
+    std::uint32_t version = 0;
+
+    Seq<std::uint8_t> units;
+};
+
+/// A file some unit contributed a variant to, its variants ascending.
+template <template <typename> typename Seq>
+struct ContributedFileOf {
+    std::uint32_t file = 0;
+
+    Seq<ContributionOf<Seq>> variants;
+};
+
+/// A file holding instantiation resolutions some unit uses, its uses by
+/// hash ascending.
+template <template <typename> typename Seq>
+struct UsedFileOf {
+    std::uint32_t file = 0;
+
+    Seq<UnitSetOf<Seq>> uses;
+};
+
+/// A set of files a shared local lists (TUManifest::shared_locals), as a
+/// file set, and the units listing it.
+template <template <typename> typename Seq>
+struct SharedLocalSetOf {
+    Seq<std::uint8_t> files;
+
+    Seq<std::uint8_t> units;
+};
+
+/// A symbol below external scope some unit's shared locals list, and the
+/// file sets they list for it.
+template <template <typename> typename Seq>
+struct SharedLocalEntryOf {
+    std::uint64_t symbol = 0;
+
+    Seq<SharedLocalSetOf<Seq>> sets;
+};
+
+/// The project table's persisted form, read in place: the file versions,
+/// the symbol table as parallel columns in hash order with its names,
+/// arguments and reference bitmaps in arenas, the path table those columns
+/// index, and the units with what their manifests say.
 template <template <typename> typename Seq>
 struct ProjectTableBlobOf {
     std::uint32_t format_version = 0;
@@ -551,9 +633,7 @@ struct ProjectTableBlobOf {
 
     std::uint32_t next_version_id = 0;
 
-    Seq<std::uint32_t> version_ids;
-    Seq<Seq<char>> version_paths;
-    Seq<std::uint64_t> version_hashes;
+    Seq<PersistedVersionOf<Seq>> versions;
 
     /// Path id -> path for every id the symbol columns reference. Ids
     /// are dense and stable across writes: a path keeps its id for as
@@ -596,16 +676,8 @@ struct ProjectTableBlobOf {
     Seq<std::uint32_t> symbol_instantiation_ends;
     Seq<std::uint8_t> symbol_instantiations;
 
-    /// The units: every TU with a current manifest, ascending by its
-    /// tu_version, with the generation its manifest blob must carry and its
-    /// manifest's built_at. A read adopts a manifest blob only on an
-    /// exact generation match, so a manifest whose write failed while the
-    /// project table was persisted (or one that outran a lost project table
-    /// write) reads as lost and its TU reindexes, instead of an older on-disk
-    /// manifest serving as current.
-    Seq<std::uint32_t> manifest_versions;
-    Seq<std::uint64_t> manifest_generations;
-    Seq<std::uint64_t> manifest_runs;
+    /// Every TU with a current manifest.
+    Seq<PersistedUnit> units;
 
     /// The generation of the search blob this table was saved with, and
     /// the entries and the files whose names of internal linkage (path
@@ -614,57 +686,27 @@ struct ProjectTableBlobOf {
     Seq<std::uint64_t> search_pending;
     Seq<std::uint32_t> search_pending_files;
 
-    /// What the units' manifests say, keyed the way readers ask, each set
-    /// of units the units' path ids as a file set (append_file_set), back
-    /// to back: a reader answers from here without a manifest, and a writer
+    /// What the units' manifests say, keyed the way readers ask, ascending
+    /// by key: a reader answers from here without a manifest, and a writer
     /// reads it under the units its session changed.
-    ///
-    /// Per file version (parallel to `version_ids`), the units whose
-    /// manifest names it.
-    Seq<std::uint32_t> version_unit_ends;
-    Seq<std::uint8_t> version_units;
-
-    /// Every file some unit contributed a variant to (path ids, ascending),
-    /// the end of each file's run of variants, and per variant its hash,
-    /// the file version it was built from and the units contributing it.
-    Seq<std::uint32_t> contributed_files;
-    Seq<std::uint32_t> contribution_ends;
-    Seq<std::uint64_t> contribution_variants;
-    Seq<std::uint32_t> contribution_versions;
-    Seq<std::uint32_t> contribution_unit_ends;
-    Seq<std::uint8_t> contribution_units;
-
-    /// Every file holding instantiation resolutions some unit uses (path
-    /// ids, ascending), the end of each file's run of uses, and per use its
-    /// identity and the units naming it.
-    Seq<std::uint32_t> use_files;
-    Seq<std::uint32_t> use_ends;
-    Seq<std::uint64_t> use_hashes;
-    Seq<std::uint32_t> use_unit_ends;
-    Seq<std::uint8_t> use_units;
-
+    Seq<ContributedFileOf<Seq>> contributions;
+    Seq<UsedFileOf<Seq>> uses;
     /// The places failed lookups looked (TUManifest::absent) and the inputs
     /// read through modules and precompiled headers (TUManifest::imports),
-    /// path ids ascending, each with the units concerned.
-    Seq<std::uint32_t> absent_places;
-    Seq<std::uint32_t> absent_unit_ends;
-    Seq<std::uint8_t> absent_units;
-    Seq<std::uint32_t> import_inputs;
-    Seq<std::uint32_t> import_unit_ends;
-    Seq<std::uint8_t> import_units;
-
-    /// The symbols below external scope some unit's shared locals list
-    /// (TUManifest::shared_locals), ascending; the end of each symbol's run
-    /// of file sets; and per set its files and the units listing it.
-    Seq<std::uint64_t> shared_local_symbols;
-    Seq<std::uint32_t> shared_local_set_ends;
-    Seq<std::uint32_t> shared_local_file_ends;
-    Seq<std::uint8_t> shared_local_files;
-    Seq<std::uint32_t> shared_local_unit_ends;
-    Seq<std::uint8_t> shared_local_units;
+    /// keyed by path id.
+    Seq<UnitSetOf<Seq>> absent;
+    Seq<UnitSetOf<Seq>> imports;
+    Seq<SharedLocalEntryOf<Seq>> shared_locals;
 };
 
 using ProjectTableBlob = ProjectTableBlobOf<archive::Owned>;
+using UnitSet = UnitSetOf<archive::Owned>;
+using PersistedVersion = PersistedVersionOf<archive::Owned>;
+using Contribution = ContributionOf<archive::Owned>;
+using ContributedFile = ContributedFileOf<archive::Owned>;
+using UsedFile = UsedFileOf<archive::Owned>;
+using SharedLocalSet = SharedLocalSetOf<archive::Owned>;
+using SharedLocalEntry = SharedLocalEntryOf<archive::Owned>;
 
 /// Layout and scoring version of the search blob, apart from the index
 /// format it is derived from: a bump rebuilds the search index alone.

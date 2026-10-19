@@ -43,30 +43,6 @@ struct ProjectTable {
     /// File table id -> blob path id, built on first use.
     mutable llvm::DenseMap<Fid, std::uint32_t> path_index;
 
-    /// The variants a unit contributed to a file (contributions_of).
-    struct Contribution {
-        std::uint64_t variant = 0;
-
-        /// The file version the variant was built from, as the blob's id.
-        std::uint32_t version = 0;
-
-        Bitmap units;
-    };
-
-    /// The resolutions a unit uses in a file (uses_of).
-    struct Use {
-        std::uint64_t use = 0;
-
-        Bitmap units;
-    };
-
-    /// A set of files a shared local lists, and the units listing it.
-    struct SharedLocalSet {
-        Bitmap files;
-
-        Bitmap units;
-    };
-
     llvm::ArrayRef<std::uint64_t> hashes() const {
         return columns->symbol_hashes;
     }
@@ -148,32 +124,17 @@ struct ProjectTable {
         return it != path_index.end() ? std::optional(it->second) : std::nullopt;
     }
 
-    std::uint32_t unit_count() const {
-        return columns->manifest_versions.size();
-    }
+    /// What the units say of a file, a place, an input or a symbol; null
+    /// when they say nothing.
+    const archive::Archived<ContributedFile>* contributed(Fid file) const;
 
-    /// The units whose manifest names file version `version` (an index
-    /// into the version columns), as path ids.
-    std::optional<Bitmap> version_units(std::uint32_t version) const {
-        return read_file_set(slice(columns->version_units, columns->version_unit_ends, version));
-    }
+    const archive::Archived<UsedFile>* used(Fid file) const;
 
-    /// The variants units contributed to `file`; a corrupt unit set is left
-    /// out.
-    llvm::SmallVector<Contribution, 2> contributions_of(Fid file) const;
+    const archive::Archived<UnitSet>* absent(Fid place) const;
 
-    /// The resolutions units use in `file`; a corrupt unit set is left out.
-    llvm::SmallVector<Use, 2> uses_of(Fid file) const;
+    const archive::Archived<UnitSet>* imported(Fid input) const;
 
-    /// The units some failed lookup of which looked at `place`.
-    std::optional<Bitmap> absent_units(Fid place) const;
-
-    /// The units reading `input` through a module or a precompiled header.
-    std::optional<Bitmap> import_units(Fid input) const;
-
-    /// The file sets the shared locals list for `symbol` and the units
-    /// listing each, as path ids; a corrupt one is left out.
-    llvm::SmallVector<SharedLocalSet> shared_local_sets_of(SymbolHash symbol) const;
+    const archive::Archived<SharedLocalEntry>* shared_local(SymbolHash symbol) const;
 
     SymbolView view(std::uint32_t entry) const {
         auto file = this->file(entry);

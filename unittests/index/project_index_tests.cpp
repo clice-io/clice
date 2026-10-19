@@ -544,8 +544,11 @@ ZEST_CASE(UnitTablesRoundTrip) {
         };
         project.apply_manifest(pool.intern(path(tu)), std::move(manifest));
     };
+    // Enough units that a set takes a roaring image, which reads as a view.
     add_unit("a.cpp", 20, 30);
     add_unit("b.cpp", 21, 31);
+    add_unit("c.cpp", 22, 32);
+    add_unit("d.cpp", 23, 33);
 
     using Units = std::vector<std::pair<std::uint32_t, std::uint64_t>>;
     auto check = [&](const index::ProjectIndex& index,
@@ -602,24 +605,23 @@ ZEST_CASE(UnitTablesRoundTrip) {
           fresh,
           {
               {"a.cpp", 20},
-              {"b.cpp", 21}
+              {"b.cpp", 21},
+              {"c.cpp", 22},
+              {"d.cpp", 23}
     });
 
     loaded.remove_manifest(*fresh.find(path("a.cpp")));
-    check(loaded,
-          fresh,
-          {
-              {"b.cpp", 21}
-    });
+    std::vector<std::pair<llvm::StringRef, std::uint64_t>> rest = {
+        {"b.cpp", 21},
+        {"c.cpp", 22},
+        {"d.cpp", 23}
+    };
+    check(loaded, fresh, rest);
     auto second = loaded.serialize_table();
     clice::FileTable again;
     index::ProjectIndex reloaded{again};
     ZASSERT(reloaded.load_table(second));
-    check(reloaded,
-          again,
-          {
-              {"b.cpp", 21}
-    });
+    check(reloaded, again, rest);
     ZEXPECT(!again.version_ids.contains({*again.find(path("a.cpp")), std::uint64_t(1)}));
     ZEXPECT(again.version_ids.contains({*again.find(path("b.cpp")), std::uint64_t(1)}));
 }

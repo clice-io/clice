@@ -608,10 +608,11 @@ void ProjectIndex::recover_corrupt_database(IndexReport& report) {
         }
     }
     if(base) {
-        auto& columns = *base->columns;
-        for(auto id:
-            llvm::concat<const std::uint32_t>(columns.contributed_files, columns.use_files)) {
-            refresh_live(base->remap[id]);
+        for(auto& contributed: base->columns->contributions) {
+            refresh_live(base->remap[contributed.file]);
+        }
+        for(auto& used: base->columns->uses) {
+            refresh_live(base->remap[used.file]);
         }
     }
     stale_units.reset();

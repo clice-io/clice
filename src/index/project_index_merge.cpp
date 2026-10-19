@@ -351,9 +351,15 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         search_file_changed(global_id);
     }
     // A file's instantiations live with its shard of the same generation:
-    // a rebuilt file's stored ones, read or not, are another generation's.
+    // a rebuilt file's held ones stay at the new one — a unit reading the
+    // file through a precompiled header put them there before its first
+    // shard —, its stored ones are taken as another generation's, unread.
     for(auto path_id: rebuilt_ids) {
-        retire_instantiations(path_id);
+        auto held = instantiations.find(path_id);
+        if(held == instantiations.end() || !held->second.loaded() ||
+           held->second.content_hash() != shards.find(path_id)->second.content_hash()) {
+            retire_instantiations(path_id);
+        }
     }
     for(auto& [global_id, replacement]: instantiation_replacements) {
         instantiations[global_id] = std::move(replacement);
@@ -509,22 +515,18 @@ const llvm::DenseSet<Fid>& ProjectIndex::stale_base_units() {
         return stale;
     }
     // Each version is judged once, whatever number of units depend on it.
-    auto& columns = *base->columns;
-    for(std::uint32_t position = 0; position < columns.version_ids.size(); position += 1) {
-        auto version = runtime_version(columns.version_ids[position]);
-        if(version && !file_version_stale(*version)) {
-            continue;
-        }
-        if(auto tus = base->version_units(position)) {
-            for_each_base_unit(*tus, [&](Fid tu) { stale.insert(tu); });
+    auto add = [&](Fid tu) {
+        stale.insert(tu);
+    };
+    for(auto& version: base->columns->versions) {
+        auto id = runtime_version(version.id);
+        if(!id || file_version_stale(*id)) {
+            for_each_base_unit(version.units, add);
         }
     }
-    for(std::uint32_t k = 0; k < columns.absent_places.size(); k += 1) {
-        if(!files.disk.present(base->remap[columns.absent_places[k]])) {
-            continue;
-        }
-        if(auto tus = read_file_set(slice(columns.absent_units, columns.absent_unit_ends, k))) {
-            for_each_base_unit(*tus, [&](Fid tu) { stale.insert(tu); });
+    for(auto& place: base->columns->absent) {
+        if(files.disk.present(base->remap[place.key])) {
+            for_each_base_unit(place.units, add);
         }
     }
     return stale;

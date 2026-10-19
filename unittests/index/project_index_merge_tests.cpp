@@ -762,6 +762,29 @@ struct A { void print(); void print(int); };
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
 }
 
+ZEST_CASE(FirstShardKeepsInstantiations) {
+    // A unit reading box.h through a precompiled header puts its
+    // instantiations there with no shard of box.h; the first shard, of the
+    // same content, keeps them.
+    tmp.touch("plain.cpp", R"(#include "box.h"
+int plain() { return 0; }
+)");
+    auto indexed = index_file(tmp, tmp.path("a.cpp"));
+    auto blob = tu_index_blob(index::TUIndex::from_bytes(indexed.data));
+    std::erase_if(blob.sections, [&](const index::FileSection& section) {
+        return llvm::StringRef(blob.paths[section.path_id]).ends_with("box.h");
+    });
+    ZASSERT(f.merge(tu_index_bytes(blob)));
+    ZASSERT(!f.project.index.shard(id("box.h")));
+    auto use = f.project.index.manifest(id("a.cpp"))->instantiations.front().use;
+
+    ZASSERT(index("plain.cpp"));
+    ZASSERT(f.project.index.shard(id("box.h")));
+    ZASSERT(box());
+    ZEXPECT(box()->has_use(use));
+    ZEXPECT(f.project.index.lost_units().empty());
+}
+
 ZEST_CASE(MixedGenerationsKept) {
     // One unit catches up with an edited template while another still pins
     // the old generation: the instantiations at the shard's generation stay.
