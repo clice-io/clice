@@ -5,9 +5,10 @@ import { answers, test, type Serve, type TestContext } from "@clice/tools/testin
 // it includes), and main.cpp opens with a preamble of its own (extra.h): an
 // open main.cpp builds its preamble's PCH over the target's, a chain of
 // two, and the background index loads the target's PCH. The chain answers
-// what a parse loading no PCH answers: clice inspect, which never loads
-// one, and the same database with -include-pch dropped. Markers named c_
-// complete, s_ ask for signature help, the others ask where things are.
+// what the target's PCH alone answers, as clice inspect loads it with no
+// preamble, and what a parse loading no PCH answers, the same database with
+// -include-pch dropped. Markers named c_ complete, s_ ask for signature
+// help, the others ask where things are.
 
 const DATABASE = "build/compile_commands.json";
 const WRITER = "build/CMakeFiles/app.dir/cmake_pch.hxx.cxx";

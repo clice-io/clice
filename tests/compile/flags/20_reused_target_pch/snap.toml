@@ -1,0 +1,12 @@
+[answers.record.hover]
+markdown = '''
+**class** `Writer`
+
+```cpp
+class ABI Writer {}
+```
+Size: 1 byte, alignment 1 byte
+
+`ABI` is `__attribute__((visibility("default")))`
+'''
+range = "⟦Writer⟧* writer;"
