@@ -21,6 +21,12 @@ import { sampleFiles, sweep, type Request } from "./sweep.ts";
 
 export type Step = "index" | "sweep";
 
+/// No file is swept after this long into the sweep, nor this long into the
+/// job: the files in flight finish and the results upload within the
+/// runner's six hours, after an index run that took its full bound.
+const SWEEP_MS = 2 * 60 * 60_000;
+const JOB_MS = 270 * 60_000;
+
 export interface Failure {
     kind:
         | "setup"
@@ -269,6 +275,7 @@ async function sweepStep(
     checkout: string,
     entries: readonly DatabaseEntry[],
     results: Results,
+    jobEnd: number,
 ): Promise<void> {
     const { job } = options;
     const units = entries.flatMap((entry) => inside(checkout, entrySource(entry)) ?? []);
@@ -277,6 +284,7 @@ async function sweepStep(
     const run = await sweep({
         root: checkout,
         files,
+        deadline: Math.min(Date.now() + SWEEP_MS, jobEnd),
         ...(options.only === undefined ? {} : { only: options.only }),
     });
     results.sweep = {
@@ -289,7 +297,7 @@ async function sweepStep(
     if (run.unasked.length > 0) {
         results.failures.push({
             kind: "hang",
-            detail: `the sweep ran out of its two hours with ${String(run.unasked.length)} of ${String(run.files.length)} files unasked:\n${run.unasked.join("\n")}`,
+            detail: `the sweep ran out of its time with ${String(run.unasked.length)} of ${String(run.files.length)} files unasked:\n${run.unasked.join("\n")}`,
             repro: rerun(options, "--steps sweep"),
         });
     }
@@ -362,7 +370,7 @@ export async function runNightly(options: NightlyOptions): Promise<Results> {
 
     const steps = [
         ["index", indexStep],
-        ["sweep", sweepStep],
+        ["sweep", (...step: Parameters<typeof indexStep>) => sweepStep(...step, started + JOB_MS)],
     ] as const;
     for (const [step, run] of steps) {
         if (!options.steps.has(step)) {

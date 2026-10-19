@@ -36,10 +36,6 @@ const COMPLETIONS = 3;
 /// the machine's memory, at most three.
 const CONCURRENCY = Math.min(3, Math.max(1, Math.floor(os.totalmem() / 5 / 1024 ** 3)));
 
-/// No file is begun after this long, so that the job ends within the
-/// runner's time: the projects' sweeps take well under an hour.
-const SWEEP_MS = 2 * 60 * 60_000;
-
 /// A request that answers in no time on a test case may compile a large
 /// unit here: the bound only a hang reaches.
 const REQUEST_MS = 10 * 60_000;
@@ -364,6 +360,8 @@ export interface SweepRun {
 export interface SweepOptions {
     root: string;
     files: readonly string[];
+    /// No file is begun after this time.
+    deadline: number;
     only?: ReadonlySet<Request>;
 }
 
@@ -559,10 +557,9 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
     try {
         await server.start();
         const queue = [...places];
-        const deadline = Date.now() + SWEEP_MS;
         const worker = async () => {
             for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-                if (Date.now() > deadline) {
+                if (Date.now() > options.deadline) {
                     run.unasked.push(next[0]);
                     continue;
                 }
