@@ -86,6 +86,11 @@ struct IndexerFixture {
         return result.decoded;
     }
 
+    /// Whether a background round is scheduled and not yet started.
+    bool round_scheduled() const {
+        return pump.indexing_scheduled;
+    }
+
     /// Take the lost data reads found to the pump, as a round does.
     void take_lost() {
         pump.apply_report(project.index.take_lost());

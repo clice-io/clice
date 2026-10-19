@@ -189,11 +189,11 @@ int use() { return dep(); }
     ZASSERT(f.project.index.load(*f.project.database, {}, report) == index::LoadOutcome::Loaded);
     auto tu_id = f.project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     ZASSERT(f.project.index.has_manifest(tu_id));
-    ZASSERT(!f.pump.indexing_scheduled);
+    ZASSERT(!f.round_scheduled());
 
     ZASSERT(
         !f.project.index.shard(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
-    ZASSERT(f.pump.indexing_scheduled);
+    ZASSERT(f.round_scheduled());
     f.loop.run();
     ZEXPECT(!f.project.index.has_manifest(tu_id));
 }
