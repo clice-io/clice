@@ -140,6 +140,23 @@ ZEST_CASE(FromRejectsHostileInput) {
     ZASSERT(!index::TUIndex::from_bytes(clobbered).loaded());
 }
 
+ZEST_CASE(MisalignedBytesLoad) {
+    // A TU index framed inside another buffer sits wherever the frame put
+    // it, while its columns are read in place.
+    add_focus("main.cpp", R"(
+            int foo() { return 42; }
+        )");
+    auto built = build();
+    auto bytes = built.bytes();
+    std::vector<std::uint64_t> storage(bytes.size() / sizeof(std::uint64_t) + 2);
+    auto* misaligned = reinterpret_cast<char*>(storage.data()) + sizeof(std::uint32_t);
+    std::memcpy(misaligned, bytes.data(), bytes.size());
+
+    auto view = index::TUIndex::from_bytes(llvm::StringRef(misaligned, bytes.size()));
+    ZASSERT(view.loaded());
+    ZEXPECT(view.verify_shards());
+}
+
 ZEST_CASE(FromRejectsStaleFormatVersion) {
     // Only the version slot and the path table are written: every other
     // field reads back absent, which is structurally valid — the result

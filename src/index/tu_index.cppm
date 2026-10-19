@@ -29,8 +29,9 @@ class TUIndex {
 public:
     TUIndex() = default;
 
-    /// Wrap verified TU index bytes without owning them (the caller keeps
-    /// the bytes alive). Verification gates the format version and bounds
+    /// Read TU index bytes in place, the caller keeping them alive; bytes
+    /// at an address their columns cannot be read at are copied
+    /// (in_place_buffer). Verification gates the format version and bounds
     /// every path id the tree, the symbol table and the sections carry;
     /// corrupt bytes load as an empty reader.
     /// Section blob bytes are verified per section: structurally by

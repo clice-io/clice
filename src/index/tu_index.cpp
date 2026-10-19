@@ -99,6 +99,9 @@ struct SymbolColumns {
 }  // namespace
 
 TUIndex TUIndex::from_bytes(llvm::StringRef data) {
+    if(auto buffer = in_place_buffer(data); buffer->getBufferStart() != data.data()) {
+        return from_buffer(std::move(buffer));
+    }
     auto verified = verify_root<TUIndexBlob>(data, "TU index");
     if(!verified) {
         return {};
