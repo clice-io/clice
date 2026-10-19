@@ -7,6 +7,7 @@
 /// where the two answers differ.
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { createTwoFilesPatch } from "diff";
 import * as proto from "vscode-languageserver-protocol";
@@ -30,8 +31,10 @@ import { StepRecord } from "../testing/server/steps.ts";
 const POINTS = 20;
 const COMPLETIONS = 3;
 
-/// Files asked at once: inspect compiles each alone beside the server.
-const CONCURRENCY = 3;
+/// Files asked at once: inspect compiles each alone beside the server's
+/// compile of it, a large unit taking 3 GB in each, so one file per 5 GB of
+/// the machine's memory, at most three.
+const CONCURRENCY = Math.min(3, Math.max(1, Math.floor(os.totalmem() / 5 / 1024 ** 3)));
 
 /// No file is begun after this long, so that the job ends within the
 /// runner's time: the projects' sweeps take well under an hour.
@@ -82,6 +85,31 @@ export const NAVIGATION = ["definition", "references", "callHierarchy", "typeHie
 export type Request = (typeof REQUESTS)[number] | (typeof NAVIGATION)[number] | "errors";
 
 const SOURCE = /\.(c|cc|cpp|cxx|c\+\+|cppm|ixx|cu)$/;
+
+/// The differences between inspect and the server the project accepts, each
+/// pinned by a case: two answers equal once `same` rewrites both show one.
+const ACCEPTED: { case: string; request: Request; same: (shown: string) => string }[] = [
+    {
+        // Under a preamble a default argument written as a macro can print
+        // as its value: a clang SourceManager bug.
+        case: "completion/member_access/20_macro_default_arguments",
+        request: "completion",
+        same: (shown) => shown.replaceAll(/ = [^,()"]+(?=[,)])/g, " = ..."),
+    },
+];
+
+/// The case pinning the difference between two rendered answers, when the
+/// project accepts it.
+export function acceptedDifference(
+    request: Request,
+    inspect: string,
+    server: string,
+): string | undefined {
+    return ACCEPTED.find(
+        (accepted) =>
+            accepted.request === request && accepted.same(inspect) === accepted.same(server),
+    )?.case;
+}
 
 /// The name a module declaration declares: the server answers about it from
 /// the index of module interfaces, which inspect does not build.
@@ -322,6 +350,9 @@ export interface SweepRun {
     inspectSeconds: number;
     serverSeconds: number;
     failures: SweepFailure[];
+    /// The places whose answers differ as the project accepts, each with
+    /// the case pinning it.
+    accepted: { file: string; label: string; case: string }[];
     /// Why the server failed its clean exit: a crash, or no exit at all.
     serverExit: string[];
     /// The files the server opened with errors, the first few of each.
@@ -480,15 +511,21 @@ async function sweepFile(
             rendered(left.reply, options.root, ask.label),
             rendered(right.reply, options.root, ask.label),
         ]);
-        if (shownLeft !== shownRight) {
-            fail(
-                "disagree",
-                ask,
-                createTwoFilesPatch("inspect", "server", shownLeft, shownRight, "", "", {
-                    context: 3,
-                }),
-            );
+        if (shownLeft === shownRight) {
+            continue;
         }
+        const accepted = acceptedDifference(ask.request, shownLeft, shownRight);
+        if (accepted !== undefined) {
+            run.accepted.push({ file, label: ask.label, case: accepted });
+            continue;
+        }
+        fail(
+            "disagree",
+            ask,
+            createTwoFilesPatch("inspect", "server", shownLeft, shownRight, "", "", {
+                context: 3,
+            }),
+        );
     }
 }
 
@@ -500,6 +537,7 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
         inspectSeconds: 0,
         serverSeconds: 0,
         failures: [],
+        accepted: [],
         serverExit: [],
         serverErrors: [],
         unasked: [],

@@ -142,6 +142,16 @@ export function report(now: Results, before?: Results): string {
             lines.push("", fence(detail), "", "Reproduce:", "", fence(first.repro));
         }
     }
+    if (now.accepted.length > 0) {
+        lines.push(
+            "",
+            `## Differences the project accepts, each pinned by a case (${String(now.accepted.length)})`,
+            "",
+            ...now.accepted.map(
+                (accepted) => `- ${accepted.file}, ${accepted.label}: tests/${accepted.case}`,
+            ),
+        );
+    }
     if (now.compilerRejects.length > 0) {
         lines.push(
             "",

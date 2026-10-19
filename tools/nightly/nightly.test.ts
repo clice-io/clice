@@ -8,7 +8,7 @@ import { unitsInFlight } from "./index.ts";
 import type { Results } from "./nightly.ts";
 import { jobs, loadProjects, type Project } from "./projects.ts";
 import { report } from "./report.ts";
-import { placesOf, sampleFiles } from "./sweep.ts";
+import { acceptedDifference, placesOf, sampleFiles } from "./sweep.ts";
 
 describe("projects", () => {
     test("the pinned projects load, a job per part", () => {
@@ -157,6 +157,28 @@ describe("sweep", () => {
         expect(words).toEqual(["module", "module", "module_x"]);
     });
 
+    test("a difference the project accepts is told apart from others", () => {
+        const answer = (label: string) =>
+            `["completion m2".completion]\nitems = [\n    {\n        label = "${label}",\n        kind = "Method",\n    },\n]\n`;
+        const inspect = answer(
+            "GetAsUInt64(uint64_t fail_value = UINT64_MAX, bool *success_ptr = nullptr) const",
+        );
+        const server = answer(
+            "GetAsUInt64(uint64_t fail_value = 18446744073709551615ULL, bool *success_ptr = nullptr) const",
+        );
+        expect(acceptedDifference("completion", inspect, server)).toBe(
+            "completion/member_access/20_macro_default_arguments",
+        );
+        expect(acceptedDifference("signatureHelp", inspect, server)).toBeUndefined();
+        expect(
+            acceptedDifference(
+                "completion",
+                inspect,
+                answer("GetAsUInt64(uint64_t fail_value) const"),
+            ),
+        ).toBeUndefined();
+    });
+
     test("places spread over a file with more identifiers than points", () => {
         const text = Array.from({ length: 100 }, (_, i) => `int v${String(i)};\n`).join("");
         const points = placesOf("m.cpp", text).points.map((point) => point.begin);
@@ -211,6 +233,7 @@ describe("report", () => {
             failures: [
                 { kind: "compile", file: "a.cpp", detail: "a.cpp:1:1: boom", repro: "run it" },
             ],
+            accepted: [{ file: "b.cpp", label: "completion m0", case: "c/d/01_e" }],
             index,
         };
         const text = report(results, {
@@ -222,6 +245,9 @@ describe("report", () => {
         expect(text).toContain("| index | 2.0 min | 90 s |");
         expect(text).toContain("## Units clice reports errors on, which the compiler compiles (1)");
         expect(text).toContain("run it");
+        expect(text).toContain(
+            "## Differences the project accepts, each pinned by a case (1)\n\n- b.cpp, completion m0: tests/c/d/01_e",
+        );
     });
 
     test("one cause at many places is shown once", () => {
@@ -242,6 +268,7 @@ describe("report", () => {
             compilerRejects: [],
             logErrors: [],
             failures: [crash("a.c"), crash("b.c"), crash("c.c")],
+            accepted: [],
         });
         expect(text).toContain("## Crashes (3)");
         expect(text).toContain("### a.c, hover p0 and 2 more\n\n- b.c, hover p0\n- c.c, hover p0");
@@ -269,6 +296,7 @@ describe("report", () => {
                     repro: "run it",
                 },
             ],
+            accepted: [],
         };
         expect(report(results)).toContain("````\n-```cpp\n+```c\n\n````");
     });

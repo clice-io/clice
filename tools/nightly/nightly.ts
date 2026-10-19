@@ -74,6 +74,9 @@ export interface Results {
     /// Error-level lines of clice's logs: what went wrong without failing.
     logErrors: string[];
     failures: Failure[];
+    /// The places whose answers differ as the project accepts, each with the
+    /// case pinning it.
+    accepted: { file: string; label: string; case: string }[];
 }
 
 export interface NightlyOptions {
@@ -297,6 +300,7 @@ async function sweepStep(
             repro: rerun(options, "--steps sweep"),
         });
     }
+    results.accepted.push(...run.accepted);
     for (const failure of run.failures) {
         results.failures.push({
             kind: failure.kind,
@@ -340,6 +344,7 @@ export async function runNightly(options: NightlyOptions): Promise<Results> {
         compilerRejects: [],
         logErrors: [],
         failures: [],
+        accepted: [],
     };
 
     const started = Date.now();
