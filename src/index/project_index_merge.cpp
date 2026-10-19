@@ -379,7 +379,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // the same content event (enqueue dedupes); one whose attempt already
     // failed — or that reads fresh by hash after a revert, which is why
     // ContentChanged — has no in-process event left to rebuild its index,
-    // only a restart reaching load()'s re-enqueue.
+    // only a read after a restart finding its variant lost.
     for(auto path_id: rebuilt_ids) {
         auto& shard = shards.find(path_id)->second;
         for_each_contribution(path_id, [&](Fid tu, std::uint64_t variant) {
@@ -507,12 +507,12 @@ const llvm::DenseSet<Fid>& ProjectIndex::stale_base_units() {
     }
     // Each version is judged once, whatever number of units depend on it.
     auto& columns = *base->columns;
-    for(std::uint32_t row = 0; row < columns.version_ids.size(); row += 1) {
-        auto version = runtime_version(columns.version_ids[row]);
+    for(std::uint32_t position = 0; position < columns.version_ids.size(); position += 1) {
+        auto version = runtime_version(columns.version_ids[position]);
         if(version && !file_version_stale(*version)) {
             continue;
         }
-        if(auto tus = base->version_units(row)) {
+        if(auto tus = base->version_units(position)) {
             for_each_base_unit(*tus, [&](Fid tu) { stale.insert(tu); });
         }
     }

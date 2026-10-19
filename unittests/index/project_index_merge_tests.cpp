@@ -550,7 +550,7 @@ ZEST_CASE(AllDepsChecked) {
     ZASSERT(f.needs_reindex(tmp.path("main.cpp")));
 }
 
-ZEST_CASE(PersistedUnitsJudgedByVersion) {
+ZEST_CASE(PersistedUnitsStale) {
     // A unit the persisted table holds is judged by the versions it depends
     // on and the places its failed lookups looked: an edited header stales
     // the units including it, a header appearing where a lookup failed
@@ -747,6 +747,24 @@ struct A { void print(); void print(int); };
 )");
     f.begin_round();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
+}
+
+ZEST_CASE(PersistedRunsStayCurrent) {
+    // A persisted unit's run is the one the table records for it: loaded
+    // again, its keys are still offered, and a save keeps them.
+    ZASSERT(index("a.cpp"));
+    f.save();
+    f.project.index.clear();
+    index::IndexReport report;
+    ZASSERT(f.project.index.load(*f.project.database, {}, report) == index::LoadOutcome::Loaded);
+    f.begin_round();
+    ZEXPECT(!f.known_instantiations(id("a2.cpp")).empty());
+
+    ZASSERT(index("b.cpp"));
+    f.save();
+    f.begin_round();
+    ZEXPECT(!f.known_instantiations(id("a2.cpp")).empty());
+    ZEXPECT(prints() == 2u);
 }
 
 ZEST_CASE(ReplacedRunNotOffered) {

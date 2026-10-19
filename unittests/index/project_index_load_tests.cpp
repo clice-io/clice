@@ -158,6 +158,46 @@ ZEST_CASE(LoadHealsBrokenShard) {
     ZASSERT(!orphan_alive);
 }
 
+ZEST_CASE(LostReadReachesPump) {
+    // A read that finds a blob lost schedules a round, and the round drops
+    // the owner and requeues it — also after the index was cleared and
+    // loaded again.
+    TempDir tmp;
+    tmp.touch("dep.h", R"(#pragma once
+inline int dep() { return 1; }
+)");
+    tmp.touch("main.cpp", R"(#include "dep.h"
+int use() { return dep(); }
+)");
+    std::string header_key;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, tmp.path("main.cpp"));
+        ZASSERT(f.merge(indexed.data));
+        f.save();
+        header_key = index::blob_key(f.project.file_table.resolve(
+            f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
+    }
+    inject_blob(tmp, index::BlobKind::Shard, header_key, "corrupted beyond verification");
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    f.project.index.clear();
+    index::IndexReport report;
+    ZASSERT(f.project.index.load(*f.project.database, {}, report) == index::LoadOutcome::Loaded);
+    auto tu_id = f.project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    ZASSERT(f.project.index.has_manifest(tu_id));
+    ZASSERT(!f.pump.indexing_scheduled);
+
+    ZASSERT(
+        !f.project.index.shard(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
+    ZASSERT(f.pump.indexing_scheduled);
+    f.loop.run();
+    ZEXPECT(!f.project.index.has_manifest(tu_id));
+}
+
 ZEST_CASE(ReadOnlyLoadKeepsDisk) {
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
@@ -186,8 +226,8 @@ ZEST_CASE(ReadOnlyLoadKeepsDisk) {
     open_store(tmp, f.project);
     f.load(/*read_only=*/true);
 
-    // The in-memory passes still run: the unservable header drops its
-    // contributing TU's manifest and re-enqueues the TU.
+    // A read-only session finds the loss alike: the unservable header
+    // drops its contributing TU's manifest and re-enqueues the TU.
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
     ZASSERT(!f.project.index.shard(header_id));
     f.take_lost();
@@ -375,8 +415,10 @@ ZEST_CASE(LoadDropsLostManifest) {
 
     // The wrong-generation manifest is dropped when read and the TU
     // re-enqueued instead of the previous reindex's dependency set serving as
-    // current.
+    // current. Reading everything, as analysis does, finds it too.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
+    f.project.index.read_all();
+    ZASSERT(f.project.index.lost_units() == llvm::SmallVector<Fid>{tu_id});
     ZASSERT(!f.project.index.manifest(tu_id));
     f.take_lost();
     ZASSERT(f.project.index.unit_count() == 0);
@@ -453,30 +495,40 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
 
 ZEST_CASE(FreshWriteBeatsRemoval) {
     TempDir tmp;
-    tmp.touch("main.cpp", "int sweep_target() { return 1; }\n");
-    auto src = tmp.path("main.cpp");
+    tmp.touch("part.cpp", "int part() { return 1; }\n");
+    tmp.touch("main.cpp", R"(#include "part.cpp"
+int use() { return part(); }
+)");
+    auto part = tmp.path("part.cpp");
 
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        auto indexed = index_file(tmp, src);
-        ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data);
+        auto indexed = index_file(tmp, tmp.path("main.cpp"));
+        ZASSERT(f.merge(indexed.data));
         f.save();
+        // A manifest no unit of the table names, of a TU whose version
+        // resolves: the next load removes it — deferred into the first
+        // save — and re-enqueues the TU.
+        auto part_id = f.project.file_table.intern(Spelling::absolute(part));
+        VersionID part_version;
+        for(std::uint32_t version = 0; version < f.project.file_table.versions.size();
+            version += 1) {
+            if(f.project.file_table.versions[version].fid == part_id) {
+                part_version = VersionID{version};
+            }
+        }
+        ZASSERT(part_version.valid());
+        index::TUManifest stale;
+        stale.tu_version = part_version;
+        auto bytes = index::serialize_manifest(f.project.index.export_manifest(stale));
         // The indexer keys blobs by the pool-canonical path, which need
         // not equal the raw temp path byte-for-byte (Windows 8.3 names).
-        auto key = index::blob_key(f.project.file_table.resolve(
-            f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
-        // Replace the persisted manifest with an unresolvable one: the
-        // next load removes it — deferred into the first save — and the
-        // TU's shard turns orphan, deferred too.
-        index::TUManifest stale;
-        stale.tu_version = VersionID{999999};
-        stale.nodes.push_back({.file = 9999});
-        auto bytes = index::serialize_manifest(stale);
         f.project.database->write(
             {
-                {index::BlobKind::TUManifest, key, std::move(bytes)}
+                {index::BlobKind::TUManifest,
+                 index::blob_key(f.project.file_table.resolve(part_id)),
+                 std::move(bytes)}
         },
             {});
     }
@@ -484,13 +536,14 @@ ZEST_CASE(FreshWriteBeatsRemoval) {
     IndexerFixture f;
     open_store(tmp, f.project);
     ZASSERT(f.load());
+    ZASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(part))) ==
+            ReindexReason::ContentChanged);
 
-    // The removed TU re-indexes before the first save, so that save both
-    // re-writes and (deferred) removes the same keys — the fresh write
-    // must win or the file never persists again.
-    auto indexed = index_file(tmp, src);
-    ZASSERT(!indexed.data.empty());
-    f.merge(indexed.data);
+    // The TU re-indexes before the first save, so that save both writes
+    // and (deferred) removes its manifest — the fresh write must win or
+    // the TU never persists again.
+    auto indexed = index_file(tmp, part);
+    ZASSERT(f.merge(indexed.data));
     f.save();
 
     auto key = index::blob_key(f.project.file_table.resolve(
@@ -498,11 +551,7 @@ ZEST_CASE(FreshWriteBeatsRemoval) {
     bool manifest_alive = false;
     f.project.database->for_each_key(index::BlobKind::TUManifest,
                                      [&](llvm::StringRef k) { manifest_alive |= k == key; });
-    bool shard_alive = false;
-    f.project.database->for_each_key(index::BlobKind::Shard,
-                                     [&](llvm::StringRef k) { shard_alive |= k == key; });
     ZASSERT(manifest_alive);
-    ZASSERT(shard_alive);
 }
 
 ZEST_CASE(LoadServesAcrossSaves) {
@@ -693,6 +742,96 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
     // The fresh database's first save writes a project table, or the next
     // load would find no index.
     f.save();
+    ZASSERT(f.project.database->contains(index::BlobKind::ProjectTable, "global"));
+}
+
+ZEST_CASE(LateCorruptionCondemnsDatabase) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int gone() { return 1; }\n");
+    std::string tu_path;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, tmp.path("main.cpp"));
+        ZASSERT(f.merge(indexed.data));
+        tu_path = indexed.tu_path;
+        f.save();
+    }
+
+    // Corruption latched past the project table: a metadata read poisons
+    // the latch while the table stays readable. Load must condemn here too,
+    // and unwind everything it adopted — the views would otherwise borrow
+    // from the condemned environment.
+    struct CorruptMetadata final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
+        bool* condemned;
+        bool poisoned = false;
+
+        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
+            if(kind == index::BlobKind::ContextChoices) {
+                poisoned = true;
+                return {};
+            }
+            return real->read(kind, key);
+        }
+
+        bool contains(index::BlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
+
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            return real->write(puts, removes);
+        }
+
+        void for_each_key(index::BlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 1;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return poisoned;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    bool condemned = false;
+    auto wrapper = std::make_unique<CorruptMetadata>();
+    wrapper->real = std::move(f.project.database);
+    wrapper->condemned = &condemned;
+    f.project.database = std::move(wrapper);
+
+    ZASSERT(f.load());
+    ZASSERT(condemned);
+    ZASSERT(f.project.index.unit_count() == 0);
+
+    // The TU has no CDB entry, so nothing else records the debt: it is
+    // re-enqueued before the adopted state unwinds, and the fresh
+    // database's first save persists it as standalone debt.
+    ZASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tu_path))) ==
+            ReindexReason::ContentChanged);
+    ZASSERT(f.project.database != nullptr);
+    f.save();
+    auto snapshot = f.project.database->read(index::BlobKind::CommandSnapshot, "cdb");
+    ZASSERT(snapshot);
+    ZASSERT(snapshot.buffer->getBuffer().contains("main.cpp"));
+    // Beside a project table, or the next load would find no index and
+    // never read the debt back.
     ZASSERT(f.project.database->contains(index::BlobKind::ProjectTable, "global"));
 }
 

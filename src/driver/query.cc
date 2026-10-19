@@ -111,12 +111,11 @@ struct TypeHierarchyQuestion {
 };
 
 /// Answer a question against the opened index: `ask` asks it of the query
-/// context. The build questions (`with_build`) walk manifests and
-/// contexts, which only the writer's load restores; the index questions
-/// bind the tables in place and touch nothing else. The answer lists as
+/// context. The build questions (`with_build`) need the build and the
+/// context choices, which only load_index restores. The answer lists as
 /// stale the files withheld on the way, the units a --fresh refresh could
 /// not index, whose shards are as absent as a withheld file's, and the
-/// units the load found unservable.
+/// units whose index the reads found lost.
 template <typename Ask>
 int run_query(const QueryOptions& opts, bool with_build, const char* self_path, Ask ask) {
     auto spelling = opts.where.root();

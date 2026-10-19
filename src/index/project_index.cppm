@@ -296,7 +296,8 @@ public:
     void for_each_instantiation_shard(
         llvm::function_ref<void(Fid, const InstantiationShard&)> visit) const;
 
-    /// Read every indexed file's shard and instantiation shard: for the
+    /// Read every indexed file's shard and instantiation shard and every
+    /// unit's manifest, so that lost_units tells all the lost data: for the
     /// commands that walk the whole index.
     void read_all() const;
 
@@ -358,11 +359,8 @@ public:
     /// The lost data reads found since the last call, as a writer heals it:
     /// the TUs whose index a lost shard held, and the TUs whose manifest is
     /// lost, lose their manifest and are owed a reindex, as are the TUs
-    /// whose instantiation uses a file's blob lost. on_data_lost fires when
-    /// the first one since is found.
+    /// whose instantiation uses a file's blob lost.
     IndexReport take_lost();
-
-    Signal<> on_data_lost;
 
     /// Forget everything loaded and merged, as after a corrupt database:
     /// the workspace stays, and the next save writes an empty project table
@@ -548,7 +546,7 @@ public:
 
     /// Rewrite a manifest read from disk into the file table's version
     /// ids. False when it names a version the loaded project table does not
-    /// carry — the loader's staleness gate for manifests.
+    /// carry — the read's staleness gate for manifests.
     bool import_manifest(TUManifest& manifest) const;
 
     /// The manifest as persisted: its versions under this index's
@@ -578,7 +576,7 @@ public:
     /// Generation of the persisted project table, bumped once per save that
     /// writes it. Manifests record the generation they were
     /// saved under (TUManifest::table_generation), and the project table pins the
-    /// generation expected of every TU's manifest; the loader adopts a manifest
+    /// generation expected of every TU's manifest; a read adopts a manifest
     /// only on an exact match, so a lost or failed manifest write cannot
     /// leave an older on-disk manifest serving as current.
     std::uint64_t table_generation() const {
@@ -590,6 +588,9 @@ public:
     /// index; empty names every file by its identity. Set before a blob
     /// is bound or written.
     CanonicalPath workspace;
+
+    /// Fires when a read finds the first lost data since take_lost.
+    Signal<> on_data_lost;
 
 private:
     friend struct testing::IndexInternals;
@@ -650,9 +651,13 @@ private:
     /// base pins it and the database holds it at the pinned generation.
     std::optional<TUManifest> persisted_manifest(Fid tu) const;
 
-    /// Take a TU out of the base: what the base says of it stops counting,
-    /// and the files it contributed to or used resolutions in are returned
-    /// (from its persisted manifest; none when that is lost).
+    /// The one way a unit leaves the base: what the base says of it stops
+    /// counting (overridden, overridden_ids, units).
+    void hide_base_unit(Fid tu);
+
+    /// Take a TU out of the base, returning the files it contributed to or
+    /// used resolutions in: from its persisted manifest, else from the
+    /// base's own tables.
     llvm::SmallVector<Fid> override_unit(Fid tu);
 
     /// The base units judged stale this round (needs_reindex).

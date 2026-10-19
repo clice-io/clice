@@ -901,12 +901,10 @@ int read_index(const WorkspaceOptions& where, Run run) {
     files.spell_root(spelling);
     Project project{files};
     CommandResolver commands{project};
-    auto loaded =
-        load_index(project, commands, std::move(config), configuration, /*with_build=*/false);
-    if(!loaded) {
+    if(!load_index(project, commands, std::move(config), configuration, /*with_build=*/false)) {
         return 1;
     }
-    return run(project, commands, *loaded);
+    return run(project, commands);
 }
 
 /// An operation reading the record of the one file it names.
@@ -917,7 +915,7 @@ CommandHandler show_file(std::string_view usage, Show show) {
         if(!args) {
             return usage_error(Errors::Text, args.error());
         }
-        return read_index(opts.where, [&](Project& project, CommandResolver&, LoadedIndex&) {
+        return read_index(opts.where, [&](Project& project, CommandResolver&) {
             return show(project, args->front());
         });
     });
@@ -933,12 +931,11 @@ CommandHandler build(const char* self_path) {
             "index",
             Errors::Text,
             [](const StatsOptions& opts) {
-                return read_index(opts.where,
-                                  [&](Project& project, CommandResolver&, LoadedIndex& loaded) {
-                                      return run_stats(project,
-                                                       opts.limit.value_or(20),
-                                                       static_cast<bool>(opts.variants));
-                                  });
+                return read_index(opts.where, [&](Project& project, CommandResolver&) {
+                    return run_stats(project,
+                                     opts.limit.value_or(20),
+                                     static_cast<bool>(opts.variants));
+                });
             }),
     });
     operations.push_back({
@@ -953,10 +950,9 @@ CommandHandler build(const char* self_path) {
                 if(!args) {
                     return usage_error(Errors::Text, args.error());
                 }
-                return read_index(opts.where,
-                                  [&](Project& project, CommandResolver& commands, LoadedIndex&) {
-                                      return run_show_symbol(project, commands, args->front());
-                                  });
+                return read_index(opts.where, [&](Project& project, CommandResolver& commands) {
+                    return run_show_symbol(project, commands, args->front());
+                });
             }),
     });
     operations.push_back({

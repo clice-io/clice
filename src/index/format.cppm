@@ -598,7 +598,7 @@ struct ProjectTableBlobOf {
 
     /// The units: every TU with a current manifest, ascending by its
     /// tu_version, with the generation its manifest blob must carry and its
-    /// manifest's built_at. The loader adopts a manifest blob only on an
+    /// manifest's built_at. A read adopts a manifest blob only on an
     /// exact generation match, so a manifest whose write failed while the
     /// project table was persisted (or one that outran a lost project table
     /// write) reads as lost and its TU reindexes, instead of an older on-disk

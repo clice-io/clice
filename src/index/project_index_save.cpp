@@ -184,7 +184,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     // variants at all, while retiring serves the same nothing the mask
     // already does. The pinning TUs are re-enqueued: no in-process event
     // would rebuild their variants otherwise (a reverted file even reads fresh
-    // by hash), only a restart reaching load()'s re-enqueue.
+    // by hash), only a read after a restart finding the variants lost.
     // The candidates are the shards read so far and the files a TU's
     // removal touched, read now: a blob nothing reads was compacted when it
     // was written.
@@ -601,17 +601,19 @@ void ProjectIndex::recover_corrupt_database(IndexReport& report) {
     }
     // The manifests and blobs of the units the session did not merge lived
     // in the condemned database alone: those units leave the table and
-    // reindex.
+    // reindex, and the shards held in memory stop serving their variants.
     for(auto tu: base_units()) {
-        if(!base_unit(tu)) {
-            continue;
+        if(base_unit(tu)) {
+            hide_base_unit(tu);
+            report.add_reindex(tu);
         }
-        overridden.insert(tu);
-        if(auto id = base->path_id(tu)) {
-            overridden_ids.add(*id);
+    }
+    if(base) {
+        auto& columns = *base->columns;
+        for(auto id:
+            llvm::concat<const std::uint32_t>(columns.contributed_files, columns.use_files)) {
+            refresh_live(base->remap[id]);
         }
-        units.erase(unit_hash(tu));
-        report.add_reindex(tu);
     }
     stale_units.reset();
     db = nullptr;

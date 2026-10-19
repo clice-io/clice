@@ -855,6 +855,96 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     ZASSERT(!has_unsaved_state(project));
 }
 
+ZEST_CASE(RecoveryRequeuesPersistedUnits) {
+    // The units read from the persisted table whose blobs no query ever
+    // reached lived in the corrupt database alone: the recovery requeues
+    // them, or the fresh database's table would judge them fresh by their
+    // versions with nothing behind them.
+    TempDir tmp;
+    tmp.touch("a.cpp", "int a_value() { return 1; }\n");
+    tmp.touch("b.cpp", "int b_value() { return 2; }\n");
+    tmp.touch("c.cpp", "int c_value() { return 3; }\n");
+    std::vector<std::string> persisted;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        for(auto name: {"a.cpp", "b.cpp"}) {
+            auto indexed = index_file(tmp, tmp.path(name));
+            ZASSERT(f.merge(indexed.data));
+            persisted.push_back(indexed.tu_path);
+        }
+        f.save();
+    }
+
+    struct CorruptOnWrite final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
+        bool* condemned;
+        bool poisoned = false;
+
+        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
+            return real->read(kind, key);
+        }
+
+        bool contains(index::BlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
+
+        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey>) override {
+            poisoned = true;
+            llvm::SmallVector<std::uint32_t> failed;
+            for(std::uint32_t i = 0; i < puts.size(); i += 1) {
+                failed.push_back(i);
+            }
+            return failed;
+        }
+
+        void for_each_key(index::BlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return real->advance_read_snapshot();
+        }
+
+        void retire_old_snapshot() override {
+            real->retire_old_snapshot();
+        }
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return poisoned;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    bool condemned = false;
+    auto wrapper = std::make_unique<CorruptOnWrite>();
+    wrapper->real = std::move(f.project.database);
+    wrapper->condemned = &condemned;
+    f.project.database = std::move(wrapper);
+    ZASSERT(f.load());
+
+    auto indexed = index_file(tmp, tmp.path("c.cpp"));
+    ZASSERT(f.merge(indexed.data));
+    f.save();
+    ZASSERT(condemned);
+    for(auto& unit: persisted) {
+        ZEXPECT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(unit))) ==
+                ReindexReason::ContentChanged);
+    }
+    ZEXPECT(f.project.index.unit_count() == 1u);
+}
+
 ZEST_CASE(GrownMapRetriesNow) {
     TempDir tmp;
     std::string header = "#pragma once\n";
@@ -934,6 +1024,18 @@ int b() { return beta_local(); }
     open_store(tmp, f.project);
     ZASSERT(f.load());
     ZASSERT(f.project.index.search_index().loaded());
+    auto alpha = [&] {
+        std::optional<index::SearchEntry> found;
+        f.project.index.search_index().for_each_local(
+            [&](llvm::StringRef, const index::SearchEntry& entry) {
+                if(entry.name == "alpha_local") {
+                    found = entry;
+                }
+            });
+        return found;
+    };
+    auto read = alpha();
+    ZASSERT(read);
     tmp.touch("b.cpp", R"(static int gamma_local() { return 3; }
 int b() { return gamma_local(); }
 )");
@@ -950,6 +1052,12 @@ int b() { return gamma_local(); }
     ZEXPECT(hits("gamma_local") == 1u);
     ZEXPECT(hits("beta_local") == 0u);
     ZEXPECT(f.project.index.shard_count() == 1u);
+    auto carried = alpha();
+    ZASSERT(carried);
+    ZEXPECT(carried->hash == read->hash);
+    ZEXPECT(carried->kind == read->kind);
+    ZEXPECT(carried->flags == read->flags);
+    ZEXPECT(carried->parent == read->parent);
 }
 
 ZEST_CASE(InstantiationsPersist) {

@@ -570,18 +570,19 @@ std::string ProjectIndex::serialize_table() {
                          [&](std::uint32_t version) { referenced.insert(VersionID{version}); });
         for_each_dependency(manifest, [&](VersionID version) { dependents[version].add(tu_id); });
     }
-    llvm::DenseMap<VersionID, std::uint32_t> base_rows;
+    llvm::DenseMap<VersionID, std::uint32_t> base_positions;
     if(base) {
         auto& columns = *base->columns;
-        for(std::uint32_t row = 0; row < columns.version_ids.size(); row += 1) {
-            auto version = runtime_version(columns.version_ids[row]);
-            if(version && surviving(slice(columns.version_units, columns.version_unit_ends, row))) {
+        for(std::uint32_t position = 0; position < columns.version_ids.size(); position += 1) {
+            auto version = runtime_version(columns.version_ids[position]);
+            if(version &&
+               surviving(slice(columns.version_units, columns.version_unit_ends, position))) {
                 referenced.insert(*version);
-                base_rows.try_emplace(*version, row);
+                base_positions.try_emplace(*version, position);
             }
         }
         // A base unit's failed lookups name versions without bytes the
-        // dependency rows leave out.
+        // dependency sets leave out.
         for(std::uint32_t k = 0; k < columns.absent_places.size(); k += 1) {
             if(surviving(slice(columns.absent_units, columns.absent_unit_ends, k))) {
                 referenced.insert(files.intern_version(base->remap[columns.absent_places[k]], 0));
@@ -599,14 +600,14 @@ std::string ProjectIndex::serialize_table() {
         blob.version_ids.push_back(persisted);
         blob.version_paths.push_back(portable(files.resolve(record.fid)));
         blob.version_hashes.push_back(record.content_hash);
-        auto row = base_rows.find(id);
+        auto position = base_positions.find(id);
         auto added = dependents.find(id);
-        append_units(
-            blob.version_units,
-            row != base_rows.end()
-                ? slice(base->columns->version_units, base->columns->version_unit_ends, row->second)
-                : llvm::ArrayRef<std::uint8_t>(),
-            added != dependents.end() ? added->second : Bitmap());
+        append_units(blob.version_units,
+                     position != base_positions.end() ? slice(base->columns->version_units,
+                                                              base->columns->version_unit_ends,
+                                                              position->second)
+                                                      : llvm::ArrayRef<std::uint8_t>(),
+                     added != dependents.end() ? added->second : Bitmap());
         blob.version_unit_ends.push_back(static_cast<std::uint32_t>(blob.version_units.size()));
     }
     blob.next_version_id = next_persisted_id;
@@ -618,22 +619,22 @@ std::string ProjectIndex::serialize_table() {
         std::uint64_t run;
     };
 
-    std::vector<Unit> unit_rows;
+    std::vector<Unit> written_units;
     for(auto tu: base_units()) {
         if(auto unit = base_unit(tu)) {
             auto& columns = *base->columns;
-            unit_rows.push_back({columns.manifest_versions[*unit],
-                                 columns.manifest_generations[*unit],
-                                 columns.manifest_runs[*unit]});
+            written_units.push_back({columns.manifest_versions[*unit],
+                                     columns.manifest_generations[*unit],
+                                     columns.manifest_runs[*unit]});
         }
     }
     for(auto& manifest: llvm::make_second_range(manifests)) {
-        unit_rows.push_back({persisted_ids.find(manifest.tu_version)->second,
-                             manifest.table_generation,
-                             manifest.built_at});
+        written_units.push_back({persisted_ids.find(manifest.tu_version)->second,
+                                 manifest.table_generation,
+                                 manifest.built_at});
     }
-    std::ranges::sort(unit_rows, {}, &Unit::version);
-    for(auto& unit: unit_rows) {
+    std::ranges::sort(written_units, {}, &Unit::version);
+    for(auto& unit: written_units) {
         blob.manifest_versions.push_back(unit.version);
         blob.manifest_generations.push_back(unit.generation);
         blob.manifest_runs.push_back(unit.run);
@@ -969,10 +970,7 @@ void ProjectIndex::rebase(std::unique_ptr<llvm::MemoryBuffer> blob) {
     // written table too: the session's manifest is the newer.
     for(auto tu: llvm::make_first_range(manifests)) {
         if(base_unit(tu)) {
-            overridden.insert(tu);
-            if(auto id = base->path_id(tu)) {
-                overridden_ids.add(*id);
-            }
+            hide_base_unit(tu);
         }
     }
 }
@@ -1156,7 +1154,8 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(Fid tu_path_id) {
 
 llvm::ArrayRef<Fid> ProjectIndex::base_units() const {
     if(base && base_unit_files.empty() && base->unit_count() != 0) {
-        // load_table proved every unit's version resolves.
+        // Every unit's version resolves: load_table checked the loaded
+        // pins, and a written table's ids map back (persisted_id).
         auto& versions = base->columns->manifest_versions;
         base_unit_files.reserve(versions.size());
         for(std::uint32_t unit = 0; unit < versions.size(); unit += 1) {
@@ -1205,18 +1204,25 @@ std::optional<TUManifest> ProjectIndex::persisted_manifest(Fid tu) const {
     return manifest;
 }
 
+void ProjectIndex::hide_base_unit(Fid tu) {
+    overridden.insert(tu);
+    if(auto id = base->path_id(tu)) {
+        overridden_ids.add(*id);
+    }
+    // A unit the session merged stays found under its own manifest.
+    if(!manifests.contains(tu)) {
+        units.erase(unit_hash(tu));
+    }
+}
+
 llvm::SmallVector<Fid> ProjectIndex::override_unit(Fid tu) {
     llvm::SmallVector<Fid> affected;
     if(!base_unit(tu)) {
         return affected;
     }
     auto persisted = persisted_manifest(tu);
-    overridden.insert(tu);
+    hide_base_unit(tu);
     auto id = base->path_id(tu);
-    if(id) {
-        overridden_ids.add(*id);
-    }
-    units.erase(unit_hash(tu));
     if(persisted) {
         for(auto version: llvm::make_first_range(persisted->contributions)) {
             affected.push_back(files.version(version).fid);
@@ -1699,6 +1705,7 @@ void ProjectIndex::read_all() const {
         shard(file);
         instantiation_shard(file);
     });
+    for_each_unit([&](Fid tu) { manifest(tu); });
 }
 
 llvm::SetVector<Fid> ProjectIndex::lost_owners() const {

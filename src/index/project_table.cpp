@@ -54,23 +54,27 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
     return ids;
 }
 
+namespace {
+
 /// The entries of key `position` of a keyed table whose runs end at `ends`.
-static std::pair<std::uint32_t, std::uint32_t> run_of(llvm::ArrayRef<std::uint32_t> ends,
-                                                      std::uint32_t position) {
+std::pair<std::uint32_t, std::uint32_t> run_of(llvm::ArrayRef<std::uint32_t> ends,
+                                               std::uint32_t position) {
     return {position == 0 ? 0 : ends[position - 1], ends[position]};
 }
 
 /// The unit set of key `id` in a table of keys ascending, one set each.
-static std::optional<Bitmap> keyed_units(llvm::ArrayRef<std::uint32_t> keys,
-                                         llvm::ArrayRef<std::uint32_t> ends,
-                                         llvm::ArrayRef<std::uint8_t> units,
-                                         std::optional<std::uint32_t> id) {
+std::optional<Bitmap> keyed_units(llvm::ArrayRef<std::uint32_t> keys,
+                                  llvm::ArrayRef<std::uint32_t> ends,
+                                  llvm::ArrayRef<std::uint8_t> units,
+                                  std::optional<std::uint32_t> id) {
     auto position = id ? sorted_find(keys, *id) : std::nullopt;
     if(!position) {
         return std::nullopt;
     }
     return read_file_set(slice(units, ends, *position));
 }
+
+}  // namespace
 
 llvm::SmallVector<ProjectTable::Contribution, 2> ProjectTable::contributions_of(Fid file) const {
     llvm::SmallVector<Contribution, 2> found;

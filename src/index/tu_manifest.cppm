@@ -49,7 +49,7 @@ struct InstantiationUse {
 struct TUManifest {
     /// ProjectIndex::table_generation recorded by the save that persisted
     /// this manifest. The project table pins the generation it expects per TU and
-    /// the loader adopts a manifest only on an exact match: a manifest
+    /// a read adopts a manifest only on an exact match: a manifest
     /// that outran a lost project table write would otherwise serve against a
     /// symbol table that never learned its symbols, and a manifest whose
     /// own write failed would pass off the previous reindex's dependency
