@@ -22,3 +22,13 @@ int add(int left, int right);
 /// @tparam §(constrained)T the type
 template <typename T>
 concept Small = sizeof(T) <= 8;
+
+/// Holds a pointer.
+/// @tparam §(partial)T what it points to
+template <typename T>
+struct Box<T*> {
+    T* value;
+};
+
+/// @param §(unicode)数量 how many
+int take(int 数量);

@@ -6,6 +6,7 @@ module clice;
 
 import :support.markup;
 import :syntax.documentation;
+import :syntax.lexer;
 
 namespace clice {
 
@@ -1219,7 +1220,7 @@ auto DocCommandScanner::scan(llvm::StringRef text) -> llvm::SmallVector<Part> {
         }
         while(true) {
             auto word_end = word;
-            while(word_end < text.size() && identifier_char(text[word_end])) {
+            while(word_end < text.size() && is_identifier_char(text[word_end])) {
                 word_end += 1;
             }
             if(word_end == word) {

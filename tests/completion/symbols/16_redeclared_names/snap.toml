@@ -13,6 +13,11 @@ items = [
     { label = "status(struct status *out)", kind = "Function", detail = "int" },
 ]
 
+[answers.friend_named.completion]
+items = [
+    { label = "Ticket", kind = "Class" },
+]
+
 [answers.redeclared_function.completion]
 items = [
     { label = "reset(int level = 0)", kind = "Function", detail = "void" },

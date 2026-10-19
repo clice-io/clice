@@ -38,3 +38,11 @@ struct status {
 };
 
 int status(struct status* out);
+
+struct Ticket {
+    int number;
+};
+
+struct Holder {
+    friend void Ticket(Holder);
+};

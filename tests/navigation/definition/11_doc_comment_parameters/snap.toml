@@ -15,3 +15,9 @@ definition = ["int add(int left, int ⟦right⟧);"]
 
 [answers.constrained]
 definition = ["template <typename ⟦T⟧> @+1"]
+
+[answers.partial]
+definition = ["template <typename ⟦T⟧> @+1"]
+
+[answers.unicode]
+definition = ["int take(int ⟦数量⟧);"]
