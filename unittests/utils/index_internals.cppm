@@ -27,17 +27,16 @@ struct IndexInternals {
     /// The generation the bound project table pins a TU's manifest at.
     static std::optional<std::uint64_t> pinned_generation(const index::ProjectIndex& index,
                                                           Fid tu) {
-        auto unit = index.base_unit(tu);
-        if(!unit) {
-            return std::nullopt;
-        }
-        return index.base->columns->units[*unit].generation;
+        auto* unit = index.base_unit(tu);
+        return unit ? std::optional(unit->generation) : std::nullopt;
     }
 
     /// Take a file's held shard away, as a read finding its blob lost does.
     static void lose_shard(index::ProjectIndex& index, Fid file) {
         index.shards.erase(file);
-        index.lose(file, index::ProjectIndex::Lost::Shard);
+        index.for_each_contribution(file, [&](Fid tu, std::uint64_t) {
+            index.lose(tu, index::ProjectIndex::Lost::Index);
+        });
     }
 
     /// Whether the tables the manifests derive (contributions, absent

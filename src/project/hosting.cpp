@@ -325,7 +325,7 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
     for(auto candidate: project.dep_graph.find_host_sources(header)) {
         add(candidate);
     }
-    project.index.for_each_contributor(header, add);
+    project.index.for_each_contribution(header, [&](Fid tu, std::uint64_t) { add(tu); });
 
     auto score =
         [&](Fid host) -> std::tuple<std::size_t, int, int, std::pair<std::size_t, std::size_t>> {

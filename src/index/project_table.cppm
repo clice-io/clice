@@ -119,8 +119,10 @@ struct ProjectTable {
         return it != path_index.end() ? std::optional(it->second) : std::nullopt;
     }
 
-    /// What the units say of a file, a place, an input or a symbol; null
-    /// when they say nothing.
+    /// A TU's unit, and what the units say of a file, a place, an input or
+    /// a symbol; null when there is none.
+    const PersistedUnit* unit(Fid tu) const;
+
     const archive::Archived<ContributedFile>* contributed(Fid file) const;
 
     const archive::Archived<UsedFile>* used(Fid file) const;

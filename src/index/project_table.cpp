@@ -63,6 +63,11 @@ const static Record* find_record(const archive::Vec<Record>& records,
     return it != records.end() && (*it).*field == key ? &*it : nullptr;
 }
 
+const PersistedUnit* ProjectTable::unit(Fid tu) const {
+    auto id = path_id(tu);
+    return id ? find_record(columns->units, *id, &PersistedUnit::file) : nullptr;
+}
+
 const archive::Archived<ContributedFile>* ProjectTable::contributed(Fid file) const {
     auto id = path_id(file);
     return id ? find_record(columns->contributions, *id, &archive::Archived<ContributedFile>::file)
@@ -167,7 +172,8 @@ std::expected<void, llvm::StringRef> ProjectTable::bind(const archive::Archived<
         }
         return true;
     };
-    if(!keyed(columns->contributions, &archive::Archived<ContributedFile>::file) ||
+    if(!keyed(columns->units, &PersistedUnit::file) ||
+       !keyed(columns->contributions, &archive::Archived<ContributedFile>::file) ||
        !keyed(columns->uses, &archive::Archived<UsedFile>::file) ||
        !keyed(columns->absent, &archive::Archived<UnitSet>::key) ||
        !keyed(columns->imports, &archive::Archived<UnitSet>::key)) {

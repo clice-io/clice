@@ -560,13 +560,15 @@ struct PersistedVersionOf {
     Seq<std::uint8_t> units;
 };
 
-/// A TU with a current manifest: its tu_version, the generation its manifest
-/// blob must carry and its manifest's built_at. A read adopts a manifest
-/// blob only on an exact generation match, so a manifest whose write failed
-/// while the project table was persisted (or one that outran a lost project
-/// table write) reads as lost and its TU reindexes, instead of an older
-/// on-disk manifest serving as current.
+/// A TU with a current manifest: its path id, its tu_version, the generation
+/// its manifest blob must carry and its manifest's built_at. A read adopts a
+/// manifest blob only on an exact generation match, so a manifest whose
+/// write failed while the project table was persisted (or one that outran a
+/// lost project table write) reads as lost and its TU reindexes, instead of
+/// an older on-disk manifest serving as current.
 struct PersistedUnit {
+    std::uint32_t file = 0;
+
     std::uint32_t version = 0;
 
     std::uint64_t generation = 0;
@@ -676,7 +678,7 @@ struct ProjectTableBlobOf {
     Seq<std::uint32_t> symbol_instantiation_ends;
     Seq<std::uint8_t> symbol_instantiations;
 
-    /// Every TU with a current manifest.
+    /// Every TU with a current manifest, ascending by path id.
     Seq<PersistedUnit> units;
 
     /// The generation of the search blob this table was saved with, and

@@ -101,7 +101,7 @@ ZEST_CASE(TableRebaseKeepsChanges) {
     project.edit(43).name = "late";
     project.edit(42).reference_files.add(other.raw);
     project.rebase(llvm::MemoryBuffer::getMemBufferCopy(first));
-    // The unit written is merged still: the session's manifest stands for it.
+    // The unit written reads from the committed blob now.
     ZASSERT(project.unit_count() == 1u);
     ZASSERT(project.symbol_count() == 2u);
     ZASSERT(project.find_symbol(43)->name == "late");
@@ -239,61 +239,24 @@ std::vector<std::string> four_paths() {
     return {"/proj/0.h", "/proj/1.h", "/proj/2.h", "/proj/ref.h"};
 }
 
-ZEST_CASE(TableBitmapPayloadGate) {
-    // A malformed reference bitmap must fail the whole load: normalized to
-    // empty it would silently lose the symbol's reference files, with
-    // nothing ever rebuilding them.
-    clice::Bitmap bits;
-    bits.add(3);
-    auto layout = project_table_blob();
-    layout.paths = four_paths();
-    add_symbol(layout, 42, "sym", file_set(bits));
-
-    clice::FileTable pool;
-    auto valid = encode(layout);
-    index::ProjectIndex loaded{pool};
-    ZASSERT(loaded.load_table(valid));
-    ZASSERT(loaded.find_symbol(42));
-    ZASSERT(llvm::is_contained(reference_files(loaded, 42),
-                               pool.find(Spelling::absolute("/proj/ref.h"))->raw));
-
-    // A malformed image after columns that decoded fine: the reject must
-    // leave no partial state — file versions or symbols — that later
-    // merges would build on and the next save persist.
-    layout.next_version_id = 8;
-    layout.versions = {
-        {.id = 7, .path = "/proj/partial.h", .hash = 0x1}
-    };
-    add_symbol(layout, 43, "other", std::vector<std::uint8_t>{0xff, 0xff, 0xff});
-    auto corrupt = encode(layout);
-    clice::FileTable untouched;
-    index::ProjectIndex rejecting{untouched};
-    ZASSERT(!rejecting.load_table(corrupt).has_value());
-    ZASSERT(rejecting.symbol_count() == 0u);
-    ZASSERT(untouched.versions.empty());
-    ZASSERT(!untouched.find(Spelling::absolute("/proj/partial.h")).has_value());
-}
-
-ZEST_CASE(UncoveredBitmapIdRejected) {
-    // The writer emits a path-table entry for every id its bitmaps
-    // reference; dropping an uncovered id would silently lose the symbol's
-    // reference files while every manifest stays fresh.
+ZEST_CASE(BadFileSetReadsEmpty) {
+    // A file set is decoded when read: one that does not decode, or a path
+    // id past the path table, reads as no file.
     clice::Bitmap bits;
     bits.add(3);
     auto layout = project_table_blob();
     layout.paths = {"/proj/0.h"};
     add_symbol(layout, 42, "sym", file_set(bits));
+    add_symbol(layout, 43, "other", std::vector<std::uint8_t>{0xff, 0xff, 0xff});
 
     clice::FileTable pool;
-    auto uncovered = encode(layout);
     index::ProjectIndex loaded{pool};
-    ZASSERT(!loaded.load_table(uncovered).has_value());
-    ZASSERT(loaded.symbol_count() == 0u);
-
-    layout.paths = four_paths();
-    auto covered = encode(layout);
-    ZASSERT(loaded.load_table(covered));
+    ZASSERT(loaded.load_table(encode(layout)));
     ZASSERT(loaded.find_symbol(42));
+    ZEXPECT(reference_files(loaded, 42).empty());
+    ZASSERT(loaded.find_symbol(43));
+    ZEXPECT(reference_files(loaded, 43).empty());
+    ZEXPECT(loaded.edit(43).reference_files.isEmpty());
 }
 
 ZEST_CASE(TableDuplicateVersionsRejected) {

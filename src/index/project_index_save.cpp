@@ -432,7 +432,6 @@ void ProjectIndex::finish_save(SaveBatch& batch, llvm::ArrayRef<std::uint32_t> f
     // The entries and the units the committed blob holds now read from it;
     // a failed project table write keeps them aside for the retry.
     if(batch.table_slot) {
-        fold_written();
         rebase(llvm::MemoryBuffer::getMemBufferCopy(batch.blobs[*batch.table_slot].bytes));
     } else if(batch.had_table) {
         restore_unwritten();
@@ -601,13 +600,14 @@ void ProjectIndex::recover_corrupt_database(IndexReport& report) {
     // The manifests and blobs of the units the session did not merge lived
     // in the condemned database alone: those units leave the table and
     // reindex, and the shards held in memory stop serving their variants.
-    for(auto tu: base_units()) {
-        if(base_unit(tu)) {
-            hide_base_unit(tu);
-            report.add_reindex(tu);
-        }
-    }
     if(base) {
+        for(auto& unit: base->columns->units) {
+            auto tu = base->remap[unit.file];
+            if(base_unit(tu)) {
+                hide_base_unit(tu);
+                report.add_reindex(tu);
+            }
+        }
         for(auto& contributed: base->columns->contributions) {
             refresh_live(base->remap[contributed.file]);
         }

@@ -291,45 +291,52 @@ ZEST_CASE(LoadHealsMissingVariant) {
     ZASSERT(f.pump.pending_reason(tu_id));
 }
 
-ZEST_CASE(LoadHealsWrongGeneration) {
+ZEST_CASE(ShardServesTheUnitsItHolds) {
+    // A blob missing one unit's variant loses that unit's index alone: the
+    // shard keeps serving the units whose variants it holds.
     TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
-    auto src = tmp.path("main.cpp");
+    tmp.touch("dep.h", R"(#pragma once
+#ifdef WIDE
+inline long dep() { return 1; }
+#else
+inline int dep() { return 1; }
+#endif
+)");
+    tmp.touch("a.cpp", "#include \"dep.h\"\nint a() { return dep(); }\n");
+    tmp.touch("b.cpp", "#include \"dep.h\"\nlong b() { return dep(); }\n");
     std::string header_key;
-    std::uint64_t variant = 0;
-
+    std::string a_variant;
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        auto indexed = index_file(tmp, src);
-        ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data);
+        auto a = index_file(tmp, tmp.path("a.cpp"));
+        ZASSERT(f.merge(a.data));
+        ZASSERT(f.merge(index_file(tmp, tmp.path("b.cpp"), {"-DWIDE"}).data));
         f.save();
-        auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
-        auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-        variant = contributions_of(f.project.index, header_id).lookup(tu_id);
-        ZASSERT(variant != 0);
-        header_key = index::blob_key(f.project.file_table.resolve(header_id));
+        header_key = index::blob_key(f.project.file_table.resolve(
+            f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
+        auto view = index::TUIndex::from_bytes(a.data);
+        for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
+            if(view.path(view.section_path(section)).ends_with("dep.h")) {
+                a_variant = view.section_blob(section).str();
+            }
+        }
     }
-
-    // Replace the header's blob with one from ANOTHER content generation
-    // whose explicit variant list still reports the contributed identity —
-    // the residue of a crash between shard and manifest writes. Every
-    // recorded FileVersion matches the disk, so only the generation pin
-    // can tell that positions would map through stale text.
-    inject_blob(tmp, index::BlobKind::Shard, header_key, planted_blob("stale text", variant));
+    ZASSERT(!a_variant.empty());
+    inject_blob(tmp, index::BlobKind::Shard, header_key, a_variant);
 
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-
+    auto a_id = f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
+    auto b_id = f.project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     ZASSERT(
-        !f.project.index.shard(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
+        f.project.index.shard(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
+    ZEXPECT(f.project.index.lost_units() == llvm::SmallVector<Fid>{b_id});
     f.take_lost();
-    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.unit_count() == 0);
-    ZASSERT(f.pump.pending_reason(tu_id));
+    ZEXPECT(f.project.index.has_manifest(a_id));
+    ZEXPECT(!f.project.index.has_manifest(b_id));
+    ZEXPECT(f.pump.pending_reason(b_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(LoadDropsNewerManifest) {

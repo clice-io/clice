@@ -127,20 +127,8 @@ bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob) {
     }
     bound->buffer = std::move(blob);
     base = std::move(bound);
-    // What was looked up in the previous base names it no more.
-    base_unit_files.clear();
-    base_unit_index.clear();
+    hidden = Bitmap();
     base_units_hashed = false;
-    units.clear();
-    for(auto tu: llvm::make_first_range(manifests)) {
-        units[unit_hash(tu)] = tu;
-    }
-    overridden_ids = Bitmap();
-    for(auto tu: overridden) {
-        if(auto id = base->path_id(tu)) {
-            overridden_ids.add(*id);
-        }
-    }
     stale_units.reset();
     return true;
 }
@@ -209,21 +197,6 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions() {
     return {};
 }
 
-bool ProjectIndex::verify_bitmaps() const {
-    if(!base) {
-        return true;
-    }
-    auto in_paths = [&](const std::optional<Bitmap>& decoded) {
-        return decoded && (decoded->isEmpty() || decoded->maximum() < base->paths().size());
-    };
-    for(std::uint32_t entry = 0; entry < base->count(); entry += 1) {
-        if(!in_paths(base->bitmap(entry)) || !in_paths(base->instantiation_bitmap(entry))) {
-            return false;
-        }
-    }
-    return true;
-}
-
 std::expected<void, llvm::StringRef> ProjectIndex::load_table(llvm::StringRef data) {
     return load_table(llvm::MemoryBuffer::getMemBufferCopy(data));
 }
@@ -232,10 +205,6 @@ std::expected<void, llvm::StringRef>
     ProjectIndex::load_table(std::unique_ptr<llvm::MemoryBuffer> buffer) {
     if(!bind_table(std::move(buffer))) {
         return std::unexpected("not a readable project table");
-    }
-    if(!verify_bitmaps()) {
-        base.reset();
-        return std::unexpected("reference bitmap does not decode");
     }
     if(auto adopted = adopt_file_versions(); !adopted) {
         base.reset();
@@ -302,8 +271,7 @@ void ProjectIndex::for_each_reference_file(SymbolHash hash,
     if(!base) {
         return;
     }
-    // A reader never proved the image; one that fails reads as no
-    // references rather than crashing the query.
+    // An image that does not decode reads as no references.
     if(auto entry = base->find(hash)) {
         if(auto decoded = base->bitmap(*entry)) {
             for_each_remapped(*base, *decoded, visit);
@@ -533,19 +501,19 @@ std::string ProjectIndex::serialize_table() {
         return it->second;
     };
 
-    // A base unit set under the overridden units with the session's units
-    // added — the base image as it is when neither changes it —; none when
-    // no unit is left.
+    // A base unit set under the hidden units with the session's units added
+    // — the base image as it is when neither changes it —; none when no
+    // unit is left.
     auto unit_set = [&](llvm::ArrayRef<std::uint8_t> image,
                         const Bitmap& added) -> std::optional<std::vector<std::uint8_t>> {
         auto set = read_file_set(image).value_or(Bitmap());
-        if(added.isEmpty() && !set.intersect(overridden_ids)) {
+        if(added.isEmpty() && !set.intersect(hidden)) {
             return set.isEmpty()
                        ? std::nullopt
                        : std::optional(std::vector<std::uint8_t>(image.begin(), image.end()));
         }
         // The decoded set is a view of the image: the result is a new one.
-        auto units = set - overridden_ids;
+        auto units = set - hidden;
         units |= added;
         if(units.isEmpty()) {
             return std::nullopt;
@@ -612,19 +580,22 @@ std::string ProjectIndex::serialize_table() {
     blob.next_version_id = next_persisted_id;
 
     // The units: the base's the session left alone, and the merged ones.
-    for(auto tu: base_units()) {
-        if(auto unit = base_unit(tu)) {
-            blob.units.push_back(base->columns->units[*unit]);
+    if(base) {
+        for(auto& unit: base->columns->units) {
+            if(!hidden.contains(unit.file)) {
+                blob.units.push_back(unit);
+            }
         }
     }
-    for(auto& manifest: llvm::make_second_range(manifests)) {
+    for(auto& [tu, manifest]: manifests) {
         blob.units.push_back({
+            .file = path_id(tu),
             .version = persisted_ids.find(manifest.tu_version)->second,
             .generation = manifest.table_generation,
             .run = manifest.built_at,
         });
     }
-    std::ranges::sort(blob.units, {}, &PersistedUnit::version);
+    std::ranges::sort(blob.units, {}, &PersistedUnit::file);
 
     // The table in hash order: base entries copied, written entries encoded.
     struct Entry {
@@ -734,8 +705,8 @@ std::string ProjectIndex::serialize_table() {
     write_ids(blob.symbol_parents, parents, entries.size() + 1);
 
     // What the units' manifests say, per key: the base's set under the
-    // overridden units with the session's units added; a key left with no
-    // unit is dropped.
+    // hidden units with the session's units added; a key left with no unit
+    // is dropped.
     struct Said {
         llvm::ArrayRef<std::uint8_t> image;
         Bitmap added;
@@ -877,43 +848,25 @@ std::string ProjectIndex::serialize_table() {
 }
 
 void ProjectIndex::rebase(std::unique_ptr<llvm::MemoryBuffer> blob) {
+    // The written table says what the manifests no merge dirtied since say:
+    // the live sets do not change, only where they are read.
+    llvm::SmallVector<Fid> written_units;
+    for(auto tu: llvm::make_first_range(manifests)) {
+        if(!dirty_manifests.contains(tu)) {
+            written_units.push_back(tu);
+        }
+    }
+    for(auto tu: written_units) {
+        auto it = manifests.find(tu);
+        erase_derived(tu, it->second);
+        manifests.erase(it);
+    }
     [[maybe_unused]] bool bound = bind_table(std::move(blob));
     assert(bound && "a freshly serialized project table must bind");
     written.clear();
     // A TU merged again or dropped while the table was being written is a
     // unit of the written table too: the session's word is the newer.
-    auto hide = [&](Fid tu) {
-        if(base_unit(tu)) {
-            hide_base_unit(tu);
-        }
-    };
-    llvm::for_each(llvm::make_first_range(manifests), hide);
-    llvm::for_each(dirty_manifests, hide);
-}
-
-void ProjectIndex::fold_written() {
-    llvm::SmallVector<Fid> folded;
-    for(auto tu: overridden) {
-        if(!dirty_manifests.contains(tu)) {
-            folded.push_back(tu);
-        }
-    }
-    for(auto tu: llvm::make_first_range(manifests)) {
-        if(!dirty_manifests.contains(tu) && !overridden.contains(tu)) {
-            folded.push_back(tu);
-        }
-    }
-    for(auto tu: folded) {
-        overridden.erase(tu);
-        auto it = manifests.find(tu);
-        if(it == manifests.end()) {
-            continue;
-        }
-        // The table now says what the manifest does: the live sets do not
-        // change, only where they are read.
-        erase_derived(tu, it->second);
-        manifests.erase(it);
-    }
+    llvm::for_each(dirty_manifests, [&](Fid tu) { hide_base_unit(tu); });
 }
 
 void ProjectIndex::restore_unwritten() {
@@ -989,9 +942,6 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(Fid tu_path_id, TUManifest m
     }
     units[unit_hash(tu_path_id)] = tu_path_id;
     manifests[tu_path_id] = std::move(manifest);
-    // The persisted manifest this one replaces may have been found lost,
-    // also by the removal above: it no longer stands for the unit.
-    lost_manifests.erase(tu_path_id);
 
     llvm::sort(affected);
     affected.erase(llvm::unique(affected), affected.end());
@@ -1048,19 +998,16 @@ llvm::SmallVector<Fid> ProjectIndex::erase_derived(Fid tu, const TUManifest& man
 }
 
 llvm::SmallVector<Fid> ProjectIndex::remove_manifest(Fid tu_path_id) {
-    auto it = manifests.find(tu_path_id);
-    if(it == manifests.end()) {
-        auto affected = override_unit(tu_path_id);
-        for(auto file: affected) {
-            shrunk.insert(file);
-            refresh_live(file);
-        }
-        return affected;
+    llvm::SmallVector<Fid> affected;
+    if(auto it = manifests.find(tu_path_id); it != manifests.end()) {
+        affected = erase_derived(tu_path_id, it->second);
+        manifests.erase(it);
+    } else {
+        affected = override_unit(tu_path_id);
     }
-
-    auto affected = erase_derived(tu_path_id, it->second);
-    units.erase(unit_hash(tu_path_id));
-    manifests.erase(it);
+    // Merged or dropped since, the unit holds its own data or none.
+    lost_indexes.erase(tu_path_id);
+    lost_uses.erase(tu_path_id);
 
     llvm::sort(affected);
     affected.erase(llvm::unique(affected), affected.end());
@@ -1071,67 +1018,42 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(Fid tu_path_id) {
     return affected;
 }
 
-llvm::ArrayRef<Fid> ProjectIndex::base_units() const {
-    if(base && base_unit_files.empty() && !base->columns->units.empty()) {
-        // Every unit's version resolves: load_table checked the loaded
-        // pins, and a written table's ids map back (persisted_id).
-        auto& units = base->columns->units;
-        base_unit_files.reserve(units.size());
-        for(std::uint32_t unit = 0; unit < units.size(); unit += 1) {
-            auto tu_file = files.version(*runtime_version(units[unit].version)).fid;
-            base_unit_files.push_back(tu_file);
-            base_unit_index.try_emplace(tu_file, unit);
-        }
-    }
-    return base_unit_files;
-}
-
-std::optional<std::uint32_t> ProjectIndex::base_unit(Fid tu) const {
-    if(!base || overridden.contains(tu)) {
-        return std::nullopt;
-    }
-    base_units();
-    auto it = base_unit_index.find(tu);
-    return it != base_unit_index.end() ? std::optional(it->second) : std::nullopt;
+const PersistedUnit* ProjectIndex::base_unit(Fid tu) const {
+    auto* unit = base ? base->unit(tu) : nullptr;
+    return unit && !hidden.contains(unit->file) ? unit : nullptr;
 }
 
 void ProjectIndex::for_each_base_unit(llvm::ArrayRef<std::uint8_t> units,
                                       llvm::function_ref<void(Fid)> visit) const {
     // A set that does not decode names no unit.
     for(auto id: read_file_set(units).value_or(Bitmap())) {
-        if(id < base->remap.size() && !overridden_ids.contains(id)) {
+        if(id < base->remap.size() && !hidden.contains(id)) {
             visit(base->remap[id]);
         }
     }
 }
 
 std::optional<TUManifest> ProjectIndex::persisted_manifest(Fid tu) const {
-    auto unit = base_unit(tu);
-    if(!unit || !db || lost_manifests.contains(tu)) {
+    auto* unit = base_unit(tu);
+    if(!unit || !db) {
         return std::nullopt;
     }
     // A blob of another generation than the pin is a failed write the
     // table outran, or one that outran a lost table write.
     auto blob = db->read(BlobKind::TUManifest, key_of(tu));
     auto manifest = blob ? deserialize_manifest(blob.buffer->getBuffer()) : std::nullopt;
-    auto& pin = base->columns->units[*unit];
-    if(!manifest || manifest->tu_version.raw != pin.version ||
-       manifest->table_generation != pin.generation || !import_manifest(*manifest)) {
+    if(!manifest || manifest->tu_version.raw != unit->version ||
+       manifest->table_generation != unit->generation || !import_manifest(*manifest)) {
         LOG_INFO("Discarding the lost manifest of {}", files.resolve(tu));
-        lose(tu, Lost::Manifest);
+        lose(tu, Lost::Index);
         return std::nullopt;
     }
     return manifest;
 }
 
 void ProjectIndex::hide_base_unit(Fid tu) {
-    overridden.insert(tu);
-    if(auto id = base->path_id(tu)) {
-        overridden_ids.add(*id);
-    }
-    // A unit the session merged stays found under its own manifest.
-    if(!manifests.contains(tu)) {
-        units.erase(unit_hash(tu));
+    if(auto* unit = base_unit(tu)) {
+        hidden.add(unit->file);
     }
 }
 
@@ -1162,8 +1084,6 @@ llvm::SmallVector<Fid> ProjectIndex::override_unit(Fid tu) {
         }
     }
     hide_base_unit(tu);
-    llvm::sort(affected);
-    affected.erase(llvm::unique(affected), affected.end());
     return affected;
 }
 
@@ -1236,7 +1156,7 @@ std::optional<std::uint64_t> ProjectIndex::shard_generation(Fid file) const {
 }
 
 bool ProjectIndex::has_manifest(Fid tu) const {
-    return manifests.contains(tu) || base_unit(tu).has_value();
+    return manifests.contains(tu) || base_unit(tu);
 }
 
 std::optional<TUManifest> ProjectIndex::manifest(Fid tu) const {
@@ -1250,9 +1170,12 @@ void ProjectIndex::for_each_unit(llvm::function_ref<void(Fid tu)> visit) const {
     for(auto tu: llvm::make_first_range(manifests)) {
         visit(tu);
     }
-    for(auto tu: base_units()) {
-        if(!overridden.contains(tu)) {
-            visit(tu);
+    if(!base) {
+        return;
+    }
+    for(auto& unit: base->columns->units) {
+        if(!hidden.contains(unit.file)) {
+            visit(base->remap[unit.file]);
         }
     }
 }
@@ -1264,16 +1187,15 @@ std::uint32_t ProjectIndex::unit_count() const {
 }
 
 std::optional<Fid> ProjectIndex::find_unit(std::uint64_t hash) const {
-    if(!base_units_hashed) {
+    if(!base_units_hashed && base) {
         base_units_hashed = true;
-        for(auto tu: base_units()) {
-            if(!overridden.contains(tu)) {
-                units.try_emplace(unit_hash(tu), tu);
-            }
+        for(auto& unit: base->columns->units) {
+            auto tu = base->remap[unit.file];
+            units.try_emplace(unit_hash(tu), tu);
         }
     }
     auto it = units.find(hash);
-    return it != units.end() ? std::optional(it->second) : std::nullopt;
+    return it != units.end() && has_manifest(it->second) ? std::optional(it->second) : std::nullopt;
 }
 
 bool ProjectIndex::current_run(const Producer& producer) const {
@@ -1284,12 +1206,8 @@ bool ProjectIndex::current_run(const Producer& producer) const {
     if(auto it = manifests.find(*tu); it != manifests.end()) {
         return it->second.built_at == producer.run;
     }
-    auto unit = base_unit(*tu);
-    return unit && base->columns->units[*unit].run == producer.run;
-}
-
-void ProjectIndex::for_each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const {
-    for_each_contribution(file, [&](Fid tu, std::uint64_t) { visit(tu); });
+    auto* unit = base_unit(*tu);
+    return unit && unit->run == producer.run;
 }
 
 void ProjectIndex::for_each_contribution(
@@ -1339,7 +1257,7 @@ void ProjectIndex::for_each_indexed_file(llvm::function_ref<void(Fid)> visit) co
         for(auto& contributed: base->columns->contributions) {
             auto file = base->remap[contributed.file];
             bool live = false;
-            for_each_contributor(file, [&](Fid) { live = true; });
+            for_each_contribution(file, [&](Fid, std::uint64_t) { live = true; });
             if(live && seen.insert(file).second) {
                 visit(file);
             }
@@ -1488,13 +1406,9 @@ std::unique_ptr<llvm::MemoryBuffer> ProjectIndex::read_blob(BlobKind kind, Fid f
     return std::move(blob.buffer);
 }
 
-void ProjectIndex::lose(Fid file, Lost kind) const {
-    bool first = lost_shards.empty() && lost_instantiations.empty() && lost_manifests.empty();
-    switch(kind) {
-        case Lost::Shard: lost_shards.insert(file); break;
-        case Lost::Uses: lost_instantiations.insert(file); break;
-        case Lost::Manifest: lost_manifests.insert(file); break;
-    }
+void ProjectIndex::lose(Fid unit, Lost what) const {
+    bool first = lost_indexes.empty() && lost_uses.empty();
+    (what == Lost::Index ? lost_indexes : lost_uses).insert(unit);
     if(first) {
         on_data_lost.emit();
     }
@@ -1507,22 +1421,24 @@ Shard ProjectIndex::fetch_shard(Fid file) const {
     }
     auto buffer = read_blob(BlobKind::Shard, file);
     auto shard = buffer ? Shard::from_buffer(std::move(buffer)) : Shard();
-    // A blob can verify yet miss a contributed variant, or carry another
-    // content generation than the contributions pin (crash or failed write
-    // left a manifest newer than its shard): set_live would drop missing
-    // variants silently and stale content misplaces every position, so
-    // both are as lost as an unreadable blob. The generation check catches
-    // a stale shard the variant check alone cannot, when an edit past every
-    // indexed entry left the variant hash identical.
-    auto generations = generations_of(file);
-    bool servable =
-        shard.loaded() &&
-        llvm::all_of(generations,
-                     [&](std::uint64_t hash) { return hash == shard.content_hash(); }) &&
-        llvm::all_of(live, [&](std::uint64_t hash) { return shard.has_variant(hash); });
-    if(!servable) {
-        LOG_INFO("Discarding unservable shard for {}", files.resolve(file));
-        lose(file, Lost::Shard);
+    // A blob can verify yet miss a contributed variant: a crash or a failed
+    // write left a manifest newer than its shard. A variant hashes its
+    // bytes, content generation included, so the blob holding it is the
+    // whole check.
+    bool serves = false;
+    bool complete = true;
+    for_each_contribution(file, [&](Fid tu, std::uint64_t variant) {
+        if(shard.loaded() && shard.has_variant(variant)) {
+            serves = true;
+        } else {
+            complete = false;
+            lose(tu, Lost::Index);
+        }
+    });
+    if(!complete) {
+        LOG_INFO("The shard of {} misses variants units contributed", files.resolve(file));
+    }
+    if(!serves) {
         return {};
     }
     shard.set_live(live);
@@ -1545,12 +1461,12 @@ InstantiationShard ProjectIndex::fetch_instantiations(Fid file, std::uint64_t ge
         loaded = {};
     }
     // A use some unit names that the file no longer stores lost what that
-    // unit's instantiations resolved there: it reindexes, keeping its index
-    // meanwhile.
-    if(llvm::any_of(uses,
-                    [&](std::uint64_t use) { return !loaded.loaded() || !loaded.has_use(use); })) {
-        lose(file, Lost::Uses);
-    }
+    // unit's instantiations resolved there.
+    for_each_use(file, [&](Fid tu, std::uint64_t use) {
+        if(!loaded.loaded() || !loaded.has_use(use)) {
+            lose(tu, Lost::Use);
+        }
+    });
     if(loaded.loaded()) {
         loaded.set_live(uses);
     }
@@ -1609,40 +1525,14 @@ void ProjectIndex::read_all() const {
     for_each_unit([&](Fid tu) { manifest(tu); });
 }
 
-llvm::SetVector<Fid> ProjectIndex::lost_owners() const {
-    // A unit merged since the loss holds its own data: a merged manifest
-    // replaces the lost one, and a merge that started a lost blob over holds
-    // the variant it contributed.
-    llvm::SetVector<Fid> owners;
-    for(auto tu: lost_manifests) {
-        if(base_unit(tu)) {
-            owners.insert(tu);
+llvm::SmallVector<Fid> ProjectIndex::lost_units() const {
+    llvm::SmallVector<Fid> lost(lost_indexes.begin(), lost_indexes.end());
+    for(auto tu: lost_uses) {
+        if(!lost_indexes.contains(tu)) {
+            lost.push_back(tu);
         }
     }
-    for(auto file: lost_shards) {
-        auto it = shards.find(file);
-        auto* current = it != shards.end() && it->second.loaded() ? &it->second : nullptr;
-        for_each_contribution(file, [&](Fid tu, std::uint64_t variant) {
-            if(!current || !current->has_variant(variant)) {
-                owners.insert(tu);
-            }
-        });
-    }
-    return owners;
-}
-
-llvm::SmallVector<Fid> ProjectIndex::lost_units() const {
-    auto lost = lost_owners();
-    for(auto file: lost_instantiations) {
-        auto it = instantiations.find(file);
-        auto* current = it != instantiations.end() && it->second.loaded() ? &it->second : nullptr;
-        for_each_use(file, [&](Fid tu, std::uint64_t use) {
-            if(!current || !current->has_use(use)) {
-                lost.insert(tu);
-            }
-        });
-    }
-    return llvm::SmallVector<Fid>(lost.begin(), lost.end());
+    return lost;
 }
 
 IndexReport ProjectIndex::take_lost() {
@@ -1650,14 +1540,14 @@ IndexReport ProjectIndex::take_lost() {
     for(auto tu: lost_units()) {
         report.add_reindex(tu);
     }
-    // An owner's variants are unservable: it loses its manifest, which
-    // retires its contributions to every file it touched.
-    for(auto tu: lost_owners()) {
+    // A unit whose index cannot serve loses its manifest, which retires its
+    // contributions to every file it touched.
+    llvm::SmallVector<Fid> unservable(lost_indexes.begin(), lost_indexes.end());
+    for(auto tu: unservable) {
         drop(tu, report);
     }
-    lost_shards.clear();
-    lost_instantiations.clear();
-    lost_manifests.clear();
+    lost_indexes.clear();
+    lost_uses.clear();
     return report;
 }
 

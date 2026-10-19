@@ -171,8 +171,8 @@ struct SaveBatch {
 ///   wanted,
 /// - the per-file shard blobs and instantiation blobs, read from the
 ///   database the first time a query or a merge wants one and checked then
-///   against what the units say they hold: one that fails is lost data,
-///   whose units a writer drops and rebuilds (take_lost),
+///   against what the units say they hold: a unit whose part is missing
+///   has lost its index, which a writer rebuilds (take_lost),
 /// - the name search index and the entries it does not describe.
 ///
 /// A reader and a writer read alike; a writer merges TU index results in,
@@ -238,9 +238,6 @@ public:
 
     std::uint32_t unit_count() const;
 
-    /// The TUs that contributed a variant to `file`.
-    void for_each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
-
     /// The TUs that contributed to `file`, each with the variant it
     /// contributed.
     void for_each_contribution(Fid file,
@@ -275,11 +272,11 @@ public:
     /// indexed.
     std::vector<IncludeEdge> include_edges(Fid file) const;
 
-    /// The file's shard: held, or read from the database and checked
-    /// against the variants and the content generation the units say it
-    /// holds. Null when the file has no index, or its blob is lost
-    /// (take_lost). A query keeps the pointers to the shards it read while
-    /// its fan-out reads others.
+    /// The file's shard: held, or read from the database, a unit whose
+    /// variant it does not hold having lost its index (take_lost). Null when
+    /// the file has no index, or its blob holds none of the variants the
+    /// units contributed. A query keeps the pointers to the shards it read
+    /// while its fan-out reads others.
     const Shard* shard(Fid file) const;
 
     /// Every shard held or read so far.
@@ -301,9 +298,9 @@ public:
     /// commands that walk the whole index.
     void read_all() const;
 
-    /// The units whose index lost data reads found since take_lost: the
-    /// ones contributing to a lost shard, the ones using resolutions a
-    /// file's instantiation blob lost, the ones whose manifest is lost.
+    /// The units reads found lost data of since take_lost: whose manifest is
+    /// lost, whose variant a shard blob does not hold, or whose use an
+    /// instantiation blob does not.
     llvm::SmallVector<Fid> lost_units() const;
 
     /// The distinct variant hashes contributed to `path_id` — the file's live
@@ -357,9 +354,8 @@ public:
     LoadOutcome load(BlobDatabase& db, LoadOptions options, IndexReport& report);
 
     /// The lost data reads found since the last call, as a writer heals it:
-    /// the TUs whose index a lost shard held, and the TUs whose manifest is
-    /// lost, lose their manifest and are owed a reindex, as are the TUs
-    /// whose instantiation uses a file's blob lost.
+    /// every unit that lost some is owed a reindex, and the ones whose
+    /// manifest or variant is lost drop their manifest meanwhile.
     IndexReport take_lost();
 
     /// Forget everything loaded and merged, as after a corrupt database:
@@ -483,10 +479,10 @@ public:
     }
 
     /// Bind a project table blob as the table's base (copied when it is not
-    /// readable_in_place), mapping its path table into the file table. False — and the index
-    /// untouched — when the bytes are not a project table blob of this format or are inconsistent.
-    /// The base's bitmaps are not decoded here: a reader decodes one when a query reaches it, a
-    /// writer proves them all with verify_bitmaps.
+    /// readable_in_place), mapping its path table into the file table. False
+    /// — and the index untouched — when the bytes are not a project table
+    /// blob of this format or are inconsistent. The file sets are decoded
+    /// when read; one that does not decode reads as empty.
     bool bind_table(std::unique_ptr<llvm::MemoryBuffer> blob);
 
     /// Intern a bound blob's file versions into the file table. Rejects a
@@ -494,14 +490,8 @@ public:
     /// version it lacks —, leaving the file table untouched.
     std::expected<void, llvm::StringRef> adopt_file_versions();
 
-    /// Whether every reference bitmap of the base decodes and stays inside
-    /// its path table — the writer's gate: a malformed image normalized to
-    /// empty would silently lose the symbol's reference files with nothing
-    /// ever rebuilding them, so the whole blob is rejected instead.
-    bool verify_bitmaps() const;
-
-    /// bind_table, adopt_file_versions and verify_bitmaps, all or nothing:
-    /// the loader's gate for a persisted project table.
+    /// bind_table and adopt_file_versions, all or nothing: the loader's gate
+    /// for a persisted project table.
     std::expected<void, llvm::StringRef> load_table(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
     /// load_table over a copy of `data`.
@@ -532,8 +522,8 @@ public:
     std::string serialize_table();
 
     /// The bytes serialize_table produced were persisted: they become the
-    /// base, and the entries they hold leave the changed set. Entries changed
-    /// since the serialization stay changed.
+    /// base, and the entries and the manifests they hold leave the session's
+    /// own state. What changed since the serialization stays the session's.
     void rebase(std::unique_ptr<llvm::MemoryBuffer> blob);
 
     /// The bytes serialize_table produced were not persisted: the entries
@@ -644,15 +634,10 @@ private:
     /// place for every consumer.
     bool file_version_stale(VersionID version);
 
-    /// The file table's id of every base unit's TU, overridden or not.
-    llvm::ArrayRef<Fid> base_units() const;
+    /// A TU's unit in the base; null when the base has none, or hides it.
+    const PersistedUnit* base_unit(Fid tu) const;
 
-    /// The base's position of a TU's unit, under the units the session
-    /// overrode; nullopt for a TU the base has no live unit of.
-    std::optional<std::uint32_t> base_unit(Fid tu) const;
-
-    /// The file table's ids of a base unit set, but the units the session
-    /// overrode.
+    /// The file table's ids of a base unit set, but the hidden units.
     void for_each_base_unit(llvm::ArrayRef<std::uint8_t> units,
                             llvm::function_ref<void(Fid)> visit) const;
 
@@ -669,7 +654,7 @@ private:
     std::optional<TUManifest> persisted_manifest(Fid tu) const;
 
     /// The one way a unit leaves the base: what the base says of it stops
-    /// counting (overridden, overridden_ids, units).
+    /// counting.
     void hide_base_unit(Fid tu);
 
     /// Take a TU out of the base, returning the files its persisted
@@ -694,34 +679,28 @@ private:
     /// several) the shard's own, read. Nullopt when the file has no shard.
     std::optional<std::uint64_t> shard_generation(Fid file) const;
 
-    /// Read a file's shard from the database and check it holds every live
-    /// variant at the units' generation; a failure is recorded as lost.
+    /// Read a file's shard from the database; a unit whose variant it does
+    /// not hold is recorded as lost.
     Shard fetch_shard(Fid file) const;
 
-    /// Read a file's instantiation shard and check it lives with the
-    /// file's shard of content generation `generation` and holds every live
-    /// use; a failure is recorded as lost.
+    /// Read a file's instantiation shard, discarded unless it lives with the
+    /// file's shard of content generation `generation`; a unit whose use it
+    /// does not hold is recorded as lost.
     InstantiationShard fetch_instantiations(Fid file, std::uint64_t generation) const;
 
-    /// What lost data a read found.
+    /// What of a unit's index a read found lost.
     enum class Lost : std::uint8_t {
-        /// A file's shard: missing, corrupt, or not holding what the units
-        /// say.
-        Shard,
-        /// A use some unit names in a file's instantiation blob.
-        Uses,
-        /// A unit's manifest: missing, corrupt, or of another generation
-        /// than the table pins.
-        Manifest,
+        /// Its manifest, or a variant it contributed: its index cannot
+        /// serve.
+        Index,
+        /// A use it names in a file's instantiation blob: it keeps serving
+        /// the rest until it reindexes.
+        Use,
     };
 
-    /// Record lost data, firing on_data_lost for the first since take_lost.
-    void lose(Fid file, Lost kind) const;
-
-    /// The units that lost lost_units' part of their index they cannot
-    /// serve without: whose manifest is lost, or contributing to a lost
-    /// shard.
-    llvm::SetVector<Fid> lost_owners() const;
+    /// Record a unit's lost data, firing on_data_lost for the first since
+    /// take_lost.
+    void lose(Fid unit, Lost what) const;
 
     /// What a database read hands a reader: the bytes, copied out of the
     /// snapshot unless the session borrows it.
@@ -730,12 +709,6 @@ private:
     /// Erase a manifest's entries from the tables derived from the merged
     /// manifests; returns the files it contributed to or used resolutions in.
     llvm::SmallVector<Fid> erase_derived(Fid tu, const TUManifest& manifest);
-
-    /// A committed project table holds every TU the session merged or
-    /// dropped but the ones a merge or a drop dirtied since it was
-    /// serialized: those leave the session's own tables, read from the
-    /// table once it is the base.
-    void fold_written();
 
 private:
     FileTable& files;
@@ -751,21 +724,13 @@ private:
 
     std::uint64_t generation = 0;
 
-    /// TU -> its manifest, for the TUs this session merged.
+    /// TU -> its manifest, for the TUs this session merged and the base
+    /// does not hold yet.
     llvm::DenseMap<Fid, TUManifest> manifests;
 
-    /// The TUs whose base unit no longer counts: merged (their manifest is
-    /// in `manifests`) or dropped this session.
-    llvm::DenseSet<Fid> overridden;
-
-    /// The same TUs as the base's path ids, the units its sets name.
-    Bitmap overridden_ids;
-
-    /// The base's units: the file table's id of each one's TU, and back,
-    /// built on first use.
-    mutable std::vector<Fid> base_unit_files;
-
-    mutable llvm::DenseMap<Fid, std::uint32_t> base_unit_index;
+    /// The base's units, as its path ids, that no longer count: merged or
+    /// dropped since the base was written.
+    Bitmap hidden;
 
     /// Derived from `manifests`: file -> (TU -> what it contributed there).
     llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, Contributed, 2>> contributions;
@@ -791,7 +756,7 @@ private:
     llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>> instantiation_uses;
 
     /// Unit hash -> TU, for the base's units (built on first use) and the
-    /// merged ones.
+    /// merged ones; a TU it names may since have lost its manifest.
     mutable llvm::DenseMap<std::uint64_t, Fid> units;
 
     mutable bool base_units_hashed = false;
@@ -799,14 +764,11 @@ private:
     /// The base units judged stale in this round, once needs_reindex asked.
     std::optional<llvm::DenseSet<Fid>> stale_units;
 
-    /// Lost data reads found since take_lost: files whose shard is lost,
-    /// files whose instantiation blob lost a use some unit names, and units
-    /// whose manifest is lost.
-    mutable llvm::DenseSet<Fid> lost_shards;
+    /// The units reads found lost data of since take_lost, by what they
+    /// lost (Lost).
+    mutable llvm::DenseSet<Fid> lost_indexes;
 
-    mutable llvm::DenseSet<Fid> lost_instantiations;
-
-    mutable llvm::DenseSet<Fid> lost_manifests;
+    mutable llvm::DenseSet<Fid> lost_uses;
 
     /// Files whose live variants or uses shrank since the last save: the
     /// save compacts or retires their blobs.
