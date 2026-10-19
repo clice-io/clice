@@ -830,9 +830,9 @@ ZEST_CASE(LostIndexBlocks) {
     )");
     merge();
 
-    // A read found the unit's shard lost: the plan rests on an incomplete
+    // A read found data of the unit lost: the plan rests on an incomplete
     // index.
-    IndexInternals::lose_shard(project.index, focus_id);
+    IndexInternals::lose_unit(project.index, focus_id);
     auto renamed = rename("compute", "evaluate");
     ZASSERT(renamed);
     ZEXPECT(renamed->blocked());

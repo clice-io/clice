@@ -31,12 +31,9 @@ struct IndexInternals {
         return unit ? std::optional(unit->generation) : std::nullopt;
     }
 
-    /// Take a file's held shard away, as a read finding its blob lost does.
-    static void lose_shard(index::ProjectIndex& index, Fid file) {
-        index.shards.erase(file);
-        index.for_each_contribution(file, [&](Fid tu, std::uint64_t) {
-            index.lose(tu, index::ProjectIndex::Lost::Index);
-        });
+    /// Record a unit's index lost, as a read finding a blob of it lost does.
+    static void lose_unit(const index::ProjectIndex& index, Fid tu) {
+        index.lose(tu, index::ProjectIndex::Lost::Index);
     }
 
     /// Whether the tables the manifests derive (contributions, absent
