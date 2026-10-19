@@ -102,9 +102,6 @@ struct Producer {
     friend bool operator==(const Producer&, const Producer&) = default;
 };
 
-/// Zero-copy reader over an instantiation blob, plus the live-resolution set
-/// the indexer maintains: a resolution no live use holds any more stops
-/// serving at once, and the next save's compaction erases it.
 /// A use a merge adds: its identity and its resolutions, ascending, each one
 /// stored in the merged blob.
 struct AddedUse {
@@ -112,6 +109,9 @@ struct AddedUse {
     llvm::ArrayRef<ResolutionHash> resolutions;
 };
 
+/// Zero-copy reader over an instantiation blob, plus the live-resolution set
+/// the indexer maintains: a resolution no live use holds any more stops
+/// serving at once, and the next save's compaction erases it.
 class InstantiationShard {
 public:
     InstantiationShard() = default;

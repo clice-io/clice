@@ -146,6 +146,55 @@ ZEST_CASE(HeaderModePersisted) {
     ZASSERT(f.commands.header_mode(id) == HeaderMode::NeedsContext);
 }
 
+ZEST_CASE(HeaderModesOfOlderRecords) {
+    // Records an older binary wrote name each header's mode beside it, and
+    // still load whole.
+    TempDir tmp;
+    tmp.touch("utils.h", "inline int f();\n");
+    auto path = tmp.path("utils.h");
+    std::string artifacts;
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto id = f.project.file_table.intern(Spelling::absolute(path));
+        auto disk = f.project.file_table.disk.current(id);
+        ZASSERT(disk);
+        f.commands.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
+        f.project.mark_artifacts_dirty();
+        f.save();
+        auto blob = f.project.database->read(index::BlobKind::ArtifactRecords, "artifacts");
+        ZASSERT(bool(blob));
+        artifacts = blob.buffer->getBuffer().str();
+    }
+
+    {
+        // The records as the older binary wrote them, under the path this
+        // one stored.
+        auto begin = artifacts.find(R"("paths":[)");
+        ZASSERT(begin != std::string::npos);
+        auto end = artifacts.find(']', begin);
+        auto hash = artifacts.find(R"("content_hash":)");
+        ZASSERT(hash != std::string::npos);
+        auto hash_end = artifacts.find('}', hash);
+        auto older = std::format(
+            R"({{{},"pch_index_format":{},"pch":[],"pcm":[],"header_modes":[{{"file":0,"mode":2,{}}}]}})",
+            artifacts.substr(begin, end + 1 - begin),
+            index::index_format_version,
+            artifacts.substr(hash, hash_end - hash));
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        index::BlobDatabase::Blob blob{index::BlobKind::ArtifactRecords, "artifacts", older};
+        ZASSERT(f.project.database->write(blob, {}).empty());
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    auto id = f.project.file_table.intern(Spelling::absolute(path));
+    ZASSERT(f.commands.header_mode(id) == HeaderMode::NeedsContext);
+}
+
 };  // ZEST_SUITE(ArtifactRecords)
 
 }  // namespace
