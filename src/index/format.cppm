@@ -19,8 +19,8 @@ import :syntax.token;
 namespace clice::index {
 
 /// On-disk index blob schema version. Every persisted blob carries it as a
-/// regular field and every loader discards blobs with a different value —
-/// including version-less blobs from older builds, which read back as 0.
+/// regular field and every loader discards blobs with a different value; a
+/// blob of another layout fails archive verification before that.
 /// Bump it whenever a persisted type's reflected layout changes, when
 /// symbol-hash semantics change (stored entries keyed by old hashes would
 /// silently stop matching newly computed ones), or when the meaning of
@@ -143,17 +143,6 @@ inline bool rebind_buffer(std::unique_ptr<llvm::MemoryBuffer>& buffer,
         return false;
     }
     buffer = std::move(replacement);
-    return true;
-}
-
-/// Verify and copy a blob out into `out`.
-template <typename T>
-bool deserialize_blob(llvm::StringRef data, T& out) {
-    auto root = archive::verify<T>(data);
-    if(!root) {
-        return false;
-    }
-    archive::decode(**root, out);
     return true;
 }
 
@@ -478,8 +467,7 @@ struct TUIndexBlobOf {
     /// Serialized schema version (index_format_version), gated by
     /// TUIndex::from_bytes.
     /// A worker respawned after the binary on disk changed can be one
-    /// build ahead of the server, and a layout change need not be
-    /// structurally detectable.
+    /// build ahead of the server, and a change of meaning keeps the layout.
     std::uint32_t format_version = 0;
 
     /// Milliseconds since epoch, sampled before the build started.

@@ -857,14 +857,6 @@ ZEST_CASE(CorruptBlobRejected) {
     auto bytes = write_fresh(file_index, "aaaa");
     ZASSERT(
         !index::Shard::from_bytes(llvm::StringRef(bytes).take_front(bytes.size() / 2)).loaded());
-
-    // Nor is an archive of another layout carrying the current version.
-    struct VersionOnly {
-        std::uint32_t format_version = 0;
-    };
-
-    auto stale = archive::encode(VersionOnly{index::index_format_version});
-    ZASSERT(!index::Shard::from_bytes(stale).loaded());
 }
 
 ZEST_CASE(ReservedLocalParentRejected) {
@@ -966,6 +958,13 @@ ZEST_CASE(LineTableMismatchRejected) {
     blob.line_lengths = {4, 3};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
+    blob.line_lengths = {};
+    ZASSERT(!make_shard(bytes_of()).loaded());
+
+    // Empty content is one empty line: no line table at all sums to its size
+    // but cannot be writer output.
+    fill_content(blob, "");
+    ZASSERT(make_shard(bytes_of()).loaded());
     blob.line_lengths = {};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }

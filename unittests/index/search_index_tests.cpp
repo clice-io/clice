@@ -160,8 +160,11 @@ ZEST_CASE(Loads) {
 
 ZEST_CASE(DamagedPosting) {
     auto corpus = sample();
+    auto original = index::build_search_blob(corpus.snapshot);
+    auto root = archive::verify<index::SearchIndexBlob>(original);
+    ZASSERT(root);
     index::SearchIndexBlob blob;
-    ZASSERT(index::deserialize_blob(index::build_search_blob(corpus.snapshot), blob));
+    archive::decode(**root, blob);
     // Bytes no posting list starts with: the blob's structure stays
     // intact and every token's list is undecodable.
     std::ranges::fill(blob.token_postings, 0xff);

@@ -34,9 +34,10 @@ module;
 ///
 /// The layout is canonical — one value has exactly one archive, padding
 /// zeroed — so the bytes' hash identifies the value. verify checks
-/// untrusted bytes against exactly that layout: every Vec pointing where
-/// the writer puts its part, every bool 0 or 1, nothing past the last part.
-/// A verified archive is then read with no check at all. There is no schema
+/// untrusted bytes against that layout: every Vec pointing where the writer
+/// puts its part, every bool 0 or 1, nothing past the last part; padding is
+/// not read, so it is not checked either. A verified archive is then read
+/// with no check at all. There is no schema
 /// evolution: the fingerprint rejects an archive of another layout, and a
 /// reader never sees one.
 
@@ -313,8 +314,7 @@ constexpr std::uint64_t align_up(std::uint64_t at, std::uint32_t align) {
     return (at + align - 1) / align * align;
 }
 
-class Writer {
-public:
+struct Writer {
     /// Room for `size` zeroed bytes at the next multiple of `align`.
     std::uint32_t reserve(std::uint64_t size, std::uint32_t align) {
         auto at = align_up(bytes.size(), align);
@@ -380,8 +380,7 @@ private:
     }
 };
 
-class Checker {
-public:
+struct Checker {
     explicit Checker(std::string_view bytes) : base(bytes.data()), size(bytes.size()) {}
 
     /// Check the archived A at `at`, inside bytes already placed, and place

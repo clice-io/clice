@@ -129,7 +129,7 @@ ZEST_CASE(FromRejectsHostileInput) {
 
     ZASSERT(!index::TUIndex::from_bytes(bytes.substr(0, bytes.size() / 2)).loaded());
 
-    // Bytes 4-7 carry the buffer identifier; a blob from another format
+    // Bytes 4-7 carry the layout fingerprint; a blob of another layout
     // must be rejected up front.
     ZASSERT(bytes.size() > 8);
     std::string clobbered(bytes.data(), bytes.size());
@@ -164,9 +164,9 @@ ZEST_CASE(MisalignedBytesLoad) {
 }
 
 ZEST_CASE(FromRejectsStaleFormatVersion) {
-    // Only the version slot and the path table are written: every other
-    // field reads back absent, which is structurally valid — the result
-    // must hinge on the version value.
+    // Only the version and the path table are set: every other column is
+    // empty, which is structurally valid — the result must hinge on the
+    // version value.
     auto stale = tu_index_blob();
     stale.format_version = index::index_format_version + 1;
     stale.paths = {"/proj/main.cpp"};

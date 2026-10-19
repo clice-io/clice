@@ -103,11 +103,10 @@ struct OccurrenceTable {
     IdColumnView symbols;
 
     static OccurrenceTable of(const Root& root) {
-        auto& symbol_hashes = root.symbol_hashes;
         return {
             .root = root,
             .columns = root.occurrences,
-            .symbols = ids_of(root.occurrence_symbols, symbol_hashes.size()),
+            .symbols = ids_of(root.occurrence_symbols, root.symbol_hashes.size()),
         };
     }
 
@@ -142,17 +141,15 @@ struct RelationTable {
     IdColumnView offsets;
 
     static RelationTable of(const Root& root) {
-        auto& columns = root.relations;
-        auto& symbol_hashes = root.symbol_hashes;
-        auto targets = ids_of(root.relation_targets, symbol_hashes.size());
-        auto& extent_heads = root.relation_extent_heads;
+        auto targets = ids_of(root.relation_targets, root.symbol_hashes.size());
         return {
             .root = root,
-            .columns = columns,
+            .columns = root.relations,
             .target_ranks = ids_of(root.relation_target_ranks, targets.size() + 1),
-            .extent_ranks = ids_of(root.relation_extent_ranks, extent_heads.size() + 1),
+            .extent_ranks =
+                ids_of(root.relation_extent_ranks, root.relation_extent_heads.size() + 1),
             .targets = targets,
-            .offsets = ids_of(root.relation_offsets, entry_count(columns) + 1),
+            .offsets = ids_of(root.relation_offsets, entry_count(root.relations) + 1),
         };
     }
 
@@ -161,8 +158,7 @@ struct RelationTable {
     }
 
     RelationKind kind_of(std::uint32_t entry) const {
-        auto byte = root.relation_kinds[entry];
-        return static_cast<RelationKind::Kind>(byte & ~payload_bit);
+        return static_cast<RelationKind::Kind>(root.relation_kinds[entry] & ~payload_bit);
     }
 
     bool has_payload(std::uint32_t entry) const {

@@ -2788,10 +2788,9 @@ ZEST_CASE(RejectBadBlob) {
 }
 
 ZEST_CASE(RejectVersionMismatch) {
-    // A structurally valid blob of another format version — none (0, what a
-    // version-less blob reads back) or the one before this build's — must
-    // load as missing, so the PCH pair rebuilds instead of serving a stale
-    // layout.
+    // A structurally valid blob of another format version — 0 or the one
+    // before this build's — must load as missing, so the PCH pair rebuilds
+    // instead of serving stale data.
     for(auto version: {0u, index::index_format_version - 1}) {
         dir.touch("stale.pch.idx", blob_of_version(version));
         ZEXPECT(load_pch_index(dir.path("stale.pch.idx")) == nullptr);
@@ -2820,7 +2819,7 @@ int main() { return 0; }
     dir.touch("truncated.pch.idx", bytes.take_front(bytes.size() / 2));
     ZEXPECT(load_pch_index(dir.path("truncated.pch.idx")) == nullptr);
 
-    // Bytes 4-7 carry the buffer identifier; a blob from another format
+    // Bytes 4-7 carry the layout fingerprint; a blob of another layout
     // must be rejected up front.
     std::string clobbered = bytes.str();
     for(std::size_t i = 4; i < 8; i += 1) {

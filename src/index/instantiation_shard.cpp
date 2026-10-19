@@ -52,8 +52,7 @@ struct RecordTable {
     }
 
     InstantiationKind kind_of(std::uint32_t record) const {
-        auto byte = root.record_kinds[record];
-        return static_cast<InstantiationKind>(byte & ~expansion_bit);
+        return static_cast<InstantiationKind>(root.record_kinds[record] & ~expansion_bit);
     }
 
     bool expansion_of(std::uint32_t record) const {
@@ -121,14 +120,11 @@ struct KeyTable {
     IdColumnView producers;
 
     static KeyTable of(const Root& root) {
-        auto& symbol_hashes = root.symbol_hashes;
-        auto& resolution_hashes = root.resolutions;
-        auto& producer_units = root.producer_units;
         return {
             .root = root,
-            .patterns = ids_of(root.key_patterns, symbol_hashes.size()),
-            .resolutions = ids_of(root.key_resolutions, resolution_hashes.size() + 1),
-            .producers = ids_of(root.key_producers, producer_units.size()),
+            .patterns = ids_of(root.key_patterns, root.symbol_hashes.size()),
+            .resolutions = ids_of(root.key_resolutions, root.resolutions.size() + 1),
+            .producers = ids_of(root.key_producers, root.producer_units.size()),
         };
     }
 
@@ -282,12 +278,10 @@ CheckResult keys_ok(const Root& root) {
     if(!strictly_ascending(keys)) {
         return std::unexpected("keys are not strictly ascending");
     }
-    auto& symbol_hashes = root.symbol_hashes;
-    if(auto ok = ids_ok(table.patterns, count, symbol_hashes.size()); !ok) {
+    if(auto ok = ids_ok(table.patterns, count, root.symbol_hashes.size()); !ok) {
         return ok;
     }
-    auto& resolution_hashes = root.resolutions;
-    if(auto ok = ids_ok(table.resolutions, count, resolution_hashes.size() + 1); !ok) {
+    if(auto ok = ids_ok(table.resolutions, count, root.resolutions.size() + 1); !ok) {
         return ok;
     }
     auto& producer_units = root.producer_units;
