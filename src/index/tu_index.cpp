@@ -99,8 +99,8 @@ struct SymbolColumns {
 }  // namespace
 
 TUIndex TUIndex::from_bytes(llvm::StringRef data) {
-    if(auto buffer = in_place_buffer(data); buffer->getBufferStart() != data.data()) {
-        return from_buffer(std::move(buffer));
+    if(!readable_in_place(data)) {
+        return from_buffer(llvm::MemoryBuffer::getMemBuffer(data, "", false));
     }
     auto verified = verify_root<TUIndexBlob>(data, "TU index");
     if(!verified) {
@@ -207,6 +207,7 @@ TUIndex TUIndex::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
     if(!buffer) {
         return {};
     }
+    buffer = in_place_buffer(std::move(buffer));
     auto result = from_bytes(buffer->getBuffer());
     if(result.loaded()) {
         result.owned = std::move(buffer);

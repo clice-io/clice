@@ -215,12 +215,16 @@ public:
             return {};
         }
         llvm::StringRef bytes(static_cast<const char*>(value.mv_data), value.mv_size);
-        // LMDB keeps the alignment in_place_buffer needs only for
-        // overflow-page values; a small inline value is copied and the
-        // copy is immortal (generation 0).
-        auto buffer = in_place_buffer(bytes);
-        bool borrowed = buffer->getBufferStart() == bytes.data();
-        return {.buffer = std::move(buffer), .generation = borrowed ? generation : 0};
+        // LMDB keeps bytes readable_in_place only for overflow-page
+        // values; a small inline value is copied and the copy is immortal
+        // (generation 0).
+        if(!readable_in_place(bytes)) {
+            return {.buffer = llvm::MemoryBuffer::getMemBufferCopy(bytes)};
+        }
+        return {.buffer = llvm::MemoryBuffer::getMemBuffer(bytes,
+                                                           "",
+                                                           /*RequiresNullTerminator=*/false),
+                .generation = generation};
     }
 
     bool contains(BlobKind kind, llvm::StringRef key) override {

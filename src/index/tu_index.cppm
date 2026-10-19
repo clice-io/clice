@@ -30,8 +30,8 @@ public:
     TUIndex() = default;
 
     /// Read TU index bytes in place, the caller keeping them alive; bytes
-    /// at an address their columns cannot be read at are copied
-    /// (in_place_buffer). Verification gates the format version and bounds
+    /// not readable_in_place are copied. Verification gates the format
+    /// version and bounds
     /// every path id the tree, the symbol table and the sections carry;
     /// corrupt bytes load as an empty reader.
     /// Section blob bytes are verified per section: structurally by
@@ -40,7 +40,8 @@ public:
     static TUIndex from_bytes(llvm::StringRef data);
 
     /// Adopt an owning buffer of TU index bytes (a mapped `.pch.idx`, a
-    /// session's IPC result). Same verification as from_bytes.
+    /// session's IPC result), copied when they are not readable_in_place.
+    /// Same verification as from_bytes.
     static TUIndex from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
     /// Whether this reader holds a TU index blob.

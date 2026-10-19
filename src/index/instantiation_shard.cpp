@@ -359,13 +359,14 @@ UseHash use_hash(llvm::ArrayRef<ResolutionHash> resolutions) {
 }
 
 InstantiationShard InstantiationShard::from_bytes(llvm::StringRef data) {
-    return from_buffer(in_place_buffer(data));
+    return from_buffer(llvm::MemoryBuffer::getMemBuffer(data, "", false));
 }
 
 InstantiationShard InstantiationShard::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
     if(!buffer) {
         return {};
     }
+    buffer = in_place_buffer(std::move(buffer));
     auto verified = verify_root<InstantiationShardBlob>(buffer->getBuffer(), "instantiation blob");
     if(!verified) {
         return {};

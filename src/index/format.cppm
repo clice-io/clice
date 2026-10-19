@@ -104,16 +104,22 @@ inline std::span<const std::uint8_t> blob_bytes(llvm::StringRef data) {
     return {reinterpret_cast<const std::uint8_t*>(data.data()), data.size()};
 }
 
-/// A buffer over `bytes` for a reader of their columns in place, which
-/// needs every column at an address its elements' alignment divides (u64
-/// at most): the bytes themselves when their base keeps it, else an
-/// aligned copy — a blob embedded in another sits at whatever offset the
-/// outer layout gave it.
-inline std::unique_ptr<llvm::MemoryBuffer> in_place_buffer(llvm::StringRef bytes) {
-    if(reinterpret_cast<std::uintptr_t>(bytes.data()) % alignof(std::uint64_t) != 0) {
-        return llvm::MemoryBuffer::getMemBufferCopy(bytes);
+/// Whether `bytes` sit where their columns can be read in place: every
+/// column at an address its elements' alignment divides (u64 at most). A
+/// blob embedded in another sits at whatever offset the outer layout gave
+/// it.
+inline bool readable_in_place(llvm::StringRef bytes) {
+    return reinterpret_cast<std::uintptr_t>(bytes.data()) % alignof(std::uint64_t) == 0;
+}
+
+/// `buffer` itself when its bytes are readable_in_place, else an aligned
+/// copy of them.
+inline std::unique_ptr<llvm::MemoryBuffer>
+    in_place_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
+    if(buffer && !readable_in_place(buffer->getBuffer())) {
+        return llvm::MemoryBuffer::getMemBufferCopy(buffer->getBuffer());
     }
-    return llvm::MemoryBuffer::getMemBuffer(bytes, "", /*RequiresNullTerminator=*/false);
+    return buffer;
 }
 
 /// The root of a blob of layout `Blob` once its bytes pass the structural
@@ -145,8 +151,8 @@ kota::codec::fbs::table_view<Blob> verified_root(llvm::StringRef bytes) {
 }
 
 /// Swap a reader's backing buffer for byte-identical bytes elsewhere (a
-/// newer read snapshot) at an address in_place_buffer would borrow, as a
-/// database read gives: what the reader verified and derived describes the
+/// newer read snapshot) that are readable_in_place, as a database read
+/// gives: what the reader verified and derived describes the
 /// bytes, which carry over. False, keeping `buffer`, when the sizes differ.
 inline bool rebind_buffer(std::unique_ptr<llvm::MemoryBuffer>& buffer,
                           std::unique_ptr<llvm::MemoryBuffer> replacement) {

@@ -152,9 +152,16 @@ ZEST_CASE(MisalignedBytesLoad) {
     auto* misaligned = reinterpret_cast<char*>(storage.data()) + sizeof(std::uint32_t);
     std::memcpy(misaligned, bytes.data(), bytes.size());
 
-    auto view = index::TUIndex::from_bytes(llvm::StringRef(misaligned, bytes.size()));
+    llvm::StringRef placed(misaligned, bytes.size());
+    auto view = index::TUIndex::from_bytes(placed);
     ZASSERT(view.loaded());
     ZEXPECT(view.verify_shards());
+
+    // A buffer adopted at such an address keeps the copy it is read from.
+    auto adopted = index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBuffer(placed, "", false));
+    ZASSERT(adopted.loaded());
+    ZEXPECT(adopted.verify_shards());
+    ZEXPECT(adopted.bytes() == bytes);
 }
 
 ZEST_CASE(FromRejectsStaleFormatVersion) {

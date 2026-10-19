@@ -693,7 +693,7 @@ Shard::Shard(std::unique_ptr<llvm::MemoryBuffer> buffer) : buffer(std::move(buff
 }
 
 Shard Shard::from_bytes(llvm::StringRef data) {
-    return from_buffer(in_place_buffer(data));
+    return from_buffer(llvm::MemoryBuffer::getMemBuffer(data, "", false));
 }
 
 bool Shard::rebind(std::unique_ptr<llvm::MemoryBuffer> replacement) {
@@ -704,6 +704,7 @@ Shard Shard::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
     if(!buffer) {
         return {};
     }
+    buffer = in_place_buffer(std::move(buffer));
 
     // Stale or corrupt bytes (an older build's cache directory) must never
     // crash the server or be misread: deep structural verification first,
