@@ -698,8 +698,7 @@ ZEST_CASE(LazyShardsStayPut) {
     clice::FileTable files;
     index::ProjectIndex project{files};
     index::IndexReport report;
-    ZASSERT(project.load(*db, {.read_only = true, .borrow = true}, report) ==
-            index::LoadOutcome::Loaded);
+    ZASSERT(project.load(*db, {.read_only = true}, report) == index::LoadOutcome::Loaded);
     auto first = files.intern(Spelling::absolute("/proj/f0.cpp"));
     const auto* held = project.shard(first);
     ZASSERT(held != nullptr);
@@ -798,8 +797,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
     clice::FileTable files;
     index::ProjectIndex reader{files};
     index::IndexReport report;
-    ZASSERT(reader.load(*db, {.read_only = true, .borrow = true}, report) ==
-            index::LoadOutcome::Loaded);
+    ZASSERT(reader.load(*db, {.read_only = true}, report) == index::LoadOutcome::Loaded);
     check(reader, files);
 
     // A unit leaving takes its set along: c.cpp's files no longer answer,

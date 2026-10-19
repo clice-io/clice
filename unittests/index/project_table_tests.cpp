@@ -257,15 +257,16 @@ ZEST_CASE(BadFileSetReadsEmpty) {
 }
 
 ZEST_CASE(TableDuplicateVersionsRejected) {
-    // Version-table ids and (path, hash) pairs are both map keys in the
+    // Version-table ids and (file, hash) pairs are both map keys in the
     // writer; a repeated id in particular would intern the earlier pair to
-    // an id whose record names the later path, attributing contributions
+    // an id whose record names the later file, attributing contributions
     // to the wrong file.
     auto layout = project_table_blob();
+    layout.paths = {"/proj/a.h", "/proj/b.h"};
     layout.next_version_id = 9;
     layout.versions = {
-        {.id = 7, .path = "/proj/a.h", .hash = 0x1},
-        {.id = 7, .path = "/proj/b.h", .hash = 0x2}
+        {.id = 7, .file = 0, .hash = 0x1},
+        {.id = 7, .file = 1, .hash = 0x2}
     };
 
     clice::FileTable pool;
@@ -274,21 +275,27 @@ ZEST_CASE(TableDuplicateVersionsRejected) {
     ZASSERT(!loaded.load_table(dup_id).has_value());
     ZASSERT(pool.versions.empty());
 
-    // Two paths of one version, as a symlink made since the write leaves
-    // them, would keep one id and leave the records naming the other
-    // unresolved.
     layout.versions = {
-        {.id = 7, .path = "/proj/a.h",   .hash = 0x1},
-        {.id = 8, .path = "/proj/./a.h", .hash = 0x1}
+        {.id = 7, .file = 0, .hash = 0x1},
+        {.id = 8, .file = 0, .hash = 0x1}
     };
     auto dup_pair = encode(layout);
     ZASSERT(!loaded.load_table(dup_pair).has_value());
     ZASSERT(pool.versions.empty());
 
-    // The same path under two content hashes is the legitimate shape: two
+    // A file past the path table names nothing.
+    layout.versions = {
+        {.id = 7, .file = 2, .hash = 0x1}
+    };
+    ZASSERT(!loaded.load_table(encode(layout)).has_value());
+
+    // The same file under two content hashes is the legitimate shape: two
     // observed versions of one file. Only the ids the blob carries map
     // into the table; the ones the writer garbage-collected map nowhere.
-    layout.versions[1].hash = 0x2;
+    layout.versions = {
+        {.id = 7, .file = 0, .hash = 0x1},
+        {.id = 8, .file = 0, .hash = 0x2}
+    };
     auto distinct = encode(layout);
     ZASSERT(loaded.load_table(distinct));
     ZASSERT(pool.versions.size() == std::size_t(2));
@@ -302,9 +309,10 @@ ZEST_CASE(TableBadCounterRejected) {
     // below it; a lagging counter would alias stored ids on the next
     // intern, and a sentinel one would insert a DenseMap reserved key.
     auto layout = project_table_blob();
+    layout.paths = {"/proj/a.h"};
     layout.next_version_id = 8;
     layout.versions = {
-        {.id = 7, .path = "/proj/a.h", .hash = 0x1}
+        {.id = 7, .file = 0, .hash = 0x1}
     };
 
     clice::FileTable pool;
@@ -433,8 +441,9 @@ ZEST_CASE(TableReservedKeysRejected) {
 
     {
         auto layout = project_table_blob();
+        layout.paths = {"/proj/a.h"};
         layout.versions = {
-            {.id = 0xffffffffu, .path = "/proj/a.h", .hash = 0x1}
+            {.id = 0xffffffffu, .file = 0, .hash = 0x1}
         };
         auto bytes = encode(layout);
         ZASSERT(!loaded.load_table(bytes).has_value());
@@ -451,9 +460,10 @@ ZEST_CASE(TableReservedKeysRejected) {
 
 ZEST_CASE(UnknownFileVersionsDetected) {
     auto layout = project_table_blob();
+    layout.paths = {"/proj/a.h"};
     layout.next_version_id = 4;
     layout.versions = {
-        {.id = 3, .path = "/proj/a.h", .hash = 0x1}
+        {.id = 3, .file = 0, .hash = 0x1}
     };
     auto bytes = encode(layout);
 

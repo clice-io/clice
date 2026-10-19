@@ -16,7 +16,6 @@ namespace clice::index {
 LoadOutcome ProjectIndex::load(BlobDatabase& db, LoadOptions options, IndexReport& report) {
     bool read_only = options.read_only;
     this->db = &db;
-    borrow = !read_only || options.borrow;
 
     auto remove_all = [&] {
         if(read_only) {
@@ -45,12 +44,9 @@ LoadOutcome ProjectIndex::load(BlobDatabase& db, LoadOptions options, IndexRepor
         remove_all();
         return LoadOutcome::Empty;
     }
-    // A writer moves the table onto each snapshot its saves open
-    // (migrate_views); a reader that does not borrow lets the snapshot
-    // retire, and copies.
-    auto bytes = borrow ? std::move(table.buffer)
-                        : llvm::MemoryBuffer::getMemBufferCopy(table.buffer->getBuffer());
-    if(auto loaded = load_table(std::move(bytes)); !loaded) {
+    // Read in place from the snapshot every later read comes from: a
+    // writer moves it onto each snapshot its saves open (migrate_views).
+    if(auto loaded = load_table(std::move(table.buffer)); !loaded) {
         LOG_INFO("Discarding the index's project table: {}", loaded.error());
         remove_all();
         if(!read_only) {
@@ -61,11 +57,8 @@ LoadOutcome ProjectIndex::load(BlobDatabase& db, LoadOptions options, IndexRepor
     }
     // The search index is derived from the table just loaded: adopt the
     // persisted one when the table pins it, else searches scan the table
-    // until the next save rebuilds it. It is borrowed like the table.
+    // until the next save rebuilds it. It is read in place like the table.
     if(auto blob = db.read(BlobKind::SearchIndex, "search")) {
-        if(!borrow && blob.generation != 0) {
-            blob.buffer = llvm::MemoryBuffer::getMemBufferCopy(blob.buffer->getBuffer());
-        }
         if(!bind_search(std::move(blob.buffer)) && !read_only) {
             pending_removals.push_back({BlobKind::SearchIndex, "search"});
         }

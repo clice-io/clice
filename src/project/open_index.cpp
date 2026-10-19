@@ -72,7 +72,7 @@ bool open_index(Project& project, Config config, llvm::StringRef requested_confi
         return false;
     }
     index::IndexReport report;
-    if(project.index.load(*project.database, {.read_only = true, .borrow = true}, report) !=
+    if(project.index.load(*project.database, {.read_only = true}, report) !=
        index::LoadOutcome::Loaded) {
         log_unusable_format(project);
         return false;
@@ -89,7 +89,7 @@ std::optional<LoadedIndex> load_index(Project& project,
         return std::nullopt;
     }
     // The writer's load, read-only: it never saves on a read-only database.
-    auto loaded = load_saved(project, commands, {.read_only = true, .borrow = true});
+    auto loaded = load_saved(project, commands, {.read_only = true});
     if(!loaded.decoded) {
         log_unusable_format(project);
         return std::nullopt;

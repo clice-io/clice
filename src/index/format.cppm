@@ -548,12 +548,13 @@ struct UnitSetOf {
     Seq<std::uint8_t> units;
 };
 
-/// A file version some unit's manifest names, and the units naming it.
+/// A file version some unit's manifest names — its file as a path id —,
+/// and the units naming it.
 template <template <typename> typename Seq>
 struct PersistedVersionOf {
     std::uint32_t id = 0;
 
-    Seq<char> path;
+    std::uint32_t file = 0;
 
     std::uint64_t hash = 0;
 

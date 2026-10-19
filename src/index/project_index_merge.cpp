@@ -471,7 +471,7 @@ std::vector<std::uint64_t> ProjectIndex::known_instantiations(Fid tu,
 }
 
 void ProjectIndex::retire_instantiations(Fid path_id) {
-    instantiations.erase(path_id);
+    instantiations[path_id] = InstantiationShard();
     dirty_instantiations.erase(path_id);
     retired_instantiations.insert(path_id);
 }

@@ -167,6 +167,23 @@ struct BatchLifetime {
     }
 };
 
+/// Drain the pump, then read every blob of the index and reindex the units
+/// a lost one held: the units the run judged fresh were never read, and the
+/// run reports the cache complete.
+kota::task<> drain_index(BatchStack& stack, BatchLifetime& lifetime) {
+    auto& index = stack.project.index;
+    co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
+    if(lifetime.stop_requested) {
+        co_return;
+    }
+    index.read_all();
+    if(!index.lost_units().empty()) {
+        stack.sched.pump.apply_report(index.take_lost());
+        stack.sched.pump.schedule(/*immediate=*/true);
+        co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
+    }
+}
+
 /// Shared batch startup: the command's config with the run's overrides,
 /// the session file logger, and the worker pool. `log_tag` names the log
 /// files after the subcommand.
@@ -284,17 +301,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
     BatchLifetime lifetime(stack);
     lifetime.aux.spawn(progress_ticker(stack, options));
-    co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
-    // The units the run judged fresh were never read: a blob of theirs found
-    // lost now reindexes before the run reports the cache complete.
-    if(!lifetime.stop_requested) {
-        project.index.read_all();
-        if(!project.index.lost_units().empty()) {
-            stack.sched.pump.apply_report(project.index.take_lost());
-            stack.sched.pump.schedule(/*immediate=*/true);
-            co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
-        }
-    }
+    co_await drain_index(stack, lifetime);
     auto interrupted = co_await lifetime.finish();
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
@@ -568,7 +575,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         // the run exits clean.
         project.config.project.enable_indexing.value = true;
         stack.sched.pump.schedule(/*immediate=*/true);
-        co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
+        co_await drain_index(stack, lifetime);
     }
     if(co_await lifetime.finish()) {
         result.interrupted = true;

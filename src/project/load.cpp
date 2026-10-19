@@ -66,22 +66,8 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
         }
     };
 
-    // Everything a read-only session keeps is deserialized or copied, so
-    // nothing borrows the opening snapshot; retiring it keeps a long
-    // read-only session (batch lint) from pinning a concurrent writer's
-    // page reclamation to session start. Every return path that leaves
-    // the database open owes this.
-    auto retire_snapshot = [&] {
-        if(read_only && !options.borrow && db.advance_read_snapshot()) {
-            db.retire_old_snapshot();
-        }
-    };
-
     switch(index.load(db, options, report)) {
-        case index::LoadOutcome::Empty:
-            load_metadata();
-            retire_snapshot();
-            return result;
+        case index::LoadOutcome::Empty: load_metadata(); return result;
         case index::LoadOutcome::Unreadable:
             // Run this session memory-only — saving a fresh lineage over
             // blobs whose anchor was never read could alias their version
@@ -106,7 +92,6 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
         case index::LoadOutcome::Undecodable:
             load_metadata();
             result.decoded = false;
-            retire_snapshot();
             return result;
         case index::LoadOutcome::Loaded: break;
     }
@@ -138,8 +123,6 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
         reopen_fresh_database(project);
         return result;
     }
-
-    retire_snapshot();
 
     auto units = index.unit_count();
     if(units != 0) {

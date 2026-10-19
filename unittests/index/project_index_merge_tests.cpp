@@ -808,6 +808,36 @@ int plain() { return 0; }
     ZEXPECT(f.project.index.lost_units() == llvm::SmallVector<Fid>{id("a.cpp")});
 }
 
+ZEST_CASE(RetiredInstantiationsNotReadAgain) {
+    // A save retires a file's instantiation blob: a query while the batch
+    // is written must not read it back, or the view would outlive the blob
+    // the batch removes.
+    ZASSERT(index("a.cpp"));
+    f.save();
+    tmp.touch("a.cpp", R"(#include "box.h"
+#include "a.h"
+void a() {}
+)");
+    ZASSERT(index("a.cpp"));
+
+    index::SaveBatch batch;
+    index::IndexReport report;
+    f.project.index.begin_save(batch, report);
+    ZASSERT(llvm::is_contained(batch.retired_ids, id("box.h")));
+    ZEXPECT(!box());
+    ZASSERT(f.project.database->write(batch.blobs, batch.removals).empty());
+    f.project.index.finish_save(batch, {});
+    bool migrated = false;
+    auto body = [&]() -> kota::task<> {
+        migrated = co_await f.project.index.migrate_views(*f.project.database, f.loop, report);
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(migrated);
+    ZEXPECT(!box());
+}
+
 ZEST_CASE(MixedGenerationsKept) {
     // One unit catches up with an edited template while another still pins
     // the old generation: the instantiations at the shard's generation stay.

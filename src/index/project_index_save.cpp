@@ -221,8 +221,10 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         shard = std::move(replacement);
         dirty_shards.insert(path_id);
     }
+    // A retired blob is held as none: a read until its removal commits
+    // would serve it again.
     for(auto path_id: retired) {
-        shards.erase(path_id);
+        shards[path_id] = Shard();
         dirty_shards.erase(path_id);
         report.add_index_changed(path_id);
         requeue_owners(path_id, report);
@@ -385,7 +387,7 @@ void ProjectIndex::abandon_save(SaveBatch& batch) {
     // the await may retire a file's instantiations: retired, they stay so.
     redirty(batch);
     for(auto path_id: batch.retired_ids) {
-        if(!instantiations.contains(path_id)) {
+        if(!holds_instantiations(path_id)) {
             retired_instantiations.insert(path_id);
         }
     }
@@ -417,7 +419,7 @@ void ProjectIndex::finish_save(SaveBatch& batch, llvm::ArrayRef<std::uint32_t> f
         } else if(i - shard_count < instantiation_count) {
             failed_shards += 1;
             auto path_id = batch.instantiation_ids[i - shard_count];
-            if(instantiations.contains(path_id)) {
+            if(holds_instantiations(path_id)) {
                 dirty_instantiations.insert(path_id);
             }
         } else if(i - shard_count - instantiation_count < manifest_count) {
@@ -443,10 +445,15 @@ void ProjectIndex::finish_save(SaveBatch& batch, llvm::ArrayRef<std::uint32_t> f
 void ProjectIndex::redirty(const SaveBatch& batch) {
     dirty_shards.insert(batch.shard_ids.begin(), batch.shard_ids.end());
     for(auto path_id: batch.instantiation_ids) {
-        if(instantiations.contains(path_id)) {
+        if(holds_instantiations(path_id)) {
             dirty_instantiations.insert(path_id);
         }
     }
+}
+
+bool ProjectIndex::holds_instantiations(Fid file) const {
+    auto it = instantiations.find(file);
+    return it != instantiations.end() && it->second.loaded();
 }
 
 kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,

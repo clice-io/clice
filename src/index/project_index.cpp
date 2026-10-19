@@ -156,17 +156,15 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions() {
         return std::unexpected("file version counter out of range");
     }
     // Ids and versions are both map keys in the writer, so a repeat of
-    // either marks a corrupt blob — or, for a version, two paths a symlink
-    // made since the write joins: a repeated id would map to the earlier
-    // version while its record names the later path, attributing
+    // either marks a corrupt blob: a repeated id would map to the earlier
+    // version while its record names the later file, attributing
     // contributions to the wrong file, and a repeated version would keep
     // one of its ids, leaving the records naming the other unresolved.
-    // Interning the paths only names them.
     llvm::DenseSet<std::uint32_t> blob_version_ids;
-    llvm::DenseSet<std::pair<Fid, std::uint64_t>> blob_versions;
+    llvm::DenseSet<std::pair<std::uint32_t, std::uint64_t>> blob_versions;
     for(auto& version: versions) {
-        if(version.path.empty()) {
-            return std::unexpected("empty file version path");
+        if(version.file >= base->remap.size()) {
+            return std::unexpected("file version outside the path table");
         }
         if(version.id >= next_version_id) {
             return std::unexpected("file version id past the counter");
@@ -174,8 +172,7 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions() {
         if(!blob_version_ids.insert(version.id).second) {
             return std::unexpected("duplicate file version id");
         }
-        auto file = files.intern(local(std::string_view(version.path)));
-        if(!blob_versions.insert({file, version.hash}).second) {
+        if(!blob_versions.insert({version.file, version.hash}).second) {
             return std::unexpected("duplicate file version");
         }
     }
@@ -189,8 +186,7 @@ std::expected<void, llvm::StringRef> ProjectIndex::adopt_file_versions() {
 
     next_persisted_id = next_version_id;
     for(auto& version: versions) {
-        auto path_id = files.intern(local(std::string_view(version.path)));
-        auto id = files.intern_version(path_id, version.hash);
+        auto id = files.intern_version(base->remap[version.file], version.hash);
         runtime_ids.try_emplace(version.id, id);
         persisted_ids.try_emplace(id, version.id);
     }
@@ -572,7 +568,7 @@ std::string ProjectIndex::serialize_table() {
         auto units = version_units.find(id);
         blob.versions.push_back({
             .id = persisted,
-            .path = portable(files.resolve(record.fid)),
+            .file = path_id(record.fid),
             .hash = record.content_hash,
             .units = units != version_units.end() ? std::move(units->second)
                                                   : std::vector<std::uint8_t>(),
@@ -1396,17 +1392,6 @@ std::vector<IncludeEdge> ProjectIndex::include_edges(Fid file) const {
     return edges;
 }
 
-std::unique_ptr<llvm::MemoryBuffer> ProjectIndex::read_blob(BlobKind kind, Fid file) const {
-    auto blob = db->read(kind, key_of(file));
-    if(!blob) {
-        return nullptr;
-    }
-    if(!borrow && blob.generation != 0) {
-        return llvm::MemoryBuffer::getMemBufferCopy(blob.buffer->getBuffer());
-    }
-    return std::move(blob.buffer);
-}
-
 void ProjectIndex::lose(Fid unit, Lost what) const {
     bool first = lost_indexes.empty() && lost_uses.empty();
     (what == Lost::Index ? lost_indexes : lost_uses).insert(unit);
@@ -1420,7 +1405,7 @@ Shard ProjectIndex::fetch_shard(Fid file) const {
     if(live.empty() || !db) {
         return {};
     }
-    auto buffer = read_blob(BlobKind::Shard, file);
+    auto buffer = db->read(BlobKind::Shard, key_of(file)).buffer;
     auto shard = buffer ? Shard::from_buffer(std::move(buffer)) : Shard();
     // A blob can verify yet miss a contributed variant: a crash or a failed
     // write left a manifest newer than its shard. A variant hashes its
@@ -1451,7 +1436,7 @@ InstantiationShard ProjectIndex::fetch_instantiations(Fid file, std::uint64_t ge
     if(!db) {
         return {};
     }
-    auto buffer = read_blob(BlobKind::InstantiationShard, file);
+    auto buffer = db->read(BlobKind::InstantiationShard, key_of(file)).buffer;
     auto loaded =
         buffer ? InstantiationShard::from_buffer(std::move(buffer)) : InstantiationShard();
     // A stored blob names the run behind each key; a worker's names none.

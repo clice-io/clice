@@ -98,13 +98,6 @@ struct LoadOptions {
     /// delete blobs a concurrently running server may be about to
     /// reference.
     bool read_only = false;
-
-    /// Serve the blobs straight from the read snapshot, pinned for the
-    /// index's lifetime, instead of copying each one fetched out of it. For
-    /// a short-lived reader (`clice query`, `clice index stats`) the copy
-    /// is wasted; a long read-only session (batch lint) copies so a
-    /// concurrent writer can reclaim the pages of the snapshot it opened.
-    bool borrow = false;
 };
 
 /// What a load (ProjectIndex::load) found in the database.
@@ -616,8 +609,13 @@ private:
     /// or indexing became idle after enough merges (or with no index at all).
     bool search_rebuild_due(SearchRebuild search) const;
 
-    /// Retire a file's instantiation shard, now or at the next save.
+    /// Retire a file's instantiation shard: held as none, its blob removed
+    /// at the next save — a read until the removal commits would serve it
+    /// again.
     void retire_instantiations(Fid file);
+
+    /// Whether the file's instantiation shard is held, not retired.
+    bool holds_instantiations(Fid file) const;
 
     /// Add every TU contributing to `file`'s shard to the report's
     /// reindex debt. Used when the file's resident index is lost while its
@@ -704,10 +702,6 @@ private:
     /// take_lost.
     void lose(Fid unit, Lost what) const;
 
-    /// What a database read hands a reader: the bytes, copied out of the
-    /// snapshot unless the session borrows it.
-    std::unique_ptr<llvm::MemoryBuffer> read_blob(BlobKind kind, Fid file) const;
-
     /// Erase a manifest's entries from the tables derived from the merged
     /// manifests; returns the files it contributed to or used resolutions in.
     llvm::SmallVector<Fid> erase_derived(Fid tu, const TUManifest& manifest);
@@ -788,9 +782,6 @@ private:
 
     /// The database the blobs are read from; null for an index never loaded.
     BlobDatabase* db = nullptr;
-
-    /// Whether blobs read stay in the database's snapshot (LoadOptions).
-    bool borrow = true;
 
     SearchIndex search;
 
