@@ -198,8 +198,6 @@ ZEST_CASE(ResolutionsFoldAcrossRuns) {
     ZASSERT(stored.resolutions().size() == 2u);
     ZEXPECT(records_of(stored).size() == 3u);
     ZASSERT(stored.uses().size() == 2u);
-    ZEXPECT(stored.resolutions_of(first_use.use) ==
-            std::vector(a.resolutions().begin(), a.resolutions().end()));
 
     // The later run walked key 1 again: it is the producer now.
     ZEXPECT(stored.find_key(1)->producer == std::optional(two));

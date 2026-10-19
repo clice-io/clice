@@ -189,6 +189,27 @@ constexpr bool transparent_scope(SymbolFlags flags) {
            has_flag(flags, SymbolFlags::AnonymousScope);
 }
 
+/// Visit the scopes a qualified name spells above the symbol `hash`, whose
+/// parent is `parent`, innermost first — the transparent ones skipped —
+/// until `visit` returns false. `lookup` gives a scope (anything with its
+/// `flags` and `parent`), nullopt for one it does not know, which ends the
+/// walk; so does a cycle, which a persisted parent column can hold.
+template <typename Lookup, typename Visit>
+void for_each_spelled_scope(SymbolHash hash, SymbolHash parent, Lookup&& lookup, Visit&& visit) {
+    llvm::SmallDenseSet<SymbolHash, 8> visited = {hash};
+    while(parent != 0 && visited.insert(parent).second) {
+        auto scope = lookup(parent);
+        if(!scope) {
+            return;
+        }
+        auto next = scope->parent;
+        if(!transparent_scope(scope->flags) && !visit(parent, *scope)) {
+            return;
+        }
+        parent = next;
+    }
+}
+
 /// The shape of a declaration's name, for consumers that treat special
 /// names apart from identifiers (a destructor's `~`, an operator's
 /// spelling).

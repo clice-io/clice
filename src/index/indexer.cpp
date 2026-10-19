@@ -461,6 +461,23 @@ public:
         index->relations[hash].emplace_back(relation);
     }
 
+    /// Record a relation of `decl` in the index of `fid`, `target` naming
+    /// the symbol it leads to. A file file_index drops takes the relation
+    /// with it, and neither symbol is registered.
+    void relate(clang::FileID fid,
+                const clang::NamedDecl* decl,
+                Relation relation,
+                const clang::NamedDecl* target = nullptr) {
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
+        if(target) {
+            relation.target = ensure_symbol(decls::normalize(target));
+        }
+        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+    }
+
     /// A Definition/Declaration/Reference relation mirroring an occurrence:
     /// it spans the whole written name the occurrence lies in, and decl/def
     /// relations also carry the declaration's full extent.
@@ -468,11 +485,6 @@ public:
                            RelationKind kind,
                            clang::SourceRange name) {
         auto [fid, range] = *unit.written_range(name);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-
         Relation relation{.kind = kind, .range = range, .target = 0};
 
         if(kind.isDeclOrDef()) {
@@ -489,8 +501,7 @@ public:
                 }
             }
         }
-
-        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+        relate(fid, decl, relation);
     }
 
     /// The Instantiation relation of an explicit instantiation, at its name
@@ -498,17 +509,12 @@ public:
     void add_instantiation(const clang::ExplicitInstantiationDecl& directive) {
         auto location = unit.context().getSourceManager().getFileLoc(directive.getNameLoc());
         auto [fid, range] = *unit.written_range(location);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
         Relation relation{.kind = RelationKind::Instantiation, .range = range, .target = 0};
         if(auto [extent_fid, extent] = unit.produced_range(directive.getSourceRange());
            extent_fid == fid) {
             relation.set_extent(extent);
         }
-        index->relations[ensure_symbol(decls::normalize(directive.getSpecialization()))]
-            .emplace_back(relation);
+        relate(fid, directive.getSpecialization(), relation);
     }
 
     /// A symbol-to-symbol relation (type-of, inheritance, overrides, ctor/dtor
@@ -519,17 +525,7 @@ public:
                            clang::SourceRange anchor) {
         // The anchor only routes the relation to a file's index; symbol pairs
         // carry no range of their own.
-        auto fid = unit.produced_at(anchor.getBegin()).file;
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-
-        Relation relation{
-            .kind = kind,
-            .target = ensure_symbol(decls::normalize(target)),
-        };
-        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+        relate(unit.produced_at(anchor.getBegin()).file, decl, {.kind = kind}, target);
     }
 
     /// The TypeDefinition relations of a value (a function's: its return
@@ -567,23 +563,14 @@ public:
         if(!target) {
             return;
         }
-        target = decls::normalize(target);
         auto* declared = type_definition_of(llvm::cast<clang::ValueDecl>(pattern), resolver);
-        if(declared && unit.get<EntityTable>().entity(decls::normalize(declared)) ==
-                           unit.get<EntityTable>().entity(target)) {
+        auto& entities = unit.get<EntityTable>();
+        if(declared && entities.entity(decls::normalize(declared)) ==
+                           entities.entity(decls::normalize(target))) {
             return;
         }
         auto [fid, range] = *unit.written_range(name);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-        Relation relation{
-            .kind = RelationKind::TypeDefinition,
-            .range = range,
-            .target = ensure_symbol(target),
-        };
-        index->relations[ensure_symbol(pattern)].emplace_back(relation);
+        relate(fid, decl, {.kind = RelationKind::TypeDefinition, .range = range}, target);
     }
 
     /// A call edge, recorded at the call expression's location.
@@ -592,17 +579,7 @@ public:
                            const clang::NamedDecl* target,
                            clang::SourceRange range) {
         auto [fid, relation_range] = unit.produced_range(range);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-
-        Relation relation{
-            .kind = kind,
-            .range = relation_range,
-            .target = ensure_symbol(decls::normalize(target)),
-        };
-        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+        relate(fid, decl, {.kind = kind, .range = relation_range}, target);
     }
 
     /// Module names are indexed like macro names: an occurrence plus a
@@ -790,12 +767,7 @@ public:
             return;
         }
         auto [fid, range] = *unit.written_range(include);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-        Relation relation{.kind = RelationKind::Pasted, .range = range, .target = 0};
-        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+        relate(fid, decl, {.kind = RelationKind::Pasted, .range = range});
     }
 
     /// Decl-pair relation facts: type definitions, inheritance, overrides,
@@ -1233,13 +1205,8 @@ public:
             return;
         }
         auto [fid, range] = *written;
-        auto* index = file_index(fid);
-        auto symbol = ensure_symbol(decls::normalize(decl));
         auto add = [&](const clang::NamedDecl* type_decl) {
-            Relation relation{.kind = RelationKind::TypeDefinition,
-                              .range = range,
-                              .target = ensure_symbol(decls::normalize(type_decl))};
-            index->relations[symbol].emplace_back(relation);
+            relate(fid, decl, {.kind = RelationKind::TypeDefinition, .range = range}, type_decl);
         };
         add(target);
         // A smart pointer leads on to its pointee, as add_type_definitions.

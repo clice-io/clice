@@ -1380,7 +1380,7 @@ ZEST_CASE(KnownVariantsSkipped) {
     auto& view = tu_index.view;
     ZASSERT(view.section_hash(header) == known.front());
     ZASSERT(view.section_blob(header).empty());
-    ZASSERT(!view.section_blob(*view.section_of(focus_id)).empty());
+    ZASSERT(view.shard_of(focus_id).loaded());
     ZASSERT(table_names(view) == std::vector<std::string>{"internal", "shared", "user"});
 }
 

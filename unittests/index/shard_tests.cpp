@@ -38,11 +38,7 @@ std::string write_fresh(const index::FileIndex& file_index, llvm::StringRef cont
 
 /// The focus file's worker-encoded blob, straight from the TU index.
 std::string focus_blob() {
-    auto section = tu_index.section_of(tu_index.path_count() - 1);
-    if(!section) {
-        return {};
-    }
-    return tu_index.section_blob(*section).str();
+    return tu_index.shard_of(tu_index.path_count() - 1).bytes().str();
 }
 
 /// Owning wrap: from_bytes borrows, and every builder here returns a
@@ -205,12 +201,12 @@ ZEST_CASE(CRLFLinesMarked) {
         {{12, 13}, 222}
     });
     auto merged = append_variant(shard, more, content);
-    ZASSERT(std::ranges::equal(merged.crlf_lines(), shard.crlf_lines()));
 
     auto starts = shard.line_starts();
     PositionMap scanned(content, starts);
     for(std::uint32_t line = 0; line < starts.size(); line += 1) {
         ZEXPECT(shard.positions().line_bounds(line) == scanned.line_bounds(line));
+        ZEXPECT(merged.positions().line_bounds(line) == scanned.line_bounds(line));
     }
 }
 

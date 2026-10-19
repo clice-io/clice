@@ -159,8 +159,8 @@ void CommandResolver::reset_header_mode(Fid path_id) {
     header_results.erase(path_id);
 }
 
-void CommandResolver::dump_mode_slices(std::vector<CacheModeEntry>& modes,
-                                       llvm::function_ref<std::uint32_t(Fid)> intern_id) const {
+void CommandResolver::dump_context_headers(std::vector<ContextHeaderEntry>& headers,
+                                           llvm::function_ref<std::uint32_t(Fid)> intern_id) const {
     for(auto& [path_id, result]: header_results) {
         // A result scored with no disk observation (hash 0) cannot be
         // validated on load, so it stays in memory: persisted, it would
@@ -168,19 +168,17 @@ void CommandResolver::dump_mode_slices(std::vector<CacheModeEntry>& modes,
         // session finds on disk.
         if(result.mode != HeaderMode::NeedsContext || result.content_hash == 0)
             continue;
-        modes.push_back(
-            {intern_id(path_id), static_cast<std::uint32_t>(result.mode), result.content_hash});
+        headers.push_back({intern_id(path_id), result.content_hash});
     }
 }
 
-void CommandResolver::load_mode_slices(
-    llvm::ArrayRef<CacheModeEntry> modes,
+void CommandResolver::load_context_headers(
+    llvm::ArrayRef<ContextHeaderEntry> headers,
     llvm::function_ref<std::optional<Fid>(std::uint32_t)> file_of) {
-    for(auto& entry: modes) {
+    for(auto& entry: headers) {
         // The writer never emits unbound (hash 0) results; an entry
         // carrying one is corrupt and must not bypass the content gate.
-        if(entry.content_hash == 0 ||
-           static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
+        if(entry.content_hash == 0)
             continue;
         auto id = file_of(entry.file);
         if(!id)

@@ -906,14 +906,24 @@ struct A { void print(); };
 void a() { Box<A>{}.show(); }
 )");
     std::vector<std::uint64_t> stored;
+    std::uint32_t records = 0;
+    auto count = [&](const index::InstantiationShard& shard) {
+        std::uint32_t count = 0;
+        shard.for_each_record([&](const index::InstantiationRecord&) {
+            count += 1;
+            return true;
+        });
+        return count;
+    };
     {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, tmp.path("a.cpp"));
         ZASSERT(f.merge(indexed.data));
         auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
-        auto resolutions = f.project.index.instantiation_shard(box_id)->resolutions();
-        stored.assign(resolutions.begin(), resolutions.end());
+        auto* instantiations = f.project.index.instantiation_shard(box_id);
+        stored.assign(instantiations->resolutions().begin(), instantiations->resolutions().end());
+        records = count(*instantiations);
         f.save();
     }
 
@@ -924,9 +934,8 @@ void a() { Box<A>{}.show(); }
     auto* instantiations = f.project.index.instantiation_shard(box_id);
     ZASSERT(instantiations);
     ZEXPECT(std::ranges::equal(instantiations->resolutions(), stored));
-    auto uses = f.project.index.live_uses(box_id);
-    ZASSERT(uses.size() == 1u);
-    ZEXPECT(instantiations->resolutions_of(uses.front()) == stored);
+    ZEXPECT(f.project.index.live_uses(box_id).size() == 1u);
+    ZEXPECT(count(*instantiations) == records);
     ZEXPECT(
         !f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
 }

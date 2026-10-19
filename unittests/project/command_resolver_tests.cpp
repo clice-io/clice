@@ -99,17 +99,18 @@ ZEST_CASE(UnboundModeStaysLocal) {
     resolver.record_header_mode(id, HeaderMode::NeedsContext);
     ZASSERT(resolver.header_mode(id) == HeaderMode::NeedsContext);
 
-    std::vector<CacheModeEntry> slices;
-    resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
-    ZASSERT(slices.empty());
+    std::vector<ContextHeaderEntry> headers;
+    resolver.dump_context_headers(headers, [](Fid fid) { return fid.raw; });
+    ZASSERT(headers.empty());
 
     CommandResolver restarted(project);
-    slices.push_back({id.raw, static_cast<std::uint32_t>(HeaderMode::NeedsContext), 0});
-    restarted.load_mode_slices(slices, [&](std::uint32_t) -> std::optional<Fid> { return id; });
+    headers.push_back({id.raw, 0});
+    restarted.load_context_headers(headers,
+                                   [&](std::uint32_t) -> std::optional<Fid> { return id; });
     ZASSERT(restarted.header_mode(id) == HeaderMode::Unknown);
 }
 
-ZEST_CASE(ModeSliceContentGate) {
+ZEST_CASE(ContextHeaderContentGate) {
     // A content-bound result survives a restart only while the disk
     // still holds the bytes it was scored on.
     TempDir tmp;
@@ -123,25 +124,25 @@ ZEST_CASE(ModeSliceContentGate) {
     ZASSERT(disk);
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
-    std::vector<CacheModeEntry> slices;
-    resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
-    ZASSERT(slices.size() == 1u);
+    std::vector<ContextHeaderEntry> headers;
+    resolver.dump_context_headers(headers, [](Fid fid) { return fid.raw; });
+    ZASSERT(headers.size() == 1u);
 
     auto resolve = [&](std::uint32_t) -> std::optional<Fid> {
         return id;
     };
     CommandResolver same_disk(project);
-    same_disk.load_mode_slices(slices, resolve);
+    same_disk.load_context_headers(headers, resolve);
     ZASSERT(same_disk.header_mode(id) == HeaderMode::NeedsContext);
 
     tmp.touch("h.h", "int y;\n");
     CommandResolver edited(project);
-    edited.load_mode_slices(slices, resolve);
+    edited.load_context_headers(headers, resolve);
     ZASSERT(edited.header_mode(id) == HeaderMode::Unknown);
 }
 
 ZEST_CASE(ModePersistenceMarksDirty) {
-    // The persisted mode slice and the artifact records move together: any
+    // The persisted context headers and the artifact records move together: any
     // transition of a content-bound NeedsContext — earned, downgraded by
     // a trial, or reset by a dependency change — must rewrite the blob,
     // or a restart resurrects the dropped result (the header's own hash

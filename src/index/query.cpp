@@ -38,19 +38,10 @@ llvm::SmallVector<SymbolInfo, 4>
                 SymbolHash parent,
                 llvm::function_ref<std::optional<SymbolInfo>(SymbolHash)> lookup) {
     llvm::SmallVector<SymbolInfo, 4> chain;
-    // A parent chain follows declaration contexts, so it is acyclic as
-    // built; the guard keeps a corrupted parent column from spinning.
-    llvm::DenseSet<SymbolHash> visited{hash};
-    while(parent != 0 && visited.insert(parent).second) {
-        auto scope = lookup(parent);
-        if(!scope) {
-            break;
-        }
-        parent = scope->parent;
-        if(!transparent_scope(scope->flags)) {
-            chain.push_back(std::move(*scope));
-        }
-    }
+    for_each_spelled_scope(hash, parent, lookup, [&](SymbolHash, SymbolInfo& scope) {
+        chain.push_back(std::move(scope));
+        return true;
+    });
     std::ranges::reverse(chain);
     return chain;
 }
