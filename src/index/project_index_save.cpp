@@ -221,8 +221,8 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         shard = std::move(replacement);
         dirty_shards.insert(path_id);
     }
-    // A retired blob is held as none: a read until its removal commits
-    // would serve it again.
+    // A retired blob is held as none: a read before its removal commits
+    // would find the variants the stale units pin missing, and drop them.
     for(auto path_id: retired) {
         shards[path_id] = Shard();
         dirty_shards.erase(path_id);
@@ -277,6 +277,9 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     }
     for(auto path_id: retired_files) {
         retire_instantiations(path_id);
+        // Held as none: a read before the removal commits would serve the
+        // blob again, a view outliving it.
+        instantiations[path_id] = InstantiationShard();
         report.add_index_changed(path_id);
     }
 
@@ -290,11 +293,10 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     for(auto path_id: retired) {
         batch.removals.push_back({BlobKind::Shard, key_of(path_id)});
     }
-    batch.retired_ids.assign(retired_instantiations.begin(), retired_instantiations.end());
-    retired_instantiations.clear();
-    for(auto path_id: batch.retired_ids) {
+    for(auto path_id: retired_instantiations) {
         batch.removals.push_back({BlobKind::InstantiationShard, key_of(path_id)});
     }
+    retired_instantiations.clear();
     for(auto path_id: dirty_shards) {
         auto it = shards.find(path_id);
         assert(it != shards.end() && "dirty shards stay resident until retirement");
@@ -383,14 +385,9 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
 }
 
 void ProjectIndex::abandon_save(SaveBatch& batch) {
-    // Unioned with whatever re-dirtied across the await. A merge across
-    // the await may retire a file's instantiations: retired, they stay so.
+    // Unioned with whatever re-dirtied across the await; the removals go
+    // into the next batch, which drops those of keys it writes.
     redirty(batch);
-    for(auto path_id: batch.retired_ids) {
-        if(!holds_instantiations(path_id)) {
-            retired_instantiations.insert(path_id);
-        }
-    }
     dirty_manifests.insert(batch.manifest_ids.begin(), batch.manifest_ids.end());
     table_dirty = table_dirty || batch.had_table;
     restore_unwritten();
@@ -419,7 +416,7 @@ void ProjectIndex::finish_save(SaveBatch& batch, llvm::ArrayRef<std::uint32_t> f
         } else if(i - shard_count < instantiation_count) {
             failed_shards += 1;
             auto path_id = batch.instantiation_ids[i - shard_count];
-            if(holds_instantiations(path_id)) {
+            if(instantiations.contains(path_id)) {
                 dirty_instantiations.insert(path_id);
             }
         } else if(i - shard_count - instantiation_count < manifest_count) {
@@ -445,15 +442,10 @@ void ProjectIndex::finish_save(SaveBatch& batch, llvm::ArrayRef<std::uint32_t> f
 void ProjectIndex::redirty(const SaveBatch& batch) {
     dirty_shards.insert(batch.shard_ids.begin(), batch.shard_ids.end());
     for(auto path_id: batch.instantiation_ids) {
-        if(holds_instantiations(path_id)) {
+        if(instantiations.contains(path_id)) {
             dirty_instantiations.insert(path_id);
         }
     }
-}
-
-bool ProjectIndex::holds_instantiations(Fid file) const {
-    auto it = instantiations.find(file);
-    return it != instantiations.end() && it->second.loaded();
 }
 
 kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,

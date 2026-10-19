@@ -131,9 +131,6 @@ struct SaveBatch {
 
     llvm::SmallVector<Fid> manifest_ids;
 
-    /// Instantiation shards the batch removes.
-    llvm::SmallVector<Fid> retired_ids;
-
     std::optional<std::uint32_t> table_slot;
 
     std::optional<std::uint32_t> search_slot;
@@ -609,13 +606,8 @@ private:
     /// or indexing became idle after enough merges (or with no index at all).
     bool search_rebuild_due(SearchRebuild search) const;
 
-    /// Retire a file's instantiation shard: held as none, its blob removed
-    /// at the next save — a read until the removal commits would serve it
-    /// again.
+    /// Retire a file's instantiation shard, now or at the next save.
     void retire_instantiations(Fid file);
-
-    /// Whether the file's instantiation shard is held, not retired.
-    bool holds_instantiations(Fid file) const;
 
     /// Add every TU contributing to `file`'s shard to the report's
     /// reindex debt. Used when the file's resident index is lost while its

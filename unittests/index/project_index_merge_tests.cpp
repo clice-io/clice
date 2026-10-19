@@ -823,7 +823,10 @@ void a() {}
     index::SaveBatch batch;
     index::IndexReport report;
     f.project.index.begin_save(batch, report);
-    ZASSERT(llvm::is_contained(batch.retired_ids, id("box.h")));
+    ZASSERT(llvm::any_of(batch.removals, [&](const index::BlobKey& removal) {
+        return removal.kind == index::BlobKind::InstantiationShard &&
+               removal.key == f.project.index.key_of(id("box.h"));
+    }));
     ZEXPECT(!box());
     ZASSERT(f.project.database->write(batch.blobs, batch.removals).empty());
     f.project.index.finish_save(batch, {});
