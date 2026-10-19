@@ -746,6 +746,11 @@ RenamePlan plan_rename(const IndexQuery& serving,
         return std::tie(lhs.site.path, lhs.site.range.begin) <
                std::tie(rhs.site.path, rhs.site.range.begin);
     });
+    // The reads above may have found a unit's index lost: what the plan
+    // gathered from it is incomplete.
+    for(auto unit: query.lost_units()) {
+        stale.insert(files.display(unit));
+    }
     for(auto& entry: stale) {
         plan.stale.push_back(entry.getKey().str());
     }

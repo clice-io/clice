@@ -125,7 +125,8 @@ struct RenamePlan {
 
     /// Files the rename edits, or that spell its old or new name, whose
     /// index is not current — their text moved on, or the build compiles
-    /// them but the index never did. Nothing is written while any stands.
+    /// them but the index never did —, and the units whose index a read
+    /// found lost. Nothing is written while any stands.
     std::vector<std::string> stale;
 
     bool blocked() const {

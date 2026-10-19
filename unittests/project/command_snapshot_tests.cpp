@@ -836,6 +836,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
     tmp.touch("main.cpp", "int use() { return 0; }\n");
     open_store(tmp, f.project);
     f.project.database = std::make_unique<CorruptOnWrite>();
+    f.project.index.attach(f.project.database.get());
 
     f.mark_failed(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h"))));
     auto indexed = index_file(tmp, tmp.path("main.cpp"));

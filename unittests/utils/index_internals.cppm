@@ -34,6 +34,12 @@ struct IndexInternals {
         return index.base->columns->units[*unit].generation;
     }
 
+    /// Take a file's held shard away, as a read finding its blob lost does.
+    static void lose_shard(index::ProjectIndex& index, Fid file) {
+        index.shards.erase(file);
+        index.lose(file, index::ProjectIndex::Lost::Shard);
+    }
+
     /// Whether the tables the manifests derive (contributions, absent
     /// lookups, importers) hold no entry, not even an emptied one.
     static bool derived_tables_empty(const index::ProjectIndex& index) {

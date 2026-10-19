@@ -663,6 +663,7 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
         }
         matches = std::move(*named);
     }
+    project.index.read_all();
     int rc = 0;
     for(auto hash: matches) {
         auto info = query.symbol_info(hash);
@@ -715,7 +716,6 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
         // table's reference bitmaps, which a file-local symbol has no entry
         // in.
         std::map<std::string, Counts> per_file;
-        project.index.read_all();
         project.index.for_each_shard([&](Fid path_id, const index::Shard& shard) {
             auto count = [&](RelationKind kind, std::size_t Counts::* field) {
                 shard.relations_of(hash, kind, [&](const index::Relation&) {

@@ -8,6 +8,7 @@ import :index.query;
 import :index.rename;
 import :index.search;
 import :index.symbol_query;
+import :unittests.utils.index_internals;
 import :unittests.utils.merge_unit;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
@@ -820,6 +821,22 @@ ZEST_CASE(FilesOutsideTheIndex) {
     ZEXPECT(renamed->blocked());
     ZASSERT(renamed->stale.size() == 1U);
     ZEXPECT(renamed->stale.front().ends_with("notes.cpp"));
+}
+
+ZEST_CASE(LostIndexBlocks) {
+    add_focus(file("a.cpp"), R"(
+        int §compute(int x) { return x; }
+        int use() { return §compute(1); }
+    )");
+    merge();
+
+    // A read found the unit's shard lost: the plan rests on an incomplete
+    // index.
+    IndexInternals::lose_shard(project.index, focus_id);
+    auto renamed = rename("compute", "evaluate");
+    ZASSERT(renamed);
+    ZEXPECT(renamed->blocked());
+    ZEXPECT(llvm::is_contained(renamed->stale, project.file_table.display(focus_id)));
 }
 
 ZEST_CASE(LocalsStayHome) {

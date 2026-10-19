@@ -638,6 +638,7 @@ ZEST_CASE(FailedWriteNotCounted) {
     };
 
     project.database = std::make_unique<FailingStorage>();
+    project.index.attach(project.database.get());
 
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
