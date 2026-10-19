@@ -494,11 +494,6 @@ private:
     /// The file's instantiation shard when it resolves in the shard's text.
     const InstantiationShard* instantiations_of(Fid file, const Shard& shard) const;
 
-    /// The units whose index lost data reads found (ProjectIndex::lost_units).
-    llvm::SmallVector<Fid> lost_units() const {
-        return index.lost_units();
-    }
-
 private:
     const ProjectIndex& index;
 

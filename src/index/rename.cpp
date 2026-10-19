@@ -748,7 +748,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
     });
     // The reads above may have found a unit's index lost: what the plan
     // gathered from it is incomplete.
-    for(auto unit: query.lost_units()) {
+    for(auto unit: query.project().lost_units()) {
         stale.insert(files.display(unit));
     }
     for(auto& entry: stale) {
