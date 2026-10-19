@@ -196,7 +196,13 @@ class SemanticsBuilder : public clang::RecursiveASTVisitor<SemanticsBuilder> {
 public:
     static void build(Semantics& semantics, CompilationUnit& unit, SemanticsOptions options) {
         SemanticsBuilder builder(semantics, unit, options);
-        if(!options.only_instantiations) {
+        if(options.written) {
+            for(const auto* decl: *options.written) {
+                if(!builder.canIgnoreChildDeclWhileTraversingDeclContext(decl)) {
+                    builder.TraverseDecl(const_cast<clang::Decl*>(decl));
+                }
+            }
+        } else {
             builder.TraverseAST(unit.context());
         }
         if(options.all_files) {

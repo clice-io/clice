@@ -1,0 +1,35 @@
+[open.record]
+highlights = [
+    { at = "struct ⟦tab_lp⟧ {", kind = "text" },
+    { at = "#define GBR_LP struct ⟦tab_lp⟧", kind = "text" },
+]
+
+[open.member]
+highlights = [
+    { at = "int ⟦size⟧;", kind = "text" },
+    { at = "#define FIELD ⟦size⟧", kind = "text" },
+]
+
+[open.in_body]
+highlights = [
+    { at = "struct ⟦tab_lp⟧ {", kind = "text" },
+    { at = "#define GBR_LP struct ⟦tab_lp⟧", kind = "text" },
+]
+
+[indexed.record]
+highlights = [
+    { at = "struct ⟦tab_lp⟧ {", kind = "text" },
+    { at = "#define GBR_LP struct ⟦tab_lp⟧", kind = "text" },
+]
+
+[indexed.member]
+highlights = [
+    { at = "int ⟦size⟧;", kind = "text" },
+    { at = "#define FIELD ⟦size⟧", kind = "text" },
+]
+
+[indexed.in_body]
+highlights = [
+    { at = "struct ⟦tab_lp⟧ {", kind = "text" },
+    { at = "#define GBR_LP struct ⟦tab_lp⟧", kind = "text" },
+]
