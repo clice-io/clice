@@ -74,6 +74,8 @@ export interface Results {
         requests: number;
         inspectSeconds: number;
         serverSeconds: number;
+        /// The requests that took over a minute.
+        slow: { file: string; label: string; side: "inspect" | "server"; seconds: number }[];
     };
     /// Units clice reported errors on that the compiler rejects too.
     compilerRejects: { unit: string; output: string }[];
@@ -293,11 +295,16 @@ async function sweepStep(
         requests: run.requests,
         inspectSeconds: run.inspectSeconds,
         serverSeconds: run.serverSeconds,
+        slow: run.slow,
     };
-    if (run.unasked.length > 0) {
+    if (run.unasked.length > 0 || run.cut.length > 0) {
         results.failures.push({
             kind: "hang",
-            detail: `the sweep ran out of its time with ${String(run.unasked.length)} of ${String(run.files.length)} files unasked:\n${run.unasked.join("\n")}`,
+            detail: [
+                `the sweep ran out of its time with ${String(run.unasked.length)} of ${String(run.files.length)} files unasked and ${String(run.cut.length)} asked in part:`,
+                ...run.unasked,
+                ...run.cut.map((file) => `${file} (in part)`),
+            ].join("\n"),
             repro: rerun(options, "--steps sweep"),
         });
     }

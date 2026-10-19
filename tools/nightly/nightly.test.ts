@@ -277,6 +277,36 @@ describe("report", () => {
         expect(text).not.toContain("run b.c");
     });
 
+    test("the slow requests are listed, the slowest first", () => {
+        const text = report({
+            job: "p",
+            platform: "windows",
+            about: "v1",
+            commit: "c",
+            clice: "k",
+            seed: "s",
+            compilerRejects: [],
+            logErrors: [],
+            failures: [],
+            accepted: [],
+            sweep: {
+                files: 1,
+                serverOnly: [],
+                requests: 2,
+                inspectSeconds: 80,
+                serverSeconds: 300,
+                slow: [
+                    { file: "a.cpp", label: "hover p0", side: "inspect", seconds: 75 },
+                    { file: "a.cpp", label: "references p3", side: "server", seconds: 300 },
+                ],
+            },
+        });
+        expect(text).toContain("# p on windows: green");
+        expect(text).toContain(
+            "## Requests that took over a minute (2)\n\n- a.cpp, references p3 (server): 300 s\n- a.cpp, hover p0 (inspect): 75 s",
+        );
+    });
+
     test("a detail holding a code block keeps its fence", () => {
         const results: Results = {
             job: "p",

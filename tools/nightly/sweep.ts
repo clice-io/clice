@@ -40,6 +40,13 @@ const CONCURRENCY = Math.min(3, Math.max(1, Math.floor(os.totalmem() / 5 / 1024 
 /// unit here: the bound only a hang reaches.
 const REQUEST_MS = 10 * 60_000;
 
+/// A file's ~150 requests can each take most of their bound: the files in
+/// flight at the deadline are asked this much longer, the rest left unasked.
+const FINISH_MS = 30 * 60_000;
+
+/// A request slower than this is recorded with its time.
+const SLOW_MS = 60_000;
+
 /// The client an editor is: what the answers render for in the cases too.
 const CAPABILITIES: proto.ClientCapabilities = {
     workspace: { workspaceEdit: { documentChanges: true } },
@@ -286,6 +293,7 @@ interface Answer {
     error?: string;
     /// A request that never answered, or an inspect that died.
     stopped?: "hang" | "crash";
+    ms: number;
 }
 
 /// What of an answer the sweep keeps until the file is done: what is
@@ -295,14 +303,16 @@ interface Answer {
 type Keep = "compared" | "value" | "nothing";
 
 async function answer(client: Client, ask: Ask, keep: Keep): Promise<Answer> {
+    const started = Date.now();
     const reply = ask.ask(client);
     try {
         const value: unknown = await withTimeout(reply as Promise<unknown>, REQUEST_MS, ask.label);
+        const ms = Date.now() - started;
         return keep === "compared"
-            ? { reply, value: JSON.stringify(value) }
+            ? { reply, value: JSON.stringify(value), ms }
             : keep === "value"
-              ? { raw: value }
-              : {};
+              ? { raw: value, ms }
+              : { ms };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const stopped = message.includes("timed out after")
@@ -310,7 +320,11 @@ async function answer(client: Client, ask: Ask, keep: Keep): Promise<Answer> {
             : message.startsWith("clice inspect exited SIG")
               ? "crash"
               : undefined;
-        return { error: message.slice(0, 2000), ...(stopped === undefined ? {} : { stopped }) };
+        return {
+            error: message.slice(0, 2000),
+            ...(stopped === undefined ? {} : { stopped }),
+            ms: Date.now() - started,
+        };
     }
 }
 
@@ -353,8 +367,12 @@ export interface SweepRun {
     serverExit: string[];
     /// The files the server opened with errors, the first few of each.
     serverErrors: { file: string; errors: string[] }[];
-    /// The files left unasked when the sweep ran out of time.
+    /// The files left unasked when the sweep ran out of time, and those it
+    /// ran out of time in.
     unasked: string[];
+    cut: string[];
+    /// The requests slower than SLOW_MS.
+    slow: { file: string; label: string; side: "inspect" | "server"; seconds: number }[];
 }
 
 export interface SweepOptions {
@@ -376,6 +394,8 @@ async function sweepFile(
     const { compared, navigation } = asksOf(file, places, options.only);
     const fail = (kind: SweepFailure["kind"], ask: Ask, detail: string) =>
         run.failures.push({ kind, file, request: ask.request, label: ask.label, detail });
+    const cutoff = options.deadline + FINISH_MS;
+    const cut = new Set<"inspect" | "server">();
 
     const inspected = (async () => {
         const answers = new Map<string, Answer>();
@@ -406,6 +426,10 @@ async function sweepFile(
                 // A run that crashed or hung once on the file does again at
                 // its other places, and each costs up to its bound.
                 if ([...answers.values()].some((each) => each.stopped !== undefined)) {
+                    break;
+                }
+                if (Date.now() > cutoff) {
+                    cut.add("inspect");
                     break;
                 }
                 answers.set(ask.label, await answer(clientOf(ask), ask, "compared"));
@@ -440,6 +464,10 @@ async function sweepFile(
             if (!alive() || [...answers.values()].some((each) => each.stopped === "hang")) {
                 break;
             }
+            if (Date.now() > cutoff) {
+                cut.add("server");
+                break;
+            }
             const keep = ask === opened ? "value" : compared.includes(ask) ? "compared" : "nothing";
             answers.set(ask.label, await answer(server, ask, keep));
         }
@@ -455,6 +483,19 @@ async function sweepFile(
         return answers;
     })();
     const [{ answers: fromInspect, errors }, fromServer] = await Promise.all([inspected, served]);
+    if (cut.size > 0) {
+        run.cut.push(file);
+    }
+    for (const [side, answers] of [
+        ["inspect", fromInspect],
+        ["server", fromServer],
+    ] as const) {
+        for (const [label, { ms }] of answers) {
+            if (ms > SLOW_MS) {
+                run.slow.push({ file, label, side, seconds: Math.round(ms / 1000) });
+            }
+        }
+    }
     const [why] = errors;
     if (why !== undefined) {
         run.serverOnly.push({ file, why });
@@ -478,14 +519,14 @@ async function sweepFile(
 
     run.requests += fromServer.size + fromInspect.size;
     for (const ask of [opened, ...compared, ...navigation]) {
-        const right = fromServer.get(ask.label) ?? {};
+        const right = fromServer.get(ask.label) ?? { ms: 0 };
         if (right.error !== undefined) {
             fail(right.stopped ?? "server", ask, right.error);
         }
         if (!compared.includes(ask)) {
             continue;
         }
-        const left = fromInspect.get(ask.label) ?? {};
+        const left = fromInspect.get(ask.label) ?? { ms: 0 };
         if (left.stopped !== undefined) {
             fail(left.stopped, ask, left.error ?? "");
             continue;
@@ -539,6 +580,8 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
         serverExit: [],
         serverErrors: [],
         unasked: [],
+        cut: [],
+        slow: [],
     };
     const places = options.files.map(
         (file) =>

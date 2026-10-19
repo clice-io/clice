@@ -142,6 +142,21 @@ export function report(now: Results, before?: Results): string {
             lines.push("", fence(detail), "", "Reproduce:", "", fence(first.repro));
         }
     }
+    const slow = [...(now.sweep?.slow ?? [])].sort((a, b) => b.seconds - a.seconds);
+    if (slow.length > 0) {
+        lines.push(
+            "",
+            `## Requests that took over a minute (${String(slow.length)})`,
+            "",
+            ...slow
+                .slice(0, 30)
+                .map(
+                    (request) =>
+                        `- ${request.file}, ${request.label} (${request.side}): ${String(request.seconds)} s`,
+                ),
+            ...(slow.length > 30 ? ["- ..."] : []),
+        );
+    }
     if (now.accepted.length > 0) {
         lines.push(
             "",
