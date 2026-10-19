@@ -1218,28 +1218,37 @@ auto DocCommandScanner::scan(llvm::StringRef text) -> llvm::SmallVector<Part> {
         if(!raw_end.empty() || (name != "param" && name != "tparam")) {
             continue;
         }
-        // `@param[in] name`, `@param name`.
-        auto word = command_end;
+        // `@param name`, `@param[in] name`, `@param [in] first,second`.
+        auto blanks_from = [&](std::size_t at) {
+            while(at < text.size() && (text[at] == ' ' || text[at] == '\t')) {
+                at += 1;
+            }
+            return at;
+        };
+        auto word = blanks_from(command_end);
         if(word < text.size() && text[word] == '[') {
             auto close = text.find(']', word);
-            word = close == llvm::StringRef::npos ? text.size() : close + 1;
+            word = blanks_from(close == llvm::StringRef::npos ? text.size() : close + 1);
         }
-        while(word < text.size() && (text[word] == ' ' || text[word] == '\t')) {
-            word += 1;
+        while(true) {
+            auto word_end = word;
+            while(word_end < text.size() && identifier_char(text[word_end])) {
+                word_end += 1;
+            }
+            if(word_end == word) {
+                break;
+            }
+            parts.push_back({
+                .kind = name == "param" ? Part::Kind::Parameter : Part::Kind::TemplateParameter,
+                .begin = word,
+                .end = word_end,
+            });
+            i = word_end - 1;
+            if(name != "param" || word_end == text.size() || text[word_end] != ',') {
+                break;
+            }
+            word = word_end + 1;
         }
-        auto word_end = word;
-        while(word_end < text.size() && identifier_char(text[word_end])) {
-            word_end += 1;
-        }
-        if(word_end == word) {
-            continue;
-        }
-        parts.push_back({
-            .kind = name == "param" ? Part::Kind::Parameter : Part::Kind::TemplateParameter,
-            .begin = word,
-            .end = word_end,
-        });
-        i = word_end - 1;
     }
     return parts;
 }

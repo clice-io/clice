@@ -86,8 +86,12 @@ namespace clice::index {
 /// shared local names its files by version, including files the unit reads
 /// through a precompiled header or a module, function-local symbols other
 /// files name join the TU index's table and the shared locals, and the project
-/// table lists the files the shared locals name per symbol.
-constexpr inline std::uint32_t index_format_version = 40;
+/// table lists the files the shared locals name per symbol; v41: the names
+/// a focus file's doc comments document with `@param` and `@tparam` are
+/// references to those parameters, an abbreviated parameter pack carries
+/// its type definitions, and a precompiled header's diagnostics know an
+/// imported module unit from an included file.
+constexpr inline std::uint32_t index_format_version = 41;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

@@ -5,4 +5,13 @@ definition = ["int scale(int ⟦value⟧, int factor);"]
 definition = ["int scale(int value, int ⟦factor⟧);"]
 
 [answers.template]
-definition = ["template <typename ⟦T⟧>"]
+definition = ["template <typename ⟦T⟧> @+1"]
+
+[answers.spaced]
+definition = ["int add(int ⟦left⟧, int right);"]
+
+[answers.listed]
+definition = ["int add(int left, int ⟦right⟧);"]
+
+[answers.constrained]
+definition = ["template <typename ⟦T⟧> @+1"]

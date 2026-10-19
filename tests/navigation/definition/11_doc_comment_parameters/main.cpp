@@ -13,3 +13,12 @@ struct Box {
 int scale(int value, int factor) {
     return value * factor;
 }
+
+/// Adds two values.
+/// @param [in] §(spaced)left,§(listed)right the values
+int add(int left, int right);
+
+/// Fits in a register.
+/// @tparam §(constrained)T the type
+template <typename T>
+concept Small = sizeof(T) <= 8;

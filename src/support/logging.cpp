@@ -83,12 +83,28 @@ std::string session_log_directory(std::string_view logging_dir) {
     return directory.str().str();
 }
 
+/// Why `dir` could not be created: a file standing where one of its
+/// directories goes is named, which Windows reports as a missing path.
+static std::string creation_error(llvm::StringRef dir, std::error_code error) {
+    for(auto at = dir; !at.empty(); at = llvm::sys::path::parent_path(at)) {
+        if(llvm::sys::fs::exists(at)) {
+            if(!llvm::sys::fs::is_directory(at)) {
+                return std::format("{} is not a directory", at.str());
+            }
+            break;
+        }
+    }
+    return error.message();
+}
+
 bool file_logger(std::string_view name,
                  std::string_view dir,
                  const Options& options,
                  bool mirror_stderr) {
     if(auto ec = llvm::sys::fs::create_directories(dir)) {
-        spdlog::error("Failed to create log directory {}: {}", std::string(dir), ec.message());
+        spdlog::error("Failed to create log directory {}: {}",
+                      std::string(dir),
+                      creation_error(dir, ec));
         return false;
     }
     llvm::SmallString<256> joined(dir);
