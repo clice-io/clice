@@ -160,10 +160,9 @@ std::optional<kota::codec::RawValue> run_semantic_tokens(CompilationUnit& unit,
                               feature::semantic_token_legend(config.semantic_tokens)));
 }
 
-/// The tokens the index projects beside the AST's (semantic_tokens_check).
 std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& unit,
                                                                const Config& config) {
-    return to_raw_json(feature::semantic_tokens_check(unit, config.semantic_tokens));
+    return to_raw_json(feature::check_semantic_tokens(unit, config.semantic_tokens));
 }
 
 std::optional<kota::codec::RawValue> run_document_symbols(CompilationUnit& unit,
@@ -171,10 +170,9 @@ std::optional<kota::codec::RawValue> run_document_symbols(CompilationUnit& unit,
     return to_raw_json(feature::document_symbols(unit, config.document_symbols));
 }
 
-/// The outline the index projects beside the AST's (document_symbols_check).
 std::optional<kota::codec::RawValue> run_document_symbol_check(CompilationUnit& unit,
                                                                const Config& config) {
-    return to_raw_json(feature::document_symbols_check(unit, config.document_symbols));
+    return to_raw_json(feature::check_document_symbols(unit, config.document_symbols));
 }
 
 std::optional<kota::codec::RawValue> run_document_links(CompilationUnit& unit,
@@ -479,6 +477,28 @@ struct FileCommand {
     /// clice's build of pch_writer's header, which the compile loads.
     std::string pch;
 };
+
+/// The workspace the inspected file's directory belongs to: itself or the
+/// nearest ancestor holding a configuration file or a compile_commands.json
+/// (the upward lookup clangd does), so a nested tree resolves its commands
+/// as the server would from the project root; `start` itself when none does.
+/// Only the ancestors themselves are checked — scanning their
+/// subdirectories would let an unrelated sibling project's database win.
+CanonicalPath workspace_of(CanonicalRef start) {
+    CanonicalPath workspace = start;
+    path::walk_ancestors(start, [&](CanonicalRef dir) {
+        bool marked = llvm::any_of(config_file_names,
+                                   [&](llvm::StringRef marker) {
+                                       return vfs::exists(path::join(dir, marker));
+                                   }) ||
+                      vfs::exists(path::join(dir, "compile_commands.json"));
+        if(marked) {
+            workspace = dir;
+        }
+        return !marked;
+    });
+    return workspace;
+}
 
 /// The compile command for `file`: explicit --flags arguments, else the
 /// resolution the server performs for a background compile: the file's
@@ -806,13 +826,8 @@ int run_inspect(const InspectOptions& opts, const FeatureSpec& spec) {
         return result.has_value();
     };
     if(flags.empty()) {
-        // The root the server gives a file outside its folders, else the
-        // file's own directory.
         auto identity = CanonicalPath(directory);
-        auto root = project_root_above(identity);
-        if(root.empty()) {
-            root = identity;
-        }
+        auto root = workspace_of(identity);
         // The overlay goes in before the rules compile, as initializationOptions do.
         project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
         if(!overlay()) {

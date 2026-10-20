@@ -4,16 +4,18 @@ module;
 
 module clice;
 
+import :compile.compilation;
 import :feature.feature;
 import :feature.projection_check;
 import :feature.semantic_token_stream;
 import :index.indexer;
-import :index.shard;
 import :index.symbol;
 import :index.tu_index;
 import :semantic.symbol;
 import :support.bytes;
+import :syntax.position;
 import :syntax.source_text;
+import :syntax.token;
 
 namespace clice::feature {
 
@@ -46,7 +48,7 @@ struct UnitIndex {
 
 }  // namespace
 
-auto semantic_tokens_check(CompilationUnit& unit, const SemanticTokensOptions& options)
+auto check_semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& options)
     -> TokenCheck {
     auto legend = semantic_token_legend(options);
     auto& source = unit.focus_file().text();
@@ -121,7 +123,7 @@ auto semantic_tokens_check(CompilationUnit& unit, const SemanticTokensOptions& o
     return check;
 }
 
-auto document_symbols_check(CompilationUnit& unit, const DocumentSymbolsOptions& options)
+auto check_document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions& options)
     -> OutlineCheck {
     auto ast = document_symbols(unit, options);
     UnitIndex unit_index(unit);

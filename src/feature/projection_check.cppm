@@ -33,7 +33,7 @@ struct TokenCheck {
 /// The file's semantic tokens as the AST gives them beside the ones the
 /// index projects from the unit's own TU index, as the server serves a file
 /// before its AST is current: tokens pair by where they begin.
-auto semantic_tokens_check(CompilationUnit& unit, const SemanticTokensOptions& options)
+auto check_semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& options)
     -> TokenCheck;
 
 /// One way the outline the index projects differs from the AST's, at the
@@ -59,7 +59,7 @@ struct OutlineCheck {
 /// is current: an entry of one matches the other's entry of the same name
 /// range, the same name first. The index knows no signatures, so a detail
 /// differs only where the index gives one.
-auto document_symbols_check(CompilationUnit& unit, const DocumentSymbolsOptions& options)
+auto check_document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions& options)
     -> OutlineCheck;
 
 }  // namespace clice::feature

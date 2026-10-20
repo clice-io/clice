@@ -1,7 +1,0 @@
-[
-  {
-    "directory": "${WS}/build",
-    "file": "${WS}/src/main.cpp",
-    "arguments": ["clang++", "-std=c++20", "-DFROM_BUILD", "-fsyntax-only", "${WS}/src/main.cpp"]
-  }
-]
