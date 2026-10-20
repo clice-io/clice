@@ -135,7 +135,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 6. 将每个选项解析、分类一次并存入结构化配置，同时以 `directory` 为基准将相对包含路径转换为绝对路径
 7. 对相同配置进行去重，使其共享 `ConfigID`
 
-解析过程还会识别 CMake 直接传给 cc1 的预编译头文件：翻译单元的 `-Xclang -include-pch -Xclang <pchfile>`，以及构建该 PCH 的条目中的 `-Xclang -emit-pch`，都会成为结构化选项，任何编译都不会把它们渲染到命令中。磁盘上的 PCH 可能出自其他编译器，因此 clice 会用写出它的那个条目的命令自行构建一份（在 CMake 中即 `cmake_pch.hxx.cxx` 的条目；GCC 在强制包含的头文件旁写出的 `.gch` 同样能用来找到该条目），读取该 PCH 的每个翻译单元都改为加载 clice 构建的版本：打开文件的 Preamble PCH 以链式 PCH 的方式接在它之后，后台索引也在它之上解析。PCH 所含的头文件单独打开时，会借用某个翻译单元的命令，但去掉 PCH 所代表的强制包含的头文件（CMake 的 `cmake_pch.hxx`，以及 cl 中 `/Yu` 指定的头文件）——否则该头文件会在自身正文之前就被它包含进来——同时也去掉 PCH。构建在不使用预编译头文件时也必须能通过，因此 PCH 中的头文件都能独立编译；个别需要 PCH 中排在它之前的内容的头文件，则和其他不能独立编译的头文件一样，在宿主的上下文中编译。
+解析过程还会识别 CMake 直接传给 cc1 的预编译头文件：翻译单元的 `-Xclang -include-pch -Xclang <pchfile>`，以及构建该 PCH 的条目中的 `-Xclang -emit-pch`，都会成为结构化选项，任何编译都不会把它们渲染到命令中。磁盘上的 PCH 可能出自其他编译器，因此 clice 会用写出它的那个条目的命令自行构建一份（在 CMake 中即 `cmake_pch.hxx.cxx` 的条目；GCC 在强制包含的头文件旁写出的 `.gch` 同样能用来找到该条目），读取该 PCH 的每个翻译单元都改为加载 clice 构建的版本：打开文件的 Preamble PCH 以链式 PCH 的方式接在它之后，后台索引也在它之上解析。PCH 所含的头文件单独打开时，编译不使用该 PCH：否则 PCH 中的头文件保护会跳过该头文件自身的正文。与编译借以进入头文件的其他强制包含一样，PCH 所代表的那个强制包含的头文件也会从命令中去掉（见[编译上下文](compilation-context.md#automatic-self-containedness-detection)）。
 
 ### 工具链探测
 

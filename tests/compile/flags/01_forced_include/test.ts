@@ -45,12 +45,15 @@ test("forced header edit", async (t) => {
     s.save("force.h");
     expect(await s.errors("main.cpp")).toEqual([]);
     // Each change rebuilds the PCH the forced header is part of, and indexes
-    // the closed unit again.
+    // the closed unit again. The forced header, hosted by the units forcing
+    // it in, is indexed on its own too: its new text of the first change
+    // starts its index over, dropping what the closed unit's index put
+    // there, and the unit indexes once more.
     const { failed } = await s.sync();
     const { files } = await s.counts();
     expect({ pch: files["main.cpp"]?.pch, index: files["other.cpp"]?.index }).toEqual({
         pch: 3,
-        index: 3,
+        index: 4,
     });
     await t.show("failed", failed);
 });
