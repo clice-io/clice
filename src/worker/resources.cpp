@@ -68,7 +68,8 @@ std::uint64_t cgroup_headroom(std::uint64_t limit,
                               std::uint64_t file,
                               std::uint64_t mapped) {
     auto reclaimable = file > mapped ? file - mapped : 0;
-    return (limit > usage ? limit - usage : 0) + reclaimable;
+    // Usage may pass memory.high: the cache pays for the excess first.
+    return limit + reclaimable > usage ? limit + reclaimable - usage : 0;
 }
 
 }  // namespace
@@ -79,8 +80,8 @@ std::optional<CgroupMemory> cgroup_memory(llvm::StringRef root, llvm::StringRef 
 
     // cgroup v1: the memory controller's line, "N:memory:/path".
     for(auto line: lines) {
-        auto [controller, path] = line.split(':').second.split(':');
-        if(controller != "memory") {
+        auto [controllers, path] = line.split(':').second.split(':');
+        if(!llvm::is_contained(llvm::split(controllers, ','), "memory")) {
             continue;
         }
         // A container without a cgroup namespace mounts its own cgroup at
@@ -145,6 +146,28 @@ std::optional<CgroupMemory> cgroup_memory(llvm::StringRef root, llvm::StringRef 
         return tightest;
     }
     return std::nullopt;
+}
+
+std::uint64_t macos_headroom(const HostMemory& host, llvm::ArrayRef<ProcessUsage> workers) {
+    // Neither the free count nor the inactive one tells what the workers
+    // can still take: macOS compresses their memory long before it frees
+    // any. What the rest of the system holds is the wired, anonymous and
+    // compressed memory less the workers' own anonymous pages and their
+    // share of the compressor, at its current ratio. A resident size
+    // counts the file pages too, which the anonymous count leaves out, and
+    // a footprint the compressed pages, at their size before compression.
+    auto ratio = host.compressor > 0 ? double(host.compressed) / double(host.compressor) : 1.0;
+    std::uint64_t ours = 0;
+    std::uint64_t footprint = 0;
+    for(auto& worker: workers) {
+        auto anonymous = std::min(worker.resident, worker.memory);
+        ours += anonymous + std::uint64_t(double(worker.memory - anonymous) / ratio);
+        footprint += worker.memory;
+    }
+    auto held = host.wired + host.anonymous + host.compressor;
+    auto others = held > ours ? held - ours : 0;
+    auto taken = others + footprint;
+    return host.total > taken ? host.total - taken : 0;
 }
 
 #if defined(_WIN32)
@@ -225,32 +248,15 @@ MemoryState memory_state(llvm::ArrayRef<ProcessUsage> workers) {
        ::host_page_size(::mach_host_self(), &page) != KERN_SUCCESS) {
         return {};
     }
-    // Neither the free count nor the inactive one tells what the workers
-    // can still take: macOS compresses their memory long before it frees
-    // any. What the rest of the system holds is the wired, anonymous and
-    // compressed memory less the workers' own resident pages and their
-    // share of the compressor, at its current ratio.
-    auto wired = std::uint64_t(vm.wire_count) * page;
-    auto anonymous = std::uint64_t(vm.internal_page_count) * page;
-    auto compressor = std::uint64_t(vm.compressor_page_count) * page;
-    auto compressed = std::uint64_t(vm.total_uncompressed_pages_in_compressor) * page;
-    auto ratio = compressor > 0 ? double(compressed) / double(compressor) : 1.0;
-    std::uint64_t resident = 0;
-    std::uint64_t footprint = 0;
-    double shared_compressor = 0;
-    for(auto& worker: workers) {
-        resident += worker.resident;
-        footprint += worker.memory;
-        if(worker.memory > worker.resident) {
-            shared_compressor += double(worker.memory - worker.resident) / ratio;
-        }
-    }
-    auto held = wired + anonymous + compressor;
-    auto ours = resident + std::uint64_t(shared_compressor);
-    auto others = held > ours ? held - ours : 0;
-    auto taken = others + footprint;
+    HostMemory host{
+        .total = total,
+        .wired = std::uint64_t(vm.wire_count) * page,
+        .anonymous = std::uint64_t(vm.internal_page_count) * page,
+        .compressor = std::uint64_t(vm.compressor_page_count) * page,
+        .compressed = std::uint64_t(vm.total_uncompressed_pages_in_compressor) * page,
+    };
     return {
-        .headroom = total > taken ? total - taken : 0,
+        .headroom = macos_headroom(host, workers),
         .reserve = std::max(1536 * MiB, total / 10),
         .limit = total,
     };

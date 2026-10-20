@@ -423,8 +423,8 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
     w.state = SlotState::Dying;
     w.generation += 1;
     w.death->in_flight = scheduler.running_on(index, stateful);
+    w.death->memory = w.memory;
     if(!stateful) {
-        w.death->memory = w.memory;
         w.death->alone = scheduler.runs_alone(index);
     }
     if(stateful) {
@@ -466,6 +466,10 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
 
     if(stop_scope.cancelled())
         co_return;
+
+    if(!stateful) {
+        scheduler.worker_exited(index);
+    }
 
     // Intentional retirement (scale-down): the slot becomes permanently
     // vacant without crash processing.

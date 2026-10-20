@@ -1147,7 +1147,7 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
         // spawn runs the query inline to that suspension, so the pool
         // already reports it in flight: the bump arrives provably between
         // dispatch and reply.
-        ZASSERT(stack.pool.foreground_busy());
+        ZASSERT(stack.pool.stateful_busy());
         session->generation += 1;
         co_await group.join();
         ZEXPECT(stale);
@@ -1599,7 +1599,7 @@ ZEST_CASE(CloseDuringQueryEnds) {
             modified = !result.has_value() && result.error().code == content_modified_code;
         };
         group.spawn(hover());
-        ZASSERT(stack.pool.foreground_busy());
+        ZASSERT(stack.pool.stateful_busy());
         stack.sessions.close(path_id);
         stack.ast.drop(path_id);
         co_await group.join();

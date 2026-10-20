@@ -60,8 +60,8 @@ struct WorkerDeath {
     /// How it died, worded for the user ("signal 11 (SIGSEGV)").
     std::string cause;
 
-    /// A stateless worker's memory ran out: the pool killed it to free
-    /// memory, or an allocation failed in it. Its request is not to blame.
+    /// The worker's memory ran out: the pool killed it to free memory, or
+    /// an allocation failed in it. Its requests are not to blame.
     bool out_of_memory = false;
 
     /// The pool killed the worker because its request ignored a cancel past
@@ -70,10 +70,11 @@ struct WorkerDeath {
     /// preempting it.
     bool ignored_cancel = false;
 
-    /// A stateless worker's own memory as last sampled, and whether its
-    /// request was the only stateless one running: one whose memory ran out
-    /// alone does not fit this machine.
+    /// The worker's own memory as last sampled.
     std::uint64_t memory = 0;
+
+    /// A stateless worker's request was the only stateless one running: one
+    /// whose memory ran out alone does not fit this machine.
     bool alone = false;
 
     /// Requests in flight when the worker died. A death that names no
@@ -140,13 +141,17 @@ struct WorkerPoolOptions {
     std::chrono::milliseconds revive_after{30'000};
 
     /// A request running past its deadline is taken for a hung worker: the
-    /// worker is killed and the request blamed, like a crash. A build may
-    /// take long on a big translation unit (see worker::is_build); a query
-    /// never should. A stateless request is timed by its worker's CPU time,
-    /// and taken for hung too once that stands still for stall_deadline
-    /// (see SchedulerOptions).
+    /// worker is killed and every request of it past its deadline blamed,
+    /// like a crash. A build may take long on a big translation unit (see
+    /// worker::is_build); a query never should. A stateless request is
+    /// timed by its worker's CPU time, a stateful one by the time since its
+    /// document's earlier requests ended (see SchedulerOptions).
     std::chrono::milliseconds build_deadline{std::chrono::minutes(10)};
+
     std::chrono::milliseconds query_deadline{std::chrono::minutes(2)};
+
+    /// A stateless request is also taken for hung once its worker's CPU
+    /// time stands still this long.
     std::chrono::milliseconds stall_deadline{std::chrono::minutes(5)};
 
     /// Documents a stateful worker holds before evicting; unset leaves the
@@ -186,12 +191,12 @@ struct StatelessReport {
 ///     guarantee: capacity is never permanently zero.
 ///   - The pool ATTRIBUTES every death. A dying worker names the request it
 ///     was running (see worker/crash_report.cppm), or the deadline watchdog
-///     names the one it killed the worker for; each request in flight
-///     learns whether it is that one. A death that names a request is that
-///     request's content's doing and spends no slot budget; neither does a
-///     terminated session (SIGTERM, SIGINT, SIGHUP) or a SIGKILL (the OOM
-///     killer, a user) of a worker holding no work. Every other death
-///     naming no request counts toward the streak.
+///     names every one past its deadline it killed the worker for; each
+///     request in flight learns whether it is among them. A death that
+///     names a request is that request's content's doing and spends no slot
+///     budget; neither does a terminated session (SIGTERM, SIGINT, SIGHUP)
+///     or a SIGKILL (the OOM killer, a user) of a worker holding no work.
+///     Every other death naming no request counts toward the streak.
 ///   - The pool NEVER retries a request. Requests do not survive a crash;
 ///     slots do. Retry policy is semantic and lives with the caller —
 ///     deliver() is the shared form of it.
@@ -201,11 +206,12 @@ struct StatelessReport {
 ///     never blamed twice, the message how it died). worker_lost: another
 ///     request's crash took it along, or the death named none among several
 ///     requests in flight — blameless. worker_died: the death named no
-///     request and this one ran alone. out_of_memory: the stateless
-///     worker's memory ran out — blameless, Error::data says how much it
-///     reached and whether it ran alone. worker_unavailable: never
-///     dispatched, a capacity window — await_capacity() tells when it
-///     closes. cancelled: deliberate preemption, requeue freely.
+///     request and this one ran alone. out_of_memory: the worker's memory
+///     ran out — blameless, Error::data says how much it reached and
+///     whether it ran the only stateless request running.
+///     worker_unavailable: never dispatched, a capacity window —
+///     await_capacity() tells when it closes. cancelled: deliberate
+///     preemption, requeue freely.
 class WorkerPool {
 public:
     WorkerPool(kota::event_loop& loop) : loop(loop), scheduler(SchedulerOptions{}) {}
@@ -216,11 +222,9 @@ public:
     /// Gracefully stop all workers.
     kota::task<> stop();
 
-    /// Whether foreground work is in flight right now: a stateful request
-    /// dispatched and unanswered, or high-priority stateless work queued or
-    /// running.
-    bool foreground_busy() const {
-        return stateful_inflight > 0 || high_inflight > 0;
+    /// Whether a stateful request is dispatched and unanswered.
+    bool stateful_busy() const {
+        return stateful_inflight > 0;
     }
 
     /// Send a request to a stateful worker with path_id affinity routing.
@@ -379,9 +383,10 @@ private:
 
         std::chrono::steady_clock::time_point spawn_time{};
 
-        /// The process's own memory as last sampled, and the part of it in
-        /// swap.
+        /// The process's own memory as last sampled.
         std::uint64_t memory = 0;
+
+        /// The part of it in swap.
         std::uint64_t swapped = 0;
     };
 
@@ -389,6 +394,7 @@ private:
     /// scheduler's actions reach it by.
     struct PendingStateless {
         WorkerPool& pool;
+
         RequestId id;
 
         /// Fired by the scheduler's Cancel: cancels the request over IPC.
@@ -401,6 +407,7 @@ private:
 
         /// The slot and its generation the Dispatch named.
         std::optional<std::size_t> slot;
+
         unsigned generation = 0;
 
         bool finished = false;
@@ -428,8 +435,11 @@ private:
     /// (see worker::is_build), which picks the deadline a kill reports.
     struct Inflight {
         WorkerPool& pool;
+
         RequestId id;
+
         std::string tag;
+
         bool build;
 
         Inflight(WorkerPool& pool, RequestId id, std::string tag, bool build) :
@@ -535,11 +545,6 @@ private:
     /// Take a sample and hand it to the scheduler.
     void sample();
 
-    /// What the workers have had moved out to swap between two samples
-    /// that tells memory is short: below it, the kernel trims pages nothing
-    /// touches.
-    constexpr static std::uint64_t swap_threshold = 64ull << 20;
-
     /// Whether the worker holds work, and with it memory: a request in
     /// flight, or documents (whose last one can close while its compile
     /// still runs).
@@ -625,6 +630,11 @@ private:
     friend struct testing::WorkerPoolFixture;
 
 private:
+    /// What the workers have had moved out to swap between two samples
+    /// that tells memory is short: below it, the kernel trims pages nothing
+    /// touches.
+    constexpr static std::uint64_t swap_threshold = 64ull << 20;
+
     kota::event_loop& loop;
 
     llvm::SmallVector<WorkerProcess> stateless_workers;
@@ -654,8 +664,6 @@ private:
     llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
 
     std::size_t stateful_inflight = 0;
-
-    std::size_t high_inflight = 0;
 
     /// Cancelled by stop(). Unwinds monitor_loop() and respawn backoff sleeps
     /// at their poll points, and lets monitor_worker() attribute the
@@ -782,6 +790,7 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
 
     struct Timed {
         WorkerPool& pool;
+
         RequestId id;
 
         ~Timed() {
@@ -815,21 +824,6 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
                                                      bool& sent) {
     using worker::dispatch_errc::cancelled;
     using worker::dispatch_errc::worker_unavailable;
-    if(priority == worker::Priority::High) {
-        high_inflight += 1;
-    }
-
-    struct HighGuard {
-        WorkerPool& pool;
-        bool high;
-
-        ~HighGuard() {
-            if(high) {
-                pool.high_inflight -= 1;
-            }
-        }
-    } high_guard{*this, priority == worker::Priority::High};
-
     while(true) {
         if(stop_scope.cancelled() || !has_future_capacity() || cancel.cancelled()) {
             co_await kota::fail(

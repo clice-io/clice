@@ -183,7 +183,8 @@ bool start_batch(BatchStack& stack,
     cfg.idle_timeout_ms.value = 0;
     if(workers != 0) {
         cfg.stateless_worker_count.value = workers;
-        cfg.min_stateless_worker_count.value = workers;
+        cfg.min_stateless_worker_count.value =
+            std::min(cfg.min_stateless_worker_count.value, workers);
         cfg.max_stateless_worker_count.value = workers;
     }
 
@@ -488,7 +489,7 @@ kota::task<> run_lint_pass(BatchStack& stack,
         for(auto path_id: tus) {
             // The pump feeder's window: deep enough that workers never
             // idle, shallow enough that a wind-down drains fast.
-            while(pass.inflight >= std::max<std::size_t>(2 * stack.pool.background_limit(), 2)) {
+            while(pass.inflight >= 2 * stack.pool.background_limit()) {
                 pass.task_done.reset();
                 co_await pass.task_done.wait();
             }

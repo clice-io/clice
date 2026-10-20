@@ -28,15 +28,19 @@ SimSpec on_box(llvm::ArrayRef<UnitLoad> units,
     return spec;
 }
 
+/// Whether the unit fits the machine alone, with `reserve` left.
+bool fits(const SimSpec& spec, const UnitLoad& unit, std::uint64_t reserve) {
+    auto room = spec.machine.memory - spec.machine.others.front().second;
+    return std::uint64_t(unit.peak) * MiB + reserve <= room;
+}
+
 /// The units that do not fit the machine even alone, with the reserve
 /// kept or without: one between the two may finish before the reserve is
 /// missed.
 std::size_t too_big_for(const SimSpec& spec, bool keep_reserve) {
-    auto room = spec.machine.memory - spec.machine.others.front().second;
     auto reserve = keep_reserve ? sim::reserve(spec.machine) : 0;
-    return std::ranges::count_if(spec.units, [&](const UnitLoad& unit) {
-        return std::uint64_t(unit.peak) * MiB + reserve > room;
-    });
+    return std::ranges::count_if(spec.units,
+                                 [&](const UnitLoad& unit) { return !fits(spec, unit, reserve); });
 }
 
 double max_wait(const SimResult& result) {
@@ -55,14 +59,17 @@ void expect_sound(const SimSpec& spec, const SimResult& result) {
 }
 
 /// The same units with their peaks known, as every run after the first
-/// knows them: memory kills only what is too big or what another program
-/// took memory from.
+/// knows them: memory kills only a unit that needs the reserve, which the
+/// user's own work beside it takes back, or what another program took
+/// memory from.
 SimResult known_run(SimSpec spec) {
     spec.known_peaks = true;
     auto result = simulate(spec);
     expect_sound(spec, result);
     if(spec.machine.others.size() == 1) {
-        ZEXPECT(result.memory_kills <= result.too_big.size());
+        for(auto unit: result.memory_killed) {
+            ZEXPECT(!fits(spec, spec.units[unit], sim::reserve(spec.machine)));
+        }
     }
     return result;
 }

@@ -10,13 +10,9 @@ namespace clice {
 
 using worker::Priority;
 
-namespace {
-
-std::uint64_t less(std::uint64_t a, std::uint64_t b) {
+static std::uint64_t less(std::uint64_t a, std::uint64_t b) {
     return a > b ? a - b : 0;
 }
-
-}  // namespace
 
 void WorkerScheduler::submit(RequestId id,
                              Priority priority,
@@ -28,6 +24,7 @@ void WorkerScheduler::submit(RequestId id,
                              .priority = priority,
                              .build = build,
                              .peak = cost.peak,
+                             .floor = cost.floor,
                              .submitted = now});
     if(priority == Priority::High) {
         high_queue.push_back(id);
@@ -115,6 +112,10 @@ void WorkerScheduler::stateful_end(RequestId id, SchedulerTime now) {
     auto ended = std::move(it->second);
     requests.erase(it);
     last_activity = now;
+    // One that waited ended out of turn: the one ahead of it still runs.
+    if(ended.waiting) {
+        return;
+    }
     Request* next = nullptr;
     for(auto& [_, other]: requests) {
         if(other.stateful && other.waiting && other.slot == ended.slot &&
@@ -141,11 +142,14 @@ void WorkerScheduler::worker_gone(std::size_t slot, bool stateful, SchedulerTime
     });
     if(!stateful) {
         slots.erase(slot);
-        if(memory_kill == slot) {
-            memory_kill.reset();
-        }
     }
     decide(now);
+}
+
+void WorkerScheduler::worker_exited(std::size_t slot) {
+    if(memory_kill == slot) {
+        memory_kill.reset();
+    }
 }
 
 void WorkerScheduler::user_activity(SchedulerTime now) {
@@ -155,11 +159,7 @@ void WorkerScheduler::user_activity(SchedulerTime now) {
 
 void WorkerScheduler::sample(SchedulerSample sample, SchedulerTime now) {
     for(auto& worker: sample.workers) {
-        auto it = slots.find(worker.slot);
-        if(it == slots.end()) {
-            continue;
-        }
-        auto& slot = it->second;
+        auto& slot = slots.at(worker.slot);
         slot.memory = worker.memory;
         slot.cpu = worker.cpu;
         if(!slot.request) {
@@ -238,7 +238,7 @@ std::size_t WorkerScheduler::running(Priority priority) const {
 }
 
 std::uint64_t WorkerScheduler::estimate(const Request& request) const {
-    auto peak = request.peak != 0 ? request.peak : unknown_peak();
+    auto peak = std::max(request.peak != 0 ? request.peak : unknown_peak(), request.floor);
     // One that outgrew its estimate has more to come: a quarter more is
     // assumed, as nothing tells how much.
     return request.memory < peak ? peak : request.memory + request.memory / 4;
@@ -269,31 +269,23 @@ std::uint64_t WorkerScheduler::growth_soon() const {
         if(request.priority != Priority::Low || request.killed) {
             continue;
         }
-        auto growth = std::uint64_t(request.growth * horizon);
-        if(request.peak != 0) {
-            growth = std::min(growth, less(estimate(request), request.memory));
-        }
-        soon += growth;
+        soon += std::min(std::uint64_t(request.growth * horizon),
+                         less(estimate(request), request.memory));
     }
     return soon;
 }
 
-bool WorkerScheduler::memory_admits(const Request& request,
-                                    const Slot& slot,
-                                    SchedulerTime now) const {
+bool WorkerScheduler::memory_admits(const Request& request, const Slot& slot) const {
     auto headroom = last_sample.headroom;
     auto reserve = last_sample.reserve;
+    // With nothing beside it, waiting would free no memory.
+    if(running(Priority::Low) == 0) {
+        return headroom >= reserve;
+    }
     // The worker's own memory is the request's to reuse. Sampled before its
     // last request ended, it still counts what that request freed since,
     // and the headroom sampled with it lacks the same bytes.
     auto room = headroom + slot.memory;
-    if(running(Priority::Low) == 0) {
-        if(headroom < reserve) {
-            return false;
-        }
-        return room >= reserve + estimate(request) ||
-               (held && held->first == request.id && now - held->second >= long_wait);
-    }
     return room >= reserve + growth_due() + estimate(request);
 }
 
@@ -316,7 +308,6 @@ void WorkerScheduler::start(Request& request, Slot& slot, SchedulerTime now) {
     request.order = next_order;
     next_order += 1;
     request.memory = slot.memory;
-    request.max_memory = slot.memory;
     slot.request = request.id;
     last_busy = now;
     actions.push_back(scheduler::Dispatch{.request = request.id, .slot = slot.slot});
@@ -393,7 +384,7 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
             break;
         }
         auto& head = requests.at(low_queue.front());
-        if(memory_admits(head, *slot, now)) {
+        if(memory_admits(head, *slot)) {
             held.reset();
             start(head, *slot, now);
             low_queue.pop_front();
@@ -410,7 +401,7 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
         }
         auto behind = low_queue | std::views::drop(1) | std::views::take(backfill_depth);
         auto later = std::ranges::find_if(behind, [&](RequestId id) {
-            return memory_admits(requests.at(id), *slot, now);
+            return memory_admits(requests.at(id), *slot);
         });
         if(later == behind.end()) {
             break;
@@ -544,7 +535,7 @@ void WorkerScheduler::scale(SchedulerTime now) {
     // Background work waiting behind a pool idle time or memory shrank.
     if(!low_queue.empty() && !idle && running(Priority::Low) < background_limit(now) &&
        processes < std::min(options.background_jobs, options.max_workers) &&
-       memory_admits(requests.at(low_queue.front()), Slot{}, now)) {
+       memory_admits(requests.at(low_queue.front()), Slot{})) {
         actions.push_back(scheduler::Spawn{});
         return;
     }

@@ -31,7 +31,7 @@ struct BatchOptions {
     /// persisted selection, else the default.
     std::string configuration;
 
-    /// Stateless worker count override; 0 keeps the config's values.
+    /// Stateless worker count override; 0 runs one per logical core.
     std::uint32_t workers = 0;
 
     /// Path of the clice binary, for spawning workers.
@@ -72,6 +72,7 @@ struct BatchResult {
     /// at `memory` bytes: it does not fit this machine.
     struct TooBig {
         std::string unit;
+
         std::uint64_t memory = 0;
     };
 

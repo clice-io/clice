@@ -26,26 +26,33 @@ using RequestId = std::uint64_t;
 /// What a request is expected to cost.
 struct RequestCost {
     /// The peak of its worker's own memory, in bytes, as the request's last
-    /// run measured it (or the memory it reached when that run was killed
-    /// for memory); zero when nothing is known.
+    /// finished run measured it; zero when nothing is known.
     std::uint64_t peak = 0;
+
+    /// The memory a later run reached when it was killed for memory: the
+    /// peak is at least this.
+    std::uint64_t floor = 0;
 };
 
 struct SchedulerOptions {
     /// Background (Low) requests at once while the user is idle.
     std::uint32_t background_jobs = 2;
 
-    /// The stateless processes the pool keeps, and the most it grows to for
-    /// foreground work.
+    /// The stateless processes the pool keeps.
     std::uint32_t min_workers = 1;
+
+    /// The most it grows to for foreground work.
     std::uint32_t max_workers = 2;
 
     /// A stateless request is taken for hung past this much of its
-    /// worker's CPU time, a stateful one past this much time since it was
-    /// sent; a stateless one also when its worker's CPU time stands still
-    /// for stall_deadline.
+    /// worker's CPU time, a stateful one past this much time since its
+    /// document's earlier requests ended.
     std::chrono::milliseconds build_deadline{std::chrono::minutes(10)};
+
     std::chrono::milliseconds query_deadline{std::chrono::minutes(2)};
+
+    /// A stateless request is also taken for hung when its worker's CPU
+    /// time stands still this long.
     std::chrono::milliseconds stall_deadline{std::chrono::minutes(5)};
 };
 
@@ -81,7 +88,7 @@ struct SchedulerSample {
         std::chrono::milliseconds cpu{0};
     };
 
-    /// The stateless workers.
+    /// The stateless workers in service.
     std::vector<Worker> workers;
 };
 
@@ -90,6 +97,7 @@ namespace scheduler {
 /// Run the request on the slot's worker.
 struct Dispatch {
     RequestId request = 0;
+
     std::size_t slot = 0;
 };
 
@@ -145,7 +153,7 @@ using SchedulerAction = std::variant<scheduler::Dispatch,
 /// the user or to memory, which process dies for a deadline, how many
 /// stateless processes run. It reads no clock and touches no process: the
 /// pool reports events and samples, takes the actions out and carries them
-/// out. Rules (notes/engine/memory-pressure.md):
+/// out. Rules:
 ///
 ///   - Foreground (High) requests run in arrival order on any idle
 ///     worker; with none idle the newest background request is asked to
@@ -159,7 +167,7 @@ using SchedulerAction = std::variant<scheduler::Dispatch,
 ///     long_wait; then the queue waits for it, and with no background
 ///     request running it starts once the headroom exceeds the reserve.
 ///   - Below the reserve, one background request is killed at a time, the
-///     newest; the next only once that process is gone.
+///     newest; the next only once that process has exited.
 ///   - A stateless request's deadline is its worker's CPU time; a stateful
 ///     one's is the time since its document's earlier requests ended, a
 ///     query's not counted while a build runs on the same worker, up to the
@@ -205,6 +213,10 @@ public:
     /// requests on it are gone; the pool fails their senders.
     void worker_gone(std::size_t slot, bool stateful, SchedulerTime now);
 
+    /// A stateless slot's process exited, after it left service: the memory
+    /// it held is free again.
+    void worker_exited(std::size_t slot);
+
     /// The user did something: an edit, a request.
     void user_activity(SchedulerTime now);
 
@@ -238,7 +250,7 @@ public:
     std::uint64_t unknown_peak() const;
 
     /// The peak assumed before anything finished, and the floor of every
-    /// estimate.
+    /// estimate of an unknown peak.
     constexpr static std::uint64_t default_peak = 1536ull << 20;
 
     /// The user counts as active this long after their last activity, and
@@ -246,6 +258,7 @@ public:
     /// foreground_request_hold of its age: one older is either stuck or
     /// long, and must not pin the background to one forever.
     constexpr static std::chrono::seconds foreground_hold{10};
+
     constexpr static std::chrono::seconds foreground_request_hold{60};
 
     /// A cooperatively cancelled request still running after this is
@@ -261,16 +274,17 @@ public:
     constexpr static std::chrono::seconds starved_spawn{2};
 
     /// The head of the background queue memory holds back lets later
-    /// requests that fit run beside it for this long; then the queue drains
-    /// for it, and with nothing else running it starts anyway: it runs
-    /// alone, and a kill then shows it does not fit this machine.
+    /// requests that fit run beside the ones running for this long; then
+    /// the queue drains for it. With no background request running it
+    /// starts at once: it runs alone, and a kill then shows it does not fit
+    /// this machine.
     constexpr static std::chrono::seconds long_wait{30};
 
     /// How far behind the head a request that fits is looked for.
     constexpr static std::size_t backfill_depth = 16;
 
     /// The only stateless request running is killed only once the headroom
-    /// falls below this share of the reserve.
+    /// falls, or is about to fall, below this share of the reserve.
     constexpr static std::uint64_t lone_share = 3;
 
     /// How far ahead memory is projected at the rate the running background
@@ -295,8 +309,10 @@ private:
 
         bool waiting = false;
 
-        /// The memory it is expected to peak at; zero when unknown.
+        /// See RequestCost.
         std::uint64_t peak = 0;
+
+        std::uint64_t floor = 0;
 
         SchedulerTime submitted;
 
@@ -361,11 +377,11 @@ private:
     std::uint64_t growth_due() const;
 
     /// The memory they will take within memory_horizon, at their rate,
-    /// bounded by their estimates when their peaks are known.
+    /// bounded by their estimates.
     std::uint64_t growth_soon() const;
 
     /// Whether memory admits the queued background request on `slot`.
-    bool memory_admits(const Request& request, const Slot& slot, SchedulerTime now) const;
+    bool memory_admits(const Request& request, const Slot& slot) const;
 
     Slot* idle_slot();
 

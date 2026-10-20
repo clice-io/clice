@@ -171,10 +171,11 @@ private:
     /// so the rerun cannot fail the same way.
     llvm::DenseSet<Fid> send_in_full;
 
-    /// The memory each TU's last run in this session reached: its peak, or
-    /// what it had when its memory ran out. Ahead of the manifest's peak,
-    /// which only an index that merged records.
-    llvm::DenseMap<Fid, std::uint64_t> peaks;
+    /// What each TU's runs in this session measured: the peak of the last
+    /// finished one, and the memory one killed for memory since reached.
+    /// Ahead of the manifest's peak, which only an index that merged
+    /// records.
+    llvm::DenseMap<Fid, RequestCost> costs;
 };
 
 }  // namespace clice

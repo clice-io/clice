@@ -646,7 +646,7 @@ ZEST_CASE(PulseNarrowsBackground) {
     ZEXPECT(f.pool.background_limit() == 1u);
 }
 
-ZEST_CASE(MemoryKillIsOutOfMemory) {
+ZEST_CASE(MemoryKillRecordsDeath) {
     WorkerPoolFixture f;
     f.add_stateless();
     f.add_stateless();
@@ -1032,7 +1032,7 @@ ZEST_CASE(DeathNamesItsRequest) {
             worker_lost);
 }
 
-ZEST_CASE(OutOfMemoryCarriesMemory) {
+ZEST_CASE(MemoryErrorCarriesData) {
     WorkerDeath death;
     death.cause = "killed to free memory";
     death.out_of_memory = true;
@@ -1839,6 +1839,40 @@ ZEST_CASE(LinkEndMarksDead) {
     ZEXPECT(done);
 }
 #endif
+
+ZEST_CASE(MemoryKillReachesSender) {
+    TempDir tmp;
+    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
+
+    WorkerPoolFixture f;
+    std::optional<kota::ipc::Error> error;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        ZASSERT(f.start(1, 0));
+        auto params = WorkerPoolFixture::index_params(tmp.path("slow.cpp"));
+        kota::task_group<> group;
+        auto sender = [&]() -> kota::task<> {
+            auto result = co_await f.pool.send_stateless(params, worker::Priority::High);
+            if(!result.has_value()) {
+                error = result.error();
+            }
+        };
+        group.spawn(sender());
+        ZASSERT(f.running_on(0) == 1u);
+        f.kill(0, false, scheduler::KillReason::Memory);
+        co_await group.join();
+        // Back in service at once, its budget untouched.
+        co_await f.serves(0);
+        ZEXPECT(f.crash_streak(0) == 0u);
+        co_await f.stop();
+        done = true;
+    });
+    ZEXPECT(done);
+    ZASSERT(error.has_value());
+    ZEXPECT(error->code == worker::dispatch_errc::out_of_memory);
+    ZASSERT(error->data.has_value());
+    ZEXPECT((*error->data)["alone"].get_bool() == true);
+}
 
 ZEST_CASE(SampleReadsWorkers) {
     WorkerPoolFixture f;

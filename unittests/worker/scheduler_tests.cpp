@@ -55,8 +55,8 @@ struct Core {
         take();
     }
 
-    void submit(RequestId id, Priority priority, std::uint64_t peak = 0, bool build = true) {
-        scheduler.submit(id, priority, {.peak = peak}, build, now);
+    void submit(RequestId id, Priority priority, RequestCost cost = {}, bool build = true) {
+        scheduler.submit(id, priority, cost, build, now);
         take();
     }
 
@@ -116,7 +116,7 @@ ZEST_CASE(ForegroundStopsNewestBackground) {
     ZEXPECT(core.slot_of(3) == std::optional<std::size_t>(1));
 }
 
-ZEST_CASE(ActiveUserGetsOneJob) {
+ZEST_CASE(ActiveUserOneJob) {
     Core core(4);
     core.scheduler.user_activity(core.now);
     core.take();
@@ -161,20 +161,20 @@ ZEST_CASE(KnownPeakAdmitsMore) {
     Core core(4);
     core.sample(4 * GiB);
     for(RequestId id = 1; id <= 4; id += 1) {
-        core.submit(id, Priority::Low, 800 * MiB);
+        core.submit(id, Priority::Low, {.peak = 800 * MiB});
     }
     ZEXPECT(core.slot_of(4).has_value());
 }
 
 ZEST_CASE(GrowthStillDueCounts) {
     Core core(4);
-    core.submit(1, Priority::Low, 3 * GiB);
+    core.submit(1, Priority::Low, {.peak = 3 * GiB});
     // The first unit has grown to 1 GiB of its 3: 2 GiB are still due.
     core.sample(3 * GiB,
                 {
                     {.slot = 0, .memory = 1 * GiB}
     });
-    core.submit(2, Priority::Low, 1 * GiB);
+    core.submit(2, Priority::Low, {.peak = 1 * GiB});
     ZEXPECT(!core.slot_of(2));
     core.sample(4 * GiB,
                 {
@@ -183,7 +183,7 @@ ZEST_CASE(GrowthStillDueCounts) {
     ZEXPECT(core.slot_of(2).has_value());
 }
 
-ZEST_CASE(KillsNewestOneAtATime) {
+ZEST_CASE(KillsNewestInTurn) {
     Core core(4);
     core.submit(1, Priority::Low);
     core.advance(seconds(1));
@@ -200,18 +200,20 @@ ZEST_CASE(KillsNewestOneAtATime) {
     ZEXPECT(kills[0].requests.front() == 3u);
     ZEXPECT(kills[0].reason == scheduler::KillReason::Memory);
     ZEXPECT(!core.scheduler.runs_alone(kills[0].slot));
-    // Still short, but the first kill's process is not gone yet.
+    // Still short, and the killed process holds its memory until it exits,
+    // though it left service at once.
+    core.scheduler.worker_gone(2, false, core.now);
     core.advance(seconds(1));
     core.sample(256 * MiB);
     ZEXPECT(core.all<scheduler::Kill>().size() == 1u);
-    core.scheduler.worker_gone(2, false, core.now);
+    core.scheduler.worker_exited(2);
     core.sample(256 * MiB);
     kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 2u);
     ZEXPECT(kills[1].requests.front() == 2u);
 }
 
-ZEST_CASE(AloneKillIsTooBig) {
+ZEST_CASE(LoneKillTooBig) {
     Core core(1);
     core.submit(1, Priority::Low);
     core.sample(100 * MiB,
@@ -221,6 +223,34 @@ ZEST_CASE(AloneKillIsTooBig) {
     auto kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 1u);
     ZEXPECT(core.scheduler.runs_alone(kills[0].slot));
+}
+
+ZEST_CASE(LoneUnitGetsIdleMemory) {
+    Core core(2);
+    core.submit(1, Priority::Low);
+    core.sample(100 * MiB,
+                {
+                    {.slot = 0, .memory = 6 * GiB}
+    });
+    ZEXPECT(core.all<scheduler::Retire>().size() == 1u);
+    ZEXPECT(core.all<scheduler::Kill>().empty());
+    core.sample(100 * MiB,
+                {
+                    {.slot = 0, .memory = 6 * GiB}
+    });
+    ZEXPECT(core.all<scheduler::Kill>().size() == 1u);
+}
+
+ZEST_CASE(KilledMemoryJoinsPeaks) {
+    Core core(2);
+    core.submit(1, Priority::Low);
+    core.submit(2, Priority::Low);
+    core.sample(256 * MiB,
+                {
+                    {.slot = 1, .memory = 6 * GiB}
+    });
+    ZASSERT(core.all<scheduler::Kill>().size() == 1u);
+    ZEXPECT(core.scheduler.unknown_peak() == 6 * GiB);
 }
 
 ZEST_CASE(LoneUnitUsesReserve) {
@@ -262,7 +292,7 @@ ZEST_CASE(LoneUnitSwapsOn) {
     ZEXPECT(core.all<scheduler::Kill>().empty());
 }
 
-ZEST_CASE(ForegroundBesideIsNotAlone) {
+ZEST_CASE(ForegroundBesideNotLone) {
     Core core(2);
     core.submit(1, Priority::Low);
     core.submit(2, Priority::High);
@@ -286,20 +316,141 @@ ZEST_CASE(ForegroundNeverKilled) {
     ZEXPECT(core.all<scheduler::Kill>().empty());
 }
 
-ZEST_CASE(HeldUnitRunsAlone) {
+ZEST_CASE(IdleQueueStartsHead) {
+    // Nothing else runs: waiting frees no memory, and a kill alone then
+    // shows the unit does not fit.
     Core core(2);
     core.sample(2 * GiB);
-    core.submit(1, Priority::Low, 6 * GiB);
-    ZEXPECT(!core.slot_of(1));
-    core.advance(WorkerScheduler::long_wait);
-    core.sample(2 * GiB);
+    core.submit(1, Priority::Low, {.peak = 6 * GiB});
     ZEXPECT(core.slot_of(1).has_value());
+}
+
+ZEST_CASE(SmallerUnitsGoFirst) {
+    Core core(3);
+    core.submit(1, Priority::Low, {.peak = 1 * GiB});
+    core.sample(3 * GiB,
+                {
+                    {.slot = 0, .memory = 1 * GiB}
+    });
+    core.submit(2, Priority::Low, {.peak = 6 * GiB});
+    core.submit(3, Priority::Low, {.peak = 1 * GiB});
+    ZEXPECT(!core.slot_of(2));
+    ZEXPECT(core.slot_of(3).has_value());
+    // Past long_wait the queue waits for its head.
+    core.advance(WorkerScheduler::long_wait);
+    core.submit(4, Priority::Low, {.peak = 1 * GiB});
+    core.finish(3);
+    ZEXPECT(!core.slot_of(4));
+    core.finish(1);
+    ZEXPECT(core.slot_of(2).has_value());
+}
+
+ZEST_CASE(KillFloorRaisesEstimate) {
+    Core core(3);
+    core.sample(4 * GiB);
+    core.submit(1, Priority::Low, {.peak = 1 * GiB});
+    // Unknown, at least 1.5 GiB, fits beside it; one that reached 3 GiB
+    // when it was last killed does not.
+    core.submit(2, Priority::Low, {.floor = 3 * GiB});
+    ZEXPECT(!core.slot_of(2));
+    core.submit(3, Priority::Low);
+    ZEXPECT(core.slot_of(3).has_value());
+}
+
+ZEST_CASE(LoneGrowthBoundByEstimate) {
+    // Fast growth projects past the reserve's third, but the estimate
+    // leaves it 256 MiB more: the unit fits.
+    Core core(1);
+    core.submit(1, Priority::Low);
+    core.sample(2560 * MiB,
+                {
+                    {.slot = 0, .memory = 256 * MiB}
+    });
+    core.advance(seconds(1));
+    core.sample(1536 * MiB,
+                {
+                    {.slot = 0, .memory = 1280 * MiB}
+    });
+    ZEXPECT(core.all<scheduler::Kill>().empty());
+}
+
+ZEST_CASE(PeakNotInherited) {
+    Core core(1);
+    core.submit(1, Priority::Low);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = 6 * GiB}
+    });
+    core.finish(1);
+    // The slot's last sample is the previous unit's.
+    core.submit(2, Priority::Low);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = 300 * MiB}
+    });
+    ZEXPECT(core.scheduler.finish(2, core.now) == 300 * MiB);
+}
+
+ZEST_CASE(ForegroundGetsFreedSlot) {
+    Core core(1);
+    core.submit(1, Priority::Low);
+    core.submit(2, Priority::Low);
+    core.submit(3, Priority::High);
+    core.finish(1);
+    ZEXPECT(core.slot_of(3) == std::optional<std::size_t>(0));
+    ZEXPECT(!core.slot_of(2));
+}
+
+ZEST_CASE(IdleUserJobsCap) {
+    Core core(4, {.background_jobs = 2, .max_workers = 6});
+    for(RequestId id = 1; id <= 3; id += 1) {
+        core.submit(id, Priority::Low);
+    }
+    ZEXPECT(core.slot_of(2).has_value());
+    ZEXPECT(!core.slot_of(3));
+}
+
+ZEST_CASE(RetiringSlotTakesNothing) {
+    Core core(3);
+    core.advance(WorkerScheduler::idle_retire);
+    core.sample(16 * GiB);
+    ZASSERT(core.all<scheduler::Retire>().size() == 1u);
+    for(RequestId id = 1; id <= 3; id += 1) {
+        core.submit(id, Priority::Low);
+    }
+    ZEXPECT(core.slot_of(2).has_value());
+    ZEXPECT(!core.slot_of(3));
+}
+
+ZEST_CASE(AskedCancelCounts) {
+    Core core(2);
+    core.submit(1, Priority::Low);
+    core.submit(2, Priority::Low);
+    core.submit(3, Priority::High);
+    ZEXPECT(core.all<scheduler::Cancel>().size() == 1u);
+    // The cancel asked still frees the worker the foreground waits for.
+    core.sample(16 * GiB);
+    core.scheduler.user_activity(core.now);
+    core.take();
+    ZEXPECT(core.all<scheduler::Cancel>().size() == 1u);
+}
+
+ZEST_CASE(QueuedBackgroundSpawns) {
+    Core core(1);
+    core.submit(1, Priority::Low);
+    core.submit(2, Priority::Low);
+    ZEXPECT(core.all<scheduler::Spawn>().empty());
+    core.sample(16 * GiB);
+    ZASSERT(core.all<scheduler::Spawn>().size() == 1u);
+    core.scheduler.worker_ready(1, core.now);
+    core.take();
+    ZEXPECT(core.slot_of(2) == std::optional<std::size_t>(1));
 }
 
 ZEST_CASE(StarvedMachineHoldsAll) {
     Core core(2);
     core.sample(256 * MiB);
-    core.submit(1, Priority::Low, 200 * MiB);
+    core.submit(1, Priority::Low, {.peak = 200 * MiB});
     core.advance(minutes(10));
     core.sample(256 * MiB);
     ZEXPECT(!core.slot_of(1));
@@ -309,7 +460,7 @@ ZEST_CASE(StarvedMachineHoldsAll) {
 
 ZEST_CASE(BuildDeadlineIsCpu) {
     Core core(1);
-    core.submit(1, Priority::Low, 200 * MiB);
+    core.submit(1, Priority::Low, {.peak = 200 * MiB});
     // Twenty minutes waiting for the CPU spend two of it: no kill.
     for(int minute = 0; minute <= 20; minute += 1) {
         core.sample(16 * GiB,
@@ -330,7 +481,7 @@ ZEST_CASE(BuildDeadlineIsCpu) {
 
 ZEST_CASE(StalledCpuIsHung) {
     Core core(1);
-    core.submit(1, Priority::Low, 200 * MiB);
+    core.submit(1, Priority::Low, {.peak = 200 * MiB});
     core.sample(16 * GiB,
                 {
                     {.slot = 0, .cpu = seconds(3)}
@@ -373,6 +524,21 @@ ZEST_CASE(OverlappingBuildsBoundQuery) {
     auto kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 1u);
     ZEXPECT(kills[0].requests == std::vector<RequestId>{11});
+}
+
+ZEST_CASE(WaitingEndKeepsLine) {
+    Core core(1);
+    core.scheduler.stateful_begin(10, 0, 7, false, core.now);
+    core.scheduler.stateful_begin(11, 0, 7, false, core.now);
+    core.scheduler.stateful_begin(12, 0, 7, false, core.now);
+    // The first one waiting is answered at once, cancelled: the last still
+    // waits behind the one running.
+    core.scheduler.stateful_end(11, core.now);
+    core.advance(seconds(150));
+    core.sample(16 * GiB);
+    auto kills = core.all<scheduler::Kill>();
+    ZASSERT(kills.size() == 1u);
+    ZEXPECT(kills[0].requests == std::vector<RequestId>{10});
 }
 
 ZEST_CASE(DocumentLineUntimed) {
@@ -444,7 +610,7 @@ ZEST_CASE(PeaksLearnedPercentile) {
     Core core(1);
     ZEXPECT(core.scheduler.unknown_peak() == WorkerScheduler::default_peak);
     for(RequestId id = 1; id <= 4; id += 1) {
-        core.submit(id, Priority::Low, 100 * MiB);
+        core.submit(id, Priority::Low, {.peak = 100 * MiB});
         core.sample(16 * GiB,
                     {
                         {.slot = 0, .memory = id * GiB}

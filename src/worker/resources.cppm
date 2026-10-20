@@ -14,6 +14,7 @@ struct ProcessUsage {
     /// every worker maps once for all.
     std::uint64_t memory = 0;
 
+    /// The pages in memory, file pages included.
     std::uint64_t resident = 0;
 
     /// Linux: the part of `memory` the kernel moved out to swap.
@@ -49,12 +50,32 @@ struct MemoryState {
 /// the system counts their compressed pages without telling whose.
 MemoryState memory_state(llvm::ArrayRef<ProcessUsage> workers);
 
+/// The machine's memory as macOS counts it, in bytes.
+struct HostMemory {
+    std::uint64_t total = 0;
+
+    std::uint64_t wired = 0;
+
+    /// The anonymous pages in memory.
+    std::uint64_t anonymous = 0;
+
+    /// The compressor's pages, and what they hold before compression.
+    std::uint64_t compressor = 0;
+
+    std::uint64_t compressed = 0;
+};
+
+/// macOS's headroom (see MemoryState), from the machine's counts and the
+/// workers' usage.
+std::uint64_t macos_headroom(const HostMemory& host, llvm::ArrayRef<ProcessUsage> workers);
+
 /// The memory cgroups of a Linux process, for its /proc/<pid>/cgroup
 /// text, with their hierarchy mounted at `root` (/sys/fs/cgroup): the
 /// tightest limit and the least headroom of every level that has one;
 /// unset when no level has a limit.
 struct CgroupMemory {
     std::uint64_t limit = 0;
+
     std::uint64_t headroom = 0;
 };
 

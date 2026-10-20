@@ -21,6 +21,7 @@ struct SimMachine {
     };
 
     std::uint32_t physical = 2;
+
     std::uint32_t logical = 4;
 
     /// Past the limit the kernel kills the largest worker, as Linux does
@@ -35,18 +36,24 @@ struct SimMachine {
 /// request every `every` seconds.
 struct SimTyping {
     double from = 0;
+
     double until = 0;
+
     double every = 2;
 
     /// The completion's CPU seconds and the peak of its worker's memory.
     double seconds = 0.3;
+
     std::uint32_t peak = 300;
 };
 
 struct SimSpec {
     SimMachine machine;
+
     SchedulerOptions scheduler;
+
     std::vector<UnitLoad> units;
+
     std::vector<SimTyping> typing;
 
     /// The units' peaks are known from their last run.
@@ -66,9 +73,13 @@ struct SimResult {
     /// often than the requeue budget allows.
     std::vector<std::size_t> given_up;
 
-    std::size_t memory_kills = 0;
+    /// The units killed for memory, once for each kill.
+    std::vector<std::size_t> memory_killed;
+
     std::size_t oom_kills = 0;
+
     std::size_t deadline_kills = 0;
+
     std::size_t cancels = 0;
 
     /// Unit-seconds of progress kills and cancels threw away.
@@ -157,7 +168,9 @@ inline SimResult simulate(const SimSpec& spec) {
         std::optional<std::size_t> unit;
 
         double seconds = 0;
+
         std::uint64_t peak = 0;
+
         double progress = 0;
 
         /// When a cancelled run stops.
@@ -166,15 +179,22 @@ inline SimResult simulate(const SimSpec& spec) {
 
     struct Proc {
         bool alive = false;
+
         std::optional<double> ready_at;
+
         std::optional<double> exit_at;
+
         bool respawn = false;
+
         std::optional<scheduler::Kill> kill;
 
         /// A memory kill's: its memory then, and whether it ran alone.
         std::uint64_t killed_at = 0;
+
         bool alone = false;
+
         std::optional<Job> job;
+
         double cpu = 0;
     };
 
@@ -185,6 +205,7 @@ inline SimResult simulate(const SimSpec& spec) {
 
     struct Waiting {
         std::optional<std::size_t> unit;
+
         double submitted = 0;
     };
 
@@ -201,6 +222,7 @@ inline SimResult simulate(const SimSpec& spec) {
             known[i] = std::max<std::uint64_t>(spec.units[i].peak, sim::base / MiB) * MiB;
         }
     }
+    std::vector<std::uint64_t> floors(spec.units.size(), 0);
     std::vector<std::size_t> lost_runs(spec.units.size(), 0);
     std::size_t in_flight = 0;
     std::size_t finished = 0;
@@ -246,47 +268,52 @@ inline SimResult simulate(const SimSpec& spec) {
     };
 
     auto run = [&] {
-        for(auto& action: core.take_actions()) {
-            if(auto* dispatch = std::get_if<scheduler::Dispatch>(&action)) {
-                auto& waited = waiting.at(dispatch->request);
-                Job job{.id = dispatch->request, .unit = waited.unit};
-                if(waited.unit) {
-                    job.seconds = spec.units[*waited.unit].seconds;
-                    job.peak = std::uint64_t(spec.units[*waited.unit].peak) * MiB;
-                } else {
-                    auto& typing = spec.typing.front();
-                    job.seconds = typing.seconds;
-                    job.peak = std::uint64_t(typing.peak) * MiB;
-                    result.foreground_waits.push_back(t - waited.submitted);
-                }
-                waiting.erase(dispatch->request);
-                procs[dispatch->slot].job = job;
-            } else if(auto* cancel = std::get_if<scheduler::Cancel>(&action)) {
-                for(auto& proc: procs) {
-                    if(proc.job && proc.job->id == cancel->request && !proc.job->stops) {
-                        proc.job->stops = t + cancel_delay;
+        // Like the pool, which takes the actions its own reports to the
+        // scheduler cause before it returns.
+        for(auto actions = core.take_actions(); !actions.empty(); actions = core.take_actions()) {
+            for(auto& action: actions) {
+                if(auto* dispatch = std::get_if<scheduler::Dispatch>(&action)) {
+                    auto& waited = waiting.at(dispatch->request);
+                    Job job{.id = dispatch->request, .unit = waited.unit};
+                    if(waited.unit) {
+                        job.seconds = spec.units[*waited.unit].seconds;
+                        job.peak = std::uint64_t(spec.units[*waited.unit].peak) * MiB;
+                    } else {
+                        auto& typing = spec.typing.front();
+                        job.seconds = typing.seconds;
+                        job.peak = std::uint64_t(typing.peak) * MiB;
+                        result.foreground_waits.push_back(t - waited.submitted);
                     }
+                    waiting.erase(dispatch->request);
+                    procs[dispatch->slot].job = job;
+                } else if(auto* cancel = std::get_if<scheduler::Cancel>(&action)) {
+                    for(auto& proc: procs) {
+                        if(proc.job && proc.job->id == cancel->request && !proc.job->stops) {
+                            proc.job->stops = t + cancel_delay;
+                        }
+                    }
+                } else if(auto* kill = std::get_if<scheduler::Kill>(&action)) {
+                    auto& proc = procs[kill->slot];
+                    proc.kill = *kill;
+                    proc.killed_at = sim::memory_at(proc.job->peak, proc.job->progress);
+                    proc.alone = core.runs_alone(kill->slot);
+                    proc.exit_at = t + exit_delay;
+                    proc.respawn = true;
+                    core.worker_gone(kill->slot, false, at(t));
+                } else if(std::holds_alternative<scheduler::Spawn>(action)) {
+                    auto vacant = std::ranges::find_if(procs, [](const Proc& proc) {
+                        return !proc.alive && !proc.ready_at && !proc.exit_at;
+                    });
+                    if(vacant == procs.end()) {
+                        procs.emplace_back();
+                        vacant = procs.end() - 1;
+                    }
+                    vacant->ready_at = t + start_delay;
+                } else if(auto* retire = std::get_if<scheduler::Retire>(&action)) {
+                    auto& proc = procs[retire->slot];
+                    proc.exit_at = t + 0.1;
+                    proc.respawn = false;
                 }
-            } else if(auto* kill = std::get_if<scheduler::Kill>(&action)) {
-                auto& proc = procs[kill->slot];
-                proc.kill = *kill;
-                proc.killed_at = sim::memory_at(proc.job->peak, proc.job->progress);
-                proc.alone = core.runs_alone(kill->slot);
-                proc.exit_at = t + exit_delay;
-                proc.respawn = true;
-            } else if(std::holds_alternative<scheduler::Spawn>(action)) {
-                auto vacant = std::ranges::find_if(procs, [](const Proc& proc) {
-                    return !proc.alive && !proc.ready_at && !proc.exit_at;
-                });
-                if(vacant == procs.end()) {
-                    procs.emplace_back();
-                    vacant = procs.end() - 1;
-                }
-                vacant->ready_at = t + start_delay;
-            } else if(auto* retire = std::get_if<scheduler::Retire>(&action)) {
-                auto& proc = procs[retire->slot];
-                proc.exit_at = t + 0.1;
-                proc.respawn = false;
             }
         }
     };
@@ -323,10 +350,11 @@ inline SimResult simulate(const SimSpec& spec) {
                             result.lost += job.progress * job.seconds;
                         }
                         if(kill && kill->reason == scheduler::KillReason::Memory) {
+                            result.memory_killed.push_back(unit);
                             if(proc.alone) {
                                 give_up(unit, result.too_big);
                             } else {
-                                known[unit] = std::max(known[unit], proc.killed_at);
+                                floors[unit] = std::max(floors[unit], proc.killed_at);
                                 requeue(unit);
                             }
                         } else if(kill && (kill->reason == scheduler::KillReason::Deadline ||
@@ -334,21 +362,26 @@ inline SimResult simulate(const SimSpec& spec) {
                             give_up(unit, result.given_up);
                         } else if(kill && kill->reason == scheduler::KillReason::CancelGrace) {
                             requeue(unit);
-                        } else if(lost_runs[unit] += 1; lost_runs[unit] > max_lost) {
-                            give_up(unit, result.given_up);
                         } else {
-                            requeue(unit);
+                            lost_runs[unit] += 1;
+                            if(lost_runs[unit] > max_lost) {
+                                give_up(unit, result.given_up);
+                            } else {
+                                requeue(unit);
+                            }
                         }
                     }
                 }
                 if(proc.kill) {
                     auto reason = proc.kill->reason;
-                    result.memory_kills += reason == scheduler::KillReason::Memory;
                     result.deadline_kills += reason == scheduler::KillReason::Deadline ||
                                              reason == scheduler::KillReason::Stalled;
                 }
+                if(!proc.kill) {
+                    core.worker_gone(slot, false, now);
+                }
                 proc.kill.reset();
-                core.worker_gone(slot, false, now);
+                core.worker_exited(slot);
                 run();
                 if(proc.respawn) {
                     proc.respawn = false;
@@ -385,7 +418,7 @@ inline SimResult simulate(const SimSpec& spec) {
             queue.assign(next_round.begin(), next_round.end());
             next_round.clear();
         }
-        auto window = std::max<std::size_t>(2 * core.background_limit(now), 2);
+        auto window = 2 * core.background_limit(now);
         while(!queue.empty() && in_flight < window) {
             auto unit = queue.front();
             queue.pop_front();
@@ -393,7 +426,11 @@ inline SimResult simulate(const SimSpec& spec) {
             next_id += 1;
             waiting[id] = {.unit = unit, .submitted = t};
             in_flight += 1;
-            core.submit(id, worker::Priority::Low, {.peak = known[unit]}, true, now);
+            core.submit(id,
+                        worker::Priority::Low,
+                        {.peak = known[unit], .floor = floors[unit]},
+                        true,
+                        now);
             run();
         }
 
@@ -407,7 +444,8 @@ inline SimResult simulate(const SimSpec& spec) {
                 if(proc.alive || proc.ready_at || proc.exit_at) {
                     sample.stateless_processes += 1;
                 }
-                if(proc.alive) {
+                // The pool samples the workers in service.
+                if(proc.alive && !proc.kill) {
                     sample.workers.push_back({
                         .slot = slot,
                         .memory = proc.job ? sim::memory_at(proc.job->peak, proc.job->progress)
@@ -421,9 +459,11 @@ inline SimResult simulate(const SimSpec& spec) {
             next_sample = t + duration<double>(core.sample_interval()).count();
         }
 
-        std::size_t busy = std::ranges::count_if(procs, [](const Proc& proc) {
-            return proc.alive && proc.job && !proc.job->stops;
-        });
+        // A killed process does no more work.
+        auto working = [](const Proc& proc) {
+            return proc.alive && proc.job && !proc.job->stops && !proc.kill;
+        };
+        std::size_t busy = std::ranges::count_if(procs, working);
         if(busy > 0) {
             auto bytes = used();
             auto factor = 1.0;
@@ -433,7 +473,7 @@ inline SimResult simulate(const SimSpec& spec) {
             }
             auto speed = sim::throughput(machine, busy) / double(busy);
             for(auto& proc: procs) {
-                if(!proc.alive || !proc.job || proc.job->stops) {
+                if(!working(proc)) {
                     continue;
                 }
                 proc.cpu += speed * dt;

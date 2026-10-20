@@ -251,11 +251,8 @@ kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
             // Feed at most twice the pool's low budget: deep enough that
             // workers never idle waiting for the feeder, shallow enough
             // that the pool queue holds little when a pause or budget cut
-            // arrives. The floor keeps the window alive when the budget
-            // reads zero (a pool that has not started yet); without it
-            // the feeder would wait on task_done with nothing in flight
-            // to ever set it.
-            if(round.inflight >= std::max<std::size_t>(2 * pool.background_limit(), 2)) {
+            // arrives.
+            if(round.inflight >= 2 * pool.background_limit()) {
                 round.task_done.reset();
                 co_await round.task_done.wait();
                 continue;
