@@ -34,7 +34,7 @@ const COMPLETIONS = 3;
 /// Files asked at once: inspect compiles each alone beside the server's
 /// compile of it, a large unit taking 3 GB in each, so one file per 5 GB of
 /// the machine's memory, at most three.
-const CONCURRENCY = Math.min(3, Math.max(1, Math.floor(os.totalmem() / 5 / 1024 ** 3)));
+export const CONCURRENCY = Math.min(3, Math.max(1, Math.floor(os.totalmem() / 5 / 1024 ** 3)));
 
 /// A request that answers in no time on a test case may compile a large
 /// unit here: the bound only a hang reaches.

@@ -17,7 +17,7 @@ import { runIndex } from "./index.ts";
 import type { PeakMemory } from "./memory.ts";
 import { prepare } from "./prepare.ts";
 import type { Job, Platform } from "./projects.ts";
-import { sampleFiles, sampleHeaders, sweep, type Request } from "./sweep.ts";
+import { CONCURRENCY, sampleFiles, sampleHeaders, sweep, type Request } from "./sweep.ts";
 
 export type Step = "index" | "sweep";
 
@@ -282,12 +282,15 @@ async function sweepStep(
     const { job } = options;
     const units = entries.flatMap((entry) => inside(checkout, entrySource(entry)) ?? []);
     const seed = `${options.seed} ${job.name}`;
+    // A machine asking fewer files at once samples fewer: a sweep takes the
+    // same time everywhere.
+    const sample = Math.ceil((job.project.sample * CONCURRENCY) / 3);
     const hosts = includedHeaders(checkout, entries);
     const files = options.files ?? [
-        ...sampleFiles(units, job.project.sample, seed),
+        ...sampleFiles(units, sample, seed),
         ...sampleHeaders(
             [...hosts.keys()].filter((file) => inJob(job, checkout, file)),
-            Math.ceil(job.project.sample / 4),
+            Math.ceil(sample / 4),
             seed,
         ),
     ];
