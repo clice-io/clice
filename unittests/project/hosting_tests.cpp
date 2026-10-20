@@ -566,35 +566,79 @@ ZEST_CASE(ForcedIncludeFallsBack) {
 };
 
 ZEST_CASE(PrecompiledHeaderFallsBack) {
-    /// The forced file is a precompiled header's: the compile loaded a.h
-    /// and t.h from it, and the tree shows only the unit's include of a.h,
-    /// skipped.
-    TreeProject p;
+    /// main.cpp's command loads the precompiled header built from pch.h:
+    /// its compile took a.h and t.h from it, and the tree shows only
+    /// main.cpp's include of a.h, skipped.
+    TempDir tmp;
     llvm::StringRef main_text = "#include \"a.h\"\n";
     llvm::StringRef a_text = "#pragma once\n#include \"t.h\"\n";
+    tmp.touch("main.cpp", main_text);
+    tmp.touch("pch.h", "#include \"a.h\"\n");
+    tmp.touch("pch.h.cxx", "");
+    tmp.touch("a.h", a_text);
+    tmp.touch("t.h", "#pragma once\n");
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root,
+                   tmp.path("pch.h.cxx"),
+                   {"-x", "c++-header", "-include", "pch.h", "-o", "pch.h.gch"}},
+                  {tmp.root, tmp.path("main.cpp"), {"-include", "pch.h"}       },
+    }));
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(ConfigRule{.compile_commands = {"build"}});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+    for(auto source: project.build.declared_sources()) {
+        project.cdb.load(source);
+    }
+    project.rebuild_dependency_graph();
+
+    auto intern = [&](llvm::StringRef path) {
+        return files.intern(Spelling::absolute(tmp.path(path)));
+    };
+    auto main = intern("main.cpp");
+    auto a = intern("a.h");
+    auto t = intern("t.h");
+    index::TUManifest manifest;
+    manifest.tu_version = files.intern_version(main, llvm::xxh3_64bits(main_text));
+    manifest.nodes = {
+        {.file = files.intern_version(a, llvm::xxh3_64bits(a_text)).raw,
+         .line = 1,
+         .skipped = true},
+    };
+    project.index.apply_manifest(main, std::move(manifest));
+
+    auto host = default_host(project, a);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{main, a});
+    host = default_host(project, t);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{main, a, t});
+};
+
+ZEST_CASE(SkippedAloneRulesOut) {
+    /// No precompiled header: b.h, skipped and never entered, shares a.h's
+    /// guard, and the unit never compiles its text.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"a.h\"\n#include \"b.h\"\n";
+    llvm::StringRef a_text = "#ifndef UTIL_H\n#define UTIL_H\n#endif\n";
+    llvm::StringRef b_text = "#ifndef UTIL_H\n#define UTIL_H\nint b;\n#endif\n";
     auto main = p.write("main.cpp", main_text);
-    auto pch = p.write("pch.h", "#include \"a.h\"\n");
     auto a = p.write("a.h", a_text);
-    auto t = p.write("t.h", "#pragma once\n");
-    p.project.dep_graph.set_includes(main, 0, {{a}});
-    p.project.dep_graph.set_includes(pch, 0, {{a}});
-    p.project.dep_graph.set_includes(a, 0, {{t}});
-    p.project.dep_graph.add_forced_include(main, pch);
+    auto b = p.write("b.h", b_text);
+    p.project.dep_graph.set_includes(main, 0, {{a}, {b}});
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
-        {.file = p.version(a, a_text), .line = 1, .skipped = true},
+        {.file = p.version(a, a_text), .line = 1},
+        {.file = p.version(b, b_text), .line = 2, .skipped = true},
     };
     p.project.index.apply_manifest(main, std::move(manifest));
 
-    auto host = default_host(p.project, a);
-    ZASSERT(host);
-    ZEXPECT(host->chain == std::vector<Fid>{main, a});
-    host = default_host(p.project, t);
-    ZASSERT(host);
-    ZEXPECT(host->chain == std::vector<Fid>{main, a, t});
+    ZEXPECT(!default_host(p.project, b).has_value());
 };
 
 ZEST_CASE(ContributorHosts) {

@@ -139,19 +139,25 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     }
 
     auto chain = project.dep_graph.find_include_chain(host, header);
-    // The files a precompiled header holds were entered before the tree
-    // began, which shows only skipped includes of them: where the chain
-    // passes one, the tree cannot tell where the unit's text enters the
-    // header.
+    // The files a precompiled header the unit loads holds were entered
+    // before the tree began, which shows only skipped includes of them:
+    // where the chain passes one, the tree cannot tell where the unit's
+    // text enters the header.
     llvm::DenseSet<Fid> entered;
     llvm::DenseSet<Fid> skipped;
     for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
         (nodes[i].skipped ? skipped : entered).insert(file_of(i));
     }
-    bool held = !chain.empty() && llvm::any_of(llvm::drop_begin(chain), [&](Fid file) {
+    auto hidden = [&](Fid file) {
         return skipped.contains(file) && !entered.contains(file);
-    });
-    if(forced || held) {
+    };
+    auto loads_pch = [&] {
+        CanonicalRef host_path = files.resolve(host);
+        return llvm::any_of(project.build.commands(host), [&](const Candidate& command) {
+            return project.build.pch_unit(command.config, host_path).has_value();
+        });
+    };
+    if(forced || (!chain.empty() && llvm::any_of(llvm::drop_begin(chain), hidden) && loads_pch())) {
         if(!chain.empty()) {
             found.push_back({.file = host, .chain = std::move(chain)});
         }
