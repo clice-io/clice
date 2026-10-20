@@ -537,8 +537,9 @@ ZEST_CASE(ForcedIncludeEnters) {
     /// The compile enters the header through a file its command forces in,
     /// ahead of the unit's own include of it: the chain starts there.
     TreeProject p;
-    llvm::StringRef main_text = "#include \"t.h\"\n";
-    llvm::StringRef common_text = "#pragma once\n#include \"t.h\"\n";
+    llvm::StringRef main_text = R"(#include "t.h")";
+    llvm::StringRef common_text = R"(#pragma once
+#include "t.h")";
     auto main = p.write("main.cpp", main_text);
     auto common = p.write("common.h", common_text);
     auto t = p.write("t.h", "#pragma once\n");
@@ -568,10 +569,11 @@ ZEST_CASE(PrecompiledHeaderEnters) {
     /// and t.h from the PCH, and the tree shows only the unit's include of
     /// a.h, skipped. The chain is the scan's from the forced file.
     TreeProject p;
-    llvm::StringRef main_text = "#include \"a.h\"\n";
-    llvm::StringRef a_text = "#pragma once\n#include \"t.h\"\n";
+    llvm::StringRef main_text = R"(#include "a.h")";
+    llvm::StringRef a_text = R"(#pragma once
+#include "t.h")";
     auto main = p.write("main.cpp", main_text);
-    auto pch = p.write("pch.h", "#include \"a.h\"\n");
+    auto pch = p.write("pch.h", R"(#include "a.h")");
     auto a = p.write("a.h", a_text);
     auto t = p.write("t.h", "#pragma once\n");
     p.project.dep_graph.set_includes(main, 0, {{a}});
@@ -598,7 +600,7 @@ ZEST_CASE(ForcedOnlyHost) {
     /// which does: main.cpp hosts it, and pch.h itself, with no tree.
     TreeProject p;
     auto main = p.write("main.cpp", "int x;\n");
-    auto pch = p.write("pch.h", "#include \"t.h\"\n");
+    auto pch = p.write("pch.h", R"(#include "t.h")");
     auto t = p.write("t.h", "#pragma once\n");
     p.project.dep_graph.set_includes(pch, 0, {{t}});
     p.project.dep_graph.add_forced_include(main, pch);
@@ -619,7 +621,8 @@ ZEST_CASE(SkippedAloneRulesOut) {
     /// No precompiled header: b.h, skipped and never entered, shares a.h's
     /// guard, and the unit never compiles its text.
     TreeProject p;
-    llvm::StringRef main_text = "#include \"a.h\"\n#include \"b.h\"\n";
+    llvm::StringRef main_text = R"(#include "a.h"
+#include "b.h")";
     llvm::StringRef a_text = "#ifndef UTIL_H\n#define UTIL_H\n#endif\n";
     llvm::StringRef b_text = "#ifndef UTIL_H\n#define UTIL_H\nint b;\n#endif\n";
     auto main = p.write("main.cpp", main_text);

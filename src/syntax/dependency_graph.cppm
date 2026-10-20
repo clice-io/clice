@@ -88,9 +88,8 @@ public:
 
     /// Record that a command of `unit` includes `header` ahead of the
     /// unit's text (`-include`). A command fact, not a directive in any
-    /// file's text: it stays out of the include edges, so hosting and
-    /// context synthesis, which cut a host's text at a directive, never
-    /// walk it.
+    /// file's text: it stays out of the include edges, as no cut of the
+    /// unit's text reproduces it.
     void add_forced_include(Fid unit, Fid header);
 
     /// The units whose commands force `header` in.

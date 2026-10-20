@@ -103,10 +103,12 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
                         return files.version(VersionID{node.file}).fid == header;
                     }) > 1;
 
-    // The compile enters what its command forces in ahead of the unit's
-    // text, in the command's order.
     struct Entering {
+        /// The compile enters what its command forces in ahead of the
+        /// unit's text, in the command's order: a forced entering sorts by
+        /// its line in the command-line buffer, before every other.
         llvm::SmallVector<std::uint32_t> order;
+
         Host host;
     };
 

@@ -19,12 +19,14 @@ import :vfs.path;
 
 namespace clice {
 
+namespace {
+
 /// Per-file command selection decision log: which tiers were tried, which one
 /// was hit, and a hash of the final command for correlating later failures.
-static void log_command_decision(llvm::StringRef path,
-                                 llvm::ArrayRef<llvm::StringRef> tried,
-                                 CommandSource source,
-                                 llvm::ArrayRef<std::string> arguments) {
+void log_command_decision(llvm::StringRef path,
+                          llvm::ArrayRef<llvm::StringRef> tried,
+                          CommandSource source,
+                          llvm::ArrayRef<std::string> arguments) {
     if(logging::options.level > logging::Level::info)
         return;
     std::string joined;
@@ -38,6 +40,28 @@ static void log_command_decision(llvm::StringRef path,
              source,
              llvm::xxh3_64bits(llvm::StringRef(joined)));
 }
+
+/// How many of `ref`'s `-include`s come before the one naming `forced`:
+/// what a header context entered through that forced file keeps
+/// (HeaderContext::forced). All of them for none.
+std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced) {
+    if(!forced.valid()) {
+        return std::numeric_limits<std::size_t>::max();
+    }
+    auto search = project.cdb.search_config(ref);
+    vfs::Scope scope(project.file_table.dirs);
+    auto resolved = resolve_search_config(search, scope);
+    llvm::StringRef directory = project.cdb.config(ref.config).directory;
+    for(std::size_t i = 0; i < search.forced_includes.size(); i += 1) {
+        auto header = resolve_forced_include(search.forced_includes[i], directory, resolved, scope);
+        if(header && project.file_table.find(Spelling::absolute(header->path)) == forced) {
+            return i;
+        }
+    }
+    return std::numeric_limits<std::size_t>::max();
+}
+
+}  // namespace
 
 Candidate pick_pinned_config(Project& project,
                              Fid file,
@@ -109,26 +133,6 @@ std::optional<CommandRef> host_command(Project& project,
                                      pinned_hash,
                                      pinned_base);
     return lent_command(project, header, host, picked.config, extra_prepend, extra_append);
-}
-
-/// How many of `ref`'s `-include`s come before the one naming `forced`:
-/// what a header context entered through that forced file keeps
-/// (HeaderContext::forced). All of them for none.
-static std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced) {
-    if(!forced.valid()) {
-        return std::numeric_limits<std::size_t>::max();
-    }
-    auto search = project.cdb.search_config(ref);
-    vfs::Scope scope(project.file_table.dirs);
-    auto resolved = resolve_search_config(search, scope);
-    llvm::StringRef directory = project.cdb.config(ref.config).directory;
-    for(std::size_t i = 0; i < search.forced_includes.size(); i += 1) {
-        auto header = resolve_forced_include(search.forced_includes[i], directory, resolved, scope);
-        if(header && project.file_table.find(Spelling::absolute(header->path)) == forced) {
-            return i;
-        }
-    }
-    return std::numeric_limits<std::size_t>::max();
 }
 
 HeaderMode CommandResolver::header_mode(Fid path_id) const {
@@ -243,7 +247,8 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
                                     context.occurrence != choice->occurrence.value_or(0) ||
                                     context.host_command_hash != choice->command_hash ||
                                     context.host_base_hash != choice->base_hash);
-            bool mode_mismatch = (context.synthesized != nullptr) != synthesize;
+            bool mode_mismatch =
+                (context.synthesized != nullptr) != (synthesize && !context.chain.empty());
             if(override_mismatch || mode_mismatch ||
                deps_changed(project.file_table, context.deps)) {
                 cache->erase(cached);

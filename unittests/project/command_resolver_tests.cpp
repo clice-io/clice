@@ -238,27 +238,42 @@ ZEST_CASE(UnmatchedChainWantsTree) {
     ZEXPECT(resolution.tree_wanted == a);
 }
 
-ZEST_CASE(ForcedChainLeavesOutIncludes) {
-    /// main.cpp's command forces in config.h, pch.h and later.h; pch.h
-    /// includes part.h. part.h's compile enters it through pch.h, so its
-    /// command leaves out pch.h, which would enter part.h before its own
-    /// text, and later.h, which comes after it; a context replaces pch.h by
-    /// its text before the include. pch.h itself keeps config.h alone.
+ZEST_CASE(ForcedChainDropsIncludes) {
+    /// main.cpp's command forces in config.h, pch.h, later.h and config.h
+    /// again; pch.h and later.h both include part.h, which part.h's compile
+    /// enters through pch.h, the first. Its command keeps what comes before
+    /// pch.h alone; a context replaces pch.h by its text before the
+    /// include. pch.h itself keeps config.h alone. later.h is named before
+    /// the scan, so the order the command forces them in decides, not the
+    /// order files were named in.
     TempDir tmp;
     tmp.touch("config.h", "#pragma once\n");
-    tmp.touch("pch.h", "#pragma once\n#define FROM_PCH 1\n#include \"part.h\"\n");
-    tmp.touch("later.h", "#pragma once\n");
+    tmp.touch("pch.h", R"(#pragma once
+#define FROM_PCH 1
+#include "part.h"
+)");
+    tmp.touch("later.h", R"(#pragma once
+#include "part.h"
+)");
     tmp.touch("part.h", "#pragma once\n");
-    tmp.touch("main.cpp", "#include \"part.h\"\n");
+    tmp.touch("main.cpp", R"(#include "part.h")");
     tmp.touch("build/compile_commands.json",
               build_cdb_json({
                   {tmp.root,
                    tmp.path("main.cpp"),
-                   {"-include", "config.h", "-include", "pch.h", "-include", "later.h"}},
+                   {"-include",
+                    "config.h",
+                    "-include",
+                    "pch.h",
+                    "-include",
+                    "later.h",
+                    "-include",
+                    "config.h"}},
     }));
     FileTable files;
     Project project{files};
     CommandResolver resolver(project);
+    project.file_table.intern(Spelling::absolute(tmp.path("later.h")));
     project.config.rules.push_back(ConfigRule{.compile_commands = {"build"}});
     project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
@@ -282,7 +297,8 @@ ZEST_CASE(ForcedChainLeavesOutIncludes) {
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     auto pch = project.file_table.intern(Spelling::absolute(tmp.path("pch.h")));
     auto part = project.file_table.intern(Spelling::absolute(tmp.path("part.h")));
-    ZEXPECT(forced(main).second == std::vector<std::string>{"config.h", "pch.h", "later.h"});
+    ZEXPECT(forced(main).second ==
+            std::vector<std::string>{"config.h", "pch.h", "later.h", "config.h"});
     ZEXPECT(forced(part).second == std::vector<std::string>{"config.h"});
     ZEXPECT(forced(pch).second == std::vector<std::string>{"config.h"});
 

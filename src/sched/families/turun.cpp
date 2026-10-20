@@ -86,13 +86,19 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                                  params.directory,
                                  params.arguments,
                                  {.extra_prepend = extras.prepend, .extra_append = extras.append});
+    // A header the compile enters through a forced include is indexed by
+    // the units forcing it in, one a precompiled header holds by the unit
+    // writing it.
+    if(resolved.forced.valid()) {
+        finished[path_id] = {.result = Result::Skipped};
+        co_return RoundOutcome::Stale;
+    }
     if(resolved.source == CommandSource::Fallback ||
        (resolved.source == CommandSource::Inferred && !project.build.unit(path_id))) {
         // A file whose manifest survives keeps serving its last-known index,
-        // and a header other units read — a forced include, one created
-        // where they looked for it — is indexed by theirs: skipping either
-        // loses nothing. One with neither (dropped or never built, read by
-        // nothing) stays uncovered — count that as a failure so a batch run
+        // and a header other units read — one created where they looked for
+        // it — is indexed by theirs: skipping either loses nothing. One with neither (dropped or
+        // never built, read by nothing) stays uncovered — count that as a failure so a batch run
         // reports the debt instead of exiting clean.
         if(!project.index.held_manifest(path_id) &&
            project.dep_graph.find_readers(path_id).empty()) {
