@@ -122,6 +122,33 @@
       "sample": 40
     },
     {
+      "name": "abseil-gcc",
+      "about": "20260817.0 with its tests, built as C++20 by Ubuntu's GCC 13: libstdc++, and the search paths, macros and defaults GCC's driver adds",
+      "repository": "https://github.com/abseil/abseil-cpp",
+      "commit": "2065f4ded0558c6f89fee67c8e5228feb4eb960e",
+      "platforms": ["linux"],
+      "packages": ["g++-13"],
+      "prepare": [
+        [
+          "cmake",
+          "-S",
+          ".",
+          "-B",
+          "build",
+          "-G",
+          "Ninja",
+          "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+          "-DCMAKE_C_COMPILER=gcc-13",
+          "-DCMAKE_CXX_COMPILER=g++-13",
+          "-DCMAKE_CXX_STANDARD=20",
+          "-DABSL_BUILD_TESTING=ON",
+          "-DABSL_GOOGLETEST_DOWNLOAD_URL=https://github.com/google/googletest/archive/52eb8108c5bdec04579160ae17225d66034bd723.zip"
+        ]
+      ],
+      "database": "build/compile_commands.json",
+      "sample": 40
+    },
+    {
       "name": "mp-units",
       "about": "v2.5.0 built as C++20 modules, with its tests against Catch2 v3.9.1; on Windows for MinGW, xclang's default, as clang rejects its std::format calls against MSVC's library",
       "repository": "https://github.com/mpusz/mp-units",

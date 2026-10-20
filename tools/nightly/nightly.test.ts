@@ -23,6 +23,7 @@ describe("projects", () => {
             "cpython",
             "clice",
             "abseil",
+            "abseil-gcc",
             "mp-units",
         ]);
     });
