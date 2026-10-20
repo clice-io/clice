@@ -1,0 +1,29 @@
+["the includer's context"."widget.h"]
+diagnostics = []
+
+["the includer's context".config.hover]
+markdown = '''
+**struct** `Config`
+
+```cpp
+struct Config {
+  int size;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "⟦Config⟧ config;"
+
+["the includer's context".cells.hover]
+markdown = '''
+**macro** `CELLS`
+
+```cpp
+#define CELLS 4
+```
+Expands to:
+```cpp
+4
+```
+'''
+range = "int cells[⟦CELLS⟧];"

@@ -1,0 +1,43 @@
+[hover.x.hover]
+markdown = '''
+**field** `x` · struct `Point`
+
+```cpp
+int x
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return point.⟦x⟧ + point.y;"
+
+[hover.circle.hover]
+markdown = '''
+**struct** `Circle`
+
+```cpp
+struct Circle {
+  Point center;
+  double radius;
+}
+```
+Size: 16 bytes, alignment 8 bytes
+'''
+range = "struct ⟦Circle⟧ {"
+
+[hover.radius.hover]
+markdown = '''
+**field** `radius` · struct `Circle`
+
+```cpp
+double radius
+```
+Offset: 8 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "return 3.14159 * circle.⟦radius⟧ * circle.radius;"
+
+["the headers compile alone"."shapes.h"]
+diagnostics = []
+
+["the headers compile alone"."point.h"]
+diagnostics = []
