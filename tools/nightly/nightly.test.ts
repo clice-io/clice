@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, test } from "vitest";
 import { missingInputs } from "./confirm.ts";
-import { jobDatabase, syntaxOnly } from "./database.ts";
+import { includedHeaders, jobDatabase, syntaxOnly } from "./database.ts";
 import { unitsInFlight } from "./index.ts";
 import type { Results } from "./nightly.ts";
 import { jobs, loadProjects, type Project } from "./projects.ts";
@@ -19,6 +19,7 @@ describe("projects", () => {
             "llvm/flang",
             "llvm/lldb",
             "linux",
+            "cpython",
             "clice",
             "abseil",
             "mp-units",
@@ -77,6 +78,30 @@ describe("database", () => {
                     root,
                 ),
             ).toEqual(["b.pcm", "a.o.modmap"]);
+        } finally {
+            fs.rmSync(root, { recursive: true });
+        }
+    });
+
+    test("the headers the units include, found by their own search paths", () => {
+        const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "clice-nightly-")));
+        try {
+            const write = (file: string, text = "") => {
+                fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+                fs.writeFileSync(path.join(root, file), text);
+            };
+            write("Include/a.h");
+            write("Python/cases.c.h");
+            write("Python/ceval.c", '#include "cases.c.h"\n#  include <a.h>\n#include <stdio.h>\n');
+            expect(
+                includedHeaders(root, [
+                    {
+                        directory: root,
+                        file: "Python/ceval.c",
+                        arguments: ["clang", "-I", "Include", "-c", "Python/ceval.c"],
+                    },
+                ]),
+            ).toEqual(["Include/a.h", "Python/cases.c.h"]);
         } finally {
             fs.rmSync(root, { recursive: true });
         }

@@ -140,10 +140,21 @@ function shuffled<T>(items: readonly T[], seed: string): T[] {
     return out;
 }
 
+function sampled(files: readonly string[], kind: RegExp, count: number, seed: string): string[] {
+    const candidates = [...new Set(files.filter((file) => kind.test(file)))].sort();
+    return shuffled(candidates, seed).slice(0, count).sort();
+}
+
 /// `count` of the units' source files, the seed choosing which.
 export function sampleFiles(units: readonly string[], count: number, seed: string): string[] {
-    const files = [...new Set(units.filter((unit) => SOURCE.test(unit)))].sort();
-    return shuffled(files, seed).slice(0, count).sort();
+    return sampled(units, SOURCE, count, seed);
+}
+
+/// `count` of the headers among `files`, the seed choosing which: the
+/// server compiles one in the context of a source that includes it, and
+/// some only compile there.
+export function sampleHeaders(files: readonly string[], count: number, seed: string): string[] {
+    return sampled(files, /\.(h|hh|hpp|hxx)$/, count, seed);
 }
 
 function spread<T>(items: readonly T[], count: number): T[] {

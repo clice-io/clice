@@ -12,12 +12,12 @@ import { logFiles } from "../process_gate.ts";
 import { levelOf } from "../testing/logs/logs.ts";
 import { CRASHED_IN } from "../testing/server/serve.ts";
 import { confirm } from "./confirm.ts";
-import { jobDatabase } from "./database.ts";
+import { includedHeaders, inJob, jobDatabase } from "./database.ts";
 import { runIndex } from "./index.ts";
 import type { PeakMemory } from "./memory.ts";
 import { prepare } from "./prepare.ts";
 import type { Job, Platform } from "./projects.ts";
-import { sampleFiles, sweep, type Request } from "./sweep.ts";
+import { sampleFiles, sampleHeaders, sweep, type Request } from "./sweep.ts";
 
 export type Step = "index" | "sweep";
 
@@ -281,8 +281,15 @@ async function sweepStep(
 ): Promise<void> {
     const { job } = options;
     const units = entries.flatMap((entry) => inside(checkout, entrySource(entry)) ?? []);
-    const files =
-        options.files ?? sampleFiles(units, job.project.sample, `${options.seed} ${job.name}`);
+    const seed = `${options.seed} ${job.name}`;
+    const files = options.files ?? [
+        ...sampleFiles(units, job.project.sample, seed),
+        ...sampleHeaders(
+            includedHeaders(checkout, entries).filter((file) => inJob(job, checkout, file)),
+            Math.ceil(job.project.sample / 4),
+            seed,
+        ),
+    ];
     const run = await sweep({
         root: checkout,
         files,

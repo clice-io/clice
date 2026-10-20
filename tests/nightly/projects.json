@@ -64,6 +64,20 @@
       "sample": 40
     },
     {
+      "name": "cpython",
+      "about": "v3.15.0, built in full by its Makefile: the database comes from bear watching the build",
+      "repository": "https://github.com/python/cpython",
+      "commit": "d220409a13b77de7a6c30abe16ea90db01528edc",
+      "platforms": ["linux"],
+      "packages": ["bear"],
+      "prepare": [
+        ["./configure", "CC=clang"],
+        ["bear", "--", "make", "-j${JOBS}"]
+      ],
+      "database": "compile_commands.json",
+      "sample": 40
+    },
+    {
       "name": "clice",
       "about": "clice itself at the commit under test: one C++23 module, its database from Bazel",
       "platforms": ["linux", "macos"],

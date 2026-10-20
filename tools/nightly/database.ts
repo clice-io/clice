@@ -14,24 +14,41 @@ export function readEntries(file: string): DatabaseEntry[] {
     return JSON.parse(fs.readFileSync(file, "utf8")) as DatabaseEntry[];
 }
 
-/// The part whose longest prefix holds `source`: a part may take a
+/// The parts whose longest prefix holds `file`: a part may take a
 /// directory from inside another's, as a subproject its generated sources.
-function partOf(parts: Record<string, string[]>, checkout: string, source: string): string {
-    const relative = path.relative(checkout, source).split(path.sep).join("/");
+function closestParts(parts: Record<string, string[]>, checkout: string, file: string): string[] {
+    const relative = path.relative(checkout, file).split(path.sep).join("/");
     const holding = Object.entries(parts).flatMap(([name, prefixes]) =>
         prefixes
             .filter((prefix) => relative.startsWith(prefix))
             .map((prefix) => ({ name, length: prefix.length })),
     );
     const longest = Math.max(...holding.map((part) => part.length));
-    const closest = holding.filter((part) => part.length === longest);
+    return holding.filter((part) => part.length === longest).map((part) => part.name);
+}
+
+/// The part of a unit: every unit is in exactly one.
+function partOf(parts: Record<string, string[]>, checkout: string, source: string): string {
+    const closest = closestParts(parts, checkout, source);
     const [only] = closest;
     if (closest.length !== 1 || only === undefined) {
+        const relative = path.relative(checkout, source).split(path.sep).join("/");
         throw new Error(
-            `${relative} is in ${closest.length === 0 ? "no part" : `the parts ${closest.map((part) => part.name).join(", ")}`}: the parts must divide the database`,
+            `${relative} is in ${closest.length === 0 ? "no part" : `the parts ${closest.join(", ")}`}: the parts must divide the database`,
         );
     }
-    return only.name;
+    return only;
+}
+
+/// Whether a checkout-relative file is the job's: any file of a project in
+/// one piece, else one its part alone holds.
+export function inJob(job: Job, checkout: string, file: string): boolean {
+    const { parts } = job.project;
+    if (parts === undefined) {
+        return true;
+    }
+    const closest = closestParts(parts, checkout, path.join(checkout, file));
+    return closest.length === 1 && closest[0] === job.part;
 }
 
 /// The job's units, and the database clice reads them from in place.
@@ -52,6 +69,51 @@ export function jobDatabase(job: Job, checkout: string): DatabaseEntry[] {
         `[[rules]]\ncompile_commands = ["${JOB_DATABASE}"]\n`,
     );
     return own;
+}
+
+const INCLUDE = /^[ \t]*#[ \t]*include[ \t]*([<"])([^>"\n]+)[>"]/gm;
+const SEARCH = ["-I", "-iquote", "-isystem", "-idirafter"];
+
+/// The checkout-relative headers inside `checkout` the units include
+/// themselves, found as each unit's own search paths find them: the headers
+/// a reader of those units opens, each with a unit to compile it in.
+export function includedHeaders(checkout: string, entries: readonly DatabaseEntry[]): string[] {
+    const headers = new Set<string>();
+    for (const entry of entries) {
+        const source = entrySource(entry);
+        let text: string;
+        try {
+            text = fs.readFileSync(source, "utf8");
+        } catch {
+            continue;
+        }
+        const args = entryArguments(entry);
+        const dirs = args.flatMap((arg, i) => {
+            const flag = SEARCH.find((each) => arg.startsWith(each));
+            if (flag === undefined) {
+                return [];
+            }
+            const dir = arg === flag ? args[i + 1] : arg.slice(flag.length);
+            return dir === undefined ? [] : [path.resolve(entry.directory, dir)];
+        });
+        for (const [, open, name] of text.matchAll(INCLUDE)) {
+            if (name === undefined) {
+                continue;
+            }
+            const found = [...(open === '"' ? [path.dirname(source)] : []), ...dirs]
+                .map((dir) => path.join(dir, name))
+                .find((file) => fs.existsSync(file));
+            const relative = found === undefined ? undefined : path.relative(checkout, found);
+            if (
+                relative !== undefined &&
+                !relative.startsWith("..") &&
+                !path.isAbsolute(relative)
+            ) {
+                headers.add(relative.split(path.sep).join("/"));
+            }
+        }
+    }
+    return [...headers].sort();
 }
 
 /// Arguments that write files beside a compile: the object and the
