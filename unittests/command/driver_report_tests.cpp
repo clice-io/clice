@@ -112,8 +112,8 @@ End of search list.)";
 }
 
 ZEST_CASE(ClangJob) {
-    /// `-v` prints the job unquoted but for the program; the probe's own
-    /// preprocessing request does not survive into the job.
+    /// `-v` prints the job unquoted but for the program; a GCC report's
+    /// fields stay empty.
     constexpr llvm::StringRef err = R"(Apple clang version 17.0.0 (clang-1700.0.13.5)
 Target: arm64-apple-darwin24.6.0
  "/Library/Developer/CommandLineTools/usr/bin/clang" -cc1 -triple arm64-apple-macosx15.0.0 -E -dM -v -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o - -x c++ /tmp/probe.cpp
@@ -126,15 +126,41 @@ End of search list.)";
                                     "-cc1",
                                     "-triple",
                                     "arm64-apple-macosx15.0.0",
-                                    "-fsyntax-only",
+                                    "-E",
+                                    "-dM",
+                                    "-v",
                                     "-isysroot",
                                     "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+                                    "-o",
+                                    "-",
                                     "-x",
                                     "c++",
                                     "/tmp/probe.cpp"};
     ZEXPECT(report.clang_job == job);
+    ZEXPECT(!report.gcc_job);
     ZEXPECT(report.gcc_options.empty());
     ZEXPECT(report.standard == "gnu++14");
+}
+
+ZEST_CASE(ClangJobFirstOnly) {
+    auto job = parse_clang_job(R"(clang version 22.0.0
+ "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "a.cpp"
+ "/usr/bin/clang-22" "-cc1" "b.cpp"
+ "/usr/bin/ld" "-o" "a.out")");
+    std::vector<std::string> expected = {"/usr/bin/clang-22",
+                                         "-cc1",
+                                         "-triple",
+                                         "x86_64-unknown-linux-gnu",
+                                         "a.cpp"};
+    ZEXPECT(job == expected);
+    ZEXPECT(parse_clang_job(R"( "/usr/bin/ld" "-o" "a.out")").empty());
+}
+
+ZEST_CASE(ClangJobMultiCall) {
+    /// A multi-call llvm names the tool before -cc1.
+    auto job = parse_clang_job(R"( "/opt/xclang/bin/llvm" "clang" "-cc1" "a.cpp")");
+    std::vector<std::string> expected = {"/opt/xclang/bin/llvm", "-cc1", "a.cpp"};
+    ZEXPECT(job == expected);
 }
 
 ZEST_CASE(StandardFromMacros) {

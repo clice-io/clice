@@ -13,14 +13,13 @@ namespace clice {
 ///
 ///   - Probe layer: keyed by (driver, input language, the args that may
 ///     change the driver's job, and — only for cwd-sensitive configs — the
-///     directory). One driver spawn per unique key; results and failures
-///     (with a retry cooldown) are cached. User-content flags (-I, -D, ...)
-///     never affect the probe and are re-attached at synthesis.
+///     directory). One probe per unique key finds the cc1 job the driver
+///     runs; its frontend (see Frontend) and failures (with a retry
+///     cooldown) are cached. User-content flags (-I, -D, ...) never affect
+///     the probe.
 ///
-///   - Synthesis layer: keyed by (config, input). Probe output parsed once
-///     into structured args, the config's own user-content re-attached,
-///     external builtin headers replaced with ours (except a matched
-///     LLVM-MinGW installation, which keeps its own tree).
+///   - Synthesis layer: keyed by (config, input). The probe's frontend with
+///     the config's own user content re-attached.
 class Toolchain {
 public:
     using ResolvedID = std::uint32_t;
@@ -62,12 +61,6 @@ public:
 
     static CompilerFamily driver_family(llvm::StringRef driver);
 
-    /// Single synchronous toolchain query on a raw driver argv (no input
-    /// file among the arguments; a temp input with `file`'s extension is
-    /// appended). Uncached — prefer resolve() for CDB configs.
-    static std::expected<std::vector<std::string>, std::string>
-        query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file = {});
-
     std::string probe_key_for(ConfigID id, InputKind input) {
         return probe_key(id, input).key;
     }
@@ -101,9 +94,28 @@ private:
 
     ProbeArgv probe_argv(const CompileConfig& config);
 
-    /// Parse raw probe output into a Resolved entry for `id`, re-attaching
-    /// the config's user-content args and replacing external resource dirs.
-    ResolvedID synthesize(ConfigID id, llvm::ArrayRef<const char*> tokens);
+    /// What a probe's job sets up, shared by every config of its key.
+    struct Frontend {
+        /// The program of the job.
+        const char* driver = nullptr;
+
+        /// The job's arguments as clice's frontend takes them.
+        llvm::ArrayRef<Arg> args;
+
+        /// The job keeps its own clang resource tree: a matched LLVM-MinGW
+        /// installation, whose builtin headers and libc++ belong together.
+        bool own_resource_dir = false;
+    };
+
+    /// The frontend of a probe's job (the program, -cc1, its arguments):
+    /// what only the probe asked for goes (its action, input and outputs),
+    /// and so does what clice's frontend cannot take — flags our cc1 does
+    /// not know, codegen flags, CPU and ABI names clang's target does not
+    /// know. Another clang's builtin headers become ours.
+    Frontend frontend(llvm::ArrayRef<std::string> job);
+
+    /// The frontend with the config's own user content re-attached.
+    ResolvedID synthesize(ConfigID id, const Frontend& frontend);
 
     /// What the probe caches say about a (config, input) key: a live
     /// probe, a failure still cooling down, or the query to run. A
@@ -111,15 +123,15 @@ private:
     struct ProbeAdmission;
     ProbeAdmission admit_probe(ConfigID id, InputKind input);
 
-    /// Commits a query's outcome: the tokens into the probe cache, a failure
-    /// into the negative cache with its time.
+    /// Commits a query's outcome: the job's frontend into the probe cache, a
+    /// failure into the negative cache with its time.
     void commit_probe(llvm::StringRef key,
-                      const std::expected<std::vector<std::string>, std::string>& result);
+                      const std::expected<std::vector<std::string>, std::string>& job);
 
     CompilationDatabase& db;
 
-    /// Probe layer: key → raw probe output tokens (interned).
-    llvm::StringMap<llvm::SmallVector<const char*, 64>> probes;
+    /// Probe layer: key → the frontend its job sets up.
+    llvm::StringMap<Frontend> probes;
 
     /// Negative cache: keys whose query failed, mapped to the error message
     /// and when it was recorded. Avoids re-spawning the same failing driver

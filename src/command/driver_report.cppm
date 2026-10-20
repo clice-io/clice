@@ -21,7 +21,8 @@ struct ReportedDir {
 /// clang job; GCC shows its own cc1 job, its target and its header search
 /// list.
 struct DriverReport {
-    /// The clang job, rewritten as parse_cc1 does; empty for GCC.
+    /// The clang job: its program, -cc1 and its arguments as printed;
+    /// empty for GCC.
     std::vector<std::string> clang_job;
 
     /// Whether GCC ran its compiler proper; the fields up to `private_dir`
@@ -52,11 +53,8 @@ struct DriverReport {
 /// Read the report from the program's stdout (`out`) and stderr (`err`).
 DriverReport parse_driver_report(llvm::StringRef out, llvm::StringRef err);
 
-/// The first clang job in a driver's `-###` or `-v` output: the program,
-/// `-cc1`, then the arguments our linked cc1 understands. Flags it does not
-/// know are dropped with their values, and so are codegen-only flags and
-/// what only preprocessing the probe asked for (`-E` becomes
-/// `-fsyntax-only`). Empty when there is no clang job.
-std::vector<std::string> parse_cc1(llvm::StringRef content);
+/// The first clang job a driver prints under `-v`: its program, -cc1 and
+/// its arguments as printed. Empty when there is none.
+std::vector<std::string> parse_clang_job(llvm::StringRef output);
 
 }  // namespace clice

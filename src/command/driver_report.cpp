@@ -4,7 +4,6 @@ module;
 
 module clice;
 
-import :command.argument_parser;
 import :command.driver_report;
 import :vfs.path;
 
@@ -87,7 +86,7 @@ std::optional<llvm::StringRef> gcc_job_options(llvm::StringRef line) {
 
 DriverReport parse_driver_report(llvm::StringRef out, llvm::StringRef err) {
     DriverReport report;
-    report.clang_job = parse_cc1(err);
+    report.clang_job = parse_clang_job(err);
 
     llvm::SmallVector<llvm::StringRef> lines;
     err.split(lines, '\n', -1, false);
@@ -165,61 +164,31 @@ DriverReport parse_driver_report(llvm::StringRef out, llvm::StringRef err) {
     return report;
 }
 
-std::vector<std::string> parse_cc1(llvm::StringRef content) {
+std::vector<std::string> parse_clang_job(llvm::StringRef output) {
     llvm::SmallVector<llvm::StringRef> lines;
-    content.split(lines, '\n', -1, false);
-
+    output.split(lines, '\n', -1, false);
     for(llvm::StringRef line: lines) {
         line = line.trim();
-        if(line.empty() || line.front() != '"')
+        if(!line.starts_with("\"")) {
             continue;
-
+        }
         llvm::SmallVector<const char*, 256> args;
-        llvm::BumpPtrAllocator alloc;
-        llvm::StringSaver saver(alloc);
+        llvm::BumpPtrAllocator allocator;
+        llvm::StringSaver saver(allocator);
         llvm::cl::TokenizeGNUCommandLine(line, saver, args);
 
-        using namespace std::string_view_literals;
         // A multi-call llvm (LLVM_TOOL_LLVM_DRIVER_BUILD, as in xclang) runs
         // cc1 as `llvm clang -cc1`: the tool's name comes before -cc1.
-        std::size_t cc1 = args.size() > 2 && args[1] != "-cc1"sv && args[2] == "-cc1"sv ? 2 : 1;
-        if(args.size() <= cc1 || args[cc1] != "-cc1"sv)
+        auto is_cc1 = [&](std::size_t i) {
+            return i < args.size() && llvm::StringRef(args[i]) == "-cc1";
+        };
+        std::size_t cc1 = is_cc1(1) ? 1 : is_cc1(2) ? 2 : 0;
+        if(cc1 == 0) {
             continue;
-
-        std::vector<std::string> cc1_args;
-        cc1_args.emplace_back(args[0]);
-        cc1_args.emplace_back(args[cc1]);
-
-        // Parse with CC1 visibility: the external driver may be newer than the
-        // linked clang, so flags it emits that our cc1 does not understand
-        // parse as unknown and are dropped. greedy_unknown makes an unknown
-        // option consume its trailing values, so they are dropped along with
-        // it instead of being misparsed as input files. Raw tokens are copied
-        // through to preserve the exact spelling the driver emitted.
-        // FIXME: Long-term we should unify the command pipeline so the driver
-        // version always matches the embedded LLVM.
-        std::vector<std::string> raw(args.begin() + cc1 + 1, args.end());
-        auto options =
-            kota::option::ParseOptions{.greedy_unknown = true, .visibility = option::CC1Option};
-        for(auto& r: option::table().parse(raw, options)) {
-            if(!r.has_value() || r->id == option::OPT_UNKNOWN)
-                continue;
-            // A newer external driver may emit known options with values our
-            // linked clang cannot parse (e.g. -mframe-pointer=non-leaf-no-reserve).
-            // Codegen options are irrelevant for syntax analysis; stripping them
-            // avoids CompilerInvocation::CreateFromArgs failures on new values.
-            if(is_codegen_option(r->id))
-                continue;
-            if(r->id == option::OPT_E) {
-                cc1_args.emplace_back("-fsyntax-only");
-                continue;
-            }
-            if(r->id == option::OPT_dM || r->id == option::OPT_v || r->id == option::OPT_o)
-                continue;
-            for(std::uint32_t i = r->index; i < r->next_index; i += 1)
-                cc1_args.emplace_back(raw[i]);
         }
-        return cc1_args;
+        std::vector<std::string> job = {args[0]};
+        job.insert(job.end(), args.begin() + cc1, args.end());
+        return job;
     }
     return {};
 }

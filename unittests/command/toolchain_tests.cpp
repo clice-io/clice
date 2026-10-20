@@ -6,7 +6,6 @@ module clice;
 
 import :command.argument_parser;
 import :command.command;
-import :command.driver_report;
 import :command.toolchain;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -18,6 +17,96 @@ namespace {
 using namespace std::string_view_literals;
 
 ZEST_SUITE(ToolchainTests) {
+
+/// A database wrapping test entries — the unit tests' handle on the two
+/// toolchain layers.
+struct Fixture {
+    FileTable file_table;
+    CompilationDatabase db{file_table};
+
+    CommandRef add(llvm::StringRef directory,
+                   llvm::StringRef file,
+                   llvm::ArrayRef<const char*> arguments) {
+        db.add_command(directory, file, arguments);
+        auto& entry = db.candidate_entries(file).front();
+        return {entry.file,
+                entry.config,
+                db.input_kind(entry.config, file),
+                CommandSource::CDBExact};
+    }
+
+    std::string key(const CommandRef& ref) {
+        return db.toolchain().probe_key_for(ref.config, ref.input);
+    }
+
+    /// The command clice compiles `ref` with, resolved through the probe.
+    std::vector<const char*> resolve(const CommandRef& ref) {
+        ZASSERT(db.toolchain().resolve(ref.config, ref.input));
+        return db.render(ref);
+    }
+};
+
+TempDir tmp;
+Fixture f;
+
+/// `arguments`, then a source file named `file` in the temp directory, as
+/// that file's command.
+CommandRef add(llvm::StringRef file, std::vector<const char*> arguments) {
+    arguments.push_back(tmp.c_path(file));
+    return f.add(tmp.root.str(), tmp.path(file), arguments);
+}
+
+/// An executable shell script `name` in the temp directory, standing in
+/// for a compiler driver.
+std::string fake_driver(llvm::StringRef name, llvm::StringRef script) {
+    auto driver = tmp.path(name);
+    ZASSERT(!vfs::write(driver, "#!/bin/sh\n" + script.str()));
+    ZASSERT(
+        !llvm::sys::fs::setPermissions(driver, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
+    return driver;
+}
+
+/// A clang driver that prints `job` as the job it runs, and C++14's macro.
+std::string fake_clang(llvm::StringRef job, llvm::StringRef name = "clang") {
+    return fake_driver(name,
+                       std::format(R"(echo '{}' >&2
+echo '#define __cplusplus 201402L'
+)",
+                                   job));
+}
+
+/// A GCC driver that prints `report` on stderr, and C++14's macro.
+std::string fake_gcc(llvm::StringRef name, llvm::StringRef report) {
+    return fake_driver(name,
+                       std::format(R"(cat >&2 <<'REPORT'
+{}
+REPORT
+echo '#define __cplusplus 201402L'
+)",
+                                   report));
+}
+
+/// An nvcc whose dryrun names `host` as its host compiler.
+std::string fake_nvcc(llvm::StringRef host) {
+    return fake_driver("nvcc",
+                       std::format(R"(echo '#$ {} -c' >&2
+)",
+                                   host));
+}
+
+/// Whether `argv` holds `first` directly followed by `second`.
+bool adjacent(llvm::ArrayRef<const char*> argv, llvm::StringRef first, llvm::StringRef second) {
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(argv[i] == first && argv[i + 1] == second) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool contains(llvm::ArrayRef<const char*> argv, llvm::StringRef arg) {
+    return std::ranges::contains(argv, arg);
+}
 
 void EXPECT_FAMILY(llvm::StringRef name, CompilerFamily family) {
     ZASSERT(Toolchain::driver_family(name) == family);
@@ -61,36 +150,11 @@ ZEST_CASE(Family) {
     EXPECT_FAMILY("zig.exe", Zig);
 };
 
-/// A database wrapping test entries — the unit tests' handle on the two
-/// toolchain layers.
-struct Fixture {
-    FileTable file_table;
-    CompilationDatabase db{file_table};
-
-    CommandRef add(llvm::StringRef directory,
-                   llvm::StringRef file,
-                   llvm::ArrayRef<const char*> arguments) {
-        db.add_command(directory, file, arguments);
-        auto& entry = db.candidate_entries(file).front();
-        return {entry.file,
-                entry.config,
-                db.input_kind(entry.config, file),
-                CommandSource::CDBExact};
-    }
-
-    std::string key(const CommandRef& ref) {
-        return db.toolchain().probe_key_for(ref.config, ref.input);
-    }
-};
-
 ZEST_CASE(InitiallyEmpty) {
-    FileTable file_table;
-    CompilationDatabase db{file_table};
-    ZEXPECT(!db.toolchain().has_cache());
+    ZEXPECT(!f.db.toolchain().has_cache());
 }
 
 ZEST_CASE(KeyIgnoresUserContent) {
-    Fixture f;
     auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});
     auto user = f.add("/fake",
                       "/tmp/b.cpp",
@@ -112,7 +176,6 @@ ZEST_CASE(KeyIgnoresDriverIgnored) {
     /// Driver-ignored flags carry per-file values in the wild (bazel's GCC
     /// toolchain stamps -frandom-seed=<output> on every command); keying on
     /// them would spawn one probe per file instead of one per toolchain.
-    Fixture f;
     auto base = f.add("/fake", "/tmp/a.cpp", {"g++", "-std=c++23", "/tmp/a.cpp"});
     auto seed_a = f.add("/fake",
                         "/tmp/b.cpp",
@@ -127,7 +190,6 @@ ZEST_CASE(KeyIgnoresDriverIgnored) {
 ZEST_CASE(KeyIgnoresPreprocessorDepfile) {
     /// Kbuild writes `-Wp,-MMD,<depfile>` into every command: keying on the
     /// file would spawn one probe per unit of the kernel.
-    Fixture f;
     auto base = f.add("/fake", "/tmp/a.c", {"gcc", "-std=gnu11", "/tmp/a.c"});
     auto b = f.add("/fake", "/tmp/b.c", {"gcc", "-std=gnu11", "-Wp,-MMD,.b.o.d", "/tmp/b.c"});
     auto c = f.add("/fake", "/tmp/c.c", {"gcc", "-std=gnu11", "-Wp,-MMD,.c.o.d", "/tmp/c.c"});
@@ -139,8 +201,20 @@ ZEST_CASE(KeyIgnoresPreprocessorDepfile) {
     ZEXPECT(f.key(base) != f.key(fortified));
 }
 
+ZEST_CASE(KeyIgnoresCodegen) {
+    /// Debug info and section layout never change how a driver sets up the
+    /// parse; stack protection does, through its macros.
+    auto base = f.add("/fake", "/tmp/a.cpp", {"g++", "-std=c++23", "/tmp/a.cpp"});
+    auto codegen = f.add("/fake",
+                         "/tmp/b.cpp",
+                         {"g++", "-std=c++23", "-g", "-ffunction-sections", "/tmp/b.cpp"});
+    ZEXPECT(f.key(base) == f.key(codegen));
+    auto off =
+        f.add("/fake", "/tmp/c.cpp", {"g++", "-std=c++23", "-fno-stack-protector", "/tmp/c.cpp"});
+    ZEXPECT(f.key(base) != f.key(off));
+}
+
 ZEST_CASE(KeyTracksSemantics) {
-    Fixture f;
     auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});
 
     auto driver = f.add("/fake", "/tmp/b.cpp", {"g++", "-std=c++23", "/tmp/b.cpp"});
@@ -172,7 +246,6 @@ ZEST_CASE(KeyTracksSemantics) {
 ZEST_CASE(KeyTracksConfigFile) {
     /// A --config path resolves against the compilation directory, so
     /// identical commands in different directories must not share a probe.
-    Fixture f;
     auto a = f.add("/fake/a", "/tmp/a.cpp", {"clang++", "--config", "sub/clang.cfg", "/tmp/a.cpp"});
     auto b = f.add("/fake/b", "/tmp/b.cpp", {"clang++", "--config", "sub/clang.cfg", "/tmp/b.cpp"});
     ZEXPECT(f.key(a) != f.key(b));
@@ -183,7 +256,6 @@ ZEST_CASE(KeyTracksConfigFile) {
     /// Windows), and the driver is absolute too: a bare driver name is
     /// never cwd-exempt on Windows and would tie the key to the directory
     /// on its own.
-    TempDir tmp;
     auto driver = tmp.path("clang++");
     for(auto cfg: {"--config=" + tmp.path("clang.cfg"), std::string("--config=clang.cfg")}) {
         auto c = f.add("/fake/a", "/tmp/c.cpp", {driver.c_str(), cfg.c_str(), "/tmp/c.cpp"});
@@ -192,175 +264,49 @@ ZEST_CASE(KeyTracksConfigFile) {
     }
 }
 
-ZEST_CASE(QueryEmptyArgs) {
-    ZEXPECT(!Toolchain::query({}).has_value());
+/// A clang job as `-v` prints it.
+constexpr static llvm::StringRef clang_job =
+    R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-std=c++23")";
+
+ZEST_CASE(FailedProbeCooldown, skip = Windows) {
+    // A failed probe is cached: within the cooldown the driver is not
+    // spawned again, so removing it changes nothing.
+    auto driver = fake_driver("clang", "exit 1\n");
+    auto ref = add("a.cpp", {driver.c_str()});
+
+    auto first = f.db.toolchain().resolve(ref.config, ref.input);
+    ZASSERT(!first.has_value());
+    ZEXPECT(f.db.toolchain().probe_count() == std::size_t(0));
+    ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
+
+    ZASSERT(!vfs::remove(driver));
+    auto second = f.db.toolchain().resolve(ref.config, ref.input);
+    ZASSERT(!second.has_value());
+    ZEXPECT(second.error() == first.error());
 }
 
-ZEST_CASE(QueryMissingDriver) {
-    ZEXPECT(!Toolchain::query({"clice-nonexistent-driver"}).has_value());
-}
-
-ZEST_CASE(ParseCC1FirstLine) {
-    auto args = parse_cc1(R"(clang version 22.0.0
-Target: x86_64-unknown-linux-gnu
- "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-std=c++23" "a.cpp"
- "/usr/bin/clang-22" "-cc1" "-std=c++17" "b.cpp"
- "/usr/bin/ld" "-o" "a.out")");
-
-    std::vector<std::string> expected =
-        {"/usr/bin/clang-22", "-cc1", "-triple", "x86_64-unknown-linux-gnu", "-std=c++23", "a.cpp"};
-    ZEXPECT(args == expected);
-
-    ZEXPECT(parse_cc1("clang version 22.0.0\nno cc1 line here").empty());
-}
-
-ZEST_CASE(ParseCC1MultiCall) {
-    // A multi-call llvm names the tool before -cc1.
-    auto args = parse_cc1(
-        R"( "/opt/xclang/bin/llvm" "clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "a.cpp")");
-
-    std::vector<std::string> expected = {"/opt/xclang/bin/llvm",
-                                         "-cc1",
-                                         "-triple",
-                                         "x86_64-unknown-linux-gnu",
-                                         "a.cpp"};
-    ZEXPECT(args == expected);
-}
-
-ZEST_CASE(ParseCC1DropsUnknown) {
-    // A newer external driver may emit cc1 flags our linked clang does not
-    // know; they must be dropped together with their values (greedy_unknown)
-    // instead of the values being misparsed as input files.
-    auto args =
-        parse_cc1(R"( "/usr/bin/clang-22" "-cc1" "-clice-future-flag" "val1" "val2" "-std=c++23")");
-
-    std::vector<std::string> expected = {"/usr/bin/clang-22", "-cc1", "-std=c++23"};
-    ZEXPECT(args == expected);
-}
-
-ZEST_CASE(ParseCC1DropsCodegen) {
-    auto args = parse_cc1(
-        R"( "/usr/bin/clang-22" "-cc1" "-mframe-pointer=non-leaf-no-reserve" "-std=c++23")");
-
-    std::vector<std::string> expected = {"/usr/bin/clang-22", "-cc1", "-std=c++23"};
-    ZEXPECT(args == expected);
-}
-
-/// A canned clang job line covering version-skew hardening: an unknown future
-/// flag with a value, plus the module output a resolve must strip and the
-/// reduced BMI, which stays.
-constexpr static llvm::StringRef fake_cc1_line =
-    R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fmodules-reduced-bmi" "-fmodule-output=/tmp/probe.pcm" "-clice-future-flag" "val" "-std=c++23")";
-
-/// Create an executable shell script named `*.clang` (detected as the Clang
-/// family) that prints a canned job line to stderr, standing in for a
-/// real external driver.
-std::optional<std::string> create_fake_clang(llvm::StringRef cc1_line) {
-    auto file = vfs::temp_file("clice-fake", "clang");
-    if(!file)
-        return std::nullopt;
-
-    auto script = "#!/bin/sh\necho '" + cc1_line.str() + "' >&2\n";
-    if(vfs::write(*file, script))
-        return std::nullopt;
-
-    if(llvm::sys::fs::setPermissions(*file, llvm::sys::fs::all_read | llvm::sys::fs::all_exe))
-        return std::nullopt;
-
-    return *file;
-}
-
-ZEST_CASE(ResolveDropsUnknownFlags, skip = Windows) {
-    auto driver = create_fake_clang(fake_cc1_line);
-    ZASSERT(driver);
-
-    Fixture f;
-    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "/tmp/a.cpp"});
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-    auto argv = f.db.render(ref);
-
-    // Unknown flag + value dropped, module output stripped, known kept.
-    ZEXPECT(std::ranges::contains(argv, llvm::StringRef("-fmodules-reduced-bmi")));
-    ZEXPECT(std::ranges::contains(argv, llvm::StringRef("-std=c++23")));
-    for(llvm::StringRef arg: argv) {
-        ZEXPECT(arg != "-clice-future-flag");
-        ZEXPECT(arg != "val");
-        ZEXPECT(!arg.starts_with("-fmodule-output"));
-    }
-}
-
-ZEST_CASE(FailedQueryRetries, skip = Windows) {
+ZEST_CASE(FailedProbeRetries, skip = Windows) {
     // A transient driver failure must not poison the key for the session:
-    // the negative cache expires after the retry cooldown, and the next
-    // resolve re-queries the real driver.
-    TempDir tmp;
-    auto driver = tmp.path("cc.clang");
-    auto src = tmp.path("a.cpp");
-    auto script = "#!/bin/sh\necho '" + std::string(fake_cc1_line) + "' >&2\n";
-
-    Fixture eager;
-    eager.db.toolchain().set_failed_retry(std::chrono::seconds(0));
-    auto ref = eager.add(tmp.root.str(), src, {driver.c_str(), "-std=c++23", src.c_str()});
-
-    ZASSERT(!eager.db.toolchain().resolve(ref.config, ref.input).has_value());
-    ZEXPECT(eager.db.toolchain().failed_count() == std::size_t(1));
-
-    // The driver appears; the expired entry re-queries and succeeds.
-    ZASSERT(!vfs::write(driver, script));
-    ZASSERT(
-        !llvm::sys::fs::setPermissions(driver, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
-    ZASSERT(eager.db.toolchain().resolve(ref.config, ref.input));
-    ZEXPECT(eager.db.toolchain().failed_count() == std::size_t(0));
-    ZEXPECT(eager.db.toolchain().has_cache());
-
-    // Control: within the cooldown the cached failure replays untouched
-    // even after the driver appears.
-    auto late = tmp.path("cc2.clang");
-    Fixture patient;
-    auto ref2 = patient.add(tmp.root.str(), src, {late.c_str(), "-std=c++23", src.c_str()});
-
-    ZASSERT(!patient.db.toolchain().resolve(ref2.config, ref2.input).has_value());
-    ZASSERT(!vfs::write(late, script));
-    ZASSERT(!llvm::sys::fs::setPermissions(late, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
-    ZASSERT(!patient.db.toolchain().resolve(ref2.config, ref2.input).has_value());
-    ZEXPECT(patient.db.toolchain().failed_count() == std::size_t(1));
-    ZEXPECT(!patient.db.toolchain().has_cache());
-}
-
-ZEST_CASE(WarmRetriesExpired, skip = Windows) {
-    // warm() honors the same negative-cache expiry as resolve(): a
-    // cooled-down failure re-queries instead of being skipped forever.
-    TempDir tmp;
-    auto driver = tmp.path("cc.clang");
-    auto src = tmp.path("a.cpp");
-
-    Fixture f;
+    // past the cooldown, warm() and resolve() query the driver again.
     f.db.toolchain().set_failed_retry(std::chrono::seconds(0));
-    auto ref = f.add(tmp.root.str(), src, {driver.c_str(), "-std=c++23", src.c_str()});
+    auto ref = add("a.cpp", {tmp.c_path("clang")});
     llvm::SmallVector<CommandRef> refs = {ref};
 
     f.db.warm(refs);
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
-    ZEXPECT(!f.db.toolchain().has_cache());
+    ZASSERT(!f.db.toolchain().resolve(ref.config, ref.input).has_value());
 
-    auto script = "#!/bin/sh\necho '" + std::string(fake_cc1_line) + "' >&2\n";
-    ZASSERT(!vfs::write(driver, script));
-    ZASSERT(
-        !llvm::sys::fs::setPermissions(driver, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
-
+    fake_clang(clang_job);
     f.db.warm(refs);
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(0));
     ZEXPECT(f.db.toolchain().has_cache());
+    ZEXPECT(f.db.toolchain().resolve(ref.config, ref.input).has_value());
 }
 
 ZEST_CASE(WarmPartialFailure, skip = Windows) {
-    auto driver = create_fake_clang(fake_cc1_line);
-    ZASSERT(driver);
-
-    Fixture f;
-    auto good = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
-    auto bad =
-        f.add("/tmp", "/tmp/b.cpp", {"clice-nonexistent-driver", "-std=c++23", "/tmp/b.cpp"});
+    auto driver = fake_clang(clang_job);
+    auto good = add("a.cpp", {driver.c_str()});
+    auto bad = add("b.cpp", {"clice-nonexistent-driver"});
 
     llvm::SmallVector<CommandRef> refs = {good, bad};
     f.db.warm(refs);
@@ -369,40 +315,46 @@ ZEST_CASE(WarmPartialFailure, skip = Windows) {
     // so later resolve() calls fail fast without re-probing the driver.
     ZEXPECT(f.db.toolchain().probe_count() == std::size_t(1));
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
-
-    auto resolved = f.db.toolchain().resolve(good.config, good.input);
-    ZASSERT(resolved);
+    ZEXPECT(f.db.toolchain().resolve(good.config, good.input).has_value());
     ZEXPECT(!f.db.toolchain().resolve(bad.config, bad.input).has_value());
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
+}
+
+ZEST_CASE(WarmDedupesProbes, skip = Windows) {
+    auto driver = fake_clang(clang_job);
+    auto a = add("a.cpp", {driver.c_str(), "-std=c++23"});
+    auto b = add("b.cpp", {driver.c_str(), "-std=c++23"});
+    auto c = add("c.cpp", {driver.c_str(), "-std=c++17"});
+
+    llvm::SmallVector<CommandRef> refs = {a, b, c};
+    f.db.warm(refs);
+    ZEXPECT(f.db.toolchain().probe_count() == std::size_t(2));
+
+    // With the driver gone, only the probe cache can still resolve.
+    ZASSERT(!vfs::remove(driver));
+    ZEXPECT(f.db.toolchain().resolve(a.config, a.input).has_value());
 }
 
 ZEST_CASE(WarmBoundsDrivers, skip = Windows) {
     // Each driver records how many drivers run beside it: twice as many
     // probes as the process has CPUs never run more drivers than CPUs.
-    TempDir tmp;
     tmp.mkdir("running");
-    auto driver = tmp.path("cc.clang");
-    auto script = std::format(R"(#!/bin/sh
-touch '{0}/'$$
+    auto driver = fake_driver("clang",
+                              std::format(R"(touch '{0}/'$$
 ls '{0}' | wc -l >> '{1}'
 sleep 0.2
 rm '{0}/'$$
 echo '{2}' >&2
 )",
-                              tmp.path("running"),
-                              tmp.path("counts"),
-                              fake_cc1_line);
-    ZASSERT(!vfs::write(driver, script));
-    ZASSERT(
-        !llvm::sys::fs::setPermissions(driver, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
+                                          tmp.path("running"),
+                                          tmp.path("counts"),
+                                          clang_job));
 
     auto cores = kota::sys::parallelism();
-    Fixture f;
     llvm::SmallVector<CommandRef> refs;
     for(unsigned i = 0; i < 2 * cores; i += 1) {
-        auto src = tmp.path(std::format("{}.cpp", i));
         auto depth = std::format("-ftemplate-depth={}", 100 + i);
-        refs.push_back(f.add(tmp.root.str(), src, {driver.c_str(), depth.c_str(), src.c_str()}));
+        refs.push_back(add(std::format("{}.cpp", i), {driver.c_str(), depth.c_str()}));
     }
     f.db.warm(refs);
     ZEXPECT(f.db.toolchain().probe_count() == std::size_t(2 * cores));
@@ -419,281 +371,60 @@ echo '{2}' >&2
     }
 }
 
-ZEST_CASE(ResolveFailNegativeCache, skip = Windows) {
-    // A fake driver whose output names no job, so the query fails.
-    auto driver = create_fake_clang("this is not a cc1 line");
-    ZASSERT(driver);
+ZEST_CASE(ClangJobCleaned, skip = Windows) {
+    /// What only the probe asked for goes, and so does what the linked cc1
+    /// cannot take: a newer clang's flag with its value, a codegen flag's
+    /// newer value, a CPU name the target does not know.
+    auto driver = fake_clang(
+        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-dM" "-v" "-main-file-name" "probe.cpp" "-clice-future-flag" "val" "-mframe-pointer=non-leaf-no-reserve" "-target-cpu" "clice-future-cpu" "-fmodules-reduced-bmi" "-fmodule-output=/tmp/probe.pcm" "-o" "-" "-x" "c++" "/tmp/probe.cpp")");
+    auto argv = f.resolve(add("dir/a.cpp", {driver.c_str()}));
 
-    Fixture f;
-    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
-
-    auto first = f.db.toolchain().resolve(ref.config, ref.input);
-    ZASSERT(!first.has_value());
-    ZEXPECT(f.db.toolchain().probe_count() == std::size_t(0));
-    ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
-
-    // Remove the driver: a re-probe would now fail differently ("not found or
-    // not executable"), so getting the original error back proves the second
-    // resolve() hit the negative cache without spawning the driver again.
-    ZASSERT(!vfs::remove(*driver));
-    auto second = f.db.toolchain().resolve(ref.config, ref.input);
-    ZASSERT(!second.has_value());
-    ZEXPECT(second.error() == first.error());
-    ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
-}
-
-ZEST_CASE(ResolveReplacesResourceDir, skip = Windows) {
-    constexpr llvm::StringRef line =
-        R"( "/usr/bin/clang-22" "-cc1" "-resource-dir" "/clice-fake/lib/clang/22" "-internal-isystem" "/clice-fake/lib/clang/22/include" "-std=c++23")";
-    auto driver = create_fake_clang(line);
-    ZASSERT(driver);
-
-    Fixture f;
-    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-
-    // The external driver's resource dir is rewritten to ours, including
-    // derived paths sharing the prefix.
-    auto argv = f.db.render(ref);
-    auto expected_include = resource_dir().str() + "/include";
-    ZEXPECT(std::ranges::contains(argv, resource_dir()));
-    ZEXPECT(std::ranges::contains(argv, llvm::StringRef(expected_include)));
+    ZEXPECT(contains(argv, "-fmodules-reduced-bmi"));
+    ZEXPECT(std::ranges::count(argv, "-fsyntax-only"sv) == 1);
+    ZEXPECT(std::ranges::count(argv, "-main-file-name"sv) == 1);
+    ZEXPECT(adjacent(argv, "-main-file-name", "a.cpp"));
     for(llvm::StringRef arg: argv) {
-        ZEXPECT(!arg.starts_with("/clice-fake"));
+        ZEXPECT(arg != "-E");
+        ZEXPECT(arg != "-dM");
+        ZEXPECT(arg != "-clice-future-flag");
+        ZEXPECT(arg != "val");
+        ZEXPECT(arg != "clice-future-cpu");
+        ZEXPECT(!arg.starts_with("-mframe-pointer"));
+        ZEXPECT(!arg.starts_with("-fmodule-output"));
+        ZEXPECT(!arg.ends_with("probe.cpp"));
     }
+    /// The command names no standard: the one the driver compiles in.
+    ZEXPECT(contains(argv, "-std=gnu++14"));
 }
 
-ZEST_CASE(ResolveKeepsExternalIgnorelist, skip = Windows) {
-    constexpr llvm::StringRef line =
-        R"( "/usr/bin/clang-22" "-cc1" "-resource-dir" "/clice-fake/lib/clang/22" "-internal-isystem" "/clice-fake/lib/clang/22/include" "-fsanitize=address" "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22/share/asan_ignorelist.txt" "-std=c++23")";
-    auto driver = create_fake_clang(line);
-    ZASSERT(driver);
-
-    Fixture f;
-    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-
-    // The builtin headers become ours; the ignorelist the driver found
-    // under the external share/ has no counterpart in our tree.
-    auto argv = f.db.render(ref);
-    ZEXPECT(std::ranges::contains(argv, resource_dir()));
-    ZEXPECT(std::ranges::contains(argv, llvm::StringRef(resource_dir().str() + "/include")));
-    ZEXPECT(std::ranges::contains(
-        argv,
-        llvm::StringRef(
-            "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22/share/asan_ignorelist.txt")));
+ZEST_CASE(ClangJobKeepsStandard, skip = Windows) {
+    auto driver = fake_clang(clang_job);
+    auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-std=c++23"}));
+    ZEXPECT(contains(argv, "-std=c++23"));
+    ZEXPECT(!contains(argv, "-std=gnu++14"));
 }
 
-ZEST_CASE(ResolveTrailingSlashResourceDir, skip = Windows) {
-    constexpr llvm::StringRef line =
-        R"( "/usr/bin/clang-22" "-cc1" "-resource-dir" "/clice-fake/lib/clang/22//" "-internal-isystem" "/clice-fake/lib/clang/22//include" "-std=c++23")";
-    auto driver = create_fake_clang(line);
-    ZASSERT(driver);
-
-    Fixture f;
-    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-
-    auto argv = f.db.render(ref);
-    ZEXPECT(std::ranges::contains(argv, llvm::StringRef(resource_dir().str() + "/include")));
-    for(llvm::StringRef arg: argv) {
-        ZEXPECT(!arg.starts_with("/clice-fake"));
-    }
-}
-
-/// A fake driver whose job line reflects the -resource-dir it was invoked
-/// with, falling back to `fallback_dir` when none was passed — the same
-/// observable difference a real driver shows between a forced resource dir
-/// and a derived one. An empty `name` produces the usual `*.clang` temp
-/// file; otherwise the script gets that exact file name so the target can
-/// be derived from a prefixed driver spelling.
-std::optional<std::string> create_echo_clang(llvm::StringRef fallback_dir, llvm::StringRef name) {
-    std::string file;
-    if(name.empty()) {
-        auto temp = vfs::temp_file("clice-fake", "clang");
-        if(!temp)
-            return std::nullopt;
-        file = *temp;
-    } else {
-        llvm::SmallString<128> dir;
-        if(llvm::sys::fs::createUniqueDirectory("clice-fake-driver", dir))
-            return std::nullopt;
-        file = (llvm::Twine(dir) + "/" + name).str();
-    }
-
-    auto script = R"(#!/bin/sh
-rd=')" + fallback_dir.str() +
-                  R"('
-prev=""
-for a in "$@"; do
-  if [ "$prev" = "-resource-dir" ]; then rd="$a"; fi
-  prev="$a"
-done
-echo " \"/usr/bin/clang-22\" \"-cc1\" \"-resource-dir\" \"$rd\" \"-internal-isystem\" \"$rd/include\" \"-std=c++23\"" >&2
-)";
-    if(vfs::write(file, script))
-        return std::nullopt;
-
-    if(llvm::sys::fs::setPermissions(file, llvm::sys::fs::all_read | llvm::sys::fs::all_exe))
-        return std::nullopt;
-
-    return file;
-}
-
-/// The MinGW preservation tests share one shape: an external resource tree,
-/// an echoing driver (deriving that tree when no -resource-dir is forced),
-/// and the expectation that the resolved config keeps the external tree and
-/// never mentions clice's own.
-void EXPECT_KEEPS_EXTERNAL(llvm::StringRef driver_name,
-                           llvm::ArrayRef<const char*> extra_flags,
-                           bool warm_first = false) {
-    llvm::SmallString<128> external_dir_buf;
-    auto create_error =
-        llvm::sys::fs::createUniqueDirectory("clice-external-resource", external_dir_buf);
-    ZASSERT(!create_error);
-    auto external_dir = external_dir_buf.str().str();
-    auto driver = create_echo_clang(external_dir, driver_name);
-    ZASSERT(driver);
-
-    Fixture f;
-    std::vector<const char*> arguments = {driver->c_str(), "-std=c++23"};
-    arguments.insert(arguments.end(), extra_flags.begin(), extra_flags.end());
-    arguments.push_back("/tmp/a.cpp");
-    auto ref = f.add("/tmp", "/tmp/a.cpp", arguments);
-
-    if(warm_first) {
-        llvm::SmallVector<CommandRef> refs = {ref};
-        f.db.warm(refs);
-        // The driver disappears after warming: the resolve below can only
-        // succeed from the warmed cache entry, never from a fresh query.
-        vfs::remove(*driver);
-    }
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-    auto argv = f.db.render(ref);
-    ZEXPECT(std::ranges::contains(argv, llvm::StringRef(external_dir)));
-    ZEXPECT(!std::ranges::contains(argv, resource_dir()));
-
-    vfs::remove(*driver);
-    if(!driver_name.empty()) {
-        llvm::sys::fs::remove(llvm::sys::path::parent_path(*driver));
-    }
-    llvm::sys::fs::remove(external_dir_buf);
-}
-
-ZEST_CASE(ResolveKeepsExternalResource, skip = Windows) {
-    EXPECT_KEEPS_EXTERNAL("", {"--target=x86_64-w64-windows-gnu"});
-}
-
-ZEST_CASE(WarmKeepsExternalResource, skip = Windows) {
-    EXPECT_KEEPS_EXTERNAL("", {"--target=x86_64-w64-windows-gnu"}, /*warm_first=*/true);
-}
-
-ZEST_CASE(PrefixedDriverKeepsResource, skip = Windows) {
-    EXPECT_KEEPS_EXTERNAL("x86_64-w64-mingw32-clang++", {});
-}
-
-ZEST_CASE(LastTargetFlagWins, skip = Windows) {
-    EXPECT_KEEPS_EXTERNAL("",
-                          {"--target=x86_64-unknown-linux-gnu", "--target=x86_64-w64-windows-gnu"});
-}
-
-ZEST_CASE(ResolveReplacesNonMingwResource, skip = Windows) {
-    llvm::SmallString<128> external_dir_buf;
-    auto create_error =
-        llvm::sys::fs::createUniqueDirectory("clice-external-resource", external_dir_buf);
-    ZASSERT(!create_error);
-    auto external_dir = external_dir_buf.str().str();
-    auto driver = create_echo_clang(external_dir, "");
-    ZASSERT(driver);
-
-    Fixture f;
-    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-
-    auto argv = f.db.render(ref);
-    auto expected_include = resource_dir().str() + "/include";
-    ZEXPECT(std::ranges::contains(argv, resource_dir()));
-    ZEXPECT(std::ranges::contains(argv, llvm::StringRef(expected_include)));
-
-    vfs::remove(*driver);
-    llvm::sys::fs::remove(external_dir_buf);
-}
-
-ZEST_CASE(ResolveMainFileName, skip = Windows) {
-    constexpr llvm::StringRef line =
-        R"( "/usr/bin/clang-22" "-cc1" "-main-file-name" "probe.cpp" "-std=c++23")";
-    auto driver = create_fake_clang(line);
-    ZASSERT(driver);
-
-    Fixture f;
-    auto ref = f.add("/tmp", "/tmp/dir/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/dir/a.cpp"});
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-
-    // The probe file's -main-file-name is stripped; the render re-injects
-    // it with the real file's basename, exactly once.
-    auto argv = f.db.render(ref);
-    int injected = 0;
-    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
-        if(argv[i] == "-main-file-name"sv) {
-            ZEXPECT(llvm::StringRef(argv[i + 1]) == "a.cpp");
-            injected += 1;
-        }
-    }
-    ZEXPECT(injected == 1);
-}
-
-ZEST_CASE(ResolveAttachesUserContent, skip = Windows) {
-    auto driver = create_fake_clang(fake_cc1_line);
-    ZASSERT(driver);
-
-    TempDir tmp;
-    auto inc_flag = "-I" + tmp.path("inc");
-    auto inc = Spelling::absolute(tmp.path("inc")).str();
-
-    Fixture f;
-    auto ref = f.add("/tmp",
-                     "/tmp/a.cpp",
-                     {driver->c_str(), "-std=c++23", inc_flag.c_str(), "-DFOO=1", "/tmp/a.cpp"});
-    auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
-    ZASSERT(resolved);
-
+ZEST_CASE(UserContentAttached, skip = Windows) {
     // The probe never sees user content; the render puts it back on the
     // driver's cc1 line.
-    auto argv = f.db.render(ref);
-    bool has_cc1 = false;
-    bool has_include = false;
-    bool has_define = false;
-    bool has_main_file_name = false;
-    for(std::size_t i = 0; i < argv.size(); i += 1) {
-        if(argv[i] == "-cc1"sv)
-            has_cc1 = true;
-        if(argv[i] == "-I"sv && i + 1 < argv.size() && llvm::StringRef(argv[i + 1]) == inc)
-            has_include = true;
-        if(argv[i] == "-D"sv && i + 1 < argv.size() && argv[i + 1] == "FOO=1"sv)
-            has_define = true;
-        if(argv[i] == "-main-file-name"sv)
-            has_main_file_name = true;
-    }
-    ZEXPECT(has_cc1);
-    ZEXPECT(has_include);
-    ZEXPECT(has_define);
-    ZEXPECT(has_main_file_name);
+    auto driver = fake_clang(clang_job);
+    auto include = "-I" + tmp.path("inc");
+    auto argv = f.resolve(add("a.cpp", {driver.c_str(), include.c_str(), "-DFOO=1"}));
+    ZEXPECT(adjacent(argv, "-I", Spelling::absolute(tmp.path("inc")).str()));
+    ZEXPECT(adjacent(argv, "-D", "FOO=1"));
 }
 
-ZEST_CASE(ResolvePrecompileFullBMI, skip = Windows) {
-    auto driver = create_fake_clang(fake_cc1_line);
-    ZASSERT(driver);
+ZEST_CASE(PrecompileFullBMI, skip = Windows) {
+    auto driver = fake_clang(
+        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fmodules-reduced-bmi")");
 
     // Whether the module unit's cc1 asks for a reduced BMI.
-    auto reduced = [&](llvm::ArrayRef<const char*> flags) {
-        std::vector<const char*> arguments = {driver->c_str()};
-        arguments.insert(arguments.end(), flags.begin(), flags.end());
-        arguments.push_back("/tmp/a.cppm");
-        Fixture f;
-        auto ref = f.add("/tmp", "/tmp/a.cppm", arguments);
-        return std::ranges::any_of(f.db.render(ref), [](llvm::StringRef arg) {
-            return arg == "-fmodules-reduced-bmi";
-        });
+    auto reduced = [&](std::vector<const char*> flags) {
+        flags.insert(flags.begin(), driver.c_str());
+        flags.push_back(tmp.c_path("a.cppm"));
+        Fixture fresh;
+        auto ref = fresh.add(tmp.root.str(), tmp.path("a.cppm"), flags);
+        return contains(fresh.resolve(ref), "-fmodules-reduced-bmi");
     };
 
     // --precompile writes the full BMI whatever the driver asks for, and the
@@ -705,88 +436,77 @@ ZEST_CASE(ResolvePrecompileFullBMI, skip = Windows) {
     ZEXPECT(reduced({"--precompile-reduced-bmi"}));
 }
 
-ZEST_CASE(WarmDedupesProbes, skip = Windows) {
-    auto driver = create_fake_clang(fake_cc1_line);
-    ZASSERT(driver);
+ZEST_CASE(ResourceDirBecomesOurs, skip = Windows) {
+    // The external driver's resource dir and its builtin headers become
+    // ours, a trailing separator or not; the ignorelist under its share/
+    // has no counterpart in our tree and stays.
+    auto driver = fake_clang(
+        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "/clice-fake/lib/clang/22//" "-internal-isystem" "/clice-fake/lib/clang/22//include" "-fsanitize=address" "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt")");
+    auto argv = f.resolve(add("a.cpp", {driver.c_str()}));
 
-    Fixture f;
-    auto ref1 = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
-    auto ref2 = f.add("/tmp", "/tmp/b.cpp", {driver->c_str(), "-std=c++23", "/tmp/b.cpp"});
-    auto ref3 = f.add("/tmp", "/tmp/c.cpp", {driver->c_str(), "-std=c++17", "/tmp/c.cpp"});
+    ZEXPECT(adjacent(argv, "-resource-dir", resource_dir()));
+    ZEXPECT(adjacent(argv, "-internal-isystem", path::join(resource_dir(), "include")));
+    ZEXPECT(contains(
+        argv,
+        "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt"));
+}
 
-    llvm::SmallVector<CommandRef> refs = {ref1, ref2, ref3};
+ZEST_CASE(MinGWKeepsResourceDir, skip = Windows) {
+    // A matched LLVM-MinGW installation keeps its own resource tree, also
+    // when warmed (the driver gone, only the warmed cache can resolve);
+    // another target's tree becomes ours.
+    tmp.mkdir("llvm-mingw/lib/clang/22/include");
+    auto external = tmp.path("llvm-mingw/lib/clang/22");
+    auto job = [&](llvm::StringRef triple) {
+        return std::format(
+            R"( "/usr/bin/clang-22" "-cc1" "-triple" "{0}" "-resource-dir" "{1}" "-internal-isystem" "{1}/include")",
+            triple,
+            external);
+    };
+
+    auto mingw = fake_clang(job("x86_64-w64-windows-gnu"), "x86_64-w64-mingw32-clang++");
+    auto ref = add("a.cpp", {mingw.c_str()});
+    llvm::SmallVector<CommandRef> refs = {ref};
     f.db.warm(refs);
-    ZEXPECT(f.db.toolchain().probe_count() == std::size_t(2));
+    ZASSERT(!vfs::remove(mingw));
+    auto argv = f.resolve(ref);
+    ZEXPECT(adjacent(argv, "-resource-dir", external));
+    ZEXPECT(!contains(argv, resource_dir()));
 
-    // With the driver gone, only the probe cache can still resolve.
-    ZASSERT(!vfs::remove(*driver));
-    auto resolved = f.db.toolchain().resolve(ref1.config, ref1.input);
-    ZASSERT(resolved);
+    auto other = fake_clang(job("x86_64-unknown-linux-gnu"));
+    ZEXPECT(adjacent(f.resolve(add("b.cpp", {other.c_str()})), "-resource-dir", resource_dir()));
 }
 
-ZEST_CASE(KeyIgnoresCodegen) {
-    /// Debug info and section layout never change how a driver sets up the
-    /// parse; stack protection does, through its macros.
-    Fixture f;
-    auto base = f.add("/fake", "/tmp/a.cpp", {"g++", "-std=c++23", "/tmp/a.cpp"});
-    auto codegen = f.add("/fake",
-                         "/tmp/b.cpp",
-                         {"g++", "-std=c++23", "-g", "-ffunction-sections", "/tmp/b.cpp"});
-    ZEXPECT(f.key(base) == f.key(codegen));
-    auto off =
-        f.add("/fake", "/tmp/c.cpp", {"g++", "-std=c++23", "-fno-stack-protector", "/tmp/c.cpp"});
-    ZEXPECT(f.key(base) != f.key(off));
+ZEST_CASE(ForeignBuiltinHeaders, skip = Windows) {
+    /// Another clang's builtin headers, named by the command itself.
+    tmp.touch("clang-23/include/__stddef_max_align_t.h");
+    auto foreign = tmp.path("clang-23/include");
+    auto driver = fake_clang(clang_job);
+    auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-isystem", foreign.c_str()}));
+    ZEXPECT(adjacent(argv, "-isystem", path::join(resource_dir(), "include")));
+    ZEXPECT(!contains(argv, foreign));
 }
 
-/// Whether `argv` holds `first` directly followed by `second`.
-bool adjacent(llvm::ArrayRef<const char*> argv, llvm::StringRef first, llvm::StringRef second) {
-    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
-        if(argv[i] == first && argv[i + 1] == second) {
-            return true;
-        }
-    }
-    return false;
-}
-
-void write_script(llvm::StringRef file, llvm::StringRef script) {
-    ZASSERT(!vfs::write(file, script));
-    ZASSERT(!llvm::sys::fs::setPermissions(file, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
-}
-
-/// An executable `name` in `tmp` that answers like GCC: `report` on stderr,
-/// C++14's macro on stdout.
-std::string create_fake_gcc(TempDir& tmp, llvm::StringRef name, llvm::StringRef report) {
-    auto driver = tmp.path(name);
-    write_script(driver,
-                 std::format(R"(#!/bin/sh
-cat >&2 <<'REPORT'
-{}
-REPORT
-echo '#define __cplusplus 201402L'
-)",
-                             report));
-    return driver;
-}
-
-/// An nvcc in `tmp` whose dryrun names `host` as its host compiler.
-std::string create_fake_nvcc(TempDir& tmp, llvm::StringRef host) {
-    auto nvcc = tmp.path("nvcc");
-    write_script(nvcc,
-                 std::format(R"(#!/bin/sh
-echo '#$ {} -c' >&2
-)",
-                             host));
-    return nvcc;
+ZEST_CASE(UniversalBuildFirstArch, skip = Windows) {
+    /// clang refuses to preprocess for two architectures at once.
+    auto driver = fake_driver("clang++", R"(case " $* " in
+*" -arch "*" -arch "*)
+  echo "clang++: error: cannot use 'cpp-output' output with multiple -arch options" >&2
+  exit 1 ;;
+esac
+echo ' "/usr/bin/clang" "-cc1" "-triple" "arm64-apple-macosx15.0.0" "-E"' >&2
+)");
+    auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-arch", "arm64", "-arch", "x86_64"}));
+    ZEXPECT(adjacent(argv, "-triple", "arm64-apple-macosx15.0.0"));
 }
 
 ZEST_CASE(GCCSetsUpClang, skip = Windows) {
     /// A GCC whose report names its target, a macro of its specs, a CPU
     /// clang does not know, and a search list with its private include
     /// directory and a framework directory.
-    TempDir tmp;
-    auto private_dir = tmp.path("gcc/13/include");
     auto frameworks = tmp.path("sysroot/Frameworks");
-    auto report = std::format(R"(Target: x86_64-linux-gnu
+    auto driver = fake_gcc("x86_64-linux-gnu-g++",
+                           std::format(R"(Target: x86_64-linux-gnu
  /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet -v -D_REENTRANT probe.cpp -mtune=intel -march=x86-64 -dM
 #include <...> search starts here:
  {0}
@@ -795,25 +515,19 @@ ZEST_CASE(GCCSetsUpClang, skip = Windows) {
  {3} (framework directory)
 End of search list.
 LIBRARY_PATH={4}/)",
-                              tmp.path("gcc/include/c++"),
-                              private_dir,
-                              tmp.path("sysroot/usr/include"),
-                              frameworks,
-                              tmp.path("gcc/13"));
-    auto driver = create_fake_gcc(tmp, "x86_64-linux-gnu-g++", report);
-
-    Fixture f;
-    auto src = tmp.path("a.cpp");
-    auto ref = f.add(tmp.root.str(), src, {driver.c_str(), "-c", "-g", src.c_str()});
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-    auto argv = f.db.render(ref);
+                                       tmp.path("gcc/include/c++"),
+                                       tmp.path("gcc/13/include"),
+                                       tmp.path("sysroot/usr/include"),
+                                       frameworks,
+                                       tmp.path("gcc/13")));
+    auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-c", "-g"}));
 
     ZEXPECT(adjacent(argv, "-triple", "x86_64-unknown-linux-gnu"));
     ZEXPECT(adjacent(argv, "-D", "_REENTRANT"));
     ZEXPECT(adjacent(argv, "-target-cpu", "x86-64"));
-    ZEXPECT(!std::ranges::contains(argv, llvm::StringRef("intel")));
+    ZEXPECT(!contains(argv, "intel"));
     /// The command names no standard: the one GCC compiles in.
-    ZEXPECT(std::ranges::contains(argv, llvm::StringRef("-std=gnu++14")));
+    ZEXPECT(contains(argv, "-std=gnu++14"));
     /// Debug info stays out of the parse.
     ZEXPECT(!std::ranges::any_of(argv, [](llvm::StringRef arg) {
         return arg.starts_with("-debug-info-kind");
@@ -821,7 +535,6 @@ LIBRARY_PATH={4}/)",
 
     /// GCC's list in GCC's order, clang's builtin headers in place of
     /// GCC's own, and nothing of clang's own idea of the system headers.
-    auto builtin_headers = path::join(resource_dir(), "include");
     std::vector<std::string> dirs;
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
         if(argv[i] == "-internal-isystem"sv || argv[i] == "-internal-externc-isystem"sv) {
@@ -829,50 +542,40 @@ LIBRARY_PATH={4}/)",
         }
     }
     std::vector<std::string> expected = {tmp.path("gcc/include/c++"),
-                                         builtin_headers,
+                                         path::join(resource_dir(), "include"),
                                          tmp.path("sysroot/usr/include")};
     ZEXPECT(dirs == expected);
     ZEXPECT(adjacent(argv, "-internal-iframework", frameworks));
 }
 
 ZEST_CASE(GCCTargetNames, skip = Windows) {
-    TempDir tmp;
-    Fixture f;
     auto render = [&](llvm::StringRef target, llvm::StringRef options) {
-        auto driver = create_fake_gcc(tmp,
-                                      target.str() + "-g++",
-                                      std::format(R"(Target: {0}
+        auto driver = fake_gcc(target.str() + "-g++",
+                               std::format(R"(Target: {0}
  /usr/libexec/gcc/{0}/13/cc1plus -E -quiet -v probe.cpp {1} -dM)",
-                                                  target,
-                                                  options));
-        auto src = tmp.path(target.str() + ".cpp");
-        auto ref = f.add(tmp.root.str(), src, {driver.c_str(), "-c", src.c_str()});
-        ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-        return f.db.render(ref);
+                                           target,
+                                           options));
+        return f.resolve(add(target.str() + ".cpp", {driver.c_str(), "-c"}));
     };
 
     /// GCC's two-core tuning keeps its first core; an ABI name only GCC
     /// knows is dropped, one clang knows stays.
     auto arm = render("aarch64-linux-gnu", "-mcpu=cortex-a72.cortex-a53 -mabi=lp64");
     ZEXPECT(adjacent(arm, "-target-cpu", "cortex-a72"));
-    ZEXPECT(!std::ranges::contains(arm, llvm::StringRef("lp64")));
+    ZEXPECT(!contains(arm, "lp64"));
     auto riscv = render("riscv32-unknown-elf", "-march=rv32imafc -mabi=ilp32f");
     ZEXPECT(adjacent(riscv, "-target-abi", "ilp32f"));
     /// A feature's own dot is no second core: single precision stays.
     auto m7 = render("arm-none-eabi", "-mcpu=cortex-m7+nofp.dp -mthumb -mfloat-abi=hard");
     ZEXPECT(adjacent(m7, "-target-feature", "+vfp2sp"));
-
     /// A CPU newer than clang's target table.
     auto x86 = render("x86_64-linux-gnu", "-march=clice-future-cpu");
-    ZEXPECT(!std::ranges::contains(x86, llvm::StringRef("clice-future-cpu")));
+    ZEXPECT(!contains(x86, "clice-future-cpu"));
 }
 
 ZEST_CASE(GCCSeesBareLTO, skip = Windows) {
     /// clang spells LTO -flto=full, which GCC rejects.
-    TempDir tmp;
-    auto driver = tmp.path("g++");
-    write_script(driver, R"(#!/bin/sh
-case " $* " in
+    auto driver = fake_driver("g++", R"(case " $* " in
 *" -flto=full "*)
   echo "cc1plus: error: unrecognized argument to '-flto=' option: 'full'" >&2
   exit 1 ;;
@@ -880,87 +583,42 @@ esac
 echo 'Target: x86_64-linux-gnu' >&2
 echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet probe.cpp -flto -dM' >&2
 )");
-
-    Fixture f;
-    auto src = tmp.path("a.cpp");
-    auto ref = f.add(tmp.root.str(), src, {driver.c_str(), "-flto=auto", "-c", src.c_str()});
+    auto ref = add("a.cpp", {driver.c_str(), "-flto=auto", "-c"});
     ZEXPECT(f.db.toolchain().resolve(ref.config, ref.input).has_value());
 }
 
 ZEST_CASE(GCCFailureRejected, skip = Windows) {
     /// GCC prints its job and search list before its compile fails, but
     /// LIBRARY_PATH and the macros only after it succeeds.
-    TempDir tmp;
-    auto driver = tmp.path("g++");
-    write_script(driver, R"(#!/bin/sh
-echo 'Target: x86_64-linux-gnu' >&2
+    auto driver = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2
 echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet -imacros missing.h probe.cpp -dM' >&2
 echo 'cc1plus: fatal error: missing.h: No such file or directory' >&2
 exit 1
 )");
-
-    Fixture f;
-    auto src = tmp.path("a.cpp");
-    auto ref = f.add(tmp.root.str(), src, {driver.c_str(), "-c", src.c_str()});
+    auto ref = add("a.cpp", {driver.c_str(), "-c"});
     auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
     ZASSERT(!resolved);
     ZEXPECT(llvm::StringRef(resolved.error()).contains("missing.h"));
 }
 
-ZEST_CASE(UniversalBuildFirstArch, skip = Windows) {
-    /// clang refuses to preprocess for two architectures at once.
-    TempDir tmp;
-    auto driver = tmp.path("clang++");
-    write_script(driver, R"(#!/bin/sh
-case " $* " in
-*" -arch "*" -arch "*)
-  echo "clang++: error: cannot use 'cpp-output' output with multiple -arch options" >&2
-  exit 1 ;;
-esac
-echo ' "/usr/bin/clang" "-cc1" "-triple" "arm64-apple-macosx15.0.0" "-E"' >&2
-)");
-
-    Fixture f;
-    auto src = tmp.path("a.cpp");
-    auto ref = f.add(tmp.root.str(),
-                     src,
-                     {driver.c_str(), "-arch", "arm64", "-arch", "x86_64", "-c", src.c_str()});
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-    ZEXPECT(adjacent(f.db.render(ref), "-triple", "arm64-apple-macosx15.0.0"));
-}
-
 ZEST_CASE(NVCCHostLanguage, skip = Windows) {
     /// nvcc runs its host compiler in the input's language: GCC's C++
     /// driver adds _GNU_SOURCE, its C driver does not.
-    TempDir tmp;
-    auto host = tmp.path("g++");
-    write_script(host, R"(#!/bin/sh
-echo 'Target: x86_64-linux-gnu' >&2
+    auto host = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2
 case " $* " in
 *" c++ "*) echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet -D_GNU_SOURCE probe.cpp -dM' >&2 ;;
 *) echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1 -E -quiet probe.c -dM' >&2 ;;
 esac
 )");
-    auto nvcc = create_fake_nvcc(tmp, host);
-
-    Fixture f;
-    auto defines_gnu_source = [&](llvm::StringRef file) {
-        auto src = tmp.path(file);
-        auto ref = f.add(tmp.root.str(), src, {nvcc.c_str(), "-c", src.c_str()});
-        ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-        return adjacent(f.db.render(ref), "-D", "_GNU_SOURCE");
-    };
-    ZEXPECT(defines_gnu_source("a.cpp"));
-    ZEXPECT(!defines_gnu_source("b.c"));
+    auto nvcc = fake_nvcc(host);
+    ZEXPECT(adjacent(f.resolve(add("a.cpp", {nvcc.c_str(), "-c"})), "-D", "_GNU_SOURCE"));
+    ZEXPECT(!adjacent(f.resolve(add("b.c", {nvcc.c_str(), "-c"})), "-D", "_GNU_SOURCE"));
 }
 
 ZEST_CASE(NVCCHostSysroot, skip = Windows) {
     /// A cross host compiler's headers come from the sysroot the command
     /// hands it.
-    TempDir tmp;
-    auto host = tmp.path("aarch64-linux-gnu-g++");
-    write_script(host, R"(#!/bin/sh
-for arg in "$@"; do
+    auto host = fake_driver("aarch64-linux-gnu-g++", R"(for arg in "$@"; do
   case "$arg" in --sysroot=*) root="${arg#--sysroot=}" ;; esac
 done
 echo 'Target: aarch64-linux-gnu' >&2
@@ -969,50 +627,20 @@ echo '#include <...> search starts here:' >&2
 echo " $root/usr/include" >&2
 echo 'End of search list.' >&2
 )");
-    auto nvcc = create_fake_nvcc(tmp, host);
+    auto nvcc = fake_nvcc(host);
     auto sysroot = tmp.path("rootfs");
-
-    Fixture f;
-    auto src = tmp.path("a.cpp");
     auto flag = "--sysroot=" + sysroot;
-    auto ref =
-        f.add(tmp.root.str(), src, {nvcc.c_str(), "-Xcompiler", flag.c_str(), "-c", src.c_str()});
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-    ZEXPECT(adjacent(f.db.render(ref), "-internal-isystem", sysroot + "/usr/include"));
+    auto argv = f.resolve(add("a.cpp", {nvcc.c_str(), "-Xcompiler", flag.c_str(), "-c"}));
+    ZEXPECT(adjacent(argv, "-internal-isystem", sysroot + "/usr/include"));
 }
 
 ZEST_CASE(NVCCUnknownHost, skip = Windows) {
     /// A host compiler that is neither GCC nor clang.
-    TempDir tmp;
-    auto host = tmp.path("icpc");
-    write_script(host, R"(#!/bin/sh
-)");
-    auto nvcc = create_fake_nvcc(tmp, host);
-
-    Fixture f;
-    auto src = tmp.path("a.cpp");
-    auto ref = f.add(tmp.root.str(), src, {nvcc.c_str(), "-c", src.c_str()});
+    auto nvcc = fake_nvcc(fake_driver("icpc", ""));
+    auto ref = add("a.cpp", {nvcc.c_str(), "-c"});
     auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
     ZASSERT(!resolved);
     ZEXPECT(llvm::StringRef(resolved.error()).starts_with("Unsupported nvcc host compiler"));
-}
-
-ZEST_CASE(ForeignBuiltinHeaders, skip = Windows) {
-    /// Another clang's builtin headers, named by the command itself.
-    TempDir tmp;
-    tmp.touch("clang-23/include/__stddef_max_align_t.h");
-    auto foreign = tmp.path("clang-23/include");
-    auto driver = create_fake_clang(fake_cc1_line);
-    ZASSERT(driver);
-
-    Fixture f;
-    auto ref = f.add("/tmp",
-                     "/tmp/a.cpp",
-                     {driver->c_str(), "-std=c++23", "-isystem", foreign.c_str(), "/tmp/a.cpp"});
-    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
-    auto argv = f.db.render(ref);
-    ZEXPECT(adjacent(argv, "-isystem", path::join(resource_dir(), "include")));
-    ZEXPECT(!std::ranges::contains(argv, llvm::StringRef(foreign)));
 }
 
 };  // ZEST_SUITE(ToolchainTests)
