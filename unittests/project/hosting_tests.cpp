@@ -587,6 +587,7 @@ ZEST_CASE(PrecompiledHeaderEnters) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(a, a_text), .line = 1, .skipped = true},
@@ -638,6 +639,7 @@ ZEST_CASE(ForcedGainsInclude) {
     p.project.file_table.disk.end_turn();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = old_version, .line = 300},
@@ -665,6 +667,7 @@ ZEST_CASE(SkippedAloneRulesOut) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(a, a_text), .line = 1},
