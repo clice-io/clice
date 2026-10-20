@@ -210,7 +210,7 @@ struct JobsOption {
     DecoKV(names = {"-j", "--jobs"},
            help =
                "How many units or files to work on at once (default: "
-               "project.stateless_worker_count; for format, the CPU count)",
+               "project.stateless_worker_count; for index and format, the CPU count)",
            required = false)
     <std::uint32_t> jobs;
 };

@@ -10,15 +10,7 @@ import :support.logging;
 import :support.signal;
 import :worker.probe;
 import :worker.protocol;
-
-namespace clice::worker {
-
-/// Scheduling class of a stateless dispatch. Deliberately not part of the
-/// IPC protocol: priority is the pool's business, passed explicitly to
-/// send_stateless — the worker process never sees it.
-enum class Priority : uint8_t { High, Low };
-
-}  // namespace clice::worker
+import :worker.scheduler;
 
 namespace clice {
 
@@ -67,10 +59,15 @@ struct WorkerDeath {
     /// How it died, worded for the user ("signal 11 (SIGSEGV)").
     std::string cause;
 
-    /// The pool killed the worker to reclaim memory. Its request may be
-    /// what exhausted memory, so the sender spends its own bounded retries
-    /// (worker_lost) instead of requeueing for free like a deliberate cancel.
-    bool reclaimed = false;
+    /// A stateless worker's memory ran out: the pool killed it to free
+    /// memory, or an allocation failed in it. Its request is not to blame.
+    bool out_of_memory = false;
+
+    /// A stateless worker's own memory as last sampled, and whether its
+    /// request was the only stateless one running: one whose memory ran out
+    /// alone does not fit this machine.
+    std::uint64_t memory = 0;
+    bool alone = false;
 
     /// Requests in flight when the worker died. A death that names no
     /// request is held against a request only when it ran alone: among
@@ -89,6 +86,9 @@ struct StderrTail {
     /// The crash tag the dying worker wrote after worker::crashed_in_marker;
     /// kept apart from `lines`, which a sanitizer report would roll over.
     std::string crashed_in;
+
+    /// The worker wrote that an allocation failed.
+    bool out_of_memory = false;
 
     /// The pipe reached EOF. The exit is observed independently of the
     /// pipe, so the crash report waits for this before reading the lines.
@@ -135,13 +135,12 @@ struct WorkerPoolOptions {
     /// A request running past its deadline is taken for a hung worker: the
     /// worker is killed and the request blamed, like a crash. A build may
     /// take long on a big translation unit (see worker::is_build); a query
-    /// never should.
+    /// never should. A stateless request is timed by its worker's CPU time,
+    /// and taken for hung too once that stands still for stall_deadline
+    /// (see SchedulerOptions).
     std::chrono::milliseconds build_deadline{std::chrono::minutes(10)};
     std::chrono::milliseconds query_deadline{std::chrono::minutes(2)};
-
-    /// The pace of the pool's checks: deadlines, cancel grace, foreground
-    /// window, memory.
-    std::chrono::milliseconds monitor_interval{3000};
+    std::chrono::milliseconds stall_deadline{std::chrono::minutes(5)};
 
     /// Documents a stateful worker holds before evicting; unset leaves the
     /// worker's default.
@@ -155,15 +154,19 @@ struct WorkerPoolOptions {
     std::uint32_t max_stateless = 0;
 };
 
+/// What a finished stateless request measured.
+struct StatelessReport {
+    /// The peak of its worker's own memory while it ran.
+    std::uint64_t peak = 0;
+};
+
 /// Multi-process scheduler for clice worker processes.
 ///
 /// Two kinds of workers are managed:
 ///   - Stateless workers execute independent build tasks (PCH/PCM builds,
-///     indexing, completion, formatting) with two-level priority scheduling:
-///     low-priority concurrency is budgeted — up to stateless_count when the
-///     user is idle, one while foreground activity is live, and less under
-///     memory pressure. A High request finding no idle slot cooperatively
-///     cancels one low build instead of waiting out a whole TU.
+///     indexing, completion, formatting); which runs when is the
+///     WorkerScheduler's decision (worker/scheduler.cppm), which the pool
+///     carries out.
 ///   - Stateful workers keep per-document ASTs; each open document is pinned
 ///     to one worker (path_id affinity), balanced by document count.
 ///
@@ -171,10 +174,9 @@ struct WorkerPoolOptions {
 ///
 ///   - The pool owns PROCESSES and CAPACITY: spawn, monitor, respawn with
 ///     backoff, per-slot crash budget (streak, healthy-uptime reset),
-///     give-up -> cooldown revival, scaling between min/max, preemption
-///     under memory pressure, a deadline on every request, scheduling
-///     (priority, affinity). Its guarantee: capacity is never permanently
-///     zero.
+///     give-up -> cooldown revival, and the scheduler's actions: dispatch,
+///     cooperative cancels, kills for memory and deadlines, scaling. Its
+///     guarantee: capacity is never permanently zero.
 ///   - The pool ATTRIBUTES every death. A dying worker names the request it
 ///     was running (see worker/crash_report.cppm), or the deadline watchdog
 ///     names the one it killed the worker for; each request in flight
@@ -190,15 +192,16 @@ struct WorkerPoolOptions {
 ///     this request killed its worker — the caller blames its content
 ///     (Error::data carries the dead incarnation's identity so one death is
 ///     never blamed twice, the message how it died). worker_lost: another
-///     request's crash took it along, the death named none among several
-///     requests in flight, or the pool reclaimed the worker's memory —
-///     blameless. worker_died: the death named no request and this one ran
-///     alone. worker_unavailable: never dispatched, a capacity window —
-///     await_capacity() tells when it closes. cancelled: deliberate
-///     preemption, requeue freely.
+///     request's crash took it along, or the death named none among several
+///     requests in flight — blameless. worker_died: the death named no
+///     request and this one ran alone. out_of_memory: the stateless
+///     worker's memory ran out — blameless, Error::data says how much it
+///     reached and whether it ran alone. worker_unavailable: never
+///     dispatched, a capacity window — await_capacity() tells when it
+///     closes. cancelled: deliberate preemption, requeue freely.
 class WorkerPool {
 public:
-    WorkerPool(kota::event_loop& loop) : loop(loop) {}
+    WorkerPool(kota::event_loop& loop) : loop(loop), scheduler(SchedulerOptions{}) {}
 
     /// Spawn all worker processes. Returns false on failure.
     bool start(const WorkerPoolOptions& opts);
@@ -206,11 +209,11 @@ public:
     /// Gracefully stop all workers.
     kota::task<> stop();
 
-    /// Whether foreground work is in flight right now — a stateful request
+    /// Whether foreground work is in flight right now: a stateful request
     /// dispatched and unanswered, or high-priority stateless work queued or
-    /// running. The hold window only starts counting once this drains.
+    /// running.
     bool foreground_busy() const {
-        return stateful_inflight > 0 || !high_queue.empty() || high_busy_count() > 0;
+        return stateful_inflight > 0 || high_inflight > 0;
     }
 
     /// Send a request to a stateful worker with path_id affinity routing.
@@ -219,17 +222,21 @@ public:
                                         const Params& params,
                                         kota::ipc::request_options opts = {});
 
-    /// Send a request to a stateless worker with priority-aware scheduling.
+    /// Send a request to a stateless worker, placed by the scheduler.
     ///
     /// `cancel` is an advisory cancellation: when it fires, the request is
     /// cancelled over IPC and this call KEEPS awaiting the worker's real
     /// answer — the slot frees only when the process is actually idle, and
     /// crash accounting keeps observing the real outcome. A cancelled
-    /// result is reported as dispatch_errc::cancelled.
+    /// result is reported as dispatch_errc::cancelled. `cost` is what the
+    /// request is expected to take; a finished request reports what it took
+    /// into `report`.
     template <typename Params>
     RequestResult<Params> send_stateless(const Params& params,
                                          worker::Priority priority,
-                                         kota::cancellation_token cancel = {});
+                                         kota::cancellation_token cancel = {},
+                                         RequestCost cost = {},
+                                         StatelessReport* report = nullptr);
 
     /// Send a notification to the stateful worker owning path_id (if any).
     template <typename Params>
@@ -268,20 +275,16 @@ public:
     /// The process ids of the workers of the kind in service.
     std::vector<std::uint32_t> worker_pids(bool stateful) const;
 
-    /// The current low-priority concurrency budget: the memory controller's
-    /// window, additionally clamped to one while the user is active. Public
-    /// so the indexer's feeder can size its in-flight window from it.
-    std::size_t effective_low_limit() const {
-        return std::min(low_limit, foreground_active ? foreground_low_limit : max_low_limit());
+    /// Background requests allowed at once now; the index feeders size
+    /// their in-flight windows from it.
+    std::size_t background_limit() const {
+        return scheduler.background_limit(std::chrono::steady_clock::now());
     }
 
     /// Foreground evidence from outside the pool: didOpen/didChange/didSave
-    /// and friends. Starts (or refreshes) the hold window; requests need no
-    /// call of their own — every stateful dispatch and every High stateless
-    /// dispatch notes itself, and in-flight ones hold the window open.
-    void foreground_pulse() {
-        note_foreground();
-    }
+    /// and friends. Requests need no call of their own — every stateful
+    /// dispatch and every High stateless dispatch counts.
+    void foreground_pulse();
 
     /// Emitted when a stateless slot (re)enters service — spawn, respawn,
     /// revive, scale-up. The indexer's capacity gate wakes on it instead of
@@ -311,8 +314,8 @@ private:
     enum class SlotState : std::uint8_t {
         /// Process running and accepting requests.
         Alive,
-        /// Process declared dead (transport failure, preemption kill, or
-        /// observed exit); monitor_worker has not delivered its result yet.
+        /// Process declared dead (transport failure, a kill, or an observed
+        /// exit); monitor_worker has not delivered its result yet.
         Dying,
         /// A respawn is scheduled, possibly sleeping out a backoff delay.
         Respawning,
@@ -321,8 +324,6 @@ private:
         /// Crash budget exhausted; vacant until revival or scale-up.
         Dead,
     };
-
-    struct Dispatch;
 
     struct WorkerProcess {
         kota::process proc;
@@ -346,18 +347,13 @@ private:
         /// Stateful only: number of documents routed to this worker.
         std::size_t owned_documents = 0;
 
-        /// Stateless only: true while a request is in-flight on this worker.
-        bool busy = false;
-
-        /// Stateless only: true if the current in-flight request is low-priority.
-        bool low_priority = false;
-
         /// True when this worker is being intentionally shut down (scale-down),
         /// as opposed to an unexpected crash.
         bool retiring = false;
 
-        /// True when the pool killed this worker on purpose to relieve
-        /// memory pressure: respawn immediately, without crash accounting.
+        /// True when the pool killed this worker on purpose — for memory, or
+        /// past an ignored cancel: respawn immediately, without crash
+        /// accounting.
         bool preempted = false;
 
         /// Consecutive fast deaths that count against the slot's budget
@@ -368,10 +364,6 @@ private:
         /// spawn; senders hold it across their await.
         std::shared_ptr<WorkerDeath> death = std::make_shared<WorkerDeath>();
 
-        /// Requests in flight on the current incarnation, for the deadline
-        /// watchdog. Cleared at death.
-        std::vector<const Dispatch*> dispatches;
-
         /// Stateful only: the documents the dead incarnation owned, taken
         /// off the owner table the moment the death is declared — a request
         /// routed to the corpse in the window before the crash report
@@ -380,84 +372,97 @@ private:
 
         std::chrono::steady_clock::time_point spawn_time{};
 
-        /// Stateless only: cancels the in-flight request, and marks it
-        /// scheduler-cancelled so its sender classifies the eventual reply
-        /// (cooperative stop or kill) as preemption instead of a failure.
-        std::shared_ptr<kota::cancellation_source> preempt_source;
-
-        /// When a cooperative cancel was requested of this slot's in-flight
-        /// request; zero when none is outstanding. The monitor kills the
-        /// process if it blows past cancel_grace without returning.
-        std::chrono::steady_clock::time_point cancel_requested_at{};
-
-        /// Monotonic acquisition ordinal of the in-flight request. Victim
-        /// selection picks the largest — the actual newest acquisition; the
-        /// slot index says nothing about acquisition order once slots are
-        /// reused.
-        std::uint64_t acquire_epoch = 0;
-
-        /// Whether the worker holds work, and with it memory: an acquisition, a
-        /// request in flight, or documents (whose last one can close while
-        /// its compile still runs).
-        bool holds_work() const {
-            return busy || !dispatches.empty() || owned_documents > 0;
-        }
+        /// The process's own memory as last sampled, and the part of it in
+        /// swap.
+        std::uint64_t memory = 0;
+        std::uint64_t swapped = 0;
     };
 
-    /// A request in flight on a slot: what the deadline watchdog times and
-    /// the crash tag a death is matched against. Registered for the span of
-    /// the send; a death clears the slot's list, so an outliving frame
-    /// leaves the next incarnation's list alone.
-    struct Dispatch {
+    /// A stateless request between its submission and its end: what the
+    /// scheduler's actions reach it by.
+    struct PendingStateless {
         WorkerPool& pool;
-        std::size_t index;
-        bool stateful;
-        unsigned generation;
-        std::string tag;
-        /// See worker::is_build.
-        bool build;
-        std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
+        RequestId id;
 
-        Dispatch(WorkerPool& pool, std::size_t index, bool stateful, std::string tag, bool build) :
-            pool(pool), index(index), stateful(stateful),
-            generation(pool.slot(index, stateful).generation), tag(std::move(tag)), build(build) {
-            pool.slot(index, stateful).dispatches.push_back(this);
+        /// Fired by the scheduler's Cancel: cancels the request over IPC.
+        kota::cancellation_source preempt;
+
+        /// Signalled by the scheduler's Dispatch, or to observe that the
+        /// request can never run (pool stopped, all slots given up, its
+        /// sender cancelled it while it waited).
+        kota::event ready{};
+
+        /// The slot and its generation the Dispatch named.
+        std::optional<std::size_t> slot;
+        unsigned generation = 0;
+
+        bool finished = false;
+
+        PendingStateless(WorkerPool& pool, RequestId id) : pool(pool), id(id) {
+            pool.pending[id] = this;
         }
 
-        Dispatch(const Dispatch&) = delete;
-        Dispatch& operator=(const Dispatch&) = delete;
+        PendingStateless(const PendingStateless&) = delete;
+        PendingStateless& operator=(const PendingStateless&) = delete;
 
-        ~Dispatch() {
-            auto& w = pool.slot(index, stateful);
-            if(w.generation == generation) {
-                std::erase(w.dispatches, this);
+        /// Its end, however it came: the scheduler forgets it and frees its
+        /// slot. Returns the peak of its worker's own memory while it ran.
+        std::uint64_t finish();
+
+        ~PendingStateless() {
+            if(!finished) {
+                finish();
             }
         }
     };
 
-    kota::event_loop& loop;
-    llvm::SmallVector<WorkerProcess> stateless_workers;
-    llvm::SmallVector<WorkerProcess> stateful_workers;
+    /// A request in flight on a slot, registered for the span of its send:
+    /// the crash tag a death is matched against, and whether it is a build
+    /// (see worker::is_build), which picks the deadline a kill reports.
+    struct Inflight {
+        WorkerPool& pool;
+        RequestId id;
+        std::string tag;
+        bool build;
+
+        Inflight(WorkerPool& pool, RequestId id, std::string tag, bool build) :
+            pool(pool), id(id), tag(std::move(tag)), build(build) {
+            pool.flights[id] = this;
+        }
+
+        Inflight(const Inflight&) = delete;
+        Inflight& operator=(const Inflight&) = delete;
+
+        ~Inflight() {
+            pool.flights.erase(id);
+        }
+    };
 
     WorkerProcess& slot(std::size_t index, bool stateful) {
         return stateful ? stateful_workers[index] : stateless_workers[index];
     }
 
-    /// Set whenever a slot (re)enters service, and at stop; await_capacity
-    /// waits on it.
-    kota::event capacity_returned;
-
     /// The error a request that died with its worker reports: worker_crashed
-    /// when the death names this very request; worker_lost when it names
-    /// another, names none while other requests were in flight, or was the
-    /// pool's memory reclaim; worker_died when it names none and this
-    /// request ran alone.
+    /// when the death names this very request; out_of_memory when the
+    /// worker's memory ran out; worker_lost when it names
+    /// another, or names none while other requests were in flight;
+    /// worker_died when it names none and this request ran alone.
     static kota::ipc::Error death_error(const WorkerDeath& death,
                                         llvm::StringRef tag,
                                         kota::codec::dyn::Value identity);
 
-    // Stateful routing: each open document (path_id) is pinned to one worker.
-    llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
+    static SchedulerTime now() {
+        return std::chrono::steady_clock::now();
+    }
+
+    /// Carry out the scheduler's actions, those they lead to included.
+    void execute();
+
+    void kill_worker(const scheduler::Kill& kill);
+
+    /// Close the idle stateless worker's pipe and terminate it; its exit
+    /// retires the slot.
+    void retire_worker(std::size_t index);
 
     /// Returns the worker owning path_id, assigning the least-loaded live
     /// worker on first use. SIZE_MAX when no stateful worker is alive, or
@@ -467,89 +472,6 @@ private:
     /// takes its documents off the table.
     std::size_t assign_worker(std::uint32_t path_id);
     std::size_t pick_least_loaded();
-
-    /// A coroutine waiting for a stateless worker slot. Lives on the frame of
-    /// acquire_stateless_slot(). Dispatch acquires a worker on the waiter's
-    /// behalf before waking it; the destructor covers cancellation:
-    ///   - Still queued: removes itself from the queue.
-    ///   - Acquired but cancelled before the coroutine consumed the acquisition:
-    ///     releases the slot (unless the worker died in between — then the
-    ///     generation mismatch shows the acquisition was already cleaned up).
-    struct PendingStateless {
-        WorkerPool& pool;
-        worker::Priority priority;
-
-        /// Signalled by try_dispatch_pending().
-        kota::event ready{};
-
-        /// Set to the acquired worker before signalling ready; stays SIZE_MAX
-        /// when the waiter is woken only to observe pool death or stop.
-        std::size_t assigned_worker = SIZE_MAX;
-
-        /// Generation of the acquired worker at dispatch time.
-        unsigned assigned_gen = 0;
-
-        /// Points to whichever queue (high/low) this entry sits in; nullptr
-        /// once popped.
-        std::deque<PendingStateless*>* queue = nullptr;
-
-        PendingStateless(WorkerPool& pool, worker::Priority priority) :
-            pool(pool), priority(priority) {}
-
-        PendingStateless(const PendingStateless&) = delete;
-        PendingStateless& operator=(const PendingStateless&) = delete;
-
-        ~PendingStateless() {
-            if(queue) {
-                std::erase(*queue, this);
-            } else if(assigned_worker != SIZE_MAX &&
-                      pool.stateless_workers[assigned_worker].generation == assigned_gen) {
-                pool.release_stateless_slot(assigned_worker);
-            }
-        }
-    };
-
-    /// RAII guard that releases a stateless worker slot on scope exit.
-    /// Captures the generation so a death-and-respawn on the same index
-    /// won't accidentally clear the new occupant's busy flag.
-    struct StatelessSlot {
-        WorkerPool& pool;
-        std::size_t worker_index;
-        unsigned gen;
-
-        StatelessSlot(WorkerPool& p, std::size_t idx) :
-            pool(p), worker_index(idx), gen(p.stateless_workers[idx].generation) {}
-
-        StatelessSlot(const StatelessSlot&) = delete;
-        StatelessSlot& operator=(const StatelessSlot&) = delete;
-
-        ~StatelessSlot() {
-            if(pool.stateless_workers[worker_index].generation == gen)
-                pool.release_stateless_slot(worker_index);
-        }
-    };
-
-    /// Pending requests waiting for a worker, split by priority.
-    /// High queue is drained first; low queue respects low_limit.
-    std::deque<PendingStateless*> high_queue;
-    std::deque<PendingStateless*> low_queue;
-
-    /// Max concurrent low-priority tasks, adjusted by tick_memory(). Reads
-    /// go through effective_low_limit(), which clamps to the ceiling.
-    std::size_t low_limit = 0;
-
-    // All occupancy numbers are derived from slot state on demand instead of
-    // being maintained as counters — with at most a few dozen slots the scans
-    // are trivial, and there is no incremental bookkeeping to drift.
-
-    /// Stateless slots that can serve requests now.
-    std::size_t alive_stateless() const;
-
-    /// Alive stateless slots with a request in flight.
-    std::size_t busy_stateless() const;
-
-    /// Alive stateless slots busy with low-priority work.
-    std::size_t low_busy_count() const;
 
     /// Stateless slots that are not permanently vacant (Dead/Retired):
     /// alive ones plus those dying or awaiting respawn.
@@ -564,90 +486,18 @@ private:
         return stateless_capacity() > 0;
     }
 
-    /// The low-priority ceiling with no foreground activity: the
-    /// configured stateless count, of the slots schedulable now. Foreground
-    /// bursts reclaim capacity through foreground_low_limit and the deficit
-    /// cancel in acquire_stateless_slot instead of a standing reservation,
-    /// which would leave a slot idle through every fully-idle stretch.
-    std::size_t max_low_limit() const {
-        return std::min<std::size_t>(schedulable_stateless(), options.stateless_count);
-    }
-
-    /// The low budget while the user is active. Background compiles slow
-    /// the user's own down well before the CPU runs out — cores share one
-    /// power limit — so while they type one TU indexes at a time.
-    constexpr static std::size_t foreground_low_limit = 1;
-
-    /// Memory controller thresholds on the available share of memory: below
-    /// severe_ratio running low work is killed and the budget zeroed; below
-    /// pressure_ratio the budget shrinks; at or above it the budget grows.
-    constexpr static double severe_ratio = 0.10;
-    constexpr static double pressure_ratio = 0.20;
-
-    /// Rising edge of foreground activity: clamp the budget now and
-    /// cooperatively cancel the excess in-flight low work so the CPU frees
-    /// within a declaration boundary, not at end-of-TU.
-    void note_foreground();
-
-    /// Falling edge, driven by the monitor tick: foreground work drained
-    /// and the hold window expired reopen the idle budget.
-    void tick_foreground();
-
-    /// Kill workers whose cooperatively cancelled request outlived
-    /// cancel_grace; driven by the monitor tick.
-    void tick_cancel_grace();
-
-    /// Kill workers running a request past its deadline and name that
-    /// request in the death record; driven by the monitor tick. A query is
-    /// not timed while a build runs on the same worker: the time is the
-    /// sender's, and the query may be queued behind the build.
-    void tick_deadlines();
-
-    /// Cooperatively cancel up to `count` in-flight low-priority requests:
-    /// the IPC cancel trips the worker's stop flag, the compile returns at
-    /// the next declaration boundary, and the sender — which
-    /// keeps awaiting the worker's own reply, so the slot stays busy until
-    /// the process is actually free — observes dispatch_errc::cancelled.
-    /// A victim that ignores the cancel past cancel_grace is killed by the
-    /// monitor.
-    void cancel_low_priority(std::size_t count);
-
-    /// Low slots still owed to foreground/High demand beyond the cancels
-    /// already in flight: the excess over the clamped budget, or one per
-    /// queued High request while no slot is idle, minus the victims already
-    /// asked to stop. Evaluated at every demand edge AND at the Low arming
-    /// point in send_stateless — the cancel pass must skip acquired slots whose
-    /// sender has not armed a source yet, so the arming re-check is what
-    /// keeps demand from being dropped in that window. `pending_high`
-    /// counts a High requester about to queue itself.
-    std::size_t low_reclaim_deficit(std::size_t pending_high = 0);
-
-    /// Wait for an idle stateless worker. Returns SIZE_MAX when no slot can
-    /// serve the request anymore (pool stopped or all slots given up), or
-    /// once `cancel` fires while it waits.
-    kota::task<std::size_t> acquire_stateless_slot(worker::Priority priority,
-                                                   kota::cancellation_token cancel);
-    void release_stateless_slot(std::size_t worker_index);
-
-    /// Mark an acquired worker busy. Returns the index for chaining.
-    std::size_t mark_busy(std::size_t index, worker::Priority priority);
-
-    /// Wake queued requests when a worker becomes available; drains the
-    /// queues with a failure signal when no capacity remains.
-    void try_dispatch_pending();
-
-    /// Wake all queued requests without an acquired worker so they observe pool death.
+    /// Wake every queued stateless request: it observes that it can never run.
     void fail_pending_requests();
 
-    std::size_t pick_idle_stateless();
-
     /// Declare a worker's process dead right now: bump the generation, drop
-    /// the busy acquisition and the peer reference. Idempotent — safe to call from
-    /// a failed send before the monitor observed the exit. `kill_process`
-    /// must be true when death is declared ahead of the result (failed
-    /// send, preemption) so monitor_worker's proc.wait() is guaranteed to
-    /// deliver; the monitor itself passes false — its process was already
-    /// reaped, and signalling the freed pid could hit an unrelated process.
+    /// the peer reference, record what the scheduler knew of it in its
+    /// death and tell the scheduler. Idempotent — safe to call from a
+    /// failed send before the monitor observed the exit.
+    /// `kill_process` must be true when death is declared ahead of the
+    /// result (failed send, a kill) so monitor_worker's proc.wait() is
+    /// guaranteed to deliver; the monitor itself passes false — its process
+    /// was already reaped, and signalling the freed pid could hit an
+    /// unrelated process.
     void mark_worker_dead(std::size_t index, bool stateful, bool kill_process);
 
     /// Handle a crash result: log/relay, update crash accounting, fire
@@ -665,22 +515,28 @@ private:
 
     /// A worker that ran healthily for a while starts a fresh streak: the
     /// budget bounds crash loops, not lifetime bad luck. Called on crash
-    /// accounting and on preemption — a preempted slot must not carry a
+    /// accounting and on a kill on purpose — such a slot must not carry a
     /// stale streak past the healthy interval that would have cleared it.
     void reset_streak_if_healthy(WorkerProcess& w);
 
     /// Permanently vacate a slot and fail waiters if it was the last one.
     void give_up_slot(std::size_t index, bool stateful);
 
-    /// 3s tick driving the controllers below.
+    /// The pool's pace: samples memory and the workers for the scheduler.
     kota::task<> monitor_loop();
 
-    /// Adjusts low_limit from memory pressure: zero below severe_ratio,
-    /// killing the low work in flight; one step down below pressure_ratio,
-    /// never under one; one step up above it while the budget is in use, so
-    /// a budget the foreground limit masks or nothing uses never climbs past
-    /// what was tried.
-    void tick_memory(double available_ratio);
+    /// Take a sample and hand it to the scheduler.
+    void sample();
+
+    /// What the workers have had moved out to swap between two samples
+    /// that tells memory is short: below it, the kernel trims pages nothing
+    /// touches.
+    constexpr static std::uint64_t swap_threshold = 64ull << 20;
+
+    /// Whether the worker holds work, and with it memory: a request in
+    /// flight, or documents (whose last one can close while its compile
+    /// still runs).
+    bool holds_work(const WorkerProcess& w, std::size_t index, bool stateful) const;
 
     /// Rank each worker for the kernel's OOM killer (Linux): one holding a
     /// request or documents just above the master, which holds every
@@ -691,107 +547,15 @@ private:
     /// Write a worker's OOM score: oom_holding when it holds work, else
     /// the master's. Taking on work raises it and a stateless release
     /// lowers it at once, since a compile can exhaust memory before the
-    /// next tick.
+    /// next sample.
     void set_oom_score(const WorkerProcess& w, bool holds);
 
-    /// Scales the stateless pool up/down from saturation/idle streaks.
-    void tick_scaling(double available_ratio);
+    /// Start another stateless process, in a vacant slot when there is one.
+    bool scale_up_worker();
 
     /// SIGKILL any worker still alive after the SIGTERM grace period, so a
     /// wedged worker can't block stop()'s join forever.
     kota::task<> kill_stragglers();
-
-    // --- Dynamic scaling ---
-
-    /// Spawn an additional stateless worker. Returns true on success.
-    bool scale_up_worker();
-
-    /// Find the highest-index idle worker above min_stateless, mark it
-    /// retiring, and close its output pipe + send SIGTERM.
-    void retire_idle_worker();
-
-    /// Kill up to `count` in-flight low-priority workers to relieve memory
-    /// pressure. Their requests fail with dispatch_errc::worker_lost and the
-    /// processes respawn immediately without crash accounting.
-    void preempt_low_priority(std::size_t count);
-
-    /// Foreground activity state: in-flight foreground work (stateful or
-    /// High stateless), or a pulse within fg_hold, keeps the low budget
-    /// clamped to foreground_low_limit. Rising edges are synchronous
-    /// (note_foreground); the falling edge is evaluated by the monitor tick
-    /// so hot paths never read the clock.
-    bool foreground_active = false;
-    std::size_t stateful_inflight = 0;
-    std::chrono::steady_clock::time_point last_fg_activity{};
-    std::uint64_t next_acquire_epoch = 0;
-
-    /// Alive stateless slots busy with high-priority work.
-    std::size_t high_busy_count() const;
-
-    constexpr static std::chrono::seconds fg_hold{10};
-
-    /// Grace before a cooperatively cancelled low request's worker is
-    /// killed: covers a compile stuck inside one giant declaration, where
-    /// the stop flag is never polled.
-    constexpr static std::chrono::seconds cancel_grace{10};
-
-    /// Consecutive monitor ticks with interactive work queued and no idle
-    /// slot, or background work queued behind a full allowance while the
-    /// pool is below stateless_count.
-    unsigned saturated_cycles = 0;
-
-    /// Consecutive monitor ticks where workers were idle with no queued work.
-    unsigned idle_cycles = 0;
-
-    constexpr static unsigned scale_up_ticks = 5;
-    constexpr static unsigned scale_down_ticks = 10;
-
-    /// Cancelled by stop(). Unwinds monitor_loop() and respawn backoff sleeps
-    /// at their poll points, and lets monitor_worker() attribute the
-    /// SIGTERM-induced exits that follow to intentional shutdown (no anomaly,
-    /// no respawn).
-    kota::cancellation_source stop_scope;
-
-    /// All long-lived pool coroutines: monitor_worker() exit observers, the
-    /// peer IO pumps and stderr drains, respawn tasks, and the monitor loop.
-    /// Never cancelled as a group — stop() joins it, so shutdown waits until
-    /// every worker process actually exited and its final output (crash
-    /// stacktraces, sanitizer reports) was drained to EOF.
-    kota::task_group<> worker_tasks;
-    WorkerPoolOptions options;
-
-    /// Set once start() succeeded: gates background concerns (slot
-    /// revival) that need a running event loop.
-    bool started = false;
-    std::string log_dir;
-
-    /// The master's own oom_score_adj, which workers inherit; unset where
-    /// there is none to adjust (not Linux).
-    std::optional<int> oom_base;
-
-    /// The score of a worker holding work, just above the master as the
-    /// last tick measured it; the highest until the first tick.
-    int oom_holding = 1000;
-
-    /// The usage counter and memory.stat libuv measures a memory cgroup by,
-    /// with the memory.stat key of the cgroup's inactive file cache
-    /// (hierarchical on v1, as the usage counter is).
-    struct CgroupMemory {
-        std::string usage;
-        std::string stat;
-        llvm::StringRef cache_key;
-    };
-
-    /// The files libuv reads for the memory cgroup `proc_cgroup` (the text
-    /// of /proc/self/cgroup) names.
-    static CgroupMemory find_cgroup_memory(llvm::StringRef proc_cgroup);
-
-    /// What is left of the cgroup's `limit` once its working set (usage
-    /// less inactive file cache, as kubelet counts it) is taken out:
-    /// libuv counts that cache as used, so a container that read and wrote
-    /// some files would look full. Unset when the files cannot be read.
-    static std::optional<std::uint64_t> cgroup_available(const CgroupMemory& cgroup,
-                                                         std::uint64_t limit);
 
     struct SpawnedProcess {
         kota::process proc;
@@ -808,6 +572,9 @@ private:
 
     /// Refill an existing slot with a fresh process.
     bool respawn_worker(std::size_t index, bool stateful);
+
+    /// The slot entered service: tell the scheduler and the waiters.
+    void serving(std::size_t index, bool stateful);
 
     /// After `revive_after`, grant a given-up slot a fresh crash budget
     /// and respawn it: the pool never stays at zero workers forever.
@@ -834,9 +601,73 @@ private:
     RequestResult<Params> dispatch_stateless(const Params& params,
                                              worker::Priority priority,
                                              kota::cancellation_token cancel,
+                                             RequestCost cost,
+                                             StatelessReport* report,
                                              bool& sent);
 
     friend struct testing::WorkerPoolFixture;
+
+private:
+    kota::event_loop& loop;
+
+    llvm::SmallVector<WorkerProcess> stateless_workers;
+
+    llvm::SmallVector<WorkerProcess> stateful_workers;
+
+    /// Every decision of which request runs where and which process dies.
+    WorkerScheduler scheduler;
+
+    /// execute() is carrying out actions: one that leads to more leaves
+    /// them to its loop.
+    bool executing = false;
+
+    /// The stateless requests between submission and end, by id.
+    llvm::DenseMap<RequestId, PendingStateless*> pending;
+
+    /// The requests in flight, by id.
+    llvm::DenseMap<RequestId, const Inflight*> flights;
+
+    RequestId next_request = 1;
+
+    /// Set whenever a slot (re)enters service, and at stop; await_capacity
+    /// waits on it.
+    kota::event capacity_returned;
+
+    // Stateful routing: each open document (path_id) is pinned to one worker.
+    llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
+
+    std::size_t stateful_inflight = 0;
+
+    std::size_t high_inflight = 0;
+
+    /// Cancelled by stop(). Unwinds monitor_loop() and respawn backoff sleeps
+    /// at their poll points, and lets monitor_worker() attribute the
+    /// SIGTERM-induced exits that follow to intentional shutdown (no anomaly,
+    /// no respawn).
+    kota::cancellation_source stop_scope;
+
+    /// All long-lived pool coroutines: monitor_worker() exit observers, the
+    /// peer IO pumps and stderr drains, respawn tasks, and the monitor loop.
+    /// Never cancelled as a group — stop() joins it, so shutdown waits until
+    /// every worker process actually exited and its final output (crash
+    /// stacktraces, sanitizer reports) was drained to EOF.
+    kota::task_group<> worker_tasks;
+
+    WorkerPoolOptions options;
+
+    /// Set once start() succeeded: gates background concerns (slot
+    /// revival) that need a running event loop.
+    bool started = false;
+
+    std::string log_dir;
+
+    /// The master's own oom_score_adj, which workers inherit; unset where
+    /// there is none to adjust (not Linux).
+    std::optional<int> oom_base;
+
+    /// The score of a worker holding work, just above the master as the
+    /// last tick measured it; the highest until the first tick.
+    int oom_holding = 1000;
 };
 
 /// The build a worker ran to its end, as the probe counts it: its kind and
@@ -882,9 +713,12 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  worker::Priority priority,
-                                                 kota::cancellation_token cancel) {
+                                                 kota::cancellation_token cancel,
+                                                 RequestCost cost,
+                                                 StatelessReport* report) {
     bool sent = false;
-    auto result = co_await dispatch_stateless(params, priority, std::move(cancel), sent);
+    auto result =
+        co_await dispatch_stateless(params, priority, std::move(cancel), cost, report, sent);
     if(auto build = ran_build(params, result, sent); build && probe) {
         co_await probe->returned(build->first, build->second);
     }
@@ -896,9 +730,6 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
                                                     const Params& params,
                                                     kota::ipc::request_options opts,
                                                     bool& sent) {
-    // Every stateful request is user-facing: note the activity and hold the
-    // foreground window open for as long as it flies.
-    note_foreground();
     stateful_inflight += 1;
 
     struct InflightGuard {
@@ -911,6 +742,8 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
 
     auto idx = assign_worker(path_id);
     if(idx == SIZE_MAX) {
+        scheduler.user_activity(now());
+        execute();
         co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
                                              "No stateful workers available"});
     }
@@ -922,8 +755,24 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     auto gen = assigned.generation;
     auto death = assigned.death;
     sent = true;
-    Dispatch dispatch(*this, idx, true, worker::crash_tag(params), worker::is_build<Params>);
-    auto gate = probe ? probe->sending(dispatch.tag, peer) : std::nullopt;
+    auto id = next_request;
+    next_request += 1;
+    Inflight inflight(*this, id, worker::crash_tag(params), worker::is_build<Params>);
+    // Every stateful request is user-facing: it counts as activity, and is
+    // timed while it flies.
+    scheduler.stateful_begin(id, idx, worker::is_build<Params>, now());
+    execute();
+
+    struct Timed {
+        WorkerPool& pool;
+        RequestId id;
+
+        ~Timed() {
+            pool.scheduler.stateful_end(id, now());
+        }
+    } timed{*this, id};
+
+    auto gate = probe ? probe->sending(inflight.tag, peer) : std::nullopt;
     auto result = co_await peer->send_request(params, opts);
     if(gate) {
         probe->answered(*gate);
@@ -937,105 +786,117 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     if(stateful_workers[idx].generation == gen)
         mark_worker_dead(idx, true, true);
     co_await death->done.wait();
-    co_await kota::fail(death_error(*death, dispatch.tag, worker::death_identity(idx, gen, true)));
+    co_await kota::fail(death_error(*death, inflight.tag, worker::death_identity(idx, gen, true)));
 }
 
 template <typename Params>
 RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
                                                      worker::Priority priority,
                                                      kota::cancellation_token cancel,
+                                                     RequestCost cost,
+                                                     StatelessReport* report,
                                                      bool& sent) {
-    // High-priority stateless work (PCH, completion builds, foreground
-    // PCMs) is foreground by the priority taxonomy; while it runs or
-    // queues, foreground_busy() holds the window open.
-    if(priority == worker::Priority::High)
-        note_foreground();
-    auto idx = co_await acquire_stateless_slot(priority, cancel);
-    if(idx == SIZE_MAX) {
-        co_await kota::fail(cancel.cancelled()
-                                ? kota::ipc::Error{worker::dispatch_errc::cancelled,
-                                                   "Request cancelled by its round"}
-                                : kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
-                                                   "No stateless workers available"});
+    using worker::dispatch_errc::cancelled;
+    using worker::dispatch_errc::worker_unavailable;
+    if(priority == worker::Priority::High) {
+        high_inflight += 1;
     }
 
-    StatelessSlot slot(*this, idx);
-    auto peer = stateless_workers[idx].peer;
-    auto gen = stateless_workers[idx].generation;
-    auto death = stateless_workers[idx].death;
+    struct HighGuard {
+        WorkerPool& pool;
+        bool high;
 
-    if(priority == worker::Priority::Low) {
-        // Reclaim demand that arose while this acquisition's sender was parked
-        // (a foreground edge, a queued High) was skipped by the cancel
-        // pass — an unarmed slot must never be marked cancelled (see
-        // cancel_low_priority). Honor it here, before the request is sent
-        // over IPC: giving the slot back costs nothing.
-        if(low_reclaim_deficit() > 0) {
-            co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::cancelled,
-                                                 "Request preempted by the scheduler"});
+        ~HighGuard() {
+            if(high) {
+                pool.high_inflight -= 1;
+            }
         }
-    }
-    // The classification channel for scheduler-initiated cancels: the
-    // cooperative cancel and the caller's advisory token both mark it, and
-    // the sender consults it when the reply arrives. Firing it cancels the request over IPC,
-    // which keeps awaiting the worker's real answer.
-    auto preempt_src = std::make_shared<kota::cancellation_source>();
-    stateless_workers[idx].preempt_source = preempt_src;
+    } high_guard{*this, priority == worker::Priority::High};
 
-    // Guarded by generation: the worker may have died before this frame
-    // resumed, and its respawned successor must see no grace deadline.
-    auto relay = cancel.on_cancel([this, idx, gen, preempt_src] {
-        auto& w = stateless_workers[idx];
-        if(w.generation != gen || w.state != SlotState::Alive || preempt_src->cancelled()) {
-            return;
+    while(true) {
+        if(stop_scope.cancelled() || !has_future_capacity() || cancel.cancelled()) {
+            co_await kota::fail(
+                cancel.cancelled()
+                    ? kota::ipc::Error{cancelled, "Request cancelled by its round"}
+                    : kota::ipc::Error{worker_unavailable, "No stateless workers available"});
         }
-        LOG_DEBUG("Advisory cancel: cancelling the request");
-        preempt_src->cancel();
-        // Arm the grace deadline like cancel_low_priority does, or
-        // tick_cancel_grace() never reclaims a worker whose build
-        // ignores the stop flag.
-        w.cancel_requested_at = std::chrono::steady_clock::now();
-    });
 
-    sent = true;
-    Dispatch dispatch(*this, idx, false, worker::crash_tag(params), worker::is_build<Params>);
-    auto gate = probe ? probe->sending(dispatch.tag, peer) : std::nullopt;
-    auto result = co_await peer->send_request(params, {.token = preempt_src->token()});
-    if(gate) {
-        probe->answered(*gate);
+        auto id = next_request;
+        next_request += 1;
+        PendingStateless request(*this, id);
+        // The caller's cancel: a queued request is dropped and its waiter
+        // woken, a running one cancelled over IPC and killed past the grace
+        // period.
+        auto relay = cancel.on_cancel([this, &request] {
+            scheduler.cancel(request.id, now());
+            execute();
+            if(!request.slot) {
+                request.ready.set();
+            }
+        });
+        scheduler.submit(id, priority, cost, worker::is_build<Params>, now());
+        execute();
+        if(!request.slot) {
+            co_await request.ready.wait();
+        }
+        if(!request.slot) {
+            continue;
+        }
+        auto idx = *request.slot;
+        // The worker died between the dispatch and this resumption; the
+        // scheduler forgot the request with it — go around again.
+        if(stateless_workers[idx].generation != request.generation) {
+            continue;
+        }
+        // Asked to stop before it reached the worker: giving the slot back
+        // costs nothing.
+        if(request.preempt.cancelled()) {
+            co_await kota::fail(kota::ipc::Error{cancelled, "Request preempted by the scheduler"});
+        }
+
+        auto peer = stateless_workers[idx].peer;
+        auto gen = stateless_workers[idx].generation;
+        auto death = stateless_workers[idx].death;
+        sent = true;
+        Inflight inflight(*this, id, worker::crash_tag(params), worker::is_build<Params>);
+        auto gate = probe ? probe->sending(inflight.tag, peer) : std::nullopt;
+        auto result = co_await peer->send_request(params, {.token = request.preempt.token()});
+        if(gate) {
+            probe->answered(*gate);
+        }
+        // The worker link broke mid-request: declare the slot dead now so a
+        // caller-side retry cannot arrive at the same corpse before the
+        // monitor observed the exit.
+        bool transport_dead = !result.has_value() && worker::is_transport_error(result.error());
+        if(transport_dead && stateless_workers[idx].generation == gen) {
+            mark_worker_dead(idx, false, true);
+            execute();
+        }
+
+        // A cancel comes back as whatever the worker answered —
+        // RequestCancelled, the result it had already, or the killed
+        // process's transport error: the request awaits the real answer so
+        // the slot frees only once the process is actually idle again. Every
+        // shape is reported as cancelled, so the indexer requeues instead of
+        // recording a failure — unless the worker's memory ran out before it
+        // stopped, which its sender learns of.
+        if(request.preempt.cancelled() && !death->out_of_memory) {
+            co_await kota::fail(kota::ipc::Error{cancelled, "Request preempted by the scheduler"});
+        }
+        // An error returned by the worker's handler leaves the worker
+        // healthy; pass it through untouched.
+        if(result.has_value() || !transport_dead) {
+            auto peak = request.finish();
+            if(report) {
+                report->peak = peak;
+            }
+            co_return std::move(result);
+        }
+
+        co_await death->done.wait();
+        co_await kota::fail(
+            death_error(*death, inflight.tag, worker::death_identity(idx, gen, false)));
     }
-    // The worker link broke mid-request: declare the slot dead now so a
-    // caller-side retry cannot arrive at the same corpse before the monitor
-    // observed the exit. This must precede the cancel classification — a
-    // cooperatively cancelled worker can die on its own inside the grace
-    // window, and returning early would release the slot still Alive.
-    bool transport_dead = !result.has_value() && worker::is_transport_error(result.error());
-    if(transport_dead && stateless_workers[idx].generation == gen) {
-        mark_worker_dead(idx, false, true);
-        // The dead worker's acquisition is gone; a queued low-priority waiter may
-        // now fit under the limit on another idle worker.
-        try_dispatch_pending();
-    }
-
-    // A cancel comes back as whatever the worker answered — RequestCancelled,
-    // the result it had already, or the killed process's transport error:
-    // the request awaits the real answer so the slot frees only once the
-    // process is actually idle again, keeping the grace deadline armed and
-    // the next request off a still-stuck worker. Every shape must be reported as
-    // cancelled, so the indexer requeues instead of recording a failure —
-    // unless the pool killed the worker for memory before it stopped: the
-    // request may be what exhausted memory, and a free requeue would let
-    // the user's typing repeat the kill forever.
-    if(preempt_src->cancelled() && !death->reclaimed)
-        co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::cancelled,
-                                             "Request preempted by the scheduler"});
-    // An error returned by the worker's handler leaves the worker healthy;
-    // pass it through untouched.
-    if(result.has_value() || !transport_dead)
-        co_return std::move(result);
-
-    co_await death->done.wait();
-    co_await kota::fail(death_error(*death, dispatch.tag, worker::death_identity(idx, gen, false)));
 }
 
 template <typename Params>
@@ -1052,12 +913,13 @@ void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
 /// Send a request through the worker deaths that are not its own doing.
 /// `send` makes one attempt (and may fail on its own to stop early, a
 /// superseded request); deliver resends once when another request's crash
-/// took the attempt along (worker_lost) or the death named no request
-/// (worker_died), and waits out capacity windows (worker_unavailable). One
-/// resend suffices: the culprit of the first death is barred from running
-/// again by then. A request that dies naming no request twice, alone on
-/// its worker both times, is taken for the killer — an OOM kill, a stack
-/// overflow the crash report cannot run on.
+/// took the attempt along (worker_lost), the death named no request
+/// (worker_died) or the worker's memory ran out (out_of_memory), and waits
+/// out capacity windows (worker_unavailable). One resend suffices: the
+/// culprit of the first death is barred from running again by then. A
+/// request that dies naming no request twice, alone on its worker both
+/// times, is taken for the killer — an OOM kill, a stack overflow the
+/// crash report cannot run on.
 ///
 /// `blame` fires once, when the request is found to have killed its
 /// worker: its own crash, or the second worker_died. The result is the
@@ -1085,7 +947,7 @@ auto deliver(WorkerPool& pool, bool stateful, Send send, Blame blame)
             blame(result.error());
             co_return std::move(result);
         }
-        if((died || code == errc::worker_lost) && !resent) {
+        if((died || code == errc::worker_lost || code == errc::out_of_memory) && !resent) {
             resent = true;
             nameless = died;
             continue;

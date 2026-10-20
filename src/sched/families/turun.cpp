@@ -201,8 +201,19 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         params.index_output_path = transfer->tmp_path;
     }
 
+    RequestCost cost;
+    if(auto it = peaks.find(path_id); it != peaks.end()) {
+        cost.peak = it->second;
+    } else if(auto* manifest = project.index.manifest(path_id)) {
+        cost.peak = manifest->peak;
+    }
+    StatelessReport measured;
     ScopedTimer timer;
-    auto reply = co_await pool.send_stateless(params, worker::Priority::Low, ctx.token());
+    auto reply =
+        co_await pool.send_stateless(params, worker::Priority::Low, ctx.token(), cost, &measured);
+    if(measured.peak != 0) {
+        peaks[path_id] = measured.peak;
+    }
     if(reply.has_value() && reply.value().success) {
         auto run_ms = timer.ms();
         auto& value = reply.value();
@@ -245,7 +256,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 co_return RoundOutcome::Stale;
             }
             ScopedTimer merge_timer;
-            auto report = project.index.merge(index_bytes, imports);
+            auto report = project.index.merge(index_bytes, imports, measured.peak);
             if(!report) {
                 if(report.error() == index::MergeError::Outdated) {
                     send_in_full.insert(path_id);
@@ -292,6 +303,17 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     if(reply.error().code == worker::dispatch_errc::worker_crashed) {
         finished[path_id] = {.result = Result::Crashed,
                              .error = "it crashed the worker: " + reply.error().message};
+        co_return RoundOutcome::Stale;
+    }
+    if(reply.error().code == worker::dispatch_errc::out_of_memory) {
+        auto& data = reply.error().data;
+        auto memory = data ? (*data)["memory"].get_uint().value_or(0) : 0;
+        auto alone = data && (*data)["alone"].get_bool().value_or(false);
+        auto& floor = peaks[path_id];
+        floor = std::max(floor, memory);
+        finished[path_id] = {.result = alone ? Result::TooBig : Result::OutOfMemory,
+                             .error = reply.error().message,
+                             .memory = memory};
         co_return RoundOutcome::Stale;
     }
     if(reply.error().code == worker::dispatch_errc::worker_died ||

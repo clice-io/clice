@@ -60,6 +60,14 @@ kota::task<std::expected<std::string, std::string>> execute(std::vector<std::str
     co_return capture_stdout ? std::move(captured->stdout_data) : std::move(captured->stderr_data);
 }
 
+extern "C" {
+
+// Set by the Windows executable's allocator (src/mimalloc.cc), which no
+// other program links: its own collect, and the switch to purging.
+void (*clice_allocator_collect)() = nullptr;
+void (*clice_allocator_purge)() = nullptr;
+}
+
 void release_free_memory() {
     // Under ASan glibc's allocator holds nothing: malloc_trim would only
     // initialize it, which glibc does without a lock, so two threads trimming
@@ -67,6 +75,15 @@ void release_free_memory() {
 #if defined(__GLIBC__) && !defined(__SANITIZE_ADDRESS__)
     malloc_trim(0);
 #endif
+    if(clice_allocator_collect) {
+        clice_allocator_collect();
+    }
+}
+
+void purge_freed_memory() {
+    if(clice_allocator_purge) {
+        clice_allocator_purge();
+    }
 }
 
 void lower_thread_priority() {

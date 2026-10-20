@@ -94,8 +94,9 @@ namespace clice::index {
 /// its type definitions, and a precompiled header's diagnostics know an
 /// imported module unit from an included file; v42: no blob is a
 /// flatbuffer any more; v43: every blob is kotatsu's (kota::codec::blob),
-/// whose header differs.
-constexpr inline std::uint32_t index_format_version = 43;
+/// whose header differs; v44: a manifest keeps the memory its unit's
+/// worker reached.
+constexpr inline std::uint32_t index_format_version = 44;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it (LLVM's project table, the
@@ -719,6 +720,8 @@ struct TUManifestBlobOf {
     std::uint64_t table_generation = 0;
 
     std::uint64_t built_at = 0;
+
+    std::uint64_t peak = 0;
 
     std::uint32_t tu_version = 0;
 

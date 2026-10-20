@@ -226,6 +226,15 @@ int run_indexing(Spelling root,
             driver::println("  {}", path);
         }
     }
+    if(!result.too_big.empty()) {
+        driver::println(
+            "{} translation unit{} did not fit in memory, even run alone; the index is partial:",
+            result.too_big.size(),
+            plural_s(result.too_big.size()));
+        for(auto& [unit, memory]: result.too_big) {
+            driver::println("  {} (reached {})", unit, format_bytes(memory));
+        }
+    }
     if(result.unsaved) {
         driver::println("Part of the index could not be persisted (see the log).");
     }

@@ -364,9 +364,11 @@ public:
     /// manifest, and write shard blobs only for variants no shard stores yet
     /// — a re-index whose entries are unchanged records its contributions and
     /// touches nothing else. `imports` is what the PCMs and the
-    /// precompiled header the parse read were built from.
+    /// precompiled header the parse read were built from; `peak` the memory
+    /// its worker reached, which the manifest keeps.
     std::expected<IndexReport, MergeError> merge(llvm::StringRef tu_index,
-                                                 llvm::ArrayRef<DepState> imports);
+                                                 llvm::ArrayRef<DepState> imports,
+                                                 std::uint64_t peak = 0);
 
     /// Drop a TU's index wholesale: manifest and contributions now (the
     /// affected shards' live masks follow), persisted blobs at the next

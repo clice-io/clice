@@ -186,6 +186,12 @@ public:
         return failed_ids;
     }
 
+    /// The failed files whose worker ran out of memory with no other work
+    /// beside it, with the memory it reached: they do not fit this machine.
+    const llvm::DenseMap<Fid, std::uint64_t>& too_big() const {
+        return too_big_ids;
+    }
+
     /// Have every index attempt bring back the errors its compile reported,
     /// for compiled_with_errors(). The one-shot `clice index` lists them; a
     /// server reports none and never asks.
@@ -252,12 +258,15 @@ private:
     /// attempt will come (entry cleared, shutdown).
     void wake_attempt_waits(Fid server_path_id, std::uint64_t ticket = -1);
 
-    /// What a file's latest attempt left, kept by these two alone: an
-    /// index, with the errors its compile reported, or a failure for good.
-    /// A file is in at most one of failed_ids and errors.
+    /// What a file's latest attempt left, kept by these three alone: an
+    /// index, with the errors its compile reported, or a failure for good,
+    /// for want of memory or not. A file is in at most one of failed_ids
+    /// and errors; too_big_ids holds failed ones.
     void record_indexed(Fid file, std::vector<worker::LocatedMessage> compile_errors);
 
     void record_failed(Fid file);
+
+    void record_too_big(Fid file, std::uint64_t memory);
 
     /// A round's shared counters, living on run_background_indexing's frame,
     /// which outlives every spawned task (it joins them before returning).
@@ -326,6 +335,8 @@ private:
     PendingTable pending_table{max_requeue_attempts};
 
     llvm::DenseSet<Fid> failed_ids;
+
+    llvm::DenseMap<Fid, std::uint64_t> too_big_ids;
 
     llvm::DenseMap<Fid, std::vector<worker::LocatedMessage>> errors;
 

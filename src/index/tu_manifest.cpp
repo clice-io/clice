@@ -15,6 +15,7 @@ std::vector<std::byte> serialize_manifest(const TUManifest& manifest) {
     blob.format_version = index_format_version;
     blob.table_generation = manifest.table_generation;
     blob.built_at = manifest.built_at;
+    blob.peak = manifest.peak;
     blob.tu_version = manifest.tu_version.raw;
 
     blob.node_count = static_cast<std::uint32_t>(manifest.nodes.size());
@@ -82,6 +83,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     TUManifest manifest;
     manifest.table_generation = root.table_generation;
     manifest.built_at = root.built_at;
+    manifest.peak = root.peak;
     manifest.tu_version = VersionID{root.tu_version};
 
     constexpr std::uint64_t id_max = std::numeric_limits<std::uint32_t>::max();

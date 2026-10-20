@@ -89,7 +89,7 @@ Options:
   -h|--help                       display this help and exit
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
+  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
   --json                          Print the run's report as JSON on stdout instead of text
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -111,7 +111,7 @@ Options:
   --index                         Also build and persist the project index from the same parses
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
+  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
   --json                          Print the run's report as JSON on stdout instead of text
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -128,7 +128,7 @@ Options:
   --check                         Report the files that need formatting instead of rewriting them
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
+  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
 '''

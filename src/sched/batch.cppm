@@ -68,6 +68,16 @@ struct BatchResult {
     /// Paths of the units that failed for good, sorted.
     std::vector<std::string> failed;
 
+    /// A unit whose worker ran out of memory with no other work beside it,
+    /// at `memory` bytes: it does not fit this machine.
+    struct TooBig {
+        std::string unit;
+        std::uint64_t memory = 0;
+    };
+
+    /// The units too big for this machine, sorted by path.
+    std::vector<TooBig> too_big;
+
     /// A unit indexed although its compile reported errors.
     struct UnitErrors {
         std::string unit;

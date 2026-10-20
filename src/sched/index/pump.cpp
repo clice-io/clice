@@ -255,7 +255,7 @@ kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
             // reads zero (a pool that has not started yet); without it
             // the feeder would wait on task_done with nothing in flight
             // to ever set it.
-            if(round.inflight >= std::max<std::size_t>(2 * pool.effective_low_limit(), 2)) {
+            if(round.inflight >= std::max<std::size_t>(2 * pool.background_limit(), 2)) {
                 round.task_done.reset();
                 co_await round.task_done.wait();
                 continue;
@@ -302,6 +302,7 @@ kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
 
 void IndexPump::record_indexed(Fid file, std::vector<worker::LocatedMessage> compile_errors) {
     failed_ids.erase(file);
+    too_big_ids.erase(file);
     if(compile_errors.empty()) {
         errors.erase(file);
     } else {
@@ -311,7 +312,13 @@ void IndexPump::record_indexed(Fid file, std::vector<worker::LocatedMessage> com
 
 void IndexPump::record_failed(Fid file) {
     failed_ids.insert(file);
+    too_big_ids.erase(file);
     errors.erase(file);
+}
+
+void IndexPump::record_too_big(Fid file, std::uint64_t memory) {
+    record_failed(file);
+    too_big_ids[file] = memory;
 }
 
 kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
@@ -372,18 +379,23 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
                 break;
             }
             case TURunFamily::Result::Crashed:
+            case TURunFamily::Result::TooBig:
             case TURunFamily::Result::Lost:
-            case TURunFamily::Result::Preempted: {
-                // Preempted under memory pressure or lost to a worker
-                // death: the work itself is fine — requeue the file with
-                // its original reason so the next round redoes it instead
-                // of silently dropping coverage; only lost runs spend the
-                // bounded budget. A run that crashed its worker waits for
-                // the file to change: the same bytes would crash again.
+            case TURunFamily::Result::Preempted:
+            case TURunFamily::Result::OutOfMemory: {
+                // Preempted, killed for memory beside other work or lost to
+                // a worker death: the work itself is fine — requeue the
+                // file with its original reason so the next round redoes it
+                // instead of silently dropping coverage; only lost runs
+                // spend the bounded budget. A run that crashed its worker,
+                // or that ran out of memory alone, waits for the file to
+                // change: the same bytes would again.
                 using enum PendingTable::Failure;
-                auto failure = outcome.result == TURunFamily::Result::Crashed ? Crashed
-                               : outcome.result == TURunFamily::Result::Lost  ? Lost
-                                                                              : Preempted;
+                auto failure = outcome.result == TURunFamily::Result::Crashed ||
+                                       outcome.result == TURunFamily::Result::TooBig
+                                   ? Crashed
+                               : outcome.result == TURunFamily::Result::Lost ? Lost
+                                                                             : Preempted;
                 switch(note_dispatch_failure(taken, failure)) {
                     case PendingTable::FailureDecision::Dropped: {
                         LOG_INFO("[{}/{}] Index dropped for removed file {}",
@@ -406,6 +418,17 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
                         // diagnostic surface. Cross-file references
                         // into this file stay stale until its content
                         // changes.
+                        if(outcome.result == TURunFamily::Result::TooBig) {
+                            LOG_WARN(
+                                "[{}/{}] {} does not fit in memory: its worker reached {} MiB "
+                                "alone; its cross-file data stays stale until it changes",
+                                index,
+                                total,
+                                file_path,
+                                outcome.memory >> 20);
+                            record_too_big(server_path_id, outcome.memory);
+                            break;
+                        }
                         LOG_WARN(
                             "[{}/{}] Index giving up on {} ({}); its cross-file data stays "
                             "stale until it changes",

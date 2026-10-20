@@ -15,6 +15,7 @@ import :support.logging;
 import :vfs.file_system;
 import :vfs.path;
 import :worker.pool;
+import :worker.resources;
 
 namespace clice {
 
@@ -34,6 +35,10 @@ kota::task<> drain_stderr(kota::pipe stderr_pipe,
         auto& line = *read.value();
         if(line.starts_with(worker::crashed_in_marker)) {
             tail->crashed_in = line.substr(worker::crashed_in_marker.size());
+        }
+        // LLVM's handler of a failed allocation, before it aborts.
+        if(line.starts_with("LLVM ERROR: out of memory")) {
+            tail->out_of_memory = true;
         }
         if(!line.empty()) {
             LOG_WARN("{} {}", prefix, line);
@@ -67,12 +72,6 @@ kota::task<> run_peer(std::shared_ptr<kota::ipc::BincodePeer> peer) {
 
 }  // namespace
 
-std::size_t WorkerPool::alive_stateless() const {
-    return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
-        return w.state == SlotState::Alive;
-    });
-}
-
 std::vector<std::uint32_t> WorkerPool::worker_pids(bool stateful) const {
     std::vector<std::uint32_t> pids;
     for(auto& w: stateful ? stateful_workers : stateless_workers) {
@@ -92,24 +91,6 @@ std::size_t WorkerPool::schedulable_stateless() const {
     }
     return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
         return w.state == SlotState::Alive && !w.retiring;
-    });
-}
-
-std::size_t WorkerPool::busy_stateless() const {
-    return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
-        return w.state == SlotState::Alive && w.busy;
-    });
-}
-
-std::size_t WorkerPool::low_busy_count() const {
-    return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
-        return w.state == SlotState::Alive && w.busy && w.low_priority;
-    });
-}
-
-std::size_t WorkerPool::high_busy_count() const {
-    return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
-        return w.state == SlotState::Alive && w.busy && !w.low_priority;
     });
 }
 
@@ -224,9 +205,7 @@ bool WorkerPool::spawn_worker(bool stateful) {
         install_evict_handler(workers[index], index);
     install_gate_handler(workers[index]);
     worker_tasks.spawn(monitor_worker(index, stateful));
-    if(!stateful)
-        on_stateless_capacity.emit();
-    capacity_returned.set();
+    serving(index, stateful);
     return true;
 }
 
@@ -244,11 +223,10 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     w.stderr_tail = std::move(spawned->stderr_tail);
     w.state = SlotState::Alive;
     w.owned_documents = 0;
-    w.busy = false;
-    w.low_priority = false;
     w.retiring = false;
     w.preempted = false;
-    w.cancel_requested_at = {};
+    w.memory = 0;
+    w.swapped = 0;
     w.spawn_time = std::chrono::steady_clock::now();
     w.death = std::make_shared<WorkerDeath>();
     // generation was bumped at death; crash_streak carries across restarts
@@ -258,15 +236,19 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
         install_evict_handler(w, index);
     install_gate_handler(w);
     worker_tasks.spawn(monitor_worker(index, stateful));
-
-    if(!stateful) {
-        try_dispatch_pending();
-        on_stateless_capacity.emit();
-    }
-    capacity_returned.set();
+    serving(index, stateful);
 
     LOG_INFO("Worker {} restarted (crash streak {})", w.name, w.crash_streak);
     return true;
+}
+
+void WorkerPool::serving(std::size_t index, bool stateful) {
+    if(!stateful) {
+        scheduler.worker_ready(index, now());
+        execute();
+        on_stateless_capacity.emit();
+    }
+    capacity_returned.set();
 }
 
 bool WorkerPool::start(const WorkerPoolOptions& opts) {
@@ -276,25 +258,20 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
     if(options.max_stateless == 0)
         options.max_stateless = default_max_stateless_worker_count();
     options.max_stateless = std::max(options.max_stateless, options.stateless_count);
-
-    // A stateless worker can hold a whole TU's AST, a gigabyte and more for
-    // heavy code. More workers than memory holds only feed the memory
-    // controller's kill-and-redo cycle — or the OOM killer, which may take
-    // the whole session with it — so the memory limit (a cgroup's, when
-    // tighter) caps both the start and the ceiling.
-    constexpr std::uint64_t worker_footprint = 1536ull * 1024 * 1024;
-    auto mem = kota::sys::memory();
-    auto limit = (mem.constrained > 0 && mem.constrained < mem.total) ? mem.constrained : mem.total;
-    if(limit > 0) {
-        auto fit = static_cast<std::uint32_t>(std::max<std::uint64_t>(1, limit / worker_footprint));
-        if(fit < options.max_stateless) {
-            LOG_INFO("Capping stateless workers at {} for {} MiB of memory",
-                     fit,
-                     limit / (1024 * 1024));
-            options.max_stateless = fit;
-            options.stateless_count = std::min(options.stateless_count, fit);
-        }
-    }
+    if(options.min_stateless == 0)
+        options.min_stateless = 1;
+    // The configured floor is honored even above the startup count: idle
+    // scale-down must not shrink a scaled-up pool below it. Only the
+    // ceiling bounds it.
+    options.min_stateless = std::min(options.min_stateless, options.max_stateless);
+    scheduler = WorkerScheduler({
+        .background_jobs = options.stateless_count,
+        .min_workers = options.min_stateless,
+        .max_workers = options.max_stateless,
+        .build_deadline = options.build_deadline,
+        .query_deadline = options.query_deadline,
+        .stall_deadline = options.stall_deadline,
+    });
 
 #ifdef __linux__
     if(auto adj = llvm::MemoryBuffer::getFileAsStream("/proc/self/oom_score_adj")) {
@@ -305,6 +282,9 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
     }
 #endif
 
+    // The scheduler admits background work by memory from the first
+    // sample on.
+    sample();
     for(std::uint32_t i = 0; i < options.stateless_count; ++i) {
         if(!spawn_worker(false)) {
             return false;
@@ -315,14 +295,6 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
             return false;
         }
     }
-    if(options.min_stateless == 0)
-        options.min_stateless = 1;
-    // The configured floor is honored even above the startup count: idle
-    // scale-down must not shrink a scaled-up pool below it. Only the
-    // ceiling bounds it.
-    options.min_stateless = std::min(options.min_stateless, options.max_stateless);
-
-    low_limit = max_low_limit();
 
     worker_tasks.spawn(monitor_loop());
 
@@ -436,17 +408,17 @@ bool WorkerPool::remove_owner_from(std::uint32_t path_id, std::size_t worker_ind
 }
 
 void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_process) {
-    auto& w = stateful ? stateful_workers[index] : stateless_workers[index];
+    auto& w = slot(index, stateful);
     if(w.state != SlotState::Alive)
         return;
 
     w.state = SlotState::Dying;
     w.generation += 1;
-    w.busy = false;
-    w.low_priority = false;
-    w.preempt_source.reset();
-    w.death->in_flight = w.dispatches.size();
-    w.dispatches.clear();
+    w.death->in_flight = scheduler.running_on(index, stateful);
+    if(!stateful) {
+        w.death->memory = w.memory;
+        w.death->alone = scheduler.runs_alone(index);
+    }
     if(stateful) {
         for(auto& [path_id, widx]: owner) {
             if(widx == index)
@@ -465,6 +437,8 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
         // proc.wait() is guaranteed to deliver a result.
         w.proc.kill();
     }
+    scheduler.worker_gone(index, stateful, now());
+    execute();
 }
 
 kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
@@ -493,12 +467,12 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         w.state = SlotState::Retired;
         w.retiring = false;
         w.generation += 1;
-        w.busy = false;
-        w.low_priority = false;
         if(w.peer) {
             w.peer->close();
             w.peer.reset();
         }
+        scheduler.worker_gone(index, false, now());
+        execute();
         co_return;
     }
 
@@ -516,10 +490,10 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     workers[index].preempted = false;
 
     if(preempted) {
-        // The pool killed this worker on purpose to reclaim its memory; the
-        // work it lost was signalled to its sender. Bring the capacity back
-        // immediately, without touching the crash budget.
-        LOG_INFO("Worker {} preempted for memory pressure, respawning", workers[index].name);
+        // The pool killed this worker on purpose; the work it lost was
+        // signalled to its sender. Bring the capacity back immediately,
+        // without touching the crash budget.
+        LOG_INFO("Worker {} killed on purpose, respawning", workers[index].name);
         workers[index].state = SlotState::Respawning;
         worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
         co_return;
@@ -559,6 +533,8 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     auto& workers = stateful ? stateful_workers : stateless_workers;
     auto& w = workers[index];
     mark_worker_dead(index, stateful, false);
+    auto& death = *w.death;
+    death.out_of_memory = w.stderr_tail && w.stderr_tail->out_of_memory;
 
     // Ahead of the anomaly report, which aborts Debug builds.
     if(w.stderr_tail && !w.stderr_tail->lines.empty()) {
@@ -580,6 +556,9 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
                  w.name,
                  exit_signal,
                  w.crash_streak);
+    } else if(death.out_of_memory) {
+        // The machine ran out, not clice.
+        LOG_WARN("Worker {} ran out of memory at {} MiB", w.name, death.memory >> 20);
     } else if(exit_signal != 0) {
         LOG_ANOMALY(WorkerCrash,
                     "Worker {} killed by signal {} (crash streak: {})",
@@ -622,8 +601,11 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
         }
     }
 
-    auto& death = *w.death;
-    if(death.culprit.empty() && w.stderr_tail) {
+    // An allocation failure's abort names the request it ran, whose content
+    // is not to blame.
+    if(death.out_of_memory) {
+        death.cause = "ran out of memory";
+    } else if(death.culprit.empty() && w.stderr_tail) {
         death.culprit = w.stderr_tail->crashed_in;
     }
     if(death.cause.empty()) {
@@ -633,13 +615,14 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     reset_streak_if_healthy(w);
     // A death that names its request is that request's content's doing:
     // the caller blames the content, and the slot respawns with its streak
-    // untouched, like a preemption. A terminated session says nothing about
-    // the slot, nor does a kill of an idle worker (the OOM killer, a user).
-    // A worker killed while running requests or holding documents counts:
-    // none of them is blamed when several were in flight, or when none
-    // was, and only the budget slows a load that keeps getting killed.
+    // untouched, like a kill on purpose; so does running out of memory. A
+    // terminated session says nothing about the slot, nor does a kill of
+    // an idle worker (the OOM killer, a user). A worker killed while
+    // running requests or holding documents counts: none of them is blamed
+    // when several were in flight, or when none was, and only the budget
+    // slows a load that keeps getting killed.
     bool idle_kill = exit_signal == sigkill && death.in_flight == 0 && w.lost_documents.empty();
-    if(death.culprit.empty() && !terminated && !idle_kill) {
+    if(death.culprit.empty() && !death.out_of_memory && !terminated && !idle_kill) {
         w.crash_streak += 1;
     }
 
@@ -653,11 +636,6 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
 
     if(stateful) {
         info.lost_documents = std::exchange(w.lost_documents, {});
-    } else {
-        // The dead worker's acquisition was released by mark_worker_dead; a
-        // queued low-priority waiter may now fit on another idle worker instead
-        // of stalling until the respawn finishes.
-        try_dispatch_pending();
     }
 
     if(!info.will_restart) {
@@ -677,10 +655,17 @@ kota::ipc::Error WorkerPool::death_error(const WorkerDeath& death,
                                          llvm::StringRef tag,
                                          kota::codec::dyn::Value identity) {
     namespace errc = worker::dispatch_errc;
+    if(death.out_of_memory) {
+        return kota::ipc::Error{
+            errc::out_of_memory,
+            death.cause,
+            kota::codec::dyn::Value{{"memory", death.memory}, {"alone", death.alone}},
+        };
+    }
     auto named = !death.culprit.empty();
-    auto code = named && death.culprit == tag                        ? errc::worker_crashed
-                : !named && death.in_flight <= 1 && !death.reclaimed ? errc::worker_died
-                                                                     : errc::worker_lost;
+    auto code = named && death.culprit == tag    ? errc::worker_crashed
+                : !named && death.in_flight <= 1 ? errc::worker_died
+                                                 : errc::worker_lost;
     return kota::ipc::Error{code, death.cause, std::move(identity)};
 }
 
@@ -752,8 +737,8 @@ void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
     // If this was the last slot with a future, wake all waiters so they
     // can return an error instead of hanging.
     capacity_returned.set();
-    if(!stateful) {
-        try_dispatch_pending();
+    if(!stateful && !has_future_capacity()) {
+        fail_pending_requests();
     }
     // Revival is a running-pool concern: unit fixtures drive slot state
     // without an event loop, and a coroutine queued on a never-run loop
@@ -782,218 +767,190 @@ kota::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
     worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
 }
 
-std::size_t WorkerPool::mark_busy(std::size_t index, worker::Priority priority) {
-    auto& w = stateless_workers[index];
-    w.busy = true;
-    w.low_priority = priority == worker::Priority::Low;
-    next_acquire_epoch += 1;
-    w.acquire_epoch = next_acquire_epoch;
-    set_oom_score(w, true);
-    return index;
-}
-
-kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority priority,
-                                                           kota::cancellation_token cancel) {
-    using P = worker::Priority;
-    while(true) {
-        if(stop_scope.cancelled() || !has_future_capacity() || cancel.cancelled())
-            co_return SIZE_MAX;
-
-        // Acquire directly only when no earlier request is queued (FIFO
-        // fairness); high priority never waits behind queued low.
-        bool fifo_clear =
-            priority == P::High ? high_queue.empty() : high_queue.empty() && low_queue.empty();
-        if(fifo_clear && (priority == P::High || low_busy_count() < effective_low_limit())) {
-            if(auto idx = pick_idle_stateless(); idx != SIZE_MAX)
-                co_return mark_busy(idx, priority);
+std::uint64_t WorkerPool::PendingStateless::finish() {
+    finished = true;
+    pool.pending.erase(id);
+    auto peak = pool.scheduler.finish(id, now());
+    if(slot) {
+        auto& w = pool.stateless_workers[*slot];
+        if(w.generation == generation) {
+            pool.set_oom_score(w, pool.holds_work(w, *slot, false));
         }
-
-        // A queued High request needs a process, not just CPU: with every
-        // slot busy, cooperatively cancel one low compile so a slot frees
-        // at the next declaration boundary instead of at end-of-TU. The
-        // deficit already counts slots asked and highs queued, so
-        // re-entering this loop cannot over-cancel.
-        if(priority == P::High && pick_idle_stateless() == SIZE_MAX)
-            cancel_low_priority(low_reclaim_deficit(1));
-
-        // Queue up and suspend until try_dispatch_pending() acquires a worker
-        // for us or wakes us to observe pool death. The destructor covers
-        // cancellation while queued or between dispatch and resume.
-        PendingStateless pending(*this, priority);
-        auto& queue = priority == P::High ? high_queue : low_queue;
-        queue.push_back(&pending);
-        pending.queue = &queue;
-
-        // A round shut down or overtaken while it waits gives up its place
-        // instead of holding it until a slot frees: a zero background budget
-        // under memory pressure would otherwise hold it, and every shutdown
-        // joining it, for as long as the pressure lasts.
-        auto wake = cancel.on_cancel([&pending] { pending.ready.set(); });
-        co_await pending.ready.wait();
-        if(cancel.cancelled())
-            co_return SIZE_MAX;
-
-        if(pending.assigned_worker == SIZE_MAX)
-            continue;
-
-        auto idx = std::exchange(pending.assigned_worker, SIZE_MAX);
-        // If the acquired worker died between dispatch and resume, the
-        // acquisition was already cleaned up with the slot — go around again.
-        if(stateless_workers[idx].generation != pending.assigned_gen)
-            continue;
-        co_return idx;
     }
+    pool.execute();
+    return peak;
 }
 
-void WorkerPool::release_stateless_slot(std::size_t worker_index) {
-    auto& w = stateless_workers[worker_index];
-    if(!w.busy)
-        return;
-    w.busy = false;
-    w.low_priority = false;
-    w.preempt_source.reset();
-    w.cancel_requested_at = {};
-    set_oom_score(w, false);
-    LOG_DEBUG("Release {} (busy={}, low_busy={})", w.name, busy_stateless(), low_busy_count());
-    try_dispatch_pending();
-}
-
-void WorkerPool::try_dispatch_pending() {
-    if(stop_scope.cancelled() || !has_future_capacity()) {
-        fail_pending_requests();
-        return;
-    }
-
-    auto dispatch = [&](std::deque<PendingStateless*>& queue, worker::Priority priority) {
-        while(!queue.empty()) {
-            if(priority == worker::Priority::Low && low_busy_count() >= effective_low_limit())
-                break;
-            auto idx = pick_idle_stateless();
-            if(idx == SIZE_MAX)
-                break;
-            auto* next = queue.front();
-            queue.pop_front();
-            next->queue = nullptr;
-            mark_busy(idx, priority);
-            next->assigned_worker = idx;
-            next->assigned_gen = stateless_workers[idx].generation;
-            LOG_DEBUG("Dispatch {} -> {} (busy={}, low_busy={})",
-                      priority == worker::Priority::Low ? "low" : "high",
-                      stateless_workers[idx].name,
-                      busy_stateless(),
-                      low_busy_count());
-            next->ready.set();
-        }
-    };
-
-    dispatch(high_queue, worker::Priority::High);
-    dispatch(low_queue, worker::Priority::Low);
+void WorkerPool::foreground_pulse() {
+    scheduler.user_activity(now());
+    execute();
 }
 
 void WorkerPool::fail_pending_requests() {
-    // Waiters are woken without an acquired worker (assigned_worker stays SIZE_MAX);
-    // they re-check the pool state and return an error.
-    auto drain = [](std::deque<PendingStateless*>& queue) {
-        while(!queue.empty()) {
-            auto* next = queue.front();
-            queue.pop_front();
-            next->queue = nullptr;
-            next->ready.set();
+    // Waiters are woken without a slot; they re-check the pool state and
+    // return an error.
+    for(auto& [_, request]: pending) {
+        if(!request->slot) {
+            request->ready.set();
         }
-    };
-    drain(high_queue);
-    drain(low_queue);
+    }
 }
 
-std::size_t WorkerPool::pick_idle_stateless() {
-    for(std::size_t i = 0; i < stateless_workers.size(); ++i) {
-        auto& w = stateless_workers[i];
-        if(w.state == SlotState::Alive && !w.busy && !w.retiring)
-            return i;
+void WorkerPool::execute() {
+    if(executing) {
+        return;
     }
-    return SIZE_MAX;
+    executing = true;
+    while(true) {
+        auto actions = scheduler.take_actions();
+        if(actions.empty()) {
+            break;
+        }
+        for(auto& action: actions) {
+            if(auto* dispatch = std::get_if<scheduler::Dispatch>(&action)) {
+                // An earlier action of the batch may have ended the request.
+                auto it = pending.find(dispatch->request);
+                if(it == pending.end()) {
+                    continue;
+                }
+                auto& request = *it->second;
+                // A stopped pool serves nothing more: the request wakes to
+                // fail.
+                if(stop_scope.cancelled()) {
+                    request.ready.set();
+                    continue;
+                }
+                auto& w = stateless_workers[dispatch->slot];
+                request.slot = dispatch->slot;
+                request.generation = w.generation;
+                set_oom_score(w, true);
+                LOG_DEBUG("Dispatch {} to {}", dispatch->request, w.name);
+                request.ready.set();
+            } else if(auto* cancel = std::get_if<scheduler::Cancel>(&action)) {
+                if(auto it = pending.find(cancel->request); it != pending.end()) {
+                    it->second->preempt.cancel();
+                }
+            } else if(auto* kill = std::get_if<scheduler::Kill>(&action)) {
+                kill_worker(*kill);
+            } else if(std::holds_alternative<scheduler::Spawn>(action)) {
+                scale_up_worker();
+            } else if(auto* retire = std::get_if<scheduler::Retire>(&action)) {
+                retire_worker(retire->slot);
+            }
+        }
+    }
+    executing = false;
+}
+
+void WorkerPool::kill_worker(const scheduler::Kill& kill) {
+    auto& w = slot(kill.slot, kill.stateful);
+    if(w.state != SlotState::Alive) {
+        return;
+    }
+    using scheduler::KillReason;
+    if(kill.reason == KillReason::Memory) {
+        LOG_WARN("Worker {} killed to free memory at {} MiB", w.name, w.memory >> 20);
+        w.preempted = true;
+        w.death->out_of_memory = true;
+        w.death->cause = "killed to free memory";
+    } else if(kill.reason == KillReason::CancelGrace) {
+        LOG_WARN("Worker {} ignored a cooperative cancel; killing it", w.name);
+        w.preempted = true;
+    } else {
+        auto flight = flights.find(kill.request);
+        // Timed only once its send started.
+        assert(flight != flights.end());
+        auto& [_, request] = *flight;
+        auto limit = request->build ? options.build_deadline : options.query_deadline;
+        auto seconds = [](auto duration) {
+            return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+        };
+        if(kill.stateful) {
+            w.death->cause =
+                std::format("killed after running for over {} seconds", seconds(limit));
+        } else if(kill.reason == KillReason::Deadline) {
+            w.death->cause =
+                std::format("killed after over {} seconds of CPU time", seconds(limit));
+        } else {
+            w.death->cause = std::format("killed after {} seconds without using the CPU",
+                                         seconds(options.stall_deadline));
+        }
+        LOG_WARN("Worker {} ran {}: {}", w.name, request->tag, w.death->cause);
+        w.death->culprit = request->tag;
+    }
+    if(w.preempted) {
+        // The respawn skips crash accounting: credit a healthy run here the
+        // same way a crash would, or the slot carries a stale streak past
+        // the healthy interval that already cleared it.
+        reset_streak_if_healthy(w);
+    }
+    mark_worker_dead(kill.slot, kill.stateful, true);
+}
+
+void WorkerPool::retire_worker(std::size_t index) {
+    auto& w = stateless_workers[index];
+    if(w.state != SlotState::Alive) {
+        return;
+    }
+    w.retiring = true;
+    w.peer->close_output();
+    w.proc.kill(SIGTERM);
+    LOG_INFO("Retiring worker {}", w.name);
 }
 
 kota::task<> WorkerPool::monitor_loop() {
     while(true) {
-        // Time is the feature: the pace of the checks below.
-        co_await kota::with_token(kota::sleep(options.monitor_interval, loop), stop_scope.token());
+        // Time is the feature: the pace of the samples.
+        co_await kota::with_token(kota::sleep(scheduler.sample_interval(), loop),
+                                  stop_scope.token());
         if(stop_scope.cancelled())
             co_return;
+        sample();
+    }
+}
 
-        tick_foreground();
-        tick_cancel_grace();
-        tick_deadlines();
-
-        auto mem = kota::sys::memory();
-        if(mem.total == 0)
-            continue;
-
-        auto limited = mem.constrained > 0 && mem.constrained < mem.total;
-        auto limit = limited ? mem.constrained : mem.total;
-        auto available = mem.available;
-        if(limited) {
-            // Read afresh every tick, as libuv reads the limit: the process
-            // can move between cgroups.
-            if(auto proc_cgroup = llvm::MemoryBuffer::getFileAsStream("/proc/self/cgroup")) {
-                auto cgroup = find_cgroup_memory((*proc_cgroup)->getBuffer());
-                available = cgroup_available(cgroup, limit).value_or(available);
+void WorkerPool::sample() {
+    SchedulerSample sample;
+    sample.stateless_processes = stateless_footprint();
+    std::vector<ProcessUsage> usage;
+    std::uint64_t swapped = 0;
+    for(bool stateful: {false, true}) {
+        auto& workers = stateful ? stateful_workers : stateless_workers;
+        for(std::size_t index = 0; index < workers.size(); index += 1) {
+            auto& w = workers[index];
+            if(w.state != SlotState::Alive) {
+                continue;
+            }
+            auto read = process_usage(static_cast<std::uint32_t>(w.proc.pid()));
+            if(!read) {
+                continue;
+            }
+            w.memory = read->memory;
+            swapped += read->swapped > w.swapped ? read->swapped - w.swapped : 0;
+            w.swapped = read->swapped;
+            usage.push_back(*read);
+            if(!stateful) {
+                sample.workers.push_back({.slot = index, .memory = read->memory, .cpu = read->cpu});
             }
         }
-        auto ratio = static_cast<double>(available) / static_cast<double>(limit);
-
-        tick_memory(ratio);
-        tick_scaling(ratio);
-        tick_oom_scores(limit);
+    }
+    auto memory = memory_state(usage);
+    sample.headroom = memory.headroom;
+    sample.reserve = memory.reserve;
+    sample.swapping = swapped > swap_threshold;
+    LOG_DEBUG("Memory: {} MiB headroom, {} MiB reserve, {} stateless processes",
+              memory.headroom >> 20,
+              memory.reserve >> 20,
+              sample.stateless_processes);
+    scheduler.sample(std::move(sample), now());
+    execute();
+    if(memory.limit > 0) {
+        tick_oom_scores(memory.limit);
     }
 }
 
-WorkerPool::CgroupMemory WorkerPool::find_cgroup_memory(llvm::StringRef proc_cgroup) {
-    // Like libuv: the file is a single "0::/path" on cgroup v2, else the v1
-    // memory controller's "N:memory:/path" line.
-    if(proc_cgroup.consume_front("0::")) {
-        auto dir = ("/sys/fs/cgroup" + proc_cgroup.split('\n').first).str();
-        return {dir + "/memory.current", dir + "/memory.stat", "inactive_file"};
-    }
-    llvm::StringRef path;
-    llvm::SmallVector<llvm::StringRef> lines;
-    proc_cgroup.split(lines, '\n', -1, false);
-    for(auto line: lines) {
-        auto [controller, rest] = line.split(':').second.split(':');
-        if(controller == "memory") {
-            path = rest;
-            break;
-        }
-    }
-    // libuv falls back to the hierarchy's root when the process's own
-    // memory cgroup is not there: a container without a cgroup namespace
-    // mounts its own cgroup at the root.
-    auto dir = ("/sys/fs/cgroup/memory" + path).str();
-    if(path.empty() || !llvm::sys::fs::exists(dir + "/memory.usage_in_bytes")) {
-        dir = "/sys/fs/cgroup/memory";
-    }
-    return {dir + "/memory.usage_in_bytes", dir + "/memory.stat", "total_inactive_file"};
-}
-
-std::optional<std::uint64_t> WorkerPool::cgroup_available(const CgroupMemory& cgroup,
-                                                          std::uint64_t limit) {
-    auto usage = llvm::MemoryBuffer::getFileAsStream(cgroup.usage);
-    auto stat = llvm::MemoryBuffer::getFileAsStream(cgroup.stat);
-    std::uint64_t used = 0;
-    if(!usage || !stat || (*usage)->getBuffer().trim().getAsInteger(10, used)) {
-        return std::nullopt;
-    }
-    llvm::SmallVector<llvm::StringRef> lines;
-    (*stat)->getBuffer().split(lines, '\n', -1, false);
-    for(auto line: lines) {
-        auto [name, value] = line.split(' ');
-        std::uint64_t cache = 0;
-        if(name == cgroup.cache_key && !value.trim().getAsInteger(10, cache)) {
-            used -= std::min(used, cache);
-            break;
-        }
-    }
-    return limit - std::min(limit, used);
+bool WorkerPool::holds_work(const WorkerProcess& w, std::size_t index, bool stateful) const {
+    return scheduler.running_on(index, stateful) > 0 || (stateful && w.owned_documents > 0);
 }
 
 void WorkerPool::tick_oom_scores(std::uint64_t memory_limit) {
@@ -1007,11 +964,11 @@ void WorkerPool::tick_oom_scores(std::uint64_t memory_limit) {
         auto above_master = static_cast<int>(1000 * *master / memory_limit) + 2;
         oom_holding = std::min(*oom_base + above_master, 1000);
     }
-    for(auto& w: stateless_workers) {
-        set_oom_score(w, w.holds_work());
-    }
-    for(auto& w: stateful_workers) {
-        set_oom_score(w, w.holds_work());
+    for(bool stateful: {false, true}) {
+        auto& workers = stateful ? stateful_workers : stateless_workers;
+        for(std::size_t index = 0; index < workers.size(); index += 1) {
+            set_oom_score(workers[index], holds_work(workers[index], index, stateful));
+        }
     }
 }
 
@@ -1033,240 +990,12 @@ void WorkerPool::set_oom_score(const WorkerProcess& w, bool holds) {
     adj.clear_error();
 }
 
-void WorkerPool::note_foreground() {
-    last_fg_activity = std::chrono::steady_clock::now();
-    if(foreground_active)
-        return;
-    foreground_active = true;
-    if(auto deficit = low_reclaim_deficit()) {
-        LOG_INFO("Foreground active: low budget -> {}, cancelling {} in-flight",
-                 effective_low_limit(),
-                 deficit);
-        cancel_low_priority(deficit);
-    }
-}
-
-std::size_t WorkerPool::low_reclaim_deficit(std::size_t pending_high) {
-    auto cap = effective_low_limit();
-    auto busy_low = low_busy_count();
-    std::size_t need = busy_low > cap ? busy_low - cap : 0;
-    // Queued High requests each need a freed process; with a slot idle the
-    // queue is a transient the next dispatch drains without a sacrifice.
-    auto high_need = high_queue.size() + pending_high;
-    if(high_need > 0 && pick_idle_stateless() == SIZE_MAX) {
-        need = std::max(need, high_need);
-    }
-    auto asked = static_cast<std::size_t>(
-        std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
-            return w.state == SlotState::Alive && w.busy && w.low_priority &&
-                   w.cancel_requested_at != std::chrono::steady_clock::time_point{};
-        }));
-    return need > asked ? need - asked : 0;
-}
-
-void WorkerPool::tick_foreground() {
-    if(!foreground_active)
-        return;
-    if(foreground_busy()) {
-        last_fg_activity = std::chrono::steady_clock::now();
-        return;
-    }
-    if(std::chrono::steady_clock::now() - last_fg_activity < fg_hold)
-        return;
-    foreground_active = false;
-    LOG_DEBUG("Foreground idle: low budget -> {}", effective_low_limit());
-    // The reopened budget can admit queued low work right away.
-    try_dispatch_pending();
-}
-
-void WorkerPool::tick_cancel_grace() {
-    // A cancelled request that ignored its stop flag past the grace
-    // window is stuck inside one declaration; reclaim the process.
-    auto now = std::chrono::steady_clock::now();
-    for(std::size_t i = 0; i < stateless_workers.size(); i += 1) {
-        auto& w = stateless_workers[i];
-        if(w.state == SlotState::Alive && w.busy &&
-           w.cancel_requested_at != std::chrono::steady_clock::time_point{} &&
-           now - w.cancel_requested_at > cancel_grace) {
-            LOG_WARN("Worker {} ignored a cooperative cancel; killing it", w.name);
-            w.preempted = true;
-            reset_streak_if_healthy(w);
-            mark_worker_dead(i, false, true);
-        }
-    }
-}
-
-void WorkerPool::tick_deadlines() {
-    auto now = std::chrono::steady_clock::now();
-    for(bool stateful: {false, true}) {
-        auto& workers = stateful ? stateful_workers : stateless_workers;
-        for(std::size_t i = 0; i < workers.size(); i += 1) {
-            auto& w = workers[i];
-            if(w.state != SlotState::Alive) {
-                continue;
-            }
-            auto building = std::ranges::any_of(w.dispatches, &Dispatch::build);
-            auto deadline = [&](const Dispatch* dispatch) {
-                return dispatch->build ? options.build_deadline : options.query_deadline;
-            };
-            auto overdue = std::ranges::find_if(w.dispatches, [&](const Dispatch* dispatch) {
-                return (dispatch->build || !building) &&
-                       now - dispatch->started > deadline(dispatch);
-            });
-            if(overdue == w.dispatches.end()) {
-                continue;
-            }
-            auto seconds =
-                std::chrono::duration_cast<std::chrono::seconds>(deadline(*overdue)).count();
-            LOG_WARN("Worker {} ran {} for over {}s; killing it", w.name, (*overdue)->tag, seconds);
-            w.death->culprit = (*overdue)->tag;
-            w.death->cause = std::format("killed after running for over {} seconds", seconds);
-            mark_worker_dead(i, stateful, true);
-        }
-    }
-}
-
-void WorkerPool::cancel_low_priority(std::size_t count) {
-    // Newest acquisition first: the youngest compile has the least work to lose,
-    // and a fixed scan order would keep sacrificing the same slot's file.
-    llvm::SmallVector<std::size_t> victims;
-    for(std::size_t i = 0; i < stateless_workers.size(); i += 1) {
-        auto& w = stateless_workers[i];
-        if(w.state != SlotState::Alive || !w.busy || !w.low_priority)
-            continue;
-        if(w.cancel_requested_at != std::chrono::steady_clock::time_point{})
-            continue;
-        // An acquired slot whose sender has not resumed yet has no cancellation
-        // source installed; skip it entirely — marking it cancelled would leave a
-        // request that never saw a cancel to be grace-killed as if it had
-        // ignored one. The demand is not dropped: the sender re-checks the
-        // deficit when it arms and gives the slot back on the spot.
-        if(!w.preempt_source)
-            continue;
-        victims.push_back(i);
-    }
-    std::ranges::sort(victims, std::greater{}, [this](std::size_t i) {
-        return stateless_workers[i].acquire_epoch;
-    });
-    std::size_t cancelled = 0;
-    for(auto i: victims) {
-        if(cancelled >= count)
-            break;
-        auto& w = stateless_workers[i];
-        // Cancels the request over IPC; a slot that dies before the
-        // grace expires has its cancel time cleared by the respawn.
-        w.preempt_source->cancel();
-        w.cancel_requested_at = std::chrono::steady_clock::now();
-        cancelled += 1;
-    }
-    if(cancelled > 0)
-        LOG_INFO("Cooperatively cancelled {} low-priority requests", cancelled);
-}
-
-void WorkerPool::tick_memory(double available_ratio) {
-    LOG_DEBUG(
-        "Memory: {:.0f}% available, low_limit={}/{}, busy={} (low={}), "
-        "queued=hi:{}/lo:{}, alive={}, sat={}/idle={}",
-        available_ratio * 100,
-        low_limit,
-        max_low_limit(),
-        busy_stateless(),
-        low_busy_count(),
-        high_queue.size(),
-        low_queue.size(),
-        alive_stateless(),
-        saturated_cycles,
-        idle_cycles);
-
-    // The ceiling falls as workers retire; a budget left above it would
-    // make the steps below change nothing for several ticks.
-    low_limit = std::min(low_limit, max_low_limit());
-
-    // Severe pressure: zero the low allowance and preempt all running
-    // low-priority work — killing the workers releases their memory
-    // immediately, and they respawn without crash accounting. Zero, not
-    // one: with any allowance left, the preemption's own dispatch kick
-    // would admit a fresh compile into the very pressure being relieved.
-    if(available_ratio < severe_ratio) {
-        if(low_limit > 0) {
-            low_limit = 0;
-            LOG_WARN("low_limit -> 0 (severe memory pressure: {:.0f}% available)",
-                     available_ratio * 100);
-        }
-        if(auto busy_low = low_busy_count())
-            preempt_low_priority(busy_low);
-        if(alive_stateless() > options.min_stateless)
-            retire_idle_worker();
-        return;
-    }
-
-    // Tight but not exhausted: shrink, but keep one, so background work
-    // still moves a TU at a time; one that alone exhausts memory is killed
-    // above and spends its sender's retries.
-    if(available_ratio < pressure_ratio) {
-        auto shrunk = std::max<std::size_t>(low_limit, 2) - 1;
-        if(shrunk != low_limit) {
-            low_limit = shrunk;
-            LOG_INFO("low_limit -> {} (memory pressure: {:.0f}% available)",
-                     low_limit,
-                     available_ratio * 100);
-            try_dispatch_pending();
-        }
-        return;
-    }
-
-    // Grow while the budget is in use: one more TU per tick, which the next
-    // tick sees. A budget the foreground limit masks, or nothing uses, does
-    // not climb past what was tried, so its release admits no untested burst.
-    if(low_limit < max_low_limit() && low_busy_count() >= low_limit) {
-        low_limit += 1;
-        LOG_DEBUG("low_limit -> {} (memory OK: {:.0f}% available)",
-                  low_limit,
-                  available_ratio * 100);
-        try_dispatch_pending();
-    }
-}
-
-void WorkerPool::tick_scaling(double available_ratio) {
-    // Two kinds of demand grow the pool. Interactive work queued with no
-    // idle slot, up to max_stateless: the user is waiting. Background work
-    // filling its whole budget with more queued, only back up to
-    // stateless_count after idle scale-down, and only while the user is
-    // idle: a zeroed budget (severe memory pressure) is deliberate shutdown,
-    // and the foreground limit binding is that limit doing its job.
-    auto low_budget = effective_low_limit();
-    bool high_starved = !high_queue.empty() && pick_idle_stateless() == SIZE_MAX;
-    bool low_starved = low_budget > 0 && low_busy_count() >= low_budget && !low_queue.empty() &&
-                       !foreground_active && stateless_footprint() < options.stateless_count;
-
-    if(high_starved || low_starved) {
-        saturated_cycles += 1;
-        idle_cycles = 0;
-    } else if(busy_stateless() == 0 && high_queue.empty() && low_queue.empty()) {
-        idle_cycles += 1;
-        saturated_cycles = 0;
-    } else {
-        saturated_cycles = 0;
-        idle_cycles = 0;
-    }
-
-    if(saturated_cycles >= scale_up_ticks && available_ratio >= pressure_ratio) {
-        if(scale_up_worker())
-            saturated_cycles = 0;
-    }
-
-    if(idle_cycles >= scale_down_ticks) {
-        retire_idle_worker();
-        idle_cycles = 0;
-    }
-}
-
 bool WorkerPool::scale_up_worker() {
     // The ceiling bounds live processes, not schedulable slots: a retiring
     // worker still holds its process until the monitor reaps it, and a
     // replacement spawned beside it would push the pool past max_stateless
     // during exactly the memory pressure that triggered the retirement.
-    if(stateless_footprint() >= options.max_stateless)
+    if(stop_scope.cancelled() || stateless_footprint() >= options.max_stateless)
         return false;
 
     // A vacant slot — Dead and waiting out its revival cooldown, or Retired
@@ -1274,8 +1003,8 @@ bool WorkerPool::scale_up_worker() {
     // instead of appending a fresh slot beside it. Appending would grow the
     // slot table, worker names and log files by one per retire/scale-up
     // cycle, and for a Dead slot the cooldown revival would later fire too
-    // and grow the pool past what saturation asked for. The pending
-    // revive_slot task no-ops once the state is no longer Dead.
+    // and grow the pool past what was asked for. The pending revive_slot
+    // task no-ops once the state is no longer Dead.
     auto vacant = std::ranges::find_if(stateless_workers, [](const WorkerProcess& w) {
         return w.state == SlotState::Dead || w.state == SlotState::Retired;
     });
@@ -1291,71 +1020,14 @@ bool WorkerPool::scale_up_worker() {
             LOG_WARN("scale_up: revive of {} failed", w.name);
             return false;
         }
-        LOG_INFO("Scaled up: revived {} (alive={})", w.name, alive_stateless());
+        LOG_INFO("Scaled up: revived {}", w.name);
     } else if(!spawn_worker(false)) {
         LOG_WARN("scale_up: spawn_worker failed");
         return false;
     } else {
-        LOG_INFO("Scaled up: spawned {} (alive={})",
-                 stateless_workers.back().name,
-                 alive_stateless());
+        LOG_INFO("Scaled up: spawned {}", stateless_workers.back().name);
     }
-
-    // Grow the low allowance by exactly the added capacity, within its
-    // ceiling, instead of resetting whatever memory pressure took off it.
-    low_limit = std::min(low_limit + 1, max_low_limit());
-    try_dispatch_pending();
     return true;
-}
-
-void WorkerPool::retire_idle_worker() {
-    // Workers already marked retiring are still counted alive until
-    // monitor_worker observes their exit; respect the floor including them.
-    std::size_t pending_retires = 0;
-    for(auto& w: stateless_workers)
-        if(w.retiring && w.state == SlotState::Alive)
-            pending_retires += 1;
-    if(alive_stateless() - pending_retires <= options.min_stateless)
-        return;
-
-    for(std::size_t i = stateless_workers.size(); i-- > 0;) {
-        auto& w = stateless_workers[i];
-        if(w.state == SlotState::Alive && !w.busy && !w.retiring) {
-            w.retiring = true;
-            w.peer->close_output();
-            w.proc.kill(SIGTERM);
-            LOG_INFO("Retiring worker {} (alive={})", w.name, alive_stateless());
-            return;
-        }
-    }
-}
-
-void WorkerPool::preempt_low_priority(std::size_t count) {
-    std::size_t preempted = 0;
-    for(std::size_t i = 0; i < stateless_workers.size() && preempted < count; ++i) {
-        auto& w = stateless_workers[i];
-        if(w.state != SlotState::Alive || !w.busy || !w.low_priority)
-            continue;
-
-        // The kill is what actually frees the memory and fails the
-        // in-flight request; its sender learns from the death record that
-        // the pool reclaimed the worker.
-        w.preempted = true;
-        w.death->reclaimed = true;
-        w.death->cause = "killed to relieve memory pressure";
-        // The preempt respawn skips crash accounting, so credit a healthy
-        // run here the same way a crash would — the slot must not carry a
-        // stale streak past the healthy interval that already cleared it.
-        reset_streak_if_healthy(w);
-        mark_worker_dead(i, false, true);
-        ++preempted;
-    }
-    if(preempted > 0) {
-        LOG_WARN("Preempted {} low-priority workers (memory pressure)", preempted);
-        // The victims' acquisitions are gone; queued work may fit under the
-        // (reduced) limit on the remaining idle workers.
-        try_dispatch_pending();
-    }
 }
 
 }  // namespace clice

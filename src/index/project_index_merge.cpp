@@ -20,7 +20,8 @@ import :vfs.file_table;
 namespace clice::index {
 
 std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_index,
-                                                           llvm::ArrayRef<DepState> imports) {
+                                                           llvm::ArrayRef<DepState> imports,
+                                                           std::uint64_t peak) {
     // Zero-copy consumption: the result stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
     // the TU index, and only genuinely new symbol names are materialized.
@@ -45,6 +46,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
 
     TUManifest manifest;
     manifest.built_at = static_cast<std::uint64_t>(view.built_at());
+    manifest.peak = peak;
 
     std::uint32_t hits = 0;
     std::uint32_t appended = 0;
