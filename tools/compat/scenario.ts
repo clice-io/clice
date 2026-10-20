@@ -31,11 +31,6 @@ export interface Scenario {
     /// The platforms whose system toolchain the scenario names.
     platforms: NodeJS.Platform[];
 
-    /// What clice does not handle yet here. Its checks are skipped; the
-    /// build still runs, so the scenario stays ready for the day they are
-    /// turned on.
-    unsupported?: string;
-
     /// Build in the Visual Studio developer environment, which cl and
     /// clang-cl need for their headers and libraries. clice runs without
     /// it, as it does under an editor.

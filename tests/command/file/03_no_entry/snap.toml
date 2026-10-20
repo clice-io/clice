@@ -1,0 +1,7 @@
+[test."$ clice command util.h"]
+stderr = "error: No compilation database lists ${WS}/util.h"
+exit = 1
+
+[test."$ clice command missing.cpp"]
+stderr = "error: no such file: ${WS}/missing.cpp"
+exit = 1

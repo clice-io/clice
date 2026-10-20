@@ -35,29 +35,39 @@ import :support.process;
 
 namespace clice {
 
-kota::task<std::expected<std::string, std::string>> execute(std::vector<std::string> arguments,
-                                                            bool capture_stdout,
-                                                            std::string cwd) {
+kota::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
+                                                              std::string cwd) {
     auto file = arguments[0];
     LOG_INFO("Execute command: {}", file);
 
     auto captured = co_await kota::process::capture({
         .file = file,
         .args = std::move(arguments),
-        // LANG=C keeps the driver output, which callers parse, unlocalized.
-        .env_changes = {{.name = "LANG", .value = "C"}},
+        // Keeps the output callers parse unlocalized. Not LANG alone: GCC
+        // translates its `-v` report under LC_ALL or LC_MESSAGES, which win
+        // over LANG.
+        .env_changes = {{.name = "LC_ALL", .value = "C"}},
         .cwd = std::move(cwd),
     });
     if(!captured) {
         co_return std::unexpected(
             std::format("Failed to run {}: {}", file, captured.error().message()));
     }
+    ProgramOutput output{.out = std::move(captured->stdout_data),
+                         .err = std::move(captured->stderr_data)};
     if(!captured->status.success()) {
-        co_return std::unexpected(
-            std::format("Process {} ended with {}", file, captured->status.to_string()));
+        output.failure =
+            std::format("Process {} ended with {}", file, captured->status.to_string());
     }
+    co_return output;
+}
 
-    co_return capture_stdout ? std::move(captured->stdout_data) : std::move(captured->stderr_data);
+extern "C" {
+
+    // Set by the Windows executable's allocator (src/mimalloc.cc), which no
+    // other program links: its own collect, and the switch to purging.
+    void (*clice_allocator_collect)() = nullptr;
+    void (*clice_allocator_purge)() = nullptr;
 }
 
 void release_free_memory() {
@@ -67,6 +77,15 @@ void release_free_memory() {
 #if defined(__GLIBC__) && !defined(__SANITIZE_ADDRESS__)
     malloc_trim(0);
 #endif
+    if(clice_allocator_collect) {
+        clice_allocator_collect();
+    }
+}
+
+void purge_freed_memory() {
+    if(clice_allocator_purge) {
+        clice_allocator_purge();
+    }
 }
 
 void lower_thread_priority() {

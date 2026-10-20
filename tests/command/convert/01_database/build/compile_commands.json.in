@@ -1,0 +1,7 @@
+[
+  {
+    "directory": ".",
+    "file": "../main.cpp",
+    "arguments": ["missing-cc", "-c", "../main.cpp"]
+  }
+]

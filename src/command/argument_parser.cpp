@@ -185,7 +185,8 @@ bool is_user_content_option(unsigned id) {
         case OPT_idirafter:
         case OPT_D:
         case OPT_U:
-        case OPT_include: return true;
+        case OPT_include:
+        case OPT_imacros: return true;
         default: return false;
     }
 }
@@ -266,16 +267,6 @@ bool is_codegen_option(unsigned id) {
     }
 
     switch(id) {
-        /// Position-independent code — pure codegen, no macro or semantic effect.
-        case OPT_fPIC:
-        case OPT_fno_PIC:
-        case OPT_fpic:
-        case OPT_fno_pic:
-        case OPT_fPIE:
-        case OPT_fno_PIE:
-        case OPT_fpie:
-        case OPT_fno_pie:
-
         /// Frame pointer and unwind tables — pure codegen.
         case OPT_mframe_pointer_EQ:
         case OPT_fomit_frame_pointer:
@@ -284,12 +275,6 @@ bool is_codegen_option(unsigned id) {
         case OPT_fno_unwind_tables:
         case OPT_fasynchronous_unwind_tables:
         case OPT_fno_asynchronous_unwind_tables:
-
-        /// Stack protection — pure codegen.
-        case OPT_fstack_protector:
-        case OPT_fstack_protector_strong:
-        case OPT_fstack_protector_all:
-        case OPT_fno_stack_protector:
 
         /// Section splitting, semantic interposition — pure codegen/linker.
         /// Not LTO: the driver allows -fsanitize=cfi and

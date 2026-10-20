@@ -25,7 +25,8 @@ ZEST_CASE(CodegenFlagsIgnored) {
     auto base = canonicalize({"clang++", "-std=c++20", "-DFOO", "main.cpp"});
     ZASSERT(base == canonicalize({"clang++", "-g", "-std=c++20", "-DFOO", "main.cpp"}));
     ZASSERT(base == canonicalize({"clang++", "-gdwarf-4", "-std=c++20", "-DFOO", "main.cpp"}));
-    ZASSERT(base == canonicalize({"clang++", "-std=c++20", "-fPIC", "-DFOO", "main.cpp"}));
+    ZASSERT(base ==
+            canonicalize({"clang++", "-std=c++20", "-fomit-frame-pointer", "-DFOO", "main.cpp"}));
     ZASSERT(base ==
             canonicalize({"clang++", "-std=c++20", "-ffunction-sections", "-DFOO", "main.cpp"}));
     // Driver-ignored flags: bazel stamps a per-file -frandom-seed=<output>.

@@ -97,8 +97,8 @@ namespace clice::index {
 /// whose header differs; v44: the project table is one record per symbol,
 /// per file and per path behind a header, manifests name their files by
 /// path id and content hash, and producers name their unit by its path
-/// hash.
-constexpr inline std::uint32_t index_format_version = 44;
+/// hash; v45: a manifest keeps the memory its unit's worker reached.
+constexpr inline std::uint32_t index_format_version = 45;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it (LLVM's search blob, the
@@ -777,6 +777,8 @@ struct TUManifestBlobOf {
     std::uint32_t format_version = 0;
 
     std::uint64_t built_at = 0;
+
+    std::uint64_t peak = 0;
 
     Seq<std::uint32_t> version_paths;
     Seq<std::uint64_t> version_hashes;

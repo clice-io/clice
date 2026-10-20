@@ -1,0 +1,21 @@
+[test."$ clice command main.cpp"]
+stdout = '''
+${WS}/compile_commands.json:
+  directory: ${WS}
+  command:   ${WS}/missing-cc -c main.cpp
+  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} -D DEBUG ${WS}/main.cpp
+  error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+'''
+stderr = "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable"
+exit = 0
+
+[test."$ clice command main.cpp --configuration release"]
+stdout = '''
+${WS}/compile_commands.json:
+  directory: ${WS}
+  command:   ${WS}/missing-cc -c main.cpp
+  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} -D NDEBUG ${WS}/main.cpp
+  error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+'''
+stderr = "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable"
+exit = 0

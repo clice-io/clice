@@ -35,6 +35,7 @@ enum class Command : std::uint8_t {
     lint,
     format,
     inspect,
+    command,
     scan,
     analyze,
     modularize,
@@ -210,7 +211,7 @@ struct JobsOption {
     DecoKV(names = {"-j", "--jobs"},
            help =
                "How many units or files to work on at once (default: "
-               "project.stateless_worker_count; for format, the CPU count)",
+               "project.stateless_worker_count; for index and format, the CPU count)",
            required = false)
     <std::uint32_t> jobs;
 };
@@ -410,15 +411,19 @@ struct Operation {
 
 /// A subcommand whose first argument names one of its `operations`. With
 /// `main`, the subcommand's own job, arguments naming none (none at all,
-/// or options) run it, and its help lists the operations after its own.
-/// Without, no arguments print the operations, which `overview` heads, and
-/// an option before an operation is an unknown one.
+/// options, or with `main_targets` the targets the job takes) run it, and
+/// its help lists the operations after its own. Without, no arguments
+/// print the operations, which `overview` heads, and an option before an
+/// operation is an unknown one.
 inline CommandHandler with_operations(std::string_view overview,
                                       std::vector<Operation> operations,
                                       Errors errors,
-                                      std::optional<CommandHandler> main = std::nullopt) {
+                                      std::optional<CommandHandler> main = std::nullopt,
+                                      bool main_targets = false) {
     auto commander = std::make_shared<kota::deco::cli::SubCommander>("", main ? "" : overview);
+    std::vector<std::string> names;
     for(auto& operation: operations) {
+        names.emplace_back(operation.name);
         commander->add({.name = operation.name, .description = operation.description},
                        std::move(operation.run));
     }
@@ -429,8 +434,10 @@ inline CommandHandler with_operations(std::string_view overview,
             return run_subcommands(*commander, args, errors);
         };
     }
-    return [commander, main = std::move(*main)](std::span<std::string> args) mutable {
-        if(!args.empty() && !args.front().starts_with("-")) {
+    return [commander, main = std::move(*main), names = std::move(names), main_targets](
+               std::span<std::string> args) mutable {
+        if(!args.empty() && !args.front().starts_with("-") &&
+           (!main_targets || llvm::is_contained(names, args.front()))) {
             return (*commander)(args);
         }
         auto code = main(args);

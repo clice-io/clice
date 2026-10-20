@@ -29,6 +29,7 @@ stdout = '''
   "shardBytes": "#",
   "symbolCount": 8,
   "failed": [],
+  "tooBig": [],
   "compiledWithErrors": [
     {
       "unit": "${WS}/broken.cpp",

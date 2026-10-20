@@ -569,7 +569,14 @@ auto printing_policy(clang::ASTContext& context, const Options& options) -> clan
     // As clang's diagnostics do: C's `_Bool` reads `bool` where a macro
     // (<stdbool.h>) spells it so.
     if(!policy.Bool) {
-        policy.Bool = context.getBoolName()->hasMacroDefinition();
+        // A macro a precompiled header defines loads only when something looks
+        // its name up: a file that never spells `bool` leaves the name out of
+        // date, its macro flag unset.
+        auto* name = context.getBoolName();
+        if(name->isOutOfDate()) {
+            context.getExternalSource()->updateOutOfDateIdentifier(*name);
+        }
+        policy.Bool = name->hasMacroDefinition();
     }
     return policy;
 }

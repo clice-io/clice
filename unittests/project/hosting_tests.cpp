@@ -1,6 +1,9 @@
 module;
 
 #include "modules/prelude.h"
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 module clice;
 
@@ -326,6 +329,33 @@ ZEST_CASE(LenderSearchDir) {
     ZEXPECT(command_lender(project, source)->unit == near.file);
 };
 
+#ifndef _WIN32
+ZEST_CASE(LenderSearchDirSymlink) {
+    /// A command's search directory reaching the header through a symlink
+    /// lends it that command, over the unit beside the header's real path.
+    TempDir tmp;
+    tmp.touch("vendor/real/orphan.h", "");
+    tmp.touch("a/main.cpp", "");
+    ZASSERT(::symlink(tmp.path("vendor/real").c_str(), tmp.path("a/inc").c_str()) == 0);
+    FileTable files;
+    Project project{files};
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+    auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
+        tmp.touch(file, "");
+        auto command = std::format("clang++ {} {}", flags, tmp.path(file));
+        return *project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+    };
+    auto searching = add("a/main.cpp", std::format("-I{}", tmp.path("a/inc")));
+    add("vendor/b.cpp", "");
+
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("vendor/real/orphan.h")));
+    auto lender = command_lender(project, header);
+    ZASSERT(lender);
+    ZEXPECT(lender->unit == searching.file);
+};
+#endif
+
 ZEST_CASE(LenderIgnoresCommandless) {
     /// A member a rule covers with a default command that is no compile
     /// command lends nothing.
@@ -587,6 +617,7 @@ ZEST_CASE(PrecompiledHeaderEnters) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(a, a_text), .line = 1, .skipped = true},
@@ -638,6 +669,7 @@ ZEST_CASE(ForcedGainsInclude) {
     p.project.file_table.disk.end_turn();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = old_version, .line = 300},
@@ -665,6 +697,7 @@ ZEST_CASE(SkippedAloneRulesOut) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(a, a_text), .line = 1},

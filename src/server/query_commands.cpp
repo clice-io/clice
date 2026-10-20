@@ -4,7 +4,6 @@ module;
 
 module clice;
 
-import :command.toolchain;
 import :feature.feature;
 import :index.hierarchy;
 import :index.navigation;
@@ -333,38 +332,6 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::CallEdge> edges) {
 }
 
 }  // namespace
-
-Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path) {
-    if(!vfs::is_file(path)) {
-        return std::unexpected(std::format("no such file: {}", path));
-    }
-    auto& files = ctx.project.file_table;
-    auto file = files.intern(path);
-    CompileCommandResult result{.file = files.display(file)};
-    auto resolution = ctx.contexts.resolve_command(file, result.directory, result.arguments);
-    // The command names in-memory files the synthesized context serves to
-    // an editor compile; the host's bare command would be a different one.
-    if(resolution.synthesized) {
-        return std::unexpected(std::format(
-            "{} compiles only under a synthesized header context, which needs an editor session",
-            path));
-    }
-    result.directory = files.display(CanonicalPath(Spelling::absolute(result.directory)));
-    auto& ref = resolution.ref;
-    if(auto resolved = ctx.project.cdb.toolchain().resolve(ref.config, ref.input); !resolved) {
-        result.toolchain_error = std::move(resolved.error());
-    }
-    switch(resolution.source) {
-        case CommandSource::CDBExact: result.source = "database"; break;
-        case CommandSource::IncludeGraph: result.source = "host"; break;
-        case CommandSource::Default: result.source = "rule"; break;
-        case CommandSource::Inferred:
-            result.source = ctx.project.build.unit(file) ? "provisional" : "inferred";
-            break;
-        case CommandSource::Fallback: result.source = "fallback"; break;
-    }
-    return result;
-}
 
 Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) {
     if(!llvm::is_contained<llvm::StringRef>({"all", "source", "header", "module"}, filter)) {

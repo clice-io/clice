@@ -52,7 +52,7 @@ tests/<topic>/<subtopic>/NN_name/
   workers, termination, memory, stderr, test hooks, editor sessions).
 - **Commands**, what a command prints, writes and exits with: `query`,
   `refactor`, `format`, `lint`, `index`, `analyze`, `modularize`, `inspect`,
-  `scan`, and `cli` for process behavior every command shares.
+  `command`, `scan`, and `cli` for process behavior every command shares.
 
 `tools/testing/cases/topics.ts` lists them by family.
 

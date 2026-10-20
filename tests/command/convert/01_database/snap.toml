@@ -1,0 +1,71 @@
+["each entry"."$ clice command convert compile_commands.json"]
+stdout = '''
+[
+  {
+    "directory": "${WS}",
+    "file": "start.S",
+    "command": "${WS}/missing-cc -c start.S"
+  },
+  {
+    "directory": "${WS}",
+    "file": "main.cpp",
+    "arguments": [
+      "${WS}/missing-cc",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "-D",
+      "FROM_RULE",
+      "${WS}/main.cpp"
+    ],
+    "output": "main.o"
+  },
+  {
+    "directory": "${WS}",
+    "file": "util.cpp",
+    "arguments": [
+      "${WS}/missing-cc",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "-O2",
+      "-D",
+      "FROM_RULE",
+      "${WS}/util.cpp"
+    ]
+  }
+]
+'''
+stderr = '''
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+error: 2 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+'''
+exit = 1
+
+["a relative directory"."$ clice command convert build/compile_commands.json"]
+stdout = '''
+[
+  {
+    "directory": "${WS}/build",
+    "file": "../main.cpp",
+    "arguments": [
+      "missing-cc",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-D",
+      "FROM_RULE",
+      "${WS}/build/../main.cpp"
+    ]
+  }
+]
+'''
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-cc
+error: 1 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+'''
+exit = 1
+
+["not a database"."$ clice command convert broken.json"]
+stderr = "error: ${WS}/broken.json holds no array of entries: INCORRECT_TYPE: The JSON element does not have the requested type."
+exit = 1

@@ -50,7 +50,8 @@ const kota::option::OptTable& table();
 /// backend/linker concerns irrelevant to an LSP server.
 ///
 /// Note: options that DO affect semantics are intentionally kept:
-///   -fno-exceptions, -fno-rtti, -std=*, -march=*, -fsanitize=*, -O*, -W*
+///   -fno-exceptions, -fno-rtti, -std=*, -march=*, -fsanitize=*, -O*, -W*,
+///   and -fPIC and -fstack-protector*, which define __PIC__ and __SSP__
 ///
 /// Defined out-of-line in argument_parser.cpp (needs clang driver option IDs).
 bool is_codegen_option(unsigned id);
@@ -61,7 +62,8 @@ bool is_codegen_option(unsigned id);
 bool is_discarded_option(unsigned id);
 
 /// User-content options that go into the per-file patch rather than the
-/// shared canonical command: -I, -D, -U, -include, -isystem, -iquote, -idirafter.
+/// shared canonical command: -I, -D, -U, -include, -imacros, -isystem, -iquote,
+/// -idirafter.
 bool is_user_content_option(unsigned id);
 
 /// Whether `value` of option `id` names a file or directory, which every

@@ -36,12 +36,11 @@ function cmakeNinja(
     platforms: NodeJS.Platform[],
     cc: string,
     cxx: string,
-    options: { msvc?: boolean; extra?: string[]; unsupported?: string } = {},
+    options: { msvc?: boolean; extra?: string[] } = {},
 ): Scenario {
     return {
         name,
         platforms,
-        ...(options.unsupported === undefined ? {} : { unsupported: options.unsupported }),
         msvc: options.msvc === true,
         requires: ["cmake", "ninja", cc, cxx],
         build: cmake("Ninja", cc, cxx, ...(options.extra ?? [])),
@@ -86,9 +85,7 @@ export const SCENARIOS: Scenario[] = [
         "/usr/bin/riscv64-linux-gnu-g++",
         { extra: ["-DCMAKE_SYSTEM_NAME=Linux", "-DCMAKE_SYSTEM_PROCESSOR=riscv64"] },
     ),
-    cmakeNinja("cmake ninja apple clang", ["darwin"], "/usr/bin/clang", "/usr/bin/clang++", {
-        unsupported: "Apple clang defaults C++ to C++14; clice fills in its own C++17 (#354)",
-    }),
+    cmakeNinja("cmake ninja apple clang", ["darwin"], "/usr/bin/clang", "/usr/bin/clang++"),
     cmakeNinja(
         "cmake ninja homebrew gcc",
         ["darwin"],
@@ -100,7 +97,6 @@ export const SCENARIOS: Scenario[] = [
         ["darwin"],
         "/opt/homebrew/bin/gcc-15",
         "/opt/homebrew/bin/g++-15",
-        { unsupported: "GCC 15 defaults C to gnu23; clice keeps gnu17" },
     ),
     cmakeNinja(
         "cmake ninja homebrew llvm",
@@ -122,10 +118,7 @@ export const SCENARIOS: Scenario[] = [
         `${LLVM_WINDOWS}/clang.exe`,
         `${LLVM_WINDOWS}/clang++.exe`,
     ),
-    cmakeNinja("cmake ninja mingw gcc", ["win32"], `${MINGW}/gcc.exe`, `${MINGW}/g++.exe`, {
-        unsupported:
-            "MinGW's GCC 15 defines _REENTRANT and defaults C to gnu23; clice does neither",
-    }),
+    cmakeNinja("cmake ninja mingw gcc", ["win32"], `${MINGW}/gcc.exe`, `${MINGW}/g++.exe`),
     {
         // Every C++ unit loads the target's PCH, which clice builds itself
         // from cmake_pch.hxx.cxx: CMake's own is clang 17's.
@@ -280,9 +273,6 @@ export const SCENARIOS: Scenario[] = [
     {
         name: "cmake ninja zig",
         platforms: ["linux"],
-        unsupported:
-            "zig targets the host CPU by default, clice the generic one; " +
-            "asking zig for its command fails (#98)",
         requires: ["cmake", "ninja", "zig"],
         build: cmake("Ninja", "zig;cc", "zig;c++"),
         files: BOTH,
@@ -290,9 +280,6 @@ export const SCENARIOS: Scenario[] = [
     {
         name: "emcmake emscripten",
         platforms: ["linux"],
-        unsupported:
-            "clice takes em++ for a host compiler: wrong target, data model and " +
-            "default standard, no sysroot headers (#569)",
         requires: ["emcmake", "emcc", "em++", "cmake", "ninja"],
         build: [
             ["emcmake", "cmake", "-S", ".", "-B", "build", "-G", "Ninja"],
@@ -303,7 +290,6 @@ export const SCENARIOS: Scenario[] = [
     {
         name: "make bear arm-none-eabi",
         platforms: ["linux"],
-        unsupported: "clice finds no header search paths for the bare-metal GCC",
         requires: ["bear", "make", "/usr/bin/arm-none-eabi-gcc", "/usr/bin/arm-none-eabi-g++"],
         build: [
             [
@@ -344,7 +330,6 @@ export const SCENARIOS: Scenario[] = [
     {
         name: "make bear riscv bare metal",
         platforms: ["linux"],
-        unsupported: "clice finds no header search paths for the bare-metal GCC (#327)",
         requires: ["bear", "make", "/usr/bin/riscv64-unknown-elf-gcc"],
         build: [
             [

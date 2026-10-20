@@ -215,12 +215,10 @@ std::string deeper_databases_hint(const Project& project) {
         llvm::join(names, ", "));
 }
 
-BuildLoad load_build(Project& project,
-                     CanonicalRef root,
-                     llvm::StringRef configuration,
-                     llvm::ArrayRef<Spelling> nearby,
-                     llvm::ArrayRef<Spelling> provisional) {
-    BuildLoad load;
+void load_sources(Project& project,
+                  CanonicalRef root,
+                  llvm::StringRef configuration,
+                  llvm::ArrayRef<Spelling> nearby) {
     project.cdb.set_workspace_root(root);
     project.build.reset_active(configuration);
 
@@ -279,6 +277,15 @@ BuildLoad load_build(Project& project,
         }
     }
     LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", entries, cdb_timer.ms());
+}
+
+BuildLoad load_build(Project& project,
+                     CanonicalRef root,
+                     llvm::StringRef configuration,
+                     llvm::ArrayRef<Spelling> nearby,
+                     llvm::ArrayRef<Spelling> provisional) {
+    BuildLoad load;
+    load_sources(project, root, configuration, nearby);
 
     // Only a restart forgets the record of a file gone since: during a
     // session a deleted provisional member keeps it, as a vanished unit

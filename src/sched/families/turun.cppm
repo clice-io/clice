@@ -75,6 +75,13 @@ public:
         /// Preempted (deliberate cancellation, or an outage the pool will
         /// revive from): budget-free requeue.
         Preempted,
+        /// Its worker's memory ran out beside other work: budget-free
+        /// requeue, its next run expected to take at least `memory`.
+        OutOfMemory,
+        /// Its worker's memory ran out with no other work beside it, at
+        /// `memory`: the TU does not fit this machine, and the same bytes
+        /// would not again.
+        TooBig,
         /// The graph refused or unwound the round (shutdown).
         Shutdown,
     };
@@ -93,6 +100,9 @@ public:
 
         /// Failure detail for the requester's logs.
         std::string error;
+
+        /// OutOfMemory and TooBig: the memory the worker reached.
+        std::uint64_t memory = 0;
 
         /// The errors a completed run compiled with (plan product
         /// `errors`).
@@ -160,6 +170,13 @@ private:
     /// index did not hold for its file: the next run sends every section's bytes,
     /// so the rerun cannot fail the same way.
     llvm::DenseSet<Fid> send_in_full;
+
+    /// What each TU's runs in this session measured: the peak of the last
+    /// finished one, at least what a run killed for memory before it
+    /// reached, and the memory one killed since reached.
+    /// Ahead of the manifest's peak, which only an index that merged
+    /// records.
+    llvm::DenseMap<Fid, RequestCost> costs;
 };
 
 }  // namespace clice

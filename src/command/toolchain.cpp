@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :command.argument_parser;
+import :command.driver_report;
 import :command.nvcc;
 import :command.toolchain;
 import :support.logging;
@@ -20,10 +21,12 @@ namespace {
 
 namespace ranges = std::ranges;
 
-/// The driver followed by the arguments of the clang job it builds for
-/// `arguments`, which start with -cc1.
-std::expected<std::vector<std::string>, std::string>
-    query_driver(llvm::ArrayRef<const char*> arguments) {
+/// A cc1 job as a driver runs it: the program, `-cc1`, then its arguments.
+using Job = std::vector<std::string>;
+
+/// The job clang's own driver builds for `args`: a driver, its flags and
+/// the input.
+std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args) {
     /// FIXME: collect diagnostic here ...
     clang::DiagnosticOptions options;
     clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
@@ -31,10 +34,12 @@ std::expected<std::vector<std::string>, std::string>
                                     new clang::IgnoringDiagConsumer());
 
     llvm::SmallVector<const char*, 256> list;
-    list.emplace_back(arguments.consume_front());
+    list.emplace_back(args.front().c_str());
     list.emplace_back("-fsyntax-only");
-    list.append(arguments.begin(), arguments.end());
-    arguments = list;
+    for(auto& argument: args.drop_front()) {
+        list.emplace_back(argument.c_str());
+    }
+    llvm::ArrayRef<const char*> arguments = list;
 
     /// Note that clang use the `DriverExecutable` to determine the driver mode when
     /// --driver-mode is not found in the arguments, and `TargetTriple` is used when
@@ -76,49 +81,322 @@ std::expected<std::vector<std::string>, std::string>
         return std::unexpected(std::format("No clang job found for {}", arguments[0]));
     }
 
-    std::vector<std::string> cc1_args{arguments[0]};
-    cc1_args.insert(cc1_args.end(), cmd->getArguments().begin(), cmd->getArguments().end());
-    return cc1_args;
+    Job job{arguments[0]};
+    job.insert(job.end(), cmd->getArguments().begin(), cmd->getArguments().end());
+    return job;
 }
 
-/// The two flags that pin a gcc-style toolchain for our driver: the target
-/// triple and the gcc installation clang should derive its paths from.
-struct GCCToolchainFlags {
-    std::string target;
-    std::string install_dir;
-};
+/// Asks a GCC-style driver how it compiles `args`, the driver (its first
+/// `driver_tokens`: two for `zig cc`) followed by its flags and the input:
+/// `-E -dM -v` has it preprocess the input verbosely, printing the job it
+/// runs and its predefined macros. A clang job that then fails still
+/// answers: the command it runs is what clice compiles, and fails the same
+/// way there (an unknown `--target`). A GCC job answers only when it
+/// succeeds: GCC prints its macros and LIBRARY_PATH only then.
+kota::task<std::expected<DriverReport, std::string>> ask_driver(llvm::ArrayRef<std::string> args,
+                                                                std::size_t driver_tokens,
+                                                                std::string cwd) {
+    std::vector<std::string> argv(args.begin(), args.begin() + driver_tokens);
+    argv.insert(argv.end(), {"-E", "-dM", "-v"});
+    argv.insert(argv.end(), args.begin() + driver_tokens, args.end());
+    auto output = co_await execute(std::move(argv), std::move(cwd));
+    if(!output) {
+        co_return std::unexpected(std::move(output.error()));
+    }
+    auto report = parse_driver_report(output->out, output->err);
+    if(report.clang_job.empty() && !output->failure.empty()) {
+        auto last_line = llvm::StringRef(output->err).rtrim();
+        last_line = last_line.substr(last_line.rfind('\n') + 1);
+        co_return std::unexpected(std::format("{}: {}", output->failure, last_line.str()));
+    }
+    co_return report;
+}
 
-kota::task<std::expected<GCCToolchainFlags, std::string>> query_gcc_flags(std::string driver,
-                                                                          std::string cwd) {
-    auto target = co_await execute({driver, "-dumpmachine"}, true, cwd);
-    if(!target)
-        co_return std::unexpected(std::move(target.error()));
+/// GCC's two-core tuning form, `-mcpu=cortex-a72.cortex-a53`, as the first
+/// core alone: clang knows no such name, and the first core's architecture
+/// is the code's. The features after the cores keep their dots
+/// (`-mcpu=cortex-m7+nofp.dp`).
+std::string first_core(llvm::StringRef arg) {
+    if(!arg.starts_with("-mcpu=")) {
+        return arg.str();
+    }
+    auto features = arg.find('+');
+    return (arg.substr(0, features).split('.').first + arg.substr(features)).str();
+}
 
-    auto search_dirs = co_await execute({driver, "-print-search-dirs"}, true, cwd);
-    if(!search_dirs)
-        co_return std::unexpected(std::move(search_dirs.error()));
+/// The job clang's own driver builds for `args` (a driver, its flags and
+/// the input) set up as GCC set itself up: GCC's target, the options GCC's
+/// driver gave its cc1 job that clang's driver knows, and GCC's header
+/// search list in place of clang's own idea of the system headers. clang's
+/// builtin headers take the place of GCC's own: those are GCC's versions of
+/// the same headers, which clang cannot parse, and clang's would reach them
+/// through #include_next (clang's stdatomic.h defers to a later one).
+std::expected<Job, std::string> query_as_gcc(const DriverReport& report,
+                                             llvm::ArrayRef<std::string> args) {
+    std::vector<std::string> clang_args = {args[0],
+                                           "--target=" + report.target,
+                                           "-nostdinc",
+                                           "-resource-dir",
+                                           resource_dir().str()};
+    auto parse_options =
+        kota::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
+    for(auto& parsed: option::table().parse(report.gcc_options, parse_options)) {
+        if(parsed && parsed->id != option::OPT_UNKNOWN) {
+            clang_args.push_back(first_core(report.gcc_options[parsed->index]));
+        }
+    }
+    for(llvm::StringRef arg: args.drop_front()) {
+        clang_args.push_back(first_core(arg));
+    }
 
-    std::string install_path;
-    llvm::SmallVector<llvm::StringRef, 5> lines;
-    llvm::StringRef(*search_dirs).split(lines, '\n', -1, false);
-    for(auto line: lines) {
-        line = line.trim();
-        if(line.consume_front_insensitive("install:")) {
-            install_path = line.trim().str();
-            break;
+    auto job = query_driver(clang_args);
+    if(!job) {
+        return job;
+    }
+    for(std::size_t i = 0; i < report.search_dirs.size(); i += 1) {
+        auto& dir = report.search_dirs[i];
+        if(report.private_dir == i) {
+            job->insert(job->end(), {"-internal-isystem", path::join(resource_dir(), "include")});
+            continue;
+        }
+        job->insert(job->end(),
+                    {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
+    }
+    return job;
+}
+
+bool names_standard(llvm::ArrayRef<std::string> args) {
+    return ranges::any_of(args, [](llvm::StringRef arg) { return arg.starts_with("-std="); });
+}
+
+/// cl and clang-cl: clang's own driver in cl mode, which sets the
+/// windows-msvc target itself.
+std::expected<Job, std::string> ask_cl(llvm::ArrayRef<std::string> args) {
+    // Before C++20, clang defers template bodies on MSVC targets so that
+    // code written for MSVC's lookup rules compiles, but a deferred body has
+    // no AST: every feature inside it goes blind. Placed before the
+    // command's own flags, this one keeps that default out of the cc1
+    // command and leaves deferral to a command asking for it
+    // (`-fdelayed-template-parsing`, clang-cl's `/Zc:twoPhase-`), which
+    // every compile of the file then follows.
+    std::vector<std::string> cl_args = {args[0],
+                                        "--driver-mode=cl",
+                                        "-fno-delayed-template-parsing"};
+    cl_args.insert(cl_args.end(), args.begin() + 1, args.end());
+    return query_driver(cl_args);
+}
+
+/// Every other driver is GCC-style: asked how it compiles the input, it
+/// shows its job, and the job tells clang underneath (Apple clang, zig,
+/// emcc, a `c++` that is clang) from GCC. There is neither for an input the
+/// driver only passes on (assembler), or a driver that is neither GCC nor
+/// clang (Intel's icc).
+kota::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::string> args,
+                                                          std::size_t driver_tokens,
+                                                          std::string cwd) {
+    // A universal build (`-arch arm64 -arch x86_64`) compiles once for each
+    // architecture, and a driver preprocesses for one only: clice reads the
+    // code for the first.
+    for(std::size_t i = 0, seen = 0; i + 1 < args.size();) {
+        if(args[i] == "-arch") {
+            seen += 1;
+            if(seen > 1) {
+                args.erase(args.begin() + i, args.begin() + i + 2);
+                continue;
+            }
+        }
+        i += 1;
+    }
+
+    auto report = co_await ask_driver(args, driver_tokens, std::move(cwd));
+    if(!report) {
+        co_return std::unexpected(std::move(report.error()));
+    }
+    auto standard =
+        names_standard(args) || report->standard.empty() ? "" : "-std=" + report->standard;
+    if(!report->clang_job.empty()) {
+        auto job = std::move(report->clang_job);
+        // As for cl: an MSVC target's default template deferral leaves
+        // deferred bodies without an AST, so it stays only when the command
+        // asks for it.
+        if(!ranges::contains(args, "-fdelayed-template-parsing")) {
+            std::erase(job, "-fdelayed-template-parsing");
+        }
+        if(!standard.empty()) {
+            job.push_back(std::move(standard));
+        }
+        co_return job;
+    }
+    if(!report->gcc_job) {
+        co_return std::unexpected(std::format("{} runs no compiler job for the input", args[0]));
+    }
+    if(!standard.empty()) {
+        args.push_back(std::move(standard));
+    }
+    co_return query_as_gcc(*report, args);
+}
+
+/// The host compiler nvcc's dryrun names, as a path. The dryrun spells it
+/// the way nvcc resolves it — often a bare name that only exists on nvcc's
+/// own augmented PATH: that PATH, then next to the nvcc binary, then ours.
+std::expected<std::string, std::string> find_nvcc_host(const NVCCDryrunInfo& info,
+                                                       llvm::StringRef nvcc) {
+    auto executable = [](llvm::StringRef file) {
+        return vfs::exists(file) && llvm::sys::fs::can_execute(file);
+    };
+    llvm::StringRef host = info.host_compiler;
+    if(path::is_absolute(host)) {
+        return host.str();
+    }
+    for(auto& dir: info.search_path) {
+        if(auto candidate = path::join(dir, host); executable(candidate)) {
+            return candidate;
+        }
+    }
+    if(auto sibling = path::join(path::parent_path(nvcc), host); executable(sibling)) {
+        return sibling;
+    }
+    if(auto program = llvm::sys::findProgramByName(host)) {
+        return std::move(*program);
+    }
+    return std::unexpected(std::format("Cannot find nvcc host compiler: {}", host));
+}
+
+/// nvcc: its dryrun names the toolkit root, the host compiler and the
+/// macros nvcc injects — none of which clang can derive on its own. The
+/// host compiler is then asked as a GCC-style driver is, in the input's
+/// language and with the command's sysroot, and clang's own driver builds
+/// the job, in CUDA mode for a CUDA input.
+kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
+                                                     llvm::StringRef input,
+                                                     llvm::StringRef kind,
+                                                     std::string cwd) {
+    /// nvcc only offloads CUDA-language inputs; a host-language entry
+    /// (`nvcc -c foo.cpp`, or an explicit `-x c++`) compiles in a single
+    /// host step. The dryrun probe follows the effective language so it
+    /// reports the pipeline the real file gets.
+    bool cuda_input = kind == "cuda";
+    std::vector<std::string> dryrun_args = {args[0], "--dryrun", "-c", input.str()};
+    for(llvm::StringRef arg: args) {
+        if(is_nvcc_probe_flag(arg)) {
+            dryrun_args.push_back(arg.str());
+        }
+    }
+    auto dryrun = co_await execute(std::move(dryrun_args), cwd);
+    if(!dryrun) {
+        co_return std::unexpected(std::move(dryrun.error()));
+    }
+    if(!dryrun->failure.empty()) {
+        co_return std::unexpected(std::move(dryrun->failure));
+    }
+    auto info = parse_nvcc_dryrun(dryrun->err);
+    if(!info) {
+        co_return std::unexpected(std::move(info.error()));
+    }
+
+    auto host = find_nvcc_host(*info, args[0]);
+    if(!host) {
+        co_return std::unexpected(std::move(host.error()));
+    }
+    auto host_family = Toolchain::driver_family(*host);
+    if(host_family == CompilerFamily::MSVC || host_family == CompilerFamily::ClangCL) {
+        co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", *host));
+    }
+    /// nvcc hands its host compiler a CUDA input as C++. The host's headers
+    /// follow the sysroot the command gives it (`-Xcompiler --sysroot=<dir>`).
+    std::vector<std::string> host_probe = {*host, "-x", cuda_input ? "c++" : kind.str()};
+    for(llvm::StringRef arg: args.drop_front()) {
+        if(arg.starts_with("--sysroot=")) {
+            host_probe.push_back(arg.str());
+        }
+    }
+    host_probe.push_back(input.str());
+    auto host_report = co_await ask_driver(host_probe, 1, std::move(cwd));
+    if(!host_report) {
+        co_return std::unexpected(std::move(host_report.error()));
+    }
+    if(host_report->clang_job.empty() && !host_report->gcc_job) {
+        co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", *host));
+    }
+
+    std::vector<std::string> cuda_args = {*host, "-fno-delayed-template-parsing"};
+    if(cuda_input) {
+        /// Without a root from the dryrun, clang's own CUDA detection (which
+        /// knows the distro-specific install locations) is the remaining
+        /// chance.
+        if(!info->cuda_path.empty()) {
+            cuda_args.push_back("--cuda-path=" + info->cuda_path);
+        }
+        /// A toolkit newer than the linked clang still parses, modulo
+        /// missing feature macros; without this the version warning would
+        /// land in every file's diagnostics.
+        cuda_args.push_back("--no-cuda-version-check");
+
+        /// Default to the device-side view: reading CUDA code means reading
+        /// the `__CUDA_ARCH__` world — CUTLASS keeps every arch-specific
+        /// path behind it, and the host pass grays them all out.
+        /// `--cuda-host-only` in the command (e.g. a config rule append)
+        /// flips a file to the host view instead; the last selector wins,
+        /// matching the driver's own reading of the forwarded flags.
+        std::optional<bool> selected_host;
+        for(llvm::StringRef arg: args) {
+            /// The structured render spells aliases unaliased:
+            /// --cuda-host-only arrives as --offload-host-only.
+            if(arg == "--offload-host-only") {
+                selected_host = true;
+            } else if(arg == "--offload-device-only") {
+                selected_host = false;
+            }
+        }
+        if(!selected_host) {
+            cuda_args.push_back("--cuda-device-only");
+        }
+        for(auto& define:
+            selected_host.value_or(false) ? info->host_defines : info->device_defines) {
+            cuda_args.push_back("-D" + define);
+        }
+
+        if(!names_standard(args) && !info->cpp_dialect.empty()) {
+            cuda_args.push_back("-std=" + info->cpp_dialect);
+        }
+
+        /// An `-arch=` probe token is an explicit selection too: its
+        /// resolution replaces it in place below.
+        bool selects_arch = ranges::any_of(args, [](llvm::StringRef arg) {
+            return arg.starts_with("--offload-arch=") || arg.starts_with("-arch=");
+        });
+        if(!selects_arch && !info->default_arch.empty()) {
+            cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
+        }
+    } else {
+        /// The single host step still carries nvcc's identity macros
+        /// (__NVCC__, version macros) — but no CUDA mode.
+        for(auto& define: info->host_defines) {
+            cuda_args.push_back("-D" + define);
         }
     }
 
-    co_return GCCToolchainFlags{
-        .target = "--target=" + llvm::StringRef(*target).trim().str(),
-        .install_dir = "--gcc-install-dir=" + install_path,
-    };
+    for(llvm::StringRef arg: args.drop_front()) {
+        if(is_nvcc_probe_flag(arg)) {
+            /// The dryrun's resolution of an `-arch=<special>` token lands
+            /// exactly where the token sat: an edit-appended selection
+            /// carries `--no-offload-arch=all` right before it, and
+            /// inserting the resolution any earlier would put it on the
+            /// cleared side.
+            if(cuda_input && arg.starts_with("-arch=") && !info->default_arch.empty()) {
+                cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
+            }
+            continue;
+        }
+        cuda_args.push_back(arg.str());
+    }
+
+    /// A clang host needs no setup: clang's own driver already defaults to
+    /// the running machine's triple.
+    co_return host_report->gcc_job ? query_as_gcc(*host_report, cuda_args)
+                                   : query_driver(cuda_args);
 }
 
-/// The temp-file extension a probe input uses for `kind`: clang's own
-/// suffix when the kind is a known language, the raw extension itself
-/// otherwise (the driver ends up exactly as confused as it would be by the
-/// real file — the probe fails the same way the real compile would).
 /// The probe working directory, empty when the wanted one does not exist
 /// (a stale CDB directory, or a foreign-platform path): probing from the
 /// process cwd degrades the answer instead of failing the spawn.
@@ -129,6 +407,10 @@ std::string probe_cwd(llvm::StringRef wanted) {
     return wanted.str();
 }
 
+/// The temp-file extension a probe input uses for `kind`: clang's own
+/// suffix when the kind is a known language, the raw extension itself
+/// otherwise (the driver ends up exactly as confused as it would be by the
+/// real file — the probe fails the same way the real compile would).
 std::string temp_suffix_for(llvm::StringRef kind) {
     namespace types = clang::driver::types;
     auto type = types::lookupTypeForTypeSpecifier(kind.str().c_str());
@@ -159,330 +441,80 @@ struct QuerySpec {
     std::string cwd;
 };
 
-kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const QuerySpec& spec) {
-    if(spec.argv.empty())
-        co_return std::unexpected(std::string("Empty arguments"));
-
-    llvm::StringRef driver = spec.argv[0];
-
-    /// Note: The name used to invoke the compiler driver affects its behavior.
-    /// For example, `/usr/bin/clang++` is often a symbolic link to
-    /// `/usr/lib/llvm-20/bin/clang`. Invoking it as `clang++` enables C++ mode
-    /// and links C++ libraries by default, while invoking as `clang` defaults to C mode.
-    /// Therefore, never use `realpath` on the initial `driver` name, as that
-    /// would lose the context needed for the driver to behave correctly (and break caching).
-    llvm::SmallString<128> resolved_path;
+/// The driver as a path. The name used to invoke it matters: `clang++` is
+/// often a symlink to `clang`, and the name decides C++ mode. So it is
+/// never realpath'd, only found: a bare name on PATH, a relative one in the
+/// probe working directory.
+std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm::StringRef cwd) {
+    llvm::SmallString<128> found(driver);
     if(!path::is_absolute(driver)) {
         if(driver.contains('/') || driver.contains('\\')) {
-            /// Relative with a separator (`./toolchain/clang++`): relative
-            /// to the probe working directory, never a PATH lookup.
-            if(!spec.cwd.empty()) {
-                resolved_path = spec.cwd;
-                path::append(resolved_path, driver);
-                driver = resolved_path.c_str();
+            if(!cwd.empty()) {
+                found = cwd;
+                path::append(found, driver);
             }
+        } else if(auto program = llvm::sys::findProgramByName(driver)) {
+            found = *program;
         } else {
-            /// A bare name like g++: find it in the env vars.
-            auto program = llvm::sys::findProgramByName(driver);
-            if(!program)
-                co_return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
-            resolved_path = *program;
-            driver = resolved_path.c_str();
+            return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
         }
     }
+    if(!vfs::exists(found) || !llvm::sys::fs::can_execute(found)) {
+        return std::unexpected(std::format("Driver {} not found or not executable", found.str()));
+    }
+    return found.str().str();
+}
 
-    if(!vfs::exists(driver) || !llvm::sys::fs::can_execute(driver))
-        co_return std::unexpected(
-            std::format("Driver {} not found or not executable", driver.str()));
+/// The job the driver runs for the probe's command, over an empty file of
+/// the probe's language.
+kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
+    auto driver = find_driver(spec.argv[0], spec.cwd);
+    if(!driver) {
+        co_return std::unexpected(std::move(driver.error()));
+    }
 
-    auto suffix = temp_suffix_for(spec.kind);
-
-    /// Create a file with the kind's suffix, because the real input may not
-    /// exist on disk (and a borrowed header must probe as the host's
+    /// A file of the kind's suffix stands in for the real input, which may
+    /// not exist on disk (and a borrowed header must probe as the host's
     /// language, not as its own extension).
-    auto src_path = vfs::temp_file("query-toolchain", suffix);
-    if(!src_path)
+    auto input = vfs::temp_file("query-toolchain", temp_suffix_for(spec.kind));
+    if(!input) {
         co_return std::unexpected(
-            std::format("Failed to create temp file: {}", src_path.error().message()));
+            std::format("Failed to create temp file: {}", input.error().message()));
+    }
     auto cleanup = llvm::make_scope_exit([&] {
-        if(auto e = vfs::remove(*src_path))
+        if(auto e = vfs::remove(*input)) {
             LOG_ERROR("Fail to remove temporary file: {}", e);
+        }
     });
 
     /// The input sits at the slot recorded from the structured command:
     /// selectors after the slot must not govern it (`clang foo.c -x c++`
     /// compiles foo.c as C).
-    llvm::SmallVector<const char*, 256> args;
-    args.emplace_back(driver.data());
-    args.append(spec.argv.begin() + 1, spec.argv.end());
-    args.insert(args.begin() + spec.slot, src_path->c_str());
-    // Before C++20, clang defers template bodies on MSVC targets so that
-    // code written for MSVC's lookup rules compiles, but a deferred body has
-    // no AST: every feature inside it goes blind. Placed before the
-    // command's own flags, this one keeps that default out of the cc1
-    // command and leaves deferral to a command asking for it
-    // (`-fdelayed-template-parsing`, clang-cl's `/Zc:twoPhase-`), which
-    // every compile of the file then follows.
-    args.insert(args.begin() + (spec.family == CompilerFamily::Zig ? 2 : 1),
-                "-fno-delayed-template-parsing");
+    std::vector<std::string> args(spec.argv.begin(), spec.argv.end());
+    args[0] = std::move(*driver);
+    args.insert(args.begin() + spec.slot, *input);
 
-    std::expected<std::vector<std::string>, std::string> queried;
+    std::expected<Job, std::string> job;
     switch(spec.family) {
-        // Query g++ or mingw toolchain info. We detect the target and corresponding
-        // gcc toolchain install path as default behavior.
-        case CompilerFamily::GCC: {
-            auto gcc = co_await query_gcc_flags(driver.str(), spec.cwd);
-            if(!gcc)
-                co_return std::unexpected(std::move(gcc.error()));
-
-            llvm::SmallVector<const char*, 256> gcc_args;
-            gcc_args.emplace_back(driver.data());
-            gcc_args.emplace_back(gcc->target.c_str());
-            gcc_args.emplace_back(gcc->install_dir.c_str());
-            gcc_args.append(args.begin() + 1, args.end());
-            queried = query_driver(gcc_args);
-            break;
-        }
-
-        // Query clang++ or any clang based toolchain, e.g. zig cc/c++. We query
-        // the full cc1 command of clang toolchain as default.
-        // TODO: Is armclang also compatible?
-        case CompilerFamily::Clang:
-        case CompilerFamily::Zig: {
-            std::vector<std::string> exec_args;
-            auto remaining = llvm::ArrayRef(args);
-
-            if(spec.family == CompilerFamily::Zig) {
-                /// zig cc or zig c++ consumes two arguments.
-                exec_args.emplace_back(remaining[0]);
-                exec_args.emplace_back(remaining[1]);
-                remaining = remaining.drop_front(2);
-            } else {
-                exec_args.emplace_back(remaining[0]);
-                remaining = remaining.drop_front();
-            }
-            exec_args.emplace_back("-###");
-            exec_args.emplace_back("-fsyntax-only");
-            for(auto arg: remaining)
-                exec_args.emplace_back(arg);
-
-            auto content = co_await execute(std::move(exec_args), false, spec.cwd);
-            if(!content)
-                co_return std::unexpected(std::move(content.error()));
-
-            queried = Toolchain::parse_cc1(*content);
-            break;
-        }
-
         case CompilerFamily::MSVC:
-        case CompilerFamily::ClangCL: {
-            llvm::SmallVector<const char*, 256> msvc_args;
-            msvc_args.emplace_back(args[0]);
-            /// When clang in cl mode, the target will be set to windows-msvc automatically.
-            /// We don't need to add extra flag.
-            msvc_args.emplace_back("--driver-mode=cl");
-            msvc_args.append(args.begin() + 1, args.end());
-            queried = query_driver(msvc_args);
+        case CompilerFamily::ClangCL: job = ask_cl(args); break;
+        case CompilerFamily::NVCC:
+            job = co_await ask_nvcc(args, *input, spec.kind, spec.cwd);
             break;
-        }
-
-        // Query nvcc by asking for its compilation pipeline: the dryrun
-        // names the toolkit root, the host compiler and the macros nvcc
-        // injects — none of which clang can derive on its own. The host
-        // toolchain is then pinned as in the GCC branch and our own driver
-        // builds the cc1 in CUDA mode.
-        case CompilerFamily::NVCC: {
-            /// nvcc only offloads CUDA-language inputs; a host-language
-            /// entry (`nvcc -c foo.cpp`, or an explicit `-x c++`) compiles
-            /// in a single host step. The dryrun probe follows the effective
-            /// language so it reports the pipeline the real file gets.
-            bool cuda_input = spec.kind == "cuda";
-            llvm::StringRef probe_ext = cuda_input ? "cu" : llvm::StringRef(suffix);
-
-            auto nvcc_probe = vfs::temp_file("query-toolchain", probe_ext);
-            if(!nvcc_probe)
-                co_return std::unexpected(
-                    std::format("Failed to create temp file: {}", nvcc_probe.error().message()));
-            auto nvcc_cleanup = llvm::make_scope_exit([&] {
-                if(auto e = vfs::remove(*nvcc_probe))
-                    LOG_ERROR("Fail to remove temporary file: {}", e);
-            });
-
-            std::vector<std::string> dryrun_args = {driver.str(), "--dryrun", "-c", *nvcc_probe};
-            for(llvm::StringRef arg: args) {
-                if(is_nvcc_probe_flag(arg))
-                    dryrun_args.push_back(arg.str());
-            }
-
-            auto dryrun = co_await execute(std::move(dryrun_args), false, spec.cwd);
-            if(!dryrun)
-                co_return std::unexpected(std::move(dryrun.error()));
-
-            auto info = parse_nvcc_dryrun(*dryrun);
-            if(!info)
-                co_return std::unexpected(std::move(info.error()));
-
-            /// The dryrun spells the host compiler the way nvcc resolves it —
-            /// often a bare name that only exists on nvcc's own augmented
-            /// PATH. Try that PATH, then next to the nvcc binary, then ours.
-            std::string host = info->host_compiler;
-            if(!path::is_absolute(host)) {
-                std::string resolved_host;
-                for(auto& dir: info->search_path) {
-                    auto candidate = path::join(dir, host);
-                    if(vfs::exists(candidate) && llvm::sys::fs::can_execute(candidate)) {
-                        resolved_host = std::move(candidate);
-                        break;
-                    }
-                }
-                if(resolved_host.empty()) {
-                    auto sibling = path::join(path::parent_path(driver), host);
-                    if(vfs::exists(sibling) && llvm::sys::fs::can_execute(sibling))
-                        resolved_host = std::move(sibling);
-                }
-                if(resolved_host.empty()) {
-                    if(auto program = llvm::sys::findProgramByName(host))
-                        resolved_host = std::move(*program);
-                }
-                if(resolved_host.empty())
-                    co_return std::unexpected(
-                        std::format("Cannot find nvcc host compiler: {}", host));
-                host = std::move(resolved_host);
-            }
-
-            std::vector<std::string> cuda_args;
-            cuda_args.push_back(host);
-
-            switch(Toolchain::driver_family(host)) {
-                case CompilerFamily::GCC: {
-                    auto gcc = co_await query_gcc_flags(host, spec.cwd);
-                    if(!gcc)
-                        co_return std::unexpected(std::move(gcc.error()));
-                    cuda_args.push_back(std::move(gcc->target));
-                    cuda_args.push_back(std::move(gcc->install_dir));
-                    break;
-                }
-                /// A clang host needs no pin: the in-process driver already
-                /// defaults to the running machine's triple.
-                case CompilerFamily::Clang: break;
-                default:
-                    co_return std::unexpected(
-                        std::format("Unsupported nvcc host compiler: {}", host));
-            }
-
-            if(cuda_input) {
-                /// Without a root from the dryrun, clang's own CUDA detection
-                /// (which knows the distro-specific install locations) is the
-                /// remaining chance.
-                if(!info->cuda_path.empty())
-                    cuda_args.push_back("--cuda-path=" + info->cuda_path);
-                /// A toolkit newer than the linked clang still parses, modulo
-                /// missing feature macros; without this the version warning
-                /// would land in every file's diagnostics.
-                cuda_args.push_back("--no-cuda-version-check");
-
-                auto contains_prefix = [&](std::initializer_list<llvm::StringRef> prefixes) {
-                    return ranges::any_of(args, [&](llvm::StringRef arg) {
-                        return ranges::any_of(prefixes, [&](llvm::StringRef prefix) {
-                            return arg.starts_with(prefix);
-                        });
-                    });
-                };
-
-                /// Default to the device-side view: reading CUDA code means
-                /// reading the `__CUDA_ARCH__` world — CUTLASS keeps every
-                /// arch-specific path behind it, and the host pass grays them
-                /// all out. `--cuda-host-only` in the command (e.g. a config
-                /// rule append) flips a file to the host view instead; the
-                /// last selector wins, matching the driver's own reading of
-                /// the forwarded flags.
-                std::optional<bool> selected_host;
-                for(llvm::StringRef arg: args) {
-                    /// The structured render spells aliases unaliased:
-                    /// --cuda-host-only arrives as --offload-host-only.
-                    if(arg == "--offload-host-only")
-                        selected_host = true;
-                    else if(arg == "--offload-device-only")
-                        selected_host = false;
-                }
-                bool host_view = selected_host.value_or(false);
-                if(!selected_host.has_value())
-                    cuda_args.push_back("--cuda-device-only");
-
-                for(auto& define: host_view ? info->host_defines : info->device_defines)
-                    cuda_args.push_back("-D" + define);
-
-                if(!contains_prefix({"-std="}) && !info->cpp_dialect.empty())
-                    cuda_args.push_back("-std=" + info->cpp_dialect);
-
-                /// An `-arch=` probe token is an explicit selection too: its
-                /// resolution replaces it in place below.
-                if(!contains_prefix({"--offload-arch=", "-arch="}) && !info->default_arch.empty())
-                    cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
-            } else {
-                /// The single host step still carries nvcc's identity
-                /// macros (__NVCC__, version macros) — but no CUDA mode.
-                for(auto& define: info->host_defines)
-                    cuda_args.push_back("-D" + define);
-            }
-
-            for(llvm::StringRef arg: llvm::ArrayRef(args).drop_front()) {
-                if(is_nvcc_probe_flag(arg)) {
-                    /// The dryrun's resolution of an `-arch=<special>` token
-                    /// lands exactly where the token sat: an edit-appended
-                    /// selection carries `--no-offload-arch=all` right
-                    /// before it, and inserting the resolution any earlier
-                    /// would put it on the cleared side.
-                    if(cuda_input && arg.starts_with("-arch=") && !info->default_arch.empty())
-                        cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
-                    continue;
-                }
-                cuda_args.push_back(arg.str());
-            }
-
-            std::vector<const char*> cuda_argv;
-            cuda_argv.reserve(cuda_args.size());
-            for(auto& arg: cuda_args)
-                cuda_argv.push_back(arg.c_str());
-            queried = query_driver(cuda_argv);
+        default:
+            job = co_await ask_gcc_style(std::move(args),
+                                         spec.family == CompilerFamily::Zig ? 2 : 1,
+                                         spec.cwd);
             break;
-        }
-
-        default: {
-            /// TODO: intel compilers need further exploration.
-            LOG_ERROR("Unsupported compiler family: {}, driver is {}",
-                      kota::meta::enum_name(spec.family),
-                      driver);
-
-            queried = query_driver(args);
-            break;
-        }
     }
-    if(!queried)
-        co_return std::move(queried);
-
-    // Strip the temporary probe file so results contain no input path
-    // (render appends the real source file at the end), and the module
-    // output, which clice manages itself (the driver derives
-    // -fmodule-output=<probe>.pcm for a module unit, naming the deleted temp
-    // file). The probe path uses an exact match: all supported drivers echo
-    // input paths verbatim, without canonicalizing them.
-    std::erase_if(*queried, [&](const std::string& arg) {
-        llvm::StringRef s(arg);
-        return s == *src_path || s.starts_with("-fmodule-output");
-    });
-
-    if(queried->empty())
-        co_return std::unexpected(std::format("No cc1 args produced for kind {}", spec.kind));
-
-    co_return std::move(queried);
+    co_return job;
 }
 
 /// Every component of a search-path-style environment value is absolute and
 /// non-empty (an empty component means the cwd).
-bool components_all_absolute(llvm::StringRef value, char separator) {
+bool components_all_absolute(llvm::StringRef value) {
     llvm::SmallVector<llvm::StringRef, 16> parts;
-    value.split(parts, separator, -1, /*KeepEmpty=*/true);
+    value.split(parts, path::list_separator, -1, /*KeepEmpty=*/true);
     return ranges::all_of(parts, [](llvm::StringRef part) {
         return !part.empty() && path::is_absolute(part);
     });
@@ -496,7 +528,7 @@ bool search_env_all_absolute() {
 #ifdef _WIN32
         for(const char* name: {"INCLUDE", "LIB", "PATH"}) {
             if(const char* value = std::getenv(name)) {
-                if(!components_all_absolute(value, ';'))
+                if(!components_all_absolute(value))
                     return false;
             }
         }
@@ -509,7 +541,7 @@ bool search_env_all_absolute() {
                                "COMPILER_PATH",
                                "LIBRARY_PATH"}) {
             if(const char* value = std::getenv(name)) {
-                if(!components_all_absolute(value, ':'))
+                if(!components_all_absolute(value))
                     return false;
             }
         }
@@ -533,34 +565,53 @@ bool relative_suspect(llvm::StringRef value) {
     return value.contains('/') || value.contains('\\') || value.starts_with(".");
 }
 
-/// Whether the command targets windows-gnu: an explicit target flag wins
-/// (the last one, matching the driver's getLastArg); otherwise a
-/// target-prefixed driver name (llvm-mingw installs
-/// `x86_64-w64-mingw32-clang++`-style wrappers that derive the target
-/// implicitly) decides. Parsing resolved aliases, so the legacy `-target`
-/// and `=` spellings arrive as the canonical id.
-bool uses_windows_gnu_target(const CompileConfig& config) {
-    std::optional<bool> from_flags;
-    for(auto& arg: config.args) {
-        if(arg.opt_id == option::OPT_target && arg.values.size() == 1) {
-            from_flags =
-                llvm::Triple(llvm::Triple::normalize(arg.values[0])).isWindowsGNUEnvironment();
+/// clice's own counterpart of a path another clang's job or the command
+/// names, if it has one: the job's resource directory (`job_resource_dir`)
+/// and its builtin headers, or another clang's builtin header directory a
+/// search option names (the command's `-isystem <clang>/lib/clang/23/include`,
+/// zig's lib/include). The rest of a resource tree stays external —
+/// sanitizer ignorelists under share/, runtime libraries under lib/: the
+/// driver verified those files exist there, clice's tree ships include/
+/// alone, and cc1 aborts the process on an ignorelist it cannot open.
+std::optional<std::string> ours_for(unsigned id,
+                                    llvm::StringRef value,
+                                    llvm::StringRef job_resource_dir) {
+    llvm::StringRef rest = value;
+    if(!job_resource_dir.empty() && job_resource_dir != resource_dir() &&
+       rest.consume_front(job_resource_dir) &&
+       (rest.empty() || rest.front() == '/' || rest.front() == '\\')) {
+        rest = rest.ltrim("/\\");
+        if(rest.empty()) {
+            return resource_dir().str();
         }
+        if(rest == "include" || rest.starts_with("include/") || rest.starts_with("include\\")) {
+            return path::join(resource_dir(), rest);
+        }
+        return std::nullopt;
     }
-    if(from_flags)
-        return *from_flags;
-
-    auto parsed = clang::driver::ToolChain::getTargetAndModeFromProgramName(config.driver);
-    return !parsed.TargetPrefix.empty() &&
-           llvm::Triple(llvm::Triple::normalize(parsed.TargetPrefix)).isWindowsGNUEnvironment();
+    bool names_search_dir = id == option::OPT_I || id == option::OPT_isystem ||
+                            id == option::OPT_idirafter || id == option::OPT_internal_isystem ||
+                            id == option::OPT_internal_externc_isystem;
+    auto builtin_headers = path::join(resource_dir(), "include");
+    if(names_search_dir && value.rtrim("/\\") != builtin_headers &&
+       vfs::exists(path::join(value, "__stddef_max_align_t.h"))) {
+        return builtin_headers;
+    }
+    return std::nullopt;
 }
 
 /// Which args feed the probe (and its key): everything that may change
-/// driver behavior. User-content never does; unknown tokens only as NVCC
-/// probe tokens (junk from the CDB must not fail an otherwise good probe).
+/// driver behavior. User-content never does, nor does the command's
+/// action; unknown tokens feed it only as NVCC probe tokens (junk from the
+/// CDB must not fail an otherwise good probe).
 bool in_probe_view(const Arg& arg, CompilerFamily family) {
     switch(arg.cls) {
-        case ArgClass::Semantic:
+        case ArgClass::Semantic: {
+            // The probe picks its own action; the command's (-fsyntax-only)
+            // would go unused, an error under -Werror.
+            auto opt = option::table().option(arg.opt_id);
+            return !opt || !opt->matches(option::OPT_Action_Group);
+        }
         case ArgClass::Diagnostics: return true;
         case ArgClass::Unknown:
             return family == CompilerFamily::NVCC && is_nvcc_probe_flag(arg.spelling);
@@ -621,30 +672,6 @@ CompilerFamily Toolchain::driver_family(llvm::StringRef driver) {
     // Stripping trailing -component: clang++-tot -> clang++
     name = name.slice(0, name.rfind('-'));
     return try_get(name);
-}
-
-std::expected<std::vector<std::string>, std::string>
-    Toolchain::query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file) {
-    if(arguments.empty()) {
-        return std::unexpected(std::string("Empty arguments"));
-    }
-
-    QuerySpec spec;
-    spec.argv.assign(arguments.begin(), arguments.end());
-    spec.slot = spec.argv.size();
-    spec.family = driver_family(arguments[0]);
-
-    /// The kind is a clang language name ("cuda", "c++"), the convention
-    /// every consumer speaks (`spec.kind == "cuda"`, temp_suffix_for's -x
-    /// table).
-    spec.kind = extension_language(file, /*cxx=*/false);
-    for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
-        if(llvm::StringRef(arguments[i]) == "-x")
-            spec.kind = arguments[i + 1];
-    }
-
-    auto [ended] = kota::run(query_one(spec));
-    return std::move(*ended);
 }
 
 Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
@@ -744,17 +771,112 @@ Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config) {
             out.argv.push_back(arg.spelling);
             continue;
         }
+        // clang reads a bare -flto, and GCC's -flto=auto, as -flto=full,
+        // which GCC rejects.
+        if(arg.opt_id == option::OPT_flto_EQ && arg.values.size() == 1 &&
+           llvm::StringRef(arg.values[0]) == "full") {
+            out.argv.push_back("-flto");
+            continue;
+        }
         render_driver_arg(arg, config.family, emit);
     }
 
     return out;
 }
 
-Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const char*> tokens) {
-    auto& config = db.config(id);
+Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
+    std::vector<std::string> tokens(job.begin() + 2, job.end());
+    // An external clang may be newer than the linked one: a flag our cc1
+    // does not know parses as unknown, and its values as inputs; both go.
+    auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
+    std::vector<kota::option::ParsedArg> kept;
+    llvm::StringRef triple;
+    llvm::StringRef job_resource_dir;
+    for(auto& parsed: option::table().parse(tokens, parse_options)) {
+        if(!parsed || parsed->id == option::OPT_UNKNOWN) {
+            continue;
+        }
+        switch(parsed->id) {
+            // The probe's own action, input and outputs; the render gives
+            // the real file its -main-file-name, and clice manages module
+            // outputs itself (the driver derives -fmodule-output=<probe>.pcm
+            // for a module unit).
+            case option::OPT_E:
+            case option::OPT_fsyntax_only:
+            case option::OPT_dM:
+            case option::OPT_v:
+            case option::OPT_o:
+            case option::OPT_INPUT:
+            case option::OPT_main_file_name:
+            case option::OPT_fmodule_output:
+            case option::OPT_fmodule_output_EQ: continue;
+            case option::OPT_triple: triple = parsed->values[0]; break;
+            // A trailing separator on the command's -resource-dir reaches
+            // cc1 verbatim while the derived paths append without doubling
+            // it.
+            case option::OPT_resource_dir:
+                job_resource_dir = llvm::StringRef(parsed->values[0]).rtrim("/\\");
+                break;
+        }
+        // A newer external clang may give a known codegen option a value
+        // the linked one cannot parse (-mframe-pointer=non-leaf-no-reserve);
+        // the parse never needs them.
+        if(is_codegen_option(parsed->id)) {
+            continue;
+        }
+        kept.push_back(std::move(*parsed));
+    }
 
-    Resolved resolved;
-    resolved.driver = tokens[0];
+    // CPU and ABI names clang's target does not know fail the whole
+    // compile: GCC accepts names of its own (`-mtune=intel`, `-mabi=lp64`
+    // on Darwin), and a newer external clang knows newer CPUs. The target's
+    // defaults stand in.
+    clang::DiagnosticOptions diagnostic_options;
+    clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
+                                    diagnostic_options,
+                                    new clang::IgnoringDiagConsumer());
+    // The target keeps a pointer to its options.
+    clang::TargetOptions target_options;
+    llvm::IntrusiveRefCntPtr<clang::TargetInfo> target;
+    if(!triple.empty()) {
+        target_options.Triple = triple.str();
+        target = clang::TargetInfo::CreateTargetInfo(engine, target_options);
+    }
+    auto known_name = [&](const kota::option::ParsedArg& arg) {
+        switch(arg.id) {
+            case option::OPT_target_cpu: return target->isValidCPUName(arg.values[0]);
+            case option::OPT_tune_cpu: return target->isValidTuneCPUName(arg.values[0]);
+            case option::OPT_target_abi: return target->setABI(std::string(arg.values[0]));
+            default: return true;
+        }
+    };
+
+    Frontend result{.driver = db.strings.save(job[0]).data(),
+                    .job_resource_dir = db.strings.save(job_resource_dir)};
+    result.own_resource_dir =
+        llvm::Triple(triple).isWindowsGNUEnvironment() && vfs::is_directory(job_resource_dir);
+    std::vector<LocalArg> staged;
+    for(auto& arg: kept) {
+        if(target && !known_name(arg)) {
+            continue;
+        }
+        auto local = db.local_arg(arg, tokens);
+        if(!result.own_resource_dir) {
+            for(auto& value: local.values) {
+                if(auto ours = ours_for(local.opt_id, value, job_resource_dir)) {
+                    value = db.strings.save(*ours).data();
+                }
+            }
+        }
+        staged.push_back(std::move(local));
+    }
+    staged.push_back({.opt_id = option::OPT_fsyntax_only, .cls = ArgClass::Semantic});
+    result.args = db.persist(staged);
+    return result;
+}
+
+Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, const Frontend& probe) {
+    auto& config = db.config(id);
 
     /// The PCM clice builds is the BMI the importers of the real build read:
     /// a reduced one drops what the global module fragment declares and the
@@ -767,90 +889,36 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
     bool full_bmi = has(option::OPT__precompile) && !has(option::OPT_fmodule_output) &&
                     !has(option::OPT_fmodule_output_EQ);
 
-    /// The driver, then -cc1.
-    std::vector<std::string> parse_args(tokens.begin() + 2, tokens.end());
-    auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
-
+    auto local = [](const Arg& arg) {
+        return LocalArg{
+            .opt_id = arg.opt_id,
+            .cls = arg.cls,
+            .spelling = arg.spelling,
+            .values = {arg.values.begin(), arg.values.end()}
+        };
+    };
     std::vector<LocalArg> staged;
-    for(auto& parsed: option::table().parse(parse_args, parse_options)) {
-        /// -main-file-name is per-input identity; render re-injects it with
-        /// the real file's basename. A leftover input token cannot reach
-        /// the compile argv (the probe input was erased by exact match; a
-        /// canonicalized echo would slip through here).
-        if(parsed &&
-           (parsed->id == option::OPT_main_file_name || parsed->id == option::OPT_INPUT)) {
-            continue;
-        }
-        if(parsed && parsed->id == option::OPT_fmodules_reduced_bmi && full_bmi) {
-            continue;
-        }
-        staged.push_back(db.local_arg(parsed, parse_args));
-    }
-
-    /// Preserve a real LLVM-MinGW resource tree (a matched installation:
-    /// resource headers and libc++ belong together). Otherwise the external
-    /// resource dir and its builtin headers are replaced with ours to keep
-    /// them version-matched with the embedded frontend. Everything else the
-    /// driver derived from its resource dir stays external — sanitizer
-    /// ignorelists under share/, runtime libraries under lib/: the driver
-    /// verified those files exist there, our tree ships include/ alone, and
-    /// cc1 aborts the process on an ignorelist it cannot open.
-    if(!resource_dir().empty()) {
-        llvm::StringRef old_resource_dir;
-        for(auto& arg: staged) {
-            if(arg.opt_id == option::OPT_resource_dir && arg.values.size() == 1) {
-                // A trailing separator on the command's -resource-dir reaches
-                // cc1 verbatim while the derived paths append without doubling it.
-                old_resource_dir = llvm::StringRef(arg.values[0]).rtrim("/\\");
-                break;
-            }
-        }
-        bool keep_external = uses_windows_gnu_target(config) && vfs::is_directory(old_resource_dir);
-        if(!old_resource_dir.empty() && old_resource_dir != resource_dir() && !keep_external) {
-            // The remainder below the resource dir when ours ships it (the
-            // resource dir itself or its builtin headers), separators dropped.
-            auto shipped = [](llvm::StringRef rest) -> std::optional<llvm::StringRef> {
-                if(!rest.empty() && rest.front() != '/' && rest.front() != '\\') {
-                    return std::nullopt;
-                }
-                rest = rest.ltrim("/\\");
-                if(rest.empty() || rest == "include" || rest.starts_with("include/") ||
-                   rest.starts_with("include\\")) {
-                    return rest;
-                }
-                return std::nullopt;
-            };
-            for(auto& arg: staged) {
-                for(auto& value: arg.values) {
-                    llvm::StringRef rest(value);
-                    if(!rest.consume_front(old_resource_dir)) {
-                        continue;
-                    }
-                    if(auto tail = shipped(rest)) {
-                        auto replaced = tail->empty() ? resource_dir().str()
-                                                      : path::join(resource_dir(), *tail);
-                        value = db.strings.save(replaced).data();
-                    }
-                }
-            }
+    for(auto& arg: probe.args) {
+        if(!(full_bmi && arg.opt_id == option::OPT_fmodules_reduced_bmi)) {
+            staged.push_back(local(arg));
         }
     }
-
-    /// Re-attach the config's own user-content flags (-I, -D, -include, ...)
-    /// — they never fed the probe. Structured already; no re-parse.
+    /// The config's own user content never fed the probe.
     for(auto& arg: config.args) {
-        if(arg.cls == ArgClass::UserContent) {
-            staged.push_back({
-                .opt_id = arg.opt_id,
-                .cls = arg.cls,
-                .spelling = arg.spelling,
-                .values = {arg.values.begin(), arg.values.end()}
-            });
+        if(arg.cls != ArgClass::UserContent) {
+            continue;
+        }
+        auto& staged_arg = staged.emplace_back(local(arg));
+        if(!probe.own_resource_dir) {
+            for(auto& value: staged_arg.values) {
+                if(auto ours = ours_for(arg.opt_id, value, probe.job_resource_dir)) {
+                    value = db.strings.save(*ours).data();
+                }
+            }
         }
     }
-    resolved.args = db.persist(staged);
 
-    resolved_configs.push_back(resolved);
+    resolved_configs.push_back({.driver = probe.driver, .args = db.persist(staged)});
     return static_cast<ResolvedID>(resolved_configs.size() - 1);
 }
 
@@ -895,17 +963,12 @@ Toolchain::ProbeAdmission Toolchain::admit_probe(ConfigID id, InputKind input) {
 }
 
 void Toolchain::commit_probe(llvm::StringRef key,
-                             const std::expected<std::vector<std::string>, std::string>& result) {
-    if(!result) {
-        failed.try_emplace(key, std::pair{result.error(), std::chrono::steady_clock::now()});
+                             const std::expected<std::vector<std::string>, std::string>& job) {
+    if(!job) {
+        failed.try_emplace(key, std::pair{job.error(), std::chrono::steady_clock::now()});
         return;
     }
-    llvm::SmallVector<const char*, 64> saved;
-    saved.reserve(result->size());
-    for(auto& token: *result) {
-        saved.push_back(db.strings.save(token).data());
-    }
-    probes.try_emplace(key, std::move(saved));
+    probes.try_emplace(key, frontend(*job));
 }
 
 std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(ConfigID id, InputKind input) {
@@ -999,61 +1062,6 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
     }
 
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
-}
-
-/// Only the first line is used: with multiple inputs the driver emits one
-/// job per input, and the first corresponds to the first input file.
-std::vector<std::string> Toolchain::parse_cc1(llvm::StringRef content) {
-    llvm::SmallVector<llvm::StringRef> lines;
-    content.split(lines, '\n', -1, false);
-
-    for(llvm::StringRef line: lines) {
-        line = line.trim();
-        if(line.empty() || line.front() != '"')
-            continue;
-
-        llvm::SmallVector<const char*, 256> args;
-        llvm::BumpPtrAllocator alloc;
-        llvm::StringSaver saver(alloc);
-        llvm::cl::TokenizeGNUCommandLine(line, saver, args);
-
-        using namespace std::string_view_literals;
-        // A multi-call llvm (LLVM_TOOL_LLVM_DRIVER_BUILD, as in xclang) runs
-        // cc1 as `llvm clang -cc1`: the tool's name comes before -cc1.
-        std::size_t cc1 = args.size() > 2 && args[1] != "-cc1"sv && args[2] == "-cc1"sv ? 2 : 1;
-        if(args.size() <= cc1 || args[cc1] != "-cc1"sv)
-            continue;
-
-        std::vector<std::string> cc1_args;
-        cc1_args.emplace_back(args[0]);
-        cc1_args.emplace_back(args[cc1]);
-
-        // Parse with CC1 visibility: the external driver may be newer than the
-        // linked clang, so flags it emits that our cc1 does not understand
-        // parse as unknown and are dropped. greedy_unknown makes an unknown
-        // option consume its trailing values, so they are dropped along with
-        // it instead of being misparsed as input files. Raw tokens are copied
-        // through to preserve the exact spelling the driver emitted.
-        // FIXME: Long-term we should unify the command pipeline so the driver
-        // version always matches the embedded LLVM.
-        std::vector<std::string> raw(args.begin() + cc1 + 1, args.end());
-        auto options =
-            kota::option::ParseOptions{.greedy_unknown = true, .visibility = option::CC1Option};
-        for(auto& r: option::table().parse(raw, options)) {
-            if(!r.has_value() || r->id == option::OPT_UNKNOWN)
-                continue;
-            // A newer external driver may emit known options with values our
-            // linked clang cannot parse (e.g. -mframe-pointer=non-leaf-no-reserve).
-            // Codegen options are irrelevant for syntax analysis; stripping them
-            // avoids CompilerInvocation::CreateFromArgs failures on new values.
-            if(is_codegen_option(r->id))
-                continue;
-            for(std::uint32_t i = r->index; i < r->next_index; i += 1)
-                cc1_args.emplace_back(raw[i]);
-        }
-        return cc1_args;
-    }
-    return {};
 }
 
 }  // namespace clice

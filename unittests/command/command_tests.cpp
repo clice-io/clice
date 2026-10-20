@@ -822,10 +822,11 @@ ZEST_CASE(CodegenFilter) {
     auto argv = print_argv(render_entry(database, fake("main.cpp")));
 
     EXPECT_CONTAINS(argv, "-std=c++20");
+    /// They define __PIC__ and __SSP_STRONG__.
+    EXPECT_CONTAINS(argv, "-fPIC");
+    EXPECT_CONTAINS(argv, "-fstack-protector-strong");
 
-    EXPECT_NOT_CONTAINS(argv, "-fPIC");
     EXPECT_NOT_CONTAINS(argv, "-fno-omit-frame-pointer");
-    EXPECT_NOT_CONTAINS(argv, "-fstack-protector");
     EXPECT_NOT_CONTAINS(argv, "-fdata-sections");
     EXPECT_NOT_CONTAINS(argv, "-ffunction-sections");
     EXPECT_NOT_CONTAINS(argv, "-fcolor-diagnostics");
@@ -834,7 +835,7 @@ ZEST_CASE(CodegenFilter) {
     /// They survive in the full build.
     auto full = print_argv(
         database.render_full(database.candidate_entries(fake("main.cpp")).front().config));
-    EXPECT_CONTAINS(full, "-fPIC");
+    EXPECT_CONTAINS(full, "-fno-omit-frame-pointer");
     EXPECT_CONTAINS(full, "-fdata-sections");
 };
 

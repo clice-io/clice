@@ -1,0 +1,4 @@
+[answers.member.completion]
+items = [
+    { label = "on", kind = "Field", detail = "bool" },
+]

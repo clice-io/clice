@@ -1,0 +1,3 @@
+[test."$ clice inspect semantic-tokens main.cpp --config-overlay \"{\\\"no_such_section\\\": {}}\""]
+stderr = "error: invalid --config-overlay: unknown field 'no_such_section'"
+exit = 1
