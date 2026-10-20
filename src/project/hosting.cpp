@@ -177,8 +177,13 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
         }
     }
 
-    auto chain = graph.find_include_chain(host, header);
-    llvm::DenseSet<Fid> on_chain(chain.begin(), chain.end());
+    // The files of the scan's chains to the header, from the unit and from
+    // what it forces in, which may have gained the include since.
+    llvm::DenseSet<Fid> on_chain;
+    for(auto from: llvm::concat<const Fid>(llvm::ArrayRef(host), graph.get_forced_includes(host))) {
+        auto chain = graph.find_include_chain(from, header);
+        on_chain.insert(chain.begin(), chain.end());
+    }
     on_chain.erase(header);
     for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
         if(on_chain.contains(file_of(i)) && !fresh(i)) {

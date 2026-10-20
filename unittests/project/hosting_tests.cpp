@@ -617,6 +617,35 @@ ZEST_CASE(ForcedOnlyHost) {
     ZEXPECT(count_occurrences(p.project, main, pch) == 1u);
 };
 
+ZEST_CASE(ForcedGainsInclude) {
+    /// The forced file gained the include of t.h since the tree was taken:
+    /// the tree tells nothing about t.h, and the scan's chain stands.
+    TreeProject p;
+    llvm::StringRef main_text = "int x;\n";
+    llvm::StringRef old_text = "#pragma once\n";
+    auto main = p.write("main.cpp", main_text);
+    auto old_version = p.version(p.write("prefix.h", old_text), old_text);
+    auto prefix = p.write("prefix.h", R"(#pragma once
+#include "t.h")");
+    auto t = p.write("t.h", "#pragma once\n");
+    p.project.dep_graph.set_includes(prefix, 0, {{t}});
+    p.project.dep_graph.add_forced_include(main, prefix);
+    p.project.dep_graph.build_reverse_map();
+    p.project.file_table.disk.end_turn();
+
+    index::TUManifest manifest;
+    manifest.tu_version = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = old_version, .line = 300},
+    };
+    p.project.index.apply_manifest(main, std::move(manifest));
+
+    ZEXPECT(!enterings(p.project, main, t).has_value());
+    auto host = default_host(p.project, t);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{prefix, t});
+};
+
 ZEST_CASE(SkippedAloneRulesOut) {
     /// No precompiled header: b.h, skipped and never entered, shares a.h's
     /// guard, and the unit never compiles its text.
