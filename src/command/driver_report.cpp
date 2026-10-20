@@ -169,7 +169,7 @@ std::vector<std::string> parse_clang_job(llvm::StringRef output) {
     output.split(lines, '\n', -1, false);
     for(llvm::StringRef line: lines) {
         line = line.trim();
-        if(!line.starts_with("\"")) {
+        if(!line.starts_with('"')) {
             continue;
         }
         llvm::SmallVector<const char*, 256> args;

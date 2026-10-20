@@ -287,20 +287,28 @@ ZEST_CASE(FailedProbeCooldown, skip = Windows) {
 
 ZEST_CASE(FailedProbeRetries, skip = Windows) {
     // A transient driver failure must not poison the key for the session:
-    // past the cooldown, warm() and resolve() query the driver again.
+    // past the cooldown, resolve() and warm() query the driver again.
     f.db.toolchain().set_failed_retry(std::chrono::seconds(0));
-    auto ref = add("a.cpp", {tmp.c_path("clang")});
-    llvm::SmallVector<CommandRef> refs = {ref};
-
+    auto a = add("a.cpp", {tmp.c_path("clang"), "-std=c++17"});
+    auto b = add("b.cpp", {tmp.c_path("clang"), "-std=c++20"});
+    llvm::SmallVector<CommandRef> refs = {a, b};
     f.db.warm(refs);
-    ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
-    ZASSERT(!f.db.toolchain().resolve(ref.config, ref.input).has_value());
+    ZEXPECT(f.db.toolchain().failed_count() == std::size_t(2));
 
     fake_clang(clang_job);
+    ZEXPECT(f.db.toolchain().resolve(a.config, a.input).has_value());
+    ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
     f.db.warm(refs);
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(0));
-    ZEXPECT(f.db.toolchain().has_cache());
-    ZEXPECT(f.db.toolchain().resolve(ref.config, ref.input).has_value());
+    ZEXPECT(f.db.toolchain().probe_count() == std::size_t(2));
+}
+
+ZEST_CASE(NoCompilerJob, skip = Windows) {
+    /// A driver that is neither GCC nor clang (Intel's icc).
+    auto ref = add("a.cpp", {fake_driver("icc", "").c_str()});
+    auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
+    ZASSERT(!resolved);
+    ZEXPECT(llvm::StringRef(resolved.error()).contains("runs no compiler job"));
 }
 
 ZEST_CASE(WarmPartialFailure, skip = Windows) {
@@ -386,6 +394,8 @@ ZEST_CASE(ClangJobCleaned, skip = Windows) {
     for(llvm::StringRef arg: argv) {
         ZEXPECT(arg != "-E");
         ZEXPECT(arg != "-dM");
+        ZEXPECT(arg != "-v");
+        ZEXPECT(arg != "-o");
         ZEXPECT(arg != "-clice-future-flag");
         ZEXPECT(arg != "val");
         ZEXPECT(arg != "clice-future-cpu");
@@ -455,9 +465,9 @@ ZEST_CASE(ResourceDirBecomesOurs, skip = Windows) {
 }
 
 ZEST_CASE(MinGWKeepsResourceDir, skip = Windows) {
-    // A matched LLVM-MinGW installation keeps its own resource tree, also
-    // when warmed (the driver gone, only the warmed cache can resolve);
-    // another target's tree becomes ours.
+    // A matched LLVM-MinGW installation keeps the resource tree it derives
+    // (the probe hands it none), also when warmed (the driver gone, only the
+    // warmed cache can resolve); another target's tree becomes ours.
     tmp.mkdir("llvm-mingw/lib/clang/22/include");
     auto external = tmp.path("llvm-mingw/lib/clang/22");
     auto job = [&](llvm::StringRef triple) {
@@ -467,7 +477,11 @@ ZEST_CASE(MinGWKeepsResourceDir, skip = Windows) {
             external);
     };
 
-    auto mingw = fake_clang(job("x86_64-w64-windows-gnu"), "x86_64-w64-mingw32-clang++");
+    auto mingw = fake_driver("x86_64-w64-mingw32-clang++",
+                             std::format(R"(case " $* " in *" -resource-dir "*) exit 1 ;; esac
+echo '{}' >&2
+)",
+                                         job("x86_64-w64-windows-gnu")));
     auto ref = add("a.cpp", {mingw.c_str()});
     llvm::SmallVector<CommandRef> refs = {ref};
     f.db.warm(refs);

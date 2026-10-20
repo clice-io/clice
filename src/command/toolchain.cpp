@@ -165,7 +165,6 @@ std::expected<Job, std::string> query_as_gcc(const DriverReport& report,
     return job;
 }
 
-/// Whether the command names its language standard.
 bool names_standard(llvm::ArrayRef<std::string> args) {
     return ranges::any_of(args, [](llvm::StringRef arg) { return arg.starts_with("-std="); });
 }
@@ -189,9 +188,9 @@ std::expected<Job, std::string> ask_cl(llvm::ArrayRef<std::string> args) {
 
 /// Every other driver is GCC-style: asked how it compiles the input, it
 /// shows its job, and the job tells clang underneath (Apple clang, zig,
-/// emcc, a `c++` that is clang) from GCC. Neither job is an empty one: an
-/// input the driver only passes on (assembler), or a driver that is
-/// neither GCC nor clang (Intel's icc).
+/// emcc, a `c++` that is clang) from GCC. There is neither for an input the
+/// driver only passes on (assembler), or a driver that is neither GCC nor
+/// clang (Intel's icc).
 kota::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::string> args,
                                                           std::size_t driver_tokens,
                                                           std::string cwd) {
@@ -229,7 +228,7 @@ kota::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::strin
         co_return job;
     }
     if(!report->gcc_job) {
-        co_return Job{};
+        co_return std::unexpected(std::format("{} runs no compiler job for the input", args[0]));
     }
     if(!standard.empty()) {
         args.push_back(std::move(standard));
@@ -508,9 +507,6 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
                                          spec.cwd);
             break;
     }
-    if(job && job->empty()) {
-        co_return std::unexpected(std::format("No cc1 args produced for kind {}", spec.kind));
-    }
     co_return job;
 }
 
@@ -570,7 +566,7 @@ bool relative_suspect(llvm::StringRef value) {
 }
 
 /// clice's own counterpart of a path another clang's job or the command
-/// names, if it has one: the job's resource directory (`old_resource_dir`)
+/// names, if it has one: the job's resource directory (`job_resource_dir`)
 /// and its builtin headers, or another clang's builtin header directory a
 /// search option names (the command's `-isystem <clang>/lib/clang/23/include`,
 /// zig's lib/include). The rest of a resource tree stays external —
@@ -579,10 +575,10 @@ bool relative_suspect(llvm::StringRef value) {
 /// alone, and cc1 aborts the process on an ignorelist it cannot open.
 std::optional<std::string> ours_for(unsigned id,
                                     llvm::StringRef value,
-                                    llvm::StringRef old_resource_dir) {
+                                    llvm::StringRef job_resource_dir) {
     llvm::StringRef rest = value;
-    if(!old_resource_dir.empty() && old_resource_dir != resource_dir() &&
-       rest.consume_front(old_resource_dir) &&
+    if(!job_resource_dir.empty() && job_resource_dir != resource_dir() &&
+       rest.consume_front(job_resource_dir) &&
        (rest.empty() || rest.front() == '/' || rest.front() == '\\')) {
         rest = rest.ltrim("/\\");
         if(rest.empty()) {
@@ -791,13 +787,11 @@ Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config) {
 Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
     std::vector<std::string> tokens(job.begin() + 2, job.end());
     // An external clang may be newer than the linked one: a flag our cc1
-    // does not know parses as unknown and goes with the values it takes
-    // (greedy_unknown), instead of those being misread as inputs.
-    auto parse_options =
-        kota::option::ParseOptions{.greedy_unknown = true, .visibility = option::CC1Option};
+    // does not know parses as unknown, and its values as inputs; both go.
+    auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
     std::vector<kota::option::ParsedArg> kept;
     llvm::StringRef triple;
-    llvm::StringRef old_resource_dir;
+    llvm::StringRef job_resource_dir;
     for(auto& parsed: option::table().parse(tokens, parse_options)) {
         if(!parsed || parsed->id == option::OPT_UNKNOWN) {
             continue;
@@ -821,7 +815,7 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
             // cc1 verbatim while the derived paths append without doubling
             // it.
             case option::OPT_resource_dir:
-                old_resource_dir = llvm::StringRef(parsed->values[0]).rtrim("/\\");
+                job_resource_dir = llvm::StringRef(parsed->values[0]).rtrim("/\\");
                 break;
         }
         // A newer external clang may give a known codegen option a value
@@ -857,10 +851,9 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
     };
 
     Frontend result{.driver = db.strings.save(job[0]).data(),
-                    .job_resource_dir = db.strings.save(old_resource_dir)};
-    // A matched LLVM-MinGW installation keeps its own resource tree.
+                    .job_resource_dir = db.strings.save(job_resource_dir)};
     result.own_resource_dir =
-        llvm::Triple(triple).isWindowsGNUEnvironment() && vfs::is_directory(old_resource_dir);
+        llvm::Triple(triple).isWindowsGNUEnvironment() && vfs::is_directory(job_resource_dir);
     std::vector<LocalArg> staged;
     for(auto& arg: kept) {
         if(target && !known_name(arg)) {
@@ -869,7 +862,7 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
         auto local = db.local_arg(arg, tokens);
         if(!result.own_resource_dir) {
             for(auto& value: local.values) {
-                if(auto ours = ours_for(local.opt_id, value, old_resource_dir)) {
+                if(auto ours = ours_for(local.opt_id, value, job_resource_dir)) {
                     value = db.strings.save(*ours).data();
                 }
             }

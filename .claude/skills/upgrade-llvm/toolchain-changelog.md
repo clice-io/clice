@@ -117,8 +117,8 @@ workarounds for them do not belong in clice's Bazel files.
 
 - **The toolchain query finds no clang job in the driver's `-v` output.**
   xclang's tools are one multi-call `llvm` binary: the job reads
-  `"…/bin/llvm" "clang" "-cc1" …`, and `parse_cc1` skips the tool name
-  before `-cc1`. Check: `ToolchainTests.ParseCC1MultiCall`.
+  `"…/bin/llvm" "clang" "-cc1" …`, and `parse_clang_job` skips the tool
+  name before `-cc1`. Check: `DriverReportTests.ClangJobMultiCall`.
 - **A `g++` command, queried through the in-process driver, gets libc++'s
   headers** (no `<print>`). xclang 23.1.2.1 built clang with
   `CLANG_DEFAULT_CXX_STDLIB=libc++` (and the runtime and linker defaults),
