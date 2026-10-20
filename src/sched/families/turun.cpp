@@ -209,15 +209,17 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     RequestCost cost;
     if(auto it = costs.find(path_id); it != costs.end()) {
         cost = it->second;
-    } else if(auto* manifest = project.index.manifest(path_id)) {
+    } else if(auto manifest = project.index.manifest(path_id)) {
         cost.peak = manifest->peak;
     }
     StatelessReport measured;
     ScopedTimer timer;
     auto reply =
         co_await pool.send_stateless(params, worker::Priority::Low, ctx.token(), cost, &measured);
-    if(measured.peak != 0) {
-        costs[path_id] = {.peak = measured.peak};
+    // The samples may miss a peak a killed run already reached.
+    auto peak = measured.peak != 0 ? std::max(measured.peak, cost.floor) : 0;
+    if(peak != 0) {
+        costs[path_id] = {.peak = peak};
     }
     if(reply.has_value() && reply.value().success) {
         auto run_ms = timer.ms();
@@ -263,9 +265,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             ScopedTimer merge_timer;
             // A run shorter than a sample interval measured nothing: the
             // earlier peak stands.
-            auto report = project.index.merge(index_bytes,
-                                              imports,
-                                              measured.peak != 0 ? measured.peak : cost.peak);
+            auto report = project.index.merge(index_bytes, imports, peak != 0 ? peak : cost.peak);
             if(!report) {
                 if(report.error() == index::MergeError::Outdated) {
                     send_in_full.insert(path_id);

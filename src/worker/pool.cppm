@@ -74,8 +74,8 @@ struct WorkerDeath {
     /// request reached.
     std::uint64_t memory = 0;
 
-    /// A stateless worker's request was the only stateless one running: one
-    /// whose memory ran out alone does not fit this machine.
+    /// A stateless worker's request was the only request running: one whose
+    /// memory ran out alone does not fit this machine.
     bool alone = false;
 
     /// Requests in flight when the worker died. A death that names no
@@ -209,7 +209,7 @@ struct StatelessReport {
 ///     requests in flight — blameless. worker_died: the death named no
 ///     request and this one ran alone. out_of_memory: the worker's memory
 ///     ran out — blameless, Error::data says how much it reached and
-///     whether it ran the only stateless request running.
+///     whether it ran the only request running.
 ///     worker_unavailable: never dispatched, a capacity window —
 ///     await_capacity() tells when it closes. cancelled: deliberate
 ///     preemption, requeue freely.

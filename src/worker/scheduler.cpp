@@ -206,9 +206,12 @@ std::size_t WorkerScheduler::running_on(std::size_t slot, bool stateful) const {
 
 bool WorkerScheduler::runs_alone(std::size_t slot) const {
     auto it = slots.find(slot);
-    return it != slots.end() && it->second.request &&
-           std::ranges::count_if(slots, [](const auto& entry) {
-               return entry.second.request.has_value();
+    return it != slots.end() && it->second.request && one_running();
+}
+
+bool WorkerScheduler::one_running() const {
+    return std::ranges::count_if(requests, [](const auto& entry) {
+               return entry.second.stateful || entry.second.slot.has_value();
            }) == 1;
 }
 
@@ -448,10 +451,9 @@ void WorkerScheduler::check_memory(SchedulerTime now) {
     // takes it for too big for the machine.
     auto low = running(Priority::Low);
     auto reserve = last_sample.reserve;
-    auto short_by = low > 1 ? reserve + growth_soon()
-                    : low == 1 && running(Priority::High) == 0
-                        ? reserve / lone_share + growth_soon()
-                        : reserve;
+    auto short_by = low > 1                     ? reserve + growth_soon()
+                    : low == 1 && one_running() ? reserve / lone_share + growth_soon()
+                                                : reserve;
     if(last_sample.headroom >= short_by && !(low > 1 && last_sample.swapping)) {
         return;
     }

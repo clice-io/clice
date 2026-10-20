@@ -54,8 +54,7 @@ constexpr inline protocol::integer document_unloaded = -33005;
 /// The worker's memory ran out: the pool killed it to free memory, or an
 /// allocation failed in it. The request is blameless; Error::data holds
 /// "memory", the bytes the worker had reached, and "alone", whether no
-/// other stateless request ran beside it — then it does not fit this
-/// machine.
+/// other request ran beside it — then it does not fit this machine.
 constexpr inline protocol::integer out_of_memory = -33006;
 
 }  // namespace dispatch_errc

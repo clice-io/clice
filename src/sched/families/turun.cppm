@@ -172,7 +172,8 @@ private:
     llvm::DenseSet<Fid> send_in_full;
 
     /// What each TU's runs in this session measured: the peak of the last
-    /// finished one, and the memory one killed for memory since reached.
+    /// finished one, at least what a run killed for memory before it
+    /// reached, and the memory one killed since reached.
     /// Ahead of the manifest's peak, which only an index that merged
     /// records.
     llvm::DenseMap<Fid, RequestCost> costs;

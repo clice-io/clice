@@ -26,7 +26,8 @@ using RequestId = std::uint64_t;
 /// What a request is expected to cost.
 struct RequestCost {
     /// The peak of its worker's own memory, in bytes, as the request's last
-    /// finished run measured it; zero when nothing is known.
+    /// finished run measured it, or one killed for memory before reached;
+    /// zero when nothing is known.
     std::uint64_t peak = 0;
 
     /// The memory a later run reached when it was killed for memory: the
@@ -239,8 +240,8 @@ public:
     /// Requests running on the slot, for the pool's death accounting.
     std::size_t running_on(std::size_t slot, bool stateful) const;
 
-    /// Whether the stateless slot runs the only stateless request running:
-    /// one whose memory ran out then does not fit this machine.
+    /// Whether the stateless slot runs the only request running, stateless
+    /// or stateful: one whose memory ran out then does not fit this machine.
     bool runs_alone(std::size_t slot) const;
 
     /// The most memory sampled while the stateless slot's request ran; zero
@@ -287,8 +288,8 @@ public:
     /// How far behind the head a request that fits is looked for.
     constexpr static std::size_t backfill_depth = 16;
 
-    /// The only stateless request running is killed only once the headroom
-    /// falls, or is about to fall, below this share of the reserve.
+    /// The only request running is killed only once the headroom falls, or
+    /// is about to fall, below this share of the reserve.
     constexpr static std::uint64_t lone_share = 3;
 
     /// How far ahead memory is projected at the rate the running background
@@ -373,6 +374,9 @@ private:
     bool user_active(SchedulerTime now) const;
 
     std::size_t running(worker::Priority priority) const;
+
+    /// Exactly one request runs, stateless or stateful.
+    bool one_running() const;
 
     /// The peak a background request is expected to reach.
     std::uint64_t estimate(const Request& request) const;

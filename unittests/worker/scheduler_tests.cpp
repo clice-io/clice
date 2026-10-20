@@ -306,6 +306,21 @@ ZEST_CASE(ForegroundBesideNotLone) {
     ZEXPECT(!core.scheduler.runs_alone(kills[0].slot));
 }
 
+ZEST_CASE(DocumentCompileNotLone) {
+    Core core(1);
+    core.submit(1, Priority::Low);
+    // An open document's compile takes the memory: the unit is not alone.
+    core.scheduler.stateful_begin(10, 0, 7, true, core.now);
+    core.take();
+    core.sample(300 * MiB,
+                {
+                    {.slot = 0, .memory = 6 * GiB}
+    });
+    auto kills = core.all<scheduler::Kill>();
+    ZASSERT(kills.size() == 1u);
+    ZEXPECT(!core.scheduler.runs_alone(kills[0].slot));
+}
+
 ZEST_CASE(ForegroundNeverKilled) {
     Core core(2);
     core.submit(1, Priority::High);
