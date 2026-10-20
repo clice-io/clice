@@ -16,6 +16,7 @@ import :project.save;
 import :sched.index.pending_table;
 import :sched.index.pump;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tu_index_blob;
@@ -748,13 +749,12 @@ ZEST_CASE(LaterRunCatchesUp) {
     f.begin_round();
     auto early = index_file(tmp, tmp.path("a.cpp"), {}, {}, f.known_instantiations(id("a.cpp")));
     ZASSERT(!early.data.empty());
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
     f.project.index.mark_behind(id("a.cpp"));
     ZASSERT(f.merge(early.data));
     f.begin_round();
     ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    IndexInternals::fell_behind_at(f.project.index, id("a.cpp"), 0);
     ZASSERT(index("a.cpp"));
     f.begin_round();
     ZEXPECT(!f.known_instantiations(id("a2.cpp")).empty());

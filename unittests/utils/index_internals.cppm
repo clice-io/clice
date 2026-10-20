@@ -38,6 +38,12 @@ struct IndexInternals {
         return index.behind.contains(tu);
     }
 
+    /// Mark `tu` behind the disk since `when` (ms since the epoch), as
+    /// mark_behind does at the present.
+    static void fell_behind_at(index::ProjectIndex& index, Fid tu, std::int64_t when) {
+        index.behind[tu] = when;
+    }
+
     /// The id the database names `file` by, handed out on first use.
     static std::uint32_t path_id(index::ProjectIndex& index, Fid file) {
         return index.path_id(file);
