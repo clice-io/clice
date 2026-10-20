@@ -1479,9 +1479,8 @@ std::optional<ConfigID> CompilationDatabase::intern_command(const Spelling& dire
     return it->second;
 }
 
-/// Whether `opts` leaves `arg` out of the command.
 static bool dropped_include(const Arg& arg, const RenderOptions& opts) {
-    return arg.opt_id == option::OPT_include && arg.values.size() == 1 &&
+    return arg.opt_id == option::OPT_include &&
            llvm::is_contained(opts.dropped_includes, arg.values[0]);
 }
 

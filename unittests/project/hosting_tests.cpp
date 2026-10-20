@@ -565,29 +565,36 @@ ZEST_CASE(ForcedIncludeFallsBack) {
     ZEXPECT(!found->front().lexical);
 };
 
-ZEST_CASE(PrecompiledForcedFallsBack) {
-    /// The forced file is a precompiled header's: the compile loaded the
-    /// header from it, and the tree shows only the unit's include, skipped.
+ZEST_CASE(PrecompiledHeaderFallsBack) {
+    /// The forced file is a precompiled header's: the compile loaded a.h
+    /// and t.h from it, and the tree shows only the unit's include of a.h,
+    /// skipped.
     TreeProject p;
-    llvm::StringRef main_text = "#include \"t.h\"\n";
+    llvm::StringRef main_text = "#include \"a.h\"\n";
+    llvm::StringRef a_text = "#pragma once\n#include \"t.h\"\n";
     auto main = p.write("main.cpp", main_text);
-    auto pch = p.write("pch.h", "#include \"t.h\"\n");
+    auto pch = p.write("pch.h", "#include \"a.h\"\n");
+    auto a = p.write("a.h", a_text);
     auto t = p.write("t.h", "#pragma once\n");
-    p.project.dep_graph.set_includes(main, 0, {{t}});
-    p.project.dep_graph.set_includes(pch, 0, {{t}});
+    p.project.dep_graph.set_includes(main, 0, {{a}});
+    p.project.dep_graph.set_includes(pch, 0, {{a}});
+    p.project.dep_graph.set_includes(a, 0, {{t}});
     p.project.dep_graph.add_forced_include(main, pch);
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
-        {.file = p.version(t, "#pragma once\n"), .line = 1, .skipped = true},
+        {.file = p.version(a, a_text), .line = 1, .skipped = true},
     };
     p.project.index.apply_manifest(main, std::move(manifest));
 
-    auto host = default_host(p.project, t);
+    auto host = default_host(p.project, a);
     ZASSERT(host);
-    ZEXPECT(host->chain == std::vector<Fid>{main, t});
+    ZEXPECT(host->chain == std::vector<Fid>{main, a});
+    host = default_host(p.project, t);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{main, a, t});
 };
 
 ZEST_CASE(ContributorHosts) {

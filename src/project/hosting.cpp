@@ -128,21 +128,6 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
         }
         found.push_back(std::move(entering));
     }
-    // Through a precompiled header the forced file stands for, the header
-    // was entered before the tree began: the unit's own includes of it
-    // show skipped.
-    auto& graph = project.dep_graph;
-    auto forced_reads = [&] {
-        return llvm::any_of(graph.get_forced_includes(host),
-                            [&](Fid file) { return graph.reaches(file, header); });
-    };
-    if(found.empty() && (forced || forced_reads())) {
-        auto chain = graph.find_include_chain(host, header);
-        if(!chain.empty()) {
-            found.push_back({.file = host, .chain = std::move(chain)});
-        }
-        return found;
-    }
     if(!found.empty()) {
         // Nodes are numbered by includer, not by when the compile entered
         // them; within one file the directives run top to bottom, so the
@@ -154,6 +139,24 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     }
 
     auto chain = project.dep_graph.find_include_chain(host, header);
+    // The files a precompiled header holds were entered before the tree
+    // began, which shows only skipped includes of them: where the chain
+    // passes one, the tree cannot tell where the unit's text enters the
+    // header.
+    llvm::DenseSet<Fid> entered;
+    llvm::DenseSet<Fid> skipped;
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        (nodes[i].skipped ? skipped : entered).insert(file_of(i));
+    }
+    bool held = !chain.empty() && llvm::any_of(llvm::drop_begin(chain), [&](Fid file) {
+        return skipped.contains(file) && !entered.contains(file);
+    });
+    if(forced || held) {
+        if(!chain.empty()) {
+            found.push_back({.file = host, .chain = std::move(chain)});
+        }
+        return found;
+    }
     llvm::DenseSet<Fid> on_chain(chain.begin(), chain.end());
     on_chain.erase(header);
     for(std::uint32_t i = 0; i < nodes.size(); i += 1) {

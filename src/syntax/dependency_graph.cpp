@@ -285,14 +285,6 @@ llvm::ArrayRef<Fid> DependencyGraph::get_forcing_units(Fid header) const {
     return {};
 }
 
-llvm::ArrayRef<Fid> DependencyGraph::get_forced_includes(Fid unit) const {
-    auto it = forced_includes.find(unit);
-    if(it != forced_includes.end()) {
-        return it->second;
-    }
-    return {};
-}
-
 std::uint32_t DependencyGraph::add_group(const CommandRef& command) {
     scan_groups.push_back(command);
     return static_cast<std::uint32_t>(scan_groups.size() - 1);
