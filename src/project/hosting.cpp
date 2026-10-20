@@ -154,7 +154,8 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     auto loads_pch = [&] {
         CanonicalRef host_path = files.resolve(host);
         return llvm::any_of(project.build.commands(host), [&](const Candidate& command) {
-            return project.build.pch_unit(command.config, host_path).has_value();
+            return project.build.pch_unit(effective(project, host, command).config, host_path)
+                .has_value();
         });
     };
     if(forced || (!chain.empty() && llvm::any_of(llvm::drop_begin(chain), hidden) && loads_pch())) {
