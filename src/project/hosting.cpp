@@ -113,13 +113,10 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     };
 
     llvm::SmallVector<Entering> found;
-    llvm::DenseSet<Fid> entered;
+    llvm::DenseSet<Fid> named;
     for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
-        if(nodes[i].skipped) {
-            continue;
-        }
-        entered.insert(file_of(i));
-        if(file_of(i) != header) {
+        named.insert(file_of(i));
+        if(nodes[i].skipped || file_of(i) != header) {
             continue;
         }
         llvm::SmallVector<std::uint32_t> path;
@@ -164,11 +161,11 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     }
 
     // A forced file a precompiled header stands for, and everything it
-    // includes, was entered before the tree began: the tree shows neither
-    // it nor its includes entered, so the scan's chain from it stands.
+    // includes, was entered before the tree began: the tree does not name
+    // it, and the scan's chain from it stands.
     auto& graph = project.dep_graph;
     for(auto file: graph.get_forced_includes(host)) {
-        if(entered.contains(file)) {
+        if(named.contains(file)) {
             continue;
         }
         if(auto chain = graph.find_include_chain(file, header); !chain.empty()) {
