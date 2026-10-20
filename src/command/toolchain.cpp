@@ -835,9 +835,10 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
     clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
                                     diagnostic_options,
                                     new clang::IgnoringDiagConsumer());
+    // The target keeps a pointer to its options.
+    clang::TargetOptions target_options;
     llvm::IntrusiveRefCntPtr<clang::TargetInfo> target;
     if(!triple.empty()) {
-        clang::TargetOptions target_options;
         target_options.Triple = triple.str();
         target = clang::TargetInfo::CreateTargetInfo(engine, target_options);
     }
