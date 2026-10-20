@@ -14,11 +14,11 @@ test(async (t) => {
         ["src/main.cpp", '{"std": 20}'],
     ] as const;
     for (const [file, flags] of runs) {
-        await t.cli(["inspect", "document-symbols", file, "--flags", flags]);
+        await t.cli(["inspect", "semantic-tokens", file, "--flags", flags]);
     }
     await t.cli([
         "inspect",
-        "document-symbols",
+        "semantic-tokens",
         "src/main.cpp",
         "--flags",
         '["-std=c++20"]',

@@ -98,7 +98,119 @@ stdout = '''
 '''
 exit = 0
 
+[test."$ clice inspect inlay-hint main.cpp"]
+stdout = '''
+{
+  "feature": "inlay-hint",
+  "files": {
+    "main.cpp": {
+      "result": [
+        {
+          "offset": 63,
+          "kind": "Parameter",
+          "label": [
+            {
+              "value": "a",
+              "location": {
+                "path": "${WS}/main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            },
+            {
+              "value": ":",
+              "location": null
+            }
+          ],
+          "padding_left": false,
+          "padding_right": true
+        },
+        {
+          "offset": 66,
+          "kind": "Parameter",
+          "label": [
+            {
+              "value": "b",
+              "location": {
+                "path": "${WS}/main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 20
+                  }
+                }
+              }
+            },
+            {
+              "value": ":",
+              "location": null
+            }
+          ],
+          "padding_left": false,
+          "padding_right": true
+        }
+      ],
+      "markers": null,
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
+
+[test."$ clice inspect code-action main.cpp --markers=markers.json"]
+stdout = '''
+{
+  "feature": "code-action",
+  "files": {
+    "main.cpp": {
+      "result": null,
+      "markers": {
+        "call": [],
+        "use": []
+      },
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
+
+[test."$ clice inspect code-action main.cpp"]
+stdout = '''
+{
+  "feature": "code-action",
+  "files": {
+    "main.cpp": {
+      "result": null,
+      "markers": null,
+      "error": "no_markers",
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
+
 [test."$ clice inspect hover main.cpp --markers=markers.json #2"]
+stderr = "error: --markers puts a marker outside the text of main.cpp"
+exit = 1
+
+[test."$ clice inspect inlay-hint main.cpp --markers=markers.json #2"]
 stderr = "error: --markers puts a marker outside the text of main.cpp"
 exit = 1
 
