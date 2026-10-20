@@ -167,7 +167,7 @@ ZEST_CASE(CodegenChangeIgnored) {
 
     write_json(tmp,
                {
-                   {tmp.root.str(), "a.cpp", {"-fPIC", "-g"}}
+                   {tmp.root.str(), "a.cpp", {"-fomit-frame-pointer", "-g"}}
     });
     cdb.load(cdb_path);
 

@@ -140,6 +140,7 @@ DriverReport parse_driver_report(llvm::StringRef out, llvm::StringRef err) {
     llvm::StringRef cplusplus;
     llvm::StringRef stdc_version;
     bool strict = false;
+    bool opencl = false;
     llvm::SmallVector<llvm::StringRef> macros;
     out.split(macros, '\n', -1, false);
     for(auto macro: macros) {
@@ -153,9 +154,14 @@ DriverReport parse_driver_report(llvm::StringRef out, llvm::StringRef err) {
             stdc_version = value;
         } else if(name == "__STRICT_ANSI__") {
             strict = true;
+        } else if(name == "__OPENCL_C_VERSION__" || name == "__OPENCL_CPP_VERSION__") {
+            // OpenCL's version is -cl-std's; clang rejects any -std with it.
+            opencl = true;
         }
     }
-    report.standard = standard_from_macros(cplusplus, stdc_version, strict);
+    if(!opencl) {
+        report.standard = standard_from_macros(cplusplus, stdc_version, strict);
+    }
     return report;
 }
 

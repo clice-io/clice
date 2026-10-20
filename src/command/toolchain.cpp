@@ -21,8 +21,8 @@ namespace {
 
 namespace ranges = std::ranges;
 
-/// The driver followed by the arguments of the clang job it builds for
-/// `arguments`, which start with -cc1.
+/// The driver followed by the arguments, from -cc1 on, of the clang job
+/// clang's driver builds for `driver_arguments`.
 std::expected<std::vector<std::string>, std::string>
     query_driver(llvm::ArrayRef<std::string> driver_arguments) {
     /// FIXME: collect diagnostic here ...
@@ -84,36 +84,59 @@ std::expected<std::vector<std::string>, std::string>
     return cc1_args;
 }
 
-/// Asks a GCC-style driver how it compiles `args`, the driver (`lead`
-/// tokens: two for `zig cc`) followed by its flags and the input: `-E -dM
+/// Asks a GCC-style driver how it compiles `args`, the driver (its first
+/// `driver_tokens`: two for `zig cc`) followed by its flags and the input: `-E -dM
 /// -v` has it preprocess the input verbosely, printing the job it runs and
-/// its predefined macros. A job that then fails still answers: the command
-/// it runs is what clice compiles, and fails the same way there (an unknown
-/// `--target`).
+/// its predefined macros. A clang job that then fails still answers: the
+/// command it runs is what clice compiles, and fails the same way there (an
+/// unknown `--target`). A GCC job answers only when it succeeds: GCC prints
+/// its macros and LIBRARY_PATH only then.
 kota::task<std::expected<DriverReport, std::string>> ask_driver(llvm::ArrayRef<std::string> args,
-                                                                std::size_t lead,
+                                                                std::size_t driver_tokens,
                                                                 std::string cwd) {
-    std::vector<std::string> argv(args.begin(), args.begin() + lead);
+    std::vector<std::string> argv(args.begin(), args.begin() + driver_tokens);
     argv.insert(argv.end(), {"-E", "-dM", "-v"});
-    argv.insert(argv.end(), args.begin() + lead, args.end());
+    argv.insert(argv.end(), args.begin() + driver_tokens, args.end());
     auto output = co_await execute(std::move(argv), std::move(cwd));
     if(!output) {
         co_return std::unexpected(std::move(output.error()));
     }
     auto report = parse_driver_report(output->out, output->err);
-    if(report.clang_job.empty() && !report.gcc_job && !output->failure.empty()) {
-        auto said = llvm::StringRef(output->err).rtrim();
-        said = said.substr(said.rfind('\n') + 1);
-        co_return std::unexpected(std::format("{}: {}", output->failure, said.str()));
+    if(report.clang_job.empty() && !output->failure.empty()) {
+        auto last_line = llvm::StringRef(output->err).rtrim();
+        last_line = last_line.substr(last_line.rfind('\n') + 1);
+        co_return std::unexpected(std::format("{}: {}", output->failure, last_line.str()));
     }
     co_return report;
 }
 
 /// GCC's two-core tuning form, `-mcpu=cortex-a72.cortex-a53`, as the first
 /// core alone: clang knows no such name, and the first core's architecture
-/// is the code's.
+/// is the code's. The features after the cores keep their dots
+/// (`-mcpu=cortex-m7+nofp.dp`).
 std::string first_core(llvm::StringRef arg) {
-    return arg.starts_with("-mcpu=") ? arg.split('.').first.str() : arg.str();
+    if(!arg.starts_with("-mcpu=")) {
+        return arg.str();
+    }
+    auto features = arg.find('+');
+    return (arg.substr(0, features).split('.').first + arg.substr(features)).str();
+}
+
+/// A universal build (`-arch arm64 -arch x86_64`) compiles once for each
+/// architecture, and a driver preprocesses for one only: clice reads the
+/// code for the first.
+void keep_first_arch(std::vector<std::string>& args) {
+    bool seen = false;
+    for(std::size_t i = 0; i + 1 < args.size();) {
+        if(args[i] == "-arch") {
+            if(seen) {
+                args.erase(args.begin() + i, args.begin() + i + 2);
+                continue;
+            }
+            seen = true;
+        }
+        i += 1;
+    }
 }
 
 /// The driver arguments that set clang up as GCC set itself up: GCC's
@@ -133,13 +156,15 @@ void pin_to_gcc(const DriverReport& report, std::vector<std::string>& args) {
 }
 
 /// Puts GCC's header search list on a cc1 job pinned to GCC, with clang's
-/// builtin headers just before GCC's own: clang's win for every header both
-/// have, and GCC's still serve what clang has none of (omp.h, quadmath.h).
+/// builtin headers in place of GCC's own. GCC's are its versions of the
+/// same headers, which clang cannot parse, and clang's would reach them
+/// through #include_next (clang's stdatomic.h defers to a later one).
 void append_gcc_search_list(const DriverReport& report, std::vector<std::string>& cc1) {
     for(std::size_t i = 0; i < report.search_dirs.size(); i += 1) {
         auto& dir = report.search_dirs[i];
         if(report.private_dir == i) {
             cc1.insert(cc1.end(), {"-internal-isystem", path::join(resource_dir(), "include")});
+            continue;
         }
         cc1.insert(cc1.end(),
                    {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
@@ -152,7 +177,7 @@ void append_gcc_search_list(const DriverReport& report, std::vector<std::string>
 /// fails the whole compile. The target's defaults stand in.
 void drop_unknown_target_names(std::vector<std::string>& cc1) {
     auto triple = std::ranges::find(cc1, "-triple");
-    if(triple == cc1.end() || triple + 1 == cc1.end()) {
+    if(triple == cc1.end()) {
         return;
     }
     clang::DiagnosticOptions diagnostic_options;
@@ -184,10 +209,6 @@ void drop_unknown_target_names(std::vector<std::string>& cc1) {
     }
 }
 
-/// The temp-file extension a probe input uses for `kind`: clang's own
-/// suffix when the kind is a known language, the raw extension itself
-/// otherwise (the driver ends up exactly as confused as it would be by the
-/// real file — the probe fails the same way the real compile would).
 /// The probe working directory, empty when the wanted one does not exist
 /// (a stale CDB directory, or a foreign-platform path): probing from the
 /// process cwd degrades the answer instead of failing the spawn.
@@ -198,6 +219,10 @@ std::string probe_cwd(llvm::StringRef wanted) {
     return wanted.str();
 }
 
+/// The temp-file extension a probe input uses for `kind`: clang's own
+/// suffix when the kind is a known language, the raw extension itself
+/// otherwise (the driver ends up exactly as confused as it would be by the
+/// real file — the probe fails the same way the real compile would).
 std::string temp_suffix_for(llvm::StringRef kind) {
     namespace types = clang::driver::types;
     auto type = types::lookupTypeForTypeSpecifier(kind.str().c_str());
@@ -311,8 +336,9 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
         // Query nvcc by asking for its compilation pipeline: the dryrun
         // names the toolkit root, the host compiler and the macros nvcc
         // injects — none of which clang can derive on its own. The host
-        // toolchain is then pinned as in the GCC branch and our own driver
-        // builds the cc1 in CUDA mode.
+        // compiler is then asked as a GCC-style driver is, with the
+        // command's sysroot, and our own driver builds the cc1 command, in
+        // CUDA mode for a CUDA input.
         case CompilerFamily::NVCC: {
             /// nvcc only offloads CUDA-language inputs; a host-language
             /// entry (`nvcc -c foo.cpp`, or an explicit `-x c++`) compiles
@@ -378,10 +404,22 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
             if(host_family == CompilerFamily::MSVC || host_family == CompilerFamily::ClangCL) {
                 co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", host));
             }
-            std::vector<std::string> host_probe = {host, "-x", "c++", *src_path};
+            /// nvcc hands its host compiler a CUDA input as C++. The host's
+            /// headers follow the sysroot the command gives it
+            /// (`-Xcompiler --sysroot=<dir>`).
+            std::vector<std::string> host_probe = {host, "-x", cuda_input ? "c++" : spec.kind};
+            for(llvm::StringRef arg: llvm::ArrayRef(args).drop_front()) {
+                if(arg.starts_with("--sysroot=")) {
+                    host_probe.push_back(arg.str());
+                }
+            }
+            host_probe.push_back(*src_path);
             auto host_report = co_await ask_driver(host_probe, 1, spec.cwd);
             if(!host_report) {
                 co_return std::unexpected(std::move(host_report.error()));
+            }
+            if(host_report->clang_job.empty() && !host_report->gcc_job) {
+                co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", host));
             }
             /// A clang host needs no pin: the in-process driver already
             /// defaults to the running machine's triple.
@@ -434,7 +472,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
                 for(auto& define: host_view ? info->host_defines : info->device_defines)
                     cuda_args.push_back("-D" + define);
 
-                if(!contains_prefix({"-std="}) && !info->cpp_dialect.empty())
+                if(!names_standard && !info->cpp_dialect.empty())
                     cuda_args.push_back("-std=" + info->cpp_dialect);
 
                 /// An `-arch=` probe token is an explicit selection too: its
@@ -473,6 +511,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
         // it shows its job, and the job tells clang underneath (Apple clang,
         // zig, emcc, a `c++` that is clang) from GCC.
         default: {
+            keep_first_arch(args);
             auto report =
                 co_await ask_driver(args, spec.family == CompilerFamily::Zig ? 2 : 1, spec.cwd);
             if(!report) {
@@ -491,8 +530,8 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
                 }
                 break;
             }
-            // Neither job: an input the driver only passes on, such as
-            // assembler.
+            // Neither job: an input the driver only passes on (assembler),
+            // or a driver that is neither GCC nor clang (Intel's icc).
             if(!report->gcc_job) {
                 queried.emplace();
                 break;
@@ -535,9 +574,9 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
 
 /// Every component of a search-path-style environment value is absolute and
 /// non-empty (an empty component means the cwd).
-bool components_all_absolute(llvm::StringRef value, char separator) {
+bool components_all_absolute(llvm::StringRef value) {
     llvm::SmallVector<llvm::StringRef, 16> parts;
-    value.split(parts, separator, -1, /*KeepEmpty=*/true);
+    value.split(parts, path::list_separator, -1, /*KeepEmpty=*/true);
     return ranges::all_of(parts, [](llvm::StringRef part) {
         return !part.empty() && path::is_absolute(part);
     });
@@ -551,7 +590,7 @@ bool search_env_all_absolute() {
 #ifdef _WIN32
         for(const char* name: {"INCLUDE", "LIB", "PATH"}) {
             if(const char* value = std::getenv(name)) {
-                if(!components_all_absolute(value, ';'))
+                if(!components_all_absolute(value))
                     return false;
             }
         }
@@ -564,7 +603,7 @@ bool search_env_all_absolute() {
                                "COMPILER_PATH",
                                "LIBRARY_PATH"}) {
             if(const char* value = std::getenv(name)) {
-                if(!components_all_absolute(value, ':'))
+                if(!components_all_absolute(value))
                     return false;
             }
         }
@@ -623,10 +662,7 @@ bool uses_windows_gnu_target(const CompileConfig& config) {
 }
 
 /// Which args feed the probe (and its key): everything that may change
-/// driver behavior. Codegen flags do: a driver's defaults can be codegen
-/// flags the command switches off (Ubuntu's g++ drops its default
-/// -fstack-protector-strong, and with it __SSP_STRONG__, under
-/// -fno-stack-protector). User-content never does, nor does the command's
+/// driver behavior. User-content never does, nor does the command's
 /// action; unknown tokens feed it only as NVCC probe tokens (junk from the
 /// CDB must not fail an otherwise good probe).
 bool in_probe_view(const Arg& arg, CompilerFamily family) {
@@ -637,11 +673,11 @@ bool in_probe_view(const Arg& arg, CompilerFamily family) {
             auto opt = option::table().option(arg.opt_id);
             return !opt || !opt->matches(option::OPT_Action_Group);
         }
-        case ArgClass::Codegen:
         case ArgClass::Diagnostics: return true;
         case ArgClass::Unknown:
             return family == CompilerFamily::NVCC && is_nvcc_probe_flag(arg.spelling);
         case ArgClass::UserContent:
+        case ArgClass::Codegen:
         case ArgClass::Discarded:
         case ArgClass::Input: return false;
     }
@@ -818,6 +854,13 @@ Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config) {
         }
         if(arg.opt_id == option::OPT_UNKNOWN) {
             out.argv.push_back(arg.spelling);
+            continue;
+        }
+        // clang reads a bare -flto, and GCC's -flto=auto, as -flto=full,
+        // which GCC rejects.
+        if(arg.opt_id == option::OPT_flto_EQ && arg.values.size() == 1 &&
+           llvm::StringRef(arg.values[0]) == "full") {
+            out.argv.push_back("-flto");
             continue;
         }
         render_driver_arg(arg, config.family, emit);

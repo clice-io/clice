@@ -635,7 +635,7 @@ auto flags_input(const SourceFile& file,
         }
         driver_args.push_back(flag.c_str());
     }
-    driver_args.insert(driver_args.end(), {"-fsyntax-only", file.path.c_str()});
+    driver_args.push_back(file.path.c_str());
     auto cc1 = Toolchain::query(driver_args, file.path);
     if(!cc1) {
         return std::unexpected(std::move(cc1.error()));

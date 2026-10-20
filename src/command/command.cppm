@@ -39,7 +39,7 @@ enum class ArgClass : std::uint8_t {
     /// warnings are emitted but never the token stream.
     Diagnostics,
 
-    /// Pure backend/linker concerns (-g, -fPIC, ...): kept for the
+    /// Pure backend/linker concerns (-g, -ffunction-sections, ...): kept for the
     /// Full view, skipped by compile renders and identity hashes.
     Codegen,
 
@@ -404,7 +404,7 @@ public:
     /// Entry identity is the entry hash (Frontend view + directory), the
     /// same identity the rest of the system uses to pin a CDB entry (e.g.
     /// clice/switchContext). A change confined to codegen-only flags (-g,
-    /// -fPIC, ...) is therefore not reported as `changed` — this is
+    /// -ffunction-sections, ...) is therefore not reported as `changed` — this is
     /// deliberate. (Optimization level -O* is semantic, not codegen-only: it
     /// defines __OPTIMIZE__, so changing it does count.)
     ///
