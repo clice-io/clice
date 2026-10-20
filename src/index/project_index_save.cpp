@@ -505,13 +505,15 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
     // The search index borrows the snapshot, unless it is a build no batch
     // committed yet, which owns its bytes.
     if(search.loaded() && search_bytes.empty()) {
-        if(auto blob = db.read(BlobKind::SearchIndex, "search")) {
-            search.load(std::move(blob.buffer));
+        auto blob = db.read(BlobKind::SearchIndex, "search");
+        if(!blob || !search.load(std::move(blob.buffer))) {
+            LOG_ERROR("The index database lost the search index its header pins");
+            damage = true;
         }
     }
-    // A shard that diverged, and the ones after it, still borrow the old
-    // snapshot: it stays, and the caller discards the index before anything
-    // reads them.
+    // A view left unrebound — a shard that diverged and the ones after it,
+    // a lost search index — still borrows the old snapshot: it stays, and
+    // the caller discards the index before anything reads them.
     if(db.corrupted() || damage) {
         co_return false;
     }

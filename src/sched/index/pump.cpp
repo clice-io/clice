@@ -484,9 +484,11 @@ kota::task<> IndexPump::run_background_indexing() {
     if(index_queue_pos >= index_queue.size()) {
         LOG_DEBUG("Background indexing: queue exhausted");
         // Nothing to index, yet the search index may be owed the idle
-        // rebuild a previous session never reached: until it runs, every
-        // search scans the symbol records.
-        if(project.index.search_rebuild_due(index::SearchRebuild::Idle)) {
+        // rebuild a previous session never reached — until it runs, every
+        // search scans the symbol records —, or the start-up scan met a
+        // damaged record, which only a save discards.
+        if(project.index.damaged() ||
+           project.index.search_rebuild_due(index::SearchRebuild::Idle)) {
             co_await persist(index::SearchRebuild::Idle);
             // A damaged database the save discarded queued every unit.
             if(index_queue_pos < index_queue.size()) {

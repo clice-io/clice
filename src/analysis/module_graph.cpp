@@ -1389,6 +1389,10 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
             stale.dropped.emplace_back(files.display(file));
         }
     });
+    // A unit owed the variants a rebuild discarded is missing from them.
+    for(auto unit: project.index.owed_units()) {
+        stale.dropped.emplace_back(files.display(unit));
+    }
     if(!stale.dropped.empty()) {
         std::ranges::sort(stale.dropped);
         return std::unexpected(std::move(stale));
