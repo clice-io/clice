@@ -7,6 +7,7 @@ import { includedHeaders, jobDatabase, syntaxOnly } from "./database.ts";
 import { unitsInFlight } from "./index.ts";
 import type { Results } from "./nightly.ts";
 import { jobs, loadProjects, type Project } from "./projects.ts";
+import { residentNow } from "./memory.ts";
 import { report } from "./report.ts";
 import { acceptedDifference, placesOf, sampleFiles } from "./sweep.ts";
 
@@ -226,6 +227,12 @@ describe("sweep", () => {
     });
 });
 
+describe("memory", () => {
+    test.runIf(process.platform === "linux")("a process holds memory of its own", () => {
+        expect(residentNow(process.pid).root).toBeGreaterThan(0);
+    });
+});
+
 describe("index", () => {
     test("the units in flight are those begun and not finished", () => {
         const log = [
@@ -336,8 +343,19 @@ describe("report", () => {
                     { file: "a.cpp", label: "hover p0", seconds: 75 },
                     { file: "a.cpp", label: "references p3", seconds: 300 },
                 ],
+                memory: {
+                    start: { root: 300, children: 0 },
+                    peak: { root: 900, child: 2100, total: 5000 },
+                    end: { root: 700, children: 400 },
+                },
             },
         });
+        expect(text).toContain(
+            "| server memory: master + workers, at start / once all closed | 300 + 0 / 700 + 400 MB |  |",
+        );
+        expect(text).toContain(
+            "| server peak memory: master / worker / all | 900 / 2100 / 5000 MB |  |",
+        );
         expect(text).toContain("# p on windows: green");
         expect(text).toContain(
             "## Server requests that took over a minute (2)\n\n- a.cpp, references p3: 300 s\n- a.cpp, hover p0: 75 s",

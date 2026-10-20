@@ -24,6 +24,7 @@ import { writeToml } from "../testing/render/value.ts";
 import { Serve } from "../testing/server/serve.ts";
 import { StepRecord } from "../testing/server/steps.ts";
 import { KEYWORDS, lex } from "./lex.ts";
+import { residentNow, watchMemory, type PeakMemory, type Resident } from "./memory.ts";
 
 /// Places per file: points for the requests about a symbol, a few member
 /// accesses for completion and calls for signature help, each of which
@@ -388,6 +389,9 @@ export interface SweepRun {
     /// ran out of time in.
     unasked: string[];
     cut: string[];
+    /// The server's memory once it started, its peaks while asked, and once
+    /// every file closed; measured on Linux only.
+    memory?: { start: Resident; peak: PeakMemory; end: Resident };
     /// The server requests slower than SLOW_MS.
     slow: { file: string; label: string; seconds: number }[];
 }
@@ -615,8 +619,13 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
         { capabilities: CAPABILITIES, config: { project: { enable_indexing: false } } },
         { marks, steps, disk: new Disk(options.root, {}, steps) },
     );
+    let watching: { pid: number; start: Resident; watch: { stop: () => PeakMemory } } | undefined;
     try {
         await server.start();
+        const pid = server.client.child.pid;
+        if (process.platform === "linux" && pid !== undefined) {
+            watching = { pid, start: residentNow(pid), watch: watchMemory(pid) };
+        }
         const queue = [...places];
         const worker = async () => {
             for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
@@ -632,6 +641,13 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
         };
         await Promise.all(Array.from({ length: CONCURRENCY }, worker));
     } finally {
+        if (watching !== undefined) {
+            run.memory = {
+                start: watching.start,
+                peak: watching.watch.stop(),
+                end: residentNow(watching.pid),
+            };
+        }
         run.serverExit = (await server.finish(false)).map((error) =>
             error instanceof Error ? error.message : String(error),
         );

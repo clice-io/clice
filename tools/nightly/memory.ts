@@ -84,3 +84,22 @@ export function watchMemory(root: number): { stop: () => PeakMemory } {
         },
     };
 }
+
+/// Megabytes a process tree holds at one moment, each process's own.
+export interface Resident {
+    root: number;
+    children: number;
+}
+
+export function residentNow(root: number): Resident {
+    const now: Resident = { root: 0, children: 0 };
+    for (const pid of tree(root)) {
+        const own = sizes(pid)?.own ?? 0;
+        if (pid === root) {
+            now.root = own;
+        } else {
+            now.children += own;
+        }
+    }
+    return now;
+}

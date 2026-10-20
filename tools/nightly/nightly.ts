@@ -14,7 +14,7 @@ import { CRASHED_IN } from "../testing/server/serve.ts";
 import { confirm } from "./confirm.ts";
 import { includedHeaders, inJob, jobDatabase } from "./database.ts";
 import { runIndex } from "./index.ts";
-import type { PeakMemory } from "./memory.ts";
+import type { PeakMemory, Resident } from "./memory.ts";
 import { prepare } from "./prepare.ts";
 import type { Job, Platform } from "./projects.ts";
 import { CONCURRENCY, sampleFiles, sampleHeaders, sweep, type Request } from "./sweep.ts";
@@ -76,6 +76,8 @@ export interface Results {
         serverSeconds: number;
         /// The server requests that took over a minute.
         slow: { file: string; label: string; seconds: number }[];
+        /// Measured on Linux only.
+        memory?: { start: Resident; peak: PeakMemory; end: Resident };
     };
     /// Units clice reported errors on that the compiler rejects too.
     compilerRejects: { unit: string; output: string }[];
@@ -308,6 +310,7 @@ async function sweepStep(
         inspectSeconds: run.inspectSeconds,
         serverSeconds: run.serverSeconds,
         slow: run.slow,
+        ...(run.memory === undefined ? {} : { memory: run.memory }),
     };
     if (run.unasked.length > 0 || run.cut.length > 0) {
         results.failures.push({

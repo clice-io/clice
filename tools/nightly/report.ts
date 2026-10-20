@@ -1,7 +1,7 @@
 /// A job's results as a person reads them: what failed, each with the
 /// command that reproduces it, and the numbers beside the previous night's.
 
-import type { PeakMemory } from "./memory.ts";
+import type { PeakMemory, Resident } from "./memory.ts";
 import type { Failure, Results } from "./nightly.ts";
 
 const KINDS: Record<Failure["kind"], string> = {
@@ -22,6 +22,12 @@ function memory(peak: PeakMemory | undefined): string {
     return peak === undefined
         ? ""
         : `${String(peak.root)} / ${String(peak.child)} / ${String(peak.total)} MB`;
+}
+
+function resident(measured: { start: Resident; end: Resident } | undefined): string {
+    return measured === undefined
+        ? ""
+        : `${String(measured.start.root)} + ${String(measured.start.children)} / ${String(measured.end.root)} + ${String(measured.end.children)} MB`;
 }
 
 function megabytes(bytes: number): string {
@@ -76,6 +82,16 @@ function rows(now: Results, before: Results | undefined): string[][] {
                     : `${String(before.sweep.files)} (${String(before.sweep.serverOnly.length)})`,
             ],
             ["requests", String(sweep.requests), String(before?.sweep?.requests ?? "")],
+            [
+                "server memory: master + workers, at start / once all closed",
+                resident(sweep.memory),
+                resident(before?.sweep?.memory),
+            ],
+            [
+                "server peak memory: master / worker / all",
+                memory(sweep.memory?.peak),
+                memory(before?.sweep?.memory?.peak),
+            ],
             [
                 "inspect / server time",
                 `${time(sweep.inspectSeconds)} / ${time(sweep.serverSeconds)}`,
