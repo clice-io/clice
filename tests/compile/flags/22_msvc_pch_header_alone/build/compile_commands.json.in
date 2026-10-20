@@ -1,0 +1,14 @@
+[
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ --driver-mode=cl /nologo /TP -I${WS}/include /std:c++17 /Yc${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx /Fp${WS}/build/CMakeFiles/app.dir/cmake_pch.cxx.pch /FI${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx /FoCMakeFiles/app.dir/cmake_pch.cxx.obj -c ${WS}/build/CMakeFiles/app.dir/cmake_pch.cxx",
+    "file": "${WS}/build/CMakeFiles/app.dir/cmake_pch.cxx",
+    "output": "CMakeFiles/app.dir/cmake_pch.cxx.obj"
+  },
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ --driver-mode=cl /nologo /TP -I${WS}/include /std:c++17 /Yu${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx /Fp${WS}/build/CMakeFiles/app.dir/cmake_pch.cxx.pch /FI${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx /FoCMakeFiles/app.dir/src/main.cpp.obj -c ${WS}/src/main.cpp",
+    "file": "${WS}/src/main.cpp",
+    "output": "CMakeFiles/app.dir/src/main.cpp.obj"
+  }
+]

@@ -1479,6 +1479,12 @@ std::optional<ConfigID> CompilationDatabase::intern_command(const Spelling& dire
     return it->second;
 }
 
+/// Whether `opts` leaves `arg` out of the command.
+static bool dropped_include(const Arg& arg, const RenderOptions& opts) {
+    return arg.opt_id == option::OPT_include && arg.values.size() == 1 &&
+           llvm::is_contained(opts.dropped_includes, arg.values[0]);
+}
+
 std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& ref,
                                                             const RenderOptions& opts) {
     auto& cfg = config(ref.config);
@@ -1509,6 +1515,9 @@ std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& re
     std::size_t last_user_content = argv.size();
 
     for(auto& arg: cfg.args) {
+        if(dropped_include(arg, opts)) {
+            continue;
+        }
         switch(arg.cls) {
             case ArgClass::Semantic:
             case ArgClass::UserContent:
@@ -1596,6 +1605,9 @@ std::vector<const char*> CompilationDatabase::render(const CommandRef& ref,
 
     std::size_t last_user_content = argv.size();
     for(auto& arg: rc.args) {
+        if(dropped_include(arg, opts)) {
+            continue;
+        }
         render_arg(arg, emit);
         if(arg.cls == ArgClass::UserContent) {
             last_user_content = argv.size();

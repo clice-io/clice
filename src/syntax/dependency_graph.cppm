@@ -171,6 +171,10 @@ public:
     /// includes, transitively.
     bool reaches_import(Fid path_id) const;
 
+    /// Whether a compile of `path_id`'s scanned text reads `target`, as
+    /// reaches_import() reads an import candidate.
+    bool reaches(Fid path_id, Fid target) const;
+
     /// Forget the graph but keep its quick scans: they are content-keyed,
     /// so a rebuild over the same files reuses every one still current.
     void reset();

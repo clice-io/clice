@@ -333,6 +333,11 @@ bool DependencyGraph::reaches_import(Fid path_id) const {
     return walk_closure(path_id, seen, [&](Fid fid) { return import_candidates.contains(fid); });
 }
 
+bool DependencyGraph::reaches(Fid path_id, Fid target) const {
+    llvm::DenseSet<Fid> seen;
+    return walk_closure(path_id, seen, [&](Fid fid) { return fid == target; });
+}
+
 void DependencyGraph::reset() {
     auto kept = std::move(quick_scans);
     *this = DependencyGraph();
@@ -587,23 +592,15 @@ struct FileScanner {
         return *search;
     }
 
-    /// A group's forced includes, resolved the way clang resolves them:
-    /// from the compile's working directory, then as a quoted include.
-    /// The compile reports the ones that resolve nowhere.
+    /// A group's forced includes, resolved; the compile reports the ones
+    /// that resolve nowhere.
     llvm::ArrayRef<CachedInclude> forced_of(std::uint32_t group) {
         auto [it, inserted] = forced_cache.try_emplace(group);
         if(inserted) {
             auto& search = search_of(group);
             llvm::StringRef directory = cdb.config(graph.group(group).config).directory;
             for(auto& name: search.config.forced_includes) {
-                if(auto found = resolve_include(name,
-                                                false,
-                                                &scope.list(directory),
-                                                directory,
-                                                false,
-                                                std::nullopt,
-                                                search.resolved,
-                                                scope)) {
+                if(auto found = resolve_forced_include(name, directory, search.resolved, scope)) {
                     it->second.push_back({
                         .path_id = files.intern_spelled(Spelling::absolute(found->path)),
                         .found_dir_idx = found->found_dir_idx,

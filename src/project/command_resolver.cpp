@@ -111,6 +111,38 @@ std::optional<CommandRef> host_command(Project& project,
     return lent_command(project, header, host, picked.config, extra_prepend, extra_append);
 }
 
+/// The `-include`s of `ref` that read `file` itself, as the command spells
+/// them, which a compile of `file` leaves out: they would enter `file`
+/// before its own text. A header of a target's precompiled header meets one
+/// in every command it borrows from the target (CMake's cmake_pch.hxx,
+/// MSVC's /FI).
+static std::vector<std::string> self_includes(Project& project, Fid file, const CommandRef& ref) {
+    std::vector<std::string> found;
+    auto& graph = project.dep_graph;
+    if(graph.get_includers(file).empty() && graph.get_forcing_units(file).empty()) {
+        return found;
+    }
+    auto search = project.cdb.search_config(ref);
+    if(search.forced_includes.empty()) {
+        return found;
+    }
+    vfs::Scope scope(project.file_table.dirs);
+    auto resolved = resolve_search_config(search, scope);
+    llvm::StringRef directory = project.cdb.config(ref.config).directory;
+    for(auto& name: search.forced_includes) {
+        auto header = resolve_forced_include(name, directory, resolved, scope);
+        auto header_id =
+            header ? project.file_table.find(Spelling::absolute(header->path)) : std::nullopt;
+        if(header_id && graph.reaches(*header_id, file)) {
+            LOG_INFO("resolve_command: {} leaves out -include {}, which reads it",
+                     project.file_table.resolve(file),
+                     name);
+            found.push_back(name);
+        }
+    }
+    return found;
+}
+
 HeaderMode CommandResolver::header_mode(Fid path_id) const {
     if(is_context_header_path(project.file_table.resolve(path_id))) {
         return HeaderMode::NeedsContext;
@@ -291,6 +323,8 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         if(resolution.synthesized) {
             options.preamble = resolution.synthesized->prefix.c_str();
         }
+        auto dropped = self_includes(project, path_id, ref);
+        options.dropped_includes = dropped;
         directory = project.cdb.config(ref.config).directory;
         auto argv = project.cdb.render(ref, options);
         arguments.assign(argv.begin(), argv.end());

@@ -143,4 +143,18 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                            scope);
 }
 
+std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
+                                                    llvm::StringRef directory,
+                                                    const ResolvedSearchConfig& config,
+                                                    vfs::Scope& scope) {
+    return resolve_include(filename,
+                           false,
+                           &scope.list(directory),
+                           directory,
+                           false,
+                           std::nullopt,
+                           config,
+                           scope);
+}
+
 }  // namespace clice

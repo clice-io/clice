@@ -238,6 +238,48 @@ ZEST_CASE(UnmatchedChainWantsTree) {
     ZEXPECT(resolution.tree_wanted == a);
 }
 
+ZEST_CASE(SelfIncludeLeftOut) {
+    /// main.cpp's command forces in pch.h, which includes part.h, and
+    /// config.h, which does not. part.h borrows the command without pch.h,
+    /// which would enter part.h before its own text; main.cpp keeps both.
+    TempDir tmp;
+    tmp.touch("pch.h", "#pragma once\n#include \"part.h\"\n");
+    tmp.touch("config.h", "#pragma once\n");
+    tmp.touch("part.h", "#pragma once\n");
+    tmp.touch("main.cpp", "#include \"part.h\"\n");
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {"-include", "pch.h", "-include", "config.h"}},
+    }));
+    FileTable files;
+    Project project{files};
+    CommandResolver resolver(project);
+    project.config.rules.push_back(ConfigRule{.compile_commands = {"build"}});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+    for(auto source: project.build.declared_sources()) {
+        project.cdb.load(source);
+    }
+    project.rebuild_dependency_graph();
+
+    auto forced = [&](Fid file) {
+        std::string directory;
+        std::vector<std::string> arguments;
+        resolver.resolve_command(file, directory, arguments);
+        std::vector<std::string> names;
+        for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
+            if(arguments[i] == "-include") {
+                names.push_back(arguments[i + 1]);
+            }
+        }
+        return names;
+    };
+    auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    auto part = project.file_table.intern(Spelling::absolute(tmp.path("part.h")));
+    ZEXPECT(forced(main) == std::vector<std::string>{"pch.h", "config.h"});
+    ZEXPECT(forced(part) == std::vector<std::string>{"config.h"});
+}
+
 };  // ZEST_SUITE(CommandResolver)
 
 }  // namespace

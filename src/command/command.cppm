@@ -233,6 +233,9 @@ struct RenderOptions {
     /// Synthesized preamble to inject as `-include <path>`, after the
     /// command's own user-content flags so the host's -include runs first.
     const char* preamble = nullptr;
+
+    /// The command's `-include`s to leave out, as it spells them.
+    llvm::ArrayRef<std::string> dropped_includes;
 };
 
 /// A loaded compilation database file. Ids are stable for the database's
