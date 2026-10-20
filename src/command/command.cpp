@@ -1195,7 +1195,7 @@ llvm::ArrayRef<CompilationEntry> CompilationDatabase::pch_writers(Fid pch) const
 bool CompilationDatabase::precompiled(ConfigID id, llvm::StringRef header) const {
     auto directory = working_directory(config(id));
     Spelling path(header, directory);
-    auto written = [&](llvm::StringRef suffix) {
+    auto written = [&](const char* suffix) {
         auto pch = file_table.find(Spelling::absolute(path.str() + suffix));
         return pch && !pch_writers(*pch).empty();
     };
