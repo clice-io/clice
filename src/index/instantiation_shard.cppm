@@ -183,7 +183,7 @@ public:
     void for_each_record(llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 
 private:
-    friend std::optional<std::string>
+    friend std::optional<std::vector<std::byte>>
         merge_instantiations(const InstantiationShard& old,
                              llvm::ArrayRef<UseHash> keep,
                              llvm::function_ref<bool(const Producer&)> keep_producer,
@@ -214,9 +214,9 @@ private:
 
 /// Encode one run's instantiations of one file as a worker blob: `content_hash`
 /// and `content_size` describe the text the run compiled.
-std::string write_instantiations(const FileInstantiations& instantiations,
-                                 std::uint64_t content_hash,
-                                 std::uint32_t content_size);
+std::vector<std::byte> write_instantiations(const FileInstantiations& instantiations,
+                                            std::uint64_t content_hash,
+                                            std::uint32_t content_size);
 
 /// Merge into one blob of the same content generation: the uses of `old` in
 /// `keep` with their resolutions, the keys of `old` whose producer
@@ -226,7 +226,7 @@ std::string write_instantiations(const FileInstantiations& instantiations,
 /// `fresh` null (a compaction, or a TU adding the use of what others
 /// walked). Returns nullopt when nothing survives: the caller retires the
 /// file.
-std::optional<std::string>
+std::optional<std::vector<std::byte>>
     merge_instantiations(const InstantiationShard& old,
                          llvm::ArrayRef<UseHash> keep,
                          llvm::function_ref<bool(const Producer&)> keep_producer,

@@ -9,6 +9,7 @@ import :index.indexer;
 import :index.project_index;
 import :index.tu_index;
 import :project.project;
+import :support.bytes;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -17,10 +18,10 @@ namespace clice::testing {
 /// background index does. `focus` receives the unit's own file id.
 inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
     auto bytes = index::build_tu_index(unit);
-    auto view = index::TUIndex::from_bytes(bytes);
+    auto view = index::TUIndex::from_bytes(as_chars(bytes));
     ZASSERT(view.loaded());
     focus = project.file_table.intern(Spelling::absolute(view.path(view.path_count() - 1)));
-    ZASSERT(project.index.merge(bytes, {}).has_value());
+    ZASSERT(project.index.merge(as_chars(bytes), {}).has_value());
 }
 
 }  // namespace clice::testing

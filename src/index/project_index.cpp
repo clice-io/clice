@@ -13,7 +13,6 @@ import :index.project_index;
 import :index.project_table;
 import :index.tu_manifest;
 import :semantic.token_class;
-import :support.archive;
 import :support.logging;
 
 namespace clice::index {
@@ -495,7 +494,7 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
     });
 }
 
-std::string ProjectIndex::serialize_table() {
+std::vector<std::byte> ProjectIndex::serialize_table() {
     // The entries changed since the last write join the ones still held
     // aside from a write that was never persisted; the newer entry wins.
     for(auto& [hash, symbol]: changed) {
@@ -545,7 +544,7 @@ std::string ProjectIndex::serialize_table() {
     if(base) {
         blob.paths.reserve(base->paths().size());
         for(std::uint32_t i = 0; i < base->paths().size(); i += 1) {
-            blob.paths.emplace_back(base->paths()[i].str());
+            blob.paths.emplace_back(base->paths()[i]);
             id_of.try_emplace(base->remap[i], i);
         }
     }
@@ -709,7 +708,7 @@ std::string ProjectIndex::serialize_table() {
     write_ids(blob.symbol_files, file_ids, blob.paths.size() + 1);
     write_ids(blob.symbol_reference_counts, reference_counts, blob.paths.size() + 1);
 
-    return archive::encode(blob);
+    return encode(blob);
 }
 
 void ProjectIndex::rebase(std::unique_ptr<llvm::MemoryBuffer> blob) {

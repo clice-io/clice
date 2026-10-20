@@ -8,6 +8,7 @@ import :index.format;
 import :index.indexer;
 import :index.shard;
 import :index.tu_index;
+import :support.bytes;
 import :unittests.utils.tester;
 import :unittests.utils.tu_index_blob;
 import :unittests.utils;
@@ -22,7 +23,7 @@ ZEST_SUITE(TUIndex, Tester) {
 index::TUIndex build() {
     ZASSERT(compile());
     return index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
 }
 
 ZEST_CASE(TUIndexSections) {
@@ -116,7 +117,7 @@ ZEST_CASE(CorruptSectionBytesRejected) {
 }
 
 ZEST_CASE(FromRejectsHostileInput) {
-    ZASSERT(!index::TUIndex::from_bytes("not an archive at all").loaded());
+    ZASSERT(!index::TUIndex::from_bytes("not a blob at all").loaded());
 
     add_focus("main.cpp", R"(
             int foo() { return 42; }

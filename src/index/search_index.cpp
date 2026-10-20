@@ -9,7 +9,6 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.search_index;
-import :support.archive;
 import :support.logging;
 
 namespace clice::index {
@@ -23,7 +22,7 @@ constexpr std::uint32_t max_chain = 64;
 
 using Mode = SymbolQuery::Mode;
 
-using Root = archive::Archived<SearchIndexBlob>;
+using Root = kota::codec::blob::view_t<SearchIndexBlob>;
 
 void append_postings(std::vector<std::uint8_t>& arena,
                      std::vector<std::uint32_t>& ends,
@@ -167,7 +166,7 @@ float symbol_quality(llvm::StringRef name,
     return quality;
 }
 
-std::string build_search_blob(const SearchSnapshot& snapshot) {
+std::vector<std::byte> build_search_blob(const SearchSnapshot& snapshot) {
     struct Ranked {
         std::uint32_t entry;
         float quality;
@@ -374,7 +373,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
         append_postings(blob.file_postings, blob.file_ends, bitmap, count);
     }
 
-    return archive::encode(blob);
+    return encode(blob);
 }
 
 bool ranks_after(const NameRank& lhs,
@@ -473,7 +472,7 @@ struct SearchIndex::View {
 
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
-    const archive::Archived<Blob>* columns = nullptr;
+    const kota::codec::blob::view_t<Blob>* columns = nullptr;
 
     mutable llvm::DenseMap<std::uint32_t, Bitmap> token_cache;
     mutable llvm::DenseMap<std::uint32_t, Bitmap> children_cache;

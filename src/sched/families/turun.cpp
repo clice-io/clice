@@ -12,6 +12,7 @@ import :project.command_snapshot;
 import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.families.turun;
+import :support.bytes;
 import :support.logging;
 import :support.timer;
 import :syntax.dependency_graph;
@@ -205,7 +206,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     if(reply.has_value() && reply.value().success) {
         auto run_ms = timer.ms();
         auto& value = reply.value();
-        llvm::StringRef index_bytes = value.tu_index_data;
+        llvm::StringRef index_bytes = as_chars(value.tu_index_data);
         // Declared after `transfer`: the mapping must close before the
         // entry removes the file, which Windows refuses while it is mapped.
         std::unique_ptr<llvm::MemoryBuffer> transferred;

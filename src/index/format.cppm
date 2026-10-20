@@ -12,7 +12,7 @@ module;
 module clice:index.format;
 
 import :index.symbol;
-import :support.archive;
+import :support.bytes;
 import :support.logging;
 import :syntax.token;
 
@@ -20,7 +20,7 @@ namespace clice::index {
 
 /// On-disk index blob schema version. Every persisted blob carries it as a
 /// regular field and every loader discards blobs with a different value; a
-/// blob of another layout fails archive verification before that.
+/// blob of another layout fails the blob codec's check before that.
 /// Bump it whenever a persisted type's reflected layout changes, when
 /// symbol-hash semantics change (stored entries keyed by old hashes would
 /// silently stop matching newly computed ones), or when the meaning of
@@ -92,14 +92,27 @@ namespace clice::index {
 /// a focus file's doc comments document with `@param` and `@tparam` are
 /// references to those parameters, an abbreviated parameter pack carries
 /// its type definitions, and a precompiled header's diagnostics know an
-/// imported module unit from an included file; v42: every blob is an
-/// archive (support/archive) instead of a flatbuffer.
-constexpr inline std::uint32_t index_format_version = 42;
+/// imported module unit from an included file; v42: no blob is a
+/// flatbuffer any more; v43: every blob is kotatsu's (kota::codec::blob),
+/// whose header differs.
+constexpr inline std::uint32_t index_format_version = 43;
 
-/// Whether `bytes` sit where an archive is read in place: a database or
-/// a message hands out bytes at whatever address it keeps them.
+/// The bytes of `blob`, the writer form of a blob layout. A blob holds less
+/// than 4 GiB; index blobs stay far below it (LLVM's project table, the
+/// largest, is about 40 MB), so one past it stops the process.
+template <typename Blob>
+std::vector<std::byte> encode(const Blob& blob) {
+    auto bytes = kota::codec::blob::to_bytes(blob);
+    if(!bytes) {
+        LOG_FATAL("Cannot encode an index blob: {}", bytes.error().to_string());
+    }
+    return std::move(*bytes);
+}
+
+/// Whether `bytes` sit where a blob is read in place: a database or a
+/// message hands out bytes at whatever address it keeps them.
 inline bool readable_in_place(llvm::StringRef bytes) {
-    return reinterpret_cast<std::uintptr_t>(bytes.data()) % archive::alignment == 0;
+    return reinterpret_cast<std::uintptr_t>(bytes.data()) % kota::codec::blob::alignment == 0;
 }
 
 /// `buffer` itself when its bytes are readable_in_place, else an aligned
@@ -112,15 +125,15 @@ inline std::unique_ptr<llvm::MemoryBuffer>
     return buffer;
 }
 
-/// The archived root of a blob of layout `Blob` once its bytes pass the
-/// structural check and carry this build's format version; null, logged as
-/// the rejection of `what`, otherwise. The cross-field checks are the
+/// The root of a blob of layout `Blob`, read in place, once its bytes pass
+/// the structural check and carry this build's format version; null, logged
+/// as the rejection of `what`, otherwise. The cross-field checks are the
 /// reader's.
 template <typename Blob>
-const archive::Archived<Blob>* verify_root(llvm::StringRef bytes, llvm::StringRef what) {
-    auto root = archive::verify<Blob>(bytes);
+const kota::codec::blob::view_t<Blob>* verify_root(llvm::StringRef bytes, llvm::StringRef what) {
+    auto root = kota::codec::blob::view<Blob>(as_bytes(bytes));
     if(!root) {
-        LOG_DEBUG("Rejecting {}: {}", what, root.error());
+        LOG_DEBUG("Rejecting {}: {}", what, root.error().to_string());
         return nullptr;
     }
     if((*root)->format_version != index_format_version) {
@@ -182,7 +195,7 @@ constexpr inline std::uint32_t packed_sentinel = 0xffffffff;
 template <template <typename> typename Seq>
 using IdColumnOf = Seq<std::uint8_t>;
 
-using IdColumn = IdColumnOf<archive::Owned>;
+using IdColumn = IdColumnOf<kota::codec::blob::Owned>;
 
 /// Entries per block of a delta-encoded begin column.
 constexpr inline std::uint32_t delta_block = 16;
@@ -229,7 +242,7 @@ struct RangeColumnsOf {
     Seq<std::uint8_t> roaring;
 };
 
-using RangeColumns = RangeColumnsOf<archive::Owned>;
+using RangeColumns = RangeColumnsOf<kota::codec::blob::Owned>;
 
 /// Relations per block of the payload counts (ShardBlob::relation_target_ranks).
 constexpr inline std::uint32_t rank_block = 64;
@@ -349,7 +362,7 @@ struct ShardBlobOf {
     Seq<std::uint32_t> relation_far_ends;
 };
 
-using ShardBlob = ShardBlobOf<archive::Owned>;
+using ShardBlob = ShardBlobOf<kota::codec::blob::Owned>;
 
 /// A file's instantiation shard as one persisted blob: what the template
 /// instantiations and the macro expansions of the indexed TUs resolve in the
@@ -420,7 +433,7 @@ struct InstantiationShardBlobOf {
     Seq<std::uint64_t> producer_runs;
 };
 
-using InstantiationShardBlob = InstantiationShardBlobOf<archive::Owned>;
+using InstantiationShardBlob = InstantiationShardBlobOf<kota::codec::blob::Owned>;
 
 /// One file's index in the TU index blob: a self-contained single-variant shard
 /// blob (index/shard.cppm). `hash` is xxh3 of `blob` — the variant's
@@ -433,10 +446,10 @@ struct FileSectionOf {
 
     std::uint64_t hash = 0;
 
-    Seq<std::uint8_t> blob;
+    Seq<std::byte> blob;
 };
 
-using FileSection = FileSectionOf<archive::Owned>;
+using FileSection = FileSectionOf<kota::codec::blob::Owned>;
 
 /// One file's instantiations in the TU index: the instantiation blob of what
 /// the run resolved there, empty when it resolved nothing, and the known keys
@@ -445,12 +458,12 @@ template <template <typename> typename Seq>
 struct InstantiationSectionOf {
     std::uint32_t path_id = 0;
 
-    Seq<std::uint8_t> blob;
+    Seq<std::byte> blob;
 
     Seq<std::uint64_t> skipped;
 };
 
-using InstantiationSection = InstantiationSectionOf<archive::Owned>;
+using InstantiationSection = InstantiationSectionOf<kota::codec::blob::Owned>;
 
 /// A DocumentLink as the TU index of a preamble persists it.
 template <template <typename> typename Seq>
@@ -534,7 +547,7 @@ struct TUIndexBlobOf {
     Seq<char> diagnostics;
 };
 
-using TUIndexBlob = TUIndexBlobOf<archive::Owned>;
+using TUIndexBlob = TUIndexBlobOf<kota::codec::blob::Owned>;
 
 /// The project table's persisted form, read in place: the FileVersion table
 /// as parallel columns, the symbol table as parallel columns in hash order
@@ -625,7 +638,7 @@ struct ProjectTableBlobOf {
     Seq<std::uint8_t> shared_local_files;
 };
 
-using ProjectTableBlob = ProjectTableBlobOf<archive::Owned>;
+using ProjectTableBlob = ProjectTableBlobOf<kota::codec::blob::Owned>;
 
 /// Layout and scoring version of the search blob, apart from the index
 /// format it is derived from: a bump rebuilds the search index alone.
@@ -693,7 +706,7 @@ struct SearchIndexBlobOf {
     Seq<std::uint32_t> local_paths;
 };
 
-using SearchIndexBlob = SearchIndexBlobOf<archive::Owned>;
+using SearchIndexBlob = SearchIndexBlobOf<kota::codec::blob::Owned>;
 
 /// The manifest's persisted form. Node and contribution payloads are
 /// varint-packed by hand: a big TU enters thousands of files, and LEB128
@@ -740,7 +753,7 @@ struct TUManifestBlobOf {
     Seq<std::uint64_t> instantiation_uses;
 };
 
-using TUManifestBlob = TUManifestBlobOf<archive::Owned>;
+using TUManifestBlob = TUManifestBlobOf<kota::codec::blob::Owned>;
 
 /// The bytes the fields of persisted blobs hold, summed over the blobs
 /// measured, by field path (`occurrences.packed`) in declaration order — how
@@ -764,9 +777,10 @@ struct FieldBytes {
 /// that do not verify as one.
 template <typename Blob>
 void measure_blob(llvm::StringRef data, FieldBytes& bytes) {
-    if(auto root = archive::verify<Blob>(data)) {
-        archive::measure(**root,
-                         [&](llvm::StringRef path, std::uint64_t size) { bytes.add(path, size); });
+    if(auto root = kota::codec::blob::view<Blob>(as_bytes(data))) {
+        kota::codec::blob::measure(**root, [&](llvm::StringRef path, std::uint64_t size) {
+            bytes.add(path, size);
+        });
     }
 }
 

@@ -54,7 +54,8 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
     return ids;
 }
 
-std::expected<void, llvm::StringRef> ProjectTable::bind(const archive::Archived<Blob>& root) {
+std::expected<void, llvm::StringRef>
+    ProjectTable::bind(const kota::codec::blob::view_t<Blob>& root) {
     columns = &root;
     auto& paths = columns->paths;
     auto hashes = this->hashes();

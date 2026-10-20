@@ -9,17 +9,17 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.instantiation_shard;
-import :support.archive;
+import :support.bytes;
 import :support.logging;
 
 namespace clice::index {
 
 namespace {
 
-using Root = archive::Archived<InstantiationShardBlob>;
+using Root = kota::codec::blob::view_t<InstantiationShardBlob>;
 
 const Root& view_of(llvm::StringRef bytes) {
-    return archive::view<InstantiationShardBlob>(bytes);
+    return kota::codec::blob::view_verified<InstantiationShardBlob>(as_bytes(bytes));
 }
 
 /// A record kind's byte: the InstantiationKind, with this bit set for a
@@ -33,7 +33,7 @@ std::uint8_t kind_byte(const InstantiationRecord& record) {
 /// The record table: each record's range, kind, target and `from`.
 struct RecordTable {
     const Root& root;
-    const ArchivedRanges& columns;
+    const RangeColumnsView& columns;
     IdColumnView targets;
     IdColumnView froms;
 
@@ -557,7 +557,7 @@ struct Draft {
 
 /// The single writer of InstantiationShardBlob: every encoding choice is a
 /// function of the data.
-std::string emit(const Draft& draft) {
+std::vector<std::byte> emit(const Draft& draft) {
     // The records of every resolution, each stored once.
     std::vector<std::pair<InstantiationRecord, std::uint32_t>> held;
     for(std::uint32_t resolution = 0; resolution < draft.resolutions.size(); resolution += 1) {
@@ -665,7 +665,7 @@ std::string emit(const Draft& draft) {
         }
     }
 
-    return archive::encode(blob);
+    return encode(blob);
 }
 
 using DecodedResolutions = std::vector<std::pair<ResolutionHash, std::vector<InstantiationRecord>>>;
@@ -707,9 +707,9 @@ void fold_resolutions(DecodedResolutions& resolutions) {
 
 }  // namespace
 
-std::string write_instantiations(const FileInstantiations& instantiations,
-                                 std::uint64_t content_hash,
-                                 std::uint32_t content_size) {
+std::vector<std::byte> write_instantiations(const FileInstantiations& instantiations,
+                                            std::uint64_t content_hash,
+                                            std::uint32_t content_size) {
     Draft draft{.content_hash = content_hash, .content_size = content_size};
     std::vector<ResolutionHash> identities;
     for(auto records: instantiations.resolutions) {
@@ -734,7 +734,7 @@ std::string write_instantiations(const FileInstantiations& instantiations,
     return emit(draft);
 }
 
-std::optional<std::string>
+std::optional<std::vector<std::byte>>
     merge_instantiations(const InstantiationShard& old,
                          llvm::ArrayRef<UseHash> keep,
                          llvm::function_ref<bool(const Producer&)> keep_producer,

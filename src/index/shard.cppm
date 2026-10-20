@@ -5,7 +5,6 @@ module;
 module clice:index.shard;
 
 import :index.symbol;
-import :support.archive;
 import :support.bitmap;
 import :syntax.position;
 
@@ -142,7 +141,7 @@ private:
 
     /// The live mask resolved against one side's mask columns, built once
     /// per query.
-    LiveFilter live_filter(const RangeColumnsOf<archive::Vec>& columns) const;
+    LiveFilter live_filter(const RangeColumnsOf<kota::codec::blob::Vec>& columns) const;
 
 private:
     std::unique_ptr<llvm::MemoryBuffer> buffer;
@@ -167,9 +166,10 @@ private:
 /// duration of the call. `content` is the text the indexing compile
 /// consumed; the blob keeps its hash, size and line table, and the text of
 /// its non-ASCII lines only.
-std::string write_shard(const FileIndex& file_index,
-                        llvm::function_ref<std::optional<SymbolView>(SymbolHash)> symbols,
-                        llvm::StringRef content);
+std::vector<std::byte>
+    write_shard(const FileIndex& file_index,
+                llvm::function_ref<std::optional<SymbolView>(SymbolHash)> symbols,
+                llvm::StringRef content);
 
 /// Merge blobs of one file and one content generation: the variants of
 /// `old` whose identity is in `keep` (in stored order), then each blob of
@@ -181,8 +181,8 @@ std::string write_shard(const FileIndex& file_index,
 /// retired by the caller, not compacted to nothing. Every fresh shard
 /// must be a loaded single-variant blob of the same content generation as
 /// the other inputs.
-std::string merge_shards(const Shard& old,
-                         llvm::ArrayRef<VariantHash> keep,
-                         llvm::ArrayRef<Shard> fresh);
+std::vector<std::byte> merge_shards(const Shard& old,
+                                    llvm::ArrayRef<VariantHash> keep,
+                                    llvm::ArrayRef<Shard> fresh);
 
 }  // namespace clice::index

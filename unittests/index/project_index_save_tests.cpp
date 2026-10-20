@@ -14,6 +14,7 @@ import :project.save;
 import :sched.index.pending_table;
 import :sched.index.pump;
 import :sched.stack;
+import :support.bytes;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -665,14 +666,15 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
         bool* condemned;
         bool fail = false;
         bool poisoned = false;
-        std::map<std::pair<index::BlobKind, std::string>, std::string> stored;
+        std::map<std::pair<index::BlobKind, std::string>, std::vector<std::byte>> stored;
 
         index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
             auto it = stored.find({kind, key.str()});
             if(it == stored.end()) {
                 return {};
             }
-            return {.buffer = llvm::MemoryBuffer::getMemBufferCopy(it->second), .generation = 1};
+            return {.buffer = llvm::MemoryBuffer::getMemBufferCopy(as_chars(it->second)),
+                    .generation = 1};
         }
 
         bool contains(index::BlobKind kind, llvm::StringRef key) override {

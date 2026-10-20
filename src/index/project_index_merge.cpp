@@ -11,6 +11,7 @@ import :index.project_index;
 import :index.shard;
 import :index.tu_index;
 import :index.tu_manifest;
+import :support.bytes;
 import :support.logging;
 import :vfs.disk_state;
 import :vfs.file_system;
@@ -134,7 +135,8 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
             // stored variant — dead ones stay masked until the next save
             // compacts them.
             auto merged = merge_shards(*shard, shard->variants(), llvm::ArrayRef(fresh));
-            replacement = Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(merged));
+            replacement =
+                Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(merged)));
             assert(replacement.loaded() && "a freshly merged shard blob must verify");
             appended += 1;
         } else {
@@ -221,7 +223,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
             producer,
             added);
         auto replacement = InstantiationShard::from_buffer(
-            llvm::MemoryBuffer::getMemBufferCopy(merged.value_or("")));
+            llvm::MemoryBuffer::getMemBufferCopy(merged ? as_chars(*merged) : ""));
         assert(replacement.loaded() && "a freshly merged instantiation blob must verify");
         instantiation_replacements.emplace_back(global_id, std::move(replacement));
     }

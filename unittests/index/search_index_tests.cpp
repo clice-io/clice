@@ -8,8 +8,8 @@ import :index.columns;
 import :index.format;
 import :index.search_index;
 import :index.symbol_query;
-import :support.archive;
 import :support.bitmap;
+import :support.bytes;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 
@@ -69,7 +69,7 @@ struct Corpus {
     SearchIndex build() {
         SearchIndex built;
         auto bytes = index::build_search_blob(snapshot);
-        built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+        built.load(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
         return built;
     }
 
@@ -161,16 +161,14 @@ ZEST_CASE(Loads) {
 ZEST_CASE(DamagedPosting) {
     auto corpus = sample();
     auto original = index::build_search_blob(corpus.snapshot);
-    auto root = archive::verify<index::SearchIndexBlob>(original);
-    ZASSERT(root);
-    index::SearchIndexBlob blob;
-    archive::decode(**root, blob);
+    auto blob = kota::codec::blob::from_bytes<index::SearchIndexBlob>(original);
+    ZASSERT(blob);
     // Bytes no posting list starts with: the blob's structure stays
     // intact and every token's list is undecodable.
-    std::ranges::fill(blob.token_postings, 0xff);
-    auto bytes = archive::encode(blob);
+    std::ranges::fill(blob->token_postings, 0xff);
+    auto bytes = index::encode(*blob);
     SearchIndex built;
-    ZASSERT(built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
+    ZASSERT(built.load(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
     ZEXPECT(!built.damaged());
     // The exact matches come from the name order, the fuzzy ones from
     // the posting lists.

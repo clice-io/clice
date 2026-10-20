@@ -25,6 +25,7 @@ import :project.configuration;
 import :project.load;
 import :project.project;
 import :semantic.symbol;
+import :support.bytes;
 import :syntax.lexer;
 import :syntax.source_text;
 import :vfs.file_system;
@@ -220,7 +221,7 @@ std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& 
                                                     config.semantic_tokens),
                      legend);
     auto bytes = index::build_tu_index(unit);
-    auto tu = index::TUIndex::from_bytes(bytes);
+    auto tu = index::TUIndex::from_bytes(as_chars(bytes));
     SourceText served(content, unit.lang_options());
     auto projected =
         named_tokens(feature::index_semantic_tokens(
@@ -329,7 +330,7 @@ std::optional<kota::codec::RawValue> run_document_symbol_check(CompilationUnit& 
                                                                const Config& config) {
     auto ast = feature::document_symbols(unit, config.document_symbols);
     auto bytes = index::build_tu_index(unit);
-    auto tu = index::TUIndex::from_bytes(bytes);
+    auto tu = index::TUIndex::from_bytes(as_chars(bytes));
     SourceText served(unit.focus_file().content(), unit.lang_options());
     auto projected = feature::index_document_symbols(
         served,
@@ -507,12 +508,12 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnit& unit,
                                                      const Config& config) {
     auto hints = feature::inlay_hints(unit, range, config.inlay_hints);
 
-    std::string bytes;
+    std::vector<std::byte> bytes;
     index::TUIndex tu;
     auto place = [&](index::SymbolHash symbol) -> std::optional<RawLocation> {
         if(bytes.empty()) {
             bytes = index::build_tu_index(unit, {.all_files = true});
-            tu = index::TUIndex::from_bytes(bytes);
+            tu = index::TUIndex::from_bytes(as_chars(bytes));
         }
         auto focus = tu.path_count() - 1;
         for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
@@ -2268,7 +2269,7 @@ std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnit& uni
                                                             std::uint32_t offset,
                                                             [[maybe_unused]] const Config& config) {
     auto bytes = index::build_tu_index(unit);
-    auto tu = index::TUIndex::from_bytes(bytes);
+    auto tu = index::TUIndex::from_bytes(as_chars(bytes));
     const index::Shard& shard = tu.shard_of(tu.path_count() - 1);
     auto named = index::named_at(shard, offset, [&](index::SymbolHash hash) {
         auto symbol = tu.find_symbol(hash);

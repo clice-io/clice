@@ -17,6 +17,7 @@ import :index.tu_index;
 import :project.project;
 import :semantic.identity;
 import :semantic.selection;
+import :support.bytes;
 import :support.logging;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
@@ -66,9 +67,10 @@ DecodedShard decode_shard(const index::Shard& shard) {
     return decoded;
 }
 
-void decode_index(const std::string& bytes) {
+void decode_index(std::span<const std::byte> bytes) {
     tu_index = {};
-    tu_index.view = index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+    tu_index.view =
+        index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
     auto& view = tu_index.view;
     ZASSERT(view.loaded());
 
@@ -1348,7 +1350,7 @@ ZEST_CASE(KnownVariantsSkipped) {
         )");
     ZASSERT(compile());
     auto full = index::build_tu_index(*unit);
-    auto full_view = index::TUIndex::from_bytes(full);
+    auto full_view = index::TUIndex::from_bytes(as_chars(full));
     ZASSERT(full_view.loaded());
     auto focus_id = full_view.path_count() - 1;
     std::uint32_t header = full_view.section_count();
@@ -2581,8 +2583,9 @@ void build_state(std::source_location location = std::source_location::current()
     conditionals = {1, 0, 2};
     diagnostics = R"([{"range":{},"message":"'M' macro redefined"}])";
 
-    dir.touch("state.pch.idx",
-              index::build_preamble_index(*unit, links, inactive, conditionals, diagnostics));
+    dir.touch(
+        "state.pch.idx",
+        as_chars(index::build_preamble_index(*unit, links, inactive, conditionals, diagnostics)));
     state = load_pch_index(dir.path("state.pch.idx"));
     ZASSERT(state != nullptr);
 }
@@ -2639,7 +2642,7 @@ ZEST_CASE(ForcedIncludeServed) {
     params.input.arguments.insert(params.input.arguments.end() - 1, TestVFS::path("forced.h"));
     ZASSERT(try_compile());
 
-    dir.touch("state.pch.idx", index::build_preamble_index(*unit, {}, {}, {}, {}));
+    dir.touch("state.pch.idx", as_chars(index::build_preamble_index(*unit, {}, {}, {}, {})));
     state = load_pch_index(dir.path("state.pch.idx"));
     ZASSERT(state != nullptr);
 
@@ -2783,7 +2786,7 @@ int main() { return 0; }
 ZEST_CASE(RejectBadBlob) {
     ZEXPECT(load_pch_index(dir.path("missing.pch.idx")) == nullptr);
 
-    dir.touch("garbage.pch.idx", "not an archive at all");
+    dir.touch("garbage.pch.idx", "not a blob at all");
     ZEXPECT(load_pch_index(dir.path("garbage.pch.idx")) == nullptr);
 }
 
@@ -2875,7 +2878,7 @@ int other = 1;
 
     // An ordinary TU index never serves preamble state.
     auto ordinary = index::build_tu_index(*unit);
-    ZEXPECT(!index::TUIndex::from_bytes(ordinary).matches_preamble(content));
+    ZEXPECT(!index::TUIndex::from_bytes(as_chars(ordinary)).matches_preamble(content));
 }
 
 };  // ZEST_SUITE(PreambleIndex)
@@ -2908,7 +2911,7 @@ void build(llvm::StringRef code,
     add_focus("main.cpp", code);
     ZASSERT(compile());
     view = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit, options)));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit, options))));
     ZASSERT(view.loaded());
 }
 

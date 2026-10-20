@@ -211,6 +211,7 @@
 #include "kota/async/async.h"
 #include "kota/async/io/system.h"
 #include "kota/codec/bincode/bincode.h"
+#include "kota/codec/blob/blob.h"
 #include "kota/codec/dyn/decode.h"
 #include "kota/codec/dyn/dyn.h"
 #include "kota/codec/json/json.h"

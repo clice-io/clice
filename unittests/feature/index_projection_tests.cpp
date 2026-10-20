@@ -9,6 +9,7 @@ import :feature.semantic_token_stream;
 import :index.indexer;
 import :index.tu_index;
 import :semantic.token_class;
+import :support.bytes;
 import :syntax.lexer;
 import :syntax.source_text;
 import :unittests.utils.tester;
@@ -23,12 +24,12 @@ ZEST_SUITE(index_projection, Tester) {
 /// The compiled unit's TU index and the focus file's entries, extracted the
 /// way the router's index slice does it in production.
 index::TUIndex tu;
-std::string bytes;
+std::vector<std::byte> bytes;
 feature::IndexEntries entries;
 
 void extract_entries() {
     bytes = index::build_tu_index(*unit);
-    tu = index::TUIndex::from_bytes(bytes);
+    tu = index::TUIndex::from_bytes(as_chars(bytes));
 
     auto focus_id = tu.path_count() - 1;
     entries = feature::extract_index_entries(tu.shard_of(focus_id));

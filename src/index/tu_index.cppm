@@ -180,7 +180,7 @@ private:
 
 private:
     /// The verified TU index bytes (owned iff `owned` is set); accessors
-    /// read the archive in place from them.
+    /// read the blob in place from them.
     std::unique_ptr<llvm::MemoryBuffer> owned;
 
     llvm::StringRef data;

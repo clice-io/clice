@@ -14,6 +14,7 @@ import :server.ast_family;
 import :server.context_service;
 import :server.editor_context;
 import :server.invalidator;
+import :support.bytes;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
@@ -31,7 +32,7 @@ index::Shard shard_of(llvm::StringRef content) {
         {},
         [](index::SymbolHash) -> std::optional<index::SymbolView> { return std::nullopt; },
         content);
-    return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+    return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
 }
 
 /// The inert family stack an Invalidator reads through: no worker ever

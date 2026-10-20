@@ -8,6 +8,7 @@ module clice:worker.common;
 
 import :compile.compilation;
 import :feature.feature;
+import :support.bytes;
 import :support.timer;
 import :vfs.file_system;
 import :worker.protocol;
@@ -40,7 +41,7 @@ std::size_t max_index_bytes();
 /// Returns why the index cannot be handed over: too large with no path to
 /// write to, or the write failed.
 template <typename Result>
-std::optional<std::string> hand_over_index(std::string blob,
+std::optional<std::string> hand_over_index(std::vector<std::byte> blob,
                                            llvm::StringRef output_path,
                                            Result& result) {
     if(blob.size() <= max_index_bytes()) {
@@ -51,7 +52,7 @@ std::optional<std::string> hand_over_index(std::string blob,
         return std::format("the index ({} MiB) is too large to send between clice processes",
                            blob.size() / (1024 * 1024));
     }
-    if(auto error = vfs::write(output_path, blob)) {
+    if(auto error = vfs::write(output_path, as_chars(blob))) {
         return std::format("writing the index to {} failed: {}", output_path, error.message());
     }
     result.index_in_file = true;

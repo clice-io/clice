@@ -14,6 +14,7 @@ import :feature.feature;
 import :index.include_tree;
 import :index.indexer;
 import :index.tu_index;
+import :support.bytes;
 import :support.logging;
 import :support.process;
 import :syntax.position;
@@ -34,7 +35,8 @@ using RequestContext = kota::ipc::BincodePeer::RequestContext;
 /// is still in memory — the only moment the preamble's index is
 /// obtainable without deserializing the whole PCH. The file write
 /// happens separately, after the PCH itself is flushed.
-static std::string serialize_preamble_index(CompilationUnit& unit, std::uint32_t preamble_bound) {
+static std::vector<std::byte> serialize_preamble_index(CompilationUnit& unit,
+                                                       std::uint32_t preamble_bound) {
     ScopedTimer links_timer;
     auto links = feature::document_links(unit);
     auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
@@ -175,7 +177,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     if(!success)
         errors = collect_errors(*unit);
 
-    std::string blob;
+    std::vector<std::byte> blob;
     ScopedTimer index_timer;
     if(success) {
         blob = serialize_preamble_index(*unit, params.whole_file ? 0 : params.preamble_bound);
@@ -195,7 +197,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     bool internal_error = false;
     ScopedTimer state_write_timer;
     if(success) {
-        if(auto error = write_preamble_index(blob, params.index_output_path)) {
+        if(auto error = write_preamble_index(as_chars(blob), params.index_output_path)) {
             success = false;
             internal_error = true;
             errors = {std::move(*error)};

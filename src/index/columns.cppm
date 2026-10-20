@@ -14,7 +14,6 @@ module;
 module clice:index.columns;
 
 import :index.format;
-import :support.archive;
 import :support.bitmap;
 import :syntax.token;
 
@@ -190,15 +189,15 @@ inline std::uint32_t escape_position(llvm::ArrayRef<std::uint32_t> entries, std:
 /// One side of a blob's entries read in place. The range functions below
 /// read whichever range encoding the side stores, the mask columns
 /// whichever mask encoding.
-using ArchivedRanges = archive::Archived<RangeColumns>;
+using RangeColumnsView = kota::codec::blob::view_t<RangeColumns>;
 
-inline std::uint32_t entry_count(const ArchivedRanges& side) {
+inline std::uint32_t entry_count(const RangeColumnsView& side) {
     return side.packed.empty() ? side.lengths.size() : side.packed.size();
 }
 
 /// The begin of `entry` given the begin of the entry before it, in the
 /// delta encoding.
-inline std::uint32_t next_begin(const ArchivedRanges& side,
+inline std::uint32_t next_begin(const RangeColumnsView& side,
                                 std::uint32_t entry,
                                 std::uint32_t previous) {
     if(entry % delta_block == 0) {
@@ -212,7 +211,7 @@ inline std::uint32_t next_begin(const ArchivedRanges& side,
 
 /// The begin of `entry` of an unsorted side; a delta-encoded one is walked
 /// (for_each_range).
-inline std::uint32_t begin_of(const ArchivedRanges& side, std::uint32_t entry) {
+inline std::uint32_t begin_of(const RangeColumnsView& side, std::uint32_t entry) {
     assert(side.deltas.empty() && "a delta-encoded side is walked");
     if(!side.packed.empty()) {
         return side.packed[entry] == packed_sentinel ? ~std::uint32_t(0) : side.packed[entry] >> 8;
@@ -222,13 +221,15 @@ inline std::uint32_t begin_of(const ArchivedRanges& side, std::uint32_t entry) {
 
 /// The length byte of `entry`: its length, or length_escape for one whose
 /// end the escape table holds.
-inline std::uint8_t stored_length(const ArchivedRanges& side, std::uint32_t entry) {
+inline std::uint8_t stored_length(const RangeColumnsView& side, std::uint32_t entry) {
     return side.packed.empty() ? side.lengths[entry]
                                : static_cast<std::uint8_t>(side.packed[entry] & 0xff);
 }
 
 /// The end of `entry`, which begins at `begin`.
-inline std::uint32_t end_of(const ArchivedRanges& side, std::uint32_t entry, std::uint32_t begin) {
+inline std::uint32_t end_of(const RangeColumnsView& side,
+                            std::uint32_t entry,
+                            std::uint32_t begin) {
     if(!side.packed.empty() && side.packed[entry] == packed_sentinel) {
         return ~std::uint32_t(0);
     }
@@ -239,7 +240,7 @@ inline std::uint32_t end_of(const ArchivedRanges& side, std::uint32_t entry, std
     return begin + length;
 }
 
-inline LocalSourceRange range_of(const ArchivedRanges& side, std::uint32_t entry) {
+inline LocalSourceRange range_of(const RangeColumnsView& side, std::uint32_t entry) {
     auto begin = begin_of(side, entry);
     return {begin, end_of(side, entry, begin)};
 }
@@ -248,7 +249,7 @@ inline LocalSourceRange range_of(const ArchivedRanges& side, std::uint32_t entry
 /// encoding decoded in one pass from the start of `first`'s block; `visit`
 /// returns false to stop.
 template <typename Visit>
-void for_each_range(const ArchivedRanges& side, std::uint32_t first, Visit&& visit) {
+void for_each_range(const RangeColumnsView& side, std::uint32_t first, Visit&& visit) {
     bool delta = !side.deltas.empty();
     std::uint32_t begin = 0;
     for(auto entry = delta ? first - first % delta_block : first; entry < entry_count(side);
@@ -261,7 +262,7 @@ void for_each_range(const ArchivedRanges& side, std::uint32_t first, Visit&& vis
 }
 
 template <typename Visit>
-void for_each_range(const ArchivedRanges& side, Visit&& visit) {
+void for_each_range(const RangeColumnsView& side, Visit&& visit) {
     for_each_range(side, 0, std::forward<Visit>(visit));
 }
 
@@ -269,7 +270,7 @@ void for_each_range(const ArchivedRanges& side, Visit&& visit) {
 /// where `below` holds for a prefix of the entries: a binary search over the
 /// block starts, whose begins are stored, then a scan of one block.
 template <typename Below>
-std::uint32_t partition_point(const ArchivedRanges& side, Below&& below) {
+std::uint32_t partition_point(const RangeColumnsView& side, Below&& below) {
     auto blocks = std::views::iota(std::uint32_t(0), side.block_begins.size());
     auto block = static_cast<std::uint32_t>(
         std::ranges::partition_point(
@@ -297,7 +298,7 @@ std::uint32_t partition_point(const ArchivedRanges& side, Below&& below) {
 
 /// The slice bounds were validated monotonic and in-bounds at load, and
 /// every slice proven to decode, so this cannot fail.
-inline Bitmap bitmap_of(const ArchivedRanges& side, std::uint32_t entry) {
+inline Bitmap bitmap_of(const RangeColumnsView& side, std::uint32_t entry) {
     auto begin = side.roaring_offsets[entry];
     return *read_bitmap(side.roaring.data() + begin, side.roaring_offsets[entry + 1] - begin);
 }
@@ -352,7 +353,7 @@ inline RangeEncoding unsorted_encoding(std::uint32_t content_size) {
 /// 255 or more. Every range is served as a source range into the content,
 /// so it lies inside it — but for the no-range sentinel of pair relations,
 /// which only an unsorted side holds.
-inline CheckResult range_encoding_ok(const ArchivedRanges& side,
+inline CheckResult range_encoding_ok(const RangeColumnsView& side,
                                      std::uint32_t content_size,
                                      RangeEncoding encoding) {
     auto& deltas = side.deltas;
