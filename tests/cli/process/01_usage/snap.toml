@@ -308,7 +308,6 @@ Options:
   --flags <value>                 Compile flags for the file as a JSON string array; replaces the compile_commands.json lookup
   --config-overlay <value>        Configuration overlay as a JSON object of clice.toml sections, over the workspace's configuration
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --check                         Check the results instead of printing them: report where they differ from the same results computed another way
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
 '''

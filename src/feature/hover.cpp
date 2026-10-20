@@ -2009,21 +2009,6 @@ auto hover_info(CompilationUnit& unit,
     return info;
 }
 
-auto hover_info(CompilationUnit& unit, const clang::NamedDecl& decl, const HoverOptions& options)
-    -> HoverInfo {
-    DocumentationOptions documentation;
-    auto display_options = card_display(options);
-    display::ReadableTypes readable(unit.context(), display_options);
-    display_options.readable = &readable;
-    auto info =
-        decl_hover(&decl,
-                   {.unit = unit, .documentation = documentation, .display = display_options});
-    if(options.layout) {
-        add_layout(*templated(&decl), info);
-    }
-    return info;
-}
-
 auto hover(CompilationUnit& unit,
            std::uint32_t offset,
            const HoverOptions& options,
