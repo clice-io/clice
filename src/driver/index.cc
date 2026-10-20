@@ -664,13 +664,21 @@ int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef
     EditorContext contexts{project, commands, saved};
     query::Context ctx{.project = project, .contexts = contexts, .query = query};
     auto handle = locator->handle;
+    auto paths = locator->paths;
     auto named = query::named_symbols(ctx, std::move(*locator));
     if(named) {
         for(auto& located: *named) {
             matches.push_back({located.symbol.hash, located.site.file});
         }
     } else if(handle) {
-        matches.push_back({*handle, Fid{}});
+        // An id names its symbol whether a file places it or not, its path
+        // the file holding its entries.
+        Fid anchor;
+        if(!paths.empty()) {
+            anchor = project.file_table.intern(
+                Spelling(paths.front(), Spelling(project.config.workspace_root)));
+        }
+        matches.push_back({*handle, anchor});
     } else {
         driver::println("{}: {}", std::string_view(text), named.error());
         return 1;

@@ -488,6 +488,10 @@ kota::task<> IndexPump::run_background_indexing() {
         // search scans the symbol records.
         if(project.index.search_rebuild_due(index::SearchRebuild::Idle)) {
             co_await persist(index::SearchRebuild::Idle);
+            // A damaged database the save discarded queued every unit.
+            if(index_queue_pos < index_queue.size()) {
+                schedule(/*immediate=*/true);
+            }
         }
         co_return;
     }

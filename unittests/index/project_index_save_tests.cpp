@@ -293,10 +293,12 @@ ZEST_CASE(RetiredDuringMigration) {
             /*written=*/true);
         return file;
     };
-    Fid last;
+    std::vector<Fid> planted;
     for(std::uint32_t i = 0; i < 600; i += 1) {
-        last = std::max(last, plant(std::format("/proj/f{}.cpp", i)));
+        planted.push_back(plant(std::format("/proj/f{}.cpp", i)));
     }
+    // The last the migration reaches: past its first batch.
+    auto last = std::ranges::max(planted);
     fx.save();
     plant("/proj/next.cpp");
 
@@ -313,6 +315,7 @@ ZEST_CASE(RetiredDuringMigration) {
     loop.run();
     ZEXPECT(!project.index.damaged());
     ZEXPECT(!project.index.shard(last));
+    ZEXPECT(project.index.shard(planted.front()) != nullptr);
 }
 
 ZEST_CASE(RebuildKeepsPendingFindable) {
