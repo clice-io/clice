@@ -44,7 +44,8 @@ const REQUEST_MS = 10 * 60_000;
 /// flight at the deadline are asked this much longer, the rest left unasked.
 const FINISH_MS = 30 * 60_000;
 
-/// A request slower than this is recorded with its time.
+/// A server request slower than this is recorded with its time: inspect's
+/// are not, each compiling its file anew.
 const SLOW_MS = 60_000;
 
 /// The client an editor is: what the answers render for in the cases too.
@@ -371,8 +372,8 @@ export interface SweepRun {
     /// ran out of time in.
     unasked: string[];
     cut: string[];
-    /// The requests slower than SLOW_MS.
-    slow: { file: string; label: string; side: "inspect" | "server"; seconds: number }[];
+    /// The server requests slower than SLOW_MS.
+    slow: { file: string; label: string; seconds: number }[];
 }
 
 export interface SweepOptions {
@@ -486,14 +487,9 @@ async function sweepFile(
     if (cut.size > 0) {
         run.cut.push(file);
     }
-    for (const [side, answers] of [
-        ["inspect", fromInspect],
-        ["server", fromServer],
-    ] as const) {
-        for (const [label, { ms }] of answers) {
-            if (ms > SLOW_MS) {
-                run.slow.push({ file, label, side, seconds: Math.round(ms / 1000) });
-            }
+    for (const [label, { ms }] of fromServer) {
+        if (ms > SLOW_MS) {
+            run.slow.push({ file, label, seconds: Math.round(ms / 1000) });
         }
     }
     const [why] = errors;

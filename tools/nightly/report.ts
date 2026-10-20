@@ -146,13 +146,13 @@ export function report(now: Results, before?: Results): string {
     if (slow.length > 0) {
         lines.push(
             "",
-            `## Requests that took over a minute (${String(slow.length)})`,
+            `## Server requests that took over a minute (${String(slow.length)})`,
             "",
             ...slow
                 .slice(0, 30)
                 .map(
                     (request) =>
-                        `- ${request.file}, ${request.label} (${request.side}): ${String(request.seconds)} s`,
+                        `- ${request.file}, ${request.label}: ${String(request.seconds)} s`,
                 ),
             ...(slow.length > 30 ? ["- ..."] : []),
         );

@@ -74,8 +74,8 @@ export interface Results {
         requests: number;
         inspectSeconds: number;
         serverSeconds: number;
-        /// The requests that took over a minute.
-        slow: { file: string; label: string; side: "inspect" | "server"; seconds: number }[];
+        /// The server requests that took over a minute.
+        slow: { file: string; label: string; seconds: number }[];
     };
     /// Units clice reported errors on that the compiler rejects too.
     compilerRejects: { unit: string; output: string }[];
