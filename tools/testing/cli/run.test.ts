@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, test } from "vitest";
 import { elideCrash } from "../render/lsp.ts";
-import { normalize, splitCommand, stdoutText } from "./run.ts";
+import { normalize, rootRelative, splitCommand, stdoutText } from "./run.ts";
 
 describe("splitCommand", () => {
     test("quotes group words", () => {
@@ -63,5 +63,22 @@ describe("normalize", () => {
         expect(elideCrash("Worker SL-0 exited with code -1073741795 (crash streak: 0)")).toBe(
             "Worker SL-0 ${CRASH} (crash streak: 0)",
         );
+    });
+});
+
+describe("rootRelative", () => {
+    test("a path holding spaces is read one directory at a time", () => {
+        const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "clice-rel-")));
+        try {
+            fs.mkdirSync(path.join(root, "my dir", "sub"), { recursive: true });
+            fs.writeFileSync(path.join(root, "my dir", "sub", "a b.h"), "");
+            fs.writeFileSync(path.join(root, "my dir", "sub", "a b.hpp"), "");
+            const text = `${root}\\my dir\\sub\\a b.h:3:1: note, and ${root}\\gone\\x.h`;
+            expect(rootRelative(text, root, "\\", root)).toBe(
+                "${WS}/my dir/sub/a b.h:3:1: note, and ${WS}/gone\\x.h",
+            );
+        } finally {
+            fs.rmSync(root, { recursive: true });
+        }
     });
 });
