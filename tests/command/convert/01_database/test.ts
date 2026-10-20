@@ -1,11 +1,20 @@
 import { test } from "@clice/tools/testing";
 
 const MISSING = "Toolchain query failed: Driver .*missing-cc not found or not executable";
-const UNRESOLVED = "2 of the converted entries could not be resolved";
+const UNRESOLVED = "of the converted entries could not be resolved";
 
 // Each entry becomes the command clice compiles its file with; the
 // assembler source, which clice does not compile, stays as written. The
 // compiler does not exist, so the run fails after printing the database.
-test({ errors: [MISSING, UNRESOLVED] }, async (t) => {
+test("each entry", { errors: [MISSING, UNRESOLVED] }, async (t) => {
     await t.cli("command convert compile_commands.json");
+});
+
+// A relative directory is the database's own, written out absolute.
+test("a relative directory", { errors: ["Cannot find driver", UNRESOLVED] }, async (t) => {
+    await t.cli("command convert build/compile_commands.json");
+});
+
+test("not a database", { errors: ["holds no array of entries"] }, async (t) => {
+    await t.cli("command convert broken.json");
 });

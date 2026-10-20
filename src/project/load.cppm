@@ -32,7 +32,7 @@ struct BuildLoad {
 void load_sources(Project& project,
                   CanonicalRef root,
                   llvm::StringRef configuration,
-                  llvm::ArrayRef<Spelling> nearby = {});
+                  llvm::ArrayRef<Spelling> nearby);
 
 /// load_sources, then record the `provisional` members the persisted index
 /// remembers, enumerate the build's members and scan the dependency graph

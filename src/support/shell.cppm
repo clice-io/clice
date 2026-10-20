@@ -20,8 +20,8 @@ inline llvm::SmallVector<const char*, 32> tokenize_command(llvm::StringRef comma
     return arguments;
 }
 
-/// The command line tokenize_command splits back into `arguments`: what a
-/// person copies into the host's shell to run the command.
+/// `arguments` as one command line, each quoted as the host's shell and
+/// tokenize_command read it back: what a person copies to run the command.
 inline std::string join_command(llvm::ArrayRef<std::string> arguments) {
     std::string line;
     for(llvm::StringRef argument: arguments) {
@@ -47,21 +47,18 @@ inline std::string join_command(llvm::ArrayRef<std::string> arguments) {
         line.append(backslashes, '\\');
         line += '"';
 #else
-        if(!argument.empty() && llvm::all_of(argument, [](char c) {
-               return llvm::isAlnum(c) || llvm::StringRef("@%+=:,./_-").contains(c);
-           })) {
-            line += argument;
+        // A backslash escapes the character after it, outside quotes and
+        // in LLVM's reading inside them too, so it alone quotes for both.
+        if(argument.empty()) {
+            line += "''";
             continue;
         }
-        line += '\'';
         for(char c: argument) {
-            if(c == '\'') {
-                line += R"('\'')";
-            } else {
-                line += c;
+            if(!llvm::isAlnum(c) && !llvm::StringRef("@%+=:,./_-").contains(c)) {
+                line += '\\';
             }
+            line += c;
         }
-        line += '\'';
 #endif
     }
     return line;

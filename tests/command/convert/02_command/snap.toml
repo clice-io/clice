@@ -10,7 +10,7 @@ exit = 1
 stdout = '''
 {
   "directory": "${WS}",
-  "file": "main.cpp",
+  "file": "${WS}/main.cpp",
   "arguments": [
     "missing-cc",
     "-resource-dir",
@@ -28,12 +28,44 @@ error: The compiler could not be queried, so the command is clice's own reading 
 '''
 exit = 1
 
+["the source in its place"."$ clice command convert -- missing-cc -x c++ -c tool"]
+stdout = "missing-cc -resource-dir ${RESOURCE} -x c++ -D FROM_RULE ${WS}/tool"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-cc
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+["the source in its place"."$ clice command convert -- missing-cc -working-directory sub -c main.cpp"]
+stdout = "missing-cc -resource-dir ${RESOURCE} -working-directory ${WS}/sub -D FROM_RULE ${WS}/sub/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-cc
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+["the source in its place"."$ clice command convert -- missing-cc -x c++ main.c -x c -c"]
+stdout = "missing-cc -resource-dir ${RESOURCE} -x c++ -D FROM_RULE ${WS}/main.c -x c"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-cc
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+["in a subdirectory"."$ clice command convert --workspace .. -- missing-cc -c main.cpp"]
+stdout = "missing-cc -resource-dir ${RESOURCE} -D FROM_RULE ${WS}/sub/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-cc
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
 ["one source a command"."$ clice command convert -- missing-cc -c main.cpp other.cpp"]
-stderr = "error: The command compiles 2 C-family sources (main.cpp, other.cpp); convert takes a command compiling one"
+stderr = "error: The command names 2 C-family sources (${WS}/main.cpp, ${WS}/other.cpp) among its arguments; convert takes a command compiling one"
 exit = 1
 
 ["one source a command"."$ clice command convert -- missing-cc -c"]
-stderr = "error: The command compiles no C-family source; convert takes a command compiling one"
+stderr = "error: The command names no C-family source among its arguments; convert takes a command compiling one"
 exit = 1
 
 ["a database or a command"."$ clice command convert"]

@@ -1,6 +1,6 @@
 {
-  // Each case ships its own database, naming a compiler that does not
-  // exist: the commands clice resolves are then its reading of the
-  // database's, the same on every host.
+  // A case's database is its own, naming a compiler that does not exist:
+  // the commands clice resolves are then its reading of the database's,
+  // the same on every host.
   "databases": {}
 }

@@ -275,24 +275,44 @@ int run_file(const FileOptions& opts) {
     return 0;
 }
 
-/// The C-family sources `command` compiles, as its driver reads its
-/// arguments.
-llvm::SmallVector<std::string> compiled_sources(llvm::ArrayRef<std::string> command) {
+/// The C-family sources `command` names among its arguments, as its
+/// driver reads them: a file clang knows as C-family code by its suffix or
+/// by the language selector before it, anchored where the compile runs,
+/// `directory` moved by -working-directory.
+llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command,
+                                             const Spelling& directory) {
     auto family = Toolchain::driver_family(command.front());
     std::vector<std::string> args(command.begin() + 1, command.end());
     auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
                                               .visibility = family_visibility(family)};
-    llvm::SmallVector<std::string> sources;
+    auto anchor = directory;
+    std::string language;
+    llvm::SmallVector<std::string> inputs;
     for(auto& parsed: option::table().parse(args, options)) {
-        if(!parsed || (parsed->id != option::OPT_INPUT && parsed->id != option::OPT__SLASH_Tc &&
-                       parsed->id != option::OPT__SLASH_Tp)) {
+        if(!parsed) {
             continue;
         }
-        auto input = parsed->values.empty() ? llvm::StringRef(parsed->spelling)
-                                            : llvm::StringRef(parsed->values[0]);
-        if(is_c_family_file(input)) {
-            sources.push_back(input.str());
+        auto id = parsed->id;
+        if(id == option::OPT_working_directory) {
+            anchor = Spelling(llvm::StringRef(parsed->values[0]), directory);
+        } else if(id == option::OPT_x) {
+            llvm::StringRef selected(parsed->values[0]);
+            language = selected == "none" ? "" : selected.str();
+        } else if(id == option::OPT__SLASH_Tc || id == option::OPT__SLASH_Tp) {
+            inputs.push_back(llvm::StringRef(parsed->values[0]).str());
+        } else if(id == option::OPT_INPUT) {
+            auto input = parsed->values.empty() ? llvm::StringRef(parsed->spelling)
+                                                : llvm::StringRef(parsed->values[0]);
+            if(language.empty() ? is_c_family_file(input)
+                                : is_c_family_type(clang::driver::types::lookupTypeForTypeSpecifier(
+                                      language.c_str()))) {
+                inputs.push_back(input.str());
+            }
         }
+    }
+    llvm::SmallVector<Spelling> sources;
+    for(auto& input: inputs) {
+        sources.emplace_back(input, anchor);
     }
     return sources;
 }
@@ -300,39 +320,46 @@ llvm::SmallVector<std::string> compiled_sources(llvm::ArrayRef<std::string> comm
 /// Convert the command given after --, which runs in the current
 /// directory.
 int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, bool json) {
-    auto sources = compiled_sources(command);
+    auto directory = Spelling::cwd();
+    auto sources = compiled_sources(command, directory);
     if(sources.size() != 1) {
-        LOG_ERROR("The command compiles {}; convert takes a command compiling one",
-                  sources.empty() ? "no C-family source"
-                                  : std::format("{} C-family sources ({})",
-                                                sources.size(),
-                                                llvm::join(sources, ", ")));
+        LOG_ERROR("The command names {} among its arguments; convert takes a command compiling one",
+                  sources.empty()
+                      ? "no C-family source"
+                      : std::format("{} C-family sources ({})",
+                                    sources.size(),
+                                    llvm::join(llvm::map_range(sources,
+                                                               [](const Spelling& source) {
+                                                                   return source.str();
+                                                               }),
+                                               ", ")));
         return 1;
     }
     auto& project = *workspace.project;
     auto& cdb = project.cdb;
-    CanonicalPath root(workspace.root);
-    cdb.set_workspace_root(root);
+    cdb.set_workspace_root(CanonicalPath(workspace.root));
     project.build.reset_active(workspace.configuration);
 
-    auto directory = Spelling::cwd();
     llvm::SmallVector<const char*> argv;
     for(auto& argument: command) {
         argv.push_back(argument.c_str());
     }
-    auto config = cdb.intern_command(directory, argv);
-    if(!config) {
+    auto entry = cdb.add_command(directory.str(), sources.front().str(), argv);
+    if(!entry) {
         LOG_ERROR("Not a compile command: {}", join_command(command));
         return 1;
     }
-    auto file = project.file_table.intern(Spelling(sources.front(), directory));
-    CanonicalRef identity = project.file_table.resolve(file);
-    auto ref = project.build.resolve(file, *config, CommandSource::CDBExact, identity, identity);
+    CanonicalRef identity = project.file_table.resolve(entry->file);
+    auto ref = project.build.resolve(entry->file,
+                                     entry->config,
+                                     CommandSource::CDBExact,
+                                     identity,
+                                     identity);
     cdb.warm(ref);
     auto rendered = render_command(cdb, ref);
     if(json) {
         print_json(DatabaseEntry{.directory = directory.str(),
-                                 .file = sources.front(),
+                                 .file = sources.front().str(),
                                  .arguments = rendered.arguments});
     } else {
         driver::println("{}", join_command(rendered.arguments));
@@ -344,12 +371,15 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
     return 0;
 }
 
-/// Convert every entry of the database at `path`, printing the database of
+/// Convert every entry of the database `path` names, a .json file or a
+/// directory holding a compile_commands.json, printing the database of
 /// converted entries.
 int convert_database(Workspace& workspace, const Spelling& path) {
-    auto written = read_database(path);
-    if(!written) {
-        LOG_ERROR("{}", written.error());
+    if(path::extension(path.str()) != ".json" && !vfs::is_directory(path)) {
+        LOG_ERROR(
+            "{}: a compilation database is a .json file, or a directory holding a "
+            "compile_commands.json",
+            path);
         return 1;
     }
     auto& project = *workspace.project;
@@ -358,8 +388,14 @@ int convert_database(Workspace& workspace, const Spelling& path) {
     cdb.set_workspace_root(CanonicalPath(workspace.root));
     project.build.reset_active(workspace.configuration);
     auto source = cdb.add_source(path);
+    auto database = Spelling::absolute(cdb.source_path(source));
+    auto written = read_database(database);
+    if(!written) {
+        LOG_ERROR("{}", written.error());
+        return 1;
+    }
     if(!cdb.load_source(source)) {
-        LOG_ERROR("{} changed while it was read; run the command again", path);
+        LOG_ERROR("{} changed while it was read; run the command again", database);
         return 1;
     }
 
@@ -379,27 +415,29 @@ int convert_database(Workspace& workspace, const Spelling& path) {
 
     // A relative directory is relative to the database's own; written out,
     // the database is read from anywhere.
-    auto base = Spelling::absolute(path).parent();
+    auto base = database.parent();
     std::size_t unresolved = 0;
     std::vector<kota::codec::RawValue> converted;
     converted.reserve(written->size());
     for(std::uint32_t index = 0; index < written->size(); index += 1) {
         auto& value = (*written)[index];
-        auto ref = refs.find(index);
         WrittenEntry entry;
-        // An entry clice skips (another language's source, a malformed
-        // one) is left as it is.
-        if(ref == refs.end() || !kota::codec::json::from_string(value.data, entry)) {
+        // A malformed entry, which clice skips, is left as it is.
+        if(!kota::codec::json::from_string(value.data, entry)) {
             converted.push_back(std::move(value));
             continue;
         }
-        auto rendered = render_command(cdb, ref->second);
-        if(rendered.error) {
-            unresolved += 1;
-        }
         entry.directory = Spelling(entry.directory, base).str();
-        entry.arguments = to_raw(rendered.arguments);
-        entry.command = std::nullopt;
+        // So is the command of one clice does not compile, another
+        // language's source.
+        if(auto ref = refs.find(index); ref != refs.end()) {
+            auto rendered = render_command(cdb, ref->second);
+            if(rendered.error) {
+                unresolved += 1;
+            }
+            entry.arguments = to_raw(rendered.arguments);
+            entry.command = std::nullopt;
+        }
         converted.push_back(to_raw(entry));
     }
     print_json(converted);
