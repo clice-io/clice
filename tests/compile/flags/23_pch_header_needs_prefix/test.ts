@@ -8,6 +8,7 @@ import { test } from "@clice/tools/testing";
 // main.cpp includes before it, as any header that needs its includer.
 test("the includer's context", async (t) => {
     const s = await t.start();
+    await s.indexed();
     await t.show("widget.h", s.diagnostics("widget.h"));
     for (const m of t.markers()) {
         await t.show(m.name, s.hover(m));
