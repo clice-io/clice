@@ -1193,6 +1193,10 @@ llvm::ArrayRef<CompilationEntry> CompilationDatabase::pch_writers(Fid pch) const
 }
 
 bool CompilationDatabase::precompiled(ConfigID id, llvm::StringRef header) const {
+    // FIXME: only CMake's naming is known, the PCH beside the header it is
+    // built from. A generator naming it otherwise
+    // (`-include-pch build/precompiled.pch -include pch.h`) leaves the
+    // header a plain forced include.
     auto directory = working_directory(config(id));
     Spelling path(header, directory);
     auto written = [&](const char* suffix) {

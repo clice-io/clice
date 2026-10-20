@@ -132,12 +132,22 @@ static std::vector<std::string> self_includes(Project& project, Fid file, const 
     auto resolved = resolve_search_config(search, scope);
     llvm::StringRef directory = project.cdb.config(ref.config).directory;
     for(auto& name: search.forced_includes) {
+        // FIXME: a plain forced include that reads `file` (the kernel's
+        // kconfig.h, compiler-clang.h) still enters it before its own
+        // text. Leaving it out needs to know this command really enters
+        // `file` through it: the graph also follows includes inside an
+        // `#if` the command never takes.
         if(!project.cdb.precompiled(ref.config, name)) {
             continue;
         }
         auto header = resolve_forced_include(name, directory, resolved, scope);
         auto header_id =
             header ? project.file_table.find(Spelling::absolute(header->path)) : std::nullopt;
+        // FIXME: for cl's `/Yu` header, of which clice builds no PCH, an
+        // include of `file` inside an `#if` the command never takes still
+        // leaves the header out, and with it the macros it defines first.
+        // A PCH clang or GCC loads makes up for it: one that never read
+        // `file` is loaded.
         if(header_id && graph.reaches(*header_id, file)) {
             LOG_INFO("resolve_command: {} leaves out -include {}, which reads it",
                      project.file_table.resolve(file),
