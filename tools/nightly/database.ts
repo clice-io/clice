@@ -76,9 +76,12 @@ const SEARCH = ["-I", "-iquote", "-isystem", "-idirafter"];
 
 /// The checkout-relative headers inside `checkout` the units include
 /// themselves, found as each unit's own search paths find them: the headers
-/// a reader of those units opens, each with a unit to compile it in.
-export function includedHeaders(checkout: string, entries: readonly DatabaseEntry[]): string[] {
-    const headers = new Set<string>();
+/// a reader of those units opens, each with the first unit including it.
+export function includedHeaders(
+    checkout: string,
+    entries: readonly DatabaseEntry[],
+): Map<string, string> {
+    const headers = new Map<string, string>();
     for (const entry of entries) {
         const source = entrySource(entry);
         let text: string;
@@ -109,11 +112,14 @@ export function includedHeaders(checkout: string, entries: readonly DatabaseEntr
                 !relative.startsWith("..") &&
                 !path.isAbsolute(relative)
             ) {
-                headers.add(relative.split(path.sep).join("/"));
+                const header = relative.split(path.sep).join("/");
+                if (!headers.has(header)) {
+                    headers.set(header, source);
+                }
             }
         }
     }
-    return [...headers].sort();
+    return headers;
 }
 
 /// Arguments that write files beside a compile: the object and the

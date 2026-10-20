@@ -34,8 +34,9 @@ export function missingInputs(args: readonly string[], directory: string): strin
         .filter((file) => !fs.existsSync(path.resolve(directory, file)));
 }
 
-/// Each unit (`item.unit`) with what the compiler says of it.
-export async function confirm<T extends { unit: string }>(
+/// Each unit (`item.unit`) with what the compiler says of it; a header
+/// with what it says of the unit including it (`item.host`).
+export async function confirm<T extends { unit: string; host?: string }>(
     entries: readonly DatabaseEntry[],
     items: readonly T[],
 ): Promise<(T & CompilerCheck)[]> {
@@ -89,7 +90,7 @@ export async function confirm<T extends { unit: string }>(
     };
     const worker = async () => {
         for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
-            checks.push({ ...item, ...(await check(item.unit)) });
+            checks.push({ ...item, ...(await check(item.host ?? item.unit)) });
         }
     };
     await Promise.all(Array.from({ length: os.availableParallelism() }, worker));

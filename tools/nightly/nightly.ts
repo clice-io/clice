@@ -282,10 +282,11 @@ async function sweepStep(
     const { job } = options;
     const units = entries.flatMap((entry) => inside(checkout, entrySource(entry)) ?? []);
     const seed = `${options.seed} ${job.name}`;
+    const hosts = includedHeaders(checkout, entries);
     const files = options.files ?? [
         ...sampleFiles(units, job.project.sample, seed),
         ...sampleHeaders(
-            includedHeaders(checkout, entries).filter((file) => inJob(job, checkout, file)),
+            [...hosts.keys()].filter((file) => inJob(job, checkout, file)),
             Math.ceil(job.project.sample / 4),
             seed,
         ),
@@ -293,6 +294,7 @@ async function sweepStep(
     const run = await sweep({
         root: checkout,
         files,
+        headers: new Set(files.filter((file) => hosts.has(file) && !units.includes(file))),
         deadline: Math.min(Date.now() + SWEEP_MS, jobEnd),
         ...(options.only === undefined ? {} : { only: options.only }),
     });
@@ -344,6 +346,7 @@ async function sweepStep(
             .filter(({ file }) => !judged.has(file))
             .map(({ file, errors }) => ({
                 unit: path.join(checkout, file),
+                ...(hosts.has(file) ? { host: hosts.get(file) } : {}),
                 errors,
                 request: "errors",
                 repro: rerun(options, `--steps sweep --file ${file} --only errors`),

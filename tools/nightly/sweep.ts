@@ -390,6 +390,9 @@ export interface SweepRun {
 export interface SweepOptions {
     root: string;
     files: readonly string[];
+    /// The headers among them, asked of the server alone: it compiles one
+    /// inside a unit including it, inspect alone.
+    headers: ReadonlySet<string>;
     /// No file is begun after this time.
     deadline: number;
     only?: ReadonlySet<Request>;
@@ -413,6 +416,9 @@ async function sweepFile(
         const answers = new Map<string, Answer>();
         if (importsModule(file, text)) {
             return { answers, errors: ["imports a module"] };
+        }
+        if (options.headers.has(file)) {
+            return { answers, errors: ["a header, which the server compiles in a unit"] };
         }
         if (compared.length === 0) {
             return { answers, errors: [] };

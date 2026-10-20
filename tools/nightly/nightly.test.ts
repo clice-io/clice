@@ -93,15 +93,17 @@ describe("database", () => {
             write("Include/a.h");
             write("Python/cases.c.h");
             write("Python/ceval.c", '#include "cases.c.h"\n#  include <a.h>\n#include <stdio.h>\n');
-            expect(
-                includedHeaders(root, [
-                    {
-                        directory: root,
-                        file: "Python/ceval.c",
-                        arguments: ["clang", "-I", "Include", "-c", "Python/ceval.c"],
-                    },
-                ]),
-            ).toEqual(["Include/a.h", "Python/cases.c.h"]);
+            const included = includedHeaders(root, [
+                {
+                    directory: root,
+                    file: "Python/ceval.c",
+                    arguments: ["clang", "-I", "Include", "-c", "Python/ceval.c"],
+                },
+            ]);
+            expect([...included]).toEqual([
+                ["Python/cases.c.h", path.join(root, "Python/ceval.c")],
+                ["Include/a.h", path.join(root, "Python/ceval.c")],
+            ]);
         } finally {
             fs.rmSync(root, { recursive: true });
         }

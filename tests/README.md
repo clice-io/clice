@@ -449,9 +449,10 @@ an exemption naming nothing uncovered fails too.
   a project too large for one runner split into parts. Every night a free
   runner per project or part and platform (Linux, macOS, Windows; a project
   names the ones it builds on) (`nightly-projects.yml`) prepares it, indexes it
-  from a cold cache and asks the features on sampled sources and headers they
-  include: inspect and a
-  server the same requests at the same places, the server also navigation.
+  from a cold cache and asks the features on sampled sources: inspect and a
+  server the same requests at the same places, the server also navigation;
+  headers those sources include are asked of the server alone, which compiles
+  one inside a unit including it.
   The job fails on a preparation that fails, a crash, a hang, an index run
   that does not finish, an anomaly in clice's logs, a request either answers
   with an error, a unit clice fails or reports errors on that the compiler
