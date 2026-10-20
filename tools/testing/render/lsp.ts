@@ -90,10 +90,21 @@ export class AnswerContext {
         if (reply === null || reply === undefined) {
             return [];
         }
+        // A reply can name one file thousands of times, and resolving a path
+        // costs a file open each on Windows.
+        const paths = new Map<string, string>();
+        const pathOf = (uri: string) => {
+            let shown = paths.get(uri);
+            if (shown === undefined) {
+                shown = this.path(uri);
+                paths.set(uri, shown);
+            }
+            return shown;
+        };
         return (Array.isArray(reply) ? reply : [reply]).map((entry) =>
             "uri" in entry
-                ? this.location(entry)
-                : { path: this.path(entry.targetUri), range: entry.targetSelectionRange },
+                ? { path: pathOf(entry.uri), range: entry.range }
+                : { path: pathOf(entry.targetUri), range: entry.targetSelectionRange },
         );
     }
 
