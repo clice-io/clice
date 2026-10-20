@@ -411,7 +411,7 @@ async function sweepFile(
 
     const inspected = (async () => {
         const answers = new Map<string, Answer>();
-        if (importsModule(text)) {
+        if (importsModule(file, text)) {
             return { answers, errors: ["imports a module"] };
         }
         if (compared.length === 0) {

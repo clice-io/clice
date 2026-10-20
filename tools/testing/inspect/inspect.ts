@@ -99,8 +99,7 @@ interface RawSignatureHelp {
               label: string;
               documentation?: string | null;
               parameters?:
-                  | { label: string | [number, number]; documentation?: string | null }[]
-                  | null;
+                  { label: string | [number, number]; documentation?: string | null }[] | null;
               active_parameter?: number | null;
           }[]
         | null;
@@ -202,9 +201,11 @@ function byteOf(text: string, offset: number): number {
 /// inactive branch counts too.
 const MODULE_IMPORT = /^[ \t]*(?:export[ \t]+)?import(?:[ \t]+\w|[ \t]*(?:[<"]|:(?!:)))/m;
 
-/// Whether a source imports a module: inspect has no answer for it.
-export function importsModule(text: string): boolean {
-    return MODULE_IMPORT.test(text);
+/// Whether a source imports a module: inspect has no answer for it. A C
+/// source imports none: an `import` line there is prose in a comment
+/// (CPython's Argument Clinic blocks).
+export function importsModule(file: string, text: string): boolean {
+    return !file.endsWith(".c") && MODULE_IMPORT.test(text);
 }
 
 function rangeKey({ begin, end }: RawRange): string {
@@ -232,7 +233,9 @@ export class Inspect extends Client {
     ) {
         super(marks);
         this.root = root;
-        this.importers = new Set(options.sources.filter((file) => importsModule(this.text(file))));
+        this.importers = new Set(
+            options.sources.filter((file) => importsModule(file, this.text(file))),
+        );
         this.sources = options.sources.filter((file) => !this.importers.has(file));
         this.config = options.config;
         if (options.config !== undefined) {
