@@ -574,7 +574,7 @@ auto printing_policy(clang::ASTContext& context, const Options& options) -> clan
         // date, its macro flag unset.
         auto* name = context.getBoolName();
         if(name->isOutOfDate()) {
-            context.Idents.getExternalIdentifierLookup()->get(name->getName());
+            context.getExternalSource()->updateOutOfDateIdentifier(*name);
         }
         policy.Bool = name->hasMacroDefinition();
     }
