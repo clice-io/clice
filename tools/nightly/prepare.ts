@@ -96,13 +96,22 @@ async function buildGenerated(build: string): Promise<void> {
         out.push(line);
     }
     fs.writeFileSync(ninja, out.join("\n"));
-    const targets = (await output("ninja", ["-t", "targets", "rule", "CUSTOM_COMMAND"], build))
+    const generated = (await output("ninja", ["-t", "targets", "rule", "CUSTOM_COMMAND"], build))
         .split(/\r?\n/)
-        .filter((target) => !path.isAbsolute(target) && /\.(cpp|h|inc)$/.test(target));
-    // A few hundred targets a command: Windows bounds a command line at
-    // 32767 characters, and LLVM has over a thousand.
-    for (let i = 0; i < targets.length; i += 300) {
-        await stream("ninja", ["-k", "0", ...targets.slice(i, i + 300)], build);
+        .filter((target) => !path.isAbsolute(target));
+    // Generated TableGen files (MLIR's AccCommon.td) are built first: the
+    // TableGen runs that include them came after them only through the
+    // order-only dependencies dropped above.
+    const passes = [
+        generated.filter((target) => target.endsWith(".td")),
+        generated.filter((target) => /\.(cpp|h|inc)$/.test(target)),
+    ];
+    for (const targets of passes) {
+        // A few hundred targets a command: Windows bounds a command line at
+        // 32767 characters, and LLVM has over a thousand.
+        for (let i = 0; i < targets.length; i += 300) {
+            await stream("ninja", ["-k", "0", ...targets.slice(i, i + 300)], build);
+        }
     }
 }
 
