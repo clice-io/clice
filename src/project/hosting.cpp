@@ -128,8 +128,16 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
         }
         found.push_back(std::move(entering));
     }
-    if(forced && found.empty()) {
-        auto chain = project.dep_graph.find_include_chain(host, header);
+    // Through a precompiled header the forced file stands for, the header
+    // was entered before the tree began: the unit's own includes of it
+    // show skipped.
+    auto& graph = project.dep_graph;
+    auto forced_reads = [&] {
+        return llvm::any_of(graph.get_forced_includes(host),
+                            [&](Fid file) { return graph.reaches(file, header); });
+    };
+    if(found.empty() && (forced || forced_reads())) {
+        auto chain = graph.find_include_chain(host, header);
         if(!chain.empty()) {
             found.push_back({.file = host, .chain = std::move(chain)});
         }

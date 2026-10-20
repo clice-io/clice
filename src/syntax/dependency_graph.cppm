@@ -96,6 +96,9 @@ public:
     /// The units whose commands force `header` in.
     llvm::ArrayRef<Fid> get_forcing_units(Fid header) const;
 
+    /// The headers `unit`'s commands force in.
+    llvm::ArrayRef<Fid> get_forced_includes(Fid unit) const;
+
     /// A scan group: the command its units resolve includes under.
     std::uint32_t add_group(const CommandRef& command);
     const CommandRef& group(std::uint32_t id) const;
