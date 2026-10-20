@@ -273,13 +273,23 @@ std::uint32_t DependencyGraph::count_includes(Fid includer, Fid target) const {
 }
 
 void DependencyGraph::add_forced_include(Fid unit, Fid header) {
-    insert_sorted(forced_includes[unit], header);
+    if(auto& forced = forced_includes[unit]; !llvm::is_contained(forced, header)) {
+        forced.push_back(header);
+    }
     insert_sorted(forcing_units[header], unit);
 }
 
 llvm::ArrayRef<Fid> DependencyGraph::get_forcing_units(Fid header) const {
     auto it = forcing_units.find(header);
     if(it != forcing_units.end()) {
+        return it->second;
+    }
+    return {};
+}
+
+llvm::ArrayRef<Fid> DependencyGraph::get_forced_includes(Fid unit) const {
+    auto it = forced_includes.find(unit);
+    if(it != forced_includes.end()) {
         return it->second;
     }
     return {};
@@ -587,23 +597,15 @@ struct FileScanner {
         return *search;
     }
 
-    /// A group's forced includes, resolved the way clang resolves them:
-    /// from the compile's working directory, then as a quoted include.
-    /// The compile reports the ones that resolve nowhere.
+    /// A group's forced includes, resolved; the compile reports the ones
+    /// that resolve nowhere.
     llvm::ArrayRef<CachedInclude> forced_of(std::uint32_t group) {
         auto [it, inserted] = forced_cache.try_emplace(group);
         if(inserted) {
             auto& search = search_of(group);
             llvm::StringRef directory = cdb.config(graph.group(group).config).directory;
             for(auto& name: search.config.forced_includes) {
-                if(auto found = resolve_include(name,
-                                                false,
-                                                &scope.list(directory),
-                                                directory,
-                                                false,
-                                                std::nullopt,
-                                                search.resolved,
-                                                scope)) {
+                if(auto found = resolve_forced_include(name, directory, search.resolved, scope)) {
                     it->second.push_back({
                         .path_id = files.intern_spelled(Spelling::absolute(found->path)),
                         .found_dir_idx = found->found_dir_idx,

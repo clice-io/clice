@@ -88,13 +88,15 @@ public:
 
     /// Record that a command of `unit` includes `header` ahead of the
     /// unit's text (`-include`). A command fact, not a directive in any
-    /// file's text: it stays out of the include edges, so hosting and
-    /// context synthesis, which cut a host's text at a directive, never
-    /// walk it.
+    /// file's text: it stays out of the include edges, as no cut of the
+    /// unit's text reproduces it.
     void add_forced_include(Fid unit, Fid header);
 
     /// The units whose commands force `header` in.
     llvm::ArrayRef<Fid> get_forcing_units(Fid header) const;
+
+    /// The headers `unit`'s commands force in, in the order they do.
+    llvm::ArrayRef<Fid> get_forced_includes(Fid unit) const;
 
     /// A scan group: the command its units resolve includes under.
     std::uint32_t add_group(const CommandRef& command);
@@ -202,7 +204,8 @@ private:
     /// Populated by build_reverse_map().
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> reverse_includes;
 
-    /// Unit -> headers its commands force in, and the inverse, sorted.
+    /// Unit -> headers its commands force in, in command order, and the
+    /// inverse, sorted.
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 1>> forced_includes;
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> forcing_units;
 

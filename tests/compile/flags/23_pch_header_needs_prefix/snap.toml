@@ -1,0 +1,59 @@
+["the context of an indexed host"."widget.h"]
+diagnostics = []
+
+["the context of an indexed host".config.hover]
+markdown = '''
+**struct** `Config`
+
+```cpp
+struct Config {
+  int size;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "⟦Config⟧ config;"
+
+["the context of an indexed host".cells.hover]
+markdown = '''
+**macro** `CELLS`
+
+```cpp
+#define CELLS 4
+```
+Expands to:
+```cpp
+4
+```
+'''
+range = "int cells[⟦CELLS⟧];"
+
+["the context before the index"."widget.h"]
+diagnostics = []
+
+["the context before the index".config.hover]
+markdown = '''
+**struct** `Config`
+
+```cpp
+struct Config {
+  int size;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "⟦Config⟧ config;"
+
+["the context before the index".cells.hover]
+markdown = '''
+**macro** `CELLS`
+
+```cpp
+#define CELLS 4
+```
+Expands to:
+```cpp
+4
+```
+'''
+range = "int cells[⟦CELLS⟧];"

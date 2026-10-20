@@ -238,6 +238,82 @@ ZEST_CASE(UnmatchedChainWantsTree) {
     ZEXPECT(resolution.tree_wanted == a);
 }
 
+ZEST_CASE(ForcedChainDropsIncludes) {
+    /// main.cpp's command forces in config.h, pch.h, later.h and config.h
+    /// again; pch.h and later.h both include part.h, which part.h's compile
+    /// enters through pch.h, the first. Its command keeps what comes before
+    /// pch.h alone; a context replaces pch.h by its text before the
+    /// include. pch.h itself keeps config.h alone. later.h is named before
+    /// the scan, so the order the command forces them in decides, not the
+    /// order files were named in.
+    TempDir tmp;
+    tmp.touch("config.h", "#pragma once\n");
+    tmp.touch("pch.h", R"(#pragma once
+#define FROM_PCH 1
+#include "part.h"
+)");
+    tmp.touch("later.h", R"(#pragma once
+#include "part.h"
+)");
+    tmp.touch("part.h", "#pragma once\n");
+    tmp.touch("main.cpp", R"(#include "part.h")");
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root,
+                   tmp.path("main.cpp"),
+                   {"-include",
+                    "config.h",
+                    "-include",
+                    "pch.h",
+                    "-include",
+                    "later.h",
+                    "-include",
+                    "config.h"}},
+    }));
+    FileTable files;
+    Project project{files};
+    CommandResolver resolver(project);
+    project.file_table.intern(Spelling::absolute(tmp.path("later.h")));
+    project.config.rules.push_back(ConfigRule{.compile_commands = {"build"}});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+    for(auto source: project.build.declared_sources()) {
+        project.cdb.load(source);
+    }
+    project.rebuild_dependency_graph();
+
+    auto forced = [&](Fid file) {
+        std::string directory;
+        std::vector<std::string> arguments;
+        auto resolution = resolver.resolve_command(file, directory, arguments);
+        std::vector<std::string> names;
+        for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
+            if(arguments[i] == "-include") {
+                names.push_back(arguments[i + 1]);
+            }
+        }
+        return std::pair(std::move(resolution), names);
+    };
+    auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    auto pch = project.file_table.intern(Spelling::absolute(tmp.path("pch.h")));
+    auto part = project.file_table.intern(Spelling::absolute(tmp.path("part.h")));
+    ZEXPECT(forced(main).second ==
+            std::vector<std::string>{"config.h", "pch.h", "later.h", "config.h"});
+    ZEXPECT(forced(part).second == std::vector<std::string>{"config.h"});
+    ZEXPECT(forced(pch).second == std::vector<std::string>{"config.h"});
+
+    resolver.record_header_mode(part, HeaderMode::NeedsContext);
+    auto [resolution, names] = forced(part);
+    ZASSERT(resolution.synthesized);
+    ZEXPECT(resolution.forced == pch);
+    ZASSERT(names.size() == 2u);
+    ZEXPECT(names[0] == "config.h");
+    ZEXPECT(names[1] == resolution.synthesized->prefix);
+    ZEXPECT(llvm::any_of(resolution.synthesized->files, [](const SynthesizedFile& file) {
+        return llvm::StringRef(file.content).contains("FROM_PCH");
+    }));
+}
+
 };  // ZEST_SUITE(CommandResolver)
 
 }  // namespace

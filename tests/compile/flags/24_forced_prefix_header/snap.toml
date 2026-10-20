@@ -1,0 +1,14 @@
+["headers of a forced include"."ready.h"]
+diagnostics = []
+
+["headers of a forced include"."later.h"]
+diagnostics = []
+
+["headers of a forced include"."prefix.h"]
+diagnostics = []
+
+["headers of a forced include".later]
+definition = ["prefix.h │ #define ⟦READY⟧ 1"]
+
+["headers of a forced include".ready]
+definition = ["prefix.h │ #define ⟦READY⟧ 1"]
