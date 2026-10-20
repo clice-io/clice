@@ -46,6 +46,33 @@ const bool retain = [] {
     return true;
 }();
 
+void collect() {
+    mi_collect(true);
+}
+
+/// With a negative delay mimalloc schedules nothing for purging, and no
+/// collect returns it. A second's delay leaves what a request frees and
+/// reuses alone; the collect after it returns the rest.
+void purge() {
+    mi_option_set(mi_option_purge_delay, 1000);
+}
+
+}  // namespace
+
+extern "C" {
+
+    extern void (*clice_allocator_collect)();
+    extern void (*clice_allocator_purge)();
+}
+
+namespace {
+
+const bool hooked = [] {
+    clice_allocator_collect = &collect;
+    clice_allocator_purge = &purge;
+    return true;
+}();
+
 }  // namespace
 
 extern "C" {

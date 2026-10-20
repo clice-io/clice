@@ -1686,8 +1686,8 @@ std::optional<CompilationEntry>
     if(!normalized) {
         return std::nullopt;
     }
-    /// Tests accumulate commands into one anonymous source; its path is
-    /// empty, which no real database can have.
+    /// Commands added one at a time accumulate into one anonymous source;
+    /// its path is empty, which no real database can have.
     auto anonymous = std::ranges::find_if(source_files,
                                           [](const Source& source) { return source.path.empty(); });
     if(anonymous == source_files.end()) {

@@ -629,6 +629,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 
     LOG_INFO("Starting stateless worker");
     install_crash_report();
+    purge_freed_memory();
 
     kota::event_loop loop;
 

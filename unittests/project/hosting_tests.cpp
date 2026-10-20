@@ -1,6 +1,9 @@
 module;
 
 #include "modules/prelude.h"
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 module clice;
 
@@ -325,6 +328,33 @@ ZEST_CASE(LenderSearchDir) {
     auto source = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.cpp")));
     ZEXPECT(command_lender(project, source)->unit == near.file);
 };
+
+#ifndef _WIN32
+ZEST_CASE(LenderSearchDirSymlink) {
+    /// A command's search directory reaching the header through a symlink
+    /// lends it that command, over the unit beside the header's real path.
+    TempDir tmp;
+    tmp.touch("vendor/real/orphan.h", "");
+    tmp.touch("a/main.cpp", "");
+    ZASSERT(::symlink(tmp.path("vendor/real").c_str(), tmp.path("a/inc").c_str()) == 0);
+    FileTable files;
+    Project project{files};
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+    auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
+        tmp.touch(file, "");
+        auto command = std::format("clang++ {} {}", flags, tmp.path(file));
+        return *project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+    };
+    auto searching = add("a/main.cpp", std::format("-I{}", tmp.path("a/inc")));
+    add("vendor/b.cpp", "");
+
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("vendor/real/orphan.h")));
+    auto lender = command_lender(project, header);
+    ZASSERT(lender);
+    ZEXPECT(lender->unit == searching.file);
+};
+#endif
 
 ZEST_CASE(LenderIgnoresCommandless) {
     /// A member a rule covers with a default command that is no compile

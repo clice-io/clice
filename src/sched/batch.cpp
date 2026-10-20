@@ -182,7 +182,8 @@ bool start_batch(BatchStack& stack,
     cfg.idle_timeout_ms.value = 0;
     if(workers != 0) {
         cfg.stateless_worker_count.value = workers;
-        cfg.min_stateless_worker_count.value = workers;
+        cfg.min_stateless_worker_count.value =
+            std::min(cfg.min_stateless_worker_count.value, workers);
         cfg.max_stateless_worker_count.value = workers;
     }
 
@@ -217,10 +218,12 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     ScopedTimer timer;
     auto& project = stack.project;
 
+    // The machine is the run's: every logical core, while memory admits
+    // the units.
     bool started = start_batch(stack,
                                options.config,
                                options.root,
-                               options.workers,
+                               options.workers != 0 ? options.workers : kota::sys::parallelism(),
                                options.self_path,
                                "index");
     result.log_dir = stack.log_dir;
@@ -304,10 +307,17 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     result.shard_count = project.index.shard_count();
     result.shard_bytes = project.index.shard_bytes();
     result.symbol_count = project.index.symbol_count();
+    auto& too_big = stack.sched.pump.too_big();
     for(auto file: stack.sched.pump.failed()) {
-        result.failed.emplace_back(project.file_table.display(file));
+        if(auto it = too_big.find(file); it != too_big.end()) {
+            result.too_big.push_back(
+                {.unit = project.file_table.display(file), .memory = it->second});
+        } else {
+            result.failed.emplace_back(project.file_table.display(file));
+        }
     }
     std::ranges::sort(result.failed);
+    std::ranges::sort(result.too_big, {}, &BatchResult::TooBig::unit);
     for(auto& [unit, errors]: stack.sched.pump.compiled_with_errors()) {
         auto& shown = result.compiled_with_errors.emplace_back(
             BatchResult::UnitErrors{.unit = project.file_table.display(unit), .errors = errors});
@@ -316,7 +326,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         }
     }
     std::ranges::sort(result.compiled_with_errors, {}, &BatchResult::UnitErrors::unit);
-    if(!result.failed.empty() || result.unsaved) {
+    if(!result.failed.empty() || !result.too_big.empty() || result.unsaved) {
         result.exit_code = 1;
     }
     result.seconds = timer.ms() / 1000.0;
@@ -383,8 +393,13 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
 
     // One retry: a lost run or a preemption says nothing about the TU, and
     // a one-shot pass has no later round to requeue into. A run that
-    // crashed its worker would crash the retry too.
+    // crashed its worker would crash the retry too. One whose memory ran
+    // out beside other work reruns until it fits or is found too big:
+    // each rerun waits for at least the memory the last one reached.
     auto outcome = co_await stack.sched.turun.run(path_id, plan);
+    while(outcome.result == TURunFamily::Result::OutOfMemory) {
+        outcome = co_await stack.sched.turun.run(path_id, plan);
+    }
     if(outcome.result == TURunFamily::Result::Lost ||
        outcome.result == TURunFamily::Result::Preempted) {
         outcome = co_await stack.sched.turun.run(path_id, std::move(plan));
@@ -429,8 +444,17 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
             LOG_WARN("Lint gave up on {}: {}", file, outcome.error);
             break;
         }
+        case TURunFamily::Result::TooBig: {
+            failed = true;
+            LOG_WARN(
+                "Lint gave up on {}: it does not fit in memory, its worker reached {} MiB alone",
+                file,
+                outcome.memory >> 20);
+            break;
+        }
         case TURunFamily::Result::Lost:
-        case TURunFamily::Result::Preempted: {
+        case TURunFamily::Result::Preempted:
+        case TURunFamily::Result::OutOfMemory: {
             failed = true;
             LOG_WARN("Lint gave up on {} after a retry: {}", file, outcome.error);
             break;
@@ -463,7 +487,7 @@ kota::task<> run_lint_pass(BatchStack& stack,
         for(auto path_id: tus) {
             // The pump feeder's window: deep enough that workers never
             // idle, shallow enough that a wind-down drains fast.
-            while(pass.inflight >= std::max<std::size_t>(2 * stack.pool.effective_low_limit(), 2)) {
+            while(pass.inflight >= 2 * stack.pool.background_limit()) {
                 pass.task_done.reset();
                 co_await pass.task_done.wait();
             }

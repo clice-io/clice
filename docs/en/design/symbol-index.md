@@ -167,7 +167,7 @@ Staleness detection determines whether a file needs to be re-indexed. Each index
 Background indexing scheduling must balance index timeliness against interference with user interaction. The index module employs the following strategies:
 
 - **Queue with idle delay**: Files that need indexing are added to a queue, and processing begins only after the editor has been idle for a configurable period. This avoids triggering index tasks during rapid editing.
-- **Foreground-aware budget**: Background index runs are capped to a fraction of the worker pool while the user is active and expand to full capacity when the foreground goes idle; memory pressure further shrinks the allowance (see [Multi-process Architecture](multi-process.md)).
+- **Foreground-aware budget**: Background index runs are capped to a single task while the user is active and expand to full capacity when the foreground goes idle; each task starts only when memory holds its expected peak (see [Multi-process Architecture](multi-process.md)).
 - **Result merging and persistence**: Each index task compiles a file and builds a `TUIndex` in a stateless subprocess. The result is serialized and sent back to the main process, which merges it into the project index and shards. With the task the main process sends the variants it already stores of the files the dependency scan expects the file to include; the task names those by hash alone and leaves out the external symbols only they name, so once a project is partly indexed a result carries little beyond what is new. A variant that leaves the index before the result arrives makes the main process run the file again. Modified blobs are committed to the database in batched transactions so they can be loaded directly on the next startup.
 
 ## FAQ

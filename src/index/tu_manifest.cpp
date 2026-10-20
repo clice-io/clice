@@ -15,6 +15,7 @@ std::vector<std::byte> serialize_manifest(const TUManifest& manifest,
     TUManifestBlob blob;
     blob.format_version = index_format_version;
     blob.built_at = manifest.built_at;
+    blob.peak = manifest.peak;
     for(auto& version: versions) {
         blob.version_paths.push_back(version.path);
         blob.version_hashes.push_back(version.content_hash);
@@ -94,6 +95,7 @@ std::optional<PersistedManifest> deserialize_manifest(llvm::StringRef data) {
     }
     auto& manifest = persisted.manifest;
     manifest.built_at = root.built_at;
+    manifest.peak = root.peak;
     manifest.tu_version = VersionID{root.tu_version};
 
     constexpr std::uint64_t id_max = std::numeric_limits<std::uint32_t>::max();

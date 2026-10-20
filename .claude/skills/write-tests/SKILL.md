@@ -115,8 +115,9 @@ its own TU index and lists each entry where the two differ (`only_ast`,
 `only_index`, `name`, `kind`, `range`, `parent`, `detail`, `deprecated`) at
 its 1-based line and column. When a change touches the outline or the index
 facts it reads, run it over real code — the repository's sources, the
-libc++ and libstdc++ headers, LLVM's (`--flags` gives a header its command)
-— and pin each difference that matters in a case.
+libc++ and libstdc++ headers, LLVM's (a header outside every project takes
+its command from a `clice.toml` above it whose rule sets `default_command`) —
+and pin each difference that matters in a case.
 
 ## C++ unit tests (zest)
 

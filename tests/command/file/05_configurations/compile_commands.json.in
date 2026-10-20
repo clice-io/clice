@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "main.cpp",
+    "arguments": ["${WS}/missing-cc", "-c", "main.cpp"]
+  }
+]

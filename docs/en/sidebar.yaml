@@ -38,6 +38,7 @@ cli:
     - modularize
     - lint
     - format
+    - command
     - scan
 
 design:

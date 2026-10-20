@@ -1,0 +1,9 @@
+default_configuration = "debug"
+
+[[rules]]
+configuration = "debug"
+append = ["-DDEBUG"]
+
+[[rules]]
+configuration = "release"
+append = ["-DNDEBUG"]

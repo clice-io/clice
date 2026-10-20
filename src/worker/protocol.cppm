@@ -38,9 +38,8 @@ constexpr inline protocol::integer worker_unavailable = -33000;
 /// past the pool's deadline. The message says how the worker died.
 constexpr inline protocol::integer worker_crashed = -33001;
 
-/// The worker died of another request's crash, died naming no request
-/// while several were in flight, or was killed by the pool to relieve
-/// memory pressure: this one is blameless and safe to resend.
+/// The worker died of another request's crash, or died naming no request
+/// while several were in flight: this one is blameless and safe to resend.
 constexpr inline protocol::integer worker_lost = -33003;
 
 /// The worker died naming no request while this one ran alone on it —
@@ -52,6 +51,12 @@ constexpr inline protocol::integer worker_died = -33004;
 /// LRU evicted it): recompile and ask again.
 constexpr inline protocol::integer document_unloaded = -33005;
 
+/// The worker's memory ran out: the pool killed it to free memory, or an
+/// allocation failed in it. The request is blameless; Error::data holds
+/// "memory", the bytes the worker had reached, and "alone", whether no
+/// other request ran beside it — then it does not fit this machine.
+constexpr inline protocol::integer out_of_memory = -33006;
+
 }  // namespace dispatch_errc
 
 /// True when a dispatch failure is an expected operational condition rather
@@ -61,7 +66,8 @@ inline bool is_operational_error(const protocol::Error& error) {
            error.code == dispatch_errc::worker_unavailable ||
            error.code == dispatch_errc::worker_crashed ||
            error.code == dispatch_errc::worker_lost || error.code == dispatch_errc::worker_died ||
-           error.code == dispatch_errc::document_unloaded;
+           error.code == dispatch_errc::document_unloaded ||
+           error.code == dispatch_errc::out_of_memory;
 }
 
 /// The stderr line a dying worker writes to name the request it was

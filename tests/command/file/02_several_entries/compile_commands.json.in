@@ -1,0 +1,18 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "start.S",
+    "command": "${WS}/missing-cc -c start.S"
+  },
+  {
+    "directory": "${WS}",
+    "file": "main.cpp",
+    "arguments": ["${WS}/missing-cc", "-DLEVEL=1", "-c", "main.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "main.cpp",
+    "command": "${WS}/missing-cc -DLEVEL=2 -O2 -c main.cpp",
+    "output": "main.release.o"
+  }
+]

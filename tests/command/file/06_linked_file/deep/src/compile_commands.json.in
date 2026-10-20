@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}/deep/src",
+    "file": "lib.cpp",
+    "arguments": ["${WS}/missing-cc", "-c", "lib.cpp"]
+  }
+]

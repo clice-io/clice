@@ -10,6 +10,7 @@ Subcommands:
   lint        Lint C++ source files
   format      Format C++ source files
   inspect     Run a feature on a source file and print raw results as JSON
+  command     Show the commands a file compiles with, or convert compile commands
   scan        Scan the project's include and module dependencies
   analyze     Analyze the indexed workspace for refactoring
   modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
@@ -28,6 +29,7 @@ Subcommands:
   lint        Lint C++ source files
   format      Format C++ source files
   inspect     Run a feature on a source file and print raw results as JSON
+  command     Show the commands a file compiles with, or convert compile commands
   scan        Scan the project's include and module dependencies
   analyze     Analyze the indexed workspace for refactoring
   modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
@@ -56,7 +58,6 @@ stdout = '''
 Ask the persisted index about the workspace
 
 Subcommands:
-  compile-command   The command the editor compiles a file with, and where it came from
   project-files     The build's files
   file-deps         The files a file includes and the files including it
   impact-analysis   What a change to a file reaches: its includers and the modules among them
@@ -89,7 +90,7 @@ Options:
   -h|--help                       display this help and exit
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
+  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
   --json                          Print the run's report as JSON on stdout instead of text
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -111,7 +112,7 @@ Options:
   --index                         Also build and persist the project index from the same parses
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
+  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
   --json                          Print the run's report as JSON on stdout instead of text
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -128,7 +129,7 @@ Options:
   --check                         Report the files that need formatting instead of rewriting them
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
+  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
 '''
@@ -151,6 +152,24 @@ Subcommands:
   semantic-tokens     The file's semantic tokens
   signature-help      The signature help at a point
   config-schema       The JSON schema of the clice configuration
+'''
+exit = 0
+
+["command help"."$ clice command --help"]
+stdout = '''
+usage: clice command <PATH> [OPTIONS]
+
+Options:
+  -h|--help                       display this help and exit
+  <PATH>...                       The file, relative to the workspace or absolute
+  --json                          Print the commands as JSON on stdout instead of text
+  --workspace <value>             Workspace root directory (default: the current directory)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --log-level <trace|debug|info|warn|error|off>
+                                  Log level of stderr
+
+Subcommands:
+  convert  Convert a compilation database, or one command, to the commands clice compiles with
 '''
 exit = 0
 
@@ -305,8 +324,22 @@ Options:
   -h|--help                       display this help and exit
   <PATH>...                       The source file
   --markers <value>               JSON file of the markers in the inspected source file, at byte offsets: {"points": {"name": 12}, "ranges": {"name": {"begin": 3, "end": 7}}}; results are keyed by these names
-  --flags <value>                 Compile flags for the file as a JSON string array; replaces the compile_commands.json lookup
   --config-overlay <value>        Configuration overlay as a JSON object of clice.toml sections, over the workspace's configuration
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --log-level <trace|debug|info|warn|error|off>
+                                  Log level of stderr
+'''
+exit = 0
+
+["operation help"."$ clice command convert --help"]
+stdout = '''
+usage: clice command convert [<DATABASE>] [OPTIONS] [-- <COMMAND>...]
+
+Options:
+  -h|--help                       display this help and exit
+  <DATABASE>...                   The compile_commands.json to convert, relative to the current directory
+  --json                          Print the converted command as a database entry instead of text
+  --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level of stderr
@@ -350,6 +383,14 @@ stdout = '''
   "stale": []
 }
 '''
+exit = 2
+
+["positional arguments"."$ clice command"]
+stderr = "missing <PATH>"
+exit = 2
+
+["positional arguments"."$ clice command a.cpp b.cpp"]
+stderr = "unexpected argument 'b.cpp'"
 exit = 2
 
 ["unknown option beside help"."$ clice analyze modules --bogus --help"]
@@ -452,6 +493,15 @@ at argv[0]:
 exit = 2
 
 ["unknown option"."$ clice inspect --bogus"]
+stderr = '''
+at argv[0]:
+  --bogus
+  ^~~~~~~
+  unknown option '--bogus'
+'''
+exit = 2
+
+["unknown option"."$ clice command --bogus"]
 stderr = '''
 at argv[0]:
   --bogus

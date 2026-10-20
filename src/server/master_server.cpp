@@ -144,7 +144,8 @@ void MasterServer::initialize() {
     // Let integration tests hang a worker without waiting out the real
     // deadline, and drive eviction through a real server.
     if(auto ms = env_integer("CLICE_TEST_REQUEST_DEADLINE_MS")) {
-        pool_opts.build_deadline = pool_opts.query_deadline = std::chrono::milliseconds(*ms);
+        pool_opts.build_deadline = pool_opts.query_deadline = pool_opts.stall_deadline =
+            std::chrono::milliseconds(*ms);
     }
     pool_opts.max_documents = env_integer("CLICE_TEST_MAX_DOCUMENTS");
 

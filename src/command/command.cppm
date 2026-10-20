@@ -518,7 +518,8 @@ public:
         return *chain;
     }
 
-    /// Append one command to the test source and return its entry;
+    /// Append one command no database file holds, a test's or one given on
+    /// the command line, to an anonymous source and return its entry;
     /// nullopt when normalization fails.
     std::optional<CompilationEntry> add_command(llvm::StringRef directory,
                                                 llvm::StringRef file,

@@ -206,8 +206,21 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         params.index_output_path = transfer->tmp_path;
     }
 
+    RequestCost cost;
+    if(auto it = costs.find(path_id); it != costs.end()) {
+        cost = it->second;
+    } else if(auto manifest = project.index.manifest(path_id)) {
+        cost.peak = manifest->peak;
+    }
+    StatelessReport measured;
     ScopedTimer timer;
-    auto reply = co_await pool.send_stateless(params, worker::Priority::Low, ctx.token());
+    auto reply =
+        co_await pool.send_stateless(params, worker::Priority::Low, ctx.token(), cost, &measured);
+    // The samples may miss a peak a killed run already reached.
+    auto peak = measured.peak != 0 ? std::max(measured.peak, cost.floor) : 0;
+    if(peak != 0) {
+        costs[path_id] = {.peak = peak};
+    }
     if(reply.has_value() && reply.value().success) {
         auto run_ms = timer.ms();
         auto& value = reply.value();
@@ -250,7 +263,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 co_return RoundOutcome::Stale;
             }
             ScopedTimer merge_timer;
-            auto report = project.index.merge(index_bytes, imports);
+            // A run shorter than a sample interval measured nothing: the
+            // earlier peak stands.
+            auto report = project.index.merge(index_bytes, imports, peak != 0 ? peak : cost.peak);
             if(!report) {
                 if(report.error() == index::MergeError::Outdated) {
                     send_in_full.insert(path_id);
@@ -297,6 +312,16 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     if(reply.error().code == worker::dispatch_errc::worker_crashed) {
         finished[path_id] = {.result = Result::Crashed,
                              .error = "it crashed the worker: " + reply.error().message};
+        co_return RoundOutcome::Stale;
+    }
+    if(reply.error().code == worker::dispatch_errc::out_of_memory) {
+        auto& data = *reply.error().data;
+        auto memory = data["memory"].get_uint().value_or(0);
+        auto alone = data["alone"].get_bool().value_or(false);
+        costs[path_id] = {.peak = cost.peak, .floor = std::max(cost.floor, memory)};
+        finished[path_id] = {.result = alone ? Result::TooBig : Result::OutOfMemory,
+                             .error = reply.error().message,
+                             .memory = memory};
         co_return RoundOutcome::Stale;
     }
     if(reply.error().code == worker::dispatch_errc::worker_died ||

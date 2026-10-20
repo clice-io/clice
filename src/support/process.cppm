@@ -24,8 +24,16 @@ kota::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::s
 
 /// Hand freed heap back to the system. glibc keeps the pages of large freed
 /// arenas — an AST, a TU's index, the master's merge buffers — so without
-/// this a process's RSS only ever grows.
+/// this a process's RSS only ever grows. The Windows allocator keeps all it
+/// frees unless purge_freed_memory() was called.
 void release_free_memory();
+
+/// Let the allocator return freed memory to the system from now on, for a
+/// process that holds nothing between its requests: the Windows executable
+/// keeps every page it frees (src/mimalloc.cc), which spares the master and
+/// a stateful worker faulting their working set back in, but leaves a
+/// stateless worker at the high-water mark of its biggest request.
+void purge_freed_memory();
 
 /// Lower the calling thread's scheduling priority for the rest of its life:
 /// an unprivileged thread can never raise it back, so this is for a thread

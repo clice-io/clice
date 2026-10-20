@@ -1,0 +1,50 @@
+[test."$ clice command main.cpp"]
+stdout = '''
+${WS}/compile_commands.json:
+  directory: ${WS}
+  command:   ${WS}/missing-cc -std=c++20 -Werror -c main.cpp -o main.o
+  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp
+  error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+'''
+stderr = "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable"
+exit = 0
+
+[test."$ clice command main.cpp --json"]
+stdout = '''
+{
+  "file": "${WS}/main.cpp",
+  "commands": [
+    {
+      "database": "${WS}/compile_commands.json",
+      "entry": {
+        "directory": "${WS}",
+        "file": "main.cpp",
+        "arguments": [
+          "${WS}/missing-cc",
+          "-std=c++20",
+          "-Werror",
+          "-c",
+          "main.cpp",
+          "-o",
+          "main.o"
+        ]
+      },
+      "resolved": {
+        "directory": "${WS}",
+        "arguments": [
+          "${WS}/missing-cc",
+          "-resource-dir",
+          "${RESOURCE}",
+          "-std=c++20",
+          "-D",
+          "FROM_RULE",
+          "${WS}/main.cpp"
+        ]
+      },
+      "toolchainError": "Driver ${WS}/missing-cc not found or not executable"
+    }
+  ]
+}
+'''
+stderr = "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable"
+exit = 0

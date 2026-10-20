@@ -50,6 +50,11 @@ struct TUManifest {
     /// Milliseconds since epoch, sampled before the indexed build started.
     std::uint64_t built_at = 0;
 
+    /// The peak of the own memory of the worker that indexed the TU, in
+    /// bytes; zero when unmeasured. Its next run is admitted by it (see
+    /// WorkerScheduler).
+    std::uint64_t peak = 0;
+
     /// The TU's own file version.
     VersionID tu_version;
 

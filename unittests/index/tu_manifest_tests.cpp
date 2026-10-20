@@ -27,6 +27,7 @@ ZEST_CASE(ManifestRoundTrip) {
     index::TUManifest manifest;
     manifest.built_at = 1234567;
     manifest.tu_version = VersionID{0};
+    manifest.peak = 3ull << 30;
     // A root node, a multi-byte-varint line, a parent that FOLLOWS its child
     // (the include tree resolves parent chains after appending), and runs of
     // siblings — skipped or not, lines ascending or not, under a node or the
