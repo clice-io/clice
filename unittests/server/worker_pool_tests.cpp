@@ -1827,7 +1827,7 @@ ZEST_CASE(IdleWorkerGivesBack) {
     WorkerPoolFixture f;
     std::uint64_t before = 0;
     std::uint64_t peak = 0;
-    std::uint64_t after = 0;
+    [[maybe_unused]] std::uint64_t after = 0;
     f.run([&]() -> kota::task<> {
         ZASSERT(f.start(1, 0));
         f.sample_pool();
@@ -1854,7 +1854,11 @@ ZEST_CASE(IdleWorkerGivesBack) {
     });
     // The request was big enough to tell.
     ZEXPECT(peak > before + 256 * MiB);
+    // ASan's allocator keeps what is freed in its quarantine; the release
+    // build's allocators are the ones that must give it back.
+#if !__has_feature(address_sanitizer)
     ZEXPECT(after < before + 64 * MiB);
+#endif
 }
 
 };  // ZEST_SUITE(WorkerPoolIntegration)
