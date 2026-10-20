@@ -582,6 +582,19 @@ std::string legend_name(SemanticTokenModifier modifier);
 
 auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticTokenLegend;
 
+/// A semantic token as a client reads it: its kind and modifiers by the
+/// names the legend gives them.
+struct NamedToken {
+    LocalSourceRange range;
+    std::string kind;
+    std::vector<std::string> modifiers;
+};
+
+/// The tokens the legend names, as a client reads them: one of a kind the
+/// legend drops is none, a modifier it drops is not there.
+auto named_tokens(llvm::ArrayRef<SemanticToken> tokens, const SemanticTokenLegend& legend)
+    -> std::vector<NamedToken>;
+
 /// A fold in byte offsets of the focus file; it becomes an LSP FoldingRange
 /// only at the reply edge, which knows how the client folds.
 struct FoldingRange {

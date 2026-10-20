@@ -13,7 +13,7 @@ import :compile.tidy;
 import :config.config;
 import :driver.driver;
 import :feature.feature;
-import :feature.semantic_token_stream;
+import :feature.projection_check;
 import :index.indexer;
 import :index.instantiation_shard;
 import :index.navigation;
@@ -26,7 +26,6 @@ import :project.load;
 import :project.project;
 import :semantic.symbol;
 import :support.bytes;
-import :syntax.source_text;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -154,147 +153,17 @@ std::optional<kota::codec::RawValue> run_folding_ranges(CompilationUnit& unit,
     return to_raw_json(feature::folding_ranges(unit));
 }
 
-/// A semantic token as the client sees it: its kind and modifiers by the
-/// names the legend gives them.
-struct NamedToken {
-    LocalSourceRange range;
-    std::string kind;
-    std::vector<std::string> modifiers;
-};
-
-std::vector<NamedToken> named_tokens(llvm::ArrayRef<feature::SemanticToken> tokens,
-                                     const feature::SemanticTokenLegend& legend) {
-    std::vector<NamedToken> named;
-    for(const auto& token: tokens) {
-        auto type = legend.type_of[static_cast<std::size_t>(token.kind)];
-        if(!type) {
-            continue;
-        }
-        NamedToken entry{.range = token.range, .kind = legend.types[*type]};
-        auto bits = legend.bits(token.modifiers);
-        for(auto [position, name]: llvm::enumerate(legend.modifiers)) {
-            if(bits & (std::uint32_t(1) << position)) {
-                entry.modifiers.push_back(name);
-            }
-        }
-        named.push_back(std::move(entry));
-    }
-    return named;
-}
-
 std::optional<kota::codec::RawValue> run_semantic_tokens(CompilationUnit& unit,
                                                          const Config& config) {
-    return to_raw_json(named_tokens(feature::semantic_tokens(unit, config.semantic_tokens),
-                                    feature::semantic_token_legend(config.semantic_tokens)));
+    return to_raw_json(
+        feature::named_tokens(feature::semantic_tokens(unit, config.semantic_tokens),
+                              feature::semantic_token_legend(config.semantic_tokens)));
 }
 
-/// One way the tokens the index projects differ from the AST's, at the
-/// token it concerns (1-based line and column).
-struct TokenDifference {
-    std::uint32_t line = 0;
-    std::uint32_t column = 0;
-    std::string text;
-    /// only_ast, only_index, range, kind or modifiers.
-    std::string field;
-    std::string ast;
-    std::string index;
-};
-
-struct TokenCheck {
-    std::uint32_t ast = 0;
-    std::uint32_t index = 0;
-    std::vector<TokenDifference> differences;
-};
-
-/// The file's semantic tokens as the AST gives them beside the ones the
-/// index projects from the unit's own TU index, as the server serves a file
-/// before its AST is current: tokens pair by where they begin.
+/// The tokens the index projects beside the AST's (semantic_tokens_check).
 std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& unit,
                                                                const Config& config) {
-    auto legend = feature::semantic_token_legend(config.semantic_tokens);
-    auto& source = unit.focus_file().text();
-    auto content = source.text();
-    auto ast =
-        named_tokens(feature::semantic_token_stream(source,
-                                                    feature::semantic_token_facts(unit, {}, true),
-                                                    config.semantic_tokens),
-                     legend);
-    auto bytes = index::build_tu_index(unit);
-    auto tu = index::TUIndex::from_bytes(as_chars(bytes));
-    SourceText served(content, unit.lang_options());
-    auto projected =
-        named_tokens(feature::index_semantic_tokens(
-                         served,
-                         feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
-                         [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
-                             auto identity = tu.find_symbol(hash);
-                             if(!identity) {
-                                 return std::nullopt;
-                             }
-                             return index::SymbolInfo::from(hash, *identity);
-                         },
-                         config.semantic_tokens),
-                     legend);
-
-    auto spell = [](const NamedToken& token) {
-        auto spelled = token.kind;
-        for(const auto& modifier: token.modifiers) {
-            spelled += " " + modifier;
-        }
-        return spelled;
-    };
-
-    std::map<std::uint32_t, const NamedToken*> by_begin;
-    for(const auto& token: projected) {
-        by_begin.emplace(token.range.begin, &token);
-    }
-
-    const auto& map = unit.focus_file().positions();
-    TokenCheck check{
-        .ast = static_cast<std::uint32_t>(ast.size()),
-        .index = static_cast<std::uint32_t>(projected.size()),
-    };
-    auto report = [&](const NamedToken& token,
-                      llvm::StringRef field,
-                      std::string ast_value,
-                      std::string index_value) {
-        auto position = map.position(token.range.begin, PositionEncoding::UTF8);
-        check.differences.push_back({
-            .line = position ? position->line + 1 : 0,
-            .column = position ? position->character + 1 : 0,
-            .text = content.slice(token.range.begin, token.range.end).str(),
-            .field = field.str(),
-            .ast = std::move(ast_value),
-            .index = std::move(index_value),
-        });
-    };
-    for(const auto& token: ast) {
-        auto it = by_begin.find(token.range.begin);
-        if(it == by_begin.end()) {
-            report(token, "only_ast", spell(token), "");
-            continue;
-        }
-        const auto& other = *it->second;
-        by_begin.erase(it);
-        if(token.range.end != other.range.end) {
-            report(token,
-                   "range",
-                   content.slice(token.range.begin, token.range.end).str(),
-                   content.slice(other.range.begin, other.range.end).str());
-        }
-        if(token.kind != other.kind) {
-            report(token, "kind", spell(token), spell(other));
-        } else if(token.modifiers != other.modifiers) {
-            report(token, "modifiers", spell(token), spell(other));
-        }
-    }
-    for(auto [begin, token]: by_begin) {
-        report(*token, "only_index", "", spell(*token));
-    }
-    std::ranges::stable_sort(check.differences, {}, [](const TokenDifference& difference) {
-        return std::pair(difference.line, difference.column);
-    });
-    return to_raw_json(check);
+    return to_raw_json(feature::semantic_tokens_check(unit, config.semantic_tokens));
 }
 
 std::optional<kota::codec::RawValue> run_document_symbols(CompilationUnit& unit,
@@ -302,175 +171,10 @@ std::optional<kota::codec::RawValue> run_document_symbols(CompilationUnit& unit,
     return to_raw_json(feature::document_symbols(unit, config.document_symbols));
 }
 
-/// One way the outline the index projects differs from the AST's, at the
-/// name of the entry it concerns (1-based line and column).
-struct OutlineDifference {
-    std::uint32_t line = 0;
-    std::uint32_t column = 0;
-    /// only_ast, only_index, name, kind, range, parent, detail or
-    /// deprecated.
-    std::string field;
-    std::string ast;
-    std::string index;
-};
-
-struct OutlineCheck {
-    std::uint32_t ast = 0;
-    std::uint32_t index = 0;
-    std::vector<OutlineDifference> differences;
-};
-
-/// The file's outline as the AST gives it beside the one the index projects
-/// from the unit's own TU index, as the server serves a file before its AST
-/// is current: an entry of one matches the other's entry of the same name
-/// range, the same name first. The index knows no signatures, so a detail
-/// differs only where the index gives one.
+/// The outline the index projects beside the AST's (document_symbols_check).
 std::optional<kota::codec::RawValue> run_document_symbol_check(CompilationUnit& unit,
                                                                const Config& config) {
-    auto ast = feature::document_symbols(unit, config.document_symbols);
-    auto bytes = index::build_tu_index(unit);
-    auto tu = index::TUIndex::from_bytes(as_chars(bytes));
-    SourceText served(unit.focus_file().content(), unit.lang_options());
-    auto projected = feature::index_document_symbols(
-        served,
-        feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
-        [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
-            auto identity = tu.find_symbol(hash);
-            if(!identity) {
-                return std::nullopt;
-            }
-            return index::SymbolInfo::from(hash, *identity);
-        },
-        config.document_symbols);
-
-    struct Flat {
-        const feature::DocumentSymbol* symbol;
-        std::int32_t parent;
-    };
-
-    auto flatten = [](this auto& self,
-                      llvm::ArrayRef<feature::DocumentSymbol> symbols,
-                      std::int32_t parent,
-                      std::vector<Flat>& out) -> void {
-        for(const auto& symbol: symbols) {
-            auto at = static_cast<std::int32_t>(out.size());
-            out.push_back({&symbol, parent});
-            self(symbol.children, at, out);
-        }
-    };
-    std::vector<Flat> left;
-    std::vector<Flat> right;
-    flatten(ast, -1, left);
-    flatten(projected, -1, right);
-
-    std::multimap<std::pair<std::uint32_t, std::uint32_t>, std::int32_t> by_name_range;
-    for(auto [at, flat]: llvm::enumerate(right)) {
-        auto selection = flat.symbol->selection_range;
-        by_name_range.emplace(std::pair(selection.begin, selection.end),
-                              static_cast<std::int32_t>(at));
-    }
-    std::vector<std::int32_t> partner(left.size(), -1);
-    std::vector<bool> taken(right.size(), false);
-    for(auto [at, flat]: llvm::enumerate(left)) {
-        auto selection = flat.symbol->selection_range;
-        auto [first, last] = by_name_range.equal_range(std::pair(selection.begin, selection.end));
-        std::int32_t chosen = -1;
-        for(auto it = first; it != last; ++it) {
-            if(taken[it->second]) {
-                continue;
-            }
-            if(chosen == -1) {
-                chosen = it->second;
-            }
-            if(right[it->second].symbol->name == flat.symbol->name) {
-                chosen = it->second;
-                break;
-            }
-        }
-        if(chosen != -1) {
-            partner[at] = chosen;
-            taken[chosen] = true;
-        }
-    }
-
-    const auto& map = unit.focus_file().positions();
-    auto spell_range = [&](LocalSourceRange range) {
-        auto converted = map.range(range, PositionEncoding::UTF8);
-        if(!converted) {
-            return std::string("?");
-        }
-        return std::format("{}:{}-{}:{}",
-                           converted->start.line + 1,
-                           converted->start.character + 1,
-                           converted->end.line + 1,
-                           converted->end.character + 1);
-    };
-    auto kind_name = [](SymbolKind kind) {
-        return std::string(kota::meta::enum_name(feature::to_protocol_symbol_kind(kind), "?"));
-    };
-    auto parent_name = [](const std::vector<Flat>& flats, std::int32_t parent) {
-        return parent == -1 ? std::string("(top level)") : flats[parent].symbol->name;
-    };
-
-    OutlineCheck check{
-        .ast = static_cast<std::uint32_t>(left.size()),
-        .index = static_cast<std::uint32_t>(right.size()),
-    };
-    auto report = [&](const feature::DocumentSymbol& symbol,
-                      llvm::StringRef field,
-                      std::string ast_value,
-                      std::string index_value) {
-        auto position = map.position(symbol.selection_range.begin, PositionEncoding::UTF8);
-        check.differences.push_back({
-            .line = position ? position->line + 1 : 0,
-            .column = position ? position->character + 1 : 0,
-            .field = field.str(),
-            .ast = std::move(ast_value),
-            .index = std::move(index_value),
-        });
-    };
-    for(auto [at, flat]: llvm::enumerate(left)) {
-        const auto& lhs = *flat.symbol;
-        if(partner[at] == -1) {
-            report(lhs, "only_ast", std::format("{} {}", kind_name(lhs.kind), lhs.name), "");
-            continue;
-        }
-        const auto& other = right[partner[at]];
-        const auto& rhs = *other.symbol;
-        if(lhs.name != rhs.name) {
-            report(lhs, "name", lhs.name, rhs.name);
-        }
-        if(kind_name(lhs.kind) != kind_name(rhs.kind)) {
-            report(lhs, "kind", kind_name(lhs.kind), kind_name(rhs.kind));
-        }
-        if(lhs.range != rhs.range) {
-            report(lhs, "range", spell_range(lhs.range), spell_range(rhs.range));
-        }
-        bool same_parent =
-            flat.parent == -1 ? other.parent == -1 : partner[flat.parent] == other.parent;
-        if(!same_parent) {
-            report(lhs, "parent", parent_name(left, flat.parent), parent_name(right, other.parent));
-        }
-        if(!rhs.detail.empty() && lhs.detail != rhs.detail) {
-            report(lhs, "detail", lhs.detail, rhs.detail);
-        }
-        if(lhs.deprecated != rhs.deprecated) {
-            report(lhs,
-                   "deprecated",
-                   lhs.deprecated ? "true" : "false",
-                   rhs.deprecated ? "true" : "false");
-        }
-    }
-    for(auto [at, flat]: llvm::enumerate(right)) {
-        if(!taken[at]) {
-            const auto& rhs = *flat.symbol;
-            report(rhs, "only_index", "", std::format("{} {}", kind_name(rhs.kind), rhs.name));
-        }
-    }
-    std::ranges::stable_sort(check.differences, {}, [](const OutlineDifference& difference) {
-        return std::pair(difference.line, difference.column);
-    });
-    return to_raw_json(check);
+    return to_raw_json(feature::document_symbols_check(unit, config.document_symbols));
 }
 
 std::optional<kota::codec::RawValue> run_document_links(CompilationUnit& unit,
@@ -775,28 +479,6 @@ struct FileCommand {
     /// clice's build of pch_writer's header, which the compile loads.
     std::string pch;
 };
-
-/// The workspace the inspected file's directory belongs to: itself or the
-/// nearest ancestor holding a configuration file or a compile_commands.json
-/// (the upward lookup clangd does), so a nested tree resolves its commands
-/// as the server would from the project root; `start` itself when none does.
-/// Only the ancestors themselves are checked — scanning their
-/// subdirectories would let an unrelated sibling project's database win.
-CanonicalPath workspace_of(CanonicalRef start) {
-    CanonicalPath workspace = start;
-    path::walk_ancestors(start, [&](CanonicalRef dir) {
-        bool marked = llvm::any_of(config_file_names,
-                                   [&](llvm::StringRef marker) {
-                                       return vfs::exists(path::join(dir, marker));
-                                   }) ||
-                      vfs::exists(path::join(dir, "compile_commands.json"));
-        if(marked) {
-            workspace = dir;
-        }
-        return !marked;
-    });
-    return workspace;
-}
 
 /// The compile command for `file`: explicit --flags arguments, else the
 /// resolution the server performs for a background compile: the file's
@@ -1124,8 +806,13 @@ int run_inspect(const InspectOptions& opts, const FeatureSpec& spec) {
         return result.has_value();
     };
     if(flags.empty()) {
+        // The root the server gives a file outside its folders, else the
+        // file's own directory.
         auto identity = CanonicalPath(directory);
-        auto root = workspace_of(identity);
+        auto root = project_root_above(identity);
+        if(root.empty()) {
+            root = identity;
+        }
         // The overlay goes in before the rules compile, as initializationOptions do.
         project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
         if(!overlay()) {
