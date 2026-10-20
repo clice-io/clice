@@ -111,28 +111,24 @@ std::optional<CommandRef> host_command(Project& project,
     return lent_command(project, header, host, picked.config, extra_prepend, extra_append);
 }
 
-/// The `-include`s of `ref` from the one naming `forced` on, as the
-/// command spells them: what a header context entered through that forced
-/// file leaves out (HeaderContext::forced).
-static std::vector<std::string> includes_from(Project& project, const CommandRef& ref, Fid forced) {
-    std::vector<std::string> dropped;
+/// How many of `ref`'s `-include`s come before the one naming `forced`:
+/// what a header context entered through that forced file keeps
+/// (HeaderContext::forced). All of them for none.
+static std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced) {
     if(!forced.valid()) {
-        return dropped;
+        return std::numeric_limits<std::size_t>::max();
     }
     auto search = project.cdb.search_config(ref);
     vfs::Scope scope(project.file_table.dirs);
     auto resolved = resolve_search_config(search, scope);
     llvm::StringRef directory = project.cdb.config(ref.config).directory;
-    for(auto& name: search.forced_includes) {
-        if(dropped.empty()) {
-            auto header = resolve_forced_include(name, directory, resolved, scope);
-            if(!header || project.file_table.find(Spelling::absolute(header->path)) != forced) {
-                continue;
-            }
+    for(std::size_t i = 0; i < search.forced_includes.size(); i += 1) {
+        auto header = resolve_forced_include(search.forced_includes[i], directory, resolved, scope);
+        if(header && project.file_table.find(Spelling::absolute(header->path)) == forced) {
+            return i;
         }
-        dropped.push_back(name);
     }
-    return dropped;
+    return std::numeric_limits<std::size_t>::max();
 }
 
 HeaderMode CommandResolver::header_mode(Fid path_id) const {
@@ -317,8 +313,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         if(resolution.synthesized) {
             options.preamble = resolution.synthesized->prefix.c_str();
         }
-        auto dropped = includes_from(project, ref, resolution.forced);
-        options.dropped_includes = dropped;
+        options.kept_includes = includes_before(project, ref, resolution.forced);
         directory = project.cdb.config(ref.config).directory;
         auto argv = project.cdb.render(ref, options);
         arguments.assign(argv.begin(), argv.end());

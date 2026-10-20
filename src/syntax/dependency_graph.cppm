@@ -96,7 +96,7 @@ public:
     /// The units whose commands force `header` in.
     llvm::ArrayRef<Fid> get_forcing_units(Fid header) const;
 
-    /// The headers `unit`'s commands force in.
+    /// The headers `unit`'s commands force in, in the order they do.
     llvm::ArrayRef<Fid> get_forced_includes(Fid unit) const;
 
     /// A scan group: the command its units resolve includes under.
@@ -205,7 +205,8 @@ private:
     /// Populated by build_reverse_map().
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> reverse_includes;
 
-    /// Unit -> headers its commands force in, and the inverse, sorted.
+    /// Unit -> headers its commands force in, in command order, and the
+    /// inverse, sorted.
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 1>> forced_includes;
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> forcing_units;
 

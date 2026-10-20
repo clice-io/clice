@@ -273,7 +273,9 @@ std::uint32_t DependencyGraph::count_includes(Fid includer, Fid target) const {
 }
 
 void DependencyGraph::add_forced_include(Fid unit, Fid header) {
-    insert_sorted(forced_includes[unit], header);
+    if(auto& forced = forced_includes[unit]; !llvm::is_contained(forced, header)) {
+        forced.push_back(header);
+    }
     insert_sorted(forcing_units[header], unit);
 }
 
