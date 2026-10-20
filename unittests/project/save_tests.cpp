@@ -7,6 +7,7 @@ module clice;
 import :index.database;
 import :project.project;
 import :server.editor_context;
+import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -63,33 +64,14 @@ ZEST_CASE(CorruptSaveKeepsTicket) {
     // A write that commits the context choices into a database it then
     // finds corrupt made nothing durable: the ticket stays open until the
     // database opened in its place takes them.
-    struct CorruptAfterWrite final : index::BlobDatabase {
+    struct CorruptAfterWrite final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
         bool written = false;
 
-        index::ReadBlob read(index::BlobKind, llvm::StringRef) override {
-            return {};
-        }
-
-        bool contains(index::BlobKind, llvm::StringRef) override {
-            return false;
-        }
-
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob>,
-                                               llvm::ArrayRef<index::BlobKey>) override {
-            written = true;
-            return {};
-        }
-
-        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
-
-        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 1;
-        }
-
-        void retire_old_snapshot() override {}
-
-        std::expected<bool, std::string> grow() override {
-            return false;
+        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
+            written = real->write(puts, removes);
+            return written;
         }
 
         bool corrupted() const override {
@@ -101,7 +83,7 @@ ZEST_CASE(CorruptSaveKeepsTicket) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    f.project.database = std::make_unique<CorruptAfterWrite>();
+    f.project.database = std::make_unique<CorruptAfterWrite>(std::move(f.project.database));
     f.project.contexts.bytes = "choices";
     f.project.contexts.dirty = true;
     f.project.contexts.ticket += 1;

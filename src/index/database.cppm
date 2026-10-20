@@ -8,24 +8,62 @@ import :vfs.cache_store;
 
 namespace clice::index {
 
-/// Stable blob key for a file's shard or a TU's manifest: runtime pool ids
-/// are per-session, so blobs are named by a hash of the file's name in the
-/// database (ProjectIndex::portable) instead.
-inline std::string blob_key(llvm::StringRef name) {
-    return std::format("{:016x}", llvm::xxh3_64bits(name));
+/// A key holding `value` big-endian, so keys sort as the numbers do.
+template <typename T>
+std::string number_key(T value) {
+    static_assert(std::is_unsigned_v<T>);
+    std::string key(sizeof(T), '\0');
+    for(std::uint32_t i = 0; i < sizeof(T); i += 1) {
+        key[i] = static_cast<char>(value >> (8 * (sizeof(T) - 1 - i)));
+    }
+    return key;
 }
 
-/// The blob families the index persists.
+/// The number a number_key holds; nullopt for a key of another width.
+template <typename T>
+std::optional<T> key_number(llvm::StringRef key) {
+    if(key.size() != sizeof(T)) {
+        return std::nullopt;
+    }
+    T value = 0;
+    for(auto byte: key) {
+        value = static_cast<T>((value << 8) | static_cast<std::uint8_t>(byte));
+    }
+    return value;
+}
+
+/// What names a file in the database: the hash of its name there
+/// (ProjectIndex::portable), since runtime ids are per-session. Producers in
+/// instantiation blobs name their unit by the same hash.
+inline std::uint64_t path_hash(llvm::StringRef name) {
+    return llvm::xxh3_64bits(name);
+}
+
+/// The record families of the index database. File-keyed ones take a
+/// number_key of the file's path_hash; symbol-keyed ones of the symbol hash.
 enum class BlobKind : std::uint8_t {
-    /// Per-file shard blobs (ShardBlob), keyed by a path hash.
+    /// Per-file shard blobs (ShardBlob).
     Shard,
-    /// Per-file instantiation blobs (InstantiationShardBlob), keyed like the
-    /// file's shard.
+    /// Per-file instantiation blobs (InstantiationShardBlob).
     InstantiationShard,
-    /// Per-TU manifests, keyed by a path hash.
+    /// Per-TU manifests (TUManifestBlob), keyed by the TU's file.
     TUManifest,
-    /// The single project table (FileVersion table + symbols), key "global".
-    ProjectTable,
+    /// The single header (HeaderBlob), key "header".
+    Header,
+    /// Path id (a number_key) -> the file's name, the raw bytes.
+    Path,
+    /// Per-file records (FileBlob): what the start-up scan reads.
+    File,
+    /// Per-file records (DependentsBlob): the units depending on the file.
+    Dependents,
+    /// Per-file records (InternalsBlob): the names of internal linkage the
+    /// file declares, for the search index.
+    Internals,
+    /// Per-symbol records (SymbolBlob) of the external symbols.
+    Symbol,
+    /// Per-symbol records (SharedLocalBlob) of the symbols below external
+    /// scope several files hold.
+    SharedLocal,
     /// The single CDB command-hash snapshot the persisted index was built
     /// against, key "cdb" — how a cold start detects compile-command
     /// changes that happened while no server was running.
@@ -38,8 +76,7 @@ enum class BlobKind : std::uint8_t {
     /// garbage-collected by content.
     ContextChoices,
     /// The single name search index (index/search_index.cppm) derived
-    /// from the project table, key "search"; rebuilt from the table when
-    /// missing.
+    /// from the symbol records, key "search"; rebuilt when missing.
     SearchIndex,
 };
 
@@ -50,7 +87,7 @@ enum class BlobKind : std::uint8_t {
 ///   alignment) — valid for the buffer's lifetime.
 /// - nonzero: the bytes are borrowed from the backend's read snapshot of
 ///   that generation and die when it is retired (advance_read_snapshot()
-///   followed by retire_old_snapshot(), or grow()). A caller keeping such
+///   followed by retire_old_snapshot(), or a grow()). A caller keeping such
 ///   bytes across a save must re-read them after every snapshot advance.
 struct ReadBlob {
     std::unique_ptr<llvm::MemoryBuffer> buffer;
@@ -102,8 +139,8 @@ public:
     virtual ReadBlob read(BlobKind kind, llvm::StringRef key) = 0;
 
     /// Whether a blob exists under the key, even when unreadable — how the
-    /// loader tells a missing project table (remove everything) from a
-    /// transient read failure (touch nothing).
+    /// loader tells a missing header (a first run) from a transient read
+    /// failure (touch nothing).
     virtual bool contains(BlobKind kind, llvm::StringRef key) = 0;
 
     struct Blob {
@@ -112,19 +149,21 @@ public:
         std::vector<std::byte> bytes;
     };
 
-    /// Persist `puts` in order, then delete `removes`. Atomicity is
-    /// backend-defined but never weaker than a committed prefix of `puts`:
-    /// batch order encodes dependency (shards → manifests → project table → CDB
-    /// snapshot), load paths tolerate exactly a prefix, and the LMDB
-    /// backend commits everything or nothing in one transaction, removes
-    /// included. The failed put indices are returned so the caller can
-    /// re-dirty them; removes are best-effort (load removes stale blobs by
-    /// their generation pins). A full LMDB map fails the whole batch and
-    /// latches the grow request `grow()` serves.
-    virtual llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                                   llvm::ArrayRef<BlobKey> removes) = 0;
+    /// Persist `puts`, then delete `removes`, all or nothing: the records
+    /// of the index reference each other, so a batch commits whole or not
+    /// at all. False when nothing committed. A full LMDB map fails the
+    /// batch and latches the grow request `grow()` serves.
+    virtual bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<BlobKey> removes) = 0;
 
     virtual void for_each_key(BlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) = 0;
+
+    /// Every record of `kind`, in key order; `fn` returns false to stop.
+    /// The blobs follow ReadBlob's lifetime contract.
+    virtual void for_each(BlobKind kind,
+                          llvm::function_ref<bool(llvm::StringRef key, ReadBlob blob)> fn) = 0;
+
+    /// How many records of `kind` the read snapshot holds.
+    virtual std::uint32_t count(BlobKind kind) = 0;
 
     /// Open a new read snapshot and return its generation; reads from now
     /// on come from it. The previous snapshot — and every borrowed buffer
@@ -141,16 +180,24 @@ public:
     /// and retires them all. No-op when nothing is pending.
     virtual void retire_old_snapshot() = 0;
 
-    /// Resize the map after write() failed on a full map, retiring EVERY
-    /// read snapshot first — all borrowed buffers die immediately — and
-    /// opening a fresh one. Returns true when the map was resized: the
-    /// caller must then rebind every borrower before yielding the event
-    /// loop. False when no growth was pending. An error return also means
-    /// growth was attempted, so every snapshot has already been retired:
-    /// borrowed buffers are dead and must be shed or re-read, and a
-    /// replacement snapshot may not have opened — reads then miss until a
-    /// later grow() succeeds.
-    virtual std::expected<bool, std::string> grow() = 0;
+    /// What grow() did.
+    enum class Growth : std::uint8_t {
+        /// No write had failed on a full map.
+        None,
+        /// The map was resized after retiring EVERY read snapshot — all
+        /// borrowed buffers died — and a fresh one opened: the caller
+        /// rebinds every borrower before yielding the event loop.
+        Grown,
+        /// The resize would fail — the address space cap or the free disk a
+        /// mapping without sparse support allocates cannot take the larger
+        /// map — so none was tried, since a failed resize leaves the
+        /// environment unusable. Nothing changed; the batch stays unsaved.
+        Refused,
+    };
+
+    /// Resize the map after write() failed on a full map. A resize that
+    /// fails despite the headroom check ends the process with an error.
+    virtual Growth grow() = 0;
 
     /// Whether the backend observed page-level corruption after open
     /// (reads failing with LMDB's corruption family). The loader uses it
@@ -196,8 +243,8 @@ bool database_exists(const CacheStore& store, llvm::StringRef configuration);
 /// The configuration's database: a single `index.mdb` (plus its `-lock`
 /// file) in its database directory, created on demand. A writable open
 /// presumes the caller holds the cache directory's writer lock
-/// (index/writer_lock.cppm) — the project table and manifest blobs form one mutable
-/// lineage that tolerates no second writer. Nullptr when the
+/// (index/writer_lock.cppm) — the records form one mutable lineage that
+/// tolerates no second writer. Nullptr when the
 /// environment cannot be opened safely — only confirmed corruption
 /// (or a meta mismatch) is repaired by deleting and rebuilding the
 /// database; transient errors disable index persistence for the session

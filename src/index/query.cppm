@@ -246,7 +246,7 @@ inline bool is_function(SymbolKind kind) {
 ///   gated: a hash identifies one symbol, so even a stale shard answers
 ///   them correctly.
 ///
-/// The project table lists the files holding an external symbol's entries,
+/// The symbol records list the files holding an external symbol's entries,
 /// and only an external one's: every question about a symbol's entries also
 /// takes an `anchor`, a file holding one of them — the cursor's file, the
 /// file a relation was read from, a located symbol's site. Any other
@@ -359,15 +359,15 @@ public:
 
     /// The open buffers whose own index carries a relation of `kind` for the
     /// symbol, each once: what a buffer its own compile serves knows before
-    /// the project table does — the table hears of the buffer only once it
+    /// the project index does — which hears of the buffer only once it
     /// closes.
     void for_each_live_file(SymbolHash hash,
                             RelationKind kind,
                             llvm::function_ref<void(Fid)> visit) const;
 
     /// The file defining an external symbol: an open buffer defining it
-    /// (for_each_live_file) first, else the definition the project table
-    /// records, while that file's shard still holds it. Invalid when neither
+    /// (for_each_live_file) first, else the definition the symbol record
+    /// names, while that file's shard still holds it. Invalid when neither
     /// knows one; of several files defining the symbol, one. Never walks
     /// the files referencing the symbol, so it costs the same for a symbol
     /// every file uses.
@@ -473,7 +473,7 @@ private:
     std::optional<Placed> first_placed(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
     /// Whether some unit reported a definition of the symbol: an open
-    /// session's table knows only its own unit, the project table all.
+    /// session's table knows only its own unit, the symbol records all.
     bool reported_defined(SymbolHash hash, Fid anchor) const;
 
     /// The disk files holding the symbol's entries, by its scope (see the

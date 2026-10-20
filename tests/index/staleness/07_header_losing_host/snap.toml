@@ -25,7 +25,7 @@ Indexed 0 translation units in #s: 1 file shard (# B), 3 symbols.
   ${WS}/a.h
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = "warning: [1/2] Index failed for ${WS}/a.h: no compile command found; the file stays uncovered"
+stderr = "warning: [1/1] Index failed for ${WS}/a.h: no compile command found; the file stays uncovered"
 exit = 1
 
 [test."$ clice index --jobs 2 #3"]

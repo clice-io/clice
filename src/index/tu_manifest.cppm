@@ -45,17 +45,8 @@ struct InstantiationUse {
 /// dependency set for staleness) and the variant each file received, keyed by content-identity
 /// so a re-merge can tell "already stored" from "new variant" without
 /// touching any shard. In memory its versions are the file table's ids;
-/// persisted, the index's own (ProjectIndex::export_manifest).
+/// persisted, indexes into a version table of its own (serialize_manifest).
 struct TUManifest {
-    /// ProjectIndex::table_generation recorded by the save that persisted
-    /// this manifest. The project table pins the generation it expects per TU and
-    /// the loader adopts a manifest only on an exact match: a manifest
-    /// that outran a lost project table write would otherwise serve against a
-    /// symbol table that never learned its symbols, and a manifest whose
-    /// own write failed would pass off the previous reindex's dependency
-    /// set and variants as current.
-    std::uint64_t table_generation = 0;
-
     /// Milliseconds since epoch, sampled before the indexed build started.
     std::uint64_t built_at = 0;
 
@@ -120,13 +111,29 @@ void for_each_version(Manifest& manifest, Visit&& visit) {
     }
 }
 
-/// Serialize a manifest (varint-packed nodes inside a small reflected
-/// wrapper).
-std::vector<std::byte> serialize_manifest(const TUManifest& manifest);
+/// A persisted file version: the file's path id and the content hash.
+struct PersistedVersion {
+    std::uint32_t path = 0;
+
+    std::uint64_t content_hash = 0;
+
+    friend bool operator==(const PersistedVersion&, const PersistedVersion&) = default;
+};
+
+/// Serialize a manifest whose versions index `versions` (varint-packed
+/// nodes inside a small reflected wrapper).
+std::vector<std::byte> serialize_manifest(const TUManifest& manifest,
+                                          llvm::ArrayRef<PersistedVersion> versions);
+
+/// A manifest as deserialized: its versions index `versions`.
+struct PersistedManifest {
+    TUManifest manifest;
+
+    std::vector<PersistedVersion> versions;
+};
 
 /// Verify and decode a manifest blob; nullopt for corrupt, truncated or
-/// old-format data. FileVersion ids are not resolved here — the loader
-/// drops manifests referencing ids the project table does not know.
-std::optional<TUManifest> deserialize_manifest(llvm::StringRef data);
+/// old-format data, or a version index past the version table.
+std::optional<PersistedManifest> deserialize_manifest(llvm::StringRef data);
 
 }  // namespace clice::index

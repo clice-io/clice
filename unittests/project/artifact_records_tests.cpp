@@ -75,7 +75,7 @@ ZEST_CASE(StaleFormatDropsPch) {
         index::BlobDatabase::Blob blob{index::BlobKind::ArtifactRecords,
                                        "artifacts",
                                        copy_bytes(artifacts)};
-        ZASSERT(f.project.database->write(blob, {}).empty());
+        ZASSERT(f.project.database->write(blob, {}));
     }
 
     IndexerFixture f;
@@ -190,7 +190,7 @@ ZEST_CASE(HeaderModesOfOlderRecords) {
         index::BlobDatabase::Blob blob{index::BlobKind::ArtifactRecords,
                                        "artifacts",
                                        copy_bytes(older)};
-        ZASSERT(f.project.database->write(blob, {}).empty());
+        ZASSERT(f.project.database->write(blob, {}));
     }
 
     IndexerFixture f;

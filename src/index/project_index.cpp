@@ -6,77 +6,63 @@ module;
 
 module clice;
 
-import :index.columns;
+import :index.database;
 import :index.format;
 import :index.instantiation_shard;
 import :index.project_index;
-import :index.project_table;
+import :index.project_records;
+import :index.shard;
+import :index.tu_index;
 import :index.tu_manifest;
-import :semantic.token_class;
 import :support.logging;
 
 namespace clice::index {
 
 namespace {
 
-/// Upper bound on the persisted FileVersion id space a blob may report:
-/// the writer hands ids out from the blob's counter, so a garbage one just
-/// below the reserved keys would soon hand one out. The cap is far beyond
-/// any lineage a writer accumulates (ids grow only with newly persisted
-/// (file, content-hash) pairs), and a lineage that ever drifts there is
-/// better compacted by the rebuild the rejection triggers.
-constexpr inline std::uint32_t max_persisted_versions = 1u << 24;
+/// What one unit's manifest says about one file, in path ids.
+struct UnitFacts {
+    /// The content hashes the unit entered the file at.
+    llvm::SmallVector<std::uint64_t, 1> read;
 
-/// A table derived from the manifests: file -> (TU -> the hash it names there).
-using UnitHashes = llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>>;
+    llvm::SmallVector<VariantHash, 1> variants;
 
-/// Drop `unit`'s entry for `file`, and the file once no unit names it. One
-/// file's two persisted versions in a manifest reach here twice.
-void erase_unit(UnitHashes& table, Fid file, Fid unit) {
-    auto it = table.find(file);
-    if(it == table.end()) {
-        return;
-    }
-    it->second.erase(unit);
-    if(it->second.empty()) {
-        table.erase(it);
+    bool absent = false;
+
+    /// The content hashes the unit read the file at through a module or a
+    /// precompiled header.
+    llvm::SmallVector<std::uint64_t, 1> imported;
+
+    llvm::SmallVector<UseHash, 1> uses;
+
+    /// Per content hash, the unit's resolution of the file's own
+    /// `#include` lines.
+    llvm::SmallVector<
+        std::pair<std::uint64_t, std::vector<std::pair<std::uint32_t, std::uint32_t>>>,
+        1>
+        resolutions;
+
+    friend bool operator==(const UnitFacts&, const UnitFacts&) = default;
+};
+
+template <typename Range>
+void add_distinct(Range& range, std::uint64_t value) {
+    if(!llvm::is_contained(range, value)) {
+        range.push_back(value);
     }
 }
 
-/// The distinct hashes the units name for `file`, ascending.
-llvm::SmallVector<std::uint64_t> distinct_hashes(const UnitHashes& table, Fid file) {
-    llvm::SmallVector<std::uint64_t> hashes;
-    if(auto it = table.find(file); it != table.end()) {
-        llvm::append_range(hashes, llvm::make_second_range(it->second));
-    }
-    llvm::sort(hashes);
-    hashes.erase(llvm::unique(hashes), hashes.end());
-    return hashes;
-}
-
-/// The files a shared local lists, ascending, two versions of one file
-/// once.
-std::vector<Fid> listed_files(const FileTable& files, const SharedLocal& local) {
-    std::vector<Fid> set;
-    for(auto version: local.files) {
-        set.push_back(files.version(version).fid);
+/// The files a shared local lists, as path ids ascending, two versions of
+/// one file once.
+std::vector<std::uint32_t> listed_paths(llvm::ArrayRef<VersionID> versions,
+                                        llvm::function_ref<std::uint32_t(VersionID)> path_of) {
+    std::vector<std::uint32_t> set;
+    for(auto version: versions) {
+        set.push_back(path_of(version));
     }
     llvm::sort(set);
     set.erase(llvm::unique(set), set.end());
     return set;
-}
-
-/// The file table's ids of the path ids of `base` in `ids`; a reader never
-/// proved the ids, and one past the path table is skipped.
-template <typename Ids>
-void for_each_remapped(const ProjectTable& base,
-                       const Ids& ids,
-                       llvm::function_ref<void(Fid)> visit) {
-    for(auto id: ids) {
-        if(id < base.remap.size()) {
-            visit(base.remap[id]);
-        }
-    }
 }
 
 }  // namespace
@@ -96,839 +82,232 @@ Spelling ProjectIndex::local(llvm::StringRef name) const {
     return Spelling::absolute(path::local(name, workspace, buffer));
 }
 
-std::string ProjectIndex::key_of(Fid file) const {
-    return blob_key(portable(files.resolve(file)));
+void ProjectIndex::damaged_record(BlobKind kind, llvm::StringRef key) const {
+    LOG_ERROR(
+        "The index database's record {} of kind {} fails its checks: the database is discarded "
+        "and the project indexed again",
+        llvm::toHex(key),
+        std::to_underlying(kind));
+    damage = true;
 }
 
-bool ProjectIndex::bind_table(std::unique_ptr<llvm::MemoryBuffer> blob) {
-    if(!blob) {
-        return false;
-    }
-    blob = in_place_buffer(std::move(blob));
-    auto root = verify_root<ProjectTableBlob>(blob->getBuffer(), "project table");
-    if(!root) {
-        return false;
-    }
-    auto bound = std::make_unique<ProjectTable>();
-    if(auto ok = bound->bind(*root); !ok) {
-        LOG_DEBUG("Rejecting project table: {}", std::string_view(ok.error()));
-        return false;
-    }
-    // Interning only names the paths: ids left behind by a later reject
-    // are inert.
-    bound->remap.reserve(bound->paths().size());
-    for(std::uint32_t i = 0; i < bound->paths().size(); i += 1) {
-        bound->remap.push_back(files.intern(local(llvm::StringRef(bound->paths()[i]))));
-    }
-    bound->buffer = std::move(blob);
-    base = std::move(bound);
-    return true;
+std::string ProjectIndex::file_key(Fid file) const {
+    return number_key(path_hash(portable(files.resolve(file))));
 }
 
-std::expected<void, llvm::StringRef>
-    ProjectIndex::adopt_file_versions(llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
-    if(!base) {
+const FileRecord* ProjectIndex::file_record(Fid file) const {
+    return read(file_records, file_key(file), decode_file);
+}
+
+FileRecord& ProjectIndex::change_file(Fid file) {
+    auto key = file_key(file);
+    bool known = read(file_records, key, decode_file) != nullptr;
+    auto& record = change(file_records, key, decode_file);
+    if(!known) {
+        record.path = header.next_path;
+        header.next_path += 1;
+        path_records.changed[number_key(record.path)] = portable(files.resolve(file));
+        fid_paths.try_emplace(file, record.path);
+        path_fids.try_emplace(record.path, file);
+    }
+    return record;
+}
+
+const Dependents* ProjectIndex::dependents(Fid file) const {
+    return read(dependent_records, file_key(file), decode_dependents);
+}
+
+Dependents& ProjectIndex::change_dependents(Fid file) {
+    return change(dependent_records, file_key(file), decode_dependents);
+}
+
+const Symbol* ProjectIndex::symbol(SymbolHash hash) const {
+    return read(symbol_records, number_key(hash), decode_symbol);
+}
+
+std::optional<std::uint32_t> ProjectIndex::known_path(Fid file) const {
+    if(auto it = fid_paths.find(file); it != fid_paths.end()) {
+        return it->second;
+    }
+    auto* record = file_record(file);
+    if(!record) {
+        return std::nullopt;
+    }
+    fid_paths.try_emplace(file, record->path);
+    path_fids.try_emplace(record->path, file);
+    return record->path;
+}
+
+std::uint32_t ProjectIndex::path_id(Fid file) {
+    if(auto known = known_path(file)) {
+        return *known;
+    }
+    return change_file(file).path;
+}
+
+Fid ProjectIndex::fid_of(std::uint32_t path) const {
+    if(auto it = path_fids.find(path); it != path_fids.end()) {
+        return it->second;
+    }
+    auto* name = read(path_records, number_key(path), [](llvm::StringRef bytes) {
+        return std::optional(bytes.str());
+    });
+    if(!name) {
+        damaged_record(BlobKind::Path, number_key(path));
         return {};
     }
-    using Blob = ProjectTable::Blob;
-    auto& columns = base->columns;
-    llvm::ArrayRef<std::uint32_t> version_ids = columns->version_ids;
-    auto& version_paths = columns->version_paths;
-    llvm::ArrayRef<std::uint64_t> version_hashes = columns->version_hashes;
-    llvm::ArrayRef<std::uint32_t> manifest_versions = columns->manifest_versions;
-    llvm::ArrayRef<std::uint64_t> manifest_generations = columns->manifest_generations;
-    std::uint32_t next_version_id = columns->next_version_id;
-    auto count = version_ids.size();
-
-    // Every value check runs before the first mutation: a blob rejected
-    // halfway through would otherwise leave partial state behind — file
-    // versions whose corrupt stat stamps feed the freshness fast path —
-    // while the caller treats the failed load as "no index on disk".
-    for(std::uint32_t i = 0; i < count; i += 1) {
-        if(version_paths[i].empty()) {
-            return std::unexpected("empty file version path");
-        }
-    }
-    // Every id below becomes a DenseMap or DenseSet key, first in the
-    // duplicate checks here and then in the id maps — see reserved_key.
-    // The counter is one hand-out away from becoming a key itself, and
-    // the writer hands ids out from it, so ids must sit below it — a
-    // bound that (with the sentinels at the top of the id space) also
-    // keeps every id non-reserved.
-    if(reserved_key(next_version_id) || next_version_id > max_persisted_versions) {
-        return std::unexpected("file version counter out of range");
-    }
-    for(auto id: version_ids) {
-        if(id >= next_version_id) {
-            return std::unexpected("file version id past the counter");
-        }
-    }
-    for(auto version: manifest_versions) {
-        if(reserved_key(version)) {
-            return std::unexpected("reserved manifest pin");
-        }
-    }
-    // Ids and (path, hash) pairs are both map keys in the writer, so a
-    // repeat of either marks a corrupt blob: a repeated id in particular
-    // would map to the earlier pair while its record names the later
-    // path, attributing contributions to the wrong file.
-    llvm::DenseSet<std::uint32_t> blob_version_ids(version_ids.begin(), version_ids.end());
-    if(blob_version_ids.size() != count) {
-        return std::unexpected("duplicate file version id");
-    }
-    llvm::DenseSet<std::pair<llvm::StringRef, std::uint64_t>> blob_versions;
-    for(std::uint32_t i = 0; i < count; i += 1) {
-        if(!blob_versions.insert({llvm::StringRef(version_paths[i]), version_hashes[i]}).second) {
-            return std::unexpected("duplicate file version");
-        }
-    }
-    // The writer only pins manifests whose tu_version survived the same save's
-    // garbage collection, so an unresolvable pin marks a corrupt blob.
-    for(auto version: manifest_versions) {
-        if(!blob_version_ids.contains(version)) {
-            return std::unexpected("manifest pin names an unknown file version");
-        }
-    }
-
-    // Two spellings of one file intern to the same version; the ids both
-    // stay mapped to it.
-    next_persisted_id = next_version_id;
-    for(std::uint32_t i = 0; i < count; i += 1) {
-        auto path_id = files.intern(local(llvm::StringRef(version_paths[i])));
-        auto id = files.intern_version(path_id, version_hashes[i]);
-        runtime_ids.try_emplace(version_ids[i], id);
-        persisted_ids.try_emplace(id, version_ids[i]);
-    }
-    for(std::uint32_t k = 0; k < manifest_versions.size(); k += 1) {
-        manifest_pins[runtime_ids.find(manifest_versions[k])->second] = manifest_generations[k];
-    }
-    return {};
-}
-
-bool ProjectIndex::verify_bitmaps() const {
-    if(!base) {
-        return true;
-    }
-    auto in_paths = [&](const std::optional<Bitmap>& decoded) {
-        return decoded && (decoded->isEmpty() || decoded->maximum() < base->paths().size());
-    };
-    for(std::uint32_t entry = 0; entry < base->count(); entry += 1) {
-        if(!in_paths(base->bitmap(entry)) || !in_paths(base->instantiation_bitmap(entry))) {
-            return false;
-        }
-    }
-    return true;
-}
-
-std::expected<void, llvm::StringRef>
-    ProjectIndex::load_table(llvm::StringRef data,
-                             llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
-    if(!bind_table(llvm::MemoryBuffer::getMemBufferCopy(data))) {
-        return std::unexpected("not a readable project table");
-    }
-    if(!verify_bitmaps()) {
-        base.reset();
-        return std::unexpected("reference bitmap does not decode");
-    }
-    if(auto adopted = adopt_file_versions(manifest_pins); !adopted) {
-        base.reset();
-        return adopted;
-    }
-    adopt_base();
-    return {};
-}
-
-void ProjectIndex::adopt_base() {
-    generation = base->columns->generation;
-    search_generation = base->columns->search_generation;
-    pending_symbols.clear();
-    auto& pending = base->columns->search_pending;
-    pending_symbols.insert(pending.begin(), pending.end());
-    pending_files.clear();
-    for(auto file: base->columns->search_pending_files) {
-        pending_files.insert(base->remap[file]);
-    }
-}
-
-const Symbol* ProjectIndex::newer_entry(SymbolHash hash) const {
-    if(auto it = changed.find(hash); it != changed.end()) {
-        return &it->second;
-    }
-    if(auto it = written.find(hash); it != written.end()) {
-        return &it->second;
-    }
-    return nullptr;
+    auto fid = files.intern(local(*name));
+    path_fids.try_emplace(path, fid);
+    fid_paths.try_emplace(fid, path);
+    return fid;
 }
 
 std::optional<SymbolView> ProjectIndex::find_symbol(SymbolHash hash) const {
-    if(auto* symbol = newer_entry(hash)) {
-        return symbol->view();
+    auto* found = symbol(hash);
+    if(!found) {
+        return std::nullopt;
     }
-    if(base) {
-        if(auto entry = base->find(hash)) {
-            return base->view(*entry);
-        }
+    auto view = found->view();
+    if(view.file != no_file) {
+        view.file = fid_of(view.file).raw;
     }
-    return std::nullopt;
+    return view;
 }
 
 std::uint32_t ProjectIndex::reference_count(SymbolHash hash) const {
-    if(auto* symbol = newer_entry(hash)) {
-        return static_cast<std::uint32_t>(symbol->reference_files.cardinality());
-    }
-    if(base) {
-        if(auto entry = base->find(hash)) {
-            return base->reference_counts[*entry];
-        }
-    }
-    return 0;
+    auto* found = symbol(hash);
+    return found ? static_cast<std::uint32_t>(found->reference_files.cardinality()) : 0;
 }
 
 void ProjectIndex::for_each_reference_file(SymbolHash hash,
                                            llvm::function_ref<void(Fid)> visit) const {
-    if(auto* symbol = newer_entry(hash)) {
-        for(auto id: symbol->reference_files) {
-            visit(Fid{id});
-        }
-        return;
-    }
-    if(!base) {
-        return;
-    }
-    // A reader never proved the image; one that fails reads as no
-    // references rather than crashing the query.
-    if(auto entry = base->find(hash)) {
-        if(auto decoded = base->bitmap(*entry)) {
-            for_each_remapped(*base, *decoded, visit);
+    if(auto* found = symbol(hash)) {
+        for(auto path: found->reference_files) {
+            if(auto file = fid_of(path); file.valid()) {
+                visit(file);
+            }
         }
     }
 }
 
 void ProjectIndex::for_each_instantiation_file(SymbolHash hash,
                                                llvm::function_ref<void(Fid)> visit) const {
-    if(auto* symbol = newer_entry(hash)) {
-        for(auto id: symbol->instantiation_files) {
-            visit(Fid{id});
-        }
-        return;
-    }
-    if(!base) {
-        return;
-    }
-    if(auto entry = base->find(hash)) {
-        if(auto decoded = base->instantiation_bitmap(*entry)) {
-            for_each_remapped(*base, *decoded, visit);
+    if(auto* found = symbol(hash)) {
+        for(auto path: found->instantiation_files) {
+            if(auto file = fid_of(path); file.valid()) {
+                visit(file);
+            }
         }
     }
 }
 
 void ProjectIndex::for_each_symbol(
     llvm::function_ref<bool(SymbolHash, const SymbolView&, std::uint32_t)> visit) const {
-    for(auto& [hash, symbol]: changed) {
-        if(!visit(hash,
-                  symbol.view(),
-                  static_cast<std::uint32_t>(symbol.reference_files.cardinality()))) {
-            return;
+    scan(symbol_records, decode_symbol, [&](llvm::StringRef key, const Symbol& found) {
+        auto hash = key_number<SymbolHash>(key);
+        if(!hash || reserved_key(*hash)) {
+            damaged_record(BlobKind::Symbol, key);
+            return true;
         }
-    }
-    for(auto& [hash, symbol]: written) {
-        if(changed.contains(hash)) {
-            continue;
+        auto view = found.view();
+        if(view.file != no_file) {
+            view.file = fid_of(view.file).raw;
         }
-        if(!visit(hash,
-                  symbol.view(),
-                  static_cast<std::uint32_t>(symbol.reference_files.cardinality()))) {
-            return;
-        }
-    }
-    if(!base) {
-        return;
-    }
-    for(std::uint32_t entry = 0; entry < base->count(); entry += 1) {
-        auto hash = base->hashes()[entry];
-        if(changed.contains(hash) || written.contains(hash)) {
-            continue;
-        }
-        if(!visit(hash, base->view(entry), base->reference_counts[entry])) {
-            return;
-        }
-    }
+        return visit(*hash, view, static_cast<std::uint32_t>(found.reference_files.cardinality()));
+    });
 }
 
 std::uint32_t ProjectIndex::symbol_count() const {
-    std::uint32_t count = base ? base->count() : 0;
-    for(auto hash: llvm::make_first_range(changed)) {
-        if(!written.contains(hash) && !(base && base->find(hash))) {
-            count += 1;
-        }
-    }
-    for(auto hash: llvm::make_first_range(written)) {
-        if(!(base && base->find(hash))) {
-            count += 1;
-        }
-    }
-    return count;
+    return db ? db->count(BlobKind::Symbol) : 0;
 }
 
-Symbol& ProjectIndex::edit(SymbolHash hash) {
-    auto [it, inserted] = changed.try_emplace(hash);
-    if(!inserted) {
-        return it->second;
-    }
-    auto& symbol = it->second;
-    if(auto held = written.find(hash); held != written.end()) {
-        symbol = held->second;
-        return symbol;
-    }
-    if(!base) {
-        return symbol;
-    }
-    auto entry = base->find(hash);
-    if(!entry) {
-        return symbol;
-    }
-    auto identity = base->view(*entry);
-    symbol.name = identity.name.str();
-    symbol.args = identity.args.str();
-    symbol.signature = identity.signature.str();
-    symbol.parent = identity.parent;
-    symbol.kind = identity.kind;
-    symbol.flags = identity.flags;
-    symbol.token_class = identity.token_class;
-    symbol.file = identity.file;
-    if(auto decoded = base->bitmap(*entry)) {
-        for_each_remapped(*base, *decoded, [&](Fid file) { symbol.reference_files.add(file.raw); });
-    }
-    if(auto decoded = base->instantiation_bitmap(*entry)) {
-        for_each_remapped(*base, *decoded, [&](Fid file) {
-            symbol.instantiation_files.add(file.raw);
-        });
-    }
-    return symbol;
+bool ProjectIndex::indexed(Fid tu) const {
+    auto* record = file_record(tu);
+    return record && record->run != 0;
 }
 
-void ProjectIndex::merge_symbols(const TUIndex& index,
-                                 llvm::ArrayRef<Fid> file_ids_map,
-                                 llvm::SmallVectorImpl<SymbolHash>* added) {
-    // Units may spell one symbol differently (`X<int>` against
-    // `X<signed int>`, a conversion to a typedef): the shortest spelling
-    // wins, then the smaller one, so the table reads the same whatever the
-    // merge order — among the units that send the symbol.
-    //
-    // FIXME: what a symbol is can depend on the unit's command — its
-    // spelling, SystemHeader under -isystem against -I, Deprecated under a
-    // deployment target — and nothing represents that dependence: the
-    // table folds whatever units send, and a unit whose every file holding
-    // the symbol's entries is a stored variant sends nothing of it
-    // (TUIndexOptions::known_variants), so the first unit to store the
-    // variant decides. Such facts want one explicit, per-context record
-    // instead of a fold.
-    auto prefer = [](std::string& current, llvm::StringRef incoming) {
-        if(incoming.empty() ||
-           (!current.empty() && (incoming.size() > current.size() ||
-                                 (incoming.size() == current.size() && incoming >= current)))) {
-            return false;
+std::optional<TUManifest> ProjectIndex::manifest(Fid tu) const {
+    for(auto* held: {&changed_manifests, &written_manifests}) {
+        if(auto it = held->find(tu); it != held->end()) {
+            return it->second;
         }
-        current = incoming.str();
-        return true;
-    };
-    index.for_each_symbol(
-        [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t> references) {
-            if(identity.scope != SymbolScope::External) {
-                return true;
+    }
+    if(!db || !indexed(tu)) {
+        return std::nullopt;
+    }
+    auto key = file_key(tu);
+    auto blob = db->read(BlobKind::TUManifest, key);
+    auto decoded = blob ? decode_manifest(blob.buffer->getBuffer()) : std::nullopt;
+    if(!decoded) {
+        damaged_record(BlobKind::TUManifest, key);
+    }
+    return decoded;
+}
+
+void ProjectIndex::for_each_unit(llvm::function_ref<void(Fid tu)> visit) const {
+    scan(file_records, decode_file, [&](llvm::StringRef, const FileRecord& record) {
+        if(record.run != 0) {
+            if(auto tu = fid_of(record.path); tu.valid()) {
+                visit(tu);
             }
-            bool known = find_symbol(hash).has_value();
-            auto& target = edit(hash);
-            bool symbol_changed = !known;
-            bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
-            if(target.name.empty() && !identity.name.empty()) {
-                target.parent = identity.parent;
-                target.kind = identity.kind;
-                target.token_class.kind = identity.token_class.kind;
-                symbol_changed = true;
-            } else if(defines && target.token_class.kind != identity.token_class.kind) {
-                // A declaration may say `struct` where the definition says
-                // `class`: the definition's word stands, whatever merges first.
-                target.token_class.kind = identity.token_class.kind;
-                symbol_changed = true;
-            }
-            symbol_changed = prefer(target.name, identity.name) || symbol_changed;
-            symbol_changed = prefer(target.args, identity.args) || symbol_changed;
-            // An edit to a function, a parameter renamed, keeps its hash: the
-            // unit merging last describes it — a unit defining it, when one
-            // does, which sees the names of every declaration.
-            if(!identity.signature.empty() && target.signature != identity.signature &&
-               (defines || !has_flag(target.flags, SymbolFlags::HasDefinition))) {
-                target.signature = identity.signature.str();
-                symbol_changed = true;
-            }
-            // A unit that defines the symbol always places it: the table never
-            // retracts a unit's earlier report, so an old definition bit must
-            // not pin the file after the definition moved. Declarations only
-            // fill an empty slot.
-            if(identity.file != no_file && (target.file == no_file || defines)) {
-                auto file = file_ids_map[identity.file].raw;
-                symbol_changed = symbol_changed || target.file != file;
-                target.file = file;
-            }
-            auto flags = target.flags | identity.flags;
-            symbol_changed = symbol_changed || flags != target.flags;
-            target.flags = flags;
-            auto modifiers = target.token_class.modifiers | identity.token_class.modifiers;
-            symbol_changed = symbol_changed || modifiers != target.token_class.modifiers;
-            target.token_class.modifiers = modifiers;
-            for(auto ref: references) {
-                target.reference_files.add(file_ids_map[ref].raw);
-            }
-            if(symbol_changed && added) {
-                added->push_back(hash);
-            }
-            return true;
-        });
-    index.for_each_instantiation_file([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
-        auto& target = edit(hash);
-        for(auto file: files) {
-            target.instantiation_files.add(file_ids_map[file].raw);
         }
         return true;
     });
-}
-
-std::vector<std::byte> ProjectIndex::serialize_table() {
-    // The entries changed since the last write join the ones still held
-    // aside from a write that was never persisted; the newer entry wins.
-    for(auto& [hash, symbol]: changed) {
-        written[hash] = std::move(symbol);
-    }
-    changed.clear();
-
-    // The blob carries only the versions some manifest still references —
-    // the persisted form's garbage collection. The shared table itself is
-    // left alone: other consumers may still anchor checks on a version the
-    // index dropped, and ids are never reused either way.
-    llvm::DenseSet<VersionID> referenced;
-    for(auto& manifest: llvm::make_second_range(manifests)) {
-        for_each_version(manifest,
-                         [&](std::uint32_t version) { referenced.insert(VersionID{version}); });
-    }
-
-    ProjectTableBlob blob;
-    blob.format_version = index_format_version;
-    blob.generation = generation;
-
-    llvm::SmallVector<std::pair<std::uint32_t, VersionID>> ids;
-    ids.reserve(referenced.size());
-    for(auto id: referenced) {
-        ids.emplace_back(persisted_id(id), id);
-    }
-    llvm::sort(ids);
-    for(auto [persisted, id]: ids) {
-        auto& record = files.version(id);
-        blob.version_ids.push_back(persisted);
-        blob.version_paths.push_back(portable(files.resolve(record.fid)));
-        blob.version_hashes.push_back(record.content_hash);
-    }
-    blob.next_version_id = next_persisted_id;
-
-    blob.manifest_versions.reserve(manifests.size());
-    blob.manifest_generations.reserve(manifests.size());
-    for(auto& manifest: llvm::make_second_range(manifests)) {
-        blob.manifest_versions.push_back(persisted_ids.find(manifest.tu_version)->second);
-        blob.manifest_generations.push_back(manifest.table_generation);
-    }
-
-    // The base's path table stays as it is, so its entries' bitmap images
-    // copy verbatim; files the written entries reference beyond it are
-    // appended.
-    llvm::DenseMap<Fid, std::uint32_t> id_of;
-    if(base) {
-        blob.paths.reserve(base->paths().size());
-        for(std::uint32_t i = 0; i < base->paths().size(); i += 1) {
-            blob.paths.emplace_back(base->paths()[i]);
-            id_of.try_emplace(base->remap[i], i);
-        }
-    }
-    auto path_id = [&](Fid file) {
-        auto [it, inserted] =
-            id_of.try_emplace(file, static_cast<std::uint32_t>(blob.paths.size()));
-        if(inserted) {
-            blob.paths.push_back(portable(files.resolve(file)));
-        }
-        return it->second;
-    };
-
-    // The table in hash order: base entries copied, written entries encoded.
-    struct Entry {
-        SymbolHash hash;
-        std::uint32_t base_entry;
-        const Symbol* symbol;
-    };
-
-    std::vector<Entry> entries;
-    entries.reserve((base ? base->count() : 0) + written.size());
-    llvm::SmallVector<SymbolHash> keys;
-    keys.reserve(written.size());
-    for(auto hash: llvm::make_first_range(written)) {
-        keys.push_back(hash);
-    }
-    llvm::sort(keys);
-    std::uint32_t base_entry = 0;
-    std::uint32_t k = 0;
-    auto base_count = base ? base->count() : 0;
-    while(base_entry < base_count || k < keys.size()) {
-        if(k == keys.size() || (base_entry < base_count && base->hashes()[base_entry] < keys[k])) {
-            entries.push_back({base->hashes()[base_entry], base_entry, nullptr});
-            base_entry += 1;
-            continue;
-        }
-        if(base_entry < base_count && base->hashes()[base_entry] == keys[k]) {
-            base_entry += 1;
-        }
-        entries.push_back({keys[k], 0, &written.find(keys[k])->second});
-        k += 1;
-    }
-    blob.symbol_hashes.reserve(entries.size());
-    for(auto& entry: entries) {
-        blob.symbol_hashes.push_back(entry.hash);
-    }
-
-    std::vector<std::uint32_t> parents;
-    std::vector<std::uint32_t> file_ids;
-    std::vector<std::uint32_t> reference_counts;
-    parents.reserve(entries.size());
-    file_ids.reserve(entries.size());
-    reference_counts.reserve(entries.size());
-    for(std::uint32_t i = 0; i < entries.size(); i += 1) {
-        auto& [hash, base_entry, symbol] = entries[i];
-        auto identity = symbol ? symbol->view() : base->view(base_entry);
-        blob.symbol_names += identity.name;
-        blob.symbol_name_ends.push_back(static_cast<std::uint32_t>(blob.symbol_names.size()));
-        if(!identity.args.empty()) {
-            blob.symbol_args_entries.push_back(i);
-            blob.symbol_args += identity.args;
-            blob.symbol_args_ends.push_back(static_cast<std::uint32_t>(blob.symbol_args.size()));
-        }
-        blob.symbol_signatures += identity.signature;
-        blob.symbol_signature_ends.push_back(
-            static_cast<std::uint32_t>(blob.symbol_signatures.size()));
-        auto parent = identity.parent == 0
-                          ? std::nullopt
-                          : sorted_find(llvm::ArrayRef(blob.symbol_hashes), identity.parent);
-        parents.push_back(parent ? *parent + 1 : 0);
-        if(identity.parent != 0 && !parent) {
-            blob.symbol_far_parents.push_back(i);
-            blob.symbol_far_parent_hashes.push_back(identity.parent);
-        }
-        blob.symbol_kinds.push_back(identity.kind.value());
-        blob.symbol_flags.push_back(static_cast<std::uint16_t>(identity.flags));
-        blob.symbol_token_kinds.push_back(static_cast<std::uint8_t>(identity.token_class.kind));
-        blob.symbol_token_modifiers.push_back(identity.token_class.modifiers);
-        if(!symbol) {
-            auto file = base->file(base_entry);
-            file_ids.push_back(file == no_file ? 0 : file + 1);
-            reference_counts.push_back(base->reference_counts[base_entry]);
-            auto image = base->image(base_entry);
-            blob.symbol_bitmaps.insert(blob.symbol_bitmaps.end(), image.begin(), image.end());
-            blob.symbol_bitmap_ends.push_back(
-                static_cast<std::uint32_t>(blob.symbol_bitmaps.size()));
-            auto instantiations = base->instantiation_image(base_entry);
-            if(!instantiations.empty()) {
-                blob.symbol_instantiation_entries.push_back(i);
-                blob.symbol_instantiations.insert(blob.symbol_instantiations.end(),
-                                                  instantiations.begin(),
-                                                  instantiations.end());
-                blob.symbol_instantiation_ends.push_back(
-                    static_cast<std::uint32_t>(blob.symbol_instantiations.size()));
-            }
-            continue;
-        }
-        file_ids.push_back(symbol->file == no_file ? 0 : path_id(Fid{symbol->file}) + 1);
-        reference_counts.push_back(
-            static_cast<std::uint32_t>(symbol->reference_files.cardinality()));
-        Bitmap references;
-        for(auto id: symbol->reference_files) {
-            references.add(path_id(Fid{id}));
-        }
-        append_file_set(blob.symbol_bitmaps, references);
-        blob.symbol_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.symbol_bitmaps.size()));
-        if(!symbol->instantiation_files.isEmpty()) {
-            Bitmap instantiations;
-            for(auto id: symbol->instantiation_files) {
-                instantiations.add(path_id(Fid{id}));
-            }
-            blob.symbol_instantiation_entries.push_back(i);
-            append_file_set(blob.symbol_instantiations, instantiations);
-            blob.symbol_instantiation_ends.push_back(
-                static_cast<std::uint32_t>(blob.symbol_instantiations.size()));
-        }
-    }
-    write_ids(blob.symbol_parents, parents, entries.size() + 1);
-
-    std::vector<std::pair<std::uint32_t, Bitmap>> reverse;
-    reverse.reserve(contributions.size());
-    for(auto& [file, units]: contributions) {
-        Bitmap tus;
-        for(auto tu: llvm::make_first_range(units)) {
-            tus.add(path_id(tu));
-        }
-        reverse.emplace_back(path_id(file), std::move(tus));
-    }
-    std::ranges::sort(reverse, {}, [](const auto& entry) { return entry.first; });
-    for(auto& [file, tus]: reverse) {
-        blob.contributed_files.push_back(file);
-        append_file_set(blob.contributors, tus);
-        blob.contributor_ends.push_back(static_cast<std::uint32_t>(blob.contributors.size()));
-    }
-
-    llvm::SmallVector<SymbolHash> symbols(llvm::make_first_range(shared_local_sets));
-    llvm::sort(symbols);
-    for(auto symbol: symbols) {
-        for(auto& set: llvm::make_first_range(shared_local_sets.find(symbol)->second)) {
-            Bitmap listed;
-            for(auto file: set) {
-                listed.add(path_id(file));
-            }
-            append_file_set(blob.shared_local_files, listed);
-            blob.shared_local_file_ends.push_back(
-                static_cast<std::uint32_t>(blob.shared_local_files.size()));
-        }
-        blob.shared_local_symbols.push_back(symbol);
-        blob.shared_local_set_ends.push_back(
-            static_cast<std::uint32_t>(blob.shared_local_file_ends.size()));
-    }
-
-    blob.search_generation = search_generation;
-    blob.search_pending.assign(pending_symbols.begin(), pending_symbols.end());
-    llvm::sort(blob.search_pending);
-    for(auto file: pending_files) {
-        blob.search_pending_files.push_back(path_id(file));
-    }
-    llvm::sort(blob.search_pending_files);
-    // After every path id is handed out: the width follows the path table.
-    write_ids(blob.symbol_files, file_ids, blob.paths.size() + 1);
-    write_ids(blob.symbol_reference_counts, reference_counts, blob.paths.size() + 1);
-
-    return encode(blob);
-}
-
-void ProjectIndex::rebase(std::unique_ptr<llvm::MemoryBuffer> blob) {
-    [[maybe_unused]] bool bound = bind_table(std::move(blob));
-    assert(bound && "a freshly serialized project table must bind");
-    written.clear();
-}
-
-void ProjectIndex::restore_unwritten() {
-    for(auto& [hash, symbol]: written) {
-        changed.try_emplace(hash, std::move(symbol));
-    }
-    written.clear();
-}
-
-std::optional<VersionID> ProjectIndex::runtime_version(std::uint32_t persisted) const {
-    if(reserved_key(persisted)) {
-        return std::nullopt;
-    }
-    auto it = runtime_ids.find(persisted);
-    if(it == runtime_ids.end()) {
-        return std::nullopt;
-    }
-    return it->second;
-}
-
-bool ProjectIndex::import_manifest(TUManifest& manifest) const {
-    bool imported = true;
-    for_each_version(manifest, [&](std::uint32_t& id) {
-        auto version = imported ? runtime_version(id) : std::nullopt;
-        imported = version.has_value();
-        if(imported) {
-            id = version->raw;
-        }
-    });
-    return imported;
-}
-
-TUManifest ProjectIndex::export_manifest(const TUManifest& manifest) {
-    auto exported = manifest;
-    for_each_version(exported, [&](std::uint32_t& id) { id = persisted_id(VersionID{id}); });
-    return exported;
-}
-
-std::uint32_t ProjectIndex::persisted_id(VersionID version) {
-    auto [it, inserted] = persisted_ids.try_emplace(version, next_persisted_id);
-    if(inserted) {
-        next_persisted_id += 1;
-    }
-    return it->second;
-}
-
-llvm::SmallVector<Fid> ProjectIndex::apply_manifest(Fid tu_path_id, TUManifest manifest) {
-    llvm::SmallVector<Fid> affected = remove_manifest(tu_path_id);
-
-    for(auto& [version, hash]: manifest.contributions) {
-        auto path_id = files.version(version).fid;
-        contributions[path_id][tu_path_id] = hash;
-        affected.push_back(path_id);
-    }
-    // Two spellings of one place, or two persisted versions of it, are one
-    // file: remove_manifest erases each place once.
-    llvm::sort(manifest.absent);
-    manifest.absent.erase(llvm::unique(manifest.absent), manifest.absent.end());
-    for(auto version: manifest.absent) {
-        absent_lookups[files.version(version).fid].insert(tu_path_id);
-    }
-    for(auto version: manifest.imports) {
-        importers[files.version(version).fid].insert(tu_path_id);
-    }
-    for(auto& local: manifest.shared_locals) {
-        shared_local_sets[local.symbol][listed_files(files, local)] += 1;
-    }
-    for(auto& use: manifest.instantiations) {
-        auto path_id = files.version(use.file).fid;
-        instantiation_uses[path_id][tu_path_id] = use.use;
-        affected.push_back(path_id);
-    }
-    units[unit_hash(tu_path_id)] = tu_path_id;
-    manifests[tu_path_id] = std::move(manifest);
-
-    llvm::sort(affected);
-    affected.erase(llvm::unique(affected), affected.end());
-    for(auto file: affected) {
-        refresh_live(file);
-    }
-    return affected;
-}
-
-llvm::SmallVector<Fid> ProjectIndex::remove_manifest(Fid tu_path_id) {
-    llvm::SmallVector<Fid> affected;
-    auto it = manifests.find(tu_path_id);
-    if(it == manifests.end()) {
-        return affected;
-    }
-
-    for(auto& [version, hash]: it->second.contributions) {
-        auto path_id = files.version(version).fid;
-        erase_unit(contributions, path_id, tu_path_id);
-        affected.push_back(path_id);
-    }
-    for(auto version: it->second.absent) {
-        auto probe_it = absent_lookups.find(files.version(version).fid);
-        probe_it->second.erase(tu_path_id);
-        if(probe_it->second.empty()) {
-            absent_lookups.erase(probe_it);
-        }
-    }
-    // Modules built at different times may have read different versions
-    // of one file: the first of them already erased it.
-    for(auto version: it->second.imports) {
-        auto importer_it = importers.find(files.version(version).fid);
-        if(importer_it == importers.end()) {
-            continue;
-        }
-        importer_it->second.erase(tu_path_id);
-        if(importer_it->second.empty()) {
-            importers.erase(importer_it);
-        }
-    }
-    for(auto& local: it->second.shared_locals) {
-        auto sets = shared_local_sets.find(local.symbol);
-        auto set = sets->second.find(listed_files(files, local));
-        set->second -= 1;
-        if(set->second == 0) {
-            sets->second.erase(set);
-        }
-        if(sets->second.empty()) {
-            shared_local_sets.erase(sets);
-        }
-    }
-    for(auto& use: it->second.instantiations) {
-        auto path_id = files.version(use.file).fid;
-        erase_unit(instantiation_uses, path_id, tu_path_id);
-        affected.push_back(path_id);
-    }
-    units.erase(unit_hash(tu_path_id));
-    manifests.erase(it);
-
-    llvm::sort(affected);
-    affected.erase(llvm::unique(affected), affected.end());
-    for(auto file: affected) {
-        refresh_live(file);
-    }
-    return affected;
-}
-
-void ProjectIndex::refresh_live(Fid file) {
-    if(auto it = instantiations.find(file); it != instantiations.end()) {
-        it->second.set_live(live_uses(file));
-    }
-    if(auto it = shards.find(file); it != shards.end()) {
-        it->second.set_live(live_variants(file));
-        search_file_changed(file);
-    }
-}
-
-void ProjectIndex::search_file_changed(Fid file) {
-    pending_files.insert(file);
-    if(changed_during_search_build) {
-        changed_during_search_build->files.insert(file);
-    }
-}
-
-llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(Fid path_id) const {
-    return distinct_hashes(contributions, path_id);
-}
-
-llvm::SmallVector<std::uint64_t> ProjectIndex::live_uses(Fid path_id) const {
-    return distinct_hashes(instantiation_uses, path_id);
-}
-
-const TUManifest* ProjectIndex::held_manifest(Fid tu) const {
-    auto it = manifests.find(tu);
-    return it != manifests.end() ? &it->second : nullptr;
-}
-
-void ProjectIndex::for_each_manifest(
-    llvm::function_ref<void(Fid tu, const TUManifest&)> visit) const {
-    for(auto& [tu, manifest]: manifests) {
-        visit(tu, manifest);
-    }
-}
-
-std::uint32_t ProjectIndex::manifest_count() const {
-    return manifests.size();
 }
 
 void ProjectIndex::for_each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const {
-    if(!db) {
-        for_each_contribution(file, [&](Fid tu, std::uint64_t) { visit(tu); });
+    auto* found = dependents(file);
+    if(!found) {
         return;
     }
-    if(!base) {
-        return;
+    Bitmap units;
+    for(auto& set: llvm::make_second_range(found->contributors)) {
+        units |= set;
     }
-    if(auto tus = base->contributors_of(file)) {
-        for_each_remapped(*base, *tus, visit);
+    for(auto unit: units) {
+        if(auto tu = fid_of(unit); tu.valid()) {
+            visit(tu);
+        }
     }
 }
 
 void ProjectIndex::for_each_contribution(
     Fid file,
     llvm::function_ref<void(Fid tu, std::uint64_t variant)> visit) const {
-    if(auto it = contributions.find(file); it != contributions.end()) {
-        for(auto [tu, variant]: it->second) {
-            visit(tu, variant);
+    if(auto* found = dependents(file)) {
+        for(auto& [variant, units]: found->contributors) {
+            for(auto unit: units) {
+                if(auto tu = fid_of(unit); tu.valid()) {
+                    visit(tu, variant);
+                }
+            }
         }
     }
 }
 
 void ProjectIndex::for_each_absent_lookup(Fid place, llvm::function_ref<void(Fid)> visit) const {
-    if(auto it = absent_lookups.find(place); it != absent_lookups.end()) {
-        llvm::for_each(it->second, visit);
+    if(auto* found = dependents(place)) {
+        for(auto unit: found->absent) {
+            if(auto tu = fid_of(unit); tu.valid()) {
+                visit(tu);
+            }
+        }
     }
 }
 
 void ProjectIndex::for_each_importer(Fid input, llvm::function_ref<void(Fid)> visit) const {
-    if(auto it = importers.find(input); it != importers.end()) {
-        llvm::for_each(it->second, visit);
+    auto* found = dependents(input);
+    if(!found) {
+        return;
+    }
+    Bitmap units;
+    for(auto& set: llvm::make_second_range(found->importers)) {
+        units |= set;
+    }
+    for(auto unit: units) {
+        if(auto tu = fid_of(unit); tu.valid()) {
+            visit(tu);
+        }
     }
 }
 
@@ -936,16 +315,14 @@ void ProjectIndex::for_each_file_of_local(SymbolHash hash,
                                           Fid anchor,
                                           llvm::function_ref<void(Fid)> visit) const {
     llvm::SmallVector<llvm::SmallVector<Fid, 4>> sets;
-    if(!db) {
-        if(auto it = shared_local_sets.find(hash); it != shared_local_sets.end()) {
-            for(auto& set: llvm::make_first_range(it->second)) {
-                sets.emplace_back(set.begin(), set.end());
-            }
-        }
-    } else if(base) {
-        for(auto& listed: base->shared_local_sets_of(hash)) {
+    if(auto* local = read(shared_local_records, number_key(hash), decode_shared_local)) {
+        for(auto& listed: llvm::make_first_range(*local)) {
             auto& set = sets.emplace_back();
-            for_each_remapped(*base, listed, [&](Fid file) { set.push_back(file); });
+            for(auto path: listed) {
+                if(auto file = fid_of(path); file.valid()) {
+                    set.push_back(file);
+                }
+            }
         }
     }
 
@@ -970,164 +347,540 @@ void ProjectIndex::for_each_file_of_local(SymbolHash hash,
     }
 }
 
-const TUManifest* ProjectIndex::manifest(Fid tu) const {
-    if(!db) {
-        auto it = manifests.find(tu);
-        return it != manifests.end() ? &it->second : nullptr;
-    }
-    auto [it, inserted] = fetched_manifests.try_emplace(tu);
-    if(inserted) {
-        // A reader adopts a manifest only under the generation the bound project table
-        // pins for it, as the writer's load does; the versions it names
-        // stay persisted ids.
-        auto pinned = [&](const TUManifest& manifest) {
-            llvm::ArrayRef<std::uint32_t> versions = base->columns->manifest_versions;
-            auto pin = llvm::find(versions, manifest.tu_version.raw);
-            return pin != versions.end() &&
-                   base->columns->manifest_generations[pin - versions.begin()] ==
-                       manifest.table_generation;
-        };
-        if(auto blob = db->read(BlobKind::TUManifest, key_of(tu))) {
-            if(auto manifest = deserialize_manifest(blob.buffer->getBuffer());
-               manifest && pinned(*manifest)) {
-                it->second = std::move(*manifest);
-            }
-        }
-    }
-    return it->second ? &*it->second : nullptr;
-}
-
 std::vector<IncludeEdge> ProjectIndex::include_edges(Fid file) const {
     // Every consumer projects the edges onto content the serving shard
-    // matches, so a manifest contributes only where the version it entered
-    // for this document carries that same content generation — a TU that
-    // indexed an older revision would place its lines in text that moved.
+    // matches, so a resolution counts only at the shard's content
+    // generation — a unit that indexed an older revision would place its
+    // lines in text that moved.
     auto* indexed = shard(file);
-    if(!indexed) {
+    auto* found = indexed ? dependents(file) : nullptr;
+    if(!found) {
         return {};
     }
-    auto generation = indexed->content_hash();
-
-    auto is_document = [&](VersionID version) {
-        auto& entered = files.version(version);
-        return entered.fid == file && entered.content_hash == generation;
-    };
-
-    // A directive line of the document is a node whose parent node entered
-    // this file: the TU root (parent == no_node) when the document is the TU
-    // itself, or any node of the document's own file version otherwise
-    // (directives inside included headers hang off the node of the file
-    // that contains them).
     std::vector<IncludeEdge> edges;
-    auto append = [&](const TUManifest& manifest) {
-        bool root_is_document = is_document(manifest.tu_version);
-        llvm::SmallVector<bool> document_nodes(manifest.nodes.size());
-        for(auto [i, node]: llvm::enumerate(manifest.nodes)) {
-            document_nodes[i] = is_document(VersionID{node.file});
+    llvm::DenseSet<std::pair<std::uint32_t, std::uint32_t>> seen;
+    for(auto& resolution: found->resolutions) {
+        if(resolution.content != indexed->content_hash()) {
+            continue;
         }
-        for(const auto& node: manifest.nodes) {
-            if(node.parent == no_node ? !root_is_document : !document_nodes[node.parent]) {
-                continue;
-            }
-            edges.push_back({
-                .line = node.line,
-                .target = std::string(files.resolve(files.version(VersionID{node.file}).fid)),
-            });
-        }
-    };
-
-    // The document's own manifest is its own context and answers alone; a
-    // header reached only through source TUs has none, and its directives
-    // live in the contributing TUs' manifests instead. The generation gate
-    // above dedups divergent revisions; agreeing TUs collapse in the
-    // projection's dedup.
-    if(auto manifest_it = manifests.find(file); manifest_it != manifests.end()) {
-        append(manifest_it->second);
-        return edges;
-    }
-    if(auto contribution_it = contributions.find(file); contribution_it != contributions.end()) {
-        for(auto tu: llvm::make_first_range(contribution_it->second)) {
-            if(auto manifest_it = manifests.find(tu); manifest_it != manifests.end()) {
-                append(manifest_it->second);
+        for(auto edge: resolution.edges) {
+            auto target = fid_of(edge.second);
+            if(target.valid() && seen.insert(edge).second) {
+                edges.push_back({.line = edge.first, .target = std::string(files.resolve(target))});
             }
         }
     }
+    llvm::stable_sort(edges, [](const IncludeEdge& lhs, const IncludeEdge& rhs) {
+        return lhs.line < rhs.line;
+    });
     return edges;
 }
 
 const Shard* ProjectIndex::shard(Fid file) const {
-    auto it = shards.find(file);
-    if(it != shards.end()) {
+    if(auto it = shards.find(file); it != shards.end()) {
         return it->second.loaded() ? &it->second : nullptr;
-    }
-    if(!db) {
-        return nullptr;
     }
     // A miss is remembered as an empty entry so the database is asked
     // once per file.
     auto& slot = shards[file];
-    if(auto blob = db->read(BlobKind::Shard, key_of(file))) {
-        slot = Shard::from_buffer(std::move(blob.buffer));
-    }
-    return slot.loaded() ? &slot : nullptr;
-}
-
-void ProjectIndex::for_each_shard(llvm::function_ref<void(Fid, const Shard&)> visit) const {
-    for(auto& [file, shard]: shards) {
-        if(shard.loaded()) {
-            visit(file, shard);
-        }
-    }
-}
-
-std::uint32_t ProjectIndex::shard_count() const {
-    return shards.size();
-}
-
-const InstantiationShard* ProjectIndex::instantiation_shard(Fid file) const {
-    auto it = instantiations.find(file);
-    if(it != instantiations.end()) {
-        return it->second.loaded() ? &it->second : nullptr;
-    }
     if(!db) {
         return nullptr;
     }
-    auto& slot = instantiations[file];
-    if(auto blob = db->read(BlobKind::InstantiationShard, key_of(file))) {
-        slot = InstantiationShard::from_buffer(std::move(blob.buffer));
+    auto key = file_key(file);
+    auto blob = db->read(BlobKind::Shard, key);
+    if(!blob) {
+        // The file record names the shard it stores.
+        if(auto* record = file_record(file); record && record->generation != 0) {
+            damaged_record(BlobKind::Shard, key);
+        }
+        return nullptr;
     }
-    return slot.loaded() ? &slot : nullptr;
+    slot = Shard::from_buffer(std::move(blob.buffer));
+    if(!slot.loaded()) {
+        damaged_record(BlobKind::Shard, key);
+        return nullptr;
+    }
+    slot.set_live(live_variants(file));
+    return &slot;
 }
 
-void ProjectIndex::for_each_instantiation_shard(
-    llvm::function_ref<void(Fid, const InstantiationShard&)> visit) const {
-    for(auto& [file, instantiation_shard]: instantiations) {
-        if(instantiation_shard.loaded()) {
-            visit(file, instantiation_shard);
+void ProjectIndex::for_each_indexed_file(llvm::function_ref<void(Fid)> visit) const {
+    scan(file_records, decode_file, [&](llvm::StringRef, const FileRecord& record) {
+        if(record.generation != 0) {
+            if(auto file = fid_of(record.path); file.valid()) {
+                visit(file);
+            }
+        }
+        return true;
+    });
+}
+
+std::uint32_t ProjectIndex::shard_count() const {
+    std::uint32_t count = 0;
+    for_each_indexed_file([&](Fid) { count += 1; });
+    return count;
+}
+
+std::uint64_t ProjectIndex::shard_bytes() const {
+    std::uint64_t bytes = 0;
+    for_each_indexed_file([&](Fid file) {
+        if(auto it = shards.find(file); it != shards.end() && it->second.loaded()) {
+            bytes += it->second.bytes().size();
+        } else if(auto blob = db ? db->read(BlobKind::Shard, file_key(file)) : ReadBlob{}) {
+            bytes += blob.buffer->getBufferSize();
+        }
+    });
+    return bytes;
+}
+
+const InstantiationShard* ProjectIndex::instantiation_shard(Fid file) const {
+    if(auto it = instantiations.find(file); it != instantiations.end()) {
+        return it->second.loaded() ? &it->second : nullptr;
+    }
+    auto& slot = instantiations[file];
+    if(!db) {
+        return nullptr;
+    }
+    auto key = file_key(file);
+    auto blob = db->read(BlobKind::InstantiationShard, key);
+    if(!blob) {
+        return nullptr;
+    }
+    slot = InstantiationShard::from_buffer(std::move(blob.buffer));
+    if(!slot.loaded()) {
+        damaged_record(BlobKind::InstantiationShard, key);
+        return nullptr;
+    }
+    slot.set_live(live_uses(file));
+    return &slot;
+}
+
+llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(Fid file) const {
+    llvm::SmallVector<std::uint64_t> variants;
+    if(auto* found = dependents(file)) {
+        llvm::append_range(variants, llvm::make_first_range(found->contributors));
+    }
+    return variants;
+}
+
+llvm::SmallVector<std::uint64_t> ProjectIndex::live_uses(Fid file) const {
+    llvm::SmallVector<std::uint64_t> uses;
+    if(auto* found = dependents(file)) {
+        llvm::append_range(uses, llvm::make_first_range(found->uses));
+    }
+    return uses;
+}
+
+std::optional<Fid> ProjectIndex::find_unit(std::uint64_t hash) const {
+    auto* record = read(file_records, number_key(hash), decode_file);
+    if(!record || record->run == 0) {
+        return std::nullopt;
+    }
+    auto tu = fid_of(record->path);
+    return tu.valid() ? std::optional(tu) : std::nullopt;
+}
+
+bool ProjectIndex::current_run(const Producer& producer) const {
+    auto* record = read(file_records, number_key(producer.unit), decode_file);
+    return record && record->run != 0 && record->run == producer.run;
+}
+
+Symbol& ProjectIndex::edit(SymbolHash hash) {
+    return change(symbol_records, number_key(hash), decode_symbol);
+}
+
+void ProjectIndex::merge_symbols(const TUIndex& index,
+                                 llvm::ArrayRef<Fid> file_ids_map,
+                                 llvm::SmallVectorImpl<SymbolHash>* added) {
+    // Units may spell one symbol differently (`X<int>` against
+    // `X<signed int>`, a conversion to a typedef): the shortest spelling
+    // wins, then the smaller one, so the record reads the same whatever the
+    // merge order — among the units that send the symbol.
+    //
+    // FIXME: what a symbol is can depend on the unit's command — its
+    // spelling, SystemHeader under -isystem against -I, Deprecated under a
+    // deployment target — and nothing represents that dependence: the
+    // record folds whatever units send, and a unit whose every file holding
+    // the symbol's entries is a stored variant sends nothing of it
+    // (TUIndexOptions::known_variants), so the first unit to store the
+    // variant decides. Such facts want one explicit, per-context record
+    // instead of a fold.
+    auto prefer = [](std::string& current, llvm::StringRef incoming) {
+        if(incoming.empty() ||
+           (!current.empty() && (incoming.size() > current.size() ||
+                                 (incoming.size() == current.size() && incoming >= current)))) {
+            return false;
+        }
+        current = incoming.str();
+        return true;
+    };
+    llvm::SmallVector<std::uint32_t> paths(file_ids_map.size(), no_file);
+    auto path_of = [&](std::uint32_t local) {
+        if(paths[local] == no_file) {
+            paths[local] = path_id(file_ids_map[local]);
+        }
+        return paths[local];
+    };
+    index.for_each_symbol(
+        [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t> references) {
+            if(identity.scope != SymbolScope::External) {
+                return true;
+            }
+            auto* stored = symbol(hash);
+            auto target = stored ? *stored : Symbol{};
+            bool symbol_changed = !stored;
+            bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
+            if(target.name.empty() && !identity.name.empty()) {
+                target.parent = identity.parent;
+                target.kind = identity.kind;
+                target.token_class.kind = identity.token_class.kind;
+                symbol_changed = true;
+            } else if(defines && target.token_class.kind != identity.token_class.kind) {
+                // A declaration may say `struct` where the definition says
+                // `class`: the definition's word stands, whatever merges first.
+                target.token_class.kind = identity.token_class.kind;
+                symbol_changed = true;
+            }
+            symbol_changed = prefer(target.name, identity.name) || symbol_changed;
+            symbol_changed = prefer(target.args, identity.args) || symbol_changed;
+            // An edit to a function, a parameter renamed, keeps its hash: the
+            // unit merging last describes it — a unit defining it, when one
+            // does, which sees the names of every declaration.
+            if(!identity.signature.empty() && target.signature != identity.signature &&
+               (defines || !has_flag(target.flags, SymbolFlags::HasDefinition))) {
+                target.signature = identity.signature.str();
+                symbol_changed = true;
+            }
+            // A unit that defines the symbol always places it: the record never
+            // retracts a unit's earlier report, so an old definition bit must
+            // not pin the file after the definition moved. Declarations only
+            // fill an empty slot.
+            if(identity.file != no_file && (target.file == no_file || defines)) {
+                auto file = path_of(identity.file);
+                symbol_changed = symbol_changed || target.file != file;
+                target.file = file;
+            }
+            auto flags = target.flags | identity.flags;
+            symbol_changed = symbol_changed || flags != target.flags;
+            target.flags = flags;
+            auto modifiers = target.token_class.modifiers | identity.token_class.modifiers;
+            symbol_changed = symbol_changed || modifiers != target.token_class.modifiers;
+            target.token_class.modifiers = modifiers;
+            for(auto ref: references) {
+                target.reference_files.add(path_of(ref));
+            }
+            if(stored && !symbol_changed && target.reference_files == stored->reference_files) {
+                return true;
+            }
+            edit(hash) = std::move(target);
+            if(symbol_changed && added) {
+                added->push_back(hash);
+            }
+            return true;
+        });
+    index.for_each_instantiation_file([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
+        auto* stored = symbol(hash);
+        if(stored && llvm::all_of(files, [&](std::uint32_t file) {
+               return stored->instantiation_files.contains(path_of(file));
+           })) {
+            return true;
+        }
+        auto& target = edit(hash);
+        for(auto file: files) {
+            target.instantiation_files.add(path_of(file));
+        }
+        return true;
+    });
+}
+
+std::optional<TUManifest> ProjectIndex::decode_manifest(llvm::StringRef data) const {
+    auto persisted = deserialize_manifest(data);
+    if(!persisted) {
+        return std::nullopt;
+    }
+    llvm::SmallVector<VersionID> versions;
+    for(auto& version: persisted->versions) {
+        auto file = fid_of(version.path);
+        if(!file.valid()) {
+            return std::nullopt;
+        }
+        versions.push_back(files.intern_version(file, version.content_hash));
+    }
+    auto& manifest = persisted->manifest;
+    for_each_version(manifest, [&](std::uint32_t& id) { id = versions[id].raw; });
+    return std::move(manifest);
+}
+
+std::vector<std::byte> ProjectIndex::encode_manifest(const TUManifest& manifest) {
+    std::vector<PersistedVersion> versions;
+    llvm::DenseMap<std::uint32_t, std::uint32_t> local;
+    auto persisted = manifest;
+    for_each_version(persisted, [&](std::uint32_t& id) {
+        auto [it, inserted] = local.try_emplace(id, static_cast<std::uint32_t>(versions.size()));
+        if(inserted) {
+            auto& record = files.version(VersionID{id});
+            versions.push_back({.path = path_id(record.fid), .content_hash = record.content_hash});
+        }
+        id = it->second;
+    });
+    return serialize_manifest(persisted, versions);
+}
+
+llvm::SmallVector<Fid> ProjectIndex::apply_manifest(Fid tu, TUManifest manifest) {
+    // The run is what tells a unit with a manifest (FileRecord::run).
+    assert(manifest.built_at != 0 && "a manifest names the run that built it");
+    assert(manifest.tu_version.valid() && "a manifest names the unit's version");
+    llvm::sort(manifest.absent);
+    manifest.absent.erase(llvm::unique(manifest.absent), manifest.absent.end());
+    return replace_manifest(tu, std::move(manifest));
+}
+
+llvm::SmallVector<Fid> ProjectIndex::remove_manifest(Fid tu) {
+    if(!indexed(tu)) {
+        return {};
+    }
+    return replace_manifest(tu, std::nullopt);
+}
+
+llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUManifest> manifest) {
+    // A new manifest stores what the unit contributes; none owes nothing.
+    header_changed = owed.erase(tu) || header_changed;
+    auto unit = path_id(tu);
+    auto old = this->manifest(tu);
+
+    auto path_of = [&](VersionID version) {
+        return path_id(files.version(version).fid);
+    };
+    auto facts_of = [&](const TUManifest& of) {
+        llvm::DenseMap<Fid, UnitFacts> facts;
+        auto entered = [&](VersionID version) {
+            auto& record = files.version(version);
+            add_distinct(facts[record.fid].read, record.content_hash);
+        };
+        entered(of.tu_version);
+        for(auto& node: of.nodes) {
+            entered(VersionID{node.file});
+            auto parent =
+                node.parent == no_node ? of.tu_version : VersionID{of.nodes[node.parent].file};
+            auto& record = files.version(parent);
+            auto& resolutions = facts[record.fid].resolutions;
+            auto it = llvm::find_if(resolutions, [&](const auto& resolution) {
+                return resolution.first == record.content_hash;
+            });
+            if(it == resolutions.end()) {
+                resolutions.emplace_back(record.content_hash,
+                                         std::vector<std::pair<std::uint32_t, std::uint32_t>>());
+                it = std::prev(resolutions.end());
+            }
+            it->second.emplace_back(node.line, path_of(VersionID{node.file}));
+        }
+        for(auto& [version, variant]: of.contributions) {
+            auto& record = files.version(version);
+            add_distinct(facts[record.fid].read, record.content_hash);
+            add_distinct(facts[record.fid].variants, variant);
+        }
+        for(auto version: of.absent) {
+            facts[files.version(version).fid].absent = true;
+        }
+        for(auto version: of.imports) {
+            auto& record = files.version(version);
+            add_distinct(facts[record.fid].imported, record.content_hash);
+        }
+        for(auto& use: of.instantiations) {
+            add_distinct(facts[files.version(use.file).fid].uses, use.use);
+        }
+        for(auto& file: llvm::make_second_range(facts)) {
+            llvm::sort(file.read);
+            llvm::sort(file.variants);
+            llvm::sort(file.imported);
+            llvm::sort(file.uses);
+            for(auto& edges: llvm::make_second_range(file.resolutions)) {
+                llvm::sort(edges);
+                edges.erase(llvm::unique(edges), edges.end());
+            }
+            llvm::sort(file.resolutions);
+        }
+        return facts;
+    };
+    auto old_facts = old ? facts_of(*old) : llvm::DenseMap<Fid, UnitFacts>();
+    auto new_facts = manifest ? facts_of(*manifest) : llvm::DenseMap<Fid, UnitFacts>();
+
+    llvm::SmallVector<Fid> affected;
+    auto update = [&](Fid file, const UnitFacts& before, const UnitFacts& after) {
+        if(before == after) {
+            return;
+        }
+        auto& record = change_dependents(file);
+        for(auto hash: before.read) {
+            remove_unit(record.readers, hash, unit);
+        }
+        for(auto variant: before.variants) {
+            remove_unit(record.contributors, variant, unit);
+        }
+        if(before.absent) {
+            record.absent.remove(unit);
+        }
+        for(auto hash: before.imported) {
+            remove_unit(record.importers, hash, unit);
+        }
+        for(auto use: before.uses) {
+            remove_unit(record.uses, use, unit);
+        }
+        for(auto& [content, edges]: before.resolutions) {
+            auto it = llvm::find_if(record.resolutions, [&](const IncludeResolution& resolution) {
+                return resolution.content == content && resolution.edges == edges;
+            });
+            if(it != record.resolutions.end()) {
+                it->units.remove(unit);
+                if(it->units.isEmpty()) {
+                    record.resolutions.erase(it);
+                }
+            }
+        }
+        for(auto hash: after.read) {
+            add_unit(record.readers, hash, unit);
+        }
+        for(auto variant: after.variants) {
+            add_unit(record.contributors, variant, unit);
+        }
+        if(after.absent) {
+            record.absent.add(unit);
+        }
+        for(auto hash: after.imported) {
+            add_unit(record.importers, hash, unit);
+        }
+        for(auto use: after.uses) {
+            add_unit(record.uses, use, unit);
+        }
+        for(auto& [content, edges]: after.resolutions) {
+            auto it = llvm::find_if(record.resolutions, [&](const IncludeResolution& resolution) {
+                return resolution.content == content && resolution.edges == edges;
+            });
+            if(it == record.resolutions.end()) {
+                record.resolutions.push_back({.content = content, .edges = edges});
+                it = std::prev(record.resolutions.end());
+            }
+            it->units.add(unit);
+        }
+
+        auto& file_entry = change_file(file);
+        file_entry.consumed.clear();
+        for(auto& keyed: {&record.readers, &record.importers}) {
+            for(auto hash: llvm::make_first_range(*keyed)) {
+                file_entry.consumed.push_back(hash);
+            }
+        }
+        llvm::sort(file_entry.consumed);
+        file_entry.consumed.erase(llvm::unique(file_entry.consumed), file_entry.consumed.end());
+        file_entry.absent = !record.absent.isEmpty();
+
+        if(before.variants != after.variants || before.uses != after.uses ||
+           before.resolutions != after.resolutions) {
+            affected.push_back(file);
+        }
+    };
+    const UnitFacts none{};
+    for(auto& [file, facts]: new_facts) {
+        auto it = old_facts.find(file);
+        update(file, it != old_facts.end() ? it->second : none, facts);
+    }
+    for(auto& [file, facts]: old_facts) {
+        if(!new_facts.contains(file)) {
+            update(file, facts, none);
         }
     }
+
+    auto locals_of = [&](const TUManifest& of) {
+        std::vector<std::pair<SymbolHash, std::vector<std::uint32_t>>> locals;
+        for(auto& local: of.shared_locals) {
+            locals.emplace_back(local.symbol, listed_paths(local.files, path_of));
+        }
+        llvm::sort(locals);
+        return locals;
+    };
+    using Locals = std::vector<std::pair<SymbolHash, std::vector<std::uint32_t>>>;
+    auto old_locals = old ? locals_of(*old) : Locals();
+    auto new_locals = manifest ? locals_of(*manifest) : Locals();
+    for(auto& local: old_locals) {
+        if(std::ranges::binary_search(new_locals, local)) {
+            continue;
+        }
+        auto& sets = change(shared_local_records, number_key(local.first), decode_shared_local);
+        auto it = llvm::lower_bound(sets, local.second, [](const auto& set, const auto& files) {
+            return set.first < files;
+        });
+        if(it != sets.end() && it->first == local.second) {
+            it->second -= 1;
+            if(it->second == 0) {
+                sets.erase(it);
+            }
+        }
+        if(sets.empty()) {
+            shared_local_records.changed[number_key(local.first)] = std::nullopt;
+        }
+    }
+    for(auto& local: new_locals) {
+        if(std::ranges::binary_search(old_locals, local)) {
+            continue;
+        }
+        auto& sets = change(shared_local_records, number_key(local.first), decode_shared_local);
+        auto it = llvm::lower_bound(sets, local.second, [](const auto& set, const auto& files) {
+            return set.first < files;
+        });
+        if(it == sets.end() || it->first != local.second) {
+            it = sets.emplace(it, local.second, 0);
+        }
+        it->second += 1;
+    }
+
+    // The unit's previous run walked instantiation keys in the files of its
+    // old manifest: the next save drops them.
+    if(old) {
+        for(auto& use: old->instantiations) {
+            compact.insert(files.version(use.file).fid);
+        }
+    }
+    change_file(tu).run = manifest ? manifest->built_at : 0;
+    changed_manifests[tu] = std::move(manifest);
+
+    llvm::sort(affected);
+    for(auto file: affected) {
+        refresh_live(file);
+    }
+    return affected;
 }
 
-bool ProjectIndex::bind_search(std::unique_ptr<llvm::MemoryBuffer> blob) {
-    SearchIndex built;
-    if(!built.load(std::move(blob)) || built.generation() != search_generation) {
-        return false;
+void ProjectIndex::refresh_live(Fid file) {
+    if(auto it = instantiations.find(file); it != instantiations.end()) {
+        it->second.set_live(live_uses(file));
     }
-    search = std::move(built);
-    return true;
+    if(auto it = shards.find(file); it != shards.end()) {
+        it->second.set_live(live_variants(file));
+    }
+    compact.insert(file);
+    search_file_changed(file);
 }
 
-bool ProjectIndex::open(BlobDatabase& db) {
-    auto table = db.read(BlobKind::ProjectTable, "global");
-    if(!table || !bind_table(std::move(table.buffer))) {
-        return false;
+void ProjectIndex::search_file_changed(Fid file) {
+    pending_files.insert(file);
+    internals_changed.insert(file);
+    if(changed_during_search_build) {
+        changed_during_search_build->files.insert(file);
     }
-    adopt_base();
-    if(auto blob = db.read(BlobKind::SearchIndex, "search")) {
-        bind_search(std::move(blob.buffer));
-    }
-    this->db = &db;
-    return true;
+}
+
+std::uint32_t ProjectIndex::pending_shard_writes() const {
+    return static_cast<std::uint32_t>(changed_shards.size() + changed_instantiations.size()) +
+           writing_shards;
+}
+
+bool ProjectIndex::has_unsaved_state() const {
+    return !changed_shards.empty() || !changed_instantiations.empty() || !retired_shards.empty() ||
+           !retired_instantiations.empty() || !changed_manifests.empty() ||
+           !symbol_records.changed.empty() || !file_records.changed.empty() ||
+           !dependent_records.changed.empty() || !shared_local_records.changed.empty() ||
+           !path_records.changed.empty() || !internals_changed.empty() || !compact.empty() ||
+           header_changed || !search_bytes.empty();
 }
 
 }  // namespace clice::index

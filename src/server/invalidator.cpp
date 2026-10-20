@@ -40,6 +40,7 @@ static void dedup(llvm::SmallVector<Fid>& ids) {
 /// (freshness clause 4): the buffer is the compile truth, but the serving
 /// index is the shard's, and only a reindex refreshes it.
 void Invalidator::mark_dependent(Fid path_id, DirtySet& dirty) {
+    project.index.mark_behind(path_id);
     if(auto session = store.find(path_id)) {
         dirty.mark_ast_dirty.push_back(path_id);
         if(session->serving == ServingMode::IndexOnly) {
@@ -246,6 +247,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // Whether or not a buffer is open: the disk is what every
                 // other file compiles against and what the index describes.
                 cascade_disk_content_change(event.path_id, dirty);
+                // A unit of its own reads the file as well.
+                project.index.mark_behind(event.path_id);
                 dirty.add_reindex_content_changed(event.path_id);
                 break;
             }

@@ -127,7 +127,7 @@ struct FileIndex {
 };
 
 /// What the symbol table records about a symbol beyond its name and kind.
-/// Each translation unit reports the bits it saw and the project table
+/// Each translation unit reports the bits it saw and the symbol record
 /// keeps the union, so a set bit means "some unit saw this".
 enum class SymbolFlags : std::uint16_t {
     None = 0,
@@ -285,7 +285,7 @@ struct Symbol {
 
     /// The file holding the canonical declaration — a definition when one
     /// is known, else the first declaration — as a TU-local path id in a
-    /// TU index and a FileTable id in the project table; `no_file` when the
+    /// TU index and a FileTable id in the project index; `no_file` when the
     /// symbol is only referenced.
     std::uint32_t file = no_file;
 
