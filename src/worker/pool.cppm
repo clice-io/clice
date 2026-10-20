@@ -70,7 +70,8 @@ struct WorkerDeath {
     /// preempting it.
     bool ignored_cancel = false;
 
-    /// The worker's own memory as last sampled.
+    /// The worker's own memory as last sampled, or the most its stateless
+    /// request reached.
     std::uint64_t memory = 0;
 
     /// A stateless worker's request was the only stateless one running: one

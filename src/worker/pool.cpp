@@ -425,6 +425,10 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
     w.death->in_flight = scheduler.running_on(index, stateful);
     w.death->memory = w.memory;
     if(!stateful) {
+        // Its memory may have fallen since the request's peak.
+        if(auto reached = scheduler.reached(index)) {
+            w.death->memory = reached;
+        }
         w.death->alone = scheduler.runs_alone(index);
     }
     if(stateful) {

@@ -668,6 +668,18 @@ ZEST_CASE(MemoryKillRecordsDeath) {
     ZEXPECT(f.crash_streak(0) == 0u);
 }
 
+ZEST_CASE(MemoryKillKeepsPeak) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.add_stateless();
+    auto request = f.submit(worker::Priority::Low);
+    f.sample(1ull << 40, 3ull << 30);
+    f.sample(1ull << 40, 2ull << 30);
+    auto death = f.death(0, false);
+    f.kill(0, false, scheduler::KillReason::Memory, {request->id});
+    ZEXPECT(death->memory == 3ull << 30);
+}
+
 ZEST_CASE(CompanyIsNotAlone) {
     WorkerPoolFixture f;
     f.add_stateless();

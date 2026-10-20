@@ -243,6 +243,10 @@ public:
     /// one whose memory ran out then does not fit this machine.
     bool runs_alone(std::size_t slot) const;
 
+    /// The most memory sampled while the stateless slot's request ran; zero
+    /// when it runs none.
+    std::uint64_t reached(std::size_t slot) const;
+
     /// The estimate of a background request whose peak is unknown: the
     /// 75th percentile of the peaks of the background requests finished so
     /// far and of the memory the ones killed for memory reached, at least

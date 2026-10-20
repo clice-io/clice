@@ -212,6 +212,14 @@ bool WorkerScheduler::runs_alone(std::size_t slot) const {
            }) == 1;
 }
 
+std::uint64_t WorkerScheduler::reached(std::size_t slot) const {
+    auto it = slots.find(slot);
+    if(it == slots.end() || !it->second.request) {
+        return 0;
+    }
+    return requests.at(*it->second.request).max_memory;
+}
+
 std::uint64_t WorkerScheduler::unknown_peak() const {
     if(peaks.empty()) {
         return default_peak;
