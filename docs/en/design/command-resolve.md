@@ -150,7 +150,7 @@ Asked with the command's own flags, the driver answers for the command, and a GC
 
 **MSVC / ClangCL**: Switch Clang's driver to MSVC-compatible mode via the `--driver-mode=cl` directive, then use Clang's driver to obtain cc1 arguments.
 
-**nvcc**: nvcc's dry run names the CUDA root, the host compiler and the macros nvcc defines. The host compiler is asked as a GCC-style driver is, in the input's language but without the command's flags: a GCC host pins the target and the search list as above, a clang host needs nothing. Clang's driver then builds the cc1 command with nvcc's macros, in CUDA mode for a CUDA input.
+**nvcc**: nvcc's dry run names the CUDA root, the host compiler and the macros nvcc defines. The host compiler is asked as a GCC-style driver is, in the input's language, with the command's `--sysroot` but none of its other flags: a GCC host pins the target and the search list as above, a clang host needs nothing. Clang's driver then builds the cc1 command with nvcc's macros, in CUDA mode for a CUDA input.
 
 > The external driver's version may be newer than clice's embedded LLVM version, and its cc1 output may contain options that clice does not recognize. During parsing, unknown options are silently dropped to ensure compatibility.
 
