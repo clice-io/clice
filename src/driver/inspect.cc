@@ -26,7 +26,9 @@ import :project.load;
 import :project.project;
 import :semantic.symbol;
 import :support.bytes;
+import :syntax.token;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice::driver {
@@ -162,7 +164,7 @@ enum class Shape : std::uint8_t {
 };
 
 /// What one run of a feature is given.
-struct Request {
+struct FeatureParams {
     CompilationUnit& unit;
 
     /// What `unit` compiled from, for a feature that compiles on its own.
@@ -181,36 +183,35 @@ struct FeatureSpec {
     llvm::StringRef name;
     llvm::StringRef description;
     Shape shape = Shape::File;
-    std::optional<kota::codec::RawValue> (*run)(const Request&) = nullptr;
+    std::optional<kota::codec::RawValue> (*run)(const FeatureParams&) = nullptr;
     const FeatureSpec* check = nullptr;
 };
 
-std::optional<kota::codec::RawValue> run_folding_ranges(const Request& request) {
-    return to_raw_json(feature::folding_ranges(request.unit));
+std::optional<kota::codec::RawValue> run_folding_ranges(const FeatureParams& params) {
+    return to_raw_json(feature::folding_ranges(params.unit));
 }
 
-std::optional<kota::codec::RawValue> run_semantic_tokens(const Request& request) {
-    const auto& options = request.config.semantic_tokens;
-    return to_raw_json(feature::named_tokens(feature::semantic_tokens(request.unit, options),
+std::optional<kota::codec::RawValue> run_semantic_tokens(const FeatureParams& params) {
+    const auto& options = params.config.semantic_tokens;
+    return to_raw_json(feature::named_tokens(feature::semantic_tokens(params.unit, options),
                                              feature::semantic_token_legend(options)));
 }
 
-std::optional<kota::codec::RawValue> run_semantic_tokens_check(const Request& request) {
+std::optional<kota::codec::RawValue> run_semantic_tokens_check(const FeatureParams& params) {
+    return to_raw_json(feature::check_semantic_tokens(params.unit, params.config.semantic_tokens));
+}
+
+std::optional<kota::codec::RawValue> run_document_symbols(const FeatureParams& params) {
+    return to_raw_json(feature::document_symbols(params.unit, params.config.document_symbols));
+}
+
+std::optional<kota::codec::RawValue> run_document_symbol_check(const FeatureParams& params) {
     return to_raw_json(
-        feature::check_semantic_tokens(request.unit, request.config.semantic_tokens));
+        feature::check_document_symbols(params.unit, params.config.document_symbols));
 }
 
-std::optional<kota::codec::RawValue> run_document_symbols(const Request& request) {
-    return to_raw_json(feature::document_symbols(request.unit, request.config.document_symbols));
-}
-
-std::optional<kota::codec::RawValue> run_document_symbol_check(const Request& request) {
-    return to_raw_json(
-        feature::check_document_symbols(request.unit, request.config.document_symbols));
-}
-
-std::optional<kota::codec::RawValue> run_document_links(const Request& request) {
-    return to_raw_json(feature::document_links(request.unit));
+std::optional<kota::codec::RawValue> run_document_links(const FeatureParams& params) {
+    return to_raw_json(feature::document_links(params.unit));
 }
 
 struct RawLocation {
@@ -237,9 +238,9 @@ struct RawInlayHint {
 /// as the server places it, from the unit's own TU index standing in for
 /// the server's — a declaration, else the definition, the focus file's shard
 /// first as an open buffer's is.
-std::optional<kota::codec::RawValue> run_inlay_hints(const Request& request) {
-    auto& unit = request.unit;
-    auto hints = feature::inlay_hints(unit, request.range, request.config.inlay_hints);
+std::optional<kota::codec::RawValue> run_inlay_hints(const FeatureParams& params) {
+    auto& unit = params.unit;
+    auto hints = feature::inlay_hints(unit, params.range, params.config.inlay_hints);
 
     std::vector<std::byte> bytes;
     index::TUIndex tu;
@@ -296,8 +297,8 @@ std::optional<kota::codec::RawValue> run_inlay_hints(const Request& request) {
     return to_raw_json(out);
 }
 
-std::optional<kota::codec::RawValue> run_selection_range(const Request& request) {
-    return to_raw_json(feature::selection_ranges(request.unit, {request.range.begin}).front());
+std::optional<kota::codec::RawValue> run_selection_range(const FeatureParams& params) {
+    return to_raw_json(feature::selection_ranges(params.unit, {params.range.begin}).front());
 }
 
 struct RawCodeAction {
@@ -311,11 +312,11 @@ struct RawCodeAction {
 
 /// The index requests resolved as an empty index would: definitions into
 /// the focus file are all kept, no header declares any name.
-std::optional<kota::codec::RawValue> run_code_action(const Request& request) {
-    auto& unit = request.unit;
+std::optional<kota::codec::RawValue> run_code_action(const FeatureParams& params) {
+    auto& unit = params.unit;
     std::vector<RawCodeAction> out;
     auto path = unit.file_path(unit.focus_file().file());
-    for(auto& action: feature::code_actions(unit, request.range)) {
+    for(auto& action: feature::code_actions(unit, params.range)) {
         RawCodeAction raw{
             .title = std::move(action.title),
             .kind = std::string(action.kind),
@@ -350,10 +351,10 @@ std::optional<kota::codec::RawValue> run_code_action(const Request& request) {
 /// nullopt = serialization failure; an empty RawValue serializes as null
 /// and records a marker with no hover. The card is markdown, as a client
 /// that shows markdown gets it.
-std::optional<kota::codec::RawValue> run_hover(const Request& request) {
-    const auto& config = request.config;
+std::optional<kota::codec::RawValue> run_hover(const FeatureParams& params) {
+    const auto& config = params.config;
     auto info =
-        feature::hover_info(request.unit, request.range.begin, config.hover, config.documentation);
+        feature::hover_info(params.unit, params.range.begin, config.hover, config.documentation);
     if(!info) {
         return kota::codec::RawValue{};
     }
@@ -362,43 +363,42 @@ std::optional<kota::codec::RawValue> run_hover(const Request& request) {
                                    info->present().as_markdown()});
 }
 
-/// Completion-shaped features (code completion, signature help) drive
-/// their own compilation: the offset parameterizes the parse itself, so
-/// each point gets a fresh completion compile instead of a query against
-/// the shared unit. That unit only serves the clean-code gate — the
-/// completion entry points discard their unit, so its diagnostics are the
-/// sole health signal.
-CompilationParams completion_at(const Request& request) {
+/// Code completion and signature help drive their own compilation: the
+/// offset parameterizes the parse itself, so each point gets a fresh
+/// completion compile instead of a query against the shared unit. That unit
+/// only serves the clean-code gate — the completion entry points discard
+/// their unit, so its diagnostics are the sole health signal.
+CompilationParams completion_at(const FeatureParams& params) {
     return {
         .kind = CompilationKind::Completion,
-        .input = request.input,
-        .completion = {.offset = request.range.begin},
+        .input = params.input,
+        .completion = {.offset = params.range.begin},
     };
 }
 
-std::optional<kota::codec::RawValue> run_code_completion(const Request& request) {
-    const auto& config = request.config;
+std::optional<kota::codec::RawValue> run_code_completion(const FeatureParams& params) {
+    const auto& config = params.config;
     // The replies of an editor client that takes everything an item can carry.
     return to_raw_json(
-        feature::code_complete(completion_at(request),
+        feature::code_complete(completion_at(params),
                                config.code_completion,
                                config.documentation,
                                {.snippets = true, .insert_replace = true, .markdown = true})
             .list);
 }
 
-std::optional<kota::codec::RawValue> run_signature_help(const Request& request) {
-    const auto& config = request.config;
-    return to_raw_json(feature::signature_help(completion_at(request),
+std::optional<kota::codec::RawValue> run_signature_help(const FeatureParams& params) {
+    const auto& config = params.config;
+    return to_raw_json(feature::signature_help(completion_at(params),
                                                config.signature_help,
                                                config.documentation));
 }
 
 /// Marker payload for document-highlight: the unit's own TU index stands
 /// in for the server's file index, the cursor resolved by the same rule.
-std::optional<kota::codec::RawValue> run_document_highlight(const Request& request) {
-    auto offset = request.range.begin;
-    auto bytes = index::build_tu_index(request.unit);
+std::optional<kota::codec::RawValue> run_document_highlight(const FeatureParams& params) {
+    auto offset = params.range.begin;
+    auto bytes = index::build_tu_index(params.unit);
     auto tu = index::TUIndex::from_bytes(as_chars(bytes));
     const index::Shard& shard = tu.shard_of(tu.path_count() - 1);
     auto named = index::named_at(shard, offset, [&](index::SymbolHash hash) {
@@ -568,25 +568,30 @@ auto load_inspected(Project& project,
                     const InspectOptions& opts,
                     const Spelling& directory,
                     bool flagged) -> std::expected<void, std::string> {
-    if(flagged && opts.configuration.configuration) {
-        return std::unexpected(
-            "--configuration selects among the workspace's rules; --flags replaces them");
-    }
-    auto identity = CanonicalPath(directory);
-    auto root = workspace_of(identity);
-    if(!flagged) {
-        project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
-    }
-    if(opts.config_overlay) {
-        auto result =
-            kota::codec::json::from_string<StrictJson>(*opts.config_overlay, project.config);
-        if(!result) {
+    auto overlay = [&]() -> std::expected<void, std::string> {
+        if(!opts.config_overlay) {
+            return {};
+        }
+        if(auto result =
+               kota::codec::json::from_string<StrictJson>(*opts.config_overlay, project.config);
+           !result) {
             return std::unexpected(
                 std::format("invalid --config-overlay: {}", result.error().message));
         }
-    }
-    if(flagged) {
         return {};
+    };
+    if(flagged) {
+        if(opts.configuration.configuration) {
+            return std::unexpected(
+                "--configuration selects among the workspace's rules; --flags replaces them");
+        }
+        return overlay();
+    }
+    auto identity = CanonicalPath(directory);
+    auto root = workspace_of(identity);
+    project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
+    if(auto applied = overlay(); !applied) {
+        return applied;
     }
     project.config.finalize(root);
     project.config.keep_own_cache_dir();
