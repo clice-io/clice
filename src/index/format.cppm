@@ -92,9 +92,9 @@ namespace clice::index {
 /// a focus file's doc comments document with `@param` and `@tparam` are
 /// references to those parameters, an abbreviated parameter pack carries
 /// its type definitions, and a precompiled header's diagnostics know an
-/// imported module unit from an included file; v42: every blob is read in
-/// place instead of as a flatbuffer; v43: every blob is kotatsu's
-/// (kota::codec::blob), whose header differs.
+/// imported module unit from an included file; v42: no blob is a
+/// flatbuffer any more; v43: every blob is kotatsu's (kota::codec::blob),
+/// whose header differs.
 constexpr inline std::uint32_t index_format_version = 43;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
