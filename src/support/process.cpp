@@ -62,10 +62,10 @@ kota::task<std::expected<std::string, std::string>> execute(std::vector<std::str
 
 extern "C" {
 
-// Set by the Windows executable's allocator (src/mimalloc.cc), which no
-// other program links: its own collect, and the switch to purging.
-void (*clice_allocator_collect)() = nullptr;
-void (*clice_allocator_purge)() = nullptr;
+    // Set by the Windows executable's allocator (src/mimalloc.cc), which no
+    // other program links: its own collect, and the switch to purging.
+    void (*clice_allocator_collect)() = nullptr;
+    void (*clice_allocator_purge)() = nullptr;
 }
 
 void release_free_memory() {

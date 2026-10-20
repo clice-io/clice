@@ -61,8 +61,8 @@ void purge() {
 
 extern "C" {
 
-extern void (*clice_allocator_collect)();
-extern void (*clice_allocator_purge)();
+    extern void (*clice_allocator_collect)();
+    extern void (*clice_allocator_purge)();
 }
 
 namespace {

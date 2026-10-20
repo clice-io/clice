@@ -227,9 +227,15 @@ ZEST_CASE(LoneUnitUsesReserve) {
     Core core(1);
     core.submit(1, Priority::Low);
     // Within the reserve, above its third: the only request goes on.
-    core.sample(300 * MiB, {{.slot = 0, .memory = 6 * GiB}});
+    core.sample(300 * MiB,
+                {
+                    {.slot = 0, .memory = 6 * GiB}
+    });
     ZEXPECT(core.all<scheduler::Kill>().empty());
-    core.sample(100 * MiB, {{.slot = 0, .memory = 6 * GiB}});
+    core.sample(100 * MiB,
+                {
+                    {.slot = 0, .memory = 6 * GiB}
+    });
     ZEXPECT(core.all<scheduler::Kill>().size() == 1u);
 }
 
@@ -237,11 +243,9 @@ ZEST_CASE(SwappingStopsNewest) {
     Core core(2);
     core.submit(1, Priority::Low);
     core.submit(2, Priority::Low);
-    core.scheduler.sample({.headroom = 8 * GiB,
-                           .reserve = 512 * MiB,
-                           .swapping = true,
-                           .stateless_processes = 2},
-                          core.now);
+    core.scheduler.sample(
+        {.headroom = 8 * GiB, .reserve = 512 * MiB, .swapping = true, .stateless_processes = 2},
+        core.now);
     core.take();
     auto kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 1u);
@@ -251,11 +255,9 @@ ZEST_CASE(SwappingStopsNewest) {
 ZEST_CASE(LoneUnitSwapsOn) {
     Core core(1);
     core.submit(1, Priority::Low);
-    core.scheduler.sample({.headroom = 8 * GiB,
-                           .reserve = 512 * MiB,
-                           .swapping = true,
-                           .stateless_processes = 1},
-                          core.now);
+    core.scheduler.sample(
+        {.headroom = 8 * GiB, .reserve = 512 * MiB, .swapping = true, .stateless_processes = 1},
+        core.now);
     core.take();
     ZEXPECT(core.all<scheduler::Kill>().empty());
 }

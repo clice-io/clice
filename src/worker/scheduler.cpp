@@ -423,9 +423,10 @@ void WorkerScheduler::check_memory(SchedulerTime now) {
     // takes it for too big for the machine.
     auto low = running(Priority::Low);
     auto reserve = last_sample.reserve;
-    auto short_by = low > 1                                       ? reserve + growth_soon()
-                    : low == 1 && running(Priority::High) == 0 ? reserve / lone_share + growth_soon()
-                                                                 : reserve;
+    auto short_by = low > 1 ? reserve + growth_soon()
+                    : low == 1 && running(Priority::High) == 0
+                        ? reserve / lone_share + growth_soon()
+                        : reserve;
     if(last_sample.headroom >= short_by && !(low > 1 && last_sample.swapping)) {
         return;
     }
