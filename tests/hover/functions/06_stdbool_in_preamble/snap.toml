@@ -1,0 +1,21 @@
+[answers.function.hover]
+markdown = '''
+**function** `is_on`
+
+```cpp
+static inline bool is_on(struct Flags flags)
+```
+'''
+range = "return ⟦is_on⟧(flags) + flags.on;"
+
+[answers.member.hover]
+markdown = '''
+**field** `on` · struct `Flags`
+
+```cpp
+bool on
+```
+Offset: 0 bytes
+Size: 1 byte, alignment 1 byte
+'''
+range = "return is_on(flags) + flags.⟦on⟧;"
