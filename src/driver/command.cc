@@ -145,18 +145,31 @@ std::expected<Workspace, std::string> open_workspace(const WorkspaceOptions& whe
     return workspace;
 }
 
-/// The entries of the compile_commands.json at `path`, each as written.
-std::expected<std::vector<kota::codec::RawValue>, std::string> read_database(const Spelling& path) {
-    auto buffer = vfs::read(path);
-    if(!buffer) {
-        return std::unexpected(std::format("cannot read {}: {}", path, buffer.error().message()));
-    }
+/// A compile_commands.json as one read found it: its entries, each as
+/// written, and the hash of its bytes, which a load of the same bytes
+/// records (CompilationDatabase::inputs). Only then do the load's entries
+/// pair with these by position.
+struct DatabaseText {
     std::vector<kota::codec::RawValue> entries;
-    if(auto result = kota::codec::json::from_string((*buffer)->getBuffer(), entries); !result) {
+    std::uint64_t hash = 0;
+
+    bool loaded_by(const CompilationDatabase& cdb, SourceID source) const {
+        return cdb.inputs(source).front().hash == hash;
+    }
+};
+
+std::expected<DatabaseText, std::string> read_database(const Spelling& path) {
+    auto observed = vfs::read_observed(path);
+    if(!observed) {
+        return std::unexpected(std::format("cannot read {}: {}", path, observed.error().message()));
+    }
+    DatabaseText text{.hash = observed->obs.hash};
+    if(auto result = kota::codec::json::from_string(observed->content->getBuffer(), text.entries);
+       !result) {
         return std::unexpected(
             std::format("{} holds no array of entries: {}", path, result.error().message));
     }
-    return entries;
+    return text;
 }
 
 /// The command a ref compiles with.
@@ -180,15 +193,16 @@ Rendered render_command(CompilationDatabase& cdb, const CommandRef& ref) {
     return rendered;
 }
 
-/// The entry at position `index` of the database `path`, as written;
-/// nullopt when the database changed since it loaded.
-std::optional<DatabaseEntry> written_entry(const Spelling& path, std::uint32_t index) {
-    auto entries = read_database(path);
-    if(!entries || index >= entries->size()) {
+/// A loaded entry as its database writes it; nullopt when the database
+/// changed since it loaded.
+std::optional<DatabaseEntry> written_entry(const CompilationDatabase& cdb,
+                                           const CompilationEntry& loaded) {
+    auto text = read_database(Spelling::absolute(cdb.source_path(loaded.source)));
+    if(!text || !text->loaded_by(cdb, loaded.source)) {
         return std::nullopt;
     }
     WrittenEntry entry;
-    if(!kota::codec::json::from_string((*entries)[index].data, entry)) {
+    if(!kota::codec::json::from_string(text->entries[loaded.ordinal].data, entry)) {
         return std::nullopt;
     }
     return DatabaseEntry{.directory = std::move(entry.directory),
@@ -229,20 +243,19 @@ int run_file(const FileOptions& opts) {
         LOG_ERROR("no such file: {}", path);
         return 1;
     }
+    auto& files = project.file_table;
+    auto file = files.intern(path);
+    CanonicalRef identity = files.resolve(file);
     CanonicalPath root(workspace->root);
     load_sources(project,
                  root,
                  workspace->configuration,
-                 compile_commands_above(CanonicalPath(path.parent()), root));
-
-    auto& files = project.file_table;
-    auto file = files.intern(path);
+                 compile_commands_above(identity.parent(), root));
     auto entries = project.build.entries(file);
     if(entries.empty()) {
         LOG_ERROR("No compilation database lists {}", files.display(file));
         return 1;
     }
-    CanonicalRef identity = files.resolve(file);
     llvm::SmallVector<CommandRef> refs;
     for(auto& entry: entries) {
         refs.push_back(
@@ -251,8 +264,8 @@ int run_file(const FileOptions& opts) {
     project.cdb.warm(refs);
     FileCommands commands{.file = files.display(file)};
     for(auto [entry, ref]: llvm::zip_equal(entries, refs)) {
+        auto written = written_entry(project.cdb, entry);
         auto database = Spelling::absolute(project.cdb.source_path(entry.source));
-        auto written = written_entry(database, entry.ordinal);
         if(!written) {
             LOG_ERROR("{} changed while it was read; run the command again", database);
             return 1;
@@ -394,7 +407,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
         LOG_ERROR("{}", written.error());
         return 1;
     }
-    if(!cdb.load_source(source)) {
+    if(!cdb.load_source(source) || !written->loaded_by(cdb, source)) {
         LOG_ERROR("{} changed while it was read; run the command again", database);
         return 1;
     }
@@ -418,9 +431,9 @@ int convert_database(Workspace& workspace, const Spelling& path) {
     auto base = database.parent();
     std::size_t unresolved = 0;
     std::vector<kota::codec::RawValue> converted;
-    converted.reserve(written->size());
-    for(std::uint32_t index = 0; index < written->size(); index += 1) {
-        auto& value = (*written)[index];
+    converted.reserve(written->entries.size());
+    for(std::uint32_t index = 0; index < written->entries.size(); index += 1) {
+        auto& value = written->entries[index];
         WrittenEntry entry;
         // A malformed entry, which clice skips, is left as it is.
         if(!kota::codec::json::from_string(value.data, entry)) {
