@@ -2,6 +2,6 @@
 
 #pragma clang system_header
 #ifdef __cplusplus
-#include "${WS}/include/config.h"
-#include "${WS}/include/widget.h"
+#include "${WS}/config.h"
+#include "${WS}/widget.h"
 #endif // __cplusplus

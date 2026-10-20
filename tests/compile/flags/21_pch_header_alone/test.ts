@@ -14,7 +14,7 @@ answers("hover", async (a) => {
 
 test("the headers compile alone", async (t) => {
     const s = await t.start();
-    await t.show("shapes.h", s.diagnostics("include/shapes.h"));
-    await t.show("point.h", s.diagnostics("include/point.h"));
+    await t.show("shapes.h", s.diagnostics("shapes.h"));
+    await t.show("point.h", s.diagnostics("point.h"));
     expect((await s.stats()).synthesizedContexts).toBe(0);
 });
