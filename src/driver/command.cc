@@ -294,7 +294,9 @@ int run_file(const FileOptions& opts) {
 /// `directory` moved by -working-directory.
 llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command,
                                              const Spelling& directory) {
-    auto family = Toolchain::driver_family(command.front());
+    auto family = llvm::is_contained(command, "--driver-mode=cl")
+                      ? CompilerFamily::ClangCL
+                      : Toolchain::driver_family(command.front());
     std::vector<std::string> args(command.begin() + 1, command.end());
     auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
                                               .visibility = family_visibility(family)};

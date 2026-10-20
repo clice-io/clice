@@ -17,6 +17,7 @@ test("the source in its place", { errors: [MISSING, UNRESOLVED] }, async (t) => 
     await t.cli("command convert -- missing-cc -x c++ -c tool");
     await t.cli("command convert -- missing-cc -working-directory sub -c main.cpp");
     await t.cli("command convert -- missing-cc -x c++ main.c -x c -c");
+    await t.cli("command convert -- missing-cc --driver-mode=cl /c /Tptool");
 });
 
 // The command runs in the current directory, not the workspace's.
