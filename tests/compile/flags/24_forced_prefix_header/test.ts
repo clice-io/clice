@@ -5,8 +5,8 @@ import { test } from "@clice/tools/testing";
 // includes ready.h; no unit includes ready.h itself. later.h is main.cpp's
 // own include, and prefix.h's only in a branch the compile does not take.
 // Each header compiles where main.cpp's compile enters it: ready.h after
-// what prefix.h holds before it, later.h after prefix.h whole, and
-// prefix.h alone, which would otherwise enter itself.
+// what prefix.h holds before it, later.h after prefix.h whole, AFTER
+// included, and prefix.h alone, which would otherwise enter itself.
 test("headers of a forced include", async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
