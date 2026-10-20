@@ -9,8 +9,9 @@ import :syntax.scan;
 
 namespace clice {
 
-/// One file along an include chain, from the host source file down to the
-/// direct includer of the target header. The target itself is not part of
+/// One file along an include chain, from the host source file, or a file
+/// its command forces in, down to the direct includer of the target
+/// header. The target itself is not part of
 /// the chain — its buffer is the compile's focus file.
 struct ChainEntry {
     /// Absolute path, used for #line markers and include resolution.

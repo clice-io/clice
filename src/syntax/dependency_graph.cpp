@@ -285,6 +285,14 @@ llvm::ArrayRef<Fid> DependencyGraph::get_forcing_units(Fid header) const {
     return {};
 }
 
+llvm::ArrayRef<Fid> DependencyGraph::get_forced_includes(Fid unit) const {
+    auto it = forced_includes.find(unit);
+    if(it != forced_includes.end()) {
+        return it->second;
+    }
+    return {};
+}
+
 std::uint32_t DependencyGraph::add_group(const CommandRef& command) {
     scan_groups.push_back(command);
     return static_cast<std::uint32_t>(scan_groups.size() - 1);
@@ -331,11 +339,6 @@ bool DependencyGraph::reaches_import(Fid path_id) const {
     }
     llvm::DenseSet<Fid> seen;
     return walk_closure(path_id, seen, [&](Fid fid) { return import_candidates.contains(fid); });
-}
-
-bool DependencyGraph::reaches(Fid path_id, Fid target) const {
-    llvm::DenseSet<Fid> seen;
-    return walk_closure(path_id, seen, [&](Fid fid) { return fid == target; });
 }
 
 void DependencyGraph::reset() {

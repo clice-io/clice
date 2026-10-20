@@ -50,10 +50,17 @@ struct HeaderContext {
     /// rules collapse two candidates' applied hashes onto one value.
     std::string host_base_hash;
 
-    /// Include chain from host to the target's direct includer (excludes the
-    /// target itself). The synthesized context embeds these files' content,
-    /// so clang never opens them — staleness must be tracked here.
+    /// Include chain from host, or from the file it forces in (forced), to
+    /// the target's direct includer (excludes the target itself). The synthesized context embeds
+    /// these files' content, so clang never opens them — staleness must be tracked here.
     llvm::SmallVector<Fid> chain;
+
+    /// The file the host's command forces in that the compile enters the
+    /// header through, where the chain starts — the header itself when the
+    /// command forces it in; invalid for a chain from the host's text. The
+    /// header's compile leaves out that -include and the ones after it,
+    /// which the host's compile enters after the header.
+    Fid forced;
 
     /// The versions of the chain files (and the header's snapshot) the
     /// synthesis read.

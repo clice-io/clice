@@ -238,24 +238,23 @@ ZEST_CASE(UnmatchedChainWantsTree) {
     ZEXPECT(resolution.tree_wanted == a);
 }
 
-ZEST_CASE(SelfIncludeLeftOut) {
-    /// main.cpp's command forces in pch.h, which a precompiled header
-    /// stands for, and prefix.h; both include part.h. part.h borrows the
-    /// command without pch.h, which would enter part.h before its own
-    /// text, but keeps prefix.h, which the code under it is written
-    /// against; main.cpp keeps both.
+ZEST_CASE(ForcedChainLeavesOutIncludes) {
+    /// main.cpp's command forces in config.h, pch.h and later.h; pch.h
+    /// includes part.h. part.h's compile enters it through pch.h, so its
+    /// command leaves out pch.h, which would enter part.h before its own
+    /// text, and later.h, which comes after it; a context replaces pch.h by
+    /// its text before the include. pch.h itself keeps config.h alone.
     TempDir tmp;
-    tmp.touch("pch.h", "#pragma once\n#include \"part.h\"\n");
-    tmp.touch("pch.h.cxx", "");
-    tmp.touch("prefix.h", "#pragma once\n#include \"part.h\"\n");
+    tmp.touch("config.h", "#pragma once\n");
+    tmp.touch("pch.h", "#pragma once\n#define FROM_PCH 1\n#include \"part.h\"\n");
+    tmp.touch("later.h", "#pragma once\n");
     tmp.touch("part.h", "#pragma once\n");
     tmp.touch("main.cpp", "#include \"part.h\"\n");
     tmp.touch("build/compile_commands.json",
               build_cdb_json({
                   {tmp.root,
-                   tmp.path("pch.h.cxx"),
-                   {"-x", "c++-header", "-include", "pch.h", "-o", "pch.h.gch"}                 },
-                  {tmp.root, tmp.path("main.cpp"), {"-include", "pch.h", "-include", "prefix.h"}},
+                   tmp.path("main.cpp"),
+                   {"-include", "config.h", "-include", "pch.h", "-include", "later.h"}},
     }));
     FileTable files;
     Project project{files};
@@ -271,19 +270,32 @@ ZEST_CASE(SelfIncludeLeftOut) {
     auto forced = [&](Fid file) {
         std::string directory;
         std::vector<std::string> arguments;
-        resolver.resolve_command(file, directory, arguments);
+        auto resolution = resolver.resolve_command(file, directory, arguments);
         std::vector<std::string> names;
         for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
             if(arguments[i] == "-include") {
                 names.push_back(arguments[i + 1]);
             }
         }
-        return names;
+        return std::pair(std::move(resolution), names);
     };
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    auto pch = project.file_table.intern(Spelling::absolute(tmp.path("pch.h")));
     auto part = project.file_table.intern(Spelling::absolute(tmp.path("part.h")));
-    ZEXPECT(forced(main) == std::vector<std::string>{"pch.h", "prefix.h"});
-    ZEXPECT(forced(part) == std::vector<std::string>{"prefix.h"});
+    ZEXPECT(forced(main).second == std::vector<std::string>{"config.h", "pch.h", "later.h"});
+    ZEXPECT(forced(part).second == std::vector<std::string>{"config.h"});
+    ZEXPECT(forced(pch).second == std::vector<std::string>{"config.h"});
+
+    resolver.record_header_mode(part, HeaderMode::NeedsContext);
+    auto [resolution, names] = forced(part);
+    ZASSERT(resolution.synthesized);
+    ZEXPECT(resolution.forced == pch);
+    ZASSERT(names.size() == 2u);
+    ZEXPECT(names[0] == "config.h");
+    ZEXPECT(names[1] == resolution.synthesized->prefix);
+    ZEXPECT(llvm::any_of(resolution.synthesized->files, [](const SynthesizedFile& file) {
+        return llvm::StringRef(file.content).contains("FROM_PCH");
+    }));
 }
 
 };  // ZEST_SUITE(CommandResolver)

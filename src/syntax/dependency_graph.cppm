@@ -96,6 +96,9 @@ public:
     /// The units whose commands force `header` in.
     llvm::ArrayRef<Fid> get_forcing_units(Fid header) const;
 
+    /// The headers `unit`'s commands force in.
+    llvm::ArrayRef<Fid> get_forced_includes(Fid unit) const;
+
     /// A scan group: the command its units resolve includes under.
     std::uint32_t add_group(const CommandRef& command);
     const CommandRef& group(std::uint32_t id) const;
@@ -170,10 +173,6 @@ public:
     /// candidate: the file itself, what it includes, and its forced
     /// includes, transitively.
     bool reaches_import(Fid path_id) const;
-
-    /// Whether a compile of `path_id`'s scanned text reads `target`, as
-    /// reaches_import() reads an import candidate.
-    bool reaches(Fid path_id, Fid target) const;
 
     /// Forget the graph but keep its quick scans: they are content-keyed,
     /// so a rebuild over the same files reuses every one still current.

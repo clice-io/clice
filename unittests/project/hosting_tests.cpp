@@ -533,10 +533,9 @@ ZEST_CASE(EnteringsInCompileOrder) {
     ZEXPECT((*found)[1].lines == llvm::SmallVector<std::uint32_t>{3});
 };
 
-ZEST_CASE(ForcedIncludeFallsBack) {
-    /// The compile enters the header only through a file its command
-    /// forces in, which no cut of the unit's text reproduces: the tree
-    /// falls back to the lexical chain.
+ZEST_CASE(ForcedIncludeEnters) {
+    /// The compile enters the header through a file its command forces in,
+    /// ahead of the unit's own include of it: the chain starts there.
     TreeProject p;
     llvm::StringRef main_text = "#include \"t.h\"\n";
     llvm::StringRef common_text = "#pragma once\n#include \"t.h\"\n";
@@ -560,61 +559,60 @@ ZEST_CASE(ForcedIncludeFallsBack) {
     auto found = enterings(p.project, main, t);
     ZASSERT(found);
     ZASSERT(found->size() == 1u);
-    ZEXPECT(found->front().chain == std::vector<Fid>{main, t});
-    ZEXPECT(found->front().lines.empty());
-    ZEXPECT(!found->front().lexical);
+    ZEXPECT(found->front().chain == std::vector<Fid>{common, t});
+    ZEXPECT(found->front().lines == llvm::SmallVector<std::uint32_t>{2});
 };
 
-ZEST_CASE(PrecompiledHeaderFallsBack) {
-    /// main.cpp's command loads the precompiled header built from pch.h:
-    /// its compile took a.h and t.h from it, and the tree shows only
-    /// main.cpp's include of a.h, skipped.
-    TempDir tmp;
+ZEST_CASE(PrecompiledHeaderEnters) {
+    /// The forced file is a precompiled header's: the compile took it, a.h
+    /// and t.h from the PCH, and the tree shows only the unit's include of
+    /// a.h, skipped. The chain is the scan's from the forced file.
+    TreeProject p;
     llvm::StringRef main_text = "#include \"a.h\"\n";
     llvm::StringRef a_text = "#pragma once\n#include \"t.h\"\n";
-    tmp.touch("main.cpp", main_text);
-    tmp.touch("pch.h", "#include \"a.h\"\n");
-    tmp.touch("pch.h.cxx", "");
-    tmp.touch("a.h", a_text);
-    tmp.touch("t.h", "#pragma once\n");
-    tmp.touch("build/compile_commands.json",
-              build_cdb_json({
-                  {tmp.root,
-                   tmp.path("pch.h.cxx"),
-                   {"-x", "c++-header", "-include", "pch.h", "-o", "pch.h.gch"}},
-                  {tmp.root, tmp.path("main.cpp"), {"-include", "pch.h"}       },
-    }));
-    FileTable files;
-    Project project{files};
-    project.config.rules.push_back(ConfigRule{.compile_commands = {"build"}});
-    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    project.build.reset_active("");
-    for(auto source: project.build.declared_sources()) {
-        project.cdb.load(source);
-    }
-    project.rebuild_dependency_graph();
+    auto main = p.write("main.cpp", main_text);
+    auto pch = p.write("pch.h", "#include \"a.h\"\n");
+    auto a = p.write("a.h", a_text);
+    auto t = p.write("t.h", "#pragma once\n");
+    p.project.dep_graph.set_includes(main, 0, {{a}});
+    p.project.dep_graph.set_includes(pch, 0, {{a}});
+    p.project.dep_graph.set_includes(a, 0, {{t}});
+    p.project.dep_graph.add_forced_include(main, pch);
+    p.project.dep_graph.build_reverse_map();
 
-    auto intern = [&](llvm::StringRef path) {
-        return files.intern(Spelling::absolute(tmp.path(path)));
-    };
-    auto main = intern("main.cpp");
-    auto a = intern("a.h");
-    auto t = intern("t.h");
     index::TUManifest manifest;
-    manifest.tu_version = files.intern_version(main, llvm::xxh3_64bits(main_text));
+    manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
-        {.file = files.intern_version(a, llvm::xxh3_64bits(a_text)).raw,
-         .line = 1,
-         .skipped = true},
+        {.file = p.version(a, a_text), .line = 1, .skipped = true},
     };
-    project.index.apply_manifest(main, std::move(manifest));
+    p.project.index.apply_manifest(main, std::move(manifest));
 
-    auto host = default_host(project, a);
+    auto host = default_host(p.project, t);
     ZASSERT(host);
-    ZEXPECT(host->chain == std::vector<Fid>{main, a});
-    host = default_host(project, t);
+    ZEXPECT(host->file == main);
+    ZEXPECT(host->chain == std::vector<Fid>{pch, a, t});
+};
+
+ZEST_CASE(ForcedOnlyHost) {
+    /// No unit includes t.h; the command of main.cpp forces in pch.h,
+    /// which does: main.cpp hosts it, and pch.h itself, with no tree.
+    TreeProject p;
+    auto main = p.write("main.cpp", "int x;\n");
+    auto pch = p.write("pch.h", "#include \"t.h\"\n");
+    auto t = p.write("t.h", "#pragma once\n");
+    p.project.dep_graph.set_includes(pch, 0, {{t}});
+    p.project.dep_graph.add_forced_include(main, pch);
+    p.project.dep_graph.build_reverse_map();
+
+    auto host = default_host(p.project, t);
     ZASSERT(host);
-    ZEXPECT(host->chain == std::vector<Fid>{main, a, t});
+    ZEXPECT(host->chain == std::vector<Fid>{pch, t});
+    ZEXPECT(host->lexical);
+    ZEXPECT(count_occurrences(p.project, main, t) == 1u);
+    host = default_host(p.project, pch);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{pch});
+    ZEXPECT(count_occurrences(p.project, main, pch) == 1u);
 };
 
 ZEST_CASE(SkippedAloneRulesOut) {

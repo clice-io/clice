@@ -111,51 +111,28 @@ std::optional<CommandRef> host_command(Project& project,
     return lent_command(project, header, host, picked.config, extra_prepend, extra_append);
 }
 
-/// The `-include`s of `ref` that a precompiled header stands for and that
-/// read `file` itself, as the command spells them, which a compile of
-/// `file` leaves out: they would enter `file` before its own text. A header
-/// of a target's precompiled header meets one in every command it borrows
-/// from the target (CMake's cmake_pch.hxx). A header the precompiled header
-/// holds stands alone, as the build without it needs; the code under any
-/// other forced include is written against it.
-static std::vector<std::string> self_includes(Project& project, Fid file, const CommandRef& ref) {
-    std::vector<std::string> found;
-    auto& graph = project.dep_graph;
-    if(graph.get_includers(file).empty() && graph.get_forcing_units(file).empty()) {
-        return found;
+/// The `-include`s of `ref` from the one naming `forced` on, as the
+/// command spells them: what a header context entered through that forced
+/// file leaves out (HeaderContext::forced).
+static std::vector<std::string> includes_from(Project& project, const CommandRef& ref, Fid forced) {
+    std::vector<std::string> dropped;
+    if(!forced.valid()) {
+        return dropped;
     }
     auto search = project.cdb.search_config(ref);
-    if(search.forced_includes.empty()) {
-        return found;
-    }
     vfs::Scope scope(project.file_table.dirs);
     auto resolved = resolve_search_config(search, scope);
     llvm::StringRef directory = project.cdb.config(ref.config).directory;
     for(auto& name: search.forced_includes) {
-        // FIXME: a plain forced include that reads `file` (the kernel's
-        // kconfig.h, compiler-clang.h) still enters it before its own
-        // text. Leaving it out needs to know this command really enters
-        // `file` through it: the graph also follows includes inside an
-        // `#if` the command never takes.
-        if(!project.cdb.precompiled(ref.config, name)) {
-            continue;
+        if(dropped.empty()) {
+            auto header = resolve_forced_include(name, directory, resolved, scope);
+            if(!header || project.file_table.find(Spelling::absolute(header->path)) != forced) {
+                continue;
+            }
         }
-        auto header = resolve_forced_include(name, directory, resolved, scope);
-        auto header_id =
-            header ? project.file_table.find(Spelling::absolute(header->path)) : std::nullopt;
-        // FIXME: for cl's `/Yu` header, of which clice builds no PCH, an
-        // include of `file` inside an `#if` the command never takes still
-        // leaves the header out, and with it the macros it defines first.
-        // A PCH clang or GCC loads makes up for it: one that never read
-        // `file` is loaded.
-        if(header_id && graph.reaches(*header_id, file)) {
-            LOG_INFO("resolve_command: {} leaves out -include {}, which reads it",
-                     project.file_table.resolve(file),
-                     name);
-            found.push_back(name);
-        }
+        dropped.push_back(name);
     }
-    return found;
+    return dropped;
 }
 
 HeaderMode CommandResolver::header_mode(Fid path_id) const {
@@ -312,6 +289,7 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
         return std::nullopt;
     }
     resolution.host = ctx_ptr->host_path_id;
+    resolution.forced = ctx_ptr->forced;
     resolution.synthesized = ctx_ptr->synthesized;
 
     LOG_INFO("resolve_command: header context for {} (host={}, synthesized={})",
@@ -333,12 +311,13 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         // A header borrowing its host's command compiles as the host's
         // language, with the header injected as the input; the synthesized
         // prefix lands after the host's own user-content flags (its
-        // -include runs first).
+        // -includes run first, but for the one the context enters the
+        // header through and those after it).
         RenderOptions options;
         if(resolution.synthesized) {
             options.preamble = resolution.synthesized->prefix.c_str();
         }
-        auto dropped = self_includes(project, path_id, ref);
+        auto dropped = includes_from(project, ref, resolution.forced);
         options.dropped_includes = dropped;
         directory = project.cdb.config(ref.config).directory;
         auto argv = project.cdb.render(ref, options);
@@ -463,7 +442,7 @@ std::expected<HeaderContext, Fid>
                     host = std::move((*found)[n]);
                     occurrence = n;
                 }
-            } else if(auto chain = project.dep_graph.find_include_chain(preferred, header_path_id);
+            } else if(auto chain = lexical_chain(project, preferred, header_path_id);
                       !chain.empty()) {
                 host = Host{.file = preferred, .chain = std::move(chain), .lexical = true};
                 occurrence = choice->occurrence;
@@ -489,12 +468,16 @@ std::expected<HeaderContext, Fid>
     }
 
     bool lexical = host->lexical;
-    if(!synthesize) {
+    Fid forced = chain.front() != host_path_id ? chain.front() : Fid{};
+    // A header the command forces in itself has nothing to cut: the
+    // -includes ahead of it are its context.
+    if(!synthesize || chain.size() == 1) {
         return HeaderContext{.host_path_id = host_path_id,
                              .occurrence = occurrence.value_or(0),
                              .host_command_hash = std::move(host_command_hash),
                              .host_base_hash = std::move(host_base_hash),
                              .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1),
+                             .forced = forced,
                              .lexical = lexical};
     }
 
@@ -609,6 +592,7 @@ std::expected<HeaderContext, Fid>
                          .host_command_hash = std::move(host_command_hash),
                          .host_base_hash = std::move(host_base_hash),
                          .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1),
+                         .forced = forced,
                          .deps = std::move(deps),
                          .lexical = lexical};
 }
