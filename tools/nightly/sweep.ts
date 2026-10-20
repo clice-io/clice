@@ -92,13 +92,18 @@ const SOURCE = /\.(c|cc|cpp|cxx|c\+\+|cppm|ixx|cu)$/;
 
 /// The differences between inspect and the server the project accepts, each
 /// pinned by a case: two answers equal once `same` rewrites both show one.
-const ACCEPTED: { case: string; request: Request; same: (shown: string) => string }[] = [
+const ACCEPTED: { case: string; requests: Request[]; same: (shown: string) => string }[] = [
     {
-        // Under a preamble a default argument written as a macro can print
-        // as its value: a clang SourceManager bug.
+        // Under a preamble a value written as a macro (a default argument,
+        // an initializer) can print as the number it expands to: a clang
+        // SourceManager bug.
         case: "completion/member_access/20_macro_default_arguments",
-        request: "completion",
-        same: (shown) => shown.replaceAll(/ = [^,()"]+(?=[,)])/g, " = ..."),
+        requests: ["completion", "hover"],
+        same: (shown) =>
+            shown.replaceAll(
+                / = (?:[A-Z_][A-Z0-9_]*|[0-9][0-9A-Fa-fxX.]*[uUlL]*)(?=[,);\n])/g,
+                " = ...",
+            ),
     },
 ];
 
@@ -111,7 +116,7 @@ export function acceptedDifference(
 ): string | undefined {
     return ACCEPTED.find(
         (accepted) =>
-            accepted.request === request && accepted.same(inspect) === accepted.same(server),
+            accepted.requests.includes(request) && accepted.same(inspect) === accepted.same(server),
     )?.case;
 }
 

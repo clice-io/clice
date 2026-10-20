@@ -199,6 +199,16 @@ describe("sweep", () => {
         expect(acceptedDifference("signatureHelp", inspect, server)).toBeUndefined();
         expect(
             acceptedDifference(
+                "hover",
+                "  uint32_t m_stop_id = UINT32_MAX;\n",
+                "  uint32_t m_stop_id = 4294967295U;\n",
+            ),
+        ).toBe("completion/member_access/20_macro_default_arguments");
+        expect(
+            acceptedDifference("hover", "  int *p = nullptr;\n", "  int *p = 0;\n"),
+        ).toBeUndefined();
+        expect(
+            acceptedDifference(
                 "completion",
                 inspect,
                 answer("GetAsUInt64(uint64_t fail_value) const"),
