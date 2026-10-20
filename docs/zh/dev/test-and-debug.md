@@ -71,7 +71,7 @@ pixi run compat-test          # default RelWithDebInfo
 
 ## 真实项目
 
-每天夜里，main 分支上的 clice 会处理 `tests/nightly/projects.json` 中锁定版本的真实项目：分成五部分的 LLVM、Linux 内核、abseil、以 C++20 模块构建的 mp-units，以及 clice 自身，每一部分各用一个 CI 运行器，在 Linux、macOS 和 Windows 上各跑一遍（内核只在 Linux 上，clice 自身只在 Bazel 能构建它的平台上）（`nightly-projects.yml`）。每个作业先按项目自己的构建方式把它准备好（配置、生成头文件，或者完整构建一遍内核，由这次构建写出编译数据库），在缓存为空的情况下索引它，用编译器检查 clice 报告有错误的每个翻译单元，然后在抽样文件的相同位置向 `clice inspect` 和一个服务器发出相同的请求，比较两边的回答。崩溃、卡死、没有跑完的索引、失败的请求、编译器能编译而 clice 处理失败或报告有错误的翻译单元，以及两边回答不一致的位置（某个用例钉住、已接受的差异除外），都会让作业失败；`tests/README.md` 列出了全部失败原因。作业摘要列出每个失败和复现它的命令，并附上前一晚的耗时、内存和索引大小作对照。
+每天夜里，main 分支上的 clice 会处理 `tests/nightly/projects.json` 中锁定版本的真实项目：分成五部分的 LLVM、Linux 内核、CPython、abseil、以 C++20 模块构建的 mp-units，以及 clice 自身，每一部分各用一个 CI 运行器，在 Linux、macOS 和 Windows 上各跑一遍（内核和 CPython 只在 Linux 上，clice 自身只在 Bazel 能构建它的平台上）（`nightly-projects.yml`）。每个作业先按项目自己的构建方式把它准备好（配置、生成头文件，或者完整构建一遍内核，由这次构建写出编译数据库），在缓存为空的情况下索引它，用编译器检查 clice 报告有错误的每个翻译单元，然后在抽样的源文件及其包含的头文件的相同位置向 `clice inspect` 和一个服务器发出相同的请求，比较两边的回答。崩溃、卡死、没有跑完的索引、失败的请求、编译器能编译而 clice 处理失败或报告有错误的翻译单元，以及两边回答不一致的位置（某个用例钉住、已接受的差异除外），都会让作业失败；`tests/README.md` 列出了全部失败原因。作业摘要列出每个失败和复现它的命令，并附上前一晚的耗时、内存和索引大小作对照。
 
 ```bash
 pixi run node tools/nightly/run.ts --jobs                    # the jobs
