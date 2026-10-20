@@ -157,8 +157,8 @@ exit = 2
 stderr = "error: --configuration nope names no rule's configuration (debug, release)"
 exit = 1
 
-["scripted commands reject unknown names"."$ clice inspect hover gated.cpp --configuration release --flags \"[\\\"clang++\\\"]\""]
-stderr = "error: --configuration selects among the workspace's rules; --flags replaces them"
+["scripted commands reject unknown names"."$ clice command gated.cpp --configuration nope"]
+stderr = "error: --configuration nope names no rule's configuration (debug, release)"
 exit = 1
 
 ["scripted commands reject unknown names"."$ clice inspect hover gated.cpp"]

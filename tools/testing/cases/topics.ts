@@ -36,6 +36,7 @@ export const TOPICS: Readonly<Record<string, "feature" | "engine" | "command">> 
     analyze: "command",
     modularize: "command",
     inspect: "command",
+    command: "command",
     scan: "command",
     cli: "command",
 };

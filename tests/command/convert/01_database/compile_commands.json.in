@@ -1,0 +1,18 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "main.cpp",
+    "arguments": ["${WS}/missing-cc", "-std=c++20", "-c", "main.cpp", "-o", "main.o"],
+    "output": "main.o"
+  },
+  {
+    "directory": "${WS}",
+    "file": "util.cpp",
+    "command": "${WS}/missing-cc -std=c++20 -O2 -c util.cpp"
+  },
+  {
+    "directory": "${WS}",
+    "file": "start.S",
+    "command": "${WS}/missing-cc -c start.S"
+  }
+]

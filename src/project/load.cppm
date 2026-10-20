@@ -22,16 +22,22 @@ struct BuildLoad {
 };
 
 /// Activate the build `configuration` (resolved, see
-/// resolve_configuration), register and load the build's sources — the
+/// resolve_configuration) and register and load the build's sources: the
 /// databases the rules declare (existing or not; the tracker watches for
 /// them), else the ones discovered under `root` plus `nearby`, the ones
-/// discovery would only meet later: the persisted index's (see
-/// CommandSnapshot::remembered) for the server, those above the inspected
-/// files for `clice inspect` (see compile_commands_above) — record the
-/// `provisional` members the persisted index remembers, then enumerate
-/// the build's members and scan the dependency graph from them. The
-/// project's configuration is final. The one loading path of the server,
-/// the batch driver and `clice inspect`.
+/// discovery would only meet later — the persisted index's (see
+/// CommandSnapshot::remembered) for the server, those above the files a
+/// command names (see compile_commands_above). The project's configuration
+/// is final.
+void load_sources(Project& project,
+                  CanonicalRef root,
+                  llvm::StringRef configuration,
+                  llvm::ArrayRef<Spelling> nearby = {});
+
+/// load_sources, then record the `provisional` members the persisted index
+/// remembers, enumerate the build's members and scan the dependency graph
+/// from them. The one loading path of the server, the batch driver and
+/// `clice inspect`.
 BuildLoad load_build(Project& project,
                      CanonicalRef root,
                      llvm::StringRef configuration,

@@ -230,15 +230,6 @@ CommandHandler build(const char* self_path) {
     };
     std::vector<Operation> operations;
     operations.push_back({
-        .name = "compile-command",
-        .description = "The command the editor compiles a file with, and where it came from",
-        .run = file("clice query compile-command <PATH> [OPTIONS]",
-                    /*with_build=*/true,
-                    [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
-                        return query::compile_command(ctx, path);
-                    }),
-    });
-    operations.push_back({
         .name = "project-files",
         .description = "The build's files",
         .run = operation<ProjectFilesQuestion>(

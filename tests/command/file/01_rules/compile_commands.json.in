@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "main.cpp",
+    "arguments": ["${WS}/missing-cc", "-std=c++20", "-Werror", "-c", "main.cpp", "-o", "main.o"]
+  }
+]

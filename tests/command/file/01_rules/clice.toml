@@ -1,0 +1,3 @@
+[[rules]]
+append = ["-DFROM_RULE"]
+remove = ["-Werror"]

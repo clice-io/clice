@@ -1,6 +1,7 @@
 /// What clice makes of a scenario's build: the batch lint over the whole
 /// compilation database (every unit must parse clean, as it compiled clean
-/// for the real compiler) and the compile command it resolves per file.
+/// for the real compiler) and, per file, `clice command`: the database's
+/// entries as clice reads them and the commands it compiles with.
 
 import { run, systemEnv } from "./scenario.ts";
 
@@ -11,37 +12,42 @@ export interface LintRun {
     log: string;
 }
 
-export interface CompileCommand {
-    file: string;
+export interface CommandLine {
     directory: string;
     arguments: string[];
-    source: string;
-    toolchainError: string | null;
 }
 
-/// `clice lint --index`: the parse of every unit, and the index the
-/// queries below read.
+/// One of a file's database entries: as written, its `command` split as
+/// clice splits it, and the command clice compiles the file with under it.
+export interface EntryCommands {
+    database: string;
+    entry: CommandLine & { file: string };
+    resolved: CommandLine;
+    /// Why the compiler could not be queried; `resolved` is then clice's own
+    /// reading of the entry.
+    toolchainError?: string;
+}
+
+/// `clice lint`: the parse of every unit.
 export async function lint(clice: string, root: string): Promise<LintRun> {
-    const linted = await run(clice, ["lint", "--workspace", root, "--index"], { env: systemEnv() });
+    const linted = await run(clice, ["lint", "--workspace", root], { env: systemEnv() });
     return { status: linted.status, report: linted.stdout, log: linted.stderr };
 }
 
-export async function compileCommand(
+/// `clice command <file> --json`: the file's entries, in the order the
+/// build ranks them.
+export async function fileCommands(
     clice: string,
     root: string,
     file: string,
-): Promise<CompileCommand> {
-    const query = await run(clice, ["query", "compile-command", file, "--workspace", root], {
+): Promise<EntryCommands[]> {
+    const ran = await run(clice, ["command", file, "--workspace", root, "--json"], {
         env: systemEnv(),
     });
-    if (query.status !== 0) {
+    if (ran.status !== 0) {
         throw new Error(
-            `compileCommand ${file}: ${query.error ?? `exit ${query.status}`}\n${query.stdout}\n${query.stderr}`,
+            `clice command ${file}: ${ran.error ?? `exit ${ran.status}`}\n${ran.stdout}\n${ran.stderr}`,
         );
     }
-    const answer = JSON.parse(query.stdout) as { result?: CompileCommand; error?: string };
-    if (answer.result === undefined) {
-        throw new Error(`compileCommand ${file}: ${answer.error ?? query.stderr}`);
-    }
-    return answer.result;
+    return (JSON.parse(ran.stdout) as { commands: EntryCommands[] }).commands;
 }

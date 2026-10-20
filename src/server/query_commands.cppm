@@ -16,24 +16,6 @@ namespace clice::query {
 template <typename T>
 using Outcome = std::expected<T, std::string>;
 
-struct CompileCommandResult {
-    std::string file;
-    std::string directory;
-    std::vector<std::string> arguments;
-
-    /// Where the command came from: "database" (the file's own entry),
-    /// "host" (a header compiled under an including source), "rule" (a
-    /// rule's default command), "provisional" (borrowed from a nearby unit
-    /// for a saved file the build counts as a provisional member),
-    /// "inferred" (borrowed for a file outside the build) or
-    /// "fallback" (nothing declared it).
-    std::string source;
-
-    /// Why querying the compiler failed, leaving `arguments` at driver
-    /// level instead of the resolved frontend command; absent on success.
-    std::optional<std::string> toolchain_error;
-};
-
 struct FileInfo {
     std::string path;
     std::string kind;
@@ -287,10 +269,6 @@ struct PlannedRename {
                llvm::any_of(result.renames, [](const RenameEntry& entry) { return entry.error; });
     }
 };
-
-/// The file's compile command as the editor would use it: pins and header
-/// context included. Needs the build.
-Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path);
 
 /// The build's files, `filter` one of all, source, header, module. Needs
 /// the build.

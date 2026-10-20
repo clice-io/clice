@@ -1,0 +1,49 @@
+["as an entry"."$ clice command convert -- missing-cc -std=c++20 -c main.cpp -o main.o"]
+stdout = "missing-cc -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-cc
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+["as an entry"."$ clice command convert --json -- missing-cc -std=c++20 -c main.cpp"]
+stdout = '''
+{
+  "directory": "${WS}",
+  "file": "main.cpp",
+  "arguments": [
+    "missing-cc",
+    "-resource-dir",
+    "${RESOURCE}",
+    "-std=c++20",
+    "-D",
+    "FROM_RULE",
+    "${WS}/main.cpp"
+  ]
+}
+'''
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-cc
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+["one source a command"."$ clice command convert -- missing-cc -c main.cpp other.cpp"]
+stderr = "error: The command compiles 2 C-family sources (main.cpp, other.cpp); convert takes a command compiling one"
+exit = 1
+
+["one source a command"."$ clice command convert -- missing-cc -c"]
+stderr = "error: The command compiles no C-family source; convert takes a command compiling one"
+exit = 1
+
+["a database or a command"."$ clice command convert"]
+stderr = "convert takes a compile_commands.json, or a command after --"
+exit = 2
+
+["a database or a command"."$ clice command convert compile_commands.json -- missing-cc -c main.cpp"]
+stderr = "convert takes a compile_commands.json, or a command after --"
+exit = 2
+
+["a database or a command"."$ clice command convert compile_commands.json --json"]
+stderr = "--json converts a command; a database converts to a database"
+exit = 2

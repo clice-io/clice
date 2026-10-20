@@ -10,6 +10,7 @@ const COMMANDS = [
     "lint",
     "format",
     "inspect",
+    "command",
     "scan",
     "analyze",
     "modularize",
@@ -36,6 +37,7 @@ test("operation help", async (t) => {
         "analyze modules",
         "analyze modules edge",
         "inspect hover",
+        "command convert",
     ]) {
         await t.cli([...operation.split(" "), "--help"]);
     }
@@ -53,6 +55,8 @@ test("positional arguments", async (t) => {
         "inspect hover",
         "modularize merge",
         "query references",
+        "command",
+        "command a.cpp b.cpp",
     ]) {
         await t.cli(command);
     }

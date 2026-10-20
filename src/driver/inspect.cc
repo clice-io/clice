@@ -7,7 +7,6 @@ module;
 module clice;
 
 import :command.command;
-import :command.toolchain;
 import :compile.compilation;
 import :compile.tidy;
 import :config.config;
@@ -45,12 +44,6 @@ struct InspectOptions {
                   R"({"begin": 3, "end": 7}}}; results are keyed by these names)",
            required = false)
     <std::string> markers;
-
-    DecoKV(help =
-               "Compile flags for the file as a JSON string array; "
-               "replaces the compile_commands.json lookup",
-           required = false)
-    <std::string> flags;
 
     DecoKV(help =
                "Configuration overlay as a JSON object of clice.toml "
@@ -563,35 +556,19 @@ CanonicalPath workspace_of(CanonicalRef start) {
 /// --config-overlay put in before the rules compile, as initializationOptions
 /// are; the databases the configuration names, else the ones discovered
 /// under its root and those between the root and the file; the dependency
-/// graph. With --flags, the overlay over the defaults alone.
-auto load_inspected(Project& project,
-                    const InspectOptions& opts,
-                    const Spelling& directory,
-                    bool flagged) -> std::expected<void, std::string> {
-    auto overlay = [&]() -> std::expected<void, std::string> {
-        if(!opts.config_overlay) {
-            return {};
-        }
+/// graph.
+auto load_inspected(Project& project, const InspectOptions& opts, const Spelling& directory)
+    -> std::expected<void, std::string> {
+    auto identity = CanonicalPath(directory);
+    auto root = workspace_of(identity);
+    project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
+    if(opts.config_overlay) {
         if(auto result =
                kota::codec::json::from_string<StrictJson>(*opts.config_overlay, project.config);
            !result) {
             return std::unexpected(
                 std::format("invalid --config-overlay: {}", result.error().message));
         }
-        return {};
-    };
-    if(flagged) {
-        if(opts.configuration.configuration) {
-            return std::unexpected(
-                "--configuration selects among the workspace's rules; --flags replaces them");
-        }
-        return overlay();
-    }
-    auto identity = CanonicalPath(directory);
-    auto root = workspace_of(identity);
-    project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
-    if(auto applied = overlay(); !applied) {
-        return applied;
     }
     project.config.finalize(root);
     project.config.keep_own_cache_dir();
@@ -604,45 +581,6 @@ auto load_inspected(Project& project,
                resolve_configuration(project.config, requested),
                compile_commands_above(identity, root));
     return {};
-}
-
-/// What the file compiles with under --flags: the flags as the driver turns
-/// them into a command, its @response-files read from the file's directory.
-/// Fails with the toolchain's error.
-auto flags_input(const SourceFile& file,
-                 llvm::ArrayRef<std::string> flags,
-                 llvm::StringRef directory) -> std::expected<CompilationInput, std::string> {
-    namespace types = clang::driver::types;
-    auto type = suffix_type(file.path);
-    bool is_header = type == types::TY_CHeader || type == types::TY_CXXHeader;
-    bool is_cxx = type != types::TY_INVALID && types::isCXX(type);
-    std::vector<const char*> driver_args = {is_cxx || is_header ? "clang++" : "clang"};
-    if(is_header) {
-        // An ambiguous header is C++ by default, like clangd; -x forces
-        // TU semantics instead of a precompiled-header job.
-        driver_args.insert(driver_args.end(), {"-x", "c++"});
-    }
-    // The toolchain query spawns the driver from the process cwd, and the
-    // driver reads @response-files itself — resolve them against the
-    // file's directory so they don't depend on where inspect was launched.
-    std::vector<std::string> resolved_flags(flags.begin(), flags.end());
-    for(auto& flag: resolved_flags) {
-        llvm::StringRef rest(flag);
-        if(rest.consume_front("@") && !path::is_absolute(rest)) {
-            llvm::SmallString<256> abs(directory);
-            path::append(abs, rest);
-            flag = ("@" + abs).str();
-        }
-        driver_args.push_back(flag.c_str());
-    }
-    driver_args.insert(driver_args.end(), {"-fsyntax-only", file.path.c_str()});
-    auto cc1 = Toolchain::query(driver_args, file.path);
-    if(!cc1) {
-        return std::unexpected(std::move(cc1.error()));
-    }
-    CompilationInput input{.arguments = std::move(*cc1), .directory = directory.str()};
-    input.add_focus(file.path, file.content);
-    return input;
 }
 
 /// clice's build of the precompiled header the command reads, as the server
@@ -794,37 +732,20 @@ int run_inspect(const InspectOptions& opts, const FeatureSpec& spec) {
         LOG_ERROR("{}", file.error());
         return 1;
     }
-    std::vector<std::string> flags;
-    if(opts.flags.has_value()) {
-        if(auto result = kota::codec::json::from_string(*opts.flags, flags); !result) {
-            LOG_ERROR("--flags is not a JSON string array: {}", result.error().message);
-            return 1;
-        }
-        if(flags.empty()) {
-            LOG_ERROR("--flags must name at least one compile flag");
-            return 1;
-        }
-    }
     FileTable file_table;
     Project project{file_table};
     CommandResolver commands(project);
-    if(auto loaded = load_inspected(project, opts, path.parent(), !flags.empty()); !loaded) {
+    if(auto loaded = load_inspected(project, opts, path.parent()); !loaded) {
         LOG_ERROR("{}", loaded.error());
         return 1;
     }
 
     InspectOutput output{.feature = spec.name.str()};
     auto& entry = output.files[path::filename(file->path).str()];
-    auto input = flags.empty() ? project_input(*file, project, commands)
-                               : flags_input(*file, flags, path.parent());
-    if(input) {
-        run_feature(entry, spec, *file, *input, project.config);
-        if(!input->pch.first.empty()) {
-            vfs::remove(input->pch.first);
-        }
-    } else {
-        entry.error = "toolchain_error";
-        entry.diagnostics = {std::move(input.error())};
+    auto input = project_input(*file, project, commands);
+    run_feature(entry, spec, *file, input, project.config);
+    if(!input.pch.first.empty()) {
+        vfs::remove(input.pch.first);
     }
 
     auto json = kota::codec::json::to_string<InspectJsonConfig>(output);

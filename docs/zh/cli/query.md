@@ -11,7 +11,6 @@
 - `symbol-search [<locator>] [--limit <n>]` 列出[定位串](#locators)（locator）匹配到的符号，最佳匹配排在最前，并附上各符号的种类、文件、行号、所属容器和 `symbol`；函数还会附上区分其各个重载的 `signature`。
 - `definition <locator>`、`read-symbol <locator>`、`references <locator> [--include-declaration]`、`call-graph <locator> [--direction callers|callees|both]`、`type-hierarchy <locator> [--direction supertypes|subtypes|both]` 和 `implementation <locator>` 针对定位串指明的那一个符号作答：没有任何定义时，`definition` 给出它的声明；每条引用都会指明它所在的函数；`implementation` 列出类之下各层的所有派生类，或函数之下各层的所有重写函数。定位串匹配到多个符号时，会把它们作为 `candidates` 列出；没有符号与该名称完全一致时，同样会列出最接近的匹配。`definition` 和 `read-symbol` 还会给出符号的 `documentation`：以 markdown 形式给出它的文档注释，读法与编辑器的悬停一致——解析 `@param`、`@return` 和 `@copydoc`，没有注释的重写函数显示它所重写函数的文档。
 - `document-symbols <file>` 给出该文件的大纲。
-- `compile-command <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、从邻近翻译单元借来的命令（借给临时成员时为 `provisional`，借给构建之外的文件时为 `inferred`），或内置的回退命令。给出的是经编译器解析后的命令，带有目标平台和系统头文件目录；询问编译器失败时，`toolchainError` 说明原因，命令则停留在未经解析的驱动命令。
 - `project-files [--filter all|source|header|module]` 列出构建涉及的文件；`file-deps <file> [--direction includes|includers|both] [--depth <n>]` 沿包含关系图查询，`impact-analysis <file>` 则沿包含关系图以及导入该文件所属模块的文件查询。
 - `counterparts <file>` 列出与该文件配对的文件——头文件的源文件、源文件的头文件、模块的接口单元和实现单元——最佳的排在最前，每个都附上理由，并把编辑器无需询问就会直接打开的那一个标为 `preferred`（参见[切换源文件／头文件](../features/navigation.md#switch-source-header)）。
 

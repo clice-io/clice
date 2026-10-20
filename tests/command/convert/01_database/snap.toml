@@ -1,0 +1,44 @@
+[test."$ clice command convert compile_commands.json"]
+stdout = '''
+[
+  {
+    "directory": "${WS}",
+    "file": "main.cpp",
+    "arguments": [
+      "${WS}/missing-cc",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "-D",
+      "FROM_RULE",
+      "${WS}/main.cpp"
+    ],
+    "output": "main.o"
+  },
+  {
+    "directory": "${WS}",
+    "file": "util.cpp",
+    "arguments": [
+      "${WS}/missing-cc",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "-O2",
+      "-D",
+      "FROM_RULE",
+      "${WS}/util.cpp"
+    ]
+  },
+  {
+    "directory": "${WS}",
+    "file": "start.S",
+    "command": "${WS}/missing-cc -c start.S"
+  }
+]
+'''
+stderr = '''
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+error: 2 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+'''
+exit = 1

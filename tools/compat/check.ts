@@ -1,14 +1,20 @@
 /// One scenario end to end: build the project copy with real tools, then
 /// hold clice to what the build proved — every unit parses clean, the
-/// macros agree with the compiler's, each file's command resolves as the
-/// scenario expects.
+/// macros agree with the compiler's, each file's entry reads as written and
+/// its command resolves as the scenario expects.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Workspace } from "../client/workspace.ts";
 import { REPO_ROOT } from "../repo.ts";
-import { compileCommand, lint } from "./clice.ts";
-import { entryArguments, entrySource, readDatabase, samePath } from "./database.ts";
+import { fileCommands, lint } from "./clice.ts";
+import {
+    entryArguments,
+    entrySource,
+    readDatabase,
+    samePath,
+    type DatabaseEntry,
+} from "./database.ts";
 import { compilerMacros, writeExpectations } from "./macros.ts";
 import { buildEnv, missingTools, run, type FileExpectation, type Scenario } from "./scenario.ts";
 
@@ -30,33 +36,51 @@ function containsSequence(args: string[], sequence: string[]): boolean {
     return args.some((_, start) => sequence.every((arg, i) => args[start + i] === arg));
 }
 
-/// What is wrong with a file's resolved command, empty when nothing is.
+/// The database's entry for `file`, which every checked file has.
+function databaseEntry(entries: DatabaseEntry[], root: string, file: string): DatabaseEntry {
+    const source = path.join(root, file);
+    const entry = entries.find((e) => samePath(entrySource(e), source));
+    if (entry === undefined) {
+        throw new Error(`the database has no entry for ${file}`);
+    }
+    return entry;
+}
+
+/// What is wrong with clice's reading of a file's database entry and the
+/// command it resolves it to, empty when nothing is.
 async function commandProblems(
     clice: string,
     root: string,
     file: string,
     expectation: FileExpectation,
 ): Promise<string[]> {
-    const command = await compileCommand(clice, root, file);
-    const problems: string[] = [];
-    if (command.toolchainError !== null) {
-        problems.push(`the compiler query failed: ${command.toolchainError}`);
+    const [command] = await fileCommands(clice, root, file);
+    if (command === undefined) {
+        throw new Error(`clice command ${file} lists no entry`);
     }
-    if (command.source !== "database") {
-        problems.push(`resolved from ${command.source}, not the file's database entry`);
+    const written = entryArguments(databaseEntry(readDatabase(root), root, file));
+    const { arguments: resolved } = command.resolved;
+    const problems: string[] = [];
+    if (written.join("\0") !== command.entry.arguments.join("\0")) {
+        problems.push(
+            `reads the entry as ${command.entry.arguments.join(" ")}, not ${written.join(" ")}`,
+        );
+    }
+    if (command.toolchainError !== undefined) {
+        problems.push(`the compiler query failed: ${command.toolchainError}`);
     }
     for (const sequence of expectation.contains ?? []) {
         const wanted = sequence.map((arg) => arg.replaceAll("${root}", root));
-        if (!containsSequence(command.arguments, wanted)) {
+        if (!containsSequence(resolved, wanted)) {
             problems.push(`lacks ${wanted.join(" ")}`);
         }
     }
     for (const arg of expectation.excludes ?? []) {
-        if (command.arguments.includes(arg)) {
+        if (resolved.includes(arg)) {
             problems.push(`keeps ${arg}`);
         }
     }
-    return problems.map((problem) => `${file}: ${problem}\n    ${command.arguments.join(" ")}`);
+    return problems.map((problem) => `${file}: ${problem}\n    ${resolved.join(" ")}`);
 }
 
 /// Run `body` on a fresh copy of the project, built in the scenario's
@@ -81,10 +105,7 @@ async function withProject(
         fs.mkdirSync(scratch);
         for (const [file, expectation] of Object.entries(scenario.files)) {
             const source = ws.path(file);
-            const entry = entries.find((e) => samePath(entrySource(e), source));
-            if (entry === undefined) {
-                throw new Error(`the database has no entry for ${file}`);
-            }
+            const entry = databaseEntry(entries, ws.root, file);
             const recorded = entryArguments(entry);
             for (const sequence of expectation.recorded ?? []) {
                 if (!containsSequence(recorded, sequence)) {

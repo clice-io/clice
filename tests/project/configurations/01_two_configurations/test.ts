@@ -138,16 +138,7 @@ test(
         await t.cli("index stats --configuration nope");
         await t.cli("lint --configuration nope --jobs 2");
         await t.cli("inspect hover gated.cpp --configuration nope");
-        // --flags replaces the rules the name would select among.
-        await t.cli([
-            "inspect",
-            "hover",
-            "gated.cpp",
-            "--configuration",
-            "release",
-            "--flags",
-            '["clang++"]',
-        ]);
+        await t.cli("command gated.cpp --configuration nope");
         await t.cli("inspect hover gated.cpp");
         await t.cli("inspect hover gated.cpp --configuration release");
     },

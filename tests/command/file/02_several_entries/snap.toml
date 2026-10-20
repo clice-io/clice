@@ -1,0 +1,86 @@
+[test."$ clice command main.cpp"]
+stdout = '''
+${WS}/compile_commands.json:
+  directory: ${WS}
+  command:   ${WS}/missing-cc -DLEVEL=1 -c main.cpp
+  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} -D LEVEL=1 ${WS}/main.cpp
+  error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+
+${WS}/compile_commands.json:
+  directory: ${WS}
+  command:   ${WS}/missing-cc -DLEVEL=2 -O2 -c main.cpp
+  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} -D LEVEL=2 -O2 ${WS}/main.cpp
+  error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+'''
+stderr = '''
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+'''
+exit = 0
+
+[test."$ clice command main.cpp --json"]
+stdout = '''
+{
+  "file": "${WS}/main.cpp",
+  "commands": [
+    {
+      "database": "${WS}/compile_commands.json",
+      "entry": {
+        "directory": "${WS}",
+        "file": "main.cpp",
+        "arguments": [
+          "${WS}/missing-cc",
+          "-DLEVEL=1",
+          "-c",
+          "main.cpp"
+        ]
+      },
+      "resolved": {
+        "directory": "${WS}",
+        "arguments": [
+          "${WS}/missing-cc",
+          "-resource-dir",
+          "${RESOURCE}",
+          "-D",
+          "LEVEL=1",
+          "${WS}/main.cpp"
+        ]
+      },
+      "toolchainError": "Driver ${WS}/missing-cc not found or not executable"
+    },
+    {
+      "database": "${WS}/compile_commands.json",
+      "entry": {
+        "directory": "${WS}",
+        "file": "main.cpp",
+        "arguments": [
+          "${WS}/missing-cc",
+          "-DLEVEL=2",
+          "-O2",
+          "-c",
+          "main.cpp"
+        ],
+        "output": "main.release.o"
+      },
+      "resolved": {
+        "directory": "${WS}",
+        "arguments": [
+          "${WS}/missing-cc",
+          "-resource-dir",
+          "${RESOURCE}",
+          "-D",
+          "LEVEL=2",
+          "-O2",
+          "${WS}/main.cpp"
+        ]
+      },
+      "toolchainError": "Driver ${WS}/missing-cc not found or not executable"
+    }
+  ]
+}
+'''
+stderr = '''
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+'''
+exit = 0
