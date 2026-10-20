@@ -198,8 +198,8 @@ depends-on = ["install-tests"]
 
 # Real build systems and toolchains over tests/compat/project; the tools each
 # scenario names come from the system (CI installs them, see compat-test.yml),
-# nvcc from the `cuda` environment. Workspace-level so CI can run it from
-# the bare `node` env.
+# nvcc from the `cuda` environment, conda's compilers and xclang from the
+# `toolchains` one. Workspace-level so CI can run it from the bare `node` env.
 [tasks.compat-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
