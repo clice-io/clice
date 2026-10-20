@@ -55,12 +55,39 @@ struct ConvertOptions {
     LogLevelOption log;
 };
 
-/// An entry of a compile_commands.json, as its fields are written.
+/// An entry of a compile_commands.json as written: beyond `directory` and
+/// `file`, strings in every entry clice reads, its fields stay the JSON
+/// values they are, to be written back unchanged.
+struct WrittenEntry {
+    std::string directory;
+    std::string file;
+    kota::ipc::protocol::optional<kota::codec::RawValue> arguments;
+    kota::ipc::protocol::optional<kota::codec::RawValue> command;
+    kota::ipc::protocol::optional<kota::codec::RawValue> output;
+
+    /// The command as clice reads it: the `arguments` when they are an
+    /// array, else the `command` split as the host's shell splits it.
+    std::vector<std::string> argv() const {
+        std::vector<std::string> argv;
+        if(arguments && kota::codec::json::from_string(arguments->data, argv)) {
+            return argv;
+        }
+        std::string text;
+        if(command) {
+            kota::codec::json::from_string(command->data, text);
+        }
+        llvm::BumpPtrAllocator allocator;
+        llvm::StringSaver saver(allocator);
+        auto tokens = tokenize_command(text, saver);
+        return {tokens.begin(), tokens.end()};
+    }
+};
+
+/// An entry of a compile_commands.json, its command as arguments.
 struct DatabaseEntry {
     std::string directory;
     std::string file;
-    kota::ipc::protocol::optional<std::vector<std::string>> arguments;
-    kota::ipc::protocol::optional<std::string> command;
+    std::vector<std::string> arguments;
     kota::ipc::protocol::optional<kota::codec::RawValue> output;
 };
 
@@ -160,18 +187,14 @@ std::optional<DatabaseEntry> written_entry(const Spelling& path, std::uint32_t i
     if(!entries || index >= entries->size()) {
         return std::nullopt;
     }
-    DatabaseEntry entry;
+    WrittenEntry entry;
     if(!kota::codec::json::from_string((*entries)[index].data, entry)) {
         return std::nullopt;
     }
-    if(!entry.arguments) {
-        llvm::BumpPtrAllocator allocator;
-        llvm::StringSaver saver(allocator);
-        auto tokens = tokenize_command(entry.command.value_or(""), saver);
-        entry.arguments.emplace(tokens.begin(), tokens.end());
-        entry.command = std::nullopt;
-    }
-    return entry;
+    return DatabaseEntry{.directory = std::move(entry.directory),
+                         .file = std::move(entry.file),
+                         .arguments = entry.argv(),
+                         .output = std::move(entry.output)};
 }
 
 void print_text(const FileCommands& commands) {
@@ -182,7 +205,7 @@ void print_text(const FileCommands& commands) {
         }
         driver::println("{}:", database);
         driver::println("  directory: {}", resolved.directory);
-        driver::println("  command:   {}", join_command(*entry.arguments));
+        driver::println("  command:   {}", join_command(entry.arguments));
         driver::println("  resolved:  {}", join_command(resolved.arguments));
         if(error) {
             driver::println("  error:     the compiler could not be queried: {}", *error);
@@ -363,7 +386,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
     for(std::uint32_t index = 0; index < written->size(); index += 1) {
         auto& value = (*written)[index];
         auto ref = refs.find(index);
-        DatabaseEntry entry;
+        WrittenEntry entry;
         // An entry clice skips (another language's source, a malformed
         // one) is left as it is.
         if(ref == refs.end() || !kota::codec::json::from_string(value.data, entry)) {
@@ -375,7 +398,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
             unresolved += 1;
         }
         entry.directory = Spelling(entry.directory, base).str();
-        entry.arguments = std::move(rendered.arguments);
+        entry.arguments = to_raw(rendered.arguments);
         entry.command = std::nullopt;
         converted.push_back(to_raw(entry));
     }
