@@ -197,7 +197,7 @@ ZEST_CASE(KillsNewestOneAtATime) {
     });
     auto kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 1u);
-    ZEXPECT(kills[0].request == 3u);
+    ZEXPECT(kills[0].requests.front() == 3u);
     ZEXPECT(kills[0].reason == scheduler::KillReason::Memory);
     ZEXPECT(!core.scheduler.runs_alone(kills[0].slot));
     // Still short, but the first kill's process is not gone yet.
@@ -208,7 +208,7 @@ ZEST_CASE(KillsNewestOneAtATime) {
     core.sample(256 * MiB);
     kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 2u);
-    ZEXPECT(kills[1].request == 2u);
+    ZEXPECT(kills[1].requests.front() == 2u);
 }
 
 ZEST_CASE(AloneKillIsTooBig) {
@@ -249,7 +249,7 @@ ZEST_CASE(SwappingStopsNewest) {
     core.take();
     auto kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 1u);
-    ZEXPECT(kills[0].request == 2u);
+    ZEXPECT(kills[0].requests.front() == 2u);
 }
 
 ZEST_CASE(LoneUnitSwapsOn) {
@@ -272,7 +272,7 @@ ZEST_CASE(ForegroundBesideIsNotAlone) {
     });
     auto kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 1u);
-    ZEXPECT(kills[0].request == 1u);
+    ZEXPECT(kills[0].requests.front() == 1u);
     ZEXPECT(!core.scheduler.runs_alone(kills[0].slot));
 }
 
@@ -347,17 +347,49 @@ ZEST_CASE(StalledCpuIsHung) {
 
 ZEST_CASE(QueryWaitsBehindBuild) {
     Core core(1);
-    core.scheduler.stateful_begin(10, 0, true, core.now);
-    core.scheduler.stateful_begin(11, 0, false, core.now);
+    core.scheduler.stateful_begin(10, 0, 1, true, core.now);
+    core.scheduler.stateful_begin(11, 0, 2, false, core.now);
     core.advance(minutes(3));
     core.sample(16 * GiB);
     ZEXPECT(core.all<scheduler::Kill>().empty());
+    // Past the build deadline the query is overdue too: one kill names both.
     core.advance(minutes(8));
     core.sample(16 * GiB);
     auto kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 1u);
     ZEXPECT(kills[0].stateful);
-    ZEXPECT(kills[0].request == 10u);
+    ZEXPECT(kills[0].requests == std::vector<RequestId>{10, 11});
+}
+
+ZEST_CASE(OverlappingBuildsBoundQuery) {
+    Core core(1);
+    core.scheduler.stateful_begin(10, 0, 1, true, core.now);
+    core.scheduler.stateful_begin(11, 0, 2, false, core.now);
+    core.advance(minutes(9));
+    core.scheduler.stateful_end(10, core.now);
+    core.scheduler.stateful_begin(12, 0, 3, true, core.now);
+    core.advance(minutes(2));
+    core.sample(16 * GiB);
+    auto kills = core.all<scheduler::Kill>();
+    ZASSERT(kills.size() == 1u);
+    ZEXPECT(kills[0].requests == std::vector<RequestId>{11});
+}
+
+ZEST_CASE(DocumentLineUntimed) {
+    Core core(1);
+    core.scheduler.stateful_begin(10, 0, 7, true, core.now);
+    core.scheduler.stateful_begin(11, 0, 7, false, core.now);
+    core.advance(minutes(9));
+    core.scheduler.stateful_end(10, core.now);
+    // The query runs since the compile of its document ended.
+    core.advance(seconds(90));
+    core.sample(16 * GiB);
+    ZEXPECT(core.all<scheduler::Kill>().empty());
+    core.advance(minutes(1));
+    core.sample(16 * GiB);
+    auto kills = core.all<scheduler::Kill>();
+    ZASSERT(kills.size() == 1u);
+    ZEXPECT(kills[0].requests == std::vector<RequestId>{11});
 }
 
 ZEST_CASE(IgnoredCancelIsKilled) {

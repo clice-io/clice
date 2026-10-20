@@ -118,8 +118,9 @@ struct Kill {
 
     KillReason reason = KillReason::Memory;
 
-    /// The request the kill is for.
-    RequestId request = 0;
+    /// The requests the kill is for: one, or every overdue request of a
+    /// stateful worker.
+    std::vector<RequestId> requests;
 };
 
 /// Start another stateless process; the pool reports it with
@@ -160,8 +161,9 @@ using SchedulerAction = std::variant<scheduler::Dispatch,
 ///   - Below the reserve, one background request is killed at a time, the
 ///     newest; the next only once that process is gone.
 ///   - A stateless request's deadline is its worker's CPU time; a stateful
-///     one's is the time since it was sent, a query's not counted while a
-///     build runs on the same worker.
+///     one's is the time since its document's earlier requests ended, a
+///     query's not counted while a build runs on the same worker, up to the
+///     build deadline. One kill names every overdue request of the worker.
 ///
 /// Invariants: a slot runs at most one stateless request; a request is
 /// queued, running on one slot, or gone; at most one memory kill is in
@@ -185,9 +187,15 @@ public:
     /// worker's own memory sampled while it ran.
     std::uint64_t finish(RequestId id, SchedulerTime now);
 
-    /// A stateful request the pool placed on `slot`: timed, and counted as
-    /// foreground activity while it runs.
-    void stateful_begin(RequestId id, std::size_t slot, bool build, SchedulerTime now);
+    /// A stateful request the pool placed on `slot`, about `document`:
+    /// counted as foreground activity while it runs, and timed from when the
+    /// earlier requests about the same document ended, since its worker
+    /// runs those one at a time.
+    void stateful_begin(RequestId id,
+                        std::size_t slot,
+                        std::uint32_t document,
+                        bool build,
+                        SchedulerTime now);
     void stateful_end(RequestId id, SchedulerTime now);
 
     /// A stateless slot entered service: spawned, respawned or revived.
@@ -281,6 +289,12 @@ private:
 
         bool build = false;
 
+        /// Stateful: the document it is about, and whether an earlier
+        /// request about it still runs, which it waits behind untimed.
+        std::uint32_t document = 0;
+
+        bool waiting = false;
+
         /// The memory it is expected to peak at; zero when unknown.
         std::uint64_t peak = 0;
 
@@ -368,7 +382,8 @@ private:
     /// is the cheapest to free. Returns whether any was.
     bool retire_idle();
 
-    void kill(const Request& request, scheduler::KillReason reason, SchedulerTime now);
+    /// Kill the requests' worker; they all run on one.
+    void kill(llvm::ArrayRef<const Request*> killed, scheduler::KillReason reason);
 
     /// Take every decision the state now calls for.
     void decide(SchedulerTime now);

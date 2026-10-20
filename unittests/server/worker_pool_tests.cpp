@@ -113,15 +113,19 @@ struct WorkerPoolFixture {
 
     /// A stateful request sent to slot `idx`, as dispatch_stateful
     /// registers it with the scheduler.
-    RequestId stateful_request(std::size_t idx, bool build = false) {
+    RequestId stateful_request(std::size_t idx, bool build = false, std::uint32_t document = 0) {
         auto id = pool.next_request;
         pool.next_request += 1;
-        pool.scheduler.stateful_begin(id, idx, build, WorkerPool::now());
+        pool.scheduler.stateful_begin(id, idx, document, build, WorkerPool::now());
         return id;
     }
 
-    void kill(std::size_t idx, bool stateful, scheduler::KillReason reason, RequestId request = 0) {
-        pool.kill_worker({.slot = idx, .stateful = stateful, .reason = reason, .request = request});
+    void kill(std::size_t idx,
+              bool stateful,
+              scheduler::KillReason reason,
+              std::vector<RequestId> requests = {}) {
+        pool.kill_worker(
+            {.slot = idx, .stateful = stateful, .reason = reason, .requests = std::move(requests)});
     }
 
     /// As stop() leaves the pool before its workers are reaped.
@@ -171,7 +175,7 @@ struct WorkerPoolFixture {
     /// The dying worker named the request it ran, as its crash report
     /// would.
     void set_culprit(std::size_t idx, bool stateful, std::string tag) {
-        pool.slot(idx, stateful).death->culprit = std::move(tag);
+        pool.slot(idx, stateful).death->culprits.push_back(std::move(tag));
     }
 
     /// The worker's last stderr, as its drain would have kept it.
@@ -401,6 +405,11 @@ struct WorkerPoolFixture {
 
     void retire(std::size_t idx) {
         pool.retire_worker(idx);
+    }
+
+    /// End the link to the worker as its own exit would, from this side.
+    void close_link(std::size_t idx) {
+        pool.stateless_workers[idx].peer->close();
     }
 
     /// Its sender cancelled the request.
@@ -644,14 +653,14 @@ ZEST_CASE(MemoryKillIsOutOfMemory) {
     auto request = f.submit(worker::Priority::Low);
     f.sample(1ull << 40, 3ull << 30);
     auto death = f.death(0, false);
-    f.kill(0, false, scheduler::KillReason::Memory, request->id);
+    f.kill(0, false, scheduler::KillReason::Memory, {request->id});
 
     ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
     ZEXPECT(f.preempted(0));
     ZEXPECT(death->out_of_memory);
     ZEXPECT(death->memory == 3ull << 30);
     ZEXPECT(death->alone);
-    ZEXPECT(death->culprit.empty());
+    ZEXPECT(death->culprits.empty());
     // The scheduler forgot the request with its worker.
     ZEXPECT(f.running_on(0) == 0u);
     // A kill on purpose is not a crash: no report, no crash accounting.
@@ -666,7 +675,7 @@ ZEST_CASE(CompanyIsNotAlone) {
     auto background = f.submit(worker::Priority::Low);
     auto foreground = f.submit(worker::Priority::High);
     auto death = f.death(0, false);
-    f.kill(0, false, scheduler::KillReason::Memory, background->id);
+    f.kill(0, false, scheduler::KillReason::Memory, {background->id});
     ZEXPECT(death->out_of_memory);
     ZEXPECT(!death->alone);
 }
@@ -682,8 +691,8 @@ ZEST_CASE(KillCreditsHealthyRun) {
     f.set_crash_streak(1, false, 2);
     f.set_uptime(1, false, std::chrono::milliseconds(0));
 
-    f.kill(0, false, scheduler::KillReason::Memory, request->id);
-    f.kill(1, false, scheduler::KillReason::CancelGrace, young->id);
+    f.kill(0, false, scheduler::KillReason::Memory, {request->id});
+    f.kill(1, false, scheduler::KillReason::CancelGrace, {young->id});
 
     // The healthy interval before the kill clears the stale streak, exactly
     // as the next crash's accounting would have; a slot that has not
@@ -693,15 +702,19 @@ ZEST_CASE(KillCreditsHealthyRun) {
     ZEXPECT(f.crash_streak(1) == 2u);
 }
 
-ZEST_CASE(GraceKillIsCancel) {
+ZEST_CASE(GraceKillIsLost) {
     WorkerPoolFixture f;
     f.add_stateless();
     auto request = f.submit(worker::Priority::Low);
     auto death = f.death(0, false);
-    f.kill(0, false, scheduler::KillReason::CancelGrace, request->id);
+    f.kill(0, false, scheduler::KillReason::CancelGrace, {request->id});
     ZEXPECT(f.preempted(0));
+    ZEXPECT(death->ignored_cancel);
     ZEXPECT(!death->out_of_memory);
-    ZEXPECT(death->culprit.empty());
+    ZEXPECT(death->culprits.empty());
+    // A run that never stopped spends its sender's retries.
+    ZEXPECT(WorkerPoolFixture::death_error(*death, "clice/worker/tuRun /a.cpp").code ==
+            worker::dispatch_errc::worker_lost);
 }
 
 ZEST_CASE(DeadlineKillNames) {
@@ -710,25 +723,33 @@ ZEST_CASE(DeadlineKillNames) {
     f.add_stateful();
     auto query = f.stateful_request(0);
     auto hover = f.inflight(query, "clice/worker/hover /b.cpp", false);
-    f.kill(0, true, scheduler::KillReason::Deadline, query);
+    auto other = f.stateful_request(0, false, 1);
+    auto links = f.inflight(other, "clice/worker/documentLink /c.cpp", false);
+    auto death = f.death(0, true);
+    // One kill names every overdue request of the worker.
+    f.kill(0, true, scheduler::KillReason::Deadline, {query, other});
     ZEXPECT(f.state(0, true) == WorkerPoolFixture::SlotState::Dying);
-    ZEXPECT(f.death(0, true)->culprit == "clice/worker/hover /b.cpp");
+    ZEXPECT(death->culprits.size() == 2u);
+    ZEXPECT(WorkerPoolFixture::death_error(*death, "clice/worker/hover /b.cpp").code ==
+            worker::dispatch_errc::worker_crashed);
+    ZEXPECT(WorkerPoolFixture::death_error(*death, "clice/worker/documentLink /c.cpp").code ==
+            worker::dispatch_errc::worker_crashed);
     ZEXPECT(f.death(0, true)->cause == "killed after running for over 1 seconds");
 
     f.add_stateless();
     f.add_stateless();
     auto run = f.submit(worker::Priority::Low);
     auto index = f.inflight(run->id, "clice/worker/tuRun /c.cpp", true);
-    f.kill(0, false, scheduler::KillReason::Deadline, run->id);
-    ZEXPECT(f.death(0, false)->culprit == "clice/worker/tuRun /c.cpp");
+    f.kill(0, false, scheduler::KillReason::Deadline, {run->id});
+    ZEXPECT(f.death(0, false)->culprits[0] == "clice/worker/tuRun /c.cpp");
     ZEXPECT(f.death(0, false)->cause == "killed after over 10 seconds of CPU time");
     ZEXPECT(!f.preempted(0));
 
     auto stuck = f.submit(worker::Priority::Low);
     ZASSERT(stuck->slot == 1u);
     auto stalled = f.inflight(stuck->id, "clice/worker/tuRun /d.cpp", true);
-    f.kill(1, false, scheduler::KillReason::Stalled, stuck->id);
-    ZEXPECT(f.death(1, false)->culprit == "clice/worker/tuRun /d.cpp");
+    f.kill(1, false, scheduler::KillReason::Stalled, {stuck->id});
+    ZEXPECT(f.death(1, false)->culprits[0] == "clice/worker/tuRun /d.cpp");
     ZEXPECT(f.death(1, false)->cause == "killed after 300 seconds without using the CPU");
 }
 
@@ -747,7 +768,7 @@ ZEST_CASE(AllocationFailureIsBlameless) {
     auto death = f.death(0, false);
     ZEXPECT(death->out_of_memory);
     ZEXPECT(death->alone);
-    ZEXPECT(death->culprit.empty());
+    ZEXPECT(death->culprits.empty());
     ZEXPECT(death->cause == "ran out of memory");
     ZEXPECT(f.crash_streak(0) == 1u);
     ZEXPECT(trapped.empty());
@@ -991,7 +1012,7 @@ ZEST_CASE(BusyKillSpendsBudget) {
 ZEST_CASE(DeathNamesItsRequest) {
     WorkerDeath death;
     death.cause = "killed by signal 11 (SIGSEGV)";
-    death.culprit = "clice/worker/compile /a.cpp";
+    death.culprits = {"clice/worker/compile /a.cpp"};
 
     using namespace worker::dispatch_errc;
     auto own = WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp");
@@ -1001,7 +1022,7 @@ ZEST_CASE(DeathNamesItsRequest) {
     ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /b.cpp").code ==
             worker_lost);
 
-    death.culprit.clear();
+    death.culprits.clear();
     ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp").code ==
             worker_died);
 
@@ -1702,7 +1723,7 @@ ZEST_CASE(MemoryKillReportsMemory) {
         // within the same loop turn, the request is caught in flight.
         group.spawn(sender());
         ZASSERT(f.running_on(0) == 1u);
-        f.kill(0, false, scheduler::KillReason::Memory, f.only_request());
+        f.kill(0, false, scheduler::KillReason::Memory, {f.only_request()});
         co_await group.join();
         ZASSERT(error.has_value());
         ZEXPECT(error->code == worker::dispatch_errc::out_of_memory);
@@ -1746,7 +1767,7 @@ ZEST_CASE(MemoryKillBeatsCancel) {
         // A memory kill arriving before the cancelled request stopped is
         // reported as such: its sender learns what the request reached.
         source.cancel();
-        f.kill(0, false, scheduler::KillReason::Memory, f.only_request());
+        f.kill(0, false, scheduler::KillReason::Memory, {f.only_request()});
         co_await group.join();
         ZEXPECT(code == worker::dispatch_errc::out_of_memory);
 
@@ -1795,6 +1816,29 @@ ZEST_CASE(CancelledCrashRetiresSlot) {
     });
     ZEXPECT(done);
 }
+
+#ifndef _WIN32
+ZEST_CASE(LinkEndMarksDead) {
+    // A worker whose link ends is dead before its exit is observed: a
+    // request dispatched to it meanwhile would die nameless. A stopped
+    // worker cannot exit at all.
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        ZASSERT(f.start(1, 0));
+        auto gen = f.generation(0);
+        f.kill_worker(0, SIGSTOP);
+        f.close_link(0);
+        while(f.generation(0) == gen) {
+            co_await kota::yield();
+        }
+        co_await f.serves(0);
+        co_await f.stop();
+        done = true;
+    });
+    ZEXPECT(done);
+}
+#endif
 
 ZEST_CASE(SampleReadsWorkers) {
     WorkerPoolFixture f;

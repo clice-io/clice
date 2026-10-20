@@ -51,10 +51,11 @@ struct WorkerCrashInfo {
 struct WorkerDeath {
     kota::event done;
 
-    /// The crash tag (worker::crash_tag) of the request the worker named in
-    /// its last words, or that outlived the pool's deadline; empty when
-    /// nothing names one — an outside kill, a crash outside any request.
-    std::string culprit;
+    /// The crash tags (worker::crash_tag) of the request the worker named in
+    /// its last words, or of the ones that outlived the pool's deadline;
+    /// empty when nothing names one — an outside kill, a crash outside any
+    /// request.
+    llvm::SmallVector<std::string, 1> culprits;
 
     /// How it died, worded for the user ("signal 11 (SIGSEGV)").
     std::string cause;
@@ -62,6 +63,12 @@ struct WorkerDeath {
     /// A stateless worker's memory ran out: the pool killed it to free
     /// memory, or an allocation failed in it. Its request is not to blame.
     bool out_of_memory = false;
+
+    /// The pool killed the worker because its request ignored a cancel past
+    /// the grace period. The request is not to blame, but the run counts as
+    /// lost: a free requeue would repeat it for as long as the user keeps
+    /// preempting it.
+    bool ignored_cancel = false;
 
     /// A stateless worker's own memory as last sampled, and whether its
     /// request was the only stateless one running: one whose memory ran out
@@ -444,9 +451,9 @@ private:
 
     /// The error a request that died with its worker reports: worker_crashed
     /// when the death names this very request; out_of_memory when the
-    /// worker's memory ran out; worker_lost when it names
-    /// another, or names none while other requests were in flight;
-    /// worker_died when it names none and this request ran alone.
+    /// worker's memory ran out; worker_lost when it names another, names
+    /// none while other requests were in flight, or the request ignored a
+    /// cancel; worker_died when it names none and this request ran alone.
     static kota::ipc::Error death_error(const WorkerDeath& death,
                                         llvm::StringRef tag,
                                         kota::codec::dyn::Value identity);
@@ -563,9 +570,19 @@ private:
         std::shared_ptr<StderrTail> stderr_tail;
     };
 
-    /// Launch a worker process and start its IO pumps. Shared by initial
-    /// spawn, scale-up, and respawn.
-    std::optional<SpawnedProcess> spawn_process(const std::string& name, bool stateful);
+    /// Launch the process of a slot's incarnation and start its IO pumps.
+    /// Shared by initial spawn, scale-up, and respawn.
+    std::optional<SpawnedProcess> spawn_process(std::size_t index,
+                                                bool stateful,
+                                                unsigned generation);
+
+    /// The IO pump, owning a peer reference so the peer outlives its own
+    /// run() no matter when the slot drops its copy. The incarnation dies
+    /// when its link ends.
+    kota::task<> run_peer(std::shared_ptr<kota::ipc::BincodePeer> peer,
+                          std::size_t index,
+                          bool stateful,
+                          unsigned generation);
 
     /// Append a new slot (initial start and scale-up).
     bool spawn_worker(bool stateful);
@@ -760,7 +777,7 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     Inflight inflight(*this, id, worker::crash_tag(params), worker::is_build<Params>);
     // Every stateful request is user-facing: it counts as activity, and is
     // timed while it flies.
-    scheduler.stateful_begin(id, idx, worker::is_build<Params>, now());
+    scheduler.stateful_begin(id, idx, path_id, worker::is_build<Params>, now());
     execute();
 
     struct Timed {
@@ -879,8 +896,8 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // the slot frees only once the process is actually idle again. Every
         // shape is reported as cancelled, so the indexer requeues instead of
         // recording a failure — unless the worker's memory ran out before it
-        // stopped, which its sender learns of.
-        if(request.preempt.cancelled() && !death->out_of_memory) {
+        // stopped, or it never stopped, which its sender learns of.
+        if(request.preempt.cancelled() && !death->out_of_memory && !death->ignored_cancel) {
             co_await kota::fail(kota::ipc::Error{cancelled, "Request preempted by the scheduler"});
         }
         // An error returned by the worker's handler leaves the worker

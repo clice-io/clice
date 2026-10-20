@@ -81,23 +81,51 @@ std::uint64_t WorkerScheduler::finish(RequestId id, SchedulerTime now) {
     return request.max_memory;
 }
 
-void
-    WorkerScheduler::stateful_begin(RequestId id, std::size_t slot, bool build, SchedulerTime now) {
+void WorkerScheduler::stateful_begin(RequestId id,
+                                     std::size_t slot,
+                                     std::uint32_t document,
+                                     bool build,
+                                     SchedulerTime now) {
+    auto waiting = std::ranges::any_of(requests, [&](const auto& entry) {
+        auto& other = entry.second;
+        return other.stateful && other.slot == slot && other.document == document;
+    });
     requests.emplace(id,
                      Request{.id = id,
                              .priority = Priority::High,
                              .stateful = true,
                              .build = build,
+                             .document = document,
+                             .waiting = waiting,
                              .submitted = now,
                              .slot = slot,
-                             .started = now});
+                             .started = now,
+                             .order = next_order});
+    next_order += 1;
     last_activity = now;
     decide(now);
 }
 
 void WorkerScheduler::stateful_end(RequestId id, SchedulerTime now) {
-    requests.erase(id);
+    auto it = requests.find(id);
+    // Gone with its worker.
+    if(it == requests.end()) {
+        return;
+    }
+    auto ended = std::move(it->second);
+    requests.erase(it);
     last_activity = now;
+    Request* next = nullptr;
+    for(auto& [_, other]: requests) {
+        if(other.stateful && other.waiting && other.slot == ended.slot &&
+           other.document == ended.document && (!next || other.order < next->order)) {
+            next = &other;
+        }
+    }
+    if(next) {
+        next->waiting = false;
+        next->started = now;
+    }
 }
 
 void WorkerScheduler::worker_ready(std::size_t slot, SchedulerTime now) {
@@ -318,18 +346,16 @@ void WorkerScheduler::cancel_newest_low(std::size_t count, SchedulerTime now) {
     }
 }
 
-void WorkerScheduler::kill(const Request& request,
-                           scheduler::KillReason reason,
-                           SchedulerTime now) {
-    auto slot = *request.slot;
-    actions.push_back(scheduler::Kill{
-        .slot = slot,
-        .stateful = request.stateful,
-        .reason = reason,
-        .request = request.id,
-    });
+void WorkerScheduler::kill(llvm::ArrayRef<const Request*> killed, scheduler::KillReason reason) {
+    auto& first = *killed.front();
+    auto slot = *first.slot;
+    scheduler::Kill action{.slot = slot, .stateful = first.stateful, .reason = reason};
+    for(auto* request: killed) {
+        action.requests.push_back(request->id);
+    }
+    actions.push_back(std::move(action));
     for(auto& [_, other]: requests) {
-        if(other.stateful == request.stateful && other.slot == slot) {
+        if(other.stateful == first.stateful && other.slot == slot) {
             other.killed = true;
         }
     }
@@ -451,7 +477,7 @@ void WorkerScheduler::check_memory(SchedulerTime now) {
         // What it reached counts among the peaks: the units killed are the
         // big ones, and the finished ones alone would leave them out.
         peaks.insert(std::ranges::upper_bound(peaks, newest->memory), newest->memory);
-        kill(*newest, scheduler::KillReason::Memory, now);
+        kill({newest}, scheduler::KillReason::Memory);
     }
 }
 
@@ -461,7 +487,7 @@ void WorkerScheduler::check_deadlines(SchedulerTime now) {
             continue;
         }
         if(request.cancel_asked && now - *request.cancel_asked > cancel_grace) {
-            kill(request, scheduler::KillReason::CancelGrace, now);
+            kill({&request}, scheduler::KillReason::CancelGrace);
             continue;
         }
         if(!request.start_cpu) {
@@ -469,14 +495,15 @@ void WorkerScheduler::check_deadlines(SchedulerTime now) {
         }
         auto limit = request.build ? options.build_deadline : options.query_deadline;
         if(request.last_cpu - *request.start_cpu > limit) {
-            kill(request, scheduler::KillReason::Deadline, now);
+            kill({&request}, scheduler::KillReason::Deadline);
         } else if(now - request.cpu_moved > options.stall_deadline) {
-            kill(request, scheduler::KillReason::Stalled, now);
+            kill({&request}, scheduler::KillReason::Stalled);
         }
     }
 
-    // Stateful: by worker, the first overdue request; a query is not timed
-    // while a build runs on its worker, as it may wait behind the build.
+    // Stateful: by worker, every overdue request; a query is not timed
+    // while a build runs on its worker, as it may wait behind the build for
+    // a thread, but not past the build deadline either.
     std::map<std::size_t, llvm::SmallVector<const Request*>> by_slot;
     for(auto& [_, request]: requests) {
         if(request.stateful && !request.killed) {
@@ -485,12 +512,18 @@ void WorkerScheduler::check_deadlines(SchedulerTime now) {
     }
     for(auto& [_, list]: by_slot) {
         auto building = std::ranges::any_of(list, &Request::build);
-        auto late = std::ranges::find_if(list, [&](const Request* request) {
-            auto limit = request->build ? options.build_deadline : options.query_deadline;
-            return (request->build || !building) && now - request->started > limit;
-        });
-        if(late != list.end()) {
-            kill(**late, scheduler::KillReason::Deadline, now);
+        llvm::SmallVector<const Request*> late;
+        for(auto* request: list) {
+            auto running = now - request->started;
+            auto overdue = request->build ? running > options.build_deadline
+                                          : running > options.query_deadline &&
+                                                (!building || running > options.build_deadline);
+            if(!request->waiting && overdue) {
+                late.push_back(request);
+            }
+        }
+        if(!late.empty()) {
+            kill(late, scheduler::KillReason::Deadline);
         }
     }
 }

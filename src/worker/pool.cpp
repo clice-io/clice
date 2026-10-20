@@ -64,12 +64,6 @@ std::string describe_exit(int exit_code, int exit_signal) {
     return std::format("exited with code {}", exit_code);
 }
 
-/// IO pump wrapper owning a peer reference, so the peer object outlives its
-/// own run() coroutine no matter when the slot drops its copy.
-kota::task<> run_peer(std::shared_ptr<kota::ipc::BincodePeer> peer) {
-    co_await peer->run();
-}
-
 }  // namespace
 
 std::vector<std::uint32_t> WorkerPool::worker_pids(bool stateful) const {
@@ -106,8 +100,10 @@ std::size_t WorkerPool::stateless_footprint() const {
     });
 }
 
-std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::string& name,
-                                                                    bool stateful) {
+std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t index,
+                                                                    bool stateful,
+                                                                    unsigned generation) {
+    auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
     kota::process::options opts;
     opts.file = options.self_path;
     opts.args = {options.self_path, "worker"};
@@ -153,9 +149,23 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
 
     auto stderr_tail = std::make_shared<StderrTail>();
     worker_tasks.spawn(drain_stderr(std::move(spawn.stderr_pipe), "[" + name + "]", stderr_tail));
-    worker_tasks.spawn(run_peer(peer));
+    worker_tasks.spawn(run_peer(peer, index, stateful, generation));
 
     return SpawnedProcess{std::move(spawn.proc), std::move(peer), std::move(stderr_tail)};
+}
+
+kota::task<> WorkerPool::run_peer(std::shared_ptr<kota::ipc::BincodePeer> peer,
+                                  std::size_t index,
+                                  bool stateful,
+                                  unsigned generation) {
+    co_await peer->run();
+    // The worker closed its end, as it does once it dies: no request may be
+    // dispatched to it in the while before its exit is observed.
+    auto& w = slot(index, stateful);
+    if(!stop_scope.cancelled() && w.generation == generation && w.state == SlotState::Alive &&
+       !w.retiring) {
+        mark_worker_dead(index, stateful, true);
+    }
 }
 
 void WorkerPool::install_evict_handler(WorkerProcess& worker, std::size_t index) {
@@ -188,7 +198,7 @@ bool WorkerPool::spawn_worker(bool stateful) {
     auto index = workers.size();
     auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
 
-    auto spawned = spawn_process(name, stateful);
+    auto spawned = spawn_process(index, stateful, 0);
     if(!spawned)
         return false;
 
@@ -211,13 +221,11 @@ bool WorkerPool::spawn_worker(bool stateful) {
 
 bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
-    auto name = std::string(stateful ? "SF-" : "SL-") + std::to_string(index);
-
-    auto spawned = spawn_process(name, stateful);
+    auto& w = workers[index];
+    auto spawned = spawn_process(index, stateful, w.generation);
     if(!spawned)
         return false;
 
-    auto& w = workers[index];
     w.proc = std::move(spawned->proc);
     w.peer = std::move(spawned->peer);
     w.stderr_tail = std::move(spawned->stderr_tail);
@@ -605,8 +613,8 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     // is not to blame.
     if(death.out_of_memory) {
         death.cause = "ran out of memory";
-    } else if(death.culprit.empty() && w.stderr_tail) {
-        death.culprit = w.stderr_tail->crashed_in;
+    } else if(death.culprits.empty() && w.stderr_tail && !w.stderr_tail->crashed_in.empty()) {
+        death.culprits.push_back(w.stderr_tail->crashed_in);
     }
     if(death.cause.empty()) {
         death.cause = describe_exit(exit_code, exit_signal);
@@ -622,7 +630,7 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     // when several were in flight, or when none was, and only the budget
     // slows a load that keeps getting killed.
     bool idle_kill = exit_signal == sigkill && death.in_flight == 0 && w.lost_documents.empty();
-    if(death.culprit.empty() && !death.out_of_memory && !terminated && !idle_kill) {
+    if(death.culprits.empty() && !death.out_of_memory && !terminated && !idle_kill) {
         w.crash_streak += 1;
     }
 
@@ -662,10 +670,10 @@ kota::ipc::Error WorkerPool::death_error(const WorkerDeath& death,
             kota::codec::dyn::Value{{"memory", death.memory}, {"alone", death.alone}},
         };
     }
-    auto named = !death.culprit.empty();
-    auto code = named && death.culprit == tag    ? errc::worker_crashed
-                : !named && death.in_flight <= 1 ? errc::worker_died
-                                                 : errc::worker_lost;
+    auto named = !death.culprits.empty();
+    auto code = named && llvm::is_contained(death.culprits, tag)          ? errc::worker_crashed
+                : !named && death.in_flight <= 1 && !death.ignored_cancel ? errc::worker_died
+                                                                          : errc::worker_lost;
     return kota::ipc::Error{code, death.cause, std::move(identity)};
 }
 
@@ -856,11 +864,14 @@ void WorkerPool::kill_worker(const scheduler::Kill& kill) {
     } else if(kill.reason == KillReason::CancelGrace) {
         LOG_WARN("Worker {} ignored a cooperative cancel; killing it", w.name);
         w.preempted = true;
+        w.death->ignored_cancel = true;
+        w.death->cause = std::format(
+            "killed after ignoring a cancel for {} seconds",
+            std::chrono::duration_cast<std::chrono::seconds>(WorkerScheduler::cancel_grace)
+                .count());
     } else {
-        auto flight = flights.find(kill.request);
-        // Timed only once its send started.
-        assert(flight != flights.end());
-        auto& [_, request] = *flight;
+        // Timed only once their sends started.
+        auto* request = flights.at(kill.requests.front());
         auto limit = request->build ? options.build_deadline : options.query_deadline;
         auto seconds = [](auto duration) {
             return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
@@ -875,8 +886,11 @@ void WorkerPool::kill_worker(const scheduler::Kill& kill) {
             w.death->cause = std::format("killed after {} seconds without using the CPU",
                                          seconds(options.stall_deadline));
         }
-        LOG_WARN("Worker {} ran {}: {}", w.name, request->tag, w.death->cause);
-        w.death->culprit = request->tag;
+        for(auto id: kill.requests) {
+            auto& tag = flights.at(id)->tag;
+            LOG_WARN("Worker {} ran {}: {}", w.name, tag, w.death->cause);
+            w.death->culprits.push_back(tag);
+        }
     }
     if(w.preempted) {
         // The respawn skips crash accounting: credit a healthy run here the
