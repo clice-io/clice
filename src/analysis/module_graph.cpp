@@ -202,18 +202,38 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         facts.files.push_back({
             .path = path,
             // A header an editor indexed standalone has a manifest too.
-            .source = index.held_manifest(fid) && !is_header_path(path),
+            .source = index.indexed(fid) && !is_header_path(path),
             .fragment = is_context_header_path(path),
         });
         fids.push_back(fid);
     };
-    index.for_each_shard([&](Fid file, const index::Shard&) { add(file); });
-    index.for_each_manifest([&](Fid tu, const index::TUManifest& manifest) {
-        add(tu);
-        for(auto& node: manifest.nodes) {
-            add(table.version(VersionID{node.file}).fid);
+    std::vector<std::pair<Fid, index::TUManifest>> manifests;
+    index.for_each_unit([&](Fid tu) {
+        if(auto manifest = index.manifest(tu)) {
+            manifests.emplace_back(tu, std::move(*manifest));
         }
     });
+    // The database lists files in no meaningful order: the facts take them
+    // by path, so they read the same whatever stored them.
+    llvm::DenseSet<Fid> listed;
+    std::vector<std::pair<std::string, Fid>> paths;
+    auto list = [&](Fid fid) {
+        if(listed.insert(fid).second) {
+            paths.emplace_back(display(fid), fid);
+        }
+    };
+    index.for_each_indexed_file(list);
+    for(auto& [tu, manifest]: manifests) {
+        list(tu);
+        for(auto& node: manifest.nodes) {
+            list(table.version(VersionID{node.file}).fid);
+        }
+    }
+    std::ranges::sort(paths);
+    for(auto fid: llvm::make_second_range(paths)) {
+        add(fid);
+    }
+    std::ranges::sort(manifests, {}, [&](const auto& unit) { return display(unit.first); });
     auto id_of = [&](Fid fid) {
         auto it = ids.find(fid);
         return it == ids.end() ? none : it->second;
@@ -239,7 +259,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, Fid> include_at;
     /// (scoped includer, scoped file) -> the first directive line naming it.
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> include_lines;
-    index.for_each_manifest([&](Fid tu, const index::TUManifest& manifest) {
+    for(auto& [tu, manifest]: manifests) {
         auto unit = id_of(tu);
         llvm::DenseSet<std::uint32_t> entered;
         if(unit != none) {
@@ -277,7 +297,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
             }
         }
-    });
+    }
     for(auto& file: facts.files) {
         std::ranges::sort(file.directives);
         file.directives.erase(std::ranges::unique(file.directives).begin(), file.directives.end());
@@ -789,13 +809,13 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
             }
             bool implemented =
-                index.held_manifest(canonical) && !llvm::is_contained({SymbolKind::Class,
-                                                                       SymbolKind::Struct,
-                                                                       SymbolKind::Union,
-                                                                       SymbolKind::Enum,
-                                                                       SymbolKind::Type,
-                                                                       SymbolKind::Concept},
-                                                                      kind);
+                index.indexed(canonical) && !llvm::is_contained({SymbolKind::Class,
+                                                                 SymbolKind::Struct,
+                                                                 SymbolKind::Union,
+                                                                 SymbolKind::Enum,
+                                                                 SymbolKind::Type,
+                                                                 SymbolKind::Concept},
+                                                                kind);
             if(owner == none && !implemented) {
                 if(kind == SymbolKind::Macro) {
                     foreign_macros[hash] = {canonical, identity->name.str()};
@@ -995,7 +1015,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(!facts.files[owner].source) {
                 ConfiguringMacro configuring{.entity = id};
                 index.for_each_reference_file(hash, [&](Fid file) {
-                    if(id_of(file) != none || index.held_manifest(file)) {
+                    if(id_of(file) != none || index.indexed(file)) {
                         return;
                     }
                     auto path = display(file);
@@ -1358,22 +1378,14 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
     if(!loaded) {
         return std::unexpected(LoadError{.message = "no usable index; run `clice index` first"});
     }
-    // A unit withheld as stale or corrupt takes its uses and edges with it.
-    if(!loaded->dropped.empty()) {
-        LoadError error{.message = "the index lacks some units; run `clice index` first"};
-        for(auto unit: loaded->dropped) {
-            error.dropped.emplace_back(files.display(unit));
-        }
-        std::ranges::sort(error.dropped);
-        return std::unexpected(std::move(error));
-    }
     // A file written since it was indexed (as `clice refactor rename`
     // leaves the files it edits) would give facts about text that is gone.
     index::FreshnessGate gate(files, {.check_disk = true});
     LoadError stale{.message =
                         "some files changed since they were indexed; run `clice index` first"};
-    project.index.for_each_shard([&](Fid file, const index::Shard& shard) {
-        if(gate.stale(file, shard.content_hash())) {
+    project.index.for_each_indexed_file([&](Fid file) {
+        if(auto* shard = project.index.shard(file);
+           shard && gate.stale(file, shard->content_hash())) {
             stale.dropped.emplace_back(files.display(file));
         }
     });
@@ -1389,6 +1401,10 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
         return !llvm::sys::path::is_absolute(path) && !path.starts_with(".") &&
                !path.contains("/.");
     });
+    if(project.index.damaged()) {
+        return std::unexpected(
+            LoadError{.message = "the index database is damaged; run `clice index` to rebuild it"});
+    }
     if(edit) {
         if(auto edited = edit(project, commands, facts); !edited) {
             return std::unexpected(LoadError{.message = std::move(edited.error())});

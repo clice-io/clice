@@ -6,6 +6,7 @@ module clice;
 
 import :index.database;
 import :index.project_index;
+import :index.shard;
 import :index.symbol;
 import :index.symbol_query;
 import :project.command_resolver;
@@ -15,6 +16,8 @@ import :sched.index.pending_table;
 import :sched.index.pump;
 import :sched.stack;
 import :support.bytes;
+import :unittests.utils.forwarding_database;
+import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -28,50 +31,22 @@ namespace clice::testing {
 namespace {
 
 /// Forwards to a real database and logs the blob kinds of each write.
-struct WriteLog final : index::BlobDatabase {
-    std::unique_ptr<index::BlobDatabase> real;
+struct WriteLog final : ForwardingDatabase {
+    using ForwardingDatabase::ForwardingDatabase;
+
     std::vector<std::vector<index::BlobKind>> writes;
     std::size_t refused = 0;
 
-    index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-        return real->read(kind, key);
-    }
-
-    bool contains(index::BlobKind kind, llvm::StringRef key) override {
-        return real->contains(kind, key);
-    }
-
-    llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                           llvm::ArrayRef<index::BlobKey> removes) override {
+    bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
         writes.emplace_back();
         for(auto& put: puts) {
             writes.back().push_back(put.kind);
         }
-        auto failed = real->write(puts, removes);
-        if(!failed.empty()) {
+        bool committed = real->write(puts, removes);
+        if(!committed) {
             refused += 1;
         }
-        return failed;
-    }
-
-    void for_each_key(index::BlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
-        real->for_each_key(kind, fn);
-    }
-
-    std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-        return real->advance_read_snapshot();
-    }
-
-    void retire_old_snapshot() override {
-        real->retire_old_snapshot();
-    }
-
-    std::expected<bool, std::string> grow() override {
-        return real->grow();
-    }
-
-    bool corrupted() const override {
-        return real->corrupted();
+        return committed;
     }
 };
 
@@ -81,8 +56,7 @@ WriteLog& open_logged(TempDir& tmp, Project& project, std::size_t mapsize = 0) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ZASSERT(store);
     project.store.emplace(std::move(*store));
-    auto log = std::make_unique<WriteLog>();
-    log->real = index::open_lmdb_database(*project.store, "", mapsize);
+    auto log = std::make_unique<WriteLog>(index::open_lmdb_database(*project.store, "", mapsize));
     ZASSERT(log->real != nullptr);
     auto& logged = *log;
     project.database = std::move(log);
@@ -144,28 +118,11 @@ ZEST_CASE(SaveMigratesShardViews) {
     // The LMDB backend wrapped in a spy: save() must advance the read
     // snapshot exactly once, rebind the resident shard onto it, and
     // retire the old snapshot exactly once.
-    struct SnapshotSpy final : index::BlobDatabase {
-        std::unique_ptr<index::BlobDatabase> real;
+    struct SnapshotSpy final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
         int advances = 0;
         int retires = 0;
-
-        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-            return real->read(kind, key);
-        }
-
-        bool contains(index::BlobKind kind, llvm::StringRef key) override {
-            return real->contains(kind, key);
-        }
-
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey> removes) override {
-            return real->write(puts, removes);
-        }
-
-        void for_each_key(index::BlobKind kind,
-                          llvm::function_ref<void(llvm::StringRef)> fn) override {
-            real->for_each_key(kind, fn);
-        }
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
             advances += 1;
@@ -176,17 +133,12 @@ ZEST_CASE(SaveMigratesShardViews) {
             retires += 1;
             real->retire_old_snapshot();
         }
-
-        std::expected<bool, std::string> grow() override {
-            return real->grow();
-        }
     };
 
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ZASSERT(store);
     project.store.emplace(std::move(*store));
-    auto spy = std::make_unique<SnapshotSpy>();
-    spy->real = index::open_lmdb_database(*project.store, "");
+    auto spy = std::make_unique<SnapshotSpy>(index::open_lmdb_database(*project.store, ""));
     ZASSERT(spy->real != nullptr);
     auto* probe = spy.get();
     project.database = std::move(spy);
@@ -220,88 +172,46 @@ ZEST_CASE(SaveMigratesShardViews) {
     ZASSERT(it->variants() == variants_before);
 }
 
-ZEST_CASE(GrowFailureShedsShards) {
+ZEST_CASE(RefusedGrowthKeepsBatch) {
     TempDir tmp;
-    tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
-    tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
+    tmp.touch("main.cpp", "int kept_value() { return 1; }\n");
     open_store(tmp, project);
 
-    // grow() failing is backend-independent shed territory: every clean
-    // (non-dirty, possibly borrowed) shard must go with its owner requeued
-    // — the manifests still read fresh, so nothing else would rebuild the
-    // dropped shards — while dirty ones are owned by construction and stay.
-    // The spy also fails dirty.cpp's put so it is re-dirtied by the time
-    // the migration runs.
-    struct FailingGrow final : index::BlobDatabase {
-        std::unique_ptr<index::BlobDatabase> real;
-        std::string fail_key;
+    // A full map the address space cannot grow: the batch fails like any
+    // failed write, nothing is lost, and a later save commits it.
+    struct RefusedGrowth final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
 
-        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-            return real->read(kind, key);
+        bool full = true;
+
+        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
+            return !full && real->write(puts, removes);
         }
 
-        bool contains(index::BlobKind kind, llvm::StringRef key) override {
-            return real->contains(kind, key);
-        }
-
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey> removes) override {
-            auto failed = real->write(puts, removes);
-            for(std::size_t i = 0; i < puts.size(); i += 1) {
-                if(puts[i].key == fail_key && !llvm::is_contained(failed, i)) {
-                    failed.push_back(i);
-                }
-            }
-            return failed;
-        }
-
-        void for_each_key(index::BlobKind kind,
-                          llvm::function_ref<void(llvm::StringRef)> fn) override {
-            real->for_each_key(kind, fn);
-        }
-
-        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return real->advance_read_snapshot();
-        }
-
-        void retire_old_snapshot() override {
-            real->retire_old_snapshot();
-        }
-
-        std::expected<bool, std::string> grow() override {
-            return std::unexpected(std::string("address space exhausted"));
+        Growth grow() override {
+            return full ? Growth::Refused : Growth::None;
         }
     };
 
-    auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
-    auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
-    ZASSERT(!indexed_clean.data.empty());
-    ZASSERT(!indexed_dirty.data.empty());
-
-    auto spy = std::make_unique<FailingGrow>();
-    spy->real = std::move(project.database);
-    // Through the pool: the indexer keys blobs by the pool-canonical path,
-    // which need not equal the raw temp path byte-for-byte (Windows 8.3
-    // names).
-    spy->fail_key = index::blob_key(project.file_table.resolve(
-        project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path))));
+    auto spy = std::make_unique<RefusedGrowth>(std::move(project.database));
+    auto* probe = spy.get();
     project.database = std::move(spy);
 
-    merge(indexed_clean.data);
-    merge(indexed_dirty.data);
-    auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
-    auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ZASSERT(!indexed.data.empty());
+    merge(indexed.data);
+    auto file = project.file_table.intern(Spelling::absolute(indexed.tu_path));
 
-    auto save_body = [&]() -> kota::task<> {
-        co_await async_save();
-    };
-    auto task = save_body();
-    loop.schedule(task);
-    loop.run();
+    fx.save();
+    ZASSERT(project.index.shard(file) != nullptr);
+    ZASSERT(project.index.pending_shard_writes() == 1u);
+    ZASSERT(has_unsaved_state(project));
 
-    ZASSERT(!project.index.shard(clean_id));
-    ZASSERT(project.index.shard(dirty_id) != nullptr);
-    ZASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
+    probe->full = false;
+    fx.save();
+    ZASSERT(project.index.pending_shard_writes() == 0u);
+    ZASSERT(project.index.last_save_shards() == 1u);
+    ZASSERT(!has_unsaved_state(project));
 }
 
 ZEST_CASE(MidSaveMergeKept) {
@@ -361,6 +271,48 @@ ZEST_CASE(MidSaveMergeKept) {
     it = project.index.shard(path_id);
     ZASSERT(project.index.pending_shard_writes() == 0u);
     ZASSERT(it->content_hash() == llvm::xxh3_64bits("int second_value() { return 2; }\n"));
+}
+
+ZEST_CASE(RetiredDuringMigration) {
+    // A shard retired while the migration onto a fresh snapshot yields
+    // between its batches is the retirement's: the migration leaves it.
+    TempDir tmp;
+    open_store(tmp, project);
+    index::FileIndex file_index;
+    file_index.relations[7].push_back({
+        .kind = RelationKind::Definition,
+        .range = {4, 5}
+    });
+    auto bytes = index::write_shard(file_index, {}, "int x = 1;\n");
+    auto plant = [&](llvm::StringRef name) {
+        auto file = project.file_table.intern(Spelling::absolute(name));
+        IndexInternals::plant_shard(
+            project.index,
+            file,
+            index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))),
+            /*written=*/true);
+        return file;
+    };
+    Fid last;
+    for(std::uint32_t i = 0; i < 600; i += 1) {
+        last = std::max(last, plant(std::format("/proj/f{}.cpp", i)));
+    }
+    fx.save();
+    plant("/proj/next.cpp");
+
+    auto save_task = fx.async_save();
+    auto retire_body = [&]() -> kota::task<> {
+        while(project.index.pending_shard_writes() != 0) {
+            co_await kota::yield(loop);
+        }
+        IndexInternals::retire_shard(project.index, last);
+    };
+    auto retire_task = retire_body();
+    loop.schedule(save_task);
+    loop.schedule(retire_task);
+    loop.run();
+    ZEXPECT(!project.index.damaged());
+    ZEXPECT(!project.index.shard(last));
 }
 
 ZEST_CASE(RebuildKeepsPendingFindable) {
@@ -470,6 +422,73 @@ ZEST_CASE(RebuildKeepsMidBuildChanges) {
     }
 }
 
+ZEST_CASE(FailedSaveKeepsSearch) {
+    // A write failing after the search index was rebuilt: the build stays
+    // for the retry, and searches keep finding what it holds.
+    struct FlakyStorage final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
+        bool fail_write = false;
+        bool fail_advance = false;
+
+        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
+            return !fail_write && real->write(puts, removes);
+        }
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            if(fail_advance) {
+                return std::unexpected(std::string("every reader slot taken"));
+            }
+            return real->advance_read_snapshot();
+        }
+    };
+
+    TempDir tmp;
+    tmp.touch("a.cpp", "int first_value() { return 1; }\n");
+    tmp.touch("b.cpp", "int second_value() { return 2; }\n");
+    tmp.touch("c.cpp", "int third_value() { return 3; }\n");
+    open_store(tmp, project);
+    auto flaky = std::make_unique<FlakyStorage>(std::move(project.database));
+    auto* probe = flaky.get();
+    project.database = std::move(flaky);
+    auto hits = [&](llvm::StringRef name) {
+        return project.index.search_index()
+            .search(*index::SymbolQuery::parse(name), 10, project.index.workspace)
+            .hits.size();
+    };
+
+    auto first = index_file(tmp, tmp.path("a.cpp"));
+    ZASSERT(!first.data.empty());
+    merge(first.data);
+    fx.save(index::SearchRebuild::Idle);
+    ZASSERT(hits("first_value") == 1u);
+
+    auto second = index_file(tmp, tmp.path("b.cpp"));
+    ZASSERT(!second.data.empty());
+    merge(second.data);
+    probe->fail_write = true;
+    fx.save(index::SearchRebuild::Idle);
+    ZEXPECT(hits("second_value") == 1u);
+    ZEXPECT(has_unsaved_state(project));
+
+    // The retry commits the build but cannot move onto a fresh snapshot;
+    // the next batch carries no search index and fails.
+    probe->fail_write = false;
+    probe->fail_advance = true;
+    fx.save(index::SearchRebuild::Idle);
+    probe->fail_advance = false;
+    auto third = index_file(tmp, tmp.path("c.cpp"));
+    ZASSERT(!third.data.empty());
+    merge(third.data);
+    probe->fail_write = true;
+    fx.save();
+    probe->fail_write = false;
+    fx.save(index::SearchRebuild::Idle);
+    ZEXPECT(!has_unsaved_state(project));
+    ZEXPECT(hits("second_value") == 1u);
+    ZEXPECT(hits("third_value") == 1u);
+}
+
 ZEST_CASE(SaveCompactsAndRetires) {
     TempDir tmp;
     tmp.touch("shared.h",
@@ -518,11 +537,8 @@ ZEST_CASE(SaveCompactsAndRetires) {
     ZASSERT(!project.index.shard(header_id));
     ZASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
                  .has_value());
-    bool on_disk = false;
-    auto key = index::blob_key(project.file_table.resolve(header_id));
-    project.database->for_each_key(index::BlobKind::Shard,
-                                   [&](llvm::StringRef k) { on_disk |= k == key; });
-    ZASSERT(!on_disk);
+    ZASSERT(!project.database->contains(index::BlobKind::Shard,
+                                        IndexInternals::file_key(project.index, header_id)));
 }
 
 ZEST_CASE(SaveRetiresPinnedShard) {
@@ -570,11 +586,8 @@ ZEST_CASE(SaveRetiresPinnedShard) {
     loop.run();
 
     ZASSERT(!project.index.shard(header_id));
-    bool on_disk = false;
-    auto key = index::blob_key(project.file_table.resolve(header_id));
-    project.database->for_each_key(index::BlobKind::Shard,
-                                   [&](llvm::StringRef k) { on_disk |= k == key; });
-    ZASSERT(!on_disk);
+    ZASSERT(!project.database->contains(index::BlobKind::Shard,
+                                        IndexInternals::file_key(project.index, header_id)));
 
     // pb's manifest survives, still pinning variants the retirement made
     // unservable; nothing else in this process would rebuild them (a
@@ -592,38 +605,20 @@ ZEST_CASE(FailedWriteNotCounted) {
     // A storage whose commits never succeed (disk full, permissions): the
     // gauge must report what was durably committed, not what the save
     // attempted.
-    struct FailingStorage final : index::BlobDatabase {
-        index::ReadBlob read(index::BlobKind, llvm::StringRef) override {
-            return {};
-        }
+    struct FailingStorage final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
 
-        bool contains(index::BlobKind, llvm::StringRef) override {
-            return false;
-        }
+        bool fail = true;
 
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey>) override {
-            llvm::SmallVector<std::uint32_t> failed;
-            for(std::uint32_t i = 0; i < puts.size(); i += 1) {
-                failed.push_back(i);
-            }
-            return failed;
-        }
-
-        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
-
-        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 1;
-        }
-
-        void retire_old_snapshot() override {}
-
-        std::expected<bool, std::string> grow() override {
-            return false;
+        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
+            return !fail && real->write(puts, removes);
         }
     };
 
-    project.database = std::make_unique<FailingStorage>();
+    open_store(tmp, project);
+    auto failing = std::make_unique<FailingStorage>(std::move(project.database));
+    auto* probe = failing.get();
+    project.database = std::move(failing);
 
     auto indexed = index_file(tmp, src);
     ZASSERT(!indexed.data.empty());
@@ -645,10 +640,26 @@ ZEST_CASE(FailedWriteNotCounted) {
     // recovers.
     ZASSERT(project.index.pending_shard_writes() == 1u);
 
-    open_store(tmp, project);
+    probe->fail = false;
     save();
     ZASSERT(project.index.last_save_shards() == 1u);
     ZASSERT(project.index.pending_shard_writes() == 0u);
+
+    // Every record the failed batch carried reached the database with the
+    // retry: another reader finds the symbol in its file, and the unit.
+    clice::FileTable files;
+    index::ProjectIndex reader{files};
+    ZASSERT(reader.open(*project.database) == index::LoadOutcome::Loaded);
+    auto unit = files.intern(Spelling::absolute(indexed.tu_path));
+    ZEXPECT(reader.indexed(unit));
+    Fid declared;
+    reader.for_each_symbol([&](index::SymbolHash, const index::SymbolView& view, std::uint32_t) {
+        if(view.name == "uncommitted") {
+            declared = Fid{view.file};
+        }
+        return !declared.valid();
+    });
+    ZEXPECT(declared == unit);
 }
 
 ZEST_CASE(WriteCorruptionRebuildsDatabase) {
@@ -656,57 +667,27 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
     tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
     tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
     open_store(tmp, project);
+    for(auto name: {"clean.cpp", "dirty.cpp"}) {
+        auto command = std::format("clang++ -c {}", name);
+        project.cdb.add_command(tmp.root, tmp.path(name), llvm::StringRef(command));
+    }
 
     // Corruption showing up at write time (a damaged page only the write's
-    // tree descent reaches): the save must condemn the environment and
-    // continue on a fresh one instead of re-writing into it every save.
-    // Batch shards own their bytes and stay to re-persist; the clean
-    // resident view is shed and its owner re-enqueued.
-    struct CorruptOnWrite final : index::BlobDatabase {
+    // tree descent reaches): the save condemns the environment and the
+    // project starts over on a fresh one, every unit indexed again.
+    struct CorruptOnWrite final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
         bool* condemned;
         bool fail = false;
         bool poisoned = false;
-        std::map<std::pair<index::BlobKind, std::string>, std::vector<std::byte>> stored;
 
-        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-            auto it = stored.find({kind, key.str()});
-            if(it == stored.end()) {
-                return {};
+        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
+            if(fail) {
+                poisoned = true;
+                return false;
             }
-            return {.buffer = llvm::MemoryBuffer::getMemBufferCopy(as_chars(it->second)),
-                    .generation = 1};
-        }
-
-        bool contains(index::BlobKind kind, llvm::StringRef key) override {
-            return stored.contains({kind, key.str()});
-        }
-
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey>) override {
-            if(!fail) {
-                for(auto& put: puts) {
-                    stored[{put.kind, put.key}] = put.bytes;
-                }
-                return {};
-            }
-            poisoned = true;
-            llvm::SmallVector<std::uint32_t> failed;
-            for(std::uint32_t i = 0; i < puts.size(); i += 1) {
-                failed.push_back(i);
-            }
-            return failed;
-        }
-
-        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
-
-        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 1;
-        }
-
-        void retire_old_snapshot() override {}
-
-        std::expected<bool, std::string> grow() override {
-            return false;
+            return real->write(puts, removes);
         }
 
         bool corrupted() const override {
@@ -715,11 +696,12 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
 
         void condemn() override {
             *condemned = true;
+            real->condemn();
         }
     };
 
     bool condemned = false;
-    auto spy = std::make_unique<CorruptOnWrite>();
+    auto spy = std::make_unique<CorruptOnWrite>(std::move(project.database));
     spy->condemned = &condemned;
     auto* probe = spy.get();
     project.database = std::move(spy);
@@ -729,33 +711,24 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
     ZASSERT(!indexed_clean.data.empty());
     ZASSERT(!indexed_dirty.data.empty());
 
-    auto save = [&] {
-        auto body = [&]() -> kota::task<> {
-            co_await async_save();
-        };
-        auto task = body();
-        loop.schedule(task);
-        loop.run();
-    };
-
     merge(indexed_clean.data);
-    save();
+    fx.save();
     merge(indexed_dirty.data);
     probe->fail = true;
-    save();
+    fx.save();
 
     ZASSERT(condemned);
     ZASSERT(project.database != nullptr);
     auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
     auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
     ZASSERT(!project.index.shard(clean_id));
-    ZASSERT(project.index.shard(dirty_id) != nullptr);
+    ZASSERT(!project.index.shard(dirty_id));
     ZASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
+    ZASSERT(pump.pending_reason(dirty_id) == ReindexReason::ContentChanged);
     ZASSERT(project.index.last_save_shards() == 0u);
 
-    // The next save re-persists everything servable into the fresh database.
-    save();
-    ZASSERT(project.index.last_save_shards() == 1u);
+    // The next save records the command snapshot in the fresh database.
+    fx.save();
     ZASSERT(!has_unsaved_state(project));
 }
 
@@ -763,40 +736,29 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     TempDir tmp;
     tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
     open_store(tmp, project);
+    project.cdb.add_command(tmp.root, tmp.path("main.cpp"), llvm::StringRef("clang++ -c main.cpp"));
 
     // Corruption showing up first at migration time (a damaged page only the
     // re-read from the advanced snapshot reaches, after the write-time
-    // check passed): same recovery as write-time corruption — the resident
-    // view is shed with its owner re-enqueued, the environment condemned
-    // and replaced by a fresh one.
-    struct CorruptOnRead final : index::BlobDatabase {
+    // check passed): the same recovery as at write time.
+    struct CorruptOnRead final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
         bool* condemned;
+        bool written = false;
         bool poisoned = false;
 
-        index::ReadBlob read(index::BlobKind, llvm::StringRef) override {
-            poisoned = true;
-            return {};
+        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
+            if(written) {
+                poisoned = true;
+                return {};
+            }
+            return real->read(kind, key);
         }
 
-        bool contains(index::BlobKind, llvm::StringRef) override {
-            return false;
-        }
-
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob>,
-                                               llvm::ArrayRef<index::BlobKey>) override {
-            return {};
-        }
-
-        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
-
-        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 2;
-        }
-
-        void retire_old_snapshot() override {}
-
-        std::expected<bool, std::string> grow() override {
-            return false;
+        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
+            written = real->write(puts, removes);
+            return written;
         }
 
         bool corrupted() const override {
@@ -805,27 +767,19 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
 
         void condemn() override {
             *condemned = true;
+            real->condemn();
         }
     };
 
     bool condemned = false;
-    auto spy = std::make_unique<CorruptOnRead>();
+    auto spy = std::make_unique<CorruptOnRead>(std::move(project.database));
     spy->condemned = &condemned;
     project.database = std::move(spy);
 
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
     merge(indexed.data);
-
-    auto save = [&] {
-        auto body = [&]() -> kota::task<> {
-            co_await async_save();
-        };
-        auto task = body();
-        loop.schedule(task);
-        loop.run();
-    };
-    save();
+    fx.save();
 
     auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
     ZASSERT(condemned);
@@ -834,9 +788,7 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     ZASSERT(pump.pending_reason(path_id) == ReindexReason::ContentChanged);
     ZASSERT(project.index.last_save_shards() == 0u);
 
-    // The re-dirtied manifests, global and CDB snapshot re-persist into
-    // the fresh database.
-    save();
+    fx.save();
     ZASSERT(!has_unsaved_state(project));
 }
 
@@ -942,9 +894,9 @@ void a() { Box<A>{}.show(); }
         !f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
 }
 
-ZEST_CASE(UnservableInstantiationsReindex) {
-    // A unit naming a use its file's blob cannot serve is indexed again:
-    // nothing else would restore what it resolved.
+ZEST_CASE(DamagedInstantiationsRebuildAll) {
+    // An instantiation blob failing its checks damages the database like
+    // any record: the next save discards it and every unit is indexed again.
     TempDir tmp;
     tmp.touch("box.h", R"(#pragma once
 template <typename T>
@@ -957,21 +909,33 @@ struct Box {
 struct A { void print(); };
 void a() { Box<A>{}.show(); }
 )");
+    auto command = [&](IndexerFixture& f) {
+        f.project.cdb.add_command(tmp.root, tmp.path("a.cpp"), llvm::StringRef("clang++ -c a.cpp"));
+    };
     std::string box_key;
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        command(f);
         auto indexed = index_file(tmp, tmp.path("a.cpp"));
         ZASSERT(f.merge(indexed.data));
         f.save();
-        box_key = index::blob_key(f.project.file_table.resolve(
-            f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")))));
+        box_key = IndexInternals::file_key(
+            f.project.index,
+            f.project.file_table.intern(Spelling::absolute(tmp.path("box.h"))));
     }
     inject_blob(tmp, index::BlobKind::InstantiationShard, box_key, "corrupted beyond verification");
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    command(f);
     f.load();
+    auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
+    ZEXPECT(!f.project.index.instantiation_shard(box_id));
+    ZEXPECT(f.project.index.damaged());
+    f.save();
+    ZEXPECT(!f.project.index.damaged());
+    ZEXPECT(!f.project.database->contains(index::BlobKind::InstantiationShard, box_key));
     ZEXPECT(
         f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")))));
 }

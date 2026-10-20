@@ -7,10 +7,12 @@ module clice;
 import :index.database;
 import :index.format;
 import :index.project_index;
-import :index.tu_manifest;
+import :index.symbol_query;
 import :project.project;
 import :sched.index.pending_table;
 import :support.bytes;
+import :unittests.utils.forwarding_database;
+import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -20,24 +22,6 @@ import :vfs.path;
 
 namespace clice::testing {
 namespace {
-
-/// A structurally valid blob of `text`'s content generation carrying an
-/// explicit variant list — the shapes load()'s healing paths probe.
-std::string planted_blob(llvm::StringRef text, std::uint64_t variant) {
-    index::ShardBlob blob;
-    blob.format_version = index::index_format_version;
-    blob.content_hash = llvm::xxh3_64bits(text);
-    blob.content_size = static_cast<std::uint32_t>(text.size());
-    auto starts = kota::ipc::lsp::line_starts(std::string_view(text.data(), text.size()));
-    for(std::size_t i = 0; i < starts.size(); i += 1) {
-        auto next = i + 1 < starts.size() ? starts[i + 1] : blob.content_size;
-        blob.line_lengths.push_back(static_cast<std::uint8_t>(next - starts[i]));
-    }
-    blob.variants = {variant};
-    blob.symbol_hashes = {111};
-    blob.relation_offsets = {0, 0};
-    return std::string(as_chars(index::encode(blob)));
-}
 
 ZEST_SUITE(ProjectIndexLoad) {
 
@@ -70,6 +54,49 @@ ZEST_CASE(LoadRestoresIndex) {
     ZASSERT(!f.needs_reindex(src));
 }
 
+ZEST_CASE(OpenReadsHeaderOnly) {
+    // Opening reads the header and the search index it pins: every other
+    // record is read when something asks for it.
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, tmp.path("main.cpp"));
+        ZASSERT(!indexed.data.empty());
+        f.merge(indexed.data);
+        f.save(index::SearchRebuild::Idle);
+    }
+
+    struct ReadLog final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
+        llvm::SmallVector<index::BlobKind> reads;
+
+        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
+            reads.push_back(kind);
+            return real->read(kind, key);
+        }
+
+        void for_each(index::BlobKind kind,
+                      llvm::function_ref<bool(llvm::StringRef, index::ReadBlob)> fn) override {
+            reads.push_back(kind);
+            real->for_each(kind, fn);
+        }
+    };
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    auto log = std::make_unique<ReadLog>(std::move(f.project.database));
+    auto* probe = log.get();
+    f.project.database = std::move(log);
+    ZASSERT(f.project.index.open(*f.project.database) == index::LoadOutcome::Loaded);
+    ZEXPECT(probe->reads == llvm::SmallVector<index::BlobKind>{index::BlobKind::Header,
+                                                               index::BlobKind::SearchIndex});
+    ZEXPECT(f.project.index.search_index().loaded());
+}
+
 ZEST_CASE(IdleRebuildPinsSearch) {
     TempDir tmp;
     tmp.touch("main.cpp", "int use() { return 1; }\n");
@@ -81,7 +108,7 @@ ZEST_CASE(IdleRebuildPinsSearch) {
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
-        // The plain save persists the table; the idle one then rebuilds
+        // The plain save persists the records; the idle one then rebuilds
         // the search index with no other change to write.
         f.save();
         ZASSERT(!f.project.index.has_unsaved_state());
@@ -96,16 +123,206 @@ ZEST_CASE(IdleRebuildPinsSearch) {
     ZASSERT(f.project.index.search_index().loaded());
 }
 
-ZEST_CASE(LoadHealsBrokenShard) {
+ZEST_CASE(StaleUnitsFollowDisk) {
+    // The start-up scan finds the units a change made while no server ran
+    // reaches: an edited header's includer, and a unit a failed lookup of
+    // which now finds a file. The unit nothing changed under stays.
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("extra.h", "#pragma once\ninline int extra() { return 2; }\n");
-    tmp.touch("main.cpp",
-              "#include \"dep.h\"\n#include \"extra.h\"\n"
-              "int use() { return dep() + extra(); }\n");
-    auto src = tmp.path("main.cpp");
-    std::string header_key;
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    tmp.touch("other.cpp", "int other() { return 2; }\n");
+    tmp.touch("late.cpp", "#include \"made.h\"\nint late() { return 3; }\n");
+    tmp.mkdir("gen");
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        for(auto name: {"main.cpp", "other.cpp"}) {
+            auto indexed = index_file(tmp, tmp.path(name));
+            ZASSERT(!indexed.data.empty());
+            ZASSERT(f.merge(indexed.data));
+        }
+        auto late = index_file(tmp, tmp.path("late.cpp"), {"-I" + tmp.path("gen")});
+        ZASSERT(!late.data.empty());
+        ZASSERT(f.merge(late.data));
+        f.save();
+    }
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 100; }\n");
+    tmp.touch("gen/made.h", "#pragma once\n");
 
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    std::vector<std::string> stale;
+    for(auto unit: f.project.index.stale_units()) {
+        stale.push_back(llvm::sys::path::filename(f.project.file_table.resolve(unit)).str());
+    }
+    std::ranges::sort(stale);
+    ZEXPECT(stale == std::vector<std::string>{"late.cpp", "main.cpp"});
+    auto file_of = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    ZEXPECT(IndexInternals::behind(f.project.index, file_of("main.cpp")));
+    ZEXPECT(!IndexInternals::behind(f.project.index, file_of("other.cpp")));
+}
+
+ZEST_CASE(OwedUnitsPersist) {
+    // A rebuild of a shared header discards another unit's variant; that
+    // unit reads fresh by content, so the debt survives a restart in the
+    // header until the unit merges again.
+    TempDir tmp;
+    tmp.touch("gen.h",
+              "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
+              "inline int gen_fn() { return 1; }\n");
+    tmp.touch("ga.cpp", "#include \"gen.h\"\nint ga() { return gen_fn(); }\n");
+    tmp.touch("gb.cpp", "#include \"gen.h\"\nint gb() { return gen_fn(); }\n");
+    auto gb_unit = [&](IndexerFixture& f) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path("gb.cpp")));
+    };
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto a = index_file(tmp, tmp.path("ga.cpp"));
+        auto b = index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"});
+        ZASSERT(f.merge(a.data));
+        ZASSERT(f.merge(b.data));
+        tmp.touch("gen.h",
+                  "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
+                  "inline int gen_fn() { return 2; }\n");
+        ZASSERT(f.merge(index_file(tmp, tmp.path("ga.cpp")).data));
+        ZASSERT(f.project.index.owed_units().contains(gb_unit(f)));
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    ZEXPECT(f.project.index.owed_units().contains(gb_unit(f)));
+    ZASSERT(f.merge(index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"}).data));
+    ZEXPECT(f.project.index.owed_units().empty());
+}
+
+ZEST_CASE(PersistedInternalsSearched) {
+    // A later session's search build reads the names of internal linkage
+    // from the records an earlier session saved.
+    TempDir tmp;
+    tmp.touch("b.cpp", "static int rows = 2;\nint b() { return rows; }\n");
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, tmp.path("b.cpp"));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data));
+        f.save();
+        ZASSERT(!f.project.index.search_index().loaded());
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    f.save(index::SearchRebuild::Idle);
+    ZASSERT(f.project.index.search_index().loaded());
+    ZEXPECT(f.project.index.search_pending_files().empty());
+    auto hits = f.project.index.search_index()
+                    .search(*index::SymbolQuery::parse("rows"), 10, f.project.index.workspace)
+                    .hits;
+    ZASSERT(hits.size() == 1u);
+    ZEXPECT(hits.front().file.ends_with("b.cpp"));
+}
+
+ZEST_CASE(PathIdsAcrossSessions) {
+    // Each session names the files it meets first by ids after the ones the
+    // database handed out: a later session's files never take an earlier
+    // one's ids, and every file reads back under its own name.
+    TempDir tmp;
+    tmp.touch("a.h", "#pragma once\ninline int from_a() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"a.h\"\nint use_a() { return from_a(); }\n");
+    tmp.touch("b.h", "#pragma once\ninline int from_b() { return 2; }\n");
+    tmp.touch("b.cpp", "#include \"b.h\"\nint use_b() { return from_b(); }\n");
+    for(auto name: {"a.cpp", "b.cpp"}) {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        f.load();
+        auto indexed = index_file(tmp, tmp.path(name));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data));
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    auto file_of = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    auto declared_in = [&](llvm::StringRef symbol) {
+        Fid file;
+        f.project.index.for_each_symbol(
+            [&](index::SymbolHash, const index::SymbolView& view, std::uint32_t) {
+                if(view.name == symbol) {
+                    file = Fid{view.file};
+                }
+                return !file.valid();
+            });
+        return file;
+    };
+    ZEXPECT(declared_in("from_a") == file_of("a.h"));
+    ZEXPECT(declared_in("from_b") == file_of("b.h"));
+    ZEXPECT(contributions_of(f.project.index, file_of("a.h")).contains(file_of("a.cpp")));
+    ZEXPECT(contributions_of(f.project.index, file_of("b.h")).contains(file_of("b.cpp")));
+    ZEXPECT(!contributions_of(f.project.index, file_of("b.h")).contains(file_of("a.cpp")));
+}
+
+ZEST_CASE(DamagedRecordRebuildsAll) {
+    // A record failing its checks reads as missing and damages the
+    // database: the next save discards it, and every unit is indexed again
+    // into a fresh one.
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+    auto command = [&](IndexerFixture& f) {
+        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+    };
+    std::string header_key;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        command(f);
+        auto indexed = index_file(tmp, src);
+        ZASSERT(!indexed.data.empty());
+        f.merge(indexed.data);
+        f.save();
+        header_key = IndexInternals::file_key(
+            f.project.index,
+            f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h"))));
+    }
+    inject_blob(tmp, index::BlobKind::Shard, header_key, "corrupted beyond verification");
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    command(f);
+    f.load();
+    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
+    auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
+    ZASSERT(f.project.index.shard(tu_id) != nullptr);
+    ZEXPECT(!f.project.index.damaged());
+    ZEXPECT(!f.project.index.shard(header_id));
+    ZEXPECT(f.project.index.damaged());
+
+    f.save();
+    ZEXPECT(!f.project.index.damaged());
+    ZEXPECT(!f.project.index.indexed(tu_id));
+    ZEXPECT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZEXPECT(!f.project.database->contains(index::BlobKind::Shard, header_key));
+}
+
+ZEST_CASE(LoadDamageStartsOver) {
+    // The load's own reads (the scan of the file records) meet the damaged
+    // record: the database is discarded before anything is served from it.
+    TempDir tmp;
+    tmp.touch("main.cpp", "int lone() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    std::string key;
     {
         IndexerFixture f;
         open_store(tmp, f.project);
@@ -113,56 +330,45 @@ ZEST_CASE(LoadHealsBrokenShard) {
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
         f.save();
-        header_key = index::blob_key(f.project.file_table.resolve(
-            f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
+        key = IndexInternals::file_key(f.project.index,
+                                       f.project.file_table.intern(Spelling::absolute(src)));
     }
-
-    // Corrupt the header's blob and plant an orphan nothing references.
-    inject_blob(tmp, index::BlobKind::Shard, header_key, "corrupted beyond verification");
-    inject_blob(tmp, index::BlobKind::Shard, "deadbeefdeadbeef", "orphan");
+    inject_blob(tmp, index::BlobKind::File, key, "not a file record");
 
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
+    ZEXPECT(!f.project.index.damaged());
+    ZEXPECT(!f.project.index.indexed(f.project.file_table.intern(Spelling::absolute(src))));
+    ZEXPECT(!f.project.database->contains(index::BlobKind::Header, "header"));
+}
 
-    // The header's shard is unservable, so its contributing TU's manifest
-    // is dropped and the TU re-enqueued — no CDB entry would ever re-index
-    // a header otherwise. The orphan is removed.
-    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
-    ZASSERT(f.pump.pending_reason(tu_id));
+ZEST_CASE(OtherFormatDiscardsAll) {
+    // A database another format version wrote is discarded whole, the
+    // context choices and artifact records with it.
+    TempDir tmp;
+    index::HeaderBlob header;
+    header.format_version = index::index_format_version + 1;
+    auto bytes = index::encode(header);
+    inject_blob(tmp, index::BlobKind::Header, "header", as_chars(bytes));
+    inject_blob(tmp, index::BlobKind::ContextChoices, "contexts", "choices");
 
-    // The dropped manifest also retired the TU's contribution to the
-    // OTHER header: its loaded shard's live mask must follow, or it keeps
-    // serving a variant nothing contributes any more.
-    auto extra_id = f.project.file_table.intern(Spelling::absolute(tmp.path("extra.h")));
-    auto* extra_it = f.project.index.shard(extra_id);
-    ZASSERT(extra_it);
-    ZASSERT(extra_it->has_dead_variants());
-
-    // Load defers blob cleanup into the first save (no synchronous
-    // database commits on the startup event loop); the orphan dies there.
-    auto save_body = [&]() -> kota::task<> {
-        co_await f.async_save();
-    };
-    auto task = save_body();
-    f.loop.schedule(task);
-    f.loop.run();
-    bool orphan_alive = false;
-    f.project.database->for_each_key(index::BlobKind::Shard, [&](llvm::StringRef key) {
-        orphan_alive |= key == "deadbeefdeadbeef";
-    });
-    ZASSERT(!orphan_alive);
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    ZEXPECT(!f.load());
+    ZEXPECT(f.project.contexts.bytes.empty());
+    ZEXPECT(!f.project.database->contains(index::BlobKind::ContextChoices, "contexts"));
+    ZEXPECT(!f.project.database->contains(index::BlobKind::Header, "header"));
 }
 
 ZEST_CASE(ReadOnlyLoadKeepsDisk) {
+    // A reader beside a writer finds a damaged record: it reports the damage
+    // and leaves the database to its owner.
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
     auto src = tmp.path("main.cpp");
     std::string header_key;
-    std::string manifest_key;
-
     {
         IndexerFixture f;
         open_store(tmp, f.project);
@@ -170,322 +376,26 @@ ZEST_CASE(ReadOnlyLoadKeepsDisk) {
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
         f.save();
-        header_key = index::blob_key(f.project.file_table.resolve(
-            f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
-        manifest_key = index::blob_key(
-            f.project.file_table.resolve(f.project.file_table.intern(Spelling::absolute(src))));
+        header_key = IndexInternals::file_key(
+            f.project.index,
+            f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h"))));
     }
-
     inject_blob(tmp, index::BlobKind::Shard, header_key, "corrupted beyond verification");
-    inject_blob(tmp, index::BlobKind::Shard, "deadbeefdeadbeef", "orphan");
 
     IndexerFixture f;
-    open_store(tmp, f.project);
-    f.load(/*read_only=*/true);
-
-    // The in-memory passes still run: the unservable header drops its
-    // contributing TU's manifest and re-enqueues the TU.
-    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
-    ZASSERT(f.pump.pending_reason(tu_id));
-
-    // But every blob survives on disk — a server running concurrently may
-    // still reference what this reader judged stale.
-    bool header_alive = false, orphan_alive = false, manifest_alive = false;
-    f.project.database->for_each_key(index::BlobKind::Shard, [&](llvm::StringRef key) {
-        header_alive |= key == header_key;
-        orphan_alive |= key == "deadbeefdeadbeef";
-    });
-    f.project.database->for_each_key(index::BlobKind::TUManifest, [&](llvm::StringRef key) {
-        manifest_alive |= key == manifest_key;
-    });
-    ZASSERT(header_alive);
-    ZASSERT(orphan_alive);
-    ZASSERT(manifest_alive);
-}
-
-ZEST_CASE(LoadHealsMissingVariant) {
-    TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
-    auto src = tmp.path("main.cpp");
-    std::string header_key;
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        auto indexed = index_file(tmp, src);
-        ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data);
-        f.save();
-        header_key = index::blob_key(f.project.file_table.resolve(
-            f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
-    }
-
-    // Replace the header's blob with one that verifies but stores a variant
-    // no manifest contributed — the residue of a crash or failed write that
-    // committed the manifest without its shard.
-    inject_blob(tmp,
-                index::BlobKind::Shard,
-                header_key,
-                planted_blob("#pragma once\ninline int dep() { return 1; }\n", 0x1234));
-
-    IndexerFixture f;
-    open_store(tmp, f.project);
+    auto store = CacheStore::open(tmp.path("cache"), 1);
+    ZASSERT(store);
+    f.project.store.emplace(std::move(*store));
+    f.project.database = index::open_database(*f.project.store, "", /*read_only=*/true);
+    ZASSERT(f.project.database != nullptr);
     f.load();
 
-    // set_live would silently drop the missing variant, so the shard is as
-    // unservable as an unreadable one: the TU's manifest goes and the TU
-    // re-enqueues.
-    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
-    ZASSERT(f.pump.pending_reason(tu_id));
-}
-
-ZEST_CASE(LoadHealsWrongGeneration) {
-    TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
-    auto src = tmp.path("main.cpp");
-    std::string header_key;
-    std::uint64_t variant = 0;
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        auto indexed = index_file(tmp, src);
-        ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data);
-        f.save();
-        auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
-        auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-        variant = contributions_of(f.project.index, header_id).lookup(tu_id);
-        ZASSERT(variant != 0);
-        header_key = index::blob_key(f.project.file_table.resolve(header_id));
-    }
-
-    // Replace the header's blob with one from ANOTHER content generation
-    // whose explicit variant list still reports the contributed identity —
-    // the residue of a crash between shard and manifest writes. Every
-    // recorded FileVersion matches the disk, so only the generation pin
-    // can tell that positions would map through stale text.
-    inject_blob(tmp, index::BlobKind::Shard, header_key, planted_blob("stale text", variant));
-
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    f.load();
-
-    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
-    ZASSERT(f.pump.pending_reason(tu_id));
-}
-
-ZEST_CASE(LoadDropsNewerManifest) {
-    TempDir tmp;
-    tmp.touch("main.cpp", "int lone() { return 1; }\n");
-    auto src = tmp.path("main.cpp");
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        auto indexed = index_file(tmp, src);
-        ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data);
-        f.save();
-
-        // Plant what a lost project table write leaves behind: a manifest carrying
-        // a generation the persisted project table never reached. Every
-        // FileVersion it references is known and its shard variant stored
-        // (a shard-only reindex), so only the generation can tell that the
-        // global's symbols never committed.
-        auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-        auto raced = *f.project.index.held_manifest(tu_id);
-        raced.table_generation = f.project.index.table_generation() + 1;
-        auto bytes = index::serialize_manifest(f.project.index.export_manifest(raced));
-        // Keyed by the interned (canonical) spelling, like save() itself:
-        // on Windows the raw TempDir spelling hashes to a different key.
-        f.project.database->write(
-            {
-                {index::BlobKind::TUManifest,
-                 index::blob_key(f.project.file_table.resolve(tu_id)),
-                 std::move(bytes)}
-        },
-            {});
-    }
-
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    f.load();
-
-    // The raced manifest is dropped and its TU re-enqueued; the reindex
-    // rewrites the manifest and the global together.
-    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
-    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
-}
-
-ZEST_CASE(LoadDropsLostManifest) {
-    TempDir tmp;
-    tmp.touch("main.cpp", "int lone() { return 1; }\n");
-    auto src = tmp.path("main.cpp");
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        auto indexed = index_file(tmp, src);
-        ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data);
-        f.save();
-
-        // Plant what a failed manifest write under a committed global leaves
-        // behind: the previous manifest, of an older generation, with every
-        // FileVersion still resolvable and its shard variant stored (a
-        // reindex that changed shards or the include tree only). Only the
-        // global's pin can tell it is not the manifest the save meant.
-        auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-        auto lost = *f.project.index.held_manifest(tu_id);
-        lost.table_generation = f.project.index.table_generation() - 1;
-        auto bytes = index::serialize_manifest(f.project.index.export_manifest(lost));
-        f.project.database->write(
-            {
-                {index::BlobKind::TUManifest,
-                 index::blob_key(f.project.file_table.resolve(tu_id)),
-                 std::move(bytes)}
-        },
-            {});
-    }
-
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    f.load();
-
-    // The wrong-generation manifest is dropped and the TU re-enqueued instead of
-    // the previous reindex's dependency set and shards serving as current.
-    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.manifest_count() == 0);
-    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
-}
-
-ZEST_CASE(LoadRequeuesStaleManifest) {
-    TempDir tmp;
-    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
-    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
-    auto src = tmp.path("main.cpp");
-    auto header = tmp.path("dep.h");
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        auto indexed = index_file(tmp, src);
-        ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data);
-        f.save();
-
-        // Plant what a crash between save phases leaves: a manifest whose
-        // dependency FileVersion the persisted project table never learned,
-        // while the TU's own version is known — here for the header, whose
-        // standalone index no CDB pass would ever rebuild.
-        auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-        VersionID header_version;
-        for(std::uint32_t version = 0; version < f.project.file_table.versions.size();
-            version += 1) {
-            if(f.project.file_table.versions[version].fid == header_id) {
-                header_version = VersionID{version};
-            }
-        }
-        ZASSERT(header_version.valid());
-        index::TUManifest stale;
-        stale.tu_version = header_version;
-        stale = f.project.index.export_manifest(stale);
-        stale.nodes.push_back({.file = 9999});
-        auto bytes = index::serialize_manifest(stale);
-        f.project.database->write(
-            {
-                {index::BlobKind::TUManifest, index::blob_key(header), std::move(bytes)}
-        },
-            {});
-    }
-
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    f.load();
-
-    // The unresolvable manifest is dropped and its TU re-enqueued instead
-    // of losing its persisted index forever; the blob itself dies at the
-    // first save (load defers cleanup off the startup event loop).
-    auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
-    ZASSERT(!f.project.index.held_manifest(header_id));
-    auto save_body = [&]() -> kota::task<> {
-        co_await f.async_save();
-    };
-    auto task = save_body();
-    f.loop.schedule(task);
-    f.loop.run();
-    bool stale_alive = false;
-    f.project.database->for_each_key(index::BlobKind::TUManifest, [&](llvm::StringRef key) {
-        stale_alive |= key == index::blob_key(header);
-    });
-    ZASSERT(!stale_alive);
-
-    // The TU whose manifest resolved is untouched.
-    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.held_manifest(tu_id) != nullptr);
-    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
-}
-
-ZEST_CASE(FreshWriteBeatsRemoval) {
-    TempDir tmp;
-    tmp.touch("main.cpp", "int sweep_target() { return 1; }\n");
-    auto src = tmp.path("main.cpp");
-
-    {
-        IndexerFixture f;
-        open_store(tmp, f.project);
-        auto indexed = index_file(tmp, src);
-        ZASSERT(!indexed.data.empty());
-        f.merge(indexed.data);
-        f.save();
-        // The indexer keys blobs by the pool-canonical path, which need
-        // not equal the raw temp path byte-for-byte (Windows 8.3 names).
-        auto key = index::blob_key(f.project.file_table.resolve(
-            f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
-        // Replace the persisted manifest with an unresolvable one: the
-        // next load removes it — deferred into the first save — and the
-        // TU's shard turns orphan, deferred too.
-        index::TUManifest stale;
-        stale.tu_version = VersionID{999999};
-        stale.nodes.push_back({.file = 9999});
-        auto bytes = index::serialize_manifest(stale);
-        f.project.database->write(
-            {
-                {index::BlobKind::TUManifest, key, std::move(bytes)}
-        },
-            {});
-    }
-
-    IndexerFixture f;
-    open_store(tmp, f.project);
-    ZASSERT(f.load());
-
-    // The removed TU re-indexes before the first save, so that save both
-    // re-writes and (deferred) removes the same keys — the fresh write
-    // must win or the file never persists again.
-    auto indexed = index_file(tmp, src);
-    ZASSERT(!indexed.data.empty());
-    f.merge(indexed.data);
+    auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
+    ZEXPECT(!f.project.index.shard(header_id));
+    ZEXPECT(f.project.index.damaged());
     f.save();
-
-    auto key = index::blob_key(f.project.file_table.resolve(
-        f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
-    bool manifest_alive = false;
-    f.project.database->for_each_key(index::BlobKind::TUManifest,
-                                     [&](llvm::StringRef k) { manifest_alive |= k == key; });
-    bool shard_alive = false;
-    f.project.database->for_each_key(index::BlobKind::Shard,
-                                     [&](llvm::StringRef k) { shard_alive |= k == key; });
-    ZASSERT(manifest_alive);
-    ZASSERT(shard_alive);
+    ZEXPECT(f.project.database->contains(index::BlobKind::Shard, header_key));
+    ZEXPECT(f.project.database->contains(index::BlobKind::Header, "header"));
 }
 
 ZEST_CASE(LoadServesAcrossSaves) {
@@ -493,17 +403,9 @@ ZEST_CASE(LoadServesAcrossSaves) {
     tmp.touch("main.cpp", "int lmdb_value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
-    auto open_lmdb = [&](Project& project) {
-        auto store = CacheStore::open(tmp.path("cache"), 1);
-        ZASSERT(store);
-        project.store.emplace(std::move(*store));
-        project.database = index::open_lmdb_database(*project.store, "");
-        ZASSERT(project.database != nullptr);
-    };
-
     {
         IndexerFixture f;
-        open_lmdb(f.project);
+        open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
@@ -511,7 +413,7 @@ ZEST_CASE(LoadServesAcrossSaves) {
     }
 
     IndexerFixture f;
-    open_lmdb(f.project);
+    open_store(tmp, f.project);
     ZASSERT(f.load());
     auto path_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.index.shard(path_id) != nullptr);
@@ -532,37 +434,22 @@ ZEST_CASE(LoadServesAcrossSaves) {
     ZASSERT(!it->bytes().empty());
 }
 
-ZEST_CASE(CorruptTableCondemnsDatabase) {
-    // Page corruption under the project table: read fails, contains() still
-    // says present, corrupted() confirms. load must condemn the database
-    // (deleted on close) and continue on a fresh empty one instead of
-    // parking in the disabled-persistence limbo forever.
-    struct CorruptGlobal final : index::BlobDatabase {
+ZEST_CASE(CorruptHeaderCondemnsDatabase) {
+    // Page corruption under the header: the read fails, contains() still
+    // says present, corrupted() confirms. The load condemns the database
+    // (deleted on close) and continues on a fresh empty one instead of
+    // running without persistence forever.
+    struct CorruptHeader final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
         bool* condemned;
 
-        index::ReadBlob read(index::BlobKind, llvm::StringRef) override {
-            return {};
+        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
+            return kind == index::BlobKind::Header ? index::ReadBlob{} : real->read(kind, key);
         }
 
-        bool contains(index::BlobKind, llvm::StringRef) override {
-            return true;
-        }
-
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob>,
-                                               llvm::ArrayRef<index::BlobKey>) override {
-            return {};
-        }
-
-        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
-
-        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 1;
-        }
-
-        void retire_old_snapshot() override {}
-
-        std::expected<bool, std::string> grow() override {
-            return false;
+        bool contains(index::BlobKind kind, llvm::StringRef key) override {
+            return kind == index::BlobKind::Header || real->contains(kind, key);
         }
 
         bool corrupted() const override {
@@ -571,6 +458,7 @@ ZEST_CASE(CorruptTableCondemnsDatabase) {
 
         void condemn() override {
             *condemned = true;
+            real->condemn();
         }
     };
 
@@ -578,7 +466,7 @@ ZEST_CASE(CorruptTableCondemnsDatabase) {
     IndexerFixture f;
     open_store(tmp, f.project);
     bool condemned = false;
-    auto spy = std::make_unique<CorruptGlobal>();
+    auto spy = std::make_unique<CorruptHeader>(std::move(f.project.database));
     spy->condemned = &condemned;
     f.project.database = std::move(spy);
 
@@ -591,24 +479,25 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
     TempDir tmp;
     tmp.touch("main.cpp", "int gone() { return 1; }\n");
     auto src = tmp.path("main.cpp");
+    auto command = [&](IndexerFixture& f) {
+        f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+    };
 
-    std::string tu_path;
     {
         IndexerFixture f;
         open_store(tmp, f.project);
+        command(f);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
-        tu_path = indexed.tu_path;
         f.save();
     }
 
-    // Corruption latched past the global anchor: the shard read poisons
-    // the latch while the project table stays readable. load must condemn here
-    // too, and unwind everything it adopted — the views would otherwise
-    // borrow from the condemned environment.
-    struct CorruptShard final : index::BlobDatabase {
-        std::unique_ptr<index::BlobDatabase> real;
+    // Page corruption a shard read meets, long after the load: the next
+    // save condemns the database and the project starts over.
+    struct CorruptShard final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
         bool* condemned;
         bool poisoned = false;
 
@@ -620,68 +509,35 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
             return real->read(kind, key);
         }
 
-        bool contains(index::BlobKind kind, llvm::StringRef key) override {
-            return real->contains(kind, key);
-        }
-
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey> removes) override {
-            return real->write(puts, removes);
-        }
-
-        void for_each_key(index::BlobKind kind,
-                          llvm::function_ref<void(llvm::StringRef)> fn) override {
-            real->for_each_key(kind, fn);
-        }
-
-        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 1;
-        }
-
-        void retire_old_snapshot() override {}
-
-        std::expected<bool, std::string> grow() override {
-            return false;
-        }
-
         bool corrupted() const override {
             return poisoned;
         }
 
         void condemn() override {
             *condemned = true;
+            real->condemn();
         }
     };
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    command(f);
     bool condemned = false;
-    auto wrapper = std::make_unique<CorruptShard>();
-    wrapper->real = std::move(f.project.database);
+    auto wrapper = std::make_unique<CorruptShard>(std::move(f.project.database));
     wrapper->condemned = &condemned;
     f.project.database = std::move(wrapper);
 
     ZASSERT(f.load());
-    ZASSERT(condemned);
-    ZASSERT(f.project.index.shard_count() == 0);
-    ZASSERT(f.project.index.symbol_count() == 0u);
-
-    // The TU has no CDB entry, so nothing else records the debt: it is
-    // re-enqueued before the adopted state unwinds, and the fresh
-    // database's first save persists it as standalone debt.
-    ZASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tu_path))) ==
-            ReindexReason::ContentChanged);
-    ZASSERT(f.project.database != nullptr);
+    auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
+    ZASSERT(!f.project.index.shard(tu_id));
     f.save();
-    auto snapshot = f.project.database->read(index::BlobKind::CommandSnapshot, "cdb");
-    ZASSERT(snapshot);
-    ZASSERT(snapshot.buffer->getBuffer().contains("main.cpp"));
-    // Beside a project table, or the next load would find no index and
-    // never read the debt back.
-    ZASSERT(f.project.database->contains(index::BlobKind::ProjectTable, "global"));
+    ZASSERT(condemned);
+    ZASSERT(f.project.database != nullptr);
+    ZASSERT(!f.project.index.indexed(tu_id));
+    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
-ZEST_CASE(UnreadableTablePreserved) {
+ZEST_CASE(UnreadableHeaderPreserved) {
     TempDir tmp;
     tmp.touch("main.cpp", "int keep() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -695,60 +551,36 @@ ZEST_CASE(UnreadableTablePreserved) {
         f.save();
     }
 
-    // The project table exists but fails to open — a transient IO error at
+    // The header exists but fails to read — a transient IO error at
     // startup, not absence. Removing everything would destroy the intact
-    // index; a fresh lineage saved over the unread one could alias its version
-    // ids and generations. The session must run memory-only and leave every
-    // blob for the next start.
-    struct UnreadableGlobal final : index::BlobDatabase {
-        std::unique_ptr<index::BlobDatabase> real;
+    // index; a fresh lineage saved over the unread one could alias its path
+    // ids. The session runs memory-only and leaves every record for the
+    // next start.
+    struct UnreadableHeader final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
 
         index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-            return kind == index::BlobKind::ProjectTable ? index::ReadBlob{}
-                                                         : real->read(kind, key);
-        }
-
-        bool contains(index::BlobKind kind, llvm::StringRef key) override {
-            return real->contains(kind, key);
-        }
-
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey> removes) override {
-            return real->write(puts, removes);
-        }
-
-        void for_each_key(index::BlobKind kind,
-                          llvm::function_ref<void(llvm::StringRef)> fn) override {
-            real->for_each_key(kind, fn);
-        }
-
-        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 1;
-        }
-
-        void retire_old_snapshot() override {}
-
-        std::expected<bool, std::string> grow() override {
-            return false;
+            return kind == index::BlobKind::Header ? index::ReadBlob{} : real->read(kind, key);
         }
     };
 
+    auto tu_id = [](IndexerFixture& f, llvm::StringRef path) {
+        return f.project.file_table.intern(Spelling::absolute(path));
+    };
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        auto wrapper = std::make_unique<UnreadableGlobal>();
-        wrapper->real = std::move(f.project.database);
-        f.project.database = std::move(wrapper);
+        f.project.database = std::make_unique<UnreadableHeader>(std::move(f.project.database));
         f.load();
-        ZASSERT(f.project.index.manifest_count() == 0);
+        ZASSERT(!f.project.index.indexed(tu_id(f, src)));
         ZASSERT(f.project.database == nullptr);
     }
 
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    ZASSERT(f.project.index.manifest_count() != 0);
-    ZASSERT(f.project.index.shard_count() != 0);
+    ZASSERT(f.project.index.indexed(tu_id(f, src)));
+    ZASSERT(f.project.index.shard(tu_id(f, src)) != nullptr);
 }
 
 ZEST_CASE(DropIndexEvictsPersisted) {
@@ -768,7 +600,7 @@ ZEST_CASE(DropIndexEvictsPersisted) {
         // The compile command changed: content freshness cannot see it, so
         // the TU's index is dropped wholesale and staleness flips at once.
         f.drop_index(f.project.file_table.intern(Spelling::absolute(src)));
-        ZASSERT(f.project.index.manifest_count() == 0);
+        ZASSERT(!f.project.index.indexed(f.project.file_table.intern(Spelling::absolute(src))));
         ZASSERT(f.needs_reindex(src));
         f.save();
     }
@@ -778,7 +610,7 @@ ZEST_CASE(DropIndexEvictsPersisted) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    ZASSERT(f.project.index.manifest_count() == 0);
+    ZASSERT(!f.project.index.indexed(f.project.file_table.intern(Spelling::absolute(src))));
     ZASSERT(f.project.index.shard_count() == 0);
     ZASSERT(f.needs_reindex(src));
 }

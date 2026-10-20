@@ -63,7 +63,13 @@ char kind_prefix(BlobKind kind) {
         case BlobKind::Shard: return 'S';
         case BlobKind::InstantiationShard: return 'I';
         case BlobKind::TUManifest: return 'M';
-        case BlobKind::ProjectTable: return 'G';
+        case BlobKind::Header: return 'H';
+        case BlobKind::Path: return 'P';
+        case BlobKind::File: return 'F';
+        case BlobKind::Dependents: return 'D';
+        case BlobKind::Internals: return 'T';
+        case BlobKind::Symbol: return 'Y';
+        case BlobKind::SharedLocal: return 'L';
         case BlobKind::CommandSnapshot: return 'C';
         case BlobKind::ArtifactRecords: return 'A';
         case BlobKind::ContextChoices: return 'X';
@@ -84,7 +90,7 @@ llvm::SmallString<64> encode_key(BlobKind kind, llvm::StringRef key) {
 /// orders and carry no schema of ours — any mismatch discards the whole
 /// database (it is a rebuildable cache).
 constexpr llvm::StringLiteral meta_key = "\xffmeta";
-constexpr std::uint32_t lmdb_schema_version = 1;
+constexpr std::uint32_t lmdb_schema_version = 2;
 
 struct MetaRecord {
     std::uint32_t schema = lmdb_schema_version;
@@ -182,6 +188,47 @@ int cover_declared_pages(MDB_env* env) {
 #endif
 }
 
+/// Why mapping `extra` more bytes would fail, if it would: past the
+/// address space cap (`ulimit -v`), or past the free disk a Windows file
+/// without sparse support allocates the whole mapping from.
+std::optional<std::string> growth_refused(MDB_env* env, std::uint64_t extra) {
+#ifdef _WIN32
+    mdb_filehandle_t fd;
+    mdb_env_get_fd(env, &fd);
+    FILE_BASIC_INFO basic{};
+    if(::GetFileInformationByHandleEx(fd, FileBasicInfo, &basic, sizeof(basic)) &&
+       (basic.FileAttributes & FILE_ATTRIBUTE_SPARSE_FILE) != 0) {
+        return std::nullopt;
+    }
+    const char* path = nullptr;
+    mdb_env_get_path(env, &path);
+    auto space = llvm::sys::fs::disk_space(llvm::sys::path::parent_path(path));
+    if(space && space->available < extra) {
+        return std::format("{} free on its volume, which does not support sparse files",
+                           format_bytes(space->available));
+    }
+    return std::nullopt;
+#else
+    struct rlimit limit;
+    if(getrlimit(RLIMIT_AS, &limit) != 0 || limit.rlim_cur == RLIM_INFINITY) {
+        return std::nullopt;
+    }
+    std::uint64_t used = 0;
+#ifdef __linux__
+    if(auto status = llvm::MemoryBuffer::getFileAsStream("/proc/self/statm")) {
+        llvm::StringRef pages = (*status)->getBuffer().split(' ').first;
+        pages.getAsInteger(10, used);
+        used *= static_cast<std::uint64_t>(::sysconf(_SC_PAGESIZE));
+    }
+#endif
+    if(used + extra > limit.rlim_cur) {
+        return std::format("the address space is capped at {} (ulimit -v)",
+                           format_bytes(limit.rlim_cur));
+    }
+    return std::nullopt;
+#endif
+}
+
 class LmdbDatabase final : public BlobDatabase {
 public:
     LmdbDatabase(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, std::string path, bool read_only) :
@@ -193,9 +240,7 @@ public:
 
     ~LmdbDatabase() override {
         retire_old_snapshot();
-        if(txn) {
-            mdb_txn_abort(txn);
-        }
+        mdb_txn_abort(txn);
         mdb_env_close(env);
         // Condemned = corruption observed at read time; deleting under the
         // writer lock lets the next open start from an empty database.
@@ -205,9 +250,6 @@ public:
     }
 
     ReadBlob read(BlobKind kind, llvm::StringRef key) override {
-        if(!txn) {
-            return {};
-        }
         auto encoded = encode_key(kind, key);
         auto mk = to_val(encoded);
         MDB_val value;
@@ -215,23 +257,10 @@ public:
             note_error(rc);
             return {};
         }
-        llvm::StringRef bytes(static_cast<const char*>(value.mv_data), value.mv_size);
-        // LMDB keeps bytes readable_in_place only for overflow-page
-        // values; a small inline value is copied and the copy is immortal
-        // (generation 0).
-        if(!readable_in_place(bytes)) {
-            return {.buffer = llvm::MemoryBuffer::getMemBufferCopy(bytes)};
-        }
-        return {.buffer = llvm::MemoryBuffer::getMemBuffer(bytes,
-                                                           "",
-                                                           /*RequiresNullTerminator=*/false),
-                .generation = generation};
+        return blob_of(value);
     }
 
     bool contains(BlobKind kind, llvm::StringRef key) override {
-        if(!txn) {
-            return false;
-        }
         auto encoded = encode_key(kind, key);
         auto mk = to_val(encoded);
         MDB_val value;
@@ -242,19 +271,16 @@ public:
         return rc != MDB_NOTFOUND;
     }
 
-    llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                           llvm::ArrayRef<BlobKey> removes) override {
+    bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<BlobKey> removes) override {
+        // The grow request answers the last write alone.
+        map_full.store(false, std::memory_order_relaxed);
         auto fail_all = [&](int rc, llvm::StringRef stage) {
             if(rc == MDB_MAP_FULL) {
                 map_full.store(true, std::memory_order_relaxed);
             }
             note_error(rc);
             LOG_WARN("Index database write failed ({}): {}", stage, mdb_strerror(rc));
-            llvm::SmallVector<std::uint32_t> failed;
-            for(std::size_t i = 0; i < puts.size(); i += 1) {
-                failed.push_back(i);
-            }
-            return failed;
+            return false;
         };
         clear_dead_readers(env);
         MDB_txn* wtxn = nullptr;
@@ -284,34 +310,28 @@ public:
         if(int rc = cover_declared_pages(env)) {
             LOG_WARN("Cannot extend the index database over its pages: {}", mdb_strerror(rc));
         }
-        return {};
+        return true;
     }
 
     void for_each_key(BlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
-        if(!txn) {
-            return;
-        }
-        MDB_cursor* cursor = nullptr;
-        if(int rc = mdb_cursor_open(txn, dbi, &cursor)) {
-            note_error(rc);
-            return;
-        }
-        char prefix = kind_prefix(kind);
-        MDB_val key{1, &prefix};
-        MDB_val value;
-        int rc = mdb_cursor_get(cursor, &key, &value, MDB_SET_RANGE);
-        while(rc == 0) {
-            llvm::StringRef bytes(static_cast<const char*>(key.mv_data), key.mv_size);
-            if(bytes.empty() || bytes[0] != prefix) {
-                break;
-            }
-            fn(bytes.drop_front());
-            rc = mdb_cursor_get(cursor, &key, &value, MDB_NEXT);
-        }
-        if(rc != 0 && rc != MDB_NOTFOUND) {
-            note_error(rc);
-        }
-        mdb_cursor_close(cursor);
+        scan(kind, [&](llvm::StringRef key, const MDB_val&) {
+            fn(key);
+            return true;
+        });
+    }
+
+    void for_each(BlobKind kind, llvm::function_ref<bool(llvm::StringRef, ReadBlob)> fn) override {
+        scan(kind,
+             [&](llvm::StringRef key, const MDB_val& value) { return fn(key, blob_of(value)); });
+    }
+
+    std::uint32_t count(BlobKind kind) override {
+        std::uint32_t count = 0;
+        scan(kind, [&](llvm::StringRef, const MDB_val&) {
+            count += 1;
+            return true;
+        });
+        return count;
     }
 
     std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
@@ -320,11 +340,7 @@ public:
             note_error(rc);
             return std::unexpected(std::string(mdb_strerror(rc)));
         }
-        // No predecessor to retire when a grow() resized the map but
-        // failed to reopen a snapshot.
-        if(txn) {
-            outstanding.push_back(txn);
-        }
+        outstanding.push_back(txn);
         txn = fresh;
         generation += 1;
         return generation;
@@ -337,41 +353,38 @@ public:
         outstanding.clear();
     }
 
-    std::expected<bool, std::string> grow() override {
+    Growth grow() override {
         if(!map_full.load(std::memory_order_relaxed)) {
-            return false;
+            return Growth::None;
+        }
+        MDB_envinfo info;
+        mdb_env_info(env, &info);
+        auto grown = std::max<std::size_t>(info.me_mapsize * 2, lmdb_small_mapsize);
+        if(auto refused = growth_refused(env, grown - info.me_mapsize)) {
+            LOG_ERROR(
+                "The index database cannot grow to {}: {}; the index is not saved until "
+                "that changes",
+                format_bytes(grown),
+                *refused);
+            return Growth::Refused;
         }
         // set_mapsize demands no live transaction in this process, so
         // every snapshot dies here; the caller owns rebinding all
         // borrowers before the next suspension point.
         retire_old_snapshot();
-        if(txn) {
-            mdb_txn_abort(txn);
-            txn = nullptr;
-        }
-        MDB_envinfo info;
-        mdb_env_info(env, &info);
-        auto grown = std::max<std::size_t>(info.me_mapsize * 2, lmdb_small_mapsize);
-        std::string error;
+        mdb_txn_abort(txn);
+        txn = nullptr;
         if(int rc = mdb_env_set_mapsize(env, grown)) {
-            error = mdb_strerror(rc);
-        } else {
-            map_full.store(false, std::memory_order_relaxed);
+            LOG_FATAL("Cannot grow the index database to {}: {}",
+                      format_bytes(grown),
+                      mdb_strerror(rc));
         }
-        MDB_txn* fresh = nullptr;
-        if(int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &fresh)) {
-            note_error(rc);
-            // No snapshot at all: reads degrade to "missing" until a
-            // later grow() succeeds. Persistence stays attached — closing
-            // the environment would invalidate every borrowed buffer.
-            return std::unexpected(error.empty() ? std::string(mdb_strerror(rc)) : error);
+        map_full.store(false, std::memory_order_relaxed);
+        if(int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn)) {
+            LOG_FATAL("Cannot read the index database after growing it: {}", mdb_strerror(rc));
         }
-        txn = fresh;
         generation += 1;
-        if(!error.empty()) {
-            return std::unexpected(error);
-        }
-        return true;
+        return Growth::Grown;
     }
 
     bool corrupted() const override {
@@ -383,9 +396,6 @@ public:
     }
 
     std::optional<PageUsage> usage() override {
-        if(!txn) {
-            return std::nullopt;
-        }
         MDB_envinfo info;
         mdb_env_info(env, &info);
         MDB_stat tree;
@@ -416,6 +426,46 @@ public:
     }
 
 private:
+    /// A value of the read snapshot as a ReadBlob. LMDB keeps bytes
+    /// readable_in_place only for overflow-page values; a small inline
+    /// value is copied and the copy is immortal (generation 0).
+    ReadBlob blob_of(const MDB_val& value) const {
+        llvm::StringRef bytes(static_cast<const char*>(value.mv_data), value.mv_size);
+        if(!readable_in_place(bytes)) {
+            return {.buffer = llvm::MemoryBuffer::getMemBufferCopy(bytes)};
+        }
+        return {.buffer = llvm::MemoryBuffer::getMemBuffer(bytes,
+                                                           "",
+                                                           /*RequiresNullTerminator=*/false),
+                .generation = generation};
+    }
+
+    /// Visit the records of `kind` in key order, keys without their prefix,
+    /// until `fn` returns false.
+    void scan(BlobKind kind,
+              llvm::function_ref<bool(llvm::StringRef key, const MDB_val& value)> fn) {
+        MDB_cursor* cursor = nullptr;
+        if(int rc = mdb_cursor_open(txn, dbi, &cursor)) {
+            note_error(rc);
+            return;
+        }
+        char prefix = kind_prefix(kind);
+        MDB_val key{1, &prefix};
+        MDB_val value;
+        int rc = mdb_cursor_get(cursor, &key, &value, MDB_SET_RANGE);
+        while(rc == 0) {
+            llvm::StringRef bytes(static_cast<const char*>(key.mv_data), key.mv_size);
+            if(bytes.empty() || bytes[0] != prefix || !fn(bytes.drop_front(), value)) {
+                break;
+            }
+            rc = mdb_cursor_get(cursor, &key, &value, MDB_NEXT);
+        }
+        if(rc != 0 && rc != MDB_NOTFOUND) {
+            note_error(rc);
+        }
+        mdb_cursor_close(cursor);
+    }
+
     /// Latch corruption-family read errors for the loader's rebuild
     /// decision; everything else stays "missing or transiently unreadable".
     void note_error(int rc) {
@@ -542,7 +592,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     // the writer lock guarantees no other live process is using it.
     // Transient errors (permissions, fd/memory pressure) must NOT delete
     // anything: persistence is disabled for this session instead, the
-    // same discipline the loader applies to an unreadable project table.
+    // same discipline the loader applies to an unreadable header.
     bool repaired = false;
     int reopens = 0;
     while(true) {
@@ -568,6 +618,9 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             return nullptr;
         }
         mdb_env_set_mapsize(env, mapsize);
+        // Every `clice query` beside a server holds a slot while it runs;
+        // LMDB's default of 126 is within reach of an agent's parallel calls.
+        mdb_env_set_maxreaders(env, 1024);
         unsigned flags = MDB_NOSUBDIR | MDB_NOTLS | (read_only ? MDB_RDONLY : 0);
         // True = the failure was repaired by deleting the database and the
         // loop should retry; false = give up with persistence disabled.

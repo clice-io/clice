@@ -491,7 +491,7 @@ ZEST_CASE(PortablePathsFiltered) {
 }
 
 ZEST_CASE(LocalHitsNameFile) {
-    // A symbol of internal linkage is in no project table: a hit on it
+    // A symbol of internal linkage has no symbol record: a hit on it
     // names the file whose shard holds it.
     Corpus corpus;
     corpus.add("helper", SymbolKind::Function);

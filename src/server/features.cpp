@@ -194,7 +194,7 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
     }
     auto hover = feature::index_hover(
         *info,
-        query.container_chain(symbol),
+        query.container_chain(symbol, cursor->site.file),
         definition,
         feature::documentation(query, symbol, cursor->site.file, project.config.documentation));
     hover.symbol_range = cursor->site.range;
@@ -596,7 +596,7 @@ Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellati
             tokens = feature::index_semantic_tokens(
                 text_of(*session),
                 feature::extract_index_entries(*source->shard),
-                [&](index::SymbolHash hash) { return query.symbol_info(hash); },
+                [&](index::SymbolHash hash) { return query.symbol_info(hash, source->file); },
                 project.config.semantic_tokens);
             break;
         }
@@ -703,7 +703,7 @@ Features::RawResult Features::folding_range(Ticket ticket,
             auto folds = feature::index_folding_ranges(
                 text_of(*session),
                 entries.decls,
-                [&](index::SymbolHash hash) { return query.symbol_info(hash); });
+                [&](index::SymbolHash hash) { return query.symbol_info(hash, source->file); });
             session->index_served = true;
             co_return convert(folds);
         }
@@ -749,7 +749,7 @@ Features::RawResult Features::document_symbol(Ticket ticket,
             auto symbols = feature::index_document_symbols(
                 text_of(*session),
                 feature::extract_index_entries(*source->shard),
-                [&](index::SymbolHash hash) { return query.symbol_info(hash); },
+                [&](index::SymbolHash hash) { return query.symbol_info(hash, source->file); },
                 project.config.document_symbols);
             session->index_served = true;
             co_return convert(symbols);
@@ -1074,7 +1074,7 @@ bool Features::scope_candidates(llvm::StringRef prefix,
         // An enumerator keeps its enumeration in the qualifier: the index
         // does not tell a scoped one, which needs it, and an unscoped one
         // takes it as well.
-        auto chain = query.container_chain(symbol.hash);
+        auto chain = query.container_chain(symbol.hash, declared);
         auto namespaces = llvm::ArrayRef(chain);
         if(!namespaces.empty() && namespaces.back().kind == SymbolKind::Enum) {
             namespaces = namespaces.drop_back();

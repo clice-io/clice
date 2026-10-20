@@ -71,11 +71,19 @@ bool open_index(Project& project, Config config, llvm::StringRef requested_confi
     if(!open_database(project, std::move(config), requested_configuration)) {
         return false;
     }
-    if(!project.index.open(*project.database)) {
-        log_unusable_format(project);
-        return false;
+    switch(project.index.open(*project.database)) {
+        case index::LoadOutcome::Loaded: return true;
+        case index::LoadOutcome::Empty:
+            LOG_ERROR("No index cache at {}; run `clice index` first",
+                      std::string_view(project.config.project.cache_dir));
+            return false;
+        case index::LoadOutcome::Undecodable: log_unusable_format(project); return false;
+        case index::LoadOutcome::Unreadable:
+            LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
+                      std::string_view(project.config.project.cache_dir));
+            return false;
     }
-    return true;
+    std::unreachable();
 }
 
 std::optional<LoadedIndex> load_index(Project& project,
@@ -87,33 +95,20 @@ std::optional<LoadedIndex> load_index(Project& project,
         return std::nullopt;
     }
     // The writer's load, read-only: it never saves on a read-only database.
-    auto loaded = load_saved(project, commands, {.read_only = true, .borrow = true});
+    auto loaded = load_saved(project, commands);
     if(!loaded.decoded) {
         log_unusable_format(project);
         return std::nullopt;
     }
-    // load_saved detaches the database when the project table exists but
-    // cannot be read — a transient IO error, not an empty index.
+    // load_saved detaches the database when the header exists but cannot
+    // be read — a transient IO error, not an empty index.
     if(project.database == nullptr) {
         LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
                   std::string_view(project.config.project.cache_dir));
         return std::nullopt;
     }
     LoadedIndex result;
-    result.dropped.assign(loaded.report.reindex().begin(), loaded.report.reindex().end());
     result.contexts = std::move(project.contexts.bytes);
-    // With no pump attached the load report's debt can only be the
-    // recovery drops: every TU's blobs were missing, stale, or corrupt — a
-    // damaged cache, not a legitimately empty one.
-    if(project.index.manifest_count() == 0 && project.index.shard_count() == 0 &&
-       !result.dropped.empty()) {
-        LOG_ERROR(
-            "Index cache at {} has no servable data ({} translation units need "
-            "reindexing); run `clice index` to rebuild",
-            std::string_view(project.config.project.cache_dir),
-            result.dropped.size());
-        return std::nullopt;
-    }
     if(with_build) {
         auto remembered = CommandSnapshot::remembered(project);
         load_build(project,

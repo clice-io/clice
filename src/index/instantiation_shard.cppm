@@ -93,8 +93,8 @@ struct FileInstantiations {
     }
 };
 
-/// The run that walked a key: the TU, by the hash of its database key
-/// (ProjectIndex::key_of), and its manifest's built_at.
+/// The run that walked a key: the TU, by the hash of its path
+/// (ProjectIndex::unit_hash), and its manifest's built_at.
 struct Producer {
     std::uint64_t unit = 0;
     std::uint64_t run = 0;

@@ -96,7 +96,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
         return {};
     }
     // Lookups binary-search the hashes. Hashes and parents become DenseMap
-    // and DenseSet keys in every consumer (the project table, a query's
+    // and DenseSet keys in every consumer (the symbol records, a query's
     // parent walk), and the two sentinel values corrupt or assert in those
     // containers; the builder never emits them, so a TU index carrying
     // one is corrupt. Merged reference files would persist behind versions

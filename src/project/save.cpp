@@ -27,15 +27,16 @@ void pulse(ContextChoices& contexts) {
     contexts.committed.reset();
 }
 
-/// The recovery from a database found corrupt after it was opened: nothing
-/// in it survives, so the index re-persists what it holds into the database
-/// opened in its place, as does the command snapshot.
+/// The recovery from a database found corrupt after it was opened —
+/// damaged pages, or a record failing its checks: nothing in it survives,
+/// so the project starts over as a first run, every unit of the build owed
+/// a reindex.
 void recover_corrupt_database(Project& project, index::IndexReport& report) {
-    project.index.recover_corrupt_database(report);
-    project.command_snapshot.forget_persisted();
-    // The snapshot just persisted (if any) predates this recovery's debt
-    // and lives in a condemned database anyway: one metadata retry makes
-    // the fresh database record it.
+    LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
+    for(auto unit: project.build.members()) {
+        report.add_reindex(unit);
+    }
+    // The fresh database records the command snapshot at the next save.
     report.owes_retry = true;
     reopen_fresh_database(project);
 }
@@ -43,9 +44,12 @@ void recover_corrupt_database(Project& project, index::IndexReport& report) {
 }  // namespace
 
 void reopen_fresh_database(Project& project) {
-    LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
     project.database->condemn();
     project.database.reset();
+    // The index reads its records in place: it starts over with the
+    // database, as does the snapshot of the commands that built it.
+    project.index.clear();
+    project.command_snapshot.forget_persisted();
     project.database = index::open_database(*project.store, project.build.active_configuration());
     // The metadata blobs died with the condemned database while their
     // loaded state lives on in memory; without a re-dirty the next save
@@ -89,29 +93,32 @@ kota::task<index::IndexReport> save_project(Project& project,
     auto& contexts = project.contexts;
     ScopedTimer timer;
 
+    // A read since the last save met a damaged page or record: nothing more
+    // goes into the database, which is discarded, whether or not anything
+    // changed since.
+    if(db.corrupted() || index.damaged()) {
+        recover_corrupt_database(project, report);
+        co_return report;
+    }
+
     co_await index.rebuild_search(search);
     index::SaveBatch batch;
     index.begin_save(batch, report);
     auto& blobs = batch.blobs;
 
-    // The command snapshot goes last, after the whole index state it
-    // describes: committed before the project table, a crash between the two
-    // would leave the old project table still pinning old-command manifests
-    // under a snapshot that already matches the live CDB — the load's diff
-    // would then never drop them. A save that commits nothing skips it
-    // (unless the snapshot itself is owed a rewrite): a pure CDB change
+    // The command snapshot commits in the same transaction as the index
+    // state it describes. A save that commits nothing skips it (unless the
+    // snapshot itself is owed a rewrite): a pure CDB change
     // dirties no blob on its own — the invalidator's drops do — so the
     // next dirtying save carries the fresh snapshot. The debt input is the
     // pump's snapshot at call time plus the owner debt the compaction
     // discovered; anything showing up past this point is too late for
     // these bytes and returns in the report.
     std::optional<std::string> snapshot_bytes;
-    std::optional<std::uint32_t> snapshot_slot;
     if(!blobs.empty() || !batch.removals.empty() || snapshot.owes_save(project)) {
         debt.append(report.reindex().begin(), report.reindex().end());
         snapshot_bytes = snapshot.serialize(project, debt);
         if(snapshot_bytes) {
-            snapshot_slot = blobs.size();
             blobs.push_back({index::BlobKind::CommandSnapshot, "cdb", copy_bytes(*snapshot_bytes)});
         }
     }
@@ -123,18 +130,18 @@ kota::task<index::IndexReport> save_project(Project& project,
     // is tracked on its own: failing artifact records must not park a
     // switchContext ack whose choice is already durable.
     auto flush_ticket = contexts.ticket;
-    std::optional<std::uint32_t> artifacts_slot;
-    std::optional<std::uint32_t> contexts_slot;
+    bool carries_artifacts = false;
+    bool carries_contexts = false;
     bool contexts_ok = true;
     if(project.artifacts_dirty) {
         if(auto bytes = serialize_artifact_records(project, commands); !bytes.empty()) {
-            artifacts_slot = blobs.size();
+            carries_artifacts = true;
             blobs.push_back({index::BlobKind::ArtifactRecords, "artifacts", copy_bytes(bytes)});
         }
     }
     if(contexts.dirty) {
         if(!contexts.bytes.empty()) {
-            contexts_slot = blobs.size();
+            carries_contexts = true;
             blobs.push_back(
                 {index::BlobKind::ContextChoices, "contexts", copy_bytes(contexts.bytes)});
         } else {
@@ -142,10 +149,10 @@ kota::task<index::IndexReport> save_project(Project& project,
         }
     }
     // Serialization failures keep their dirty flag for the next attempt.
-    if(artifacts_slot) {
+    if(carries_artifacts) {
         project.artifacts_dirty = false;
     }
-    if(contexts_slot) {
+    if(carries_contexts) {
         contexts.dirty = false;
     }
 
@@ -159,47 +166,35 @@ kota::task<index::IndexReport> save_project(Project& project,
         co_return report;
     }
 
-    llvm::SmallVector<std::uint32_t> failed;
+    bool committed = false;
     // Cancellation while the write is still queued dequeues it (see
     // kota::queue): the batch dies with this frame, so what it carried must
-    // be dirty again or the final shutdown save sees nothing to commit and
+    // be changed again or the final shutdown save sees nothing to commit and
     // reports saved progress that is absent after restart.
-    auto restore = llvm::make_scope_exit([&] {
+    auto restore = [&] {
         index.abandon_save(batch);
-        if(snapshot_slot) {
+        if(snapshot_bytes) {
             snapshot.unsaved();
         }
-        project.artifacts_dirty = project.artifacts_dirty || artifacts_slot.has_value();
-        contexts.dirty = contexts.dirty || contexts_slot.has_value();
-    });
-    co_await kota::queue([&] { failed = db.write(blobs, batch.removals); });
-    restore.release();
+        project.artifacts_dirty = project.artifacts_dirty || carries_artifacts;
+        contexts.dirty = contexts.dirty || carries_contexts;
+    };
+    auto cancelled = llvm::make_scope_exit(restore);
+    co_await kota::queue([&] { committed = db.write(blobs, batch.removals); });
+    cancelled.release();
 
-    for(auto i: failed) {
-        if(snapshot_slot && i == *snapshot_slot) {
-            // Keep the old persisted bytes and stay dirty so the next
-            // save retries even when nothing else changes by then.
-            snapshot.unsaved();
-            snapshot_slot.reset();
-        } else if(artifacts_slot && i == *artifacts_slot) {
-            project.artifacts_dirty = true;
-        } else if(contexts_slot && i == *contexts_slot) {
-            contexts.dirty = true;
-            contexts_ok = false;
-        }
-    }
-    index.finish_save(batch, failed);
-    if(snapshot_slot) {
+    if(!committed) {
+        restore();
+        contexts_ok = false;
+    } else if(snapshot_bytes) {
         snapshot.saved(std::move(*snapshot_bytes));
     }
 
     // Corruption can show up first at write time (a damaged page only the
-    // write's tree descent reaches): heal like load-time corruption instead
-    // of writing into the damaged environment every save. The batch's
-    // shards — dirty at batch build, hence memory-backed — re-dirty before
-    // the recovery's shed so they survive it and re-persist wholesale.
-    if(db.corrupted()) {
-        index.redirty(batch);
+    // write's tree descent reaches), or in a record this save read: heal
+    // like load-time corruption instead of writing into the damaged
+    // environment every save.
+    if(db.corrupted() || index.damaged()) {
         recover_corrupt_database(project, report);
         co_return report;
     }
@@ -220,10 +215,9 @@ kota::task<index::IndexReport> save_project(Project& project,
     }
 
     LOG_PERF("index",
-             "phase=save shards={} manifests={} total={} elapsed_ms={}",
-             batch.shard_ids.size(),
-             batch.manifest_ids.size(),
-             index.shard_count(),
+             "phase=save blobs={} shards={} elapsed_ms={}",
+             blobs.size(),
+             batch.shards,
              timer.ms());
     co_return report;
 }

@@ -257,7 +257,7 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
 }
 
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header) {
-    if(auto* manifest = project.index.held_manifest(host)) {
+    if(auto manifest = project.index.manifest(host)) {
         if(auto found = tree_enterings(project,
                                        host,
                                        header,

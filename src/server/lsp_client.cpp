@@ -1474,9 +1474,7 @@ void LSPClient::register_extensions() {
                 stats.pch_stashed_bytes += served->sched.pch.stashed_bytes();
 
                 stats.index_inmemory_shards += project.index.pending_shard_writes();
-                project.index.for_each_shard([&](Fid, const index::Shard& shard) {
-                    stats.index_shard_content_bytes += shard.bytes().size();
-                });
+                stats.index_shard_content_bytes += project.index.shard_bytes();
                 stats.last_save_shards += project.index.last_save_shards();
 
                 if(project.store) {

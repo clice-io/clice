@@ -36,9 +36,9 @@ bool has_unsaved_state(const Project& project);
 
 /// Confirmed corruption heals through rebuildability: condemn the corrupt
 /// database (deleted on close) and continue on a freshly opened empty
-/// one, so the session's rebuild persists instead of waiting for the
-/// next start. A failed reopen leaves persistence disabled for the
-/// session.
+/// one, the index and the persisted command snapshot starting over with
+/// it, so the session's rebuild persists instead of waiting for the next
+/// start. A failed reopen leaves persistence disabled for the session.
 void reopen_fresh_database(Project& project);
 
 }  // namespace clice

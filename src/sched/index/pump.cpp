@@ -483,6 +483,12 @@ kota::task<> IndexPump::run_background_indexing() {
 
     if(index_queue_pos >= index_queue.size()) {
         LOG_DEBUG("Background indexing: queue exhausted");
+        // Nothing to index, yet the search index may be owed the idle
+        // rebuild a previous session never reached: until it runs, every
+        // search scans the symbol records.
+        if(project.index.search_rebuild_due(index::SearchRebuild::Idle)) {
+            co_await persist(index::SearchRebuild::Idle);
+        }
         co_return;
     }
 

@@ -74,9 +74,8 @@ ZEST_CASE(LocalSymbolName) {
     });
     ZASSERT(symbol != 0);
 
-    // TU-local names are not in the project table; the query falls back to
-    // the shard's own local-name table.
-    auto info = query.symbol_info(symbol);
+    // TU-local names have no symbol record: the anchor's shard names them.
+    auto info = query.symbol_info(symbol, focus_id);
     ZASSERT(info);
     ZASSERT(info->name == "hidden");
 }

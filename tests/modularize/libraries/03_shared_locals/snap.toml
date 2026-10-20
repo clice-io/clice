@@ -464,6 +464,108 @@ stdout = '''
     ]
   },
   {
+    "module": "beta",
+    "imports": [
+      "alpha",
+      "libc"
+    ],
+    "entries": [
+      {
+        "file": "third/beta/beta/beta.h",
+        "names": [
+          "beta/beta.h"
+        ],
+        "include": "<beta/beta.h>",
+        "because": ""
+      },
+      {
+        "file": "third/beta/beta/simd.h",
+        "names": [
+          "beta/simd.h"
+        ],
+        "include": "<beta/simd.h>",
+        "because": ""
+      }
+    ],
+    "exports": [
+      {
+        "name": "beta::opened",
+        "file": "third/beta/beta/beta.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "beta::wrap",
+        "file": "third/beta/beta/beta.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "beta_local",
+        "file": "third/beta/beta/beta.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "beta_simd",
+        "file": "third/beta/beta/simd.h",
+        "used": false,
+        "form": 0
+      }
+    ],
+    "aliases": [],
+    "textual": [],
+    "textualUses": [
+      {
+        "file": "third/alpha/alpha/local.h",
+        "names": [
+          "alpha/local.h"
+        ],
+        "include": "<alpha/local.h>",
+        "because": ""
+      }
+    ],
+    "sharedLocals": [
+      {
+        "name": "fake_deep",
+        "file": "third/libc/csimd.h",
+        "modules": [
+          "alpha"
+        ]
+      },
+      {
+        "name": "fake_seed",
+        "file": "third/libc/cseed.h",
+        "modules": [
+          "alpha"
+        ]
+      },
+      {
+        "name": "fake_simd",
+        "file": "third/libc/csimd.h",
+        "modules": [
+          "alpha"
+        ]
+      },
+      {
+        "name": "fake_value",
+        "file": "third/libc/cvalue.h",
+        "modules": [
+          "alpha"
+        ]
+      }
+    ],
+    "macros": [],
+    "reads": [
+      {
+        "name": "ALPHA_TWICE",
+        "module": "alpha",
+        "file": "third/alpha/alpha/alpha.h",
+        "directive": "#define ALPHA_TWICE(x) ((x) * 2)"
+      }
+    ]
+  },
+  {
     "module": "libc",
     "imports": [],
     "entries": [
@@ -626,108 +728,6 @@ stdout = '''
       }
     ],
     "reads": []
-  },
-  {
-    "module": "beta",
-    "imports": [
-      "alpha",
-      "libc"
-    ],
-    "entries": [
-      {
-        "file": "third/beta/beta/beta.h",
-        "names": [
-          "beta/beta.h"
-        ],
-        "include": "<beta/beta.h>",
-        "because": ""
-      },
-      {
-        "file": "third/beta/beta/simd.h",
-        "names": [
-          "beta/simd.h"
-        ],
-        "include": "<beta/simd.h>",
-        "because": ""
-      }
-    ],
-    "exports": [
-      {
-        "name": "beta::opened",
-        "file": "third/beta/beta/beta.h",
-        "used": false,
-        "form": 0
-      },
-      {
-        "name": "beta::wrap",
-        "file": "third/beta/beta/beta.h",
-        "used": true,
-        "form": 0
-      },
-      {
-        "name": "beta_local",
-        "file": "third/beta/beta/beta.h",
-        "used": false,
-        "form": 0
-      },
-      {
-        "name": "beta_simd",
-        "file": "third/beta/beta/simd.h",
-        "used": false,
-        "form": 0
-      }
-    ],
-    "aliases": [],
-    "textual": [],
-    "textualUses": [
-      {
-        "file": "third/alpha/alpha/local.h",
-        "names": [
-          "alpha/local.h"
-        ],
-        "include": "<alpha/local.h>",
-        "because": ""
-      }
-    ],
-    "sharedLocals": [
-      {
-        "name": "fake_deep",
-        "file": "third/libc/csimd.h",
-        "modules": [
-          "alpha"
-        ]
-      },
-      {
-        "name": "fake_seed",
-        "file": "third/libc/cseed.h",
-        "modules": [
-          "alpha"
-        ]
-      },
-      {
-        "name": "fake_simd",
-        "file": "third/libc/csimd.h",
-        "modules": [
-          "alpha"
-        ]
-      },
-      {
-        "name": "fake_value",
-        "file": "third/libc/cvalue.h",
-        "modules": [
-          "alpha"
-        ]
-      }
-    ],
-    "macros": [],
-    "reads": [
-      {
-        "name": "ALPHA_TWICE",
-        "module": "alpha",
-        "file": "third/alpha/alpha/alpha.h",
-        "directive": "#define ALPHA_TWICE(x) ((x) * 2)"
-      }
-    ]
   },
   {
     "module": "std",
