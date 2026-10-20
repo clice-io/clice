@@ -13,7 +13,7 @@ import :compile.tidy;
 import :config.config;
 import :driver.driver;
 import :feature.feature;
-import :feature.semantic_token_stream;
+import :feature.projection_check;
 import :index.indexer;
 import :index.instantiation_shard;
 import :index.navigation;
@@ -26,8 +26,9 @@ import :project.load;
 import :project.project;
 import :semantic.symbol;
 import :support.bytes;
-import :syntax.source_text;
+import :syntax.token;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice::driver {
@@ -149,333 +150,68 @@ struct StrictJson {
     constexpr static bool deny_unknown_fields = true;
 };
 
-std::optional<kota::codec::RawValue> run_folding_ranges(CompilationUnit& unit,
-                                                        [[maybe_unused]] const Config& config) {
-    return to_raw_json(feature::folding_ranges(unit));
-}
+/// What a feature is asked about in the inspected file.
+enum class Shape : std::uint8_t {
+    /// The whole file.
+    File,
+    /// Each point --markers gives; without one there is nothing to answer.
+    Points,
+    /// Each range --markers gives, else the whole file.
+    Ranges,
+    /// Each range, and each point as an empty one; without either there is
+    /// nothing to answer.
+    Selections,
+};
 
-/// A semantic token as the client sees it: its kind and modifiers by the
-/// names the legend gives them.
-struct NamedToken {
+/// What one run of a feature is given.
+struct FeatureParams {
+    CompilationUnit& unit;
+
+    /// What `unit` compiled from, for a feature that compiles on its own.
+    const CompilationInput& input;
+
+    const Config& config;
+
+    /// The whole file, a marker's range, or a point as an empty range.
     LocalSourceRange range;
-    std::string kind;
-    std::vector<std::string> modifiers;
 };
 
-std::vector<NamedToken> named_tokens(llvm::ArrayRef<feature::SemanticToken> tokens,
-                                     const feature::SemanticTokenLegend& legend) {
-    std::vector<NamedToken> named;
-    for(const auto& token: tokens) {
-        auto type = legend.type_of[static_cast<std::size_t>(token.kind)];
-        if(!type) {
-            continue;
-        }
-        NamedToken entry{.range = token.range, .kind = legend.types[*type]};
-        auto bits = legend.bits(token.modifiers);
-        for(auto [position, name]: llvm::enumerate(legend.modifiers)) {
-            if(bits & (std::uint32_t(1) << position)) {
-                entry.modifiers.push_back(name);
-            }
-        }
-        named.push_back(std::move(entry));
-    }
-    return named;
-}
-
-std::optional<kota::codec::RawValue> run_semantic_tokens(CompilationUnit& unit,
-                                                         const Config& config) {
-    return to_raw_json(named_tokens(feature::semantic_tokens(unit, config.semantic_tokens),
-                                    feature::semantic_token_legend(config.semantic_tokens)));
-}
-
-/// One way the tokens the index projects differ from the AST's, at the
-/// token it concerns (1-based line and column).
-struct TokenDifference {
-    std::uint32_t line = 0;
-    std::uint32_t column = 0;
-    std::string text;
-    /// only_ast, only_index, range, kind or modifiers.
-    std::string field;
-    std::string ast;
-    std::string index;
+/// A feature: its operation and line of help, what it is asked about, and
+/// what --check runs instead, for one that checks its own results. `run`
+/// gives nullopt when its answer does not serialize.
+struct FeatureSpec {
+    llvm::StringRef name;
+    llvm::StringRef description;
+    Shape shape = Shape::File;
+    std::optional<kota::codec::RawValue> (*run)(const FeatureParams&) = nullptr;
+    const FeatureSpec* check = nullptr;
 };
 
-struct TokenCheck {
-    std::uint32_t ast = 0;
-    std::uint32_t index = 0;
-    std::vector<TokenDifference> differences;
-};
-
-/// The file's semantic tokens as the AST gives them beside the ones the
-/// index projects from the unit's own TU index, as the server serves a file
-/// before its AST is current: tokens pair by where they begin.
-std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& unit,
-                                                               const Config& config) {
-    auto legend = feature::semantic_token_legend(config.semantic_tokens);
-    auto& source = unit.focus_file().text();
-    auto content = source.text();
-    auto ast =
-        named_tokens(feature::semantic_token_stream(source,
-                                                    feature::semantic_token_facts(unit, {}, true),
-                                                    config.semantic_tokens),
-                     legend);
-    auto bytes = index::build_tu_index(unit);
-    auto tu = index::TUIndex::from_bytes(as_chars(bytes));
-    SourceText served(content, unit.lang_options());
-    auto projected =
-        named_tokens(feature::index_semantic_tokens(
-                         served,
-                         feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
-                         [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
-                             auto identity = tu.find_symbol(hash);
-                             if(!identity) {
-                                 return std::nullopt;
-                             }
-                             return index::SymbolInfo::from(hash, *identity);
-                         },
-                         config.semantic_tokens),
-                     legend);
-
-    auto spell = [](const NamedToken& token) {
-        auto spelled = token.kind;
-        for(const auto& modifier: token.modifiers) {
-            spelled += " " + modifier;
-        }
-        return spelled;
-    };
-
-    std::map<std::uint32_t, const NamedToken*> by_begin;
-    for(const auto& token: projected) {
-        by_begin.emplace(token.range.begin, &token);
-    }
-
-    const auto& map = unit.focus_file().positions();
-    TokenCheck check{
-        .ast = static_cast<std::uint32_t>(ast.size()),
-        .index = static_cast<std::uint32_t>(projected.size()),
-    };
-    auto report = [&](const NamedToken& token,
-                      llvm::StringRef field,
-                      std::string ast_value,
-                      std::string index_value) {
-        auto position = map.position(token.range.begin, PositionEncoding::UTF8);
-        check.differences.push_back({
-            .line = position ? position->line + 1 : 0,
-            .column = position ? position->character + 1 : 0,
-            .text = content.slice(token.range.begin, token.range.end).str(),
-            .field = field.str(),
-            .ast = std::move(ast_value),
-            .index = std::move(index_value),
-        });
-    };
-    for(const auto& token: ast) {
-        auto it = by_begin.find(token.range.begin);
-        if(it == by_begin.end()) {
-            report(token, "only_ast", spell(token), "");
-            continue;
-        }
-        const auto& other = *it->second;
-        by_begin.erase(it);
-        if(token.range.end != other.range.end) {
-            report(token,
-                   "range",
-                   content.slice(token.range.begin, token.range.end).str(),
-                   content.slice(other.range.begin, other.range.end).str());
-        }
-        if(token.kind != other.kind) {
-            report(token, "kind", spell(token), spell(other));
-        } else if(token.modifiers != other.modifiers) {
-            report(token, "modifiers", spell(token), spell(other));
-        }
-    }
-    for(auto [begin, token]: by_begin) {
-        report(*token, "only_index", "", spell(*token));
-    }
-    std::ranges::stable_sort(check.differences, {}, [](const TokenDifference& difference) {
-        return std::pair(difference.line, difference.column);
-    });
-    return to_raw_json(check);
+std::optional<kota::codec::RawValue> run_folding_ranges(const FeatureParams& params) {
+    return to_raw_json(feature::folding_ranges(params.unit));
 }
 
-std::optional<kota::codec::RawValue> run_document_symbols(CompilationUnit& unit,
-                                                          const Config& config) {
-    return to_raw_json(feature::document_symbols(unit, config.document_symbols));
+std::optional<kota::codec::RawValue> run_semantic_tokens(const FeatureParams& params) {
+    const auto& options = params.config.semantic_tokens;
+    return to_raw_json(feature::named_tokens(feature::semantic_tokens(params.unit, options),
+                                             feature::semantic_token_legend(options)));
 }
 
-/// One way the outline the index projects differs from the AST's, at the
-/// name of the entry it concerns (1-based line and column).
-struct OutlineDifference {
-    std::uint32_t line = 0;
-    std::uint32_t column = 0;
-    /// only_ast, only_index, name, kind, range, parent, detail or
-    /// deprecated.
-    std::string field;
-    std::string ast;
-    std::string index;
-};
-
-struct OutlineCheck {
-    std::uint32_t ast = 0;
-    std::uint32_t index = 0;
-    std::vector<OutlineDifference> differences;
-};
-
-/// The file's outline as the AST gives it beside the one the index projects
-/// from the unit's own TU index, as the server serves a file before its AST
-/// is current: an entry of one matches the other's entry of the same name
-/// range, the same name first. The index knows no signatures, so a detail
-/// differs only where the index gives one.
-std::optional<kota::codec::RawValue> run_document_symbol_check(CompilationUnit& unit,
-                                                               const Config& config) {
-    auto ast = feature::document_symbols(unit, config.document_symbols);
-    auto bytes = index::build_tu_index(unit);
-    auto tu = index::TUIndex::from_bytes(as_chars(bytes));
-    SourceText served(unit.focus_file().content(), unit.lang_options());
-    auto projected = feature::index_document_symbols(
-        served,
-        feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
-        [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
-            auto identity = tu.find_symbol(hash);
-            if(!identity) {
-                return std::nullopt;
-            }
-            return index::SymbolInfo::from(hash, *identity);
-        },
-        config.document_symbols);
-
-    struct Flat {
-        const feature::DocumentSymbol* symbol;
-        std::int32_t parent;
-    };
-
-    auto flatten = [](this auto& self,
-                      llvm::ArrayRef<feature::DocumentSymbol> symbols,
-                      std::int32_t parent,
-                      std::vector<Flat>& out) -> void {
-        for(const auto& symbol: symbols) {
-            auto at = static_cast<std::int32_t>(out.size());
-            out.push_back({&symbol, parent});
-            self(symbol.children, at, out);
-        }
-    };
-    std::vector<Flat> left;
-    std::vector<Flat> right;
-    flatten(ast, -1, left);
-    flatten(projected, -1, right);
-
-    std::multimap<std::pair<std::uint32_t, std::uint32_t>, std::int32_t> by_name_range;
-    for(auto [at, flat]: llvm::enumerate(right)) {
-        auto selection = flat.symbol->selection_range;
-        by_name_range.emplace(std::pair(selection.begin, selection.end),
-                              static_cast<std::int32_t>(at));
-    }
-    std::vector<std::int32_t> partner(left.size(), -1);
-    std::vector<bool> taken(right.size(), false);
-    for(auto [at, flat]: llvm::enumerate(left)) {
-        auto selection = flat.symbol->selection_range;
-        auto [first, last] = by_name_range.equal_range(std::pair(selection.begin, selection.end));
-        std::int32_t chosen = -1;
-        for(auto it = first; it != last; ++it) {
-            if(taken[it->second]) {
-                continue;
-            }
-            if(chosen == -1) {
-                chosen = it->second;
-            }
-            if(right[it->second].symbol->name == flat.symbol->name) {
-                chosen = it->second;
-                break;
-            }
-        }
-        if(chosen != -1) {
-            partner[at] = chosen;
-            taken[chosen] = true;
-        }
-    }
-
-    const auto& map = unit.focus_file().positions();
-    auto spell_range = [&](LocalSourceRange range) {
-        auto converted = map.range(range, PositionEncoding::UTF8);
-        if(!converted) {
-            return std::string("?");
-        }
-        return std::format("{}:{}-{}:{}",
-                           converted->start.line + 1,
-                           converted->start.character + 1,
-                           converted->end.line + 1,
-                           converted->end.character + 1);
-    };
-    auto kind_name = [](SymbolKind kind) {
-        return std::string(kota::meta::enum_name(feature::to_protocol_symbol_kind(kind), "?"));
-    };
-    auto parent_name = [](const std::vector<Flat>& flats, std::int32_t parent) {
-        return parent == -1 ? std::string("(top level)") : flats[parent].symbol->name;
-    };
-
-    OutlineCheck check{
-        .ast = static_cast<std::uint32_t>(left.size()),
-        .index = static_cast<std::uint32_t>(right.size()),
-    };
-    auto report = [&](const feature::DocumentSymbol& symbol,
-                      llvm::StringRef field,
-                      std::string ast_value,
-                      std::string index_value) {
-        auto position = map.position(symbol.selection_range.begin, PositionEncoding::UTF8);
-        check.differences.push_back({
-            .line = position ? position->line + 1 : 0,
-            .column = position ? position->character + 1 : 0,
-            .field = field.str(),
-            .ast = std::move(ast_value),
-            .index = std::move(index_value),
-        });
-    };
-    for(auto [at, flat]: llvm::enumerate(left)) {
-        const auto& lhs = *flat.symbol;
-        if(partner[at] == -1) {
-            report(lhs, "only_ast", std::format("{} {}", kind_name(lhs.kind), lhs.name), "");
-            continue;
-        }
-        const auto& other = right[partner[at]];
-        const auto& rhs = *other.symbol;
-        if(lhs.name != rhs.name) {
-            report(lhs, "name", lhs.name, rhs.name);
-        }
-        if(kind_name(lhs.kind) != kind_name(rhs.kind)) {
-            report(lhs, "kind", kind_name(lhs.kind), kind_name(rhs.kind));
-        }
-        if(lhs.range != rhs.range) {
-            report(lhs, "range", spell_range(lhs.range), spell_range(rhs.range));
-        }
-        bool same_parent =
-            flat.parent == -1 ? other.parent == -1 : partner[flat.parent] == other.parent;
-        if(!same_parent) {
-            report(lhs, "parent", parent_name(left, flat.parent), parent_name(right, other.parent));
-        }
-        if(!rhs.detail.empty() && lhs.detail != rhs.detail) {
-            report(lhs, "detail", lhs.detail, rhs.detail);
-        }
-        if(lhs.deprecated != rhs.deprecated) {
-            report(lhs,
-                   "deprecated",
-                   lhs.deprecated ? "true" : "false",
-                   rhs.deprecated ? "true" : "false");
-        }
-    }
-    for(auto [at, flat]: llvm::enumerate(right)) {
-        if(!taken[at]) {
-            const auto& rhs = *flat.symbol;
-            report(rhs, "only_index", "", std::format("{} {}", kind_name(rhs.kind), rhs.name));
-        }
-    }
-    std::ranges::stable_sort(check.differences, {}, [](const OutlineDifference& difference) {
-        return std::pair(difference.line, difference.column);
-    });
-    return to_raw_json(check);
+std::optional<kota::codec::RawValue> run_semantic_tokens_check(const FeatureParams& params) {
+    return to_raw_json(feature::check_semantic_tokens(params.unit, params.config.semantic_tokens));
 }
 
-std::optional<kota::codec::RawValue> run_document_links(CompilationUnit& unit,
-                                                        [[maybe_unused]] const Config& config) {
-    return to_raw_json(feature::document_links(unit));
+std::optional<kota::codec::RawValue> run_document_symbols(const FeatureParams& params) {
+    return to_raw_json(feature::document_symbols(params.unit, params.config.document_symbols));
+}
+
+std::optional<kota::codec::RawValue> run_document_symbol_check(const FeatureParams& params) {
+    return to_raw_json(
+        feature::check_document_symbols(params.unit, params.config.document_symbols));
+}
+
+std::optional<kota::codec::RawValue> run_document_links(const FeatureParams& params) {
+    return to_raw_json(feature::document_links(params.unit));
 }
 
 struct RawLocation {
@@ -502,10 +238,9 @@ struct RawInlayHint {
 /// as the server places it, from the unit's own TU index standing in for
 /// the server's — a declaration, else the definition, the focus file's shard
 /// first as an open buffer's is.
-std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnit& unit,
-                                                     LocalSourceRange range,
-                                                     const Config& config) {
-    auto hints = feature::inlay_hints(unit, range, config.inlay_hints);
+std::optional<kota::codec::RawValue> run_inlay_hints(const FeatureParams& params) {
+    auto& unit = params.unit;
+    auto hints = feature::inlay_hints(unit, params.range, params.config.inlay_hints);
 
     std::vector<std::byte> bytes;
     index::TUIndex tu;
@@ -562,10 +297,8 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnit& unit,
     return to_raw_json(out);
 }
 
-std::optional<kota::codec::RawValue> run_selection_range(CompilationUnit& unit,
-                                                         std::uint32_t offset,
-                                                         [[maybe_unused]] const Config& config) {
-    return to_raw_json(feature::selection_ranges(unit, {offset}).front());
+std::optional<kota::codec::RawValue> run_selection_range(const FeatureParams& params) {
+    return to_raw_json(feature::selection_ranges(params.unit, {params.range.begin}).front());
 }
 
 struct RawCodeAction {
@@ -579,12 +312,11 @@ struct RawCodeAction {
 
 /// The index requests resolved as an empty index would: definitions into
 /// the focus file are all kept, no header declares any name.
-std::optional<kota::codec::RawValue> run_code_action(CompilationUnit& unit,
-                                                     LocalSourceRange selection,
-                                                     [[maybe_unused]] const Config& config) {
+std::optional<kota::codec::RawValue> run_code_action(const FeatureParams& params) {
+    auto& unit = params.unit;
     std::vector<RawCodeAction> out;
     auto path = unit.file_path(unit.focus_file().file());
-    for(auto& action: feature::code_actions(unit, selection)) {
+    for(auto& action: feature::code_actions(unit, params.range)) {
         RawCodeAction raw{
             .title = std::move(action.title),
             .kind = std::string(action.kind),
@@ -619,10 +351,10 @@ std::optional<kota::codec::RawValue> run_code_action(CompilationUnit& unit,
 /// nullopt = serialization failure; an empty RawValue serializes as null
 /// and records a marker with no hover. The card is markdown, as a client
 /// that shows markdown gets it.
-std::optional<kota::codec::RawValue> run_hover(CompilationUnit& unit,
-                                               std::uint32_t offset,
-                                               const Config& config) {
-    auto info = feature::hover_info(unit, offset, config.hover, config.documentation);
+std::optional<kota::codec::RawValue> run_hover(const FeatureParams& params) {
+    const auto& config = params.config;
+    auto info =
+        feature::hover_info(params.unit, params.range.begin, config.hover, config.documentation);
     if(!info) {
         return kota::codec::RawValue{};
     }
@@ -631,34 +363,42 @@ std::optional<kota::codec::RawValue> run_hover(CompilationUnit& unit,
                                    info->present().as_markdown()});
 }
 
-/// Completion-shaped features (code completion, signature help) drive
-/// their own compilation: the offset parameterizes the parse itself, so
-/// each point gets a fresh completion compile instead of a query
-/// against one shared unit. `params` arrives fully configured except for
-/// the completion offset.
-std::optional<kota::codec::RawValue> run_code_completion(CompilationParams params,
-                                                         const Config& config) {
+/// Code completion and signature help drive their own compilation: the
+/// offset parameterizes the parse itself, so each point gets a fresh
+/// completion compile instead of a query against the shared unit. That unit
+/// only serves the clean-code gate — the completion entry points discard
+/// their unit, so its diagnostics are the sole health signal.
+CompilationParams completion_at(const FeatureParams& params) {
+    return {
+        .kind = CompilationKind::Completion,
+        .input = params.input,
+        .completion = {.offset = params.range.begin},
+    };
+}
+
+std::optional<kota::codec::RawValue> run_code_completion(const FeatureParams& params) {
+    const auto& config = params.config;
     // The replies of an editor client that takes everything an item can carry.
     return to_raw_json(
-        feature::code_complete(std::move(params),
+        feature::code_complete(completion_at(params),
                                config.code_completion,
                                config.documentation,
                                {.snippets = true, .insert_replace = true, .markdown = true})
             .list);
 }
 
-std::optional<kota::codec::RawValue> run_signature_help(CompilationParams params,
-                                                        const Config& config) {
-    return to_raw_json(
-        feature::signature_help(std::move(params), config.signature_help, config.documentation));
+std::optional<kota::codec::RawValue> run_signature_help(const FeatureParams& params) {
+    const auto& config = params.config;
+    return to_raw_json(feature::signature_help(completion_at(params),
+                                               config.signature_help,
+                                               config.documentation));
 }
 
 /// Marker payload for document-highlight: the unit's own TU index stands
 /// in for the server's file index, the cursor resolved by the same rule.
-std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnit& unit,
-                                                            std::uint32_t offset,
-                                                            [[maybe_unused]] const Config& config) {
-    auto bytes = index::build_tu_index(unit);
+std::optional<kota::codec::RawValue> run_document_highlight(const FeatureParams& params) {
+    auto offset = params.range.begin;
+    auto bytes = index::build_tu_index(params.unit);
     auto tu = index::TUIndex::from_bytes(as_chars(bytes));
     const index::Shard& shard = tu.shard_of(tu.path_count() - 1);
     auto named = index::named_at(shard, offset, [&](index::SymbolHash hash) {
@@ -684,30 +424,6 @@ std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnit& uni
                                          }));
 }
 
-/// A feature runs in exactly one shape: whole-document (`run`), once per
-/// point against a shared unit (`run_at`), once per range with a
-/// whole-document default (`run_over`), once per point (an empty
-/// selection) and per range with no default (`run_select`), or once per
-/// point with its own completion compile (`run_complete`). `check` is what
-/// --check runs instead, for a feature that checks its own results.
-struct FeatureSpec {
-    llvm::StringRef name;
-    llvm::StringRef description;
-    std::optional<kota::codec::RawValue> (*run)(CompilationUnit&, const Config&) = nullptr;
-    std::optional<kota::codec::RawValue> (*run_at)(CompilationUnit&,
-                                                   std::uint32_t,
-                                                   const Config&) = nullptr;
-    std::optional<kota::codec::RawValue> (*run_over)(CompilationUnit&,
-                                                     LocalSourceRange,
-                                                     const Config&) = nullptr;
-    std::optional<kota::codec::RawValue> (*run_select)(CompilationUnit&,
-                                                       LocalSourceRange,
-                                                       const Config&) = nullptr;
-    std::optional<kota::codec::RawValue> (*run_complete)(CompilationParams,
-                                                         const Config&) = nullptr;
-    const FeatureSpec* check = nullptr;
-};
-
 constexpr FeatureSpec document_symbols_check{.name = "document-symbols",
                                              .run = run_document_symbol_check};
 constexpr FeatureSpec semantic_tokens_check{.name = "semantic-tokens",
@@ -716,13 +432,16 @@ constexpr FeatureSpec semantic_tokens_check{.name = "semantic-tokens",
 constexpr std::array features = {
     FeatureSpec{.name = "code-action",
                 .description = "The code actions on a selection",
-                .run_select = run_code_action},
+                .shape = Shape::Selections,
+                .run = run_code_action},
     FeatureSpec{.name = "code-completion",
                 .description = "The completions at a point",
-                .run_complete = run_code_completion},
+                .shape = Shape::Points,
+                .run = run_code_completion},
     FeatureSpec{.name = "document-highlight",
                 .description = "The places naming the symbol at a point",
-                .run_at = run_document_highlight},
+                .shape = Shape::Points,
+                .run = run_document_highlight},
     FeatureSpec{.name = "document-links",
                 .description = "The file's links",
                 .run = run_document_links},
@@ -733,20 +452,26 @@ constexpr std::array features = {
     FeatureSpec{.name = "folding-range",
                 .description = "The file's folding ranges",
                 .run = run_folding_ranges},
-    FeatureSpec{.name = "hover", .description = "The hover card at a point", .run_at = run_hover},
+    FeatureSpec{.name = "hover",
+                .description = "The hover card at a point",
+                .shape = Shape::Points,
+                .run = run_hover},
     FeatureSpec{.name = "inlay-hint",
                 .description = "The inlay hints over a range, else the file",
-                .run_over = run_inlay_hints},
+                .shape = Shape::Ranges,
+                .run = run_inlay_hints},
     FeatureSpec{.name = "selection-range",
                 .description = "The selection ranges at a point",
-                .run_at = run_selection_range},
+                .shape = Shape::Points,
+                .run = run_selection_range},
     FeatureSpec{.name = "semantic-tokens",
                 .description = "The file's semantic tokens",
                 .run = run_semantic_tokens,
                 .check = &semantic_tokens_check},
     FeatureSpec{.name = "signature-help",
                 .description = "The signature help at a point",
-                .run_complete = run_signature_help},
+                .shape = Shape::Points,
+                .run = run_signature_help},
 };
 
 /// The inspected file, with the markers --markers places in it.
@@ -756,25 +481,60 @@ struct SourceFile {
     FileMarkers markers;
 };
 
-/// The command of the unit writing the precompiled header a command reads
-/// (Build::pch_unit).
-struct PCHWriter {
-    std::string file;
-    std::string directory;
-    std::vector<std::string> arguments;
-};
+/// The C-family source at `path`, with the markers the file `markers`
+/// places in it.
+auto read_source(const Spelling& path, const std::optional<std::string>& markers)
+    -> std::expected<SourceFile, std::string> {
+    if(!vfs::exists(path)) {
+        return std::unexpected(std::format("no such file or directory: {}", path));
+    }
+    if(vfs::is_directory(path)) {
+        return std::unexpected(std::format("{} is a directory, not a source file", path));
+    }
+    SourceFile file{.path = path.str()};
+    auto name = path::filename(file.path);
+    if(is_other_language_path(file.path)) {
+        return std::unexpected(std::format("{}: not a C-family source file", name));
+    }
+    auto buffer = vfs::read(file.path);
+    if(!buffer) {
+        return std::unexpected(std::format("cannot read {}: {}", path, buffer.error().message()));
+    }
+    file.content = (*buffer)->getBuffer().str();
+    if(!markers) {
+        return file;
+    }
 
-/// The compile command for one file.
-struct FileCommand {
-    std::vector<std::string> arguments;
-    std::string directory;
-    std::string workspace;
-    std::shared_ptr<const SynthesizedContext> synthesized;
-    std::optional<PCHWriter> pch_writer;
-
-    /// clice's build of pch_writer's header, which the compile loads.
-    std::string pch;
-};
+    auto text = vfs::read(*markers);
+    if(!text) {
+        return std::unexpected(
+            std::format("cannot read --markers {}: {}", *markers, text.error().message()));
+    }
+    auto& [points, ranges] = file.markers;
+    if(auto result = kota::codec::json::from_string<StrictJson>((*text)->getBuffer(), file.markers);
+       !result) {
+        return std::unexpected(std::format("invalid --markers: {}", result.error().message));
+    }
+    if(points.contains("") || ranges.contains("")) {
+        return std::unexpected("--markers gives every marker a name");
+    }
+    // A selection feature answers points and ranges under one name each.
+    for(const auto& name: points | std::views::keys) {
+        if(ranges.contains(name)) {
+            return std::unexpected(std::format("--markers names a point and a range {}", name));
+        }
+    }
+    auto inside = [&](std::uint32_t offset) {
+        return offset <= file.content.size();
+    };
+    if(!std::ranges::all_of(points | std::views::values, inside) ||
+       !std::ranges::all_of(ranges | std::views::values, [&](const LocalSourceRange& range) {
+           return range.begin <= range.end && inside(range.end);
+       })) {
+        return std::unexpected(std::format("--markers puts a marker outside the text of {}", name));
+    }
+    return file;
+}
 
 /// The workspace the inspected file's directory belongs to: itself or the
 /// nearest ancestor holding a configuration file or a compile_commands.json
@@ -798,69 +558,91 @@ CanonicalPath workspace_of(CanonicalRef start) {
     return workspace;
 }
 
-/// The compile command for `file`: explicit --flags arguments, else the
-/// resolution the server performs for a background compile: the file's
-/// entry, a host's command for a header, a rule's default command, the
-/// builtin fallback. On failure records the error on `entry` and returns
-/// nullopt.
-std::optional<FileCommand> file_command(FileEntry& entry,
-                                        const std::string& file,
-                                        llvm::ArrayRef<std::string> flags,
-                                        llvm::StringRef flags_directory,
-                                        Project& project,
-                                        CommandResolver& commands) {
+/// The project the file in `directory` belongs to, loaded as `clice serve`
+/// loads it: the configuration of the nearest project at or above it with
+/// --config-overlay put in before the rules compile, as initializationOptions
+/// are; the databases the configuration names, else the ones discovered
+/// under its root and those between the root and the file; the dependency
+/// graph. With --flags, the overlay over the defaults alone.
+auto load_inspected(Project& project,
+                    const InspectOptions& opts,
+                    const Spelling& directory,
+                    bool flagged) -> std::expected<void, std::string> {
+    auto overlay = [&]() -> std::expected<void, std::string> {
+        if(!opts.config_overlay) {
+            return {};
+        }
+        if(auto result =
+               kota::codec::json::from_string<StrictJson>(*opts.config_overlay, project.config);
+           !result) {
+            return std::unexpected(
+                std::format("invalid --config-overlay: {}", result.error().message));
+        }
+        return {};
+    };
+    if(flagged) {
+        if(opts.configuration.configuration) {
+            return std::unexpected(
+                "--configuration selects among the workspace's rules; --flags replaces them");
+        }
+        return overlay();
+    }
+    auto identity = CanonicalPath(directory);
+    auto root = workspace_of(identity);
+    project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
+    if(auto applied = overlay(); !applied) {
+        return applied;
+    }
+    project.config.finalize(root);
+    project.config.keep_own_cache_dir();
+    auto requested = opts.configuration.tag();
+    if(auto checked = check_requested_configuration(project.config, requested); !checked) {
+        return std::unexpected(std::move(checked.error()));
+    }
+    load_build(project,
+               root,
+               resolve_configuration(project.config, requested),
+               compile_commands_above(identity, root));
+    return {};
+}
+
+/// What the file compiles with under --flags: the flags as the driver turns
+/// them into a command, its @response-files read from the file's directory.
+/// Fails with the toolchain's error.
+auto flags_input(const SourceFile& file,
+                 llvm::ArrayRef<std::string> flags,
+                 llvm::StringRef directory) -> std::expected<CompilationInput, std::string> {
     namespace types = clang::driver::types;
-    auto type = suffix_type(file);
+    auto type = suffix_type(file.path);
     bool is_header = type == types::TY_CHeader || type == types::TY_CXXHeader;
-
-    FileCommand command;
-    if(!flags.empty()) {
-        bool is_cxx = type != types::TY_INVALID && types::isCXX(type);
-        std::vector<const char*> driver_args = {is_cxx || is_header ? "clang++" : "clang"};
-        if(is_header) {
-            // An ambiguous header is C++ by default, like clangd; -x forces
-            // TU semantics instead of a precompiled-header job.
-            driver_args.insert(driver_args.end(), {"-x", "c++"});
-        }
-        // The toolchain query spawns the driver from the process cwd, and the
-        // driver reads @response-files itself — resolve them against the
-        // file's directory so they don't depend on where inspect was launched.
-        std::vector<std::string> resolved_flags(flags.begin(), flags.end());
-        for(auto& flag: resolved_flags) {
-            llvm::StringRef rest(flag);
-            if(rest.consume_front("@") && !path::is_absolute(rest)) {
-                llvm::SmallString<256> abs(flags_directory);
-                path::append(abs, rest);
-                flag = ("@" + abs).str();
-            }
-        }
-        for(auto& flag: resolved_flags) {
-            driver_args.push_back(flag.c_str());
-        }
-        driver_args.insert(driver_args.end(), {"-fsyntax-only", file.c_str()});
-        auto cc1 = Toolchain::query(driver_args, file);
-        if(!cc1) {
-            entry.error = "toolchain_error";
-            entry.diagnostics = {std::move(cc1.error())};
-            return std::nullopt;
-        }
-        command.arguments = std::move(*cc1);
-        command.directory = flags_directory.str();
-        return command;
+    bool is_cxx = type != types::TY_INVALID && types::isCXX(type);
+    std::vector<const char*> driver_args = {is_cxx || is_header ? "clang++" : "clang"};
+    if(is_header) {
+        // An ambiguous header is C++ by default, like clangd; -x forces
+        // TU semantics instead of a precompiled-header job.
+        driver_args.insert(driver_args.end(), {"-x", "c++"});
     }
-
-    auto path_id = project.file_table.intern(Spelling::absolute(file));
-    auto resolution = commands.resolve_command(path_id, command.directory, command.arguments);
-    command.synthesized = resolution.synthesized;
-    if(auto writer = commands.pch_unit(path_id, resolution)) {
-        auto argv = project.cdb.render(*writer);
-        command.pch_writer = PCHWriter{
-            .file = std::string(project.file_table.resolve(writer->file)),
-            .directory = project.cdb.config(writer->config).directory,
-            .arguments = {argv.begin(), argv.end()},
-        };
+    // The toolchain query spawns the driver from the process cwd, and the
+    // driver reads @response-files itself — resolve them against the
+    // file's directory so they don't depend on where inspect was launched.
+    std::vector<std::string> resolved_flags(flags.begin(), flags.end());
+    for(auto& flag: resolved_flags) {
+        llvm::StringRef rest(flag);
+        if(rest.consume_front("@") && !path::is_absolute(rest)) {
+            llvm::SmallString<256> abs(directory);
+            path::append(abs, rest);
+            flag = ("@" + abs).str();
+        }
+        driver_args.push_back(flag.c_str());
     }
-    return command;
+    driver_args.insert(driver_args.end(), {"-fsyntax-only", file.path.c_str()});
+    auto cc1 = Toolchain::query(driver_args, file.path);
+    if(!cc1) {
+        return std::unexpected(std::move(cc1.error()));
+    }
+    CompilationInput input{.arguments = std::move(*cc1), .directory = directory.str()};
+    input.add_focus(file.path, file.content);
+    return input;
 }
 
 /// clice's build of the precompiled header the command reads, as the server
@@ -868,26 +650,27 @@ std::optional<FileCommand> file_command(FileEntry& entry,
 /// compiler compiled, which the unit's own flags may not (a target reusing
 /// another target's PCH). Empty when it does not build, or when it reads
 /// `file` itself, whose text its guard would then skip.
-std::string build_pch(const PCHWriter& writer,
+std::string build_pch(Project& project,
+                      const CommandRef& writer,
                       llvm::StringRef file,
-                      llvm::StringRef workspace,
-                      FileTable& files) {
+                      llvm::StringRef workspace) {
     auto output = vfs::temp_file("clice-inspect", "pch");
     if(!output) {
         LOG_WARN("cannot create a temporary PCH: {}", output.error().message());
         return {};
     }
+    auto argv = project.cdb.render(writer);
     auto unit = clice::compile({
         .kind = CompilationKind::PrecompiledHeader,
-        .input = {.arguments = writer.arguments,
-                  .directory = writer.directory,
+        .input = {.arguments = {argv.begin(), argv.end()},
+                  .directory = project.cdb.config(writer.config).directory,
                   .workspace = workspace.str()},
         .output_file = *output,
     });
     // The writer's own source is no dep of its unit, but the PCH holds it.
+    auto& files = project.file_table;
     auto self = files.intern(Spelling::absolute(file));
-    bool reads = files.intern(Spelling::absolute(writer.file)) == self ||
-                 llvm::any_of(unit->deps(), [&](const DepFile& dep) {
+    bool reads = writer.file == self || llvm::any_of(unit->deps(), [&](const DepFile& dep) {
                      return files.intern(Spelling::absolute(dep.path)) == self;
                  });
     bool built = unit->has_output() && !reads;
@@ -900,6 +683,28 @@ std::string build_pch(const PCHWriter& writer,
     return *output;
 }
 
+/// What the file compiles with in its project: the resolution the server
+/// performs for a background compile — the file's entry, a host's command
+/// for a header, a rule's default command, the builtin fallback — with the
+/// header context it synthesizes and the precompiled header the build
+/// declares, built (build_pch).
+auto project_input(const SourceFile& file, Project& project, CommandResolver& commands)
+    -> CompilationInput {
+    CompilationInput input{.workspace = project.config.workspace_root.str()};
+    auto path_id = project.file_table.intern(Spelling::absolute(file.path));
+    auto resolution = commands.resolve_command(path_id, input.directory, input.arguments);
+    input.add_focus(file.path, file.content);
+    if(resolution.synthesized) {
+        input.add_synthesized(resolution.synthesized->files);
+    }
+    if(auto writer = commands.pch_unit(path_id, resolution)) {
+        if(auto pch = build_pch(project, *writer, file.path, input.workspace); !pch.empty()) {
+            input.pch = {std::move(pch), 0};
+        }
+    }
+    return input;
+}
+
 /// Run the feature over the file and fill its entry. The compile is one
 /// pass, deliberately without the preamble PCH the server uses: a shared
 /// snapshot pins that the PCH split does not change feature results, so any
@@ -910,21 +715,8 @@ std::string build_pch(const PCHWriter& writer,
 void run_feature(FileEntry& entry,
                  const FeatureSpec& spec,
                  const SourceFile& file,
-                 const FileCommand& command,
+                 const CompilationInput& input,
                  const Config& config) {
-    CompilationInput input{
-        .arguments = command.arguments,
-        .directory = command.directory,
-        .workspace = command.workspace,
-    };
-    input.add_focus(file.path, file.content);
-    if(command.synthesized) {
-        input.add_synthesized(command.synthesized->files);
-    }
-    if(!command.pch.empty()) {
-        input.pch = {command.pch, 0};
-    }
-
     CompilationParams params{.kind = CompilationKind::Content, .input = input};
     if(config.diagnostics.clang_tidy) {
         auto resolution = tidy::resolve_tidy_params(file.path);
@@ -955,90 +747,34 @@ void run_feature(FileEntry& entry,
         entry.diagnostics = std::move(errors);
     }
 
+    auto run = [&](LocalSourceRange range) {
+        return spec.run({.unit = *unit, .input = input, .config = config, .range = range});
+    };
     const auto& [points, ranges] = file.markers;
-    if(spec.run_complete != nullptr) {
-        // Completion shape: the plain compile above only serves the
-        // clean-code gate — the completion entry points discard their
-        // unit, so its diagnostics are the sole health signal. Each point
-        // then compiles again with the offset applied.
-        if(points.empty()) {
-            entry.error = "no_markers";
-            return;
-        }
-        std::map<std::string, kota::codec::RawValue> markers;
-        for(const auto& [name, offset]: points) {
-            auto value = spec.run_complete(
-                {
-                    .kind = CompilationKind::Completion,
-                    .input = input,
-                    .completion = {.offset = offset},
-                },
-                config);
-            if(!value.has_value()) {
-                entry.error = "serialize_error";
-                return;
-            }
-            markers.emplace(name, std::move(*value));
-        }
-        entry.markers = std::move(markers);
-        return;
+    std::vector<std::pair<std::string, LocalSourceRange>> places;
+    if(spec.shape == Shape::Ranges || spec.shape == Shape::Selections) {
+        places.assign(ranges.begin(), ranges.end());
     }
-
-    if(spec.run != nullptr) {
-        entry.result = spec.run(*unit, config);
-        if(!entry.result.has_value()) {
-            entry.error = "serialize_error";
-        }
-        return;
-    }
-
-    if(spec.run_at != nullptr) {
-        // Position feature: run once per point. Without any point there is
-        // nothing to answer — an error, not an empty result.
-        if(points.empty()) {
-            entry.error = "no_markers";
-            return;
-        }
-        std::map<std::string, kota::codec::RawValue> markers;
-        for(const auto& [name, offset]: points) {
-            auto value = spec.run_at(*unit, offset, config);
-            if(!value.has_value()) {
-                entry.error = "serialize_error";
-                return;
-            }
-            markers.emplace(name, std::move(*value));
-        }
-        entry.markers = std::move(markers);
-        return;
-    }
-
-    // Range and selection features run once per range; a selection feature
-    // also once per point, as an empty selection, and has no whole-document
-    // default.
-    std::vector<std::pair<std::string, LocalSourceRange>> places(ranges.begin(), ranges.end());
-    auto run = spec.run_select != nullptr ? spec.run_select : spec.run_over;
-    if(spec.run_select != nullptr) {
+    if(spec.shape == Shape::Points || spec.shape == Shape::Selections) {
         for(const auto& [name, offset]: points) {
             places.emplace_back(name, LocalSourceRange(offset, offset));
         }
-        if(places.empty()) {
-            entry.error = "no_markers";
-            return;
-        }
     }
-    if(places.empty()) {
-        entry.result = run(*unit,
-                           LocalSourceRange(0, static_cast<std::uint32_t>(file.content.size())),
-                           config);
-        if(!entry.result.has_value()) {
+    if(spec.shape == Shape::File || (spec.shape == Shape::Ranges && places.empty())) {
+        entry.result = run(LocalSourceRange(0, static_cast<std::uint32_t>(file.content.size())));
+        if(!entry.result) {
             entry.error = "serialize_error";
         }
+        return;
+    }
+    if(places.empty()) {
+        entry.error = "no_markers";
         return;
     }
     std::map<std::string, kota::codec::RawValue> markers;
     for(const auto& [name, range]: places) {
-        auto value = run(*unit, range, config);
-        if(!value.has_value()) {
+        auto value = run(range);
+        if(!value) {
             entry.error = "serialize_error";
             return;
         }
@@ -1052,42 +788,12 @@ int run_inspect(const InspectOptions& opts, const FeatureSpec& spec) {
     if(!args) {
         return usage_error(Errors::Text, args.error());
     }
-    Spelling abs_path(args->front(), Spelling::cwd());
-    if(!vfs::exists(abs_path)) {
-        LOG_ERROR("no such file or directory: {}", abs_path);
+    Spelling path(args->front(), Spelling::cwd());
+    auto file = read_source(path, opts.markers.as_optional());
+    if(!file) {
+        LOG_ERROR("{}", file.error());
         return 1;
     }
-    if(vfs::is_directory(abs_path)) {
-        LOG_ERROR("{} is a directory, not a source file", abs_path);
-        return 1;
-    }
-
-    SourceFile file{.path = abs_path.str()};
-    if(opts.markers.has_value()) {
-        auto buffer = vfs::read(*opts.markers);
-        if(!buffer) {
-            LOG_ERROR("cannot read --markers {}: {}", *opts.markers, buffer.error().message());
-            return 1;
-        }
-        auto result =
-            kota::codec::json::from_string<StrictJson>((*buffer)->getBuffer(), file.markers);
-        if(!result) {
-            LOG_ERROR("invalid --markers: {}", result.error().message);
-            return 1;
-        }
-        if(file.markers.points.contains("") || file.markers.ranges.contains("")) {
-            LOG_ERROR("--markers gives every marker a name");
-            return 1;
-        }
-        // A selection feature answers points and ranges under one name each.
-        for(const auto& name: file.markers.points | std::views::keys) {
-            if(file.markers.ranges.contains(name)) {
-                LOG_ERROR("--markers names a point and a range {}", name);
-                return 1;
-            }
-        }
-    }
-
     std::vector<std::string> flags;
     if(opts.flags.has_value()) {
         if(auto result = kota::codec::json::from_string(*opts.flags, flags); !result) {
@@ -1099,92 +805,26 @@ int run_inspect(const InspectOptions& opts, const FeatureSpec& spec) {
             return 1;
         }
     }
-
-    // The file belongs to the nearest project at or above it: its
-    // configuration, the databases it names (or the one discovered under
-    // it) and the dependency graph give the file the command the server
-    // would use — the same loading path as `clice serve`.
-    auto directory = abs_path.parent();
     FileTable file_table;
     Project project{file_table};
     CommandResolver commands(project);
-    if(!flags.empty() && opts.configuration.configuration) {
-        LOG_ERROR("--configuration selects among the workspace's rules; --flags replaces them");
-        return 1;
-    }
-    auto overlay = [&] {
-        if(!opts.config_overlay) {
-            return true;
-        }
-        auto result =
-            kota::codec::json::from_string<StrictJson>(*opts.config_overlay, project.config);
-        if(!result) {
-            LOG_ERROR("invalid --config-overlay: {}", result.error().message);
-        }
-        return result.has_value();
-    };
-    if(flags.empty()) {
-        auto identity = CanonicalPath(directory);
-        auto root = workspace_of(identity);
-        // The overlay goes in before the rules compile, as initializationOptions do.
-        project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
-        if(!overlay()) {
-            return 1;
-        }
-        project.config.finalize(root);
-        project.config.keep_own_cache_dir();
-        auto requested = opts.configuration.tag();
-        if(auto checked = check_requested_configuration(project.config, requested); !checked) {
-            LOG_ERROR("{}", checked.error());
-            return 1;
-        }
-        // What the server discovers when the file is opened: the databases
-        // between its directory and the root.
-        load_build(project,
-                   root,
-                   resolve_configuration(project.config, requested),
-                   compile_commands_above(identity, root));
-    } else if(!overlay()) {
+    if(auto loaded = load_inspected(project, opts, path.parent(), !flags.empty()); !loaded) {
+        LOG_ERROR("{}", loaded.error());
         return 1;
     }
 
-    auto name = path::filename(file.path).str();
-    if(is_other_language_path(file.path)) {
-        LOG_ERROR("{}: not a C-family source file", name);
-        return 1;
-    }
-    auto buffer = vfs::read(file.path);
-    if(!buffer) {
-        LOG_ERROR("cannot read {}: {}", abs_path, buffer.error().message());
-        return 1;
-    }
-    file.content = (*buffer)->getBuffer().str();
-    auto inside = [&](std::uint32_t offset) {
-        return offset <= file.content.size();
-    };
-    if(!std::ranges::all_of(file.markers.points | std::views::values, inside) ||
-       !std::ranges::all_of(file.markers.ranges | std::views::values,
-                            [&](const LocalSourceRange& range) {
-                                return range.begin <= range.end && inside(range.end);
-                            })) {
-        LOG_ERROR("--markers puts a marker outside the text of {}", name);
-        return 1;
-    }
-
-    InspectOutput output;
-    output.feature = spec.name.str();
-    auto& entry = output.files[name];
-    auto command = file_command(entry, file.path, flags, directory, project, commands);
-    if(command) {
-        command->workspace = project.config.workspace_root.str();
-        if(command->pch_writer) {
-            command->pch =
-                build_pch(*command->pch_writer, file.path, command->workspace, file_table);
+    InspectOutput output{.feature = spec.name.str()};
+    auto& entry = output.files[path::filename(file->path).str()];
+    auto input = flags.empty() ? project_input(*file, project, commands)
+                               : flags_input(*file, flags, path.parent());
+    if(input) {
+        run_feature(entry, spec, *file, *input, project.config);
+        if(!input->pch.first.empty()) {
+            vfs::remove(input->pch.first);
         }
-        run_feature(entry, spec, file, *command, project.config);
-        if(!command->pch.empty()) {
-            vfs::remove(command->pch);
-        }
+    } else {
+        entry.error = "toolchain_error";
+        entry.diagnostics = {std::move(input.error())};
     }
 
     auto json = kota::codec::json::to_string<InspectJsonConfig>(output);

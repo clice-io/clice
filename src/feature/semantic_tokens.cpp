@@ -737,6 +737,26 @@ auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticToke
     return legend;
 }
 
+auto named_tokens(llvm::ArrayRef<SemanticToken> tokens, const SemanticTokenLegend& legend)
+    -> std::vector<NamedToken> {
+    std::vector<NamedToken> named;
+    for(const auto& token: tokens) {
+        auto type = legend.type_of[static_cast<std::size_t>(token.kind)];
+        if(!type) {
+            continue;
+        }
+        NamedToken entry{.range = token.range, .kind = legend.types[*type]};
+        auto bits = legend.bits(token.modifiers);
+        for(auto [position, name]: llvm::enumerate(legend.modifiers)) {
+            if(bits & (std::uint32_t(1) << position)) {
+                entry.modifiers.push_back(name);
+            }
+        }
+        named.push_back(std::move(entry));
+    }
+    return named;
+}
+
 auto semantic_token_facts(CompilationUnit& unit,
                           llvm::ArrayRef<std::uint32_t> inactive_regions,
                           bool index_known) -> TokenFacts {
