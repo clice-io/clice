@@ -115,7 +115,7 @@ private:
     Frontend frontend(llvm::ArrayRef<std::string> job);
 
     /// The frontend with the config's own user content re-attached.
-    ResolvedID synthesize(ConfigID id, const Frontend& frontend);
+    ResolvedID synthesize(ConfigID id, const Frontend& probe);
 
     /// What the probe caches say about a (config, input) key: a live
     /// probe, a failure still cooling down, or the query to run. A

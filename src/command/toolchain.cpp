@@ -881,7 +881,7 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
     return result;
 }
 
-Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, const Frontend& frontend) {
+Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, const Frontend& probe) {
     auto& config = db.config(id);
 
     /// The PCM clice builds is the BMI the importers of the real build read:
@@ -904,7 +904,7 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, const Frontend& fronten
         };
     };
     std::vector<LocalArg> staged;
-    for(auto& arg: frontend.args) {
+    for(auto& arg: probe.args) {
         if(!(full_bmi && arg.opt_id == option::OPT_fmodules_reduced_bmi)) {
             staged.push_back(local(arg));
         }
@@ -915,7 +915,7 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, const Frontend& fronten
             continue;
         }
         auto& staged_arg = staged.emplace_back(local(arg));
-        if(!frontend.own_resource_dir) {
+        if(!probe.own_resource_dir) {
             for(auto& value: staged_arg.values) {
                 if(auto ours = ours_for(arg.opt_id, value, {})) {
                     value = db.strings.save(*ours).data();
@@ -924,7 +924,7 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, const Frontend& fronten
         }
     }
 
-    resolved_configs.push_back({.driver = frontend.driver, .args = db.persist(staged)});
+    resolved_configs.push_back({.driver = probe.driver, .args = db.persist(staged)});
     return static_cast<ResolvedID>(resolved_configs.size() - 1);
 }
 
