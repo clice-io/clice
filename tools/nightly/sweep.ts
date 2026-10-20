@@ -11,7 +11,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createTwoFilesPatch } from "diff";
 import * as proto from "vscode-languageserver-protocol";
-import { KEYWORDS, lex } from "../bench/lsp_check.ts";
 import { Workspace } from "../client/workspace.ts";
 import { withTimeout } from "../promise.ts";
 import type { MarkerAnchor } from "../testing/cases/anchors.ts";
@@ -24,6 +23,7 @@ import { block, type Shown } from "../testing/render/shown.ts";
 import { writeToml } from "../testing/render/value.ts";
 import { Serve } from "../testing/server/serve.ts";
 import { StepRecord } from "../testing/server/steps.ts";
+import { KEYWORDS, lex } from "./lex.ts";
 
 /// Places per file: points for the requests about a symbol, a few member
 /// accesses for completion and calls for signature help, each of which
