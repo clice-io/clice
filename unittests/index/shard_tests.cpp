@@ -9,7 +9,7 @@ import :index.format;
 import :index.indexer;
 import :index.shard;
 import :index.tu_index;
-import :support.archive;
+import :support.bytes;
 import :syntax.position;
 import :unittests.utils.tester;
 import :unittests.utils;
@@ -26,23 +26,23 @@ void build_index(llvm::StringRef code,
     add_focus("main.cpp", code);
     ZASSERT(compile());
     tu_index = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(tu_index.loaded());
 }
 
-std::string write_fresh(const index::FileIndex& file_index, llvm::StringRef content) {
+std::vector<std::byte> write_fresh(const index::FileIndex& file_index, llvm::StringRef content) {
     return index::write_shard(file_index, {}, content);
 }
 
 /// The focus file's worker-encoded blob, straight from the TU index.
-std::string focus_blob() {
-    return tu_index.shard_of(tu_index.path_count() - 1).bytes().str();
+std::vector<std::byte> focus_blob() {
+    return copy_bytes(tu_index.shard_of(tu_index.path_count() - 1).bytes());
 }
 
-/// Owning wrap: from_bytes borrows, and every builder here returns a
-/// temporary string.
-index::Shard make_shard(llvm::StringRef bytes) {
-    return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+/// Owning wrap: from_bytes borrows, and every builder here returns
+/// temporary bytes.
+index::Shard make_shard(std::span<const std::byte> bytes) {
+    return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
 }
 
 index::Shard merge(const index::Shard& old,
@@ -148,7 +148,7 @@ ZEST_CASE(AnonymousVariantIdentity) {
 
     auto variants = shard.variants();
     ZASSERT(variants.size() == std::size_t(1));
-    ZASSERT(variants.front() == llvm::xxh3_64bits(bytes));
+    ZASSERT(variants.front() == llvm::xxh3_64bits(as_chars(bytes)));
     ZASSERT(shard.has_variant(variants.front()));
 }
 
@@ -728,7 +728,7 @@ ZEST_CASE(MergedLocalFlagsUnion) {
             std::pair{&declaring, &defining }
     }) {
         std::vector<index::Shard> fresh;
-        fresh.push_back(make_shard(second->bytes()));
+        fresh.push_back(make_shard(as_bytes(second->bytes())));
         auto merged = merge(*first, first->variants(), std::move(fresh));
         auto identity = merged.find_symbol(7);
         ZASSERT(identity);
@@ -848,15 +848,14 @@ void set_occurrences(index::ShardBlob& blob,
 }
 
 ZEST_CASE(CorruptBlobRejected) {
-    ZASSERT(!index::Shard::from_bytes("not an archive").loaded());
+    ZASSERT(!index::Shard::from_bytes("not a blob").loaded());
 
     // A valid blob cut short must fail verification, not be misread.
     auto file_index = simple_index({
         {{0, 3}, 111}
     });
     auto bytes = write_fresh(file_index, "aaaa");
-    ZASSERT(
-        !index::Shard::from_bytes(llvm::StringRef(bytes).take_front(bytes.size() / 2)).loaded());
+    ZASSERT(!index::Shard::from_bytes(as_chars(bytes).take_front(bytes.size() / 2)).loaded());
 }
 
 ZEST_CASE(ReservedLocalParentRejected) {
@@ -879,7 +878,7 @@ ZEST_CASE(ReservedLocalParentRejected) {
     blob.local_token_modifiers = {0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -920,7 +919,7 @@ ZEST_CASE(NonAsciiLineMismatchRejected) {
     blob.relation_offsets = {0, 0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -951,7 +950,7 @@ ZEST_CASE(LineTableMismatchRejected) {
     blob.relation_offsets = {0, 0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -989,7 +988,7 @@ ZEST_CASE(MisorderedEntriesRejected) {
     blob.occurrence_symbols = {0, 0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1092,7 +1091,7 @@ ZEST_CASE(DuplicateOccKeyRejected) {
     blob.occurrence_symbols = {0, 1};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     // Positive control: one range with ascending symbols loads.
     ZASSERT(make_shard(bytes_of()).loaded());
@@ -1122,7 +1121,7 @@ ZEST_CASE(UnsortedRelationsRejected) {
     blob.relation_extent_ranks = {0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1153,7 +1152,7 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     blob.occurrence_symbols = {0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1202,7 +1201,7 @@ ZEST_CASE(ShortEscapedLengthRejected) {
     blob.occurrence_symbols = {0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1245,7 +1244,7 @@ ZEST_CASE(RangesBeyondContentRejected) {
     blob.relation_extent_ranks = {0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1307,7 +1306,7 @@ ZEST_CASE(WrongRangeEncodingRejected) {
     blob.occurrence_symbols = {0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(!make_shard(bytes_of()).loaded());
 
@@ -1338,7 +1337,7 @@ ZEST_CASE(WrongSymWidthRejected) {
     });
     blob.occurrence_symbols = {0, 0};
 
-    auto bytes = archive::encode(blob);
+    auto bytes = index::encode(blob);
     ZASSERT(!make_shard(bytes).loaded());
 }
 
@@ -1354,7 +1353,7 @@ ZEST_CASE(DuplicateSymbolHashRejected) {
     blob.relation_offsets = {0, 0, 0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1374,7 +1373,7 @@ ZEST_CASE(DuplicateVariantRejected) {
     blob.relation_offsets = {0, 0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1404,7 +1403,7 @@ ZEST_CASE(StraySymbolIdRejected) {
     blob.relation_targets = {0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1436,7 +1435,7 @@ ZEST_CASE(RelationPayloadColumnsRejected) {
     blob.relation_extent_lengths = {8};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     auto extent_of = [&](const index::Shard& shard) {
         LocalSourceRange extent;
@@ -1495,7 +1494,7 @@ ZEST_CASE(OwnerlessMaskRejected) {
     blob.occurrences.masks8 = {0b01};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1585,7 +1584,7 @@ ZEST_CASE(CorruptRoaringMaskRejected) {
     blob.relations.roaring_offsets = {0};
 
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
@@ -1615,20 +1614,22 @@ ZEST_CASE(RebindSwapsIdenticalBytes) {
     auto hash_before = shard.content_hash();
     const char* address_before = shard.bytes().data();
 
-    ZASSERT(shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
+    ZASSERT(shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
     ZASSERT(shard.bytes().data() != address_before);
     ZASSERT(shard.content_hash() == hash_before);
 
     // Byte identity is the caller's contract: only the size gates the
     // swap, so migration never touches the replacement's content pages.
-    std::string drift = bytes;
-    drift.back() = static_cast<char>(drift.back() ^ 1);
-    ZASSERT(shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(drift)));
+    auto drift = bytes;
+    drift.back() ^= std::byte{1};
+    ZASSERT(shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(as_chars(drift))));
 
     // A missing replacement or another size is rejected; the current
     // buffer stays.
     const char* kept = shard.bytes().data();
-    ZASSERT(!shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(bytes + "x")));
+    auto longer = bytes;
+    longer.push_back(std::byte{'x'});
+    ZASSERT(!shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(as_chars(longer))));
     ZASSERT(!shard.rebind(nullptr));
     ZASSERT(shard.bytes().data() == kept);
 }

@@ -49,7 +49,7 @@ struct TUIndexOptions {
 /// merged into the file's disk shard). Entries of a header entered several
 /// times are one union blob. The TU index blob travels worker→server over IPC
 /// and is dismantled into the three persistent layers on arrival.
-std::string build_tu_index(CompilationUnit& unit, const TUIndexOptions& options = {});
+std::vector<std::byte> build_tu_index(CompilationUnit& unit, const TUIndexOptions& options = {});
 
 /// The preamble variant: a preamble is a TU cut off at the preamble
 /// bound, and its index is the same TU index blob — persisted verbatim as
@@ -58,10 +58,10 @@ std::string build_tu_index(CompilationUnit& unit, const TUIndexOptions& options 
 /// the PCH-derived feature state spliced into focus-file results
 /// (document links, inactive regions, the open conditional stack at the
 /// bound, the diagnostics as published).
-std::string build_preamble_index(CompilationUnit& unit,
-                                 llvm::ArrayRef<DocumentLink> links,
-                                 llvm::ArrayRef<std::uint32_t> inactive_regions,
-                                 llvm::ArrayRef<std::uint8_t> open_conditionals,
-                                 llvm::StringRef diagnostics);
+std::vector<std::byte> build_preamble_index(CompilationUnit& unit,
+                                            llvm::ArrayRef<DocumentLink> links,
+                                            llvm::ArrayRef<std::uint32_t> inactive_regions,
+                                            llvm::ArrayRef<std::uint8_t> open_conditionals,
+                                            llvm::StringRef diagnostics);
 
 }  // namespace clice::index

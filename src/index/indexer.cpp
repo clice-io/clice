@@ -21,7 +21,7 @@ import :semantic.resolver;
 import :semantic.semantics;
 import :semantic.token_class;
 import :semantic.types;
-import :support.archive;
+import :support.bytes;
 import :support.logging;
 import :support.timer;
 
@@ -1695,7 +1695,7 @@ public:
 
     /// The TU index, into `blob`, which arrives holding what a preamble's
     /// own index adds on top of an ordinary build when `preamble` is set.
-    std::string build(TUIndexBlob blob, bool preamble) {
+    std::vector<std::byte> build(TUIndexBlob blob, bool preamble) {
         ScopedTimer semantics_timer;
         auto walked = walked_instantiations();
         // The focus-only shape is the one features share, cached on the
@@ -1930,14 +1930,13 @@ public:
                 continue;
             }
             auto bytes = write_shard(file_index, resolve, unit.file_content(path_fids[path_id]));
-            auto hash = llvm::xxh3_64bits(bytes);
+            auto hash = llvm::xxh3_64bits(as_chars(bytes));
             if(std::ranges::binary_search(known_variants, hash)) {
                 known_paths.set(path_id);
                 sections.push_back({path_id, hash, {}});
                 continue;
             }
-            sections.push_back(
-                {path_id, hash, std::vector<std::uint8_t>(bytes.begin(), bytes.end())});
+            sections.push_back({path_id, hash, std::move(bytes)});
         }
         std::vector<InstantiationSection> instantiation_sections;
         llvm::SmallVector<std::uint32_t> resolved_paths(llvm::make_first_range(resolved_by_path));
@@ -1947,10 +1946,9 @@ public:
             InstantiationSection section{.path_id = path_id};
             if(!file.walked.empty()) {
                 auto content = unit.file_content(path_fids[path_id]);
-                auto bytes = write_instantiations(file.walked,
-                                                  llvm::xxh3_64bits(content),
-                                                  static_cast<std::uint32_t>(content.size()));
-                section.blob.assign(bytes.begin(), bytes.end());
+                section.blob = write_instantiations(file.walked,
+                                                    llvm::xxh3_64bits(content),
+                                                    static_cast<std::uint32_t>(content.size()));
             }
             llvm::sort(file.skipped);
             file.skipped.erase(llvm::unique(file.skipped), file.skipped.end());
@@ -2014,7 +2012,7 @@ public:
         blob.instantiations = std::move(instantiation_sections);
 
         ScopedTimer pack_timer;
-        auto bytes = archive::encode(blob);
+        auto bytes = encode(blob);
 
         LOG_PERF("index_detail",
                  "op=build scope={} semantics_ms={:.2f} project_ms={:.2f} "
@@ -2120,16 +2118,16 @@ private:
 
 }  // namespace
 
-std::string build_tu_index(CompilationUnit& unit, const TUIndexOptions& options) {
+std::vector<std::byte> build_tu_index(CompilationUnit& unit, const TUIndexOptions& options) {
     Indexer indexer(unit, options);
     return indexer.build({}, false);
 }
 
-std::string build_preamble_index(CompilationUnit& unit,
-                                 llvm::ArrayRef<DocumentLink> links,
-                                 llvm::ArrayRef<std::uint32_t> inactive_regions,
-                                 llvm::ArrayRef<std::uint8_t> open_conditionals,
-                                 llvm::StringRef diagnostics) {
+std::vector<std::byte> build_preamble_index(CompilationUnit& unit,
+                                            llvm::ArrayRef<DocumentLink> links,
+                                            llvm::ArrayRef<std::uint32_t> inactive_regions,
+                                            llvm::ArrayRef<std::uint8_t> open_conditionals,
+                                            llvm::StringRef diagnostics) {
     // The preamble compile remaps the buffer truncated at the bound, so
     // the focus file's content is exactly the preamble text the PCH was
     // built from.

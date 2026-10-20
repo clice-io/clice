@@ -5262,6 +5262,48 @@ using ::kota::codec::bincode::detail::type_mismatch;
 using ::kota::codec::bincode::detail::unexpected_eof;
 }
 
+export namespace kota::codec::blob {
+using ::kota::codec::blob::Owned;
+using ::kota::codec::blob::Vec;
+using ::kota::codec::blob::alignment;
+using ::kota::codec::blob::from_bytes;
+using ::kota::codec::blob::measure;
+using ::kota::codec::blob::to_bytes;
+using ::kota::codec::blob::view;
+using ::kota::codec::blob::view_t;
+using ::kota::codec::blob::view_verified;
+}
+
+export namespace kota::codec::blob::detail {
+using ::kota::codec::blob::detail::Checker;
+using ::kota::codec::blob::detail::Header;
+using ::kota::codec::blob::detail::Kind;
+using ::kota::codec::blob::detail::Writer;
+using ::kota::codec::blob::detail::align_up;
+using ::kota::codec::blob::detail::arithmetic_t;
+using ::kota::codec::blob::detail::decode;
+using ::kota::codec::blob::detail::element_t;
+using ::kota::codec::blob::detail::field_count_v;
+using ::kota::codec::blob::detail::field_t;
+using ::kota::codec::blob::detail::fingerprint;
+using ::kota::codec::blob::detail::fingerprint_v;
+using ::kota::codec::blob::detail::for_each_index;
+using ::kota::codec::blob::detail::is_packed;
+using ::kota::codec::blob::detail::is_plain;
+using ::kota::codec::blob::detail::is_scalar_v;
+using ::kota::codec::blob::detail::is_string_v;
+using ::kota::codec::blob::detail::is_vec_v;
+using ::kota::codec::blob::detail::kind_of;
+using ::kota::codec::blob::detail::magic;
+using ::kota::codec::blob::detail::measure_part;
+using ::kota::codec::blob::detail::mix;
+using ::kota::codec::blob::detail::mix_byte;
+using ::kota::codec::blob::detail::mix_number;
+using ::kota::codec::blob::detail::needs_check;
+using ::kota::codec::blob::detail::part_alignment_v;
+using ::kota::codec::blob::detail::view_of;
+}
+
 export namespace kota::codec::debug {
 using ::kota::codec::debug::Formatter;
 using ::kota::codec::debug::MapWriter;

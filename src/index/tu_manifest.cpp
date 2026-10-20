@@ -7,11 +7,10 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.tu_manifest;
-import :support.archive;
 
 namespace clice::index {
 
-std::string serialize_manifest(const TUManifest& manifest) {
+std::vector<std::byte> serialize_manifest(const TUManifest& manifest) {
     TUManifestBlob blob;
     blob.format_version = index_format_version;
     blob.table_generation = manifest.table_generation;
@@ -61,7 +60,7 @@ std::string serialize_manifest(const TUManifest& manifest) {
         blob.instantiation_uses.push_back(use.use);
     }
 
-    return archive::encode(blob);
+    return encode(blob);
 }
 
 std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {

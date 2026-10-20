@@ -6,7 +6,7 @@ module clice;
 
 import :index.format;
 import :index.instantiation_shard;
-import :support.archive;
+import :support.bytes;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -39,8 +39,8 @@ InstantiationRecord call(std::uint32_t begin, index::SymbolHash target, index::S
     };
 }
 
-InstantiationShard make(llvm::StringRef bytes) {
-    return InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+InstantiationShard make(std::span<const std::byte> bytes) {
+    return InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
 }
 
 InstantiationShard write(const FileInstantiations& instantiations) {
@@ -59,7 +59,7 @@ InstantiationShard merge(const InstantiationShard& old,
                          llvm::function_ref<bool(const Producer&)> keep_producer = any_producer,
                          std::optional<index::AddedUse> added = std::nullopt) {
     auto bytes = index::merge_instantiations(old, keep, keep_producer, fresh, producer, added)
-                     .value_or(std::string());
+                     .value_or(std::vector<std::byte>());
     return make(bytes);
 }
 
@@ -296,7 +296,7 @@ ZEST_CASE(MisalignedBytesLoad) {
 }
 
 ZEST_CASE(CorruptBlobRejected) {
-    ZEXPECT(!InstantiationShard::from_bytes("not an archive").loaded());
+    ZEXPECT(!InstantiationShard::from_bytes("not a blob").loaded());
 
     index::InstantiationShardBlob blob;
     blob.format_version = index::index_format_version;
@@ -313,7 +313,7 @@ ZEST_CASE(CorruptBlobRejected) {
     blob.resolution_ends = {1};
     blob.resolution_records = {0};
     auto bytes_of = [&] {
-        return archive::encode(blob);
+        return index::encode(blob);
     };
     ZASSERT(make(bytes_of()).loaded());
 

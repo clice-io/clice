@@ -13,6 +13,7 @@ import :project.command_resolver;
 import :project.command_snapshot;
 import :project.project;
 import :project.save;
+import :support.bytes;
 import :support.logging;
 import :support.timer;
 
@@ -111,7 +112,7 @@ kota::task<index::IndexReport> save_project(Project& project,
         snapshot_bytes = snapshot.serialize(project, debt);
         if(snapshot_bytes) {
             snapshot_slot = blobs.size();
-            blobs.push_back({index::BlobKind::CommandSnapshot, "cdb", *snapshot_bytes});
+            blobs.push_back({index::BlobKind::CommandSnapshot, "cdb", copy_bytes(*snapshot_bytes)});
         }
     }
 
@@ -128,13 +129,14 @@ kota::task<index::IndexReport> save_project(Project& project,
     if(project.artifacts_dirty) {
         if(auto bytes = serialize_artifact_records(project, commands); !bytes.empty()) {
             artifacts_slot = blobs.size();
-            blobs.push_back({index::BlobKind::ArtifactRecords, "artifacts", std::move(bytes)});
+            blobs.push_back({index::BlobKind::ArtifactRecords, "artifacts", copy_bytes(bytes)});
         }
     }
     if(contexts.dirty) {
         if(!contexts.bytes.empty()) {
             contexts_slot = blobs.size();
-            blobs.push_back({index::BlobKind::ContextChoices, "contexts", contexts.bytes});
+            blobs.push_back(
+                {index::BlobKind::ContextChoices, "contexts", copy_bytes(contexts.bytes)});
         } else {
             contexts_ok = false;
         }

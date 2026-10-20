@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :index.database;
+import :support.bytes;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;
@@ -30,8 +31,8 @@ CacheStore open_store(TempDir& tmp, llvm::StringRef sub, bool read_only = false)
     return std::move(*store);
 }
 
-index::BlobDatabase::Blob blob(index::BlobKind kind, llvm::StringRef key, std::string bytes) {
-    return {kind, key.str(), std::move(bytes)};
+index::BlobDatabase::Blob blob(index::BlobKind kind, llvm::StringRef key, llvm::StringRef bytes) {
+    return {kind, key.str(), copy_bytes(bytes)};
 }
 
 /// Value sizes on the two LMDB layouts: large lands on overflow pages

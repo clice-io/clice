@@ -19,6 +19,7 @@ import :sched.index.pump;
 import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
+import :support.bytes;
 import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
@@ -65,11 +66,11 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     ZASSERT(compile());
 
     full_index = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(full_index.loaded());
 
     auto blob_path = dir.path("overlay.pch.idx");
-    dir.touch("overlay.pch.idx", index::build_preamble_index(*unit, {}, {}, {}, {}));
+    dir.touch("overlay.pch.idx", as_chars(index::build_preamble_index(*unit, {}, {}, {}, {})));
 
     kind = CompilationKind::Content;
     ZASSERT(compile());
@@ -90,7 +91,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     auto& entry = projections.entries[path_id];
     auto projection = std::make_shared<ASTProjection>();
     projection->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit)))));
     projection->pch_key = "key";
     entry.projection = std::move(projection);
     entry.current = true;
@@ -370,7 +371,7 @@ int main() { return 0; }
 )");
     ZASSERT(compile());
     full_index = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(full_index.loaded());
     dir.touch("main.cpp", sources.all_files.find("main.cpp")->second.content);
     merge_disk_index(dir.path("main.cpp"));
@@ -391,7 +392,7 @@ int main() { return 0; }
 )");
     ZASSERT(compile());
     full_index = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(full_index.loaded());
     merge_disk_index();
 
@@ -437,7 +438,7 @@ ZEST_CASE(PreviewFromDisk) {
     IndexInternals::plant_shard(
         project.index,
         path_id,
-        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
+        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
     ZASSERT(project.index.shard(path_id)->positions().text().empty());
     auto& symbol = project.index.edit(symbol_hash);
     symbol.name = "value";
@@ -478,7 +479,7 @@ ZEST_CASE(PreviewDropsLineEnd) {
     IndexInternals::plant_shard(
         project.index,
         path_id,
-        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
+        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
     project.index.edit(symbol_hash).reference_files.add(path_id.raw);
 
     auto references = disk_query.sites(symbol_hash, Fid{}, RelationKind::Reference);
@@ -568,7 +569,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     IndexInternals::plant_shard(
         project.index,
         header_id,
-        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
+        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
     project.index.edit(foo).reference_files.add(header_id.raw);
 
     auto def = index_query.first_site(foo, Fid{}, RelationKind::Definition);
@@ -593,7 +594,7 @@ int main() {{ gen(); return 0; }}
     ZASSERT(try_compile());
 
     auto index = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(index.loaded());
     for(std::uint32_t i = 0; i < index.path_count(); i += 1) {
         ZEXPECT(index.path(i) != synthesized);
@@ -603,7 +604,7 @@ int main() {{ gen(); return 0; }}
 }
 
 ZEST_CASE(UnreadableBlobCleared) {
-    dir.touch("junk.pch.idx", "not an archive");
+    dir.touch("junk.pch.idx", "not a blob");
 
     PCHState st;
     st.index_path = dir.path("junk.pch.idx");

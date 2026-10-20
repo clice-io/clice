@@ -7,7 +7,7 @@ module clice:unittests.utils.tu_index_blob;
 import :index.format;
 import :index.symbol;
 import :index.tu_index;
-import :support.archive;
+import :support.bytes;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -70,26 +70,23 @@ inline index::TUIndexBlob tu_index_blob(const index::TUIndex& view) {
         return true;
     });
     for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
-        auto bytes = view.section_blob(i);
-        blob.sections.push_back({view.section_path(i),
-                                 view.section_hash(i),
-                                 std::vector<std::uint8_t>(bytes.begin(), bytes.end())});
+        blob.sections.push_back(
+            {view.section_path(i), view.section_hash(i), copy_bytes(view.section_blob(i))});
     }
     for(std::uint32_t i = 0; i < view.instantiation_count(); i += 1) {
-        auto bytes = view.instantiation_blob(i);
         auto skipped = view.skipped_instantiations(i);
         blob.instantiations.push_back({
             view.instantiation_path(i),
-            std::vector<std::uint8_t>(bytes.begin(), bytes.end()),
+            copy_bytes(view.instantiation_blob(i)),
             {skipped.begin(), skipped.end()}
         });
     }
     return blob;
 }
 
-/// The blob's bytes, as a worker sends them.
+/// The blob's bytes, as the readers take them.
 inline std::string tu_index_bytes(const index::TUIndexBlob& blob) {
-    return archive::encode(blob);
+    return std::string(as_chars(index::encode(blob)));
 }
 
 }  // namespace clice::testing

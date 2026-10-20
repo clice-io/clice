@@ -22,6 +22,7 @@ module clice;
 
 import :index.database;
 import :index.format;
+import :support.bytes;
 import :support.logging;
 import :support.text;
 import :vfs.cache_store;
@@ -263,7 +264,7 @@ public:
         for(auto& blob: puts) {
             auto encoded = encode_key(blob.kind, blob.key);
             auto mk = to_val(encoded);
-            auto mv = to_val(blob.bytes);
+            auto mv = to_val(as_chars(blob.bytes));
             if(int rc = mdb_put(wtxn, dbi, &mk, &mv, 0)) {
                 mdb_txn_abort(wtxn);
                 return fail_all(rc, "put");

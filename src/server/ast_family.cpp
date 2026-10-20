@@ -17,6 +17,7 @@ import :server.ast_family;
 import :server.context_service;
 import :server.editor_context;
 import :support.anomaly;
+import :support.bytes;
 import :support.logging;
 import :support.timer;
 import :syntax.dependency_graph;
@@ -1349,8 +1350,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                                   read.error().message())));
             }
         } else if(!index_data.empty()) {
-            next->index = std::make_shared<index::TUIndex>(
-                index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(index_data)));
+            next->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
+                llvm::MemoryBuffer::getMemBufferCopy(as_chars(index_data))));
         }
 
         LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());

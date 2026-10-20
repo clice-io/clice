@@ -20,6 +20,7 @@ import :sched.families.turun;
 import :sched.graph;
 import :sched.index.pending_table;
 import :sched.index.pump;
+import :support.bytes;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;
@@ -221,9 +222,9 @@ inline IndexedTU index_file(TempDir& tmp,
         return {};
     }
     IndexedTU result;
-    result.data = index::build_tu_index(
+    result.data = std::string(as_chars(index::build_tu_index(
         *unit,
-        {.known_variants = known, .known_instantiations = known_instantiations});
+        {.known_variants = known, .known_instantiations = known_instantiations})));
     auto view = index::TUIndex::from_bytes(result.data);
     if(!view.loaded()) {
         return {};
@@ -242,12 +243,12 @@ inline void open_store(TempDir& tmp, Project& project) {
 /// Plant a blob between sessions (no fixture may be alive — the writer
 /// lock), as the residue of a crash or a foreign writer.
 inline void
-    inject_blob(TempDir& tmp, index::BlobKind kind, llvm::StringRef key, std::string bytes) {
+    inject_blob(TempDir& tmp, index::BlobKind kind, llvm::StringRef key, llvm::StringRef bytes) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ZASSERT(store);
     auto db = index::open_lmdb_database(*store, "");
     ZASSERT(db != nullptr);
-    index::BlobDatabase::Blob blob{kind, key.str(), std::move(bytes)};
+    index::BlobDatabase::Blob blob{kind, key.str(), copy_bytes(bytes)};
     ZASSERT(db->write(blob, {}).empty());
 }
 

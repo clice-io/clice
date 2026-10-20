@@ -10,7 +10,7 @@ import :index.project_index;
 import :index.tu_manifest;
 import :project.project;
 import :sched.index.pending_table;
-import :support.archive;
+import :support.bytes;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -36,7 +36,7 @@ std::string planted_blob(llvm::StringRef text, std::uint64_t variant) {
     blob.variants = {variant};
     blob.symbol_hashes = {111};
     blob.relation_offsets = {0, 0};
-    return archive::encode(blob);
+    return std::string(as_chars(index::encode(blob)));
 }
 
 ZEST_SUITE(ProjectIndexLoad) {

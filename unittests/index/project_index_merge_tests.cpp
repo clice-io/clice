@@ -52,7 +52,7 @@ ZEST_CASE(MergeRejectsGarbage) {
     ZASSERT(project.index.shard_count() == 0);
     ZASSERT(project.index.symbol_count() == 0u);
 
-    std::string garbage = "definitely not an archive, but long enough to try";
+    std::string garbage = "definitely not a blob, but long enough to try";
     ZASSERT(!merge(garbage));
 
     ZASSERT(project.index.shard_count() == 0);

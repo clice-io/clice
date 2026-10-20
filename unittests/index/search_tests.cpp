@@ -11,6 +11,7 @@ import :index.symbol;
 import :index.symbol_query;
 import :index.tu_index;
 import :semantic.symbol;
+import :support.bytes;
 import :unittests.utils.index_query_tester;
 import :vfs.ids;
 
@@ -281,7 +282,7 @@ void open_buffers(CountingSessions& sessions, int buffers) {
         add_focus(std::format("main{}.cpp", buffer), text);
         ZASSERT(compile());
         sessions.tables.push_back(index::TUIndex::from_buffer(
-            llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit))));
+            llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit)))));
     }
 }
 

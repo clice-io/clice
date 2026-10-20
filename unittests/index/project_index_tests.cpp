@@ -9,6 +9,7 @@ import :index.indexer;
 import :index.project_index;
 import :index.shard;
 import :index.tu_index;
+import :support.bytes;
 import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
@@ -21,13 +22,13 @@ namespace {
 
 ZEST_SUITE(ProjectIndex, Tester) {
 
-std::string serialized;
+std::vector<std::byte> serialized;
 
 /// Build the current unit's TU index and return the zero-copy reader the
 /// merge path consumes; `serialized` keeps the bytes alive.
 index::TUIndex build_view() {
     serialized = index::build_tu_index(*unit);
-    return index::TUIndex::from_bytes(serialized);
+    return index::TUIndex::from_bytes(as_chars(serialized));
 }
 
 index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRef name) {
@@ -128,8 +129,8 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     )");
     definer.kind = CompilationKind::Whole;
     ZASSERT(definer.compile());
-    std::string definer_bytes = index::build_tu_index(*definer.unit);
-    auto definer_view = index::TUIndex::from_bytes(definer_bytes);
+    auto definer_bytes = index::build_tu_index(*definer.unit);
+    auto definer_view = index::TUIndex::from_bytes(as_chars(definer_bytes));
     ZASSERT(definer_view.loaded());
     project.merge_symbols(definer_view, intern_paths(definer_view, pool));
 
@@ -155,8 +156,8 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     )");
     mover.kind = CompilationKind::Whole;
     ZASSERT(mover.compile());
-    std::string mover_bytes = index::build_tu_index(*mover.unit);
-    auto mover_view = index::TUIndex::from_bytes(mover_bytes);
+    auto mover_bytes = index::build_tu_index(*mover.unit);
+    auto mover_view = index::TUIndex::from_bytes(as_chars(mover_bytes));
     ZASSERT(mover_view.loaded());
     project.merge_symbols(mover_view, intern_paths(mover_view, pool));
     auto moved = pool.find(Spelling::absolute(mover_view.path(mover_view.path_count() - 1)));
@@ -424,7 +425,7 @@ ZEST_CASE(TableRoundTripWithRealMerge) {
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(buf, pins));
+    ZASSERT(loaded.load_table(as_chars(buf), pins));
 
     auto symbol = find_symbol(loaded, "global_value");
     ZASSERT(symbol != 0);
@@ -505,13 +506,13 @@ ZEST_CASE(TableColumnsRoundTrip) {
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(first, pins));
+    ZASSERT(loaded.load_table(as_chars(first), pins));
     check(loaded, fresh);
 
     auto second = loaded.serialize_table();
     clice::FileTable again;
     index::ProjectIndex reloaded{again};
-    ZASSERT(reloaded.load_table(second, pins));
+    ZASSERT(reloaded.load_table(as_chars(second), pins));
     check(reloaded, again);
 }
 
@@ -539,7 +540,7 @@ ZEST_CASE(WidePathIds) {
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(bytes, pins));
+    ZASSERT(loaded.load_table(as_chars(bytes), pins));
     auto identity = loaded.find_symbol(10);
     ZASSERT(identity);
     ZEXPECT(fresh.find(Spelling::absolute("/proj/0.h")) == Fid{identity->file});

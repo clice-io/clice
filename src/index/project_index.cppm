@@ -513,7 +513,7 @@ public:
     /// pin of every manifest's generation, and the search index's
     /// generation and pending entries. The changed entries are held aside until
     /// rebase or restore_unwritten says whether the bytes were persisted.
-    std::string serialize_table();
+    std::vector<std::byte> serialize_table();
 
     /// The bytes serialize_table produced were persisted: they become the
     /// base, and the entries they hold leave the changed set. Entries changed
@@ -700,7 +700,7 @@ private:
     std::optional<SearchBuildChanges> changed_during_search_build;
 
     /// A rebuilt search blob no batch has committed yet.
-    std::string search_bytes;
+    std::vector<std::byte> search_bytes;
 
     /// Blobs mutated since the last save, plus whether the project table
     /// (symbols, FileVersion table) changed.

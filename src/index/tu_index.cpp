@@ -12,17 +12,17 @@ import :index.instantiation_shard;
 import :index.shard;
 import :index.tu_index;
 import :semantic.token_class;
-import :support.archive;
+import :support.bytes;
 import :support.logging;
 
 namespace clice::index {
 
 namespace {
 
-using Root = archive::Archived<TUIndexBlob>;
+using Root = kota::codec::blob::view_t<TUIndexBlob>;
 
 const Root& view_of(llvm::StringRef data) {
-    return archive::view<TUIndexBlob>(data);
+    return kota::codec::blob::view_verified<TUIndexBlob>(as_bytes(data));
 }
 
 SymbolView symbol_at(const Root& root, std::uint32_t entry) {
@@ -212,8 +212,7 @@ std::uint64_t TUIndex::section_hash(std::uint32_t i) const {
 }
 
 llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {
-    auto& blob = view_of(data).sections[i].blob;
-    return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
+    return as_chars(view_of(data).sections[i].blob);
 }
 
 std::optional<std::uint32_t> TUIndex::section_of(std::uint32_t path_id) const {
@@ -275,8 +274,7 @@ std::uint32_t TUIndex::instantiation_path(std::uint32_t i) const {
 }
 
 llvm::StringRef TUIndex::instantiation_blob(std::uint32_t i) const {
-    auto& blob = view_of(data).instantiations[i].blob;
-    return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
+    return as_chars(view_of(data).instantiations[i].blob);
 }
 
 llvm::ArrayRef<std::uint64_t> TUIndex::skipped_instantiations(std::uint32_t i) const {
@@ -398,7 +396,7 @@ std::vector<DocumentLink> TUIndex::links() const {
         auto& entry = entries[i];
         links.push_back(DocumentLink{
             .range = entry.range,
-            .target = entry.target.str(),
+            .target = std::string(entry.target),
         });
     }
     return links;

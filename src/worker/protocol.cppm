@@ -197,7 +197,7 @@ struct CompileResult {
     std::int64_t build_at = 0;
     std::vector<DepFile> deps;
     /// Serialized TUIndex of the focus file.
-    std::string tu_index_data;
+    std::vector<std::byte> tu_index_data;
 
     /// See TURunResult::index_in_file.
     bool index_in_file = false;
@@ -435,7 +435,7 @@ struct TURunResult {
     std::vector<LocatedMessage> errors;
 
     /// Serialized TUIndex, merged by the master (plan product `index`).
-    std::string tu_index_data;
+    std::vector<std::byte> tu_index_data;
 
     /// The index went to index_output_path instead of tu_index_data.
     bool index_in_file = false;

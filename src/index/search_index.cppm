@@ -72,7 +72,7 @@ struct SearchSnapshot {
 
 /// Encode the search blob for a snapshot; symbols of other kinds or
 /// without a name are left out.
-std::string build_search_blob(const SearchSnapshot& snapshot);
+std::vector<std::byte> build_search_blob(const SearchSnapshot& snapshot);
 
 /// How a symbol answers a query's name pattern.
 struct NameRank {

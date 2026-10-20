@@ -10,7 +10,7 @@ import :index.columns;
 import :index.format;
 import :index.shard;
 import :semantic.token_class;
-import :support.archive;
+import :support.bytes;
 import :support.logging;
 import :syntax.position;
 
@@ -30,7 +30,7 @@ enum class MaskEncoding : std::uint8_t {
 
 namespace {
 
-using Root = archive::Archived<ShardBlob>;
+using Root = kota::codec::blob::view_t<ShardBlob>;
 
 MaskEncoding encoding_of(std::uint32_t variant_count) {
     if(variant_count <= 1) {
@@ -52,7 +52,7 @@ MaskEncoding encoding_of(std::uint32_t variant_count) {
 }
 
 const Root& view_of(llvm::StringRef bytes) {
-    return archive::view<ShardBlob>(bytes);
+    return kota::codec::blob::view_verified<ShardBlob>(as_bytes(bytes));
 }
 
 MaskEncoding encoding_of(const Root& root) {
@@ -60,7 +60,9 @@ MaskEncoding encoding_of(const Root& root) {
 }
 
 /// The mask of `entry` in an encoding of up to 64 variants.
-std::uint64_t mask_bits(MaskEncoding encoding, const ArchivedRanges& columns, std::uint32_t entry) {
+std::uint64_t mask_bits(MaskEncoding encoding,
+                        const RangeColumnsView& columns,
+                        std::uint32_t entry) {
     switch(encoding) {
         case MaskEncoding::Single: return 1;
         case MaskEncoding::U8: return columns.masks8[entry];
@@ -81,7 +83,7 @@ struct LiveFilter {
     MaskEncoding encoding;
     std::uint64_t bits;
     const Bitmap* big;
-    const ArchivedRanges* columns;
+    const RangeColumnsView* columns;
 
     bool operator()(std::uint32_t entry) const {
         if(all) {
@@ -99,7 +101,7 @@ namespace {
 /// The occurrence table: each occurrence's range and the symbol it names.
 struct OccurrenceTable {
     const Root& root;
-    const ArchivedRanges& columns;
+    const RangeColumnsView& columns;
     IdColumnView symbols;
 
     static OccurrenceTable of(const Root& root) {
@@ -133,7 +135,7 @@ bool fits_extent_columns(LocalSourceRange range, LocalSourceRange extent) {
 /// stored order, placed by the payload counts before each block.
 struct RelationTable {
     const Root& root;
-    const ArchivedRanges& columns;
+    const RangeColumnsView& columns;
     IdColumnView target_ranks;
     IdColumnView extent_ranks;
     IdColumnView targets;
@@ -750,7 +752,7 @@ bool Shard::has_dead_variants() const {
     return loaded() && !live.all;
 }
 
-LiveFilter Shard::live_filter(const ArchivedRanges& columns) const {
+LiveFilter Shard::live_filter(const RangeColumnsView& columns) const {
     return {
         .all = live.all,
         .encoding = encoding_of(view_of(buffer->getBuffer())),
@@ -1035,7 +1037,7 @@ bool mask_empty(const MaskT& mask) {
 /// is skipped by the caller).
 template <typename MaskT>
 MaskT remap_mask(MaskEncoding encoding,
-                 const ArchivedRanges& columns,
+                 const RangeColumnsView& columns,
                  std::uint32_t entry,
                  llvm::ArrayRef<std::int64_t> id_map) {
     MaskT result{};
@@ -1214,7 +1216,7 @@ ContentInfo content_info_of(const Root& root) {
         .long_line_lengths = copy(root.long_line_lengths),
         .crlf_lines = copy(root.crlf_lines),
         .utf8_lines = copy(root.utf8_lines),
-        .utf8_text = root.utf8_text.str(),
+        .utf8_text = std::string(root.utf8_text),
         .utf8_text_ends = copy(root.utf8_text_ends),
     };
 }
@@ -1348,10 +1350,10 @@ struct SideWriter {
 /// (range encoding, id width, mask encoding) is made here, from
 /// the data, so equal inputs produce equal bytes.
 template <typename MaskT>
-std::string emit_blob(const MergedEntries<MaskT>& merged,
-                      const llvm::DenseMap<SymbolHash, SymbolInfo>& locals,
-                      std::vector<VariantHash> variants,
-                      const ContentInfo& content) {
+std::vector<std::byte> emit_blob(const MergedEntries<MaskT>& merged,
+                                 const llvm::DenseMap<SymbolHash, SymbolInfo>& locals,
+                                 std::vector<VariantHash> variants,
+                                 const ContentInfo& content) {
     // The locals the entries name; their parents join the symbol table,
     // which their parent column indexes.
     auto symbols = referenced_symbols(merged);
@@ -1495,16 +1497,16 @@ std::string emit_blob(const MergedEntries<MaskT>& merged,
     write_ids(blob.relation_target_ranks, target_ranks, targets.size() + 1);
     write_ids(blob.relation_extent_ranks, extent_ranks, blob.relation_extent_heads.size() + 1);
 
-    return archive::encode(blob);
+    return encode(blob);
 }
 
 template <typename MaskT>
-std::string write_merged(const Root* old_root,
-                         llvm::ArrayRef<std::int64_t> id_map,
-                         llvm::ArrayRef<Shard> fresh,
-                         std::uint32_t fresh_base,
-                         std::vector<VariantHash> variants,
-                         const ContentInfo& content) {
+std::vector<std::byte> write_merged(const Root* old_root,
+                                    llvm::ArrayRef<std::int64_t> id_map,
+                                    llvm::ArrayRef<Shard> fresh,
+                                    std::uint32_t fresh_base,
+                                    std::vector<VariantHash> variants,
+                                    const ContentInfo& content) {
     MergedEntries<MaskT> merged;
 
     // Occurrences: concatenate every fresh blob's entries (each marked with
@@ -1622,9 +1624,10 @@ std::string write_merged(const Root* old_root,
 
 }  // namespace
 
-std::string write_shard(const FileIndex& file_index,
-                        llvm::function_ref<std::optional<SymbolView>(SymbolHash)> symbols,
-                        llvm::StringRef content) {
+std::vector<std::byte>
+    write_shard(const FileIndex& file_index,
+                llvm::function_ref<std::optional<SymbolView>(SymbolHash)> symbols,
+                llvm::StringRef content) {
     // Canonicalize straight from the in-memory entries: sorted, deduplicated.
     // MaskT is irrelevant for a single variant (no mask columns) — use the
     // cheap one.
@@ -1660,9 +1663,9 @@ std::string write_shard(const FileIndex& file_index,
     return emit_blob(merged, locals, {}, content_info_of(content));
 }
 
-std::string merge_shards(const Shard& old,
-                         llvm::ArrayRef<VariantHash> keep,
-                         llvm::ArrayRef<Shard> fresh) {
+std::vector<std::byte> merge_shards(const Shard& old,
+                                    llvm::ArrayRef<VariantHash> keep,
+                                    llvm::ArrayRef<Shard> fresh) {
     auto old_variants = old.variants();
 
     // old-id -> new-id; -1 drops the variant.

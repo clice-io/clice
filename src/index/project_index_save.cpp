@@ -12,6 +12,7 @@ import :index.project_index;
 import :index.search_index;
 import :index.shard;
 import :index.tu_manifest;
+import :support.bytes;
 import :support.logging;
 import :support.timer;
 
@@ -121,10 +122,10 @@ kota::task<> ProjectIndex::rebuild_search(SearchRebuild rebuild) {
     changed_during_search_build.emplace();
     auto finished = llvm::make_scope_exit([&] { changed_during_search_build.reset(); });
 
-    std::string bytes;
+    std::vector<std::byte> bytes;
     co_await kota::queue([&] { bytes = build_search_blob(snapshot); });
     SearchIndex built;
-    if(!built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes))) {
+    if(!built.load(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)))) {
         LOG_ERROR("The rebuilt search index does not load; keeping the previous one");
         co_return;
     }
@@ -178,7 +179,8 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
             continue;
         }
         auto bytes = merge_shards(shard, live, {});
-        auto replacement = Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+        auto replacement =
+            Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
         assert(replacement.loaded() && "a freshly written shard blob must verify");
         shard = std::move(replacement);
         dirty_shards.insert(path_id);
@@ -220,7 +222,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
             continue;
         }
         auto replacement =
-            InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(*bytes));
+            InstantiationShard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(*bytes)));
         assert(replacement.loaded() && "a freshly written instantiation blob must verify");
         held = std::move(replacement);
         dirty_instantiations.insert(path_id);
@@ -248,14 +250,15 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     for(auto path_id: dirty_shards) {
         auto it = shards.find(path_id);
         assert(it != shards.end() && "dirty shards stay resident until retirement");
-        blobs.push_back({BlobKind::Shard, key_of(path_id), it->second.bytes().str()});
+        blobs.push_back({BlobKind::Shard, key_of(path_id), copy_bytes(it->second.bytes())});
         batch.shard_ids.push_back(path_id);
     }
     for(auto path_id: dirty_instantiations) {
         auto it = instantiations.find(path_id);
         assert(it != instantiations.end() &&
                "dirty instantiation shards stay resident until retirement");
-        blobs.push_back({BlobKind::InstantiationShard, key_of(path_id), it->second.bytes().str()});
+        blobs.push_back(
+            {BlobKind::InstantiationShard, key_of(path_id), copy_bytes(it->second.bytes())});
         batch.instantiation_ids.push_back(path_id);
     }
 
@@ -384,7 +387,8 @@ void ProjectIndex::finish_save(SaveBatch& batch, llvm::ArrayRef<std::uint32_t> f
     // The entries the committed blob holds now read from it; a failed project
     // table write keeps them aside for the retry.
     if(batch.table_slot) {
-        rebase(llvm::MemoryBuffer::getMemBufferCopy(batch.blobs[*batch.table_slot].bytes));
+        rebase(
+            llvm::MemoryBuffer::getMemBufferCopy(as_chars(batch.blobs[*batch.table_slot].bytes)));
     } else if(batch.had_table) {
         restore_unwritten();
     }

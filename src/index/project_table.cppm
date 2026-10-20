@@ -9,7 +9,6 @@ import :index.format;
 import :index.symbol;
 import :semantic.symbol;
 import :semantic.token_class;
-import :support.archive;
 import :support.bitmap;
 import :vfs.ids;
 
@@ -29,7 +28,7 @@ struct ProjectTable {
 
     std::unique_ptr<llvm::MemoryBuffer> buffer;
 
-    const archive::Archived<Blob>* columns = nullptr;
+    const kota::codec::blob::view_t<Blob>* columns = nullptr;
 
     IdColumnView parents;
 
@@ -47,7 +46,7 @@ struct ProjectTable {
         return columns->symbol_hashes;
     }
 
-    const archive::Vec<archive::Vec<char>>& paths() const {
+    const kota::codec::blob::Vec<kota::codec::blob::Vec<char>>& paths() const {
         return columns->paths;
     }
 
@@ -167,7 +166,7 @@ struct ProjectTable {
 
     /// Bind the columns of a blob verify_root accepted, checking they line
     /// up.
-    std::expected<void, llvm::StringRef> bind(const archive::Archived<Blob>& root);
+    std::expected<void, llvm::StringRef> bind(const kota::codec::blob::view_t<Blob>& root);
 };
 
 }  // namespace clice::index

@@ -109,7 +109,7 @@ public:
     struct Blob {
         BlobKind kind;
         std::string key;
-        std::string bytes;
+        std::vector<std::byte> bytes;
     };
 
     /// Persist `puts` in order, then delete `removes`. Atomicity is

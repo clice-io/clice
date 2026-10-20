@@ -7,6 +7,7 @@ module clice;
 import :index.database;
 import :index.format;
 import :project.project;
+import :support.bytes;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -71,7 +72,9 @@ ZEST_CASE(StaleFormatDropsPch) {
         auto pos = artifacts.find(current);
         ZASSERT(pos != std::string::npos);
         artifacts.replace(pos, current.size(), stale);
-        index::BlobDatabase::Blob blob{index::BlobKind::ArtifactRecords, "artifacts", artifacts};
+        index::BlobDatabase::Blob blob{index::BlobKind::ArtifactRecords,
+                                       "artifacts",
+                                       copy_bytes(artifacts)};
         ZASSERT(f.project.database->write(blob, {}).empty());
     }
 
@@ -184,7 +187,9 @@ ZEST_CASE(HeaderModesOfOlderRecords) {
             artifacts.substr(hash, hash_end - hash));
         IndexerFixture f;
         open_store(tmp, f.project);
-        index::BlobDatabase::Blob blob{index::BlobKind::ArtifactRecords, "artifacts", older};
+        index::BlobDatabase::Blob blob{index::BlobKind::ArtifactRecords,
+                                       "artifacts",
+                                       copy_bytes(older)};
         ZASSERT(f.project.database->write(blob, {}).empty());
     }
 
