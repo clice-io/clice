@@ -57,7 +57,7 @@ Two derived views matter:
 - **Rendering**: the same structured configuration can be rendered on demand as a driver command line (for probing or for handing agents a runnable command) or combined with probe results into frontend arguments. Rendering normalizes alias spellings, so identity is not disturbed by cosmetic variation in the CDB.
 - **Entry identity**: the frontend-relevant view of the configuration, together with the input's slot position and working directory, is hashed into the entry's **identity hash** — the stable identity used for CDB diffing, index snapshot validation, and pinned context choices.
 
-The classification also buys toolchain probing cache efficiency. Probing requires actually invoking the compiler driver (e.g., running `g++ -dumpmachine` or `clang++ -###`), typically taking 100ms or more. The probing result depends only on the driver and probe-relevant options -- user-content options (`-I`, `-D`) do not affect the system paths or target triple output by the driver. Therefore, regardless of what different `-I` paths files may have, files sharing the probe-relevant view share one probing result. In real projects, tens of thousands of files typically collapse to a few dozen distinct probe keys.
+The classification also buys toolchain probing cache efficiency. Probing requires actually invoking the compiler driver (`g++ -E -dM -v`), which takes from a few milliseconds to a hundred or more. The probing result depends only on the driver and probe-relevant options -- user-content options (`-I`, `-D`) do not affect the system paths or target triple output by the driver. Therefore, regardless of what different `-I` paths files may have, files sharing the probe-relevant view share one probing result. In real projects, tens of thousands of files typically collapse to a few dozen distinct probe keys.
 
 ### Compilation Database
 
@@ -104,7 +104,7 @@ Configuration granularity is preserved throughout the pipeline: search-path extr
 
 `Toolchain` converts driver-level commands into cc1 arguments. Its design centers on two core capabilities:
 
-**Compiler family identification.** `Toolchain` identifies the compiler family from the executable name -- the `CompilerFamily` enum includes GCC, Clang, MSVC, ClangCL, NVCC, Intel, and Zig. The identification logic handles various naming variants: version suffixes (`clang++-17`), architecture prefixes (`arm-none-eabi-g++`), and Windows `.exe` suffixes. The family determines which probing strategy is used.
+**Compiler family identification.** `Toolchain` identifies the compiler family from the executable name -- the `CompilerFamily` enum includes GCC, Clang, MSVC, ClangCL, NVCC, Intel, and Zig. The identification logic handles various naming variants: version suffixes (`clang++-17`), architecture prefixes (`arm-none-eabi-g++`), and Windows `.exe` suffixes. The name decides only what speaks another language: `cl` and `clang-cl`, nvcc, and zig's two-word driver. Whether a GCC-style driver is GCC or clang underneath is told by its own answer to the probe, never by its name: `/usr/bin/c++` is clang on macOS, `emcc` and `zig cc` are clang.
 
 **Caching strategy.** The cache has two layers. The **probe layer** caches raw driver invocation results, keyed by the probe-relevant shape of the command (driver, probe-relevant flags, input kind — `.c` and `.cpp` may trigger different driver rules; the working directory joins the key when the command is sensitive to it). The **synthesis layer** turns probe results into the per-input-kind flag sets that command rendering consumes. Failed probes are cached too (negative caching), but transient failures are retried after a cooldown rather than being remembered forever.
 
@@ -141,15 +141,20 @@ The parsing process also recognizes the precompiled headers CMake passes to cc1 
 
 Different compiler families use different probing strategies:
 
-**GCC**: A two-step process. First, call the GCC driver to obtain two key pieces of information -- the target triple (`-dumpmachine`) and the install path (`-print-search-dirs`). Second, inject this information into Clang's driver (`--target=` and `--gcc-install-dir=`), letting Clang's driver emulate GCC's behavior and produce cc1 arguments. This allows the Clang frontend to correctly locate GCC's standard library and system headers.
+**GCC-style drivers** (gcc, clang, Apple clang, zig, emcc, cross and bare-metal GCC): the driver is asked once to preprocess an empty file of the input's language with the command's own flags, verbosely and printing its macros (`-E -dM -v`). The answer tells everything clice needs:
 
-**Clang / Zig**: Invoke the driver with the `-###` option, which prints the complete cc1 command line without actually executing compilation. Parse the first cc1 line from the output. For Zig, the driver path consists of two parts (`zig cc` or `zig c++`), requiring special handling during probing.
+- The job the driver runs. A clang job is clice's cc1 command as it stands. A GCC job comes with GCC's target, its header search list, and the options GCC's driver added from its configuration and specs (target defaults such as `-march=armv7-a+fp -mthumb`, macros such as `-D_REENTRANT`, hardening such as `-fstack-protector-strong`). Clang's own driver then builds the cc1 command pinned to that target, with none of its own system headers (`-nostdinc`), those options and the command's flags; GCC's search list follows in GCC's order, with clang's builtin headers just before GCC's own private ones (`lib/gcc/<target>/<version>/include`), so clang's win for every header both have while GCC's still serve the rest (`omp.h`, `quadmath.h`).
+- The language standard, read from `__cplusplus` or `__STDC_VERSION__`, which fills in `-std` when the command names none: GCC 15 compiles C as C23, Apple clang C++ as C++14.
 
-> The external driver's version may be newer than clice's embedded LLVM version, and its cc1 output may contain options that clice does not recognize. During parsing, unknown options are silently dropped to ensure compatibility.
+Asked with the command's own flags, the driver answers for the command: a flag that switches one of its defaults off (`-fno-stack-protector`), a `--sysroot` or a `--specs` file shows in its answer. CPU and ABI names clang does not know (GCC's `-mtune=intel`, `-mabi=lp64` on Darwin) are dropped from the cc1 command, and GCC's two-core form `-mcpu=cortex-a72.cortex-a53` keeps its first core.
 
 **MSVC / ClangCL**: Switch Clang's driver to MSVC-compatible mode via the `--driver-mode=cl` directive, then use Clang's driver to obtain cc1 arguments.
 
-After probing completes, the temporary probe file's path and module-output-related flags (which reference the deleted temp file) are stripped from the results. If clice's resource dir differs from what the probe returned, all related paths are replaced to ensure the frontend uses builtin headers from a matching version.
+**nvcc**: nvcc's dry run names the CUDA root, the host compiler and the macros nvcc defines; the host compiler is asked as any GCC-style driver, and clang's driver builds the cc1 command in CUDA mode on top of the host's answer.
+
+> The external driver's version may be newer than clice's embedded LLVM version, and its cc1 output may contain options that clice does not recognize. During parsing, unknown options are silently dropped to ensure compatibility.
+
+After probing completes, the temporary probe file's path and module-output-related flags (which reference the deleted temp file) are stripped from the results. If clice's resource dir differs from what the probe returned, all related paths are replaced to ensure the frontend uses builtin headers from a matching version; so is any other directory of clang builtin headers a search path names (another clang's `-isystem <clang>/lib/clang/<version>/include`, zig's `lib/include`).
 
 **Startup warm-up.** During the dependency scanning phase at server startup, all unique toolchain cache keys are collected and probed in parallel. Pipe draining and process waiting for probe subprocesses also run concurrently to avoid deadlocks from full pipes. Once warm-up completes, all subsequent toolchain queries hit the cache.
 
@@ -175,11 +180,15 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
   If the language server's header search order differs from the actual compiler's, `#include` may resolve to different files -- when identically named headers exist in different directories, search order determines which one is used. The semantics of `#include_next` depend even more directly on the deduplication result of search directories. Strict matching ensures that the language server sees exactly the same code as the compiler.
 
-- **Why does GCC probing use a two-step process instead of directly parsing GCC's `-v` output?**
+- **Why does clice parse as clang even for a GCC command?**
 
-  The Clang frontend needs GCC's target triple and install path to correctly locate GCC's standard library headers. Directly parsing GCC's `-v` output is feasible but would introduce additional text parsing logic that is fragile across different GCC versions with varying output formats. By injecting the information into Clang's driver via `--target=` and `--gcc-install-dir=`, Clang itself handles the search path assembly, which is more reliable.
+  The predefined macros that name the compiler stay clang's: `__clang__` is defined and `__GNUC__` is 4 whichever GCC built the project. Taking GCC's whole macro set would send clang down the branches code keeps for GCC alone, which use GCC-only builtins and extensions clang cannot parse, and hundreds of GCC's macros differ from clang's only in spelling. What does follow the real compiler is everything that describes the build rather than the compiler: the target and its defaults, the header search list, the language standard, and the macros GCC's configuration adds.
 
-- **Why is compiler family identification based on executable filename rather than path resolution?**
+- **Why ask the driver to preprocess instead of `-###`?**
+
+  One run answers every question: clang's job, GCC's search list and target, and the predefined macros that name the default language standard, which no job line shows (the standard is the compiler's default, not a flag). The driver's name cannot tell clang from GCC; its answer can.
+
+- **Why is the driver invoked by the name the command uses rather than its resolved path?**
 
   Compiler driver behavior is affected by the name used to invoke it. For example, `/usr/bin/clang++` is typically a symlink to `/usr/lib/llvm-20/bin/clang`, but invoking it as `clang++` automatically enables C++ mode and links C++ libraries. Using `realpath` to resolve to the actual path before identification would lose the semantic information carried by the invocation name. Similarly, if `arm-none-eabi-g++` were resolved to some generic GCC binary path, the cross-compilation context would be lost.
 
@@ -193,7 +202,9 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
 - **Only the editor's saves add files to the build.** A source that appears on disk any other way — a checkout, a copy in a file manager, a generator — and that no database lists borrows a command for the editor but stays outside the build (not indexed, providing no module, hosting no header) until it is saved in the editor once or a regenerated database lists it. Provisional members are recorded per build configuration.
 
-- **Incomplete support for some compiler families.** Intel compilers (`icc`, `icx`, `dpcpp`) are recognized but currently fall through to the generic Clang driver path without dedicated probing logic, so their special system paths may not be correctly discovered. NVCC has dedicated probing (parsing `nvcc --dryrun` output into a clang CUDA invocation), but only with a GCC or Clang host compiler -- nvcc driving MSVC `cl` is not supported yet, and multi-architecture commands parse the newest architecture only.
+- **Incomplete support for some compiler families.** A driver that answers the probe with neither a clang job nor a GCC one -- Intel's classic `icc`, other vendors' compilers -- gets clang's own defaults for the running machine, and the toolchain error says so. NVCC has dedicated probing (parsing `nvcc --dryrun` output into a clang CUDA invocation), but only with a GCC or Clang host compiler -- nvcc driving MSVC `cl` is not supported yet, and multi-architecture commands parse the newest architecture only.
+
+- **GCC-only language parses as clang sees it.** Code that only GCC compiles -- GCC-only builtins and extensions, `__float128` on targets where clang lacks it (`quadmath.h` on Apple silicon), nested functions -- shows clang's errors, and a CPU name only GCC knows loses the macros of its features.
 
 - **SearchConfig does not support all search path options.** `-cxx-isystem` (system directories effective only in C++ mode), `-iwithsysroot` (prepends sysroot to path), and HeaderMap support are not yet implemented. These options are uncommon in practice but may appear in specific Apple or cross-compilation toolchains.
 

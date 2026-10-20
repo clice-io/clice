@@ -11,6 +11,15 @@ namespace path {
 
 using namespace llvm::sys::path;
 
+/// What separates the directories of a search-path list (PATH,
+/// LIBRARY_PATH). LLVM's EnvPathSeparator has internal linkage, which no
+/// module can export.
+#ifdef _WIN32
+constexpr inline char list_separator = ';';
+#else
+constexpr inline char list_separator = ':';
+#endif
+
 /// Whether `p` is spelled from a root, so no anchor may be prepended:
 /// absolute in the native style, or rooted without a drive (`/x`), which
 /// Windows resolves against the current drive and `is_absolute` rejects.

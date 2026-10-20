@@ -6,12 +6,21 @@ module clice:support.process;
 
 namespace clice {
 
-/// Run `arguments[0]` to completion and hand back one of its output
-/// streams: stdout when `capture_stdout`, else stderr. Fails when the
-/// program cannot start or does not exit with code 0.
-kota::task<std::expected<std::string, std::string>> execute(std::vector<std::string> arguments,
-                                                            bool capture_stdout = false,
-                                                            std::string cwd = {});
+/// What a finished program wrote, and how it ended.
+struct ProgramOutput {
+    std::string out;
+
+    std::string err;
+
+    /// How the program ended when not with exit code 0 ("Process clang
+    /// ended with exit code 1"); empty when it did.
+    std::string failure;
+};
+
+/// Run `arguments[0]` to completion and hand back what it wrote, however it
+/// ended. Fails only when the program cannot start.
+kota::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
+                                                              std::string cwd = {});
 
 /// Hand freed heap back to the system. glibc keeps the pages of large freed
 /// arenas — an AST, a TU's index, the master's merge buffers — so without

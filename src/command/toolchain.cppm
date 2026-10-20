@@ -11,15 +11,15 @@ namespace clice {
 /// Resolves driver-level configs into full cc1-level configurations by
 /// probing the compiler driver, in two layers:
 ///
-///   - Probe layer: keyed by (driver, input language, non-user-content
-///     args, and — only for cwd-sensitive configs — the directory). One
-///     driver spawn per unique key; results and failures (with a retry
-///     cooldown) are cached. User-content flags (-I, -D, ...) never affect
-///     the probe and are re-attached at synthesis.
+///   - Probe layer: keyed by (driver, input language, the args that may
+///     change the driver's job, and — only for cwd-sensitive configs — the
+///     directory). One driver spawn per unique key; results and failures
+///     (with a retry cooldown) are cached. User-content flags (-I, -D, ...)
+///     never affect the probe and are re-attached at synthesis.
 ///
 ///   - Synthesis layer: keyed by (config, input). Probe output parsed once
 ///     into structured args, the config's own user-content re-attached,
-///     external resource dirs replaced with ours (except a matched
+///     external builtin headers replaced with ours (except a matched
 ///     LLVM-MinGW installation, which keeps its own tree).
 class Toolchain {
 public:
@@ -83,10 +83,6 @@ public:
     std::size_t failed_count() const {
         return failed.size();
     }
-
-    /// Parse the first `-cc1` line from driver `-###` output, dropping flags
-    /// our linked cc1 does not understand (along with their values).
-    static std::vector<std::string> parse_cc1(llvm::StringRef content);
 
 private:
     struct ProbeKey {

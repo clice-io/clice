@@ -6,9 +6,11 @@ module clice;
 
 import :command.argument_parser;
 import :command.command;
+import :command.driver_report;
 import :command.toolchain;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
+import :vfs.path;
 
 namespace clice::testing {
 namespace {
@@ -197,7 +199,7 @@ ZEST_CASE(QueryMissingDriver) {
 }
 
 ZEST_CASE(ParseCC1FirstLine) {
-    auto args = Toolchain::parse_cc1(R"(clang version 22.0.0
+    auto args = parse_cc1(R"(clang version 22.0.0
 Target: x86_64-unknown-linux-gnu
  "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-std=c++23" "a.cpp"
  "/usr/bin/clang-22" "-cc1" "-std=c++17" "b.cpp"
@@ -207,12 +209,12 @@ Target: x86_64-unknown-linux-gnu
         {"/usr/bin/clang-22", "-cc1", "-triple", "x86_64-unknown-linux-gnu", "-std=c++23", "a.cpp"};
     ZEXPECT(args == expected);
 
-    ZEXPECT(Toolchain::parse_cc1("clang version 22.0.0\nno cc1 line here").empty());
+    ZEXPECT(parse_cc1("clang version 22.0.0\nno cc1 line here").empty());
 }
 
 ZEST_CASE(ParseCC1MultiCall) {
     // A multi-call llvm names the tool before -cc1.
-    auto args = Toolchain::parse_cc1(
+    auto args = parse_cc1(
         R"( "/opt/xclang/bin/llvm" "clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "a.cpp")");
 
     std::vector<std::string> expected = {"/opt/xclang/bin/llvm",
@@ -227,15 +229,15 @@ ZEST_CASE(ParseCC1DropsUnknown) {
     // A newer external driver may emit cc1 flags our linked clang does not
     // know; they must be dropped together with their values (greedy_unknown)
     // instead of the values being misparsed as input files.
-    auto args = Toolchain::parse_cc1(
-        R"( "/usr/bin/clang-22" "-cc1" "-clice-future-flag" "val1" "val2" "-std=c++23")");
+    auto args =
+        parse_cc1(R"( "/usr/bin/clang-22" "-cc1" "-clice-future-flag" "val1" "val2" "-std=c++23")");
 
     std::vector<std::string> expected = {"/usr/bin/clang-22", "-cc1", "-std=c++23"};
     ZEXPECT(args == expected);
 }
 
 ZEST_CASE(ParseCC1DropsCodegen) {
-    auto args = Toolchain::parse_cc1(
+    auto args = parse_cc1(
         R"( "/usr/bin/clang-22" "-cc1" "-mframe-pointer=non-leaf-no-reserve" "-std=c++23")");
 
     std::vector<std::string> expected = {"/usr/bin/clang-22", "-cc1", "-std=c++23"};
@@ -716,6 +718,101 @@ ZEST_CASE(WarmDedupesProbes, skip = Windows) {
     ZASSERT(!vfs::remove(*driver));
     auto resolved = f.db.toolchain().resolve(ref1.config, ref1.input);
     ZASSERT(resolved);
+}
+
+ZEST_CASE(KeyTracksCodegen) {
+    /// A codegen flag can switch a driver default off (Ubuntu's g++ drops
+    /// its default -fstack-protector-strong under -fno-stack-protector).
+    Fixture f;
+    auto base = f.add("/fake", "/tmp/a.cpp", {"g++", "-std=c++23", "/tmp/a.cpp"});
+    auto off =
+        f.add("/fake", "/tmp/b.cpp", {"g++", "-std=c++23", "-fno-stack-protector", "/tmp/b.cpp"});
+    ZEXPECT(f.key(base) != f.key(off));
+}
+
+/// Whether `argv` holds `first` directly followed by `second`.
+bool adjacent(llvm::ArrayRef<const char*> argv, llvm::StringRef first, llvm::StringRef second) {
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(argv[i] == first && argv[i + 1] == second) {
+            return true;
+        }
+    }
+    return false;
+}
+
+ZEST_CASE(GCCSetsUpClang, skip = Windows) {
+    /// A GCC whose report names its target, a macro of its specs, a CPU
+    /// clang does not know, and a search list with its private include
+    /// directory.
+    TempDir tmp;
+    auto private_dir = tmp.path("gcc/13/include");
+    auto script = std::format(R"(#!/bin/sh
+cat >&2 <<'REPORT'
+Target: x86_64-linux-gnu
+ /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet -v -D_REENTRANT probe.cpp -mtune=intel -march=x86-64 -dM
+#include <...> search starts here:
+ {0}
+ {1}
+ {2}
+End of search list.
+LIBRARY_PATH={3}/
+REPORT
+echo '#define __cplusplus 201402L'
+)",
+                              tmp.path("gcc/include/c++"),
+                              private_dir,
+                              tmp.path("sysroot/usr/include"),
+                              tmp.path("gcc/13"));
+    auto driver = tmp.path("x86_64-linux-gnu-g++");
+    ZASSERT(!vfs::write(driver, script));
+    ZASSERT(
+        !llvm::sys::fs::setPermissions(driver, llvm::sys::fs::all_read | llvm::sys::fs::all_exe));
+
+    Fixture f;
+    auto src = tmp.path("a.cpp");
+    auto ref = f.add(tmp.root.str(), src, {driver.c_str(), "-c", src.c_str()});
+    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
+    auto argv = f.db.render(ref);
+
+    ZEXPECT(adjacent(argv, "-triple", "x86_64-unknown-linux-gnu"));
+    ZEXPECT(adjacent(argv, "-D", "_REENTRANT"));
+    ZEXPECT(adjacent(argv, "-target-cpu", "x86-64"));
+    ZEXPECT(!std::ranges::contains(argv, llvm::StringRef("intel")));
+    /// The command names no standard: the one GCC compiles in.
+    ZEXPECT(std::ranges::contains(argv, llvm::StringRef("-std=gnu++14")));
+
+    /// GCC's list in GCC's order, clang's builtin headers just before
+    /// GCC's own, and nothing of clang's own idea of the system headers.
+    auto builtin_headers = path::join(resource_dir(), "include");
+    std::vector<std::string> dirs;
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(argv[i] == "-internal-isystem"sv || argv[i] == "-internal-externc-isystem"sv) {
+            dirs.push_back(argv[i + 1]);
+        }
+    }
+    std::vector<std::string> expected = {tmp.path("gcc/include/c++"),
+                                         builtin_headers,
+                                         private_dir,
+                                         tmp.path("sysroot/usr/include")};
+    ZEXPECT(dirs == expected);
+}
+
+ZEST_CASE(ForeignBuiltinHeaders, skip = Windows) {
+    /// Another clang's builtin headers, named by the command itself.
+    TempDir tmp;
+    tmp.touch("clang-23/include/__stddef_max_align_t.h");
+    auto foreign = tmp.path("clang-23/include");
+    auto driver = create_fake_clang(fake_cc1_line);
+    ZASSERT(driver);
+
+    Fixture f;
+    auto ref = f.add("/tmp",
+                     "/tmp/a.cpp",
+                     {driver->c_str(), "-std=c++23", "-isystem", foreign.c_str(), "/tmp/a.cpp"});
+    ZASSERT(f.db.toolchain().resolve(ref.config, ref.input));
+    auto argv = f.db.render(ref);
+    ZEXPECT(adjacent(argv, "-isystem", path::join(resource_dir(), "include")));
+    ZEXPECT(!std::ranges::contains(argv, llvm::StringRef(foreign)));
 }
 
 };  // ZEST_SUITE(ToolchainTests)

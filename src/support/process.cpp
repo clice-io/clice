@@ -35,29 +35,31 @@ import :support.process;
 
 namespace clice {
 
-kota::task<std::expected<std::string, std::string>> execute(std::vector<std::string> arguments,
-                                                            bool capture_stdout,
-                                                            std::string cwd) {
+kota::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
+                                                              std::string cwd) {
     auto file = arguments[0];
     LOG_INFO("Execute command: {}", file);
 
     auto captured = co_await kota::process::capture({
         .file = file,
         .args = std::move(arguments),
-        // LANG=C keeps the driver output, which callers parse, unlocalized.
-        .env_changes = {{.name = "LANG", .value = "C"}},
+        // Keeps the output callers parse unlocalized. Not LANG alone: GCC
+        // translates its `-v` report under LC_ALL or LC_MESSAGES, which win
+        // over LANG.
+        .env_changes = {{.name = "LC_ALL", .value = "C"}},
         .cwd = std::move(cwd),
     });
     if(!captured) {
         co_return std::unexpected(
             std::format("Failed to run {}: {}", file, captured.error().message()));
     }
+    ProgramOutput output{.out = std::move(captured->stdout_data),
+                         .err = std::move(captured->stderr_data)};
     if(!captured->status.success()) {
-        co_return std::unexpected(
-            std::format("Process {} ended with {}", file, captured->status.to_string()));
+        output.failure =
+            std::format("Process {} ended with {}", file, captured->status.to_string());
     }
-
-    co_return capture_stdout ? std::move(captured->stdout_data) : std::move(captured->stderr_data);
+    co_return output;
 }
 
 void release_free_memory() {

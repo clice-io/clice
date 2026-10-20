@@ -65,7 +65,7 @@ async function commandProblems(
 /// macro values written beside each source.
 async function withProject(
     scenario: Scenario,
-    body?: (ws: Workspace) => Promise<void>,
+    body: (ws: Workspace) => Promise<void>,
 ): Promise<void> {
     const missing = missingTools(scenario);
     const env = buildEnv(scenario);
@@ -98,16 +98,10 @@ async function withProject(
         if (scenario.config !== undefined) {
             ws.write("clice.toml", scenario.config);
         }
-        await body?.(ws);
+        await body(ws);
     } finally {
         ws.remove();
     }
-}
-
-/// Throws when the scenario's toolchain cannot build the project and
-/// produce what clice would be checked against.
-export async function checkBuild(scenario: Scenario): Promise<void> {
-    await withProject(scenario);
 }
 
 /// Throws with everything clice got wrong about the scenario's build.

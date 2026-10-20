@@ -4,7 +4,7 @@
 /// the macros its flags imply, and resolve each file's command as the
 /// scenario expects.
 
-import { checkBuild, checkScenario } from "@clice/tools/compat/check";
+import { checkScenario } from "@clice/tools/compat/check";
 import { missingTools } from "@clice/tools/compat/scenario";
 import { cliceExecutable } from "@clice/tools/session";
 import { expect, test } from "vitest";
@@ -17,16 +17,8 @@ for (const scenario of SCENARIOS) {
     const skip =
         !scenario.platforms.includes(process.platform) ||
         (missingTools(scenario).length > 0 && process.env["CI"] === undefined);
-    test.skipIf(skip || scenario.unsupported !== undefined)(
-        `${scenario.name} (${platforms})`,
-        async () => {
-            // checkScenario rejects with everything clice got wrong.
-            await expect(checkScenario(cliceExecutable(), scenario)).resolves.toBeUndefined();
-        },
-    );
-    if (scenario.unsupported !== undefined) {
-        test.skipIf(skip)(`${scenario.name} (${platforms}) builds`, async () => {
-            await expect(checkBuild(scenario)).resolves.toBeUndefined();
-        });
-    }
+    test.skipIf(skip)(`${scenario.name} (${platforms})`, async () => {
+        // checkScenario rejects with everything clice got wrong.
+        await expect(checkScenario(cliceExecutable(), scenario)).resolves.toBeUndefined();
+    });
 }
