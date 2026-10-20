@@ -9,7 +9,6 @@ module clice;
 
 import :index.database;
 import :index.project_index;
-import :index.tu_manifest;
 import :project.artifact_records;
 import :project.build;
 import :project.command_resolver;
@@ -32,7 +31,7 @@ namespace clice {
 /// rebuilds an excluded unit.
 static void retire_excluded(Project& project, index::IndexReport& report) {
     llvm::SmallVector<Fid> excluded;
-    project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
+    project.index.for_each_unit([&](Fid tu) {
         if(!project.build.indexed(project.file_table.resolve(tu))) {
             excluded.push_back(tu);
         }
@@ -44,7 +43,7 @@ static void retire_excluded(Project& project, index::IndexReport& report) {
     }
 }
 
-SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOptions options) {
+SavedLoad load_saved(Project& project, CommandResolver& commands) {
     SavedLoad result;
     auto& report = result.report;
     if(!project.database) {
@@ -52,11 +51,11 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
     }
     auto& db = *project.database;
     auto& index = project.index;
-    bool read_only = options.read_only;
+    bool read_only = db.read_only();
     ScopedTimer timer;
 
     // Artifact metadata and context choices are index-independent: they
-    // load (and self-validate) whatever happened to the project table.
+    // load (and self-validate) beside any index state.
     auto load_metadata = [&] {
         if(auto artifacts = db.read(index::BlobKind::ArtifactRecords, "artifacts")) {
             load_artifact_records(project, commands, artifacts.buffer->getBuffer());
@@ -66,46 +65,38 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
         }
     };
 
-    // Everything a read-only session keeps is deserialized or copied, so
-    // nothing borrows the opening snapshot; retiring it keeps a long
-    // read-only session (batch lint) from pinning a concurrent writer's
-    // page reclamation to session start. Every return path that leaves
-    // the database open owes this.
-    auto retire_snapshot = [&] {
-        if(read_only && !options.borrow && db.advance_read_snapshot()) {
-            db.retire_old_snapshot();
-        }
-    };
-
-    switch(index.load(db, options, report)) {
-        case index::LoadOutcome::Empty:
-            load_metadata();
-            retire_snapshot();
-            return result;
+    switch(index.open(db)) {
+        // A database with no index yet may still hold the command snapshot,
+        // and with it the debt of the files a save owed an index: the
+        // snapshot of a session whose index was discarded.
+        case index::LoadOutcome::Empty: break;
         case index::LoadOutcome::Unreadable:
             // Run this session memory-only — saving a fresh lineage over
-            // blobs whose anchor was never read could alias their version
-            // ids and generations — and leave everything for a healthier
-            // restart to load. Confirmed page corruption heals through
-            // rebuildability instead: the condemned database deletes
-            // itself and a fresh empty one opens in its place, so this
-            // session's rebuild persists instead of being redone at the
-            // next start.
+            // records whose header was never read could alias their path
+            // ids — and leave everything for a healthier restart to load.
+            // Confirmed page corruption heals through rebuildability
+            // instead: the condemned database deletes itself and a fresh
+            // empty one opens in its place, so this session's rebuild
+            // persists instead of being redone at the next start.
             if(!read_only && db.corrupted()) {
+                LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
                 reopen_fresh_database(project);
             } else {
                 // Best effort before detaching: the metadata blobs may
-                // still read while only the project table is unreadable.
+                // still read while only the header is unreadable.
                 load_metadata();
                 LOG_WARN(
-                    "Index project table unreadable; disabling index persistence this session");
+                    "Index database header unreadable; disabling index persistence this "
+                    "session");
                 project.database.reset();
             }
             return result;
         case index::LoadOutcome::Undecodable:
-            load_metadata();
+            // Another format discards everything, the metadata with it.
             result.decoded = false;
-            retire_snapshot();
+            if(!read_only) {
+                reopen_fresh_database(project);
+            }
             return result;
         case index::LoadOutcome::Loaded: break;
     }
@@ -115,44 +106,15 @@ SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOpt
         project.command_snapshot.reconcile(project, report);
     }
 
-    // The reads above touch every adopted manifest and shard, so page
-    // corruption anywhere in the database has latched by now; heal it like
-    // the unreadable-table case above instead of writing into a damaged
-    // tree every session. The adopted state unwinds wholesale: the shard
-    // views borrow from the condemned environment, and manifests kept
-    // without their views would read as fresh and gate the rebuild pass
-    // off exactly the files whose shards were lost. Standalone-indexed TUs
-    // re-enqueue first — the CDB pass that rebuilds everything else never
-    // covers them, and the condemned database is deleting their only
-    // persistent record. The dirtied snapshot carries them as debt from
-    // the fresh database's first save on, so even a crash before their
-    // rebuild finishes cannot lose them a second time.
-    if(!read_only && db.corrupted()) {
-        index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
-            if(project.build.entries(tu).empty()) {
-                report.add_reindex(tu);
-            }
-        });
-        index.clear();
-        project.command_snapshot.forget_persisted();
-        reopen_fresh_database(project);
+    // The reads above may have met a damaged page or record: heal it like
+    // the unreadable-header case above instead of writing into a damaged
+    // tree every session. The session starts over as a first run.
+    if(!read_only && (db.corrupted() || index.damaged())) {
+        recover_corrupt_database(project, report);
         return result;
     }
 
-    retire_snapshot();
-
-    if(index.shard_count() != 0) {
-        LOG_INFO("Loaded {} index shards, {} manifests, {} symbols",
-                 index.shard_count(),
-                 index.manifest_count(),
-                 index.symbol_count());
-    }
-    LOG_PERF("startup",
-             "phase=index_load symbols={} shards={} manifests={} elapsed_ms={}",
-             index.symbol_count(),
-             index.shard_count(),
-             index.manifest_count(),
-             timer.ms());
+    LOG_PERF("startup", "phase=index_load elapsed_ms={}", timer.ms());
     return result;
 }
 
@@ -220,11 +182,11 @@ ProjectLoad load_project(Project& project,
     // Persisted index shards are CDB-independent; they load even with no
     // member yet, so a database generated later (picked up by the CDB
     // poll) starts from the previous session's index.
-    report.index = load_saved(project, commands, {.read_only = read_only_index});
+    report.index = load_saved(project, commands);
     // A unit deleted while no server ran keeps its index until a look finds
     // it missing (see FreshnessGate).
     llvm::SmallVector<Fid> units;
-    project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) { units.push_back(tu); });
+    project.index.for_each_unit([&](Fid tu) { units.push_back(tu); });
     project.file_table.disk.find_missing(units);
     return report;
 }

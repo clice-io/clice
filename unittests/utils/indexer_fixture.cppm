@@ -70,9 +70,9 @@ struct IndexerFixture {
     }
 
     /// Load and take the report, as the workspace load does. Returns the
-    /// decode result (false = old-format or corrupt project table).
-    bool load(bool read_only = false) {
-        auto result = load_saved(project, commands, {.read_only = read_only});
+    /// decode result (false = a header of another format, or corrupt).
+    bool load() {
+        auto result = load_saved(project, commands);
         pump.apply_report(result.report);
         return result.decoded;
     }
@@ -249,7 +249,7 @@ inline void
     auto db = index::open_lmdb_database(*store, "");
     ZASSERT(db != nullptr);
     index::BlobDatabase::Blob blob{kind, key.str(), copy_bytes(bytes)};
-    ZASSERT(db->write(blob, {}).empty());
+    ZASSERT(db->write(blob, {}));
 }
 
 }  // namespace clice::testing

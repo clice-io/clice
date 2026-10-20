@@ -34,11 +34,17 @@ kota::task<index::IndexReport>
 /// must not report a durable index from this.
 bool has_unsaved_state(const Project& project);
 
+/// The recovery from a database found corrupt after it was opened —
+/// damaged pages, or a record failing its checks: nothing in it survives,
+/// so the project starts over as a first run, every unit of the build and
+/// every unit of its own the index held owed a reindex.
+void recover_corrupt_database(Project& project, index::IndexReport& report);
+
 /// Confirmed corruption heals through rebuildability: condemn the corrupt
 /// database (deleted on close) and continue on a freshly opened empty
-/// one, so the session's rebuild persists instead of waiting for the
-/// next start. A failed reopen leaves persistence disabled for the
-/// session.
+/// one, the index and the persisted command snapshot starting over with
+/// it, so the session's rebuild persists instead of waiting for the next
+/// start. A failed reopen leaves persistence disabled for the session.
 void reopen_fresh_database(Project& project);
 
 }  // namespace clice

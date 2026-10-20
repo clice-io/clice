@@ -49,19 +49,19 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
     llvm::DenseSet<SymbolHash> seen;
     auto indexed = project.search_index().search(query, limit, project.workspace);
     // A damaged index answers incompletely, a missing one not at all:
-    // until the rebuild the whole table is judged symbol by symbol instead.
-    bool scan_table = project.search_index().damaged() || !project.search_index().loaded();
-    bool exhausted = scan_table || indexed.exhausted;
-    if(!scan_table) {
+    // until the rebuild every symbol record is judged one by one instead.
+    bool scan_records = project.search_index().damaged() || !project.search_index().loaded();
+    bool exhausted = scan_records || indexed.exhausted;
+    if(!scan_records) {
         for(auto& hit: indexed.hits) {
-            // A symbol the table changed since the index was built is read
-            // from the table below, not from the index's stale copy.
+            // A symbol whose record changed since the index was built is read
+            // from its record below, not from the index's stale copy.
             if(project.search_pending().contains(hit.hash)) {
                 continue;
             }
             Fid anchor;
             if(!hit.file.empty()) {
-                anchor = files.find(project.local(hit.file)).value_or(Fid{});
+                anchor = files.intern(project.local(hit.file));
                 // Read from the file's shard below.
                 if(project.search_pending_files().contains(anchor)) {
                     continue;
@@ -140,7 +140,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
             }
             consider(hash, symbol, path, references, {});
         };
-    if(scan_table) {
+    if(scan_records) {
         project.for_each_symbol(
             [&](SymbolHash hash, const SymbolView& symbol, std::uint32_t references) {
                 consider_symbol(hash, symbol, references);
@@ -185,12 +185,18 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         });
     }
     // A file's own symbols — locals, parameters, internal-linkage
-    // entities — are in no table but the file's shard, which holds every
+    // entities — are in no record but the file's shard, which holds every
     // such symbol it names: a query naming files looks for the ones each
     // of them declares.
     if(!query.paths.empty()) {
+        // The indexed files the database names, and the ones this process
+        // met (an open buffer's file among them).
+        llvm::SetVector<Fid> candidates;
+        project.for_each_indexed_file([&](Fid file) { candidates.insert(file); });
         for(std::uint32_t raw = 0; raw < files.spellings.size(); raw += 1) {
-            Fid file{raw};
+            candidates.insert(Fid{raw});
+        }
+        for(auto file: candidates) {
             llvm::StringRef path = files.resolve(file);
             if(llvm::none_of(query.paths, [&](const std::string& wanted) {
                    return path_matches(wanted, path);
@@ -306,11 +312,8 @@ Completables
 std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQuery& query) {
     if(query.handle) {
         Fid anchor;
-        for(auto& path: query.paths) {
-            if(auto file = index.file_table().find(Spelling::absolute(path))) {
-                anchor = *file;
-                break;
-            }
+        if(!query.paths.empty()) {
+            anchor = index.file_table().intern(Spelling::absolute(query.paths.front()));
         }
         if(auto located = index.resolve(*query.handle, anchor)) {
             return {std::move(*located)};
@@ -320,13 +323,10 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
 
     if(query.position) {
         auto& place = *query.position;
-        auto path_id = index.file_table().find(Spelling::absolute(place.path));
-        if(!path_id) {
-            return {};
-        }
+        auto file = index.file_table().intern(Spelling::absolute(place.path));
         // A stale index describes text that no longer exists: resolving the
         // requested place against it would name the wrong symbol.
-        auto source = index.serving(*path_id);
+        auto source = index.serving(file);
         if(!source) {
             return {};
         }
@@ -342,7 +342,7 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
             if(offset > bounds->end) {
                 return {};
             }
-            auto cursor = index.symbol_at(*path_id, offset);
+            auto cursor = index.symbol_at(file, offset);
             if(!cursor) {
                 return {};
             }
@@ -361,7 +361,7 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
             if(!site) {
                 return true;
             }
-            if(auto info = index.symbol_info(hash, *path_id)) {
+            if(auto info = index.symbol_info(hash, file)) {
                 defined.push_back({.symbol = std::move(*info),
                                    .site = *site,
                                    .extent = extent_of(*source, r).value_or(*site)});

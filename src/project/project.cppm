@@ -286,8 +286,9 @@ struct Project {
     /// The last PCM build of each module unit, failed ones included.
     llvm::DenseMap<Fid, PCMBuild> pcm_builds;
 
-    /// The persisted index as loaded: the project table, the per-TU
-    /// manifests, the per-file shard blobs and the name search index.
+    /// The persisted index, read as it is used: the symbol and file
+    /// records, the per-TU manifests, the per-file shard blobs and the name
+    /// search index.
     index::ProjectIndex index{file_table};
 
     /// The commands the index was built with, as the index database

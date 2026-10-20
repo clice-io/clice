@@ -8,7 +8,6 @@ module clice;
 
 import :index.database;
 import :index.project_index;
-import :index.tu_manifest;
 import :project.command_snapshot;
 import :project.hosting;
 import :project.project;
@@ -144,9 +143,9 @@ CommandSnapshotBlob build_snapshot(Project& project,
             .host_selected = std::move(host_selected),
         });
     };
-    project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) { add_standalone(tu); });
+    project.index.for_each_unit([&](Fid tu) { add_standalone(tu); });
     // A dropped standalone TU whose rebuild has not finished keeps its entry:
-    // with no manifest pin and no CDB entry, the snapshot is the only
+    // with no manifest and no CDB entry, the snapshot is the only
     // record that an index is owed (reconcile's debt pass retries it).
     for(auto tu: standalone_debt) {
         add_standalone(tu);
@@ -161,13 +160,13 @@ CommandSnapshotBlob build_snapshot(Project& project,
 }
 
 /// The debt candidates the snapshot must record: standalone TUs with no
-/// manifest pin and no CDB entry, for which the snapshot is the only record
+/// manifest and no CDB entry, for which the snapshot is the only record
 /// that an index is owed.
 llvm::SmallVector<Fid> standalone_of(Project& project, llvm::ArrayRef<Fid> candidates) {
     llvm::SmallVector<Fid> debt;
     llvm::DenseSet<Fid> seen;
     for(auto id: candidates) {
-        if(project.index.held_manifest(id) || !project.build.entries(id).empty() ||
+        if(project.index.indexed(id) || !project.build.entries(id).empty() ||
            !seen.insert(id).second) {
             continue;
         }
@@ -253,8 +252,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
                   std::string_view(project.config.project.cache_dir));
         dirty = true;
         llvm::SmallVector<Fid> units;
-        project_index.for_each_manifest(
-            [&](Fid tu, const index::TUManifest&) { units.push_back(tu); });
+        project_index.for_each_unit([&](Fid tu) { units.push_back(tu); });
         llvm::for_each(units, rebuild);
         return;
     }
@@ -286,7 +284,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
             continue;
         }
         changed_ids.push_back(server_id);
-        if(!project_index.held_manifest(server_id)) {
+        if(!project_index.indexed(server_id)) {
             continue;
         }
         LOG_INFO("Compile command changed since the last session; reindexing {}",
@@ -425,7 +423,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
 
     // A persisted standalone entry whose file has no manifest is recorded
     // debt: its index was dropped for a command or rule change and no
-    // rebuild has finished since — with no manifest pin and no CDB entry,
+    // rebuild has finished since — with no manifest and no CDB entry,
     // nothing else would ever retry it. Re-enqueue while the file exists;
     // a vanished file's debt dies with its entry at the next save.
     for(auto& old: persisted.entries) {
@@ -433,7 +431,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
             continue;
         }
         auto server_id = file_of(old.file);
-        if(retired.contains(server_id) || project_index.held_manifest(server_id) ||
+        if(retired.contains(server_id) || project_index.indexed(server_id) ||
            !vfs::exists(project.file_table.resolve(server_id))) {
             continue;
         }
@@ -446,7 +444,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
     }
 
     llvm::SmallVector<Fid> hosted;
-    project_index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
+    project_index.for_each_unit([&](Fid tu) {
         if(cdb_ids.contains(tu) || pinned_fresh.contains(tu)) {
             return;
         }

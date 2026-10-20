@@ -10,11 +10,15 @@ import :index.tu_manifest;
 
 namespace clice::index {
 
-std::vector<std::byte> serialize_manifest(const TUManifest& manifest) {
+std::vector<std::byte> serialize_manifest(const TUManifest& manifest,
+                                          llvm::ArrayRef<PersistedVersion> versions) {
     TUManifestBlob blob;
     blob.format_version = index_format_version;
-    blob.table_generation = manifest.table_generation;
     blob.built_at = manifest.built_at;
+    for(auto& version: versions) {
+        blob.version_paths.push_back(version.path);
+        blob.version_hashes.push_back(version.content_hash);
+    }
     blob.tu_version = manifest.tu_version.raw;
 
     blob.node_count = static_cast<std::uint32_t>(manifest.nodes.size());
@@ -63,7 +67,7 @@ std::vector<std::byte> serialize_manifest(const TUManifest& manifest) {
     return encode(blob);
 }
 
-std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
+std::optional<PersistedManifest> deserialize_manifest(llvm::StringRef data) {
     auto verified = verify_root<TUManifestBlob>(data, "TU manifest");
     if(!verified) {
         return std::nullopt;
@@ -79,8 +83,16 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         return std::nullopt;
     }
 
-    TUManifest manifest;
-    manifest.table_generation = root.table_generation;
+    if(root.version_hashes.size() != root.version_paths.size()) {
+        return std::nullopt;
+    }
+    std::uint32_t version_count = root.version_paths.size();
+    PersistedManifest persisted;
+    for(std::uint32_t i = 0; i < version_count; i += 1) {
+        persisted.versions.push_back(
+            {.path = root.version_paths[i], .content_hash = root.version_hashes[i]});
+    }
+    auto& manifest = persisted.manifest;
     manifest.built_at = root.built_at;
     manifest.tu_version = VersionID{root.tu_version};
 
@@ -183,7 +195,14 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         });
     }
 
-    return manifest;
+    bool in_table = true;
+    for_each_version(manifest, [&](std::uint32_t version) {
+        in_table = in_table && version < version_count;
+    });
+    if(!in_table) {
+        return std::nullopt;
+    }
+    return persisted;
 }
 
 }  // namespace clice::index

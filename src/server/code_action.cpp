@@ -247,7 +247,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         // host's serving index, in the coordinates that source guarantees;
         // at the end of the file when it holds none. The relations are
         // read directly: an open host's own index knows its definitions
-        // before the background index merges them into the project table.
+        // before the background index merges them into the project index.
         std::optional<protocol::Position> after;
         auto source = request.container != 0 ? query.serving(host) : std::nullopt;
         if(source) {
@@ -256,7 +256,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                 if(relation.kind != RelationKind::Definition) {
                     return true;
                 }
-                auto chain = query.container_chain(hash);
+                auto chain = query.container_chain(hash, source->file);
                 if(llvm::none_of(chain, [&](const index::SymbolInfo& container) {
                        return container.hash == request.container;
                    })) {

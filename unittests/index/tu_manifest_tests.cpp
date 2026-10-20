@@ -13,48 +13,66 @@ import :unittests.utils;
 namespace clice::testing {
 namespace {
 
+/// A version table of `count` entries, path id and hash apart per entry.
+void give_versions(index::TUManifestBlob& layout, std::uint32_t count) {
+    for(std::uint32_t i = 0; i < count; i += 1) {
+        layout.version_paths.push_back(i);
+        layout.version_hashes.push_back(100 + i);
+    }
+}
+
 ZEST_SUITE(TUManifest) {
 
 ZEST_CASE(ManifestRoundTrip) {
     index::TUManifest manifest;
-    manifest.table_generation = 7;
     manifest.built_at = 1234567;
-    manifest.tu_version = VersionID{300};
+    manifest.tu_version = VersionID{0};
     // A root node, a multi-byte-varint line, a parent that FOLLOWS its child
     // (the include tree resolves parent chains after appending), and runs of
     // siblings — skipped or not, lines ascending or not, under a node or the
     // root.
     manifest.nodes = {
-        {300, ~0u, 1,     false},
-        {301, 2,   70000, false},
-        {302, 0,   12,    false},
-        {303, 0,   14,    true },
-        {304, 0,   14,    true },
-        {305, 0,   3,     true },
-        {306, 0,   90000, false},
-        {307, ~0u, 5,     true },
-        {308, ~0u, 2,     false},
+        {0, ~0u, 1,     false},
+        {1, 2,   70000, false},
+        {2, 0,   12,    false},
+        {3, 0,   14,    true },
+        {4, 0,   14,    true },
+        {5, 0,   3,     true },
+        {6, 0,   90000, false},
+        {7, ~0u, 5,     true },
+        {8, ~0u, 2,     false},
     };
     manifest.instantiations = {
-        {.file = VersionID{301}, .use = 0x1234},
-        {.file = VersionID{302}, .use = 0x5678},
+        {.file = VersionID{1}, .use = 0x1234},
+        {.file = VersionID{2}, .use = 0x5678},
     };
     manifest.contributions = {
-        {VersionID{300}, 0xdeadbeefdeadbeefull},
-        {VersionID{302}, 42                   },
+        {VersionID{0}, 0xdeadbeefdeadbeefull},
+        {VersionID{2}, 42                   },
     };
-    manifest.absent = {VersionID{303}};
-    manifest.imports = {VersionID{304}, VersionID{305}};
+    manifest.absent = {VersionID{3}};
+    manifest.imports = {VersionID{4}, VersionID{5}};
     manifest.shared_locals = {
-        {.symbol = 5, .files = {VersionID{300}, VersionID{302}}},
-        {.symbol = 9, .files = {VersionID{302}, VersionID{301}}},
+        {.symbol = 5, .files = {VersionID{0}, VersionID{2}}},
+        {.symbol = 9, .files = {VersionID{2}, VersionID{1}}},
     };
+    // Versions 4 and 5 are two versions of one path, read through modules
+    // built at different times.
+    std::vector<index::PersistedVersion> versions;
+    for(std::uint32_t i = 0; i < 9; i += 1) {
+        versions.push_back({.path = i == 5 ? 4 : i, .content_hash = 100 + i});
+    }
 
-    auto buf = index::serialize_manifest(manifest);
+    auto buf = index::serialize_manifest(manifest, versions);
 
     auto loaded = index::deserialize_manifest(as_chars(buf));
     ZASSERT(loaded);
-    ZASSERT(*loaded == manifest);
+    ZASSERT(loaded->manifest == manifest);
+    ZASSERT(loaded->versions == versions);
+
+    // A version past the table is no manifest.
+    versions.pop_back();
+    ZASSERT(!index::deserialize_manifest(as_chars(index::serialize_manifest(manifest, versions))));
 }
 
 ZEST_CASE(ManifestJunkRejected) {
@@ -69,6 +87,7 @@ ZEST_CASE(ManifestSharedLocalRejected) {
     valid.local_symbols = {5, 7};
     valid.local_file_ends = {1, 2};
     valid.local_files = {0, 0};
+    give_versions(valid, 2);
 
     auto decodes = [&](const index::TUManifestBlob& layout) {
         return index::deserialize_manifest(as_chars(index::encode(layout))).has_value();
@@ -100,6 +119,7 @@ ZEST_CASE(ManifestCorruptUsesRejected) {
     layout.format_version = index::index_format_version;
     layout.instantiation_files = {1};
     layout.instantiation_uses = {42};
+    give_versions(layout, 2);
     auto decodes = [&] {
         return index::deserialize_manifest(as_chars(index::encode(layout))).has_value();
     };
@@ -119,6 +139,7 @@ ZEST_CASE(ManifestNodeCodesRejected) {
     index::TUManifestBlob layout;
     layout.format_version = index::index_format_version;
     layout.node_count = 1;
+    give_versions(layout, 8);
     auto decodes = [&] {
         return index::deserialize_manifest(as_chars(index::encode(layout))).has_value();
     };

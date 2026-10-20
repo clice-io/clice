@@ -125,7 +125,7 @@ auto copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, ll
         return text && declares_parameters(*text, candidate.site.range.end, *copied->parameters);
     };
 
-    auto chain = index.container_chain(hash);
+    auto chain = index.container_chain(hash, anchor);
     for(auto depth = copied->absolute ? 1 : chain.size() + 1; depth > 0; depth -= 1) {
         SymbolQuery query{.mode = SymbolQuery::Mode::Exact,
                           .absolute = true,

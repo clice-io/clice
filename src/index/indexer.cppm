@@ -44,7 +44,7 @@ struct TUIndexOptions {
 
 /// Index one TU and encode the result as its TU index blob: the include
 /// tree (remapped into a manifest), the TU's symbol table with
-/// per-symbol reference files (merged into the project table), and one
+/// per-symbol reference files (merged into the symbol records), and one
 /// self-contained shard blob per file that received entries (stored or
 /// merged into the file's disk shard). Entries of a header entered several
 /// times are one union blob. The TU index blob travels worker→server over IPC

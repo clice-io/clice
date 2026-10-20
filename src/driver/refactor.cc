@@ -237,9 +237,6 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
         }
         all.insert(all.end(), ctx.unindexed.begin(), ctx.unindexed.end());
         all.insert(all.end(), failed.begin(), failed.end());
-        for(auto unit: loaded->dropped) {
-            all.emplace_back(files.display(unit));
-        }
         std::ranges::sort(all);
         auto duplicates = std::ranges::unique(all);
         all.erase(duplicates.begin(), duplicates.end());
@@ -247,6 +244,11 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
     };
 
     auto planned = query::rename(ctx, *requests);
+    if(project.index.damaged()) {
+        return fail(
+            "the index database is damaged (the log above says where); run `clice index` "
+            "to rebuild it");
+    }
     auto& result = planned.result;
     // A unit --fresh failed to index answers from an index that may be old.
     bool blocked = planned.blocked() || !failed.empty();

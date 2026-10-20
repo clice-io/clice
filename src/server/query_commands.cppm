@@ -329,9 +329,10 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests);
 /// Context::candidates.
 Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQuery locator);
 
-/// Every symbol a locator names, a bare name taken as the whole name;
-/// none is "symbol not found".
-Outcome<std::vector<index::SymbolHash>> named_symbols(Context& ctx, index::SymbolQuery locator);
+/// Every symbol a locator names, a bare name taken as the whole name, with
+/// where it was found; none is "symbol not found".
+Outcome<std::vector<index::IndexQuery::Located>> named_symbols(Context& ctx,
+                                                               index::SymbolQuery locator);
 
 /// What implements the symbol (index::implementation): the
 /// classes deriving from a class, the overrides of a function, at any

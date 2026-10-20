@@ -140,7 +140,6 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
     CommandResolver commands{project};
     ContextChoices saved;
     EditorContext contexts{project, commands, saved};
-    llvm::SmallVector<Fid> dropped;
     bool opened = false;
     if(with_build) {
         if(auto loaded = load_index(project,
@@ -148,7 +147,6 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
                                     std::move(config),
                                     configuration,
                                     /*with_build=*/true)) {
-            dropped = std::move(loaded->dropped);
             saved.bytes = std::move(loaded->contexts);
             contexts.load();
             opened = true;
@@ -165,6 +163,11 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
     index::IndexQuery index_query(project.index, project.file_table, &gate, nullptr);
     query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
     auto outcome = ask(ctx);
+    if(project.index.damaged()) {
+        return fail(
+            "the index database is damaged (the log above says where); run `clice index` "
+            "to rebuild it");
+    }
 
     std::vector<std::string> stale;
     for(auto file: gate.withheld()) {
@@ -172,9 +175,6 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
     }
     stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
     stale.insert(stale.end(), failed.begin(), failed.end());
-    for(auto unit: dropped) {
-        stale.emplace_back(project.file_table.display(unit));
-    }
     std::ranges::sort(stale);
     auto duplicates = std::ranges::unique(stale);
     stale.erase(duplicates.begin(), duplicates.end());

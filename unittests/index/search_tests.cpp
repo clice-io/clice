@@ -175,7 +175,7 @@ ZEST_CASE(QualifiedNames) {
         return false;
     });
     ZASSERT(hidden != 0);
-    ZASSERT(query.qualified_name(hidden) == "outer::hidden");
+    ZASSERT(query.qualified_name(hidden, focus_id) == "outer::hidden");
 
     // A scoped query keeps the results whose container lists the scope's
     // components in order; a leading `::` pins the container exactly.
@@ -207,7 +207,7 @@ ZEST_CASE(LocalsAndCursors) {
     ZASSERT(!search("use").empty());
 
     // A cursor on the file's own static function resolves through the
-    // serving source, which the project table knows nothing about.
+    // serving source, which no symbol record names.
     index::SymbolQuery at;
     at.position = {.path = project.file_table.resolve(focus_id).str(), .line = 3, .column = 21};
     auto located = index::locate(query, at);

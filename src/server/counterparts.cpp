@@ -121,7 +121,7 @@ struct Pairing {
     /// The files on the other side sharing the file's declarations and
     /// definitions: where each declaration is defined, and which interface
     /// files declare a definition's symbol — open buffers, and the files
-    /// the project table lists as referencing it.
+    /// the symbol record lists as referencing it.
     void pair_by_declarations() {
         auto* own = shard_of(file);
         if(!own) {

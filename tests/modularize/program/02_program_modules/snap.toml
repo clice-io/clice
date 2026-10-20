@@ -226,8 +226,8 @@ exit = 0
 "app/run.cpp" = '''
 -#include "tool/tool.h"
 +#include "wrap/prelude.h"
-+#include "cfg/defs.h"
 +#include "cfg/config.h"
++#include "cfg/defs.h"
 +import app.core;
 +import app.tool;
 +

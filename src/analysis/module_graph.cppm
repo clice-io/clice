@@ -288,8 +288,7 @@ struct LoadedFacts {
 struct LoadError {
     std::string message;
 
-    /// The units the load dropped as stale or partially written, or the
-    /// files changed since they were indexed, sorted.
+    /// The files changed since they were indexed, sorted.
     std::vector<std::string> dropped;
 };
 

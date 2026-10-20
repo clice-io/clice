@@ -61,6 +61,16 @@ llvm::SmallVector<Fid> intern_paths(const index::TUIndex& view, clice::FileTable
     return ids;
 }
 
+/// Commit what `index` holds into `db` as a save does, so another index
+/// opening `db` reads it.
+void commit(index::ProjectIndex& index, index::BlobDatabase& db) {
+    index::SaveBatch batch;
+    index::IndexReport report;
+    index.begin_save(batch, report);
+    ZASSERT(db.write(batch.blobs, batch.removals));
+    ZASSERT(db.advance_read_snapshot());
+}
+
 ZEST_CASE(MergeCollectsExternalSymbols) {
     add_file("header.h", R"(
         int external_fn();
@@ -84,7 +94,7 @@ ZEST_CASE(MergeCollectsExternalSymbols) {
     // Referenced from both the header (declaration) and the focus file.
     ZASSERT(project.reference_count(external) >= 2);
 
-    // Non-External symbols never reach the project table.
+    // Non-External symbols get no symbol record.
     ZASSERT(find_symbol(project, "local_fn") == 0u);
 }
 
@@ -302,6 +312,7 @@ ZEST_CASE(ManifestContributions) {
         [&](VersionID tu_version,
             std::initializer_list<std::pair<VersionID, std::uint64_t>> contributions) {
             index::TUManifest manifest;
+            manifest.built_at = 1;
             manifest.tu_version = tu_version;
             manifest.contributions = contributions;
             return manifest;
@@ -357,11 +368,12 @@ ZEST_CASE(RepeatedAbsentPlace) {
     auto tu = pool.intern(Spelling::absolute("/proj/tu.cpp"));
     auto place = pool.intern_version(header, 0);
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = pool.intern_version(tu, 0x1);
     manifest.absent = {place, place};
 
     project.apply_manifest(tu, std::move(manifest));
-    auto* held = project.held_manifest(tu);
+    auto held = project.manifest(tu);
     ZASSERT(held);
     ZASSERT(held->absent.size() == 1u);
     auto lookups = [&] {
@@ -382,6 +394,7 @@ ZEST_CASE(TwoImportedVersions) {
     auto header = pool.intern(Spelling::absolute("/proj/a.h"));
     auto tu = pool.intern(Spelling::absolute("/proj/tu.cpp"));
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = pool.intern_version(tu, 0x1);
     manifest.imports = {pool.intern_version(header, 0x2), pool.intern_version(header, 0x3)};
 
@@ -397,7 +410,7 @@ ZEST_CASE(TwoImportedVersions) {
     ZASSERT(IndexInternals::derived_tables_empty(project));
 }
 
-ZEST_CASE(TableRoundTripWithRealMerge) {
+ZEST_CASE(MergedRecordsRoundTrip) {
     add_focus("main.cpp", R"(
         int global_value = 42;
         int reader() { return global_value; }
@@ -405,69 +418,76 @@ ZEST_CASE(TableRoundTripWithRealMerge) {
     kind = CompilationKind::Whole;
     ZASSERT(compile());
 
+    TempDir tmp;
+    auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
+    ZASSERT(store);
+    auto db = index::open_database(*store, "");
+    ZASSERT(db != nullptr);
+
     clice::FileTable pool;
     index::ProjectIndex project{pool};
     auto view = build_view();
     ZASSERT(view.loaded());
     auto file_ids_map = intern_paths(view, pool);
     project.merge_symbols(view, file_ids_map);
-
-    // A manifest referencing the focus file keeps its FileVersion alive
-    // through the write's garbage collection.
-    auto focus_version = pool.intern_version(file_ids_map[view.path_count() - 1],
-                                             view.content_hash(view.path_count() - 1));
+    auto focus = file_ids_map[view.path_count() - 1];
     index::TUManifest manifest;
-    manifest.tu_version = focus_version;
-    project.apply_manifest(file_ids_map[view.path_count() - 1], std::move(manifest));
-
-    auto buf = project.serialize_table();
+    manifest.built_at = 1;
+    manifest.tu_version = pool.intern_version(focus, view.content_hash(view.path_count() - 1));
+    project.apply_manifest(focus, std::move(manifest));
+    commit(project, *db);
 
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
-    llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(as_chars(buf), pins));
-
+    ZASSERT(loaded.open(*db) == index::LoadOutcome::Loaded);
     auto symbol = find_symbol(loaded, "global_value");
     ZASSERT(symbol != 0);
-    auto focus_path = pool.resolve(file_ids_map[view.path_count() - 1]);
-    auto fresh_id = fresh.find(Spelling::absolute(focus_path));
+    auto fresh_id = fresh.find(Spelling::absolute(pool.resolve(focus)));
     ZASSERT(fresh_id);
     ZASSERT(llvm::is_contained(reference_files(loaded, symbol), fresh_id->raw));
+    ZASSERT(loaded.indexed(*fresh_id));
 }
 
-ZEST_CASE(TableColumnsRoundTrip) {
-    // Parents index the table, or a sparse column when outside it; only the
-    // symbols having arguments or instantiation files list them; a file set
-    // stores up to two ids raw and more as a roaring image. Every one reads
-    // back as written, and again after a rewrite copies the entries over.
+ZEST_CASE(SymbolRecordsRoundTrip) {
+    // Only the symbols having arguments or instantiation files list them;
+    // a file set stores up to two ids raw and more as a roaring image.
+    // Every one reads back as written, from the changes and from the
+    // database.
+    TempDir tmp;
+    auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
+    ZASSERT(store);
+    auto db = index::open_database(*store, "");
+    ZASSERT(db != nullptr);
+
     clice::FileTable pool;
     index::ProjectIndex project{pool};
-    std::vector<Fid> files;
+    std::vector<std::uint32_t> paths;
     for(int i = 0; i < 4; i += 1) {
-        files.push_back(pool.intern(Spelling::absolute(std::format("/proj/{}.h", i))));
+        auto file = pool.intern(Spelling::absolute(std::format("/proj/{}.h", i)));
+        paths.push_back(IndexInternals::path_id(project, file));
     }
     auto& scope = project.edit(10);
     scope.name = "ns";
     scope.kind = SymbolKind::Namespace;
-    scope.reference_files.add(files[0].raw);
+    scope.reference_files.add(paths[0]);
     auto& member = project.edit(20);
     member.name = "f";
     member.args = "<int>";
     member.parent = 10;
-    member.file = files[1].raw;
-    member.reference_files.add(files[1].raw);
-    member.reference_files.add(files[2].raw);
+    member.file = paths[1];
+    member.reference_files.add(paths[1]);
+    member.reference_files.add(paths[2]);
     auto& outsider = project.edit(30);
     outsider.name = "g";
     outsider.parent = 999;
-    for(auto file: files) {
-        outsider.reference_files.add(file.raw);
+    for(auto path: paths) {
+        outsider.reference_files.add(path);
     }
-    outsider.instantiation_files.add(files[3].raw);
+    outsider.instantiation_files.add(paths[3]);
 
-    auto check = [&](const index::ProjectIndex& index, const clice::FileTable& table) {
+    auto check = [&](const index::ProjectIndex& index, clice::FileTable& table) {
         auto id_of = [&](llvm::StringRef path) {
-            return table.find(Spelling::absolute(path))->raw;
+            return table.intern(Spelling::absolute(path)).raw;
         };
         auto scope = index.find_symbol(10);
         ZASSERT(scope);
@@ -501,50 +521,13 @@ ZEST_CASE(TableColumnsRoundTrip) {
         index.for_each_instantiation_file(20, [&](Fid) { none += 1; });
         ZEXPECT(none == 0u);
     };
+    check(project, pool);
 
-    auto first = project.serialize_table();
+    commit(project, *db);
     clice::FileTable fresh;
     index::ProjectIndex loaded{fresh};
-    llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(as_chars(first), pins));
+    ZASSERT(loaded.open(*db) == index::LoadOutcome::Loaded);
     check(loaded, fresh);
-
-    auto second = loaded.serialize_table();
-    clice::FileTable again;
-    index::ProjectIndex reloaded{again};
-    ZASSERT(reloaded.load_table(as_chars(second), pins));
-    check(reloaded, again);
-}
-
-ZEST_CASE(WidePathIds) {
-    // File ids take the width of the path table, which the files only the
-    // reverse include graph names grow after the symbols are written.
-    clice::FileTable pool;
-    index::ProjectIndex project{pool};
-    auto file_of = [&](int i) {
-        return pool.intern(Spelling::absolute(std::format("/proj/{}.h", i)));
-    };
-    auto& symbol = project.edit(10);
-    symbol.name = "x";
-    symbol.file = file_of(0).raw;
-    symbol.reference_files.add(file_of(0).raw);
-    auto unit = file_of(1000);
-    index::TUManifest manifest;
-    manifest.tu_version = pool.intern_version(unit, 0x1);
-    for(int i = 1; i <= 300; i += 1) {
-        manifest.contributions.emplace_back(pool.intern_version(file_of(i), 0x1), 1);
-    }
-    project.apply_manifest(unit, std::move(manifest));
-
-    auto bytes = project.serialize_table();
-    clice::FileTable fresh;
-    index::ProjectIndex loaded{fresh};
-    llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ZASSERT(loaded.load_table(as_chars(bytes), pins));
-    auto identity = loaded.find_symbol(10);
-    ZASSERT(identity);
-    ZEXPECT(fresh.find(Spelling::absolute("/proj/0.h")) == Fid{identity->file});
-    ZEXPECT(loaded.reference_count(10) == 1u);
 }
 
 ZEST_CASE(LazyShardsStayPut) {
@@ -560,9 +543,7 @@ ZEST_CASE(LazyShardsStayPut) {
     clice::FileTable writer_files;
     index::ProjectIndex writer{writer_files};
     writer.edit(7).name = "x";
-    std::vector<index::BlobDatabase::Blob> puts;
-    auto table = writer.serialize_table();
-    puts.push_back({index::BlobKind::ProjectTable, "global", table});
+    commit(writer, *db);
 
     constexpr std::uint32_t count = 300;
     llvm::StringRef content = "int x = 1;\n";
@@ -574,14 +555,15 @@ ZEST_CASE(LazyShardsStayPut) {
     auto shard = index::write_shard(file_index, {}, content);
     clice::FileTable files;
     index::ProjectIndex project{files};
+    std::vector<index::BlobDatabase::Blob> puts;
     for(std::uint32_t i = 0; i < count; i += 1) {
         auto file = files.intern(Spelling::absolute(std::format("/proj/f{}.cpp", i)));
-        puts.push_back({index::BlobKind::Shard, project.key_of(file), shard});
+        puts.push_back({index::BlobKind::Shard, IndexInternals::file_key(project, file), shard});
     }
-    ZASSERT(db->write(puts, {}).empty());
+    ZASSERT(db->write(puts, {}));
     ZASSERT(db->advance_read_snapshot());
 
-    ZASSERT(project.open(*db));
+    ZASSERT(project.open(*db) == index::LoadOutcome::Loaded);
     auto first = files.intern(Spelling::absolute("/proj/f0.cpp"));
     const auto* held = project.shard(first);
     ZASSERT(held != nullptr);
@@ -602,7 +584,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
     // the same name nested in an anonymous namespace of other.h, which
     // only c.cpp includes. A walk steps from a.cpp to b.cpp through the
     // header they share, and never into c.cpp's files — in the writer and
-    // in a reader of the persisted table.
+    // in a reader of the persisted records.
     TempDir tmp;
     auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
     ZASSERT(store);
@@ -619,7 +601,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
         auto tu = pool.intern(Spelling::absolute(name));
         auto header = llvm::StringRef(name).ends_with("c.cpp") ? other : util;
         index::TUManifest manifest;
-        manifest.table_generation = writer.table_generation();
+        manifest.built_at = 1;
         manifest.tu_version = pool.intern_version(tu, 0x1111);
         manifest.nodes = {
             {manifest.tu_version.raw, ~0u, 1},
@@ -663,23 +645,11 @@ ZEST_CASE(SharedLocalAcrossUnits) {
     };
     check(writer, pool);
 
-    std::vector<index::BlobDatabase::Blob> puts;
-    for(auto tu: units) {
-        auto exported = writer.export_manifest(*writer.held_manifest(tu));
-        // The shared local names its files by persisted ids, as the nodes do.
-        ZEXPECT(exported.shared_locals[0].files ==
-                std::vector<VersionID>{exported.tu_version, VersionID{exported.nodes[1].file}});
-        auto bytes = index::serialize_manifest(exported);
-        puts.push_back({index::BlobKind::TUManifest, writer.key_of(tu), bytes});
-    }
-    auto table_bytes = writer.serialize_table();
-    puts.push_back({index::BlobKind::ProjectTable, "global", table_bytes});
-    ZASSERT(db->write(puts, {}).empty());
-    ZASSERT(db->advance_read_snapshot());
+    commit(writer, *db);
 
     clice::FileTable files;
     index::ProjectIndex reader{files};
-    ZASSERT(reader.open(*db));
+    ZASSERT(reader.open(*db) == index::LoadOutcome::Loaded);
     check(reader, files);
 
     // A unit leaving takes its set along: c.cpp's files no longer answer,
@@ -710,6 +680,7 @@ ZEST_CASE(SharedLocalSetsCounted) {
     for(auto name: {"/proj/a.cpp", "/proj/b.cpp"}) {
         auto tu = pool.intern(Spelling::absolute(name));
         index::TUManifest manifest;
+        manifest.built_at = 1;
         manifest.tu_version = pool.intern_version(tu, 0x1111);
         manifest.nodes = {
             {manifest.tu_version.raw, ~0u, 1},
