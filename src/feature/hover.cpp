@@ -1675,18 +1675,6 @@ void parse_rst(llvm::StringRef input, markup::Document& output) {
     flush();
 }
 
-auto card_display(const HoverOptions& options) -> display::Options {
-    return {
-        .terse = true,
-        .polish_for_declaration = true,
-        .constants_as_written = true,
-        .suppress_ctor_template_args = true,
-        .resolve_decltype = true,
-        .show_aka = options.show_aka,
-        .max_members = options.max_members,
-    };
-}
-
 }  // namespace
 
 /// Exhaustive so a new kind fails to compile rather than silently lose its
@@ -1890,7 +1878,15 @@ auto hover_info(CompilationUnit& unit,
     }
 
     auto& context = unit.context();
-    auto display_options = card_display(options);
+    display::Options display_options = {
+        .terse = true,
+        .polish_for_declaration = true,
+        .constants_as_written = true,
+        .suppress_ctor_template_args = true,
+        .resolve_decltype = true,
+        .show_aka = options.show_aka,
+        .max_members = options.max_members,
+    };
     display::ReadableTypes readable(context, display_options);
     display_options.readable = &readable;
     Request request{
@@ -2006,21 +2002,6 @@ auto hover_info(CompilationUnit& unit,
     }
 
     info->symbol_range = highlight_range;
-    return info;
-}
-
-auto hover_info(CompilationUnit& unit, const clang::NamedDecl& decl, const HoverOptions& options)
-    -> HoverInfo {
-    DocumentationOptions documentation;
-    auto display_options = card_display(options);
-    display::ReadableTypes readable(unit.context(), display_options);
-    display_options.readable = &readable;
-    auto info =
-        decl_hover(&decl,
-                   {.unit = unit, .documentation = documentation, .display = display_options});
-    if(options.layout) {
-        add_layout(*templated(&decl), info);
-    }
     return info;
 }
 
