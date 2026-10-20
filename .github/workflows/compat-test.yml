@@ -40,11 +40,11 @@ jobs:
           ref: ${{ steps.release.outputs.tag }}
           persist-credentials: false
 
-      # The `cuda` environment holds nvcc for the Linux scenarios and has no
-      # packages elsewhere.
+      # The `cuda` and `toolchains` environments hold nvcc and conda's
+      # compilers for the Linux scenarios and have no packages elsewhere.
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: ${{ runner.os == 'Linux' && 'node cuda' || 'node' }}
+          environments: ${{ runner.os == 'Linux' && 'node cuda toolchains' || 'node' }}
           activate-environment: node
 
       # The Windows and macOS scenarios use what the runner images ship
@@ -55,8 +55,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bear ccache meson ninja-build xmake emscripten \
+            bear ccache meson ninja-build xmake emscripten musl-tools \
+            libc++-18-dev libc++abi-18-dev \
             g++-mingw-w64-x86-64 g++-riscv64-linux-gnu \
+            g++-aarch64-linux-gnu g++-arm-linux-gnueabihf \
             gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
             gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf
 

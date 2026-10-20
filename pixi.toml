@@ -26,6 +26,10 @@ test-run = ["test", "cuda"]
 # runs it without activating the environment, whose activation would point
 # nvcc at conda's g++ and every other build at conda's flags.
 cuda = ["cuda"]
+# Conda's own GCC and clang and xclang's cross toolchain, for the compat
+# suite: compilers that bring their sysroots and configuration with them.
+# Run without activation, as `cuda` is.
+toolchains = ["toolchains"]
 editor = ["editor", "node"]
 
 # ============================================================================== #
@@ -69,6 +73,11 @@ xclang = "==23.1.2.9"
 cuda-nvcc = "13.*"
 cuda-cudart-dev = "13.*"
 libcurand-dev = "*"
+
+[feature.toolchains.target.linux-64.dependencies]
+gxx = "15.*"
+clangxx = "21.*"
+xclang = "==23.1.2.9"
 
 # The same tools on arm64 Linux.
 [feature.test.target.linux-aarch64.dependencies]
