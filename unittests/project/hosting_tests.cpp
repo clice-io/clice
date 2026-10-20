@@ -456,6 +456,7 @@ ZEST_CASE(EnteringsFollowTree) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(foo, foo_text), .line = 1},
@@ -488,6 +489,7 @@ ZEST_CASE(TreeRulesOutHost) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(a, a_text)};
     manifest.nodes = {
         {.file = p.version(shared, shared_text), .line = 1},
@@ -518,6 +520,7 @@ ZEST_CASE(EnteringsInCompileOrder) {
     auto list = p.write("list.def", "X(a)\n");
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(list, "X(a)\n"), .line = 3},
@@ -533,13 +536,13 @@ ZEST_CASE(EnteringsInCompileOrder) {
     ZEXPECT((*found)[1].lines == llvm::SmallVector<std::uint32_t>{3});
 };
 
-ZEST_CASE(ForcedIncludeFallsBack) {
-    /// The compile enters the header only through a file its command
-    /// forces in, which no cut of the unit's text reproduces: the tree
-    /// falls back to the lexical chain.
+ZEST_CASE(ForcedIncludeEnters) {
+    /// The compile enters the header through a file its command forces in,
+    /// ahead of the unit's own include of it: the chain starts there.
     TreeProject p;
-    llvm::StringRef main_text = "#include \"t.h\"\n";
-    llvm::StringRef common_text = "#pragma once\n#include \"t.h\"\n";
+    llvm::StringRef main_text = R"(#include "t.h")";
+    llvm::StringRef common_text = R"(#pragma once
+#include "t.h")";
     auto main = p.write("main.cpp", main_text);
     auto common = p.write("common.h", common_text);
     auto t = p.write("t.h", "#pragma once\n");
@@ -549,6 +552,7 @@ ZEST_CASE(ForcedIncludeFallsBack) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(common, common_text), .line = 300},
@@ -560,9 +564,115 @@ ZEST_CASE(ForcedIncludeFallsBack) {
     auto found = enterings(p.project, main, t);
     ZASSERT(found);
     ZASSERT(found->size() == 1u);
-    ZEXPECT(found->front().chain == std::vector<Fid>{main, t});
-    ZEXPECT(found->front().lines.empty());
-    ZEXPECT(!found->front().lexical);
+    ZEXPECT(found->front().chain == std::vector<Fid>{common, t});
+    ZEXPECT(found->front().lines == llvm::SmallVector<std::uint32_t>{2});
+};
+
+ZEST_CASE(PrecompiledHeaderEnters) {
+    /// The forced file is a precompiled header's: the compile took it, a.h
+    /// and t.h from the PCH, and the tree shows only the unit's include of
+    /// a.h, skipped. The chain is the scan's from the forced file.
+    TreeProject p;
+    llvm::StringRef main_text = R"(#include "a.h")";
+    llvm::StringRef a_text = R"(#pragma once
+#include "t.h")";
+    auto main = p.write("main.cpp", main_text);
+    auto pch = p.write("pch.h", R"(#include "a.h")");
+    auto a = p.write("a.h", a_text);
+    auto t = p.write("t.h", "#pragma once\n");
+    p.project.dep_graph.set_includes(main, 0, {{a}});
+    p.project.dep_graph.set_includes(pch, 0, {{a}});
+    p.project.dep_graph.set_includes(a, 0, {{t}});
+    p.project.dep_graph.add_forced_include(main, pch);
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_version = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(a, a_text), .line = 1, .skipped = true},
+    };
+    p.project.index.apply_manifest(main, std::move(manifest));
+
+    auto host = default_host(p.project, t);
+    ZASSERT(host);
+    ZEXPECT(host->file == main);
+    ZEXPECT(host->chain == std::vector<Fid>{pch, a, t});
+};
+
+ZEST_CASE(ForcedOnlyHost) {
+    /// No unit includes t.h; the command of main.cpp forces in pch.h,
+    /// which does: main.cpp hosts it, and pch.h itself, with no tree.
+    TreeProject p;
+    auto main = p.write("main.cpp", "int x;\n");
+    auto pch = p.write("pch.h", R"(#include "t.h")");
+    auto t = p.write("t.h", "#pragma once\n");
+    p.project.dep_graph.set_includes(pch, 0, {{t}});
+    p.project.dep_graph.add_forced_include(main, pch);
+    p.project.dep_graph.build_reverse_map();
+
+    auto host = default_host(p.project, t);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{pch, t});
+    ZEXPECT(host->lexical);
+    ZEXPECT(count_occurrences(p.project, main, t) == 1u);
+    host = default_host(p.project, pch);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{pch});
+    ZEXPECT(count_occurrences(p.project, main, pch) == 1u);
+};
+
+ZEST_CASE(ForcedGainsInclude) {
+    /// The forced file gained the include of t.h since the tree was taken:
+    /// the tree tells nothing about t.h, and the scan's chain stands.
+    TreeProject p;
+    llvm::StringRef main_text = "int x;\n";
+    llvm::StringRef old_text = "#pragma once\n";
+    auto main = p.write("main.cpp", main_text);
+    auto old_version = p.version(p.write("prefix.h", old_text), old_text);
+    auto prefix = p.write("prefix.h", R"(#pragma once
+#include "t.h")");
+    auto t = p.write("t.h", "#pragma once\n");
+    p.project.dep_graph.set_includes(prefix, 0, {{t}});
+    p.project.dep_graph.add_forced_include(main, prefix);
+    p.project.dep_graph.build_reverse_map();
+    p.project.file_table.disk.end_turn();
+
+    index::TUManifest manifest;
+    manifest.tu_version = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = old_version, .line = 300},
+    };
+    p.project.index.apply_manifest(main, std::move(manifest));
+
+    ZEXPECT(!enterings(p.project, main, t).has_value());
+    auto host = default_host(p.project, t);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{prefix, t});
+};
+
+ZEST_CASE(SkippedAloneRulesOut) {
+    /// No precompiled header: b.h, skipped and never entered, shares a.h's
+    /// guard, and the unit never compiles its text.
+    TreeProject p;
+    llvm::StringRef main_text = R"(#include "a.h"
+#include "b.h")";
+    llvm::StringRef a_text = "#ifndef UTIL_H\n#define UTIL_H\n#endif\n";
+    llvm::StringRef b_text = "#ifndef UTIL_H\n#define UTIL_H\nint b;\n#endif\n";
+    auto main = p.write("main.cpp", main_text);
+    auto a = p.write("a.h", a_text);
+    auto b = p.write("b.h", b_text);
+    p.project.dep_graph.set_includes(main, 0, {{a}, {b}});
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_version = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(a, a_text), .line = 1},
+        {.file = p.version(b, b_text), .line = 2, .skipped = true},
+    };
+    p.project.index.apply_manifest(main, std::move(manifest));
+
+    ZEXPECT(!default_host(p.project, b).has_value());
 };
 
 ZEST_CASE(ContributorHosts) {
@@ -575,6 +685,7 @@ ZEST_CASE(ContributorHosts) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(b, b_text)};
     manifest.nodes = {
         {.file = p.version(config_b, ""), .line = 1}
@@ -602,6 +713,7 @@ ZEST_CASE(StaleTreeFallsBack) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(foo, "#pragma once\n#include \"bar.h\"\n"), .line = 1},
@@ -628,6 +740,7 @@ ZEST_CASE(AppearedFileFallsBack) {
     std::vector<VersionID> absent{p.project.file_table.intern_version(part, 0)};
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = root;
     manifest.absent = absent;
     p.project.index.apply_manifest(unity, std::move(manifest));
@@ -666,6 +779,7 @@ ZEST_CASE(RepeatedHeaderChangeStales) {
     p.project.dep_graph.build_reverse_map();
 
     index::TUManifest manifest;
+    manifest.built_at = 1;
     manifest.tu_version = VersionID{p.version(main, main_text)};
     manifest.nodes = {
         {.file = p.version(t, "#pragma once\nint t;\n"), .line = 1},

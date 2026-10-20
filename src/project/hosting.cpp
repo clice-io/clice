@@ -102,9 +102,20 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     auto repeated = llvm::count_if(nodes, [&](const index::IncludeNode& node) {
                         return files.version(VersionID{node.file}).fid == header;
                     }) > 1;
-    llvm::SmallVector<Host> found;
-    bool forced = false;
+
+    struct Entering {
+        /// The compile enters what its command forces in ahead of the
+        /// unit's text, in the command's order: a forced entering sorts by
+        /// its line in the command-line buffer, before every other.
+        llvm::SmallVector<std::uint32_t> order;
+
+        Host host;
+    };
+
+    llvm::SmallVector<Entering> found;
+    llvm::DenseSet<Fid> named;
     for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        named.insert(file_of(i));
         if(nodes[i].skipped || file_of(i) != header) {
             continue;
         }
@@ -113,47 +124,70 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
             path.push_back(node);
         }
         // A file the command forces in hangs off the unit like its own
-        // directives, at a line of the command-line buffer.
-        if(llvm::is_contained(project.dep_graph.get_forcing_units(file_of(path.back())), host)) {
-            forced = true;
-            continue;
+        // directives, at a line of the command-line buffer: the chain
+        // starts at it.
+        auto root = path.back();
+        bool forced = llvm::is_contained(project.dep_graph.get_forcing_units(file_of(root)), host);
+        Entering entering{.host = {.file = host}};
+        entering.order = forced ? llvm::SmallVector<std::uint32_t>{0, nodes[root].line}
+                                : llvm::SmallVector<std::uint32_t>{1};
+        if(!forced) {
+            entering.host.chain.push_back(host);
         }
-        Host entering{.file = host, .chain = {host}};
         for(auto node: llvm::reverse(path)) {
             if((node != i || repeated) && !fresh(node)) {
                 return std::nullopt;
             }
-            entering.chain.push_back(file_of(node));
-            entering.lines.push_back(nodes[node].line);
+            entering.host.chain.push_back(file_of(node));
+            if(!forced || node != root) {
+                entering.host.lines.push_back(nodes[node].line);
+            }
         }
+        llvm::append_range(entering.order, entering.host.lines);
         found.push_back(std::move(entering));
     }
-    if(forced && found.empty()) {
-        auto chain = project.dep_graph.find_include_chain(host, header);
-        if(!chain.empty()) {
-            found.push_back({.file = host, .chain = std::move(chain)});
-        }
-        return found;
+    // Nodes are numbered by includer, not by when the compile entered
+    // them; within one file the directives run top to bottom, so the
+    // first line where two chains part orders them.
+    llvm::sort(found, [](const Entering& a, const Entering& b) {
+        return std::ranges::lexicographical_compare(a.order, b.order);
+    });
+    llvm::SmallVector<Host> hosts;
+    for(auto& entering: found) {
+        hosts.push_back(std::move(entering.host));
     }
-    if(!found.empty()) {
-        // Nodes are numbered by includer, not by when the compile entered
-        // them; within one file the directives run top to bottom, so the
-        // first line where two chains part orders them.
-        llvm::sort(found, [](const Host& a, const Host& b) {
-            return std::ranges::lexicographical_compare(a.lines, b.lines);
-        });
-        return found;
+    if(!hosts.empty()) {
+        return hosts;
     }
 
-    auto chain = project.dep_graph.find_include_chain(host, header);
-    llvm::DenseSet<Fid> on_chain(chain.begin(), chain.end());
+    // A forced file a precompiled header stands for, and everything it
+    // includes, was entered before the tree began: the tree does not name
+    // it, and the scan's chain from it stands.
+    auto& graph = project.dep_graph;
+    for(auto file: graph.get_forced_includes(host)) {
+        if(named.contains(file)) {
+            continue;
+        }
+        if(auto chain = graph.find_include_chain(file, header); !chain.empty()) {
+            hosts.push_back({.file = host, .chain = std::move(chain)});
+            return hosts;
+        }
+    }
+
+    // The files of the scan's chains to the header, from the unit and from
+    // what it forces in, which may have gained the include since.
+    llvm::DenseSet<Fid> on_chain;
+    for(auto from: llvm::concat<const Fid>(llvm::ArrayRef(host), graph.get_forced_includes(host))) {
+        auto chain = graph.find_include_chain(from, header);
+        on_chain.insert(chain.begin(), chain.end());
+    }
     on_chain.erase(header);
     for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
         if(on_chain.contains(file_of(i)) && !fresh(i)) {
             return std::nullopt;
         }
     }
-    return found;
+    return hosts;
 }
 
 const LenderIndex& lender_index(Project& project) {
@@ -257,7 +291,7 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
 }
 
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header) {
-    if(auto* manifest = project.index.held_manifest(host)) {
+    if(auto manifest = project.index.manifest(host)) {
         if(auto found = tree_enterings(project,
                                        host,
                                        header,
@@ -280,13 +314,23 @@ std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid
     return std::nullopt;
 }
 
+std::vector<Fid> lexical_chain(Project& project, Fid host, Fid header) {
+    auto& graph = project.dep_graph;
+    for(auto forced: graph.get_forced_includes(host)) {
+        if(auto chain = graph.find_include_chain(forced, header); !chain.empty()) {
+            return chain;
+        }
+    }
+    return graph.find_include_chain(host, header);
+}
+
 std::uint32_t count_occurrences(Project& project, Fid host, Fid header) {
     if(auto found = enterings(project, host, header)) {
         return static_cast<std::uint32_t>(found->size());
     }
-    auto chain = project.dep_graph.find_include_chain(host, header);
+    auto chain = lexical_chain(project, host, header);
     if(chain.size() < 2) {
-        return 0;
+        return chain.size();
     }
     return project.dep_graph.count_includes(chain[chain.size() - 2], header);
 }
@@ -312,7 +356,8 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
 
     // The lexical scan follows each header's includes under the first
     // command that reached it; a unit whose compile resolved them
-    // otherwise names the header in its index entries.
+    // otherwise names the header in its index entries. A unit whose
+    // command forces in a file reading the header hosts it too.
     llvm::SmallVector<Fid> hosts;
     llvm::DenseSet<Fid> seen;
     auto add = [&](Fid candidate) {
@@ -322,7 +367,7 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
             hosts.push_back(candidate);
         }
     };
-    for(auto candidate: project.dep_graph.find_host_sources(header)) {
+    for(auto candidate: project.dep_graph.find_readers(header)) {
         add(candidate);
     }
     project.index.for_each_contributor(header, add);
@@ -359,7 +404,7 @@ std::optional<Host> default_host(Project& project, Fid header) {
             }
             continue;
         }
-        auto chain = project.dep_graph.find_include_chain(host, header);
+        auto chain = lexical_chain(project, host, header);
         if(!chain.empty()) {
             return Host{.file = host, .chain = std::move(chain), .lexical = true};
         }

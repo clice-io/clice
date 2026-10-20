@@ -411,6 +411,23 @@ ZEST_CASE(BoostSparesRunningRound) {
     ZEXPECT(f.pump.is_idle());
 }
 
+ZEST_CASE(EmptyRoundBuildsSearch) {
+    // A session finding nothing to index still owes the search index the
+    // idle rebuild the previous one never reached.
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ZASSERT(!indexed.data.empty());
+    ZASSERT(f.merge(indexed.data));
+    f.save();
+    ZASSERT(!f.project.index.search_index().loaded());
+
+    f.run_round();
+    ZEXPECT(f.project.index.search_index().loaded());
+}
+
 };  // ZEST_SUITE(IndexPumpReports)
 
 }  // namespace

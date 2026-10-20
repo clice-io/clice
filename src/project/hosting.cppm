@@ -17,11 +17,14 @@ struct Project;
 /// from it to the header.
 struct Host {
     Fid file;
+
+    /// From the unit, or from a file its command forces in where the
+    /// compile enters the header through one, to the header.
     std::vector<Fid> chain;
 
     /// The line of the directive each chain file but the header enters the
     /// next one with, when the unit's include tree says where its compile
-    /// enters the header; empty for a lexical chain.
+    /// enters the header; empty for a chain of the scan's.
     llvm::SmallVector<std::uint32_t> lines;
 
     /// Whether the chain is the lexical scan's for want of an include tree
@@ -52,22 +55,29 @@ struct HostTree {
 
 /// Every place the compile of `host` enters `header`, in the order it
 /// does, by the unit's include tree — its index manifest's, else the one
-/// a preprocess run left. Empty when the compile never enters the header.
+/// a preprocess run left; where the tree shows a forced file never
+/// entered, a precompiled header held it, and the scan's chain from it
+/// stands. Empty when the compile never enters the header.
 /// Nullopt when no tree can tell: none is known, or the unit or a file on
 /// the way changed since — for a header the tree never enters, a file of
 /// the lexical chain to it, which may have gained the include — or a file
-/// appeared where the compile looked and found none. A compile
-/// entering the header only through an include its command forces in,
-/// which no cut of the unit's text reproduces, yields the lexical chain.
+/// appeared where the compile looked and found none.
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header);
+
+/// The lexical scan's chain from `host` to `header`: from the first file
+/// the host's commands force in that reaches it, which the compile enters
+/// ahead of the host's text, else from the host. Empty when neither does.
+std::vector<Fid> lexical_chain(Project& project, Fid host, Fid header);
 
 /// How many times the compile of `host` enters `header`: by its include
 /// tree, else as often as the direct includer on the lexical chain
-/// includes it; 0 when the host does not include it.
+/// includes it, once when the host's command forces the header in itself;
+/// 0 when the host does not include it.
 std::uint32_t count_occurrences(Project& project, Fid host, Fid header);
 
 /// The translation units that can stand in for `header` — its includers,
-/// by the lexical scan or by the entries their indexed compiles gave it, that
+/// by the lexical scan, also through a file their commands force in, or
+/// by the entries their indexed compiles gave it, that
 /// the build compiles in a language the header can be part of (a `.h`
 /// in any, a `.hpp` in C++ and the languages built on it, a `.cuh` only
 /// in CUDA) — best first: units whose entries come from the databases

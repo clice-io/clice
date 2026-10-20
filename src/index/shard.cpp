@@ -1263,7 +1263,7 @@ void collect_locals(const Root& root, llvm::DenseMap<SymbolHash, SymbolInfo>& lo
         auto hash = table.hash_of(k);
         auto [it, inserted] = locals.try_emplace(hash, SymbolInfo::from(hash, identity));
         // Variants may see different facts of one symbol (a definition
-        // behind `#ifdef`); like the project table, the union is kept, and
+        // behind `#ifdef`); like the symbol records, the union is kept, and
         // the token kind a defining variant gives.
         if(!inserted) {
             if(has_flag(identity.flags, SymbolFlags::HasDefinition)) {

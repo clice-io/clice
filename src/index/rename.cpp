@@ -400,7 +400,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
                 return;
             }
             auto site = token_site(*text.source, file, near.path, offset, old_name.size());
-            auto name = query.qualified_name(*other);
+            auto name = query.qualified_name(*other, file);
             if(auto renamed = batch.renamed.find(*other); renamed != batch.renamed.end()) {
                 plan.conflicts.push_back(
                     std::format("the name at {} also refers to `{}`, which another rename makes "
@@ -730,7 +730,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
                 std::format("`{}` is a member of {} ({}), which the renamed member would hide or "
                             "be hidden by",
                             std::string_view(new_name),
-                            query.qualified_name(other_home),
+                            query.qualified_name(other_home, other.site.file),
                             where(other.site)));
         }
     }

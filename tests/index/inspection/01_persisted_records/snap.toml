@@ -49,6 +49,16 @@ symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  
 '''
 exit = 0
 
+[records."$ clice index symbol geo.cpp:4:14"]
+stdout = '''
+symbol #de258236384cacbb  kind=Parameter  name=width  args=  qualified=geo::area::width  flags=HasDefinition  form=Identifier
+  parent #410bf4404641a3b4  kind=Function  name=area
+  parent #b8d40a731e70f055  kind=Namespace  name=geo
+  scope=local (no symbol record)
+  ${WS}/geo.cpp: definitions=1 declarations=0 references=1
+'''
+exit = 0
+
 [records."$ clice index file geo.h"]
 stdout = '''
 file ${WS}/geo.h
@@ -68,7 +78,7 @@ exit = 0
 [records."$ clice index unit main.cpp"]
 stdout = '''
 translation unit ${WS}/main.cpp
-  built at #time  generation=1  content hash=#f296566f561e8eb5
+  built at #time  content hash=#f296566f561e8eb5
   contributions=2
     #6b5e4d12ead6ae35  ${WS}/geo.h
     #2701d44f725cf9d0  ${WS}/main.cpp

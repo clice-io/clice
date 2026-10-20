@@ -53,8 +53,8 @@ struct SearchEntry {
     /// Index into SearchSnapshot::paths, or no_file.
     std::uint32_t file = no_file;
     std::uint32_t reference_files = 0;
-    /// Of internal linkage: the project table does not know the symbol,
-    /// whose entries live in `file`'s shard.
+    /// Of internal linkage: no symbol record names the symbol, whose
+    /// entries live in `file`'s shard.
     bool local = false;
 };
 
@@ -64,9 +64,9 @@ struct SearchSnapshot {
     std::vector<SearchEntry> entries;
     /// Named the way the database names files (ProjectIndex::portable).
     std::vector<std::string> paths;
-    /// The generation of the project table these entries will be persisted
-    /// next to; a loader finding another generation knows entries may have
-    /// changed under the index.
+    /// The search generation the header will pin next to these entries; a
+    /// loader finding another knows entries may have changed under the
+    /// index.
     std::uint64_t generation = 0;
 };
 
@@ -162,7 +162,7 @@ public:
 
     bool contains(SymbolHash hash) const;
 
-    /// The table generation the entries were snapshotted for; 0 unloaded.
+    /// The search generation the entries were built for; 0 unloaded.
     std::uint64_t generation() const;
 
     /// Whether a posting list failed to decode since the load: the

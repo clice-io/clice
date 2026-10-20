@@ -40,8 +40,8 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 8,
       "sample": [
-        "Traits<Str>::value",
         "Key",
+        "Traits<Str>::value",
         "Traits<Str>",
         "Traits::value",
         "Traits<Key>"
@@ -53,7 +53,7 @@ stdout = '''
   "partitionCycles": [],
   "internalHeaders": 0,
   "deepestChain": [
-    "core"
+    "app"
   ],
   "totals": {
     "baseline": 5,

@@ -10,6 +10,7 @@ import :index.project_index;
 import :project.save;
 import :sched.index.pending_table;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -43,7 +44,7 @@ ZEST_CASE(OfflineCommandChangeReindexed) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.indexed(tu_id));
     ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
@@ -68,7 +69,7 @@ ZEST_CASE(UnchangedCommandKept) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.held_manifest(tu_id) != nullptr);
+    ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -94,7 +95,7 @@ ZEST_CASE(RemovedEntryKeepsIndex) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.held_manifest(tu_id) != nullptr);
+    ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -136,7 +137,7 @@ ZEST_CASE(UndeclaredSourceRetires) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.indexed(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -220,7 +221,7 @@ ZEST_CASE(DiscoveredRelocationRetires) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.indexed(tu_id));
 }
 
 ZEST_CASE(DefaultCommandKept) {
@@ -250,7 +251,7 @@ ZEST_CASE(DefaultCommandKept) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(f.project.index.held_manifest(tu_id) != nullptr);
+    ZASSERT(f.project.index.indexed(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -278,7 +279,7 @@ ZEST_CASE(UncoveredDefaultRetires) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.indexed(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -307,7 +308,7 @@ ZEST_CASE(ExcludedRuleDropsIndex) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.indexed(tu_id));
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
@@ -340,7 +341,7 @@ ZEST_CASE(RuleChangeReindexed) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ZASSERT(!f.project.index.held_manifest(tu_id));
+    ZASSERT(!f.project.index.indexed(tu_id));
     ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
@@ -375,7 +376,7 @@ ZEST_CASE(HostChangeDropsHeader) {
     f.project.dep_graph.build_reverse_map();
     f.load();
 
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.indexed(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -405,7 +406,7 @@ ZEST_CASE(HeaderRuleChangeReindexed) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.indexed(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -437,7 +438,7 @@ ZEST_CASE(RecordedHostChangeDrops) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.indexed(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -479,7 +480,7 @@ ZEST_CASE(ExcludedHostChangeDrops) {
     f.project.dep_graph.build_reverse_map();
     f.load();
 
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.indexed(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -520,7 +521,7 @@ ZEST_CASE(PinnedHostKeepsHeader) {
     f.project.dep_graph.build_reverse_map();
     f.load();
 
-    ZASSERT(f.project.index.held_manifest(header_id) != nullptr);
+    ZASSERT(f.project.index.indexed(header_id));
     ZASSERT(!f.pump.pending_reason(header_id).has_value());
 }
 
@@ -552,7 +553,7 @@ ZEST_CASE(UnreachableHostRebuilds) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(f.project.index.held_manifest(header_id) != nullptr);
+    ZASSERT(f.project.index.indexed(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -561,59 +562,21 @@ ZEST_CASE(CDBWriteFailureRetried) {
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
-    // A storage that fails only the CDB snapshot blob, with everything
-    // else committing normally.
-    struct CDBFailingStorage final : index::BlobDatabase {
-        std::unique_ptr<index::BlobDatabase> real;
-        bool fail_cdb = true;
-        llvm::SmallVector<index::BlobKind> written;
+    // A storage refusing every batch until told otherwise.
+    struct FailingStorage final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
 
-        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-            return real->read(kind, key);
-        }
+        bool fail = true;
 
-        bool contains(index::BlobKind kind, llvm::StringRef key) override {
-            return real->contains(kind, key);
-        }
-
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey> removes) override {
-            llvm::SmallVector<std::uint32_t> failed;
-            for(std::uint32_t i = 0; i < puts.size(); i += 1) {
-                written.push_back(puts[i].kind);
-                if(fail_cdb && puts[i].kind == index::BlobKind::CommandSnapshot) {
-                    failed.push_back(i);
-                } else if(!real->write(llvm::ArrayRef(puts[i]), {}).empty()) {
-                    failed.push_back(i);
-                }
-            }
-            real->write({}, removes);
-            return failed;
-        }
-
-        void for_each_key(index::BlobKind kind,
-                          llvm::function_ref<void(llvm::StringRef)> fn) override {
-            real->for_each_key(kind, fn);
-        }
-
-        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return real->advance_read_snapshot();
-        }
-
-        void retire_old_snapshot() override {
-            real->retire_old_snapshot();
-        }
-
-        std::expected<bool, std::string> grow() override {
-            return real->grow();
+        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
+            return !fail && real->write(puts, removes);
         }
     };
 
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-    auto failing = std::make_unique<CDBFailingStorage>();
-    failing->real = std::move(f.project.database);
+    auto failing = std::make_unique<FailingStorage>(std::move(f.project.database));
     auto* storage = failing.get();
     f.project.database = std::move(failing);
 
@@ -622,15 +585,12 @@ ZEST_CASE(CDBWriteFailureRetried) {
     ZASSERT(f.merge(indexed.data));
     f.save();
 
-    // The snapshot rides the batch behind the index state it describes.
-    ZASSERT(int(storage->written.back()) == int(index::BlobKind::CommandSnapshot));
+    // The snapshot rides the batch with the index state it describes: the
+    // failed batch takes both, and both stay owed until a save commits them
+    // (`clice index` fails on unsaved state after the final save).
     ZASSERT(!storage->real->contains(index::BlobKind::CommandSnapshot, "cdb"));
-
-    // Nothing else is dirty any more, yet the failed snapshot alone must
-    // drive the next save until it commits — and until it does, the state
-    // counts as unsaved (`clice index` fails on it after the final save).
     ZASSERT(has_unsaved_state(f.project));
-    storage->fail_cdb = false;
+    storage->fail = false;
     f.save();
     ZASSERT(storage->real->contains(index::BlobKind::CommandSnapshot, "cdb"));
     ZASSERT(!has_unsaved_state(f.project));
@@ -649,7 +609,7 @@ ZEST_CASE(MissingSnapshotRewritten) {
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data));
         f.save();
-        // The project table committed but the final CDB write never did: the rest of
+        // The index committed but the final CDB write never did: the rest of
         // the index is intact.
         f.project.database->write(
             {
@@ -698,7 +658,7 @@ ZEST_CASE(DroppedHeaderDebtRetried) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
         f.load();
         auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-        ZASSERT(!f.project.index.held_manifest(header_id));
+        ZASSERT(!f.project.index.indexed(header_id));
         ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
         f.save();
     }
@@ -709,7 +669,7 @@ ZEST_CASE(DroppedHeaderDebtRetried) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ZASSERT(!f.project.index.held_manifest(header_id));
+    ZASSERT(!f.project.index.indexed(header_id));
     ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
@@ -789,44 +749,19 @@ ZEST_CASE(LateDebtShutdownRetry) {
     // corruption recovery) comes back with snapshot_stale set; the
     // shutdown's one metadata retry must commit it to the fresh database,
     // or a dropped standalone header's repair debt is lost for good.
-    struct CorruptOnWrite final : index::BlobDatabase {
+    struct CorruptOnWrite final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
         bool poisoned = false;
 
-        index::ReadBlob read(index::BlobKind, llvm::StringRef) override {
-            return {};
-        }
-
-        bool contains(index::BlobKind, llvm::StringRef) override {
-            return false;
-        }
-
-        llvm::SmallVector<std::uint32_t> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey>) override {
+        bool write(llvm::ArrayRef<Blob>, llvm::ArrayRef<index::BlobKey>) override {
             poisoned = true;
-            llvm::SmallVector<std::uint32_t> failed;
-            for(std::uint32_t i = 0; i < puts.size(); i += 1) {
-                failed.push_back(i);
-            }
-            return failed;
-        }
-
-        void for_each_key(index::BlobKind, llvm::function_ref<void(llvm::StringRef)>) override {}
-
-        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 1;
-        }
-
-        void retire_old_snapshot() override {}
-
-        std::expected<bool, std::string> grow() override {
             return false;
         }
 
         bool corrupted() const override {
             return poisoned;
         }
-
-        void condemn() override {}
     };
 
     IndexerFixture f;
@@ -834,7 +769,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "int use() { return 0; }\n");
     open_store(tmp, f.project);
-    f.project.database = std::make_unique<CorruptOnWrite>();
+    f.project.database = std::make_unique<CorruptOnWrite>(std::move(f.project.database));
 
     f.mark_failed(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h"))));
     auto indexed = index_file(tmp, tmp.path("main.cpp"));

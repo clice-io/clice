@@ -106,11 +106,10 @@ private:
     std::string persisted_bytes;
 
     /// The persisted snapshot needs a rewrite no index change will
-    /// trigger: its write failed while the rest of the batch may have
-    /// committed, or the load found it missing or corrupt next to a valid
-    /// project table. Without this flag the rewrite would wait for an
-    /// unrelated dirtying merge: a save with nothing else to commit skips
-    /// the snapshot entirely.
+    /// trigger: the load found it missing or corrupt, a batch carrying it
+    /// did not commit, or its database was replaced. Without this flag the
+    /// rewrite would wait for an unrelated dirtying merge: a save with
+    /// nothing else to commit skips the snapshot entirely.
     bool dirty = false;
 
     /// Build::recorded_generation as the snapshot last serialized it: a

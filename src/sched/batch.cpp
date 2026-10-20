@@ -13,7 +13,6 @@ import :config.config;
 import :feature.feature;
 import :index.project_index;
 import :index.shard;
-import :index.tu_manifest;
 import :project.build;
 import :project.command_resolver;
 import :project.configuration;
@@ -247,7 +246,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
 
     // The command's whole product is the persisted index: without a database
     // (cache failed to open, another process holds the index writer lock,
-    // or an unreadable project table disabled persistence) the run would
+    // or an unreadable header disabled persistence) the run would
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
     if(!project.database) {
@@ -300,14 +299,13 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
 
     result.completed = true;
     result.indexed_tus = stack.sched.pump.indexed_files();
-    project.index.for_each_manifest([&](Fid tu, const index::TUManifest&) {
+    project.index.for_each_unit([&](Fid tu) {
         if(!project.build.unit(tu)) {
             result.standalone_headers += 1;
         }
     });
     result.shard_count = project.index.shard_count();
-    project.index.for_each_shard(
-        [&](Fid, const index::Shard& shard) { result.shard_bytes += shard.bytes().size(); });
+    result.shard_bytes = project.index.shard_bytes();
     result.symbol_count = project.index.symbol_count();
     auto& too_big = stack.sched.pump.too_big();
     for(auto file: stack.sched.pump.failed()) {

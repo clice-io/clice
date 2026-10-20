@@ -94,13 +94,15 @@ namespace clice::index {
 /// its type definitions, and a precompiled header's diagnostics know an
 /// imported module unit from an included file; v42: no blob is a
 /// flatbuffer any more; v43: every blob is kotatsu's (kota::codec::blob),
-/// whose header differs; v44: a manifest keeps the memory its unit's
-/// worker reached.
-constexpr inline std::uint32_t index_format_version = 44;
+/// whose header differs; v44: the project table is one record per symbol,
+/// per file and per path behind a header, manifests name their files by
+/// path id and content hash, and producers name their unit by its path
+/// hash; v45: a manifest keeps the memory its unit's worker reached.
+constexpr inline std::uint32_t index_format_version = 45;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
-/// than 4 GiB; index blobs stay far below it (LLVM's project table, the
-/// largest, is about 40 MB), so one past it stops the process.
+/// than 4 GiB; index blobs stay far below it (LLVM's search blob, the
+/// largest, is about 75 MB), so one past it stops the process.
 template <typename Blob>
 std::vector<std::byte> encode(const Blob& blob) {
     auto bytes = kota::codec::blob::to_bytes(blob);
@@ -428,8 +430,8 @@ struct InstantiationShardBlobOf {
     IdColumnOf<Seq> key_resolutions;
     IdColumnOf<Seq> key_producers;
 
-    /// The runs that walked keys, ascending: the TU (the hash of its
-    /// database key) and its manifest's built_at.
+    /// The runs that walked keys, ascending: the TU (its path_hash) and its
+    /// manifest's built_at.
     Seq<std::uint64_t> producer_units;
     Seq<std::uint64_t> producer_runs;
 };
@@ -550,96 +552,151 @@ struct TUIndexBlobOf {
 
 using TUIndexBlob = TUIndexBlobOf<kota::codec::blob::Owned>;
 
-/// The project table's persisted form, read in place: the FileVersion table
-/// as parallel columns, the symbol table as parallel columns in hash order
-/// with its names, arguments and reference bitmaps in arenas, and the path
-/// table those columns index.
+/// The index database's header, written by every save. Its format version
+/// covers every record: a database of another one is discarded whole.
 template <template <typename> typename Seq>
-struct ProjectTableBlobOf {
+struct HeaderBlobOf {
     std::uint32_t format_version = 0;
 
-    /// See ProjectIndex::table_generation.
-    std::uint64_t generation = 0;
+    /// The path id the next file the database names receives.
+    std::uint32_t next_path = 0;
 
-    std::uint32_t next_version_id = 0;
-
-    Seq<std::uint32_t> version_ids;
-    Seq<Seq<char>> version_paths;
-    Seq<std::uint64_t> version_hashes;
-
-    /// Path id -> path for every id the symbol columns reference. Ids
-    /// are dense and stable across writes: a path keeps its id for as
-    /// long as the blob lineage lives, so a base entry's bitmap image is
-    /// copied into the next blob verbatim.
-    Seq<Seq<char>> paths;
-
-    /// The external symbol table, sorted by hash. A symbol's reference
-    /// files are a file set (append_file_set) in the arena, one end offset
-    /// per symbol.
-    Seq<std::uint64_t> symbol_hashes;
-    Seq<char> symbol_names;
-    Seq<std::uint32_t> symbol_name_ends;
-    /// The arguments of the few symbols having them: those symbols,
-    /// ascending, and their text back to back.
-    Seq<std::uint32_t> symbol_args_entries;
-    Seq<char> symbol_args;
-    Seq<std::uint32_t> symbol_args_ends;
-    Seq<char> symbol_signatures;
-    Seq<std::uint32_t> symbol_signature_ends;
-    /// The parent's position in the table plus one; 0 for none, or for one
-    /// outside the table, which the sparse (symbol, parent hash) table names.
-    IdColumnOf<Seq> symbol_parents;
-    Seq<std::uint32_t> symbol_far_parents;
-    Seq<std::uint64_t> symbol_far_parent_hashes;
-    Seq<std::uint8_t> symbol_kinds;
-    Seq<std::uint16_t> symbol_flags;
-    Seq<std::uint8_t> symbol_token_kinds;
-    Seq<std::uint32_t> symbol_token_modifiers;
-    /// Path ids plus one, 0 for a symbol without a declaring relation.
-    IdColumnOf<Seq> symbol_files;
-    /// The files referencing each symbol, counted: at most the path count,
-    /// so they take the width of path ids.
-    IdColumnOf<Seq> symbol_reference_counts;
-    Seq<std::uint32_t> symbol_bitmap_ends;
-    Seq<std::uint8_t> symbol_bitmaps;
-    /// The files whose instantiation shards name a symbol, as file sets for
-    /// the few symbols some instantiation names, ascending.
-    Seq<std::uint32_t> symbol_instantiation_entries;
-    Seq<std::uint32_t> symbol_instantiation_ends;
-    Seq<std::uint8_t> symbol_instantiations;
-
-    /// tu_version -> generation of every manifest current at this save.
-    /// The loader adopts a manifest blob only on an exact generation match, so
-    /// a manifest whose write failed while the project table was persisted (or one that
-    /// outran a lost project table write) reads as lost and its TU reindexes,
-    /// instead of an older on-disk manifest serving as current.
-    Seq<std::uint32_t> manifest_versions;
-    Seq<std::uint64_t> manifest_generations;
-
-    /// The generation of the search blob this table was saved with, and
-    /// the entries and the files whose names of internal linkage (path
-    /// ids, ascending) changed since that blob was built.
+    /// The generation of the search blob saved with this header, and the
+    /// symbols and the files (path ids) whose names of internal linkage
+    /// changed since that blob was built, ascending.
     std::uint64_t search_generation = 0;
     Seq<std::uint64_t> search_pending;
     Seq<std::uint32_t> search_pending_files;
 
-    /// The reverse include graph, for readers holding no manifests: every
-    /// file some TU contributed a variant to (path ids, ascending), and those
-    /// TUs' path ids as file sets back to back.
-    Seq<std::uint32_t> contributed_files;
-    Seq<std::uint32_t> contributor_ends;
-    Seq<std::uint8_t> contributors;
-
-    /// The symbols below external scope some TU's shared locals list
-    /// (TUManifest::shared_locals), ascending; the end of each symbol's run
-    /// of file sets; and the sets, file sets back to back.
-    Seq<std::uint64_t> shared_local_symbols;
-    Seq<std::uint32_t> shared_local_set_ends;
-    Seq<std::uint32_t> shared_local_file_ends;
-    Seq<std::uint8_t> shared_local_files;
+    /// The units (path ids) owed a reindex because a rebuild of a file they
+    /// contribute to discarded their variants, ascending: their files' content
+    /// reads fresh, so no start-up scan would find them.
+    Seq<std::uint32_t> owed_units;
 };
 
-using ProjectTableBlob = ProjectTableBlobOf<kota::codec::blob::Owned>;
+using HeaderBlob = HeaderBlobOf<kota::codec::blob::Owned>;
+
+/// What the database knows of one file, small enough for the start-up
+/// scan to read for every file: its path id, the contents the units read,
+/// what its shard stores and, for a unit, its current run.
+template <template <typename> typename Seq>
+struct FileBlobOf {
+    std::uint32_t path = 0;
+
+    /// Some unit's failed lookup looked here and found no file.
+    bool absent = false;
+
+    /// The content hashes the units entering the file, or reading it
+    /// through a module or a precompiled header, consumed, ascending.
+    Seq<std::uint64_t> consumed;
+
+    /// The content generation of the file's shard, 0 for none, and the
+    /// variants it stores in mask order — what a merge or a worker may
+    /// take as stored without reading the shard.
+    std::uint64_t generation = 0;
+    Seq<std::uint64_t> stored;
+
+    /// For a unit, its manifest's built_at; 0 when the file is no unit.
+    std::uint64_t run = 0;
+};
+
+using FileBlob = FileBlobOf<kota::codec::blob::Owned>;
+
+/// A set of units (path ids, as a file set: append_file_set) under a key.
+template <template <typename> typename Seq>
+struct UnitSetOf {
+    std::uint64_t key = 0;
+    Seq<std::uint8_t> units;
+};
+
+/// How a set of units resolved a file's own `#include` lines at one
+/// content: the directive lines and their targets (path ids), in line
+/// order.
+template <template <typename> typename Seq>
+struct IncludeResolutionOf {
+    std::uint64_t content = 0;
+    Seq<std::uint32_t> lines;
+    Seq<std::uint32_t> targets;
+    Seq<std::uint8_t> units;
+};
+
+/// The units depending on one file, each list ascending by key.
+template <template <typename> typename Seq>
+struct DependentsBlobOf {
+    /// Per consumed content hash, the units that entered the file at it.
+    Seq<UnitSetOf<Seq>> readers;
+    /// Per variant, the units that contributed it.
+    Seq<UnitSetOf<Seq>> contributors;
+    /// The units whose failed lookups looked here.
+    Seq<std::uint8_t> absent;
+    /// Per content hash, the units reading the file through a module they
+    /// import or the precompiled header they load.
+    Seq<UnitSetOf<Seq>> importers;
+    /// Per instantiation use, the units using it.
+    Seq<UnitSetOf<Seq>> uses;
+    /// The distinct resolutions of the file's own `#include` lines.
+    Seq<IncludeResolutionOf<Seq>> resolutions;
+};
+
+using DependentsBlob = DependentsBlobOf<kota::codec::blob::Owned>;
+
+/// The names of internal linkage a file's shard declares, for the search
+/// index, ascending by hash.
+template <template <typename> typename Seq>
+struct InternalsBlobOf {
+    Seq<std::uint64_t> hashes;
+    Seq<char> names;
+    Seq<std::uint32_t> name_ends;
+    Seq<char> args;
+    Seq<std::uint32_t> args_ends;
+    Seq<std::uint64_t> parents;
+    Seq<std::uint8_t> kinds;
+    Seq<std::uint16_t> flags;
+};
+
+using InternalsBlob = InternalsBlobOf<kota::codec::blob::Owned>;
+
+/// One external symbol's record.
+template <template <typename> typename Seq>
+struct SymbolBlobOf {
+    /// The name, the arguments and the signature back to back.
+    Seq<char> text;
+    std::uint32_t name_size = 0;
+    std::uint32_t args_size = 0;
+
+    std::uint64_t parent = 0;
+
+    /// The canonical declaration's path id plus one, 0 for none.
+    std::uint32_t file = 0;
+
+    std::uint32_t token_modifiers = 0;
+    std::uint16_t flags = 0;
+    std::uint8_t kind = 0;
+    std::uint8_t token_kind = 0;
+
+    /// The file sets of the files referencing the symbol and of those whose
+    /// instantiation shards name it, back to back.
+    Seq<std::uint8_t> files;
+    std::uint32_t references_size = 0;
+};
+
+using SymbolBlob = SymbolBlobOf<kota::codec::blob::Owned>;
+
+/// A file set (append_file_set) and how many units list it.
+template <template <typename> typename Seq>
+struct ListedFilesOf {
+    std::uint32_t units = 0;
+    Seq<std::uint8_t> files;
+};
+
+/// A symbol below external scope several files hold: the file sets the
+/// units list for it (TUManifest::shared_locals), each once.
+template <template <typename> typename Seq>
+struct SharedLocalBlobOf {
+    Seq<ListedFilesOf<Seq>> sets;
+};
+
+using SharedLocalBlob = SharedLocalBlobOf<kota::codec::blob::Owned>;
 
 /// Layout and scoring version of the search blob, apart from the index
 /// format it is derived from: a bump rebuilds the search index alone.
@@ -709,19 +766,22 @@ struct SearchIndexBlobOf {
 
 using SearchIndexBlob = SearchIndexBlobOf<kota::codec::blob::Owned>;
 
-/// The manifest's persisted form. Node and contribution payloads are
-/// varint-packed by hand: a big TU enters thousands of files, and LEB128
-/// on the small ids and lines roughly halves the blob against fixed-width
-/// columns.
+/// The manifest's persisted form. Its file versions are a table of its
+/// own, (path id, content hash) each, which every other field indexes; a
+/// path appears twice when the modules a unit imports were built from two
+/// versions of it. Node and contribution payloads are varint-packed by
+/// hand: a big TU enters thousands of files, and LEB128 on the small ids
+/// and lines roughly halves the blob against fixed-width columns.
 template <template <typename> typename Seq>
 struct TUManifestBlobOf {
     std::uint32_t format_version = 0;
 
-    std::uint64_t table_generation = 0;
-
     std::uint64_t built_at = 0;
 
     std::uint64_t peak = 0;
+
+    Seq<std::uint32_t> version_paths;
+    Seq<std::uint64_t> version_hashes;
 
     std::uint32_t tu_version = 0;
 

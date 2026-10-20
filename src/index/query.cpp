@@ -471,8 +471,8 @@ Fid IndexQuery::definition_file(SymbolHash hash) const {
     if(!identity || !has_flag(identity->flags, SymbolFlags::HasDefinition)) {
         return {};
     }
-    // The table never retracts a definition: a file reindexed or edited
-    // without it keeps the record until another unit defines the symbol.
+    // A symbol record never retracts a definition: a file reindexed or edited
+    // without it keeps the flag until another unit defines the symbol.
     Fid file{identity->file};
     auto* shard = declaring_shard(file);
     return shard && shard->has_relation(hash, RelationKind::Definition) ? file : Fid{};
@@ -611,15 +611,7 @@ std::optional<SymbolInfo> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) c
                 adopt(*identity);
             }
         });
-        if(found) {
-            return found;
-        }
     }
-    index.for_each_shard([&](Fid, const Shard& shard) {
-        if(auto identity = found ? std::nullopt : shard.find_symbol(hash)) {
-            adopt(*identity);
-        }
-    });
     return found;
 }
 

@@ -69,4 +69,11 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              const SearchConfig& config,
                                              vfs::Scope& scope);
 
+/// Resolve a file a command forces in (`-include`) the way clang does: from
+/// the compile's working directory `directory`, then as a quoted include.
+std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
+                                                    llvm::StringRef directory,
+                                                    const ResolvedSearchConfig& config,
+                                                    vfs::Scope& scope);
+
 }  // namespace clice

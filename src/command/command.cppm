@@ -233,6 +233,10 @@ struct RenderOptions {
     /// Synthesized preamble to inject as `-include <path>`, after the
     /// command's own user-content flags so the host's -include runs first.
     const char* preamble = nullptr;
+
+    /// How many of the command's `-include`s to keep, in order: the ones
+    /// past them are left out.
+    std::size_t kept_includes = std::numeric_limits<std::size_t>::max();
 };
 
 /// A loaded compilation database file. Ids are stable for the database's

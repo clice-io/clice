@@ -613,6 +613,8 @@ ZEST_CASE(CompiledIncluderCascades) {
     project.dep_graph.set_includes(compiled, 0, {});
     project.dep_graph.build_reverse_map();
     index::TUManifest manifest;
+    manifest.built_at = 1;
+    manifest.tu_version = project.file_table.intern_version(compiled, 1);
     manifest.contributions = {
         {project.file_table.intern_version(header, 1), 1}
     };
@@ -628,6 +630,11 @@ ZEST_CASE(CompiledIncluderCascades) {
     llvm::SmallVector<Fid> reindexed{scanned, compiled};
     llvm::sort(reindexed);
     ZASSERT(dirty.reindex_deps_only == reindexed);
+    // Until they are indexed again, what their runs walked is behind the
+    // disk — and the file's own, should it be a unit of its own.
+    ZEXPECT(IndexInternals::behind(project.index, compiled));
+    ZEXPECT(IndexInternals::behind(project.index, scanned));
+    ZEXPECT(IndexInternals::behind(project.index, header));
 }
 
 ZEST_CASE(ModuleReadHeaderCascades) {
@@ -700,6 +707,8 @@ ZEST_CASE(AppearedHeaderCascades) {
     auto closed = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     auto open = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
     index::TUManifest manifest;
+    manifest.built_at = 1;
+    manifest.tu_version = project.file_table.intern_version(closed, 1);
     manifest.absent = {project.file_table.intern_version(header, 0)};
     project.index.apply_manifest(closed, std::move(manifest));
     store.open(open);

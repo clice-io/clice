@@ -19,12 +19,14 @@ import :vfs.path;
 
 namespace clice {
 
+namespace {
+
 /// Per-file command selection decision log: which tiers were tried, which one
 /// was hit, and a hash of the final command for correlating later failures.
-static void log_command_decision(llvm::StringRef path,
-                                 llvm::ArrayRef<llvm::StringRef> tried,
-                                 CommandSource source,
-                                 llvm::ArrayRef<std::string> arguments) {
+void log_command_decision(llvm::StringRef path,
+                          llvm::ArrayRef<llvm::StringRef> tried,
+                          CommandSource source,
+                          llvm::ArrayRef<std::string> arguments) {
     if(logging::options.level > logging::Level::info)
         return;
     std::string joined;
@@ -38,6 +40,28 @@ static void log_command_decision(llvm::StringRef path,
              source,
              llvm::xxh3_64bits(llvm::StringRef(joined)));
 }
+
+/// How many of `ref`'s `-include`s come before the one naming `forced`:
+/// what a header context entered through that forced file keeps
+/// (HeaderContext::forced). All of them for none.
+std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced) {
+    if(!forced.valid()) {
+        return std::numeric_limits<std::size_t>::max();
+    }
+    auto search = project.cdb.search_config(ref);
+    vfs::Scope scope(project.file_table.dirs);
+    auto resolved = resolve_search_config(search, scope);
+    llvm::StringRef directory = project.cdb.config(ref.config).directory;
+    for(std::size_t i = 0; i < search.forced_includes.size(); i += 1) {
+        auto header = resolve_forced_include(search.forced_includes[i], directory, resolved, scope);
+        if(header && project.file_table.find(Spelling::absolute(header->path)) == forced) {
+            return i;
+        }
+    }
+    return std::numeric_limits<std::size_t>::max();
+}
+
+}  // namespace
 
 Candidate pick_pinned_config(Project& project,
                              Fid file,
@@ -223,7 +247,8 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
                                     context.occurrence != choice->occurrence.value_or(0) ||
                                     context.host_command_hash != choice->command_hash ||
                                     context.host_base_hash != choice->base_hash);
-            bool mode_mismatch = (context.synthesized != nullptr) != synthesize;
+            bool mode_mismatch =
+                (context.synthesized != nullptr) != (synthesize && !context.chain.empty());
             if(override_mismatch || mode_mismatch ||
                deps_changed(project.file_table, context.deps)) {
                 cache->erase(cached);
@@ -265,6 +290,7 @@ std::optional<CommandRef> CommandResolver::resolve_through_host(Fid path_id,
         return std::nullopt;
     }
     resolution.host = ctx_ptr->host_path_id;
+    resolution.forced = ctx_ptr->forced;
     resolution.synthesized = ctx_ptr->synthesized;
 
     LOG_INFO("resolve_command: header context for {} (host={}, synthesized={})",
@@ -286,11 +312,13 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         // A header borrowing its host's command compiles as the host's
         // language, with the header injected as the input; the synthesized
         // prefix lands after the host's own user-content flags (its
-        // -include runs first).
+        // -includes run first, but for the one the context enters the
+        // header through and those after it).
         RenderOptions options;
         if(resolution.synthesized) {
             options.preamble = resolution.synthesized->prefix.c_str();
         }
+        options.kept_includes = includes_before(project, ref, resolution.forced);
         directory = project.cdb.config(ref.config).directory;
         auto argv = project.cdb.render(ref, options);
         arguments.assign(argv.begin(), argv.end());
@@ -414,7 +442,7 @@ std::expected<HeaderContext, Fid>
                     host = std::move((*found)[n]);
                     occurrence = n;
                 }
-            } else if(auto chain = project.dep_graph.find_include_chain(preferred, header_path_id);
+            } else if(auto chain = lexical_chain(project, preferred, header_path_id);
                       !chain.empty()) {
                 host = Host{.file = preferred, .chain = std::move(chain), .lexical = true};
                 occurrence = choice->occurrence;
@@ -440,12 +468,16 @@ std::expected<HeaderContext, Fid>
     }
 
     bool lexical = host->lexical;
-    if(!synthesize) {
+    Fid forced = chain.front() != host_path_id ? chain.front() : Fid{};
+    // A header the command forces in itself has nothing to cut: the
+    // -includes ahead of it are its context.
+    if(!synthesize || chain.size() == 1) {
         return HeaderContext{.host_path_id = host_path_id,
                              .occurrence = occurrence.value_or(0),
                              .host_command_hash = std::move(host_command_hash),
                              .host_base_hash = std::move(host_base_hash),
                              .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1),
+                             .forced = forced,
                              .lexical = lexical};
     }
 
@@ -560,6 +592,7 @@ std::expected<HeaderContext, Fid>
                          .host_command_hash = std::move(host_command_hash),
                          .host_base_hash = std::move(host_base_hash),
                          .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1),
+                         .forced = forced,
                          .deps = std::move(deps),
                          .lexical = lexical};
 }

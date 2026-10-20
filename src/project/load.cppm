@@ -46,24 +46,24 @@ std::string deeper_databases_hint(const Project& project);
 
 /// What load_saved found.
 struct SavedLoad {
-    /// False when a project table blob existed but could not be decoded (old
-    /// format or corrupt): the server rebuilds from scratch, but a
-    /// read-only reader must report an unusable cache instead of an
-    /// empty index.
+    /// False when the database's header is of another format or corrupt:
+    /// the server discards the database and starts over, but a read-only
+    /// reader must report an unusable cache instead of an empty index.
     bool decoded = true;
 
-    /// The units the load found unservable, owed a reindex.
+    /// The units owed a reindex the load found: the ones a rule keeps out or
+    /// whose command changed while no server ran.
     index::IndexReport report;
 };
 
-/// Load what the project's database holds: the index (ProjectIndex::load),
+/// Open what the project's database holds: the index (ProjectIndex::open),
 /// the artifact records into the project and `commands`, the context
 /// choices; then, unless read-only, drop the index of the units a rule
 /// keeps out and of those whose command changed while no server ran
-/// (CommandSnapshot::reconcile). A database found corrupt is replaced by
-/// a fresh one; one whose project table cannot be read is left untouched,
-/// and persistence is off for the session.
-SavedLoad load_saved(Project& project, CommandResolver& commands, index::LoadOptions options);
+/// (CommandSnapshot::reconcile). A database of another format or found
+/// corrupt is replaced by a fresh one; one whose header cannot be read is
+/// left untouched, and persistence is off for the session.
+SavedLoad load_saved(Project& project, CommandResolver& commands);
 
 /// What load_project found and did.
 struct ProjectLoad {

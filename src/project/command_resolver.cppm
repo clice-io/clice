@@ -81,6 +81,10 @@ struct Resolution {
     /// invalid for every other source.
     Fid host;
 
+    /// The file the host's command forces in that the header context
+    /// enters the header through (HeaderContext::forced).
+    Fid forced;
+
     /// The command selection behind the rendered arguments, for
     /// structured consumers (search config, language queries).
     CommandRef ref;
