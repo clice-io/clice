@@ -1156,14 +1156,20 @@ std::optional<Spelling> CompilationDatabase::pch_output(ConfigID id) const {
     return Spelling::absolute(output);
 }
 
-llvm::SmallVector<Spelling, 2> CompilationDatabase::pch_inputs(ConfigID id) const {
-    auto& args = config(id).args;
-    auto directory = Spelling::absolute(config(id).directory);
-    for(auto& arg: args) {
+/// Where the command looks up the relative paths it names.
+static Spelling working_directory(const CompileConfig& config) {
+    auto directory = Spelling::absolute(config.directory);
+    for(auto& arg: config.args) {
         if(arg.opt_id == option::OPT_working_directory && arg.values.size() == 1) {
             directory = Spelling::absolute(arg.values[0]);
         }
     }
+    return directory;
+}
+
+llvm::SmallVector<Spelling, 2> CompilationDatabase::pch_inputs(ConfigID id) const {
+    auto& args = config(id).args;
+    auto directory = working_directory(config(id));
     llvm::SmallVector<Spelling, 2> inputs;
     for(auto& arg: args) {
         if(arg.values.size() != 1) {
@@ -1184,6 +1190,19 @@ llvm::ArrayRef<CompilationEntry> CompilationDatabase::pch_writers(Fid pch) const
     auto it = writers.find(pch);
     return it != writers.end() ? llvm::ArrayRef<CompilationEntry>(it->second)
                                : llvm::ArrayRef<CompilationEntry>();
+}
+
+bool CompilationDatabase::precompiled(ConfigID id, llvm::StringRef header) const {
+    auto directory = working_directory(config(id));
+    Spelling path(header, directory);
+    auto written = [&](llvm::StringRef suffix) {
+        auto pch = file_table.find(Spelling::absolute(path.str() + suffix));
+        return pch && !pch_writers(*pch).empty();
+    };
+    return written(".pch") || written(".gch") || llvm::any_of(config(id).args, [&](const Arg& arg) {
+               return arg.opt_id == option::OPT__SLASH_Yu && arg.values.size() == 1 &&
+                      Spelling(arg.values[0], directory) == path;
+           });
 }
 
 bool CompilationDatabase::forces_c_family(ConfigID id) const {

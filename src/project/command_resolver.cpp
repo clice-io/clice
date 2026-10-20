@@ -111,11 +111,13 @@ std::optional<CommandRef> host_command(Project& project,
     return lent_command(project, header, host, picked.config, extra_prepend, extra_append);
 }
 
-/// The `-include`s of `ref` that read `file` itself, as the command spells
-/// them, which a compile of `file` leaves out: they would enter `file`
-/// before its own text. A header of a target's precompiled header meets one
-/// in every command it borrows from the target (CMake's cmake_pch.hxx,
-/// MSVC's /FI).
+/// The `-include`s of `ref` that a precompiled header stands for and that
+/// read `file` itself, as the command spells them, which a compile of
+/// `file` leaves out: they would enter `file` before its own text. A header
+/// of a target's precompiled header meets one in every command it borrows
+/// from the target (CMake's cmake_pch.hxx). A header the precompiled header
+/// holds stands alone, as the build without it needs; the code under any
+/// other forced include is written against it.
 static std::vector<std::string> self_includes(Project& project, Fid file, const CommandRef& ref) {
     std::vector<std::string> found;
     auto& graph = project.dep_graph;
@@ -130,6 +132,9 @@ static std::vector<std::string> self_includes(Project& project, Fid file, const 
     auto resolved = resolve_search_config(search, scope);
     llvm::StringRef directory = project.cdb.config(ref.config).directory;
     for(auto& name: search.forced_includes) {
+        if(!project.cdb.precompiled(ref.config, name)) {
+            continue;
+        }
         auto header = resolve_forced_include(name, directory, resolved, scope);
         auto header_id =
             header ? project.file_table.find(Spelling::absolute(header->path)) : std::nullopt;

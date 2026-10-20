@@ -239,17 +239,23 @@ ZEST_CASE(UnmatchedChainWantsTree) {
 }
 
 ZEST_CASE(SelfIncludeLeftOut) {
-    /// main.cpp's command forces in pch.h, which includes part.h, and
-    /// config.h, which does not. part.h borrows the command without pch.h,
-    /// which would enter part.h before its own text; main.cpp keeps both.
+    /// main.cpp's command forces in pch.h, which a precompiled header
+    /// stands for, and prefix.h; both include part.h. part.h borrows the
+    /// command without pch.h, which would enter part.h before its own
+    /// text, but keeps prefix.h, which the code under it is written
+    /// against; main.cpp keeps both.
     TempDir tmp;
     tmp.touch("pch.h", "#pragma once\n#include \"part.h\"\n");
-    tmp.touch("config.h", "#pragma once\n");
+    tmp.touch("pch.h.cxx", "");
+    tmp.touch("prefix.h", "#pragma once\n#include \"part.h\"\n");
     tmp.touch("part.h", "#pragma once\n");
     tmp.touch("main.cpp", "#include \"part.h\"\n");
     tmp.touch("build/compile_commands.json",
               build_cdb_json({
-                  {tmp.root, tmp.path("main.cpp"), {"-include", "pch.h", "-include", "config.h"}},
+                  {tmp.root,
+                   tmp.path("pch.h.cxx"),
+                   {"-x", "c++-header", "-include", "pch.h", "-o", "pch.h.gch"}                 },
+                  {tmp.root, tmp.path("main.cpp"), {"-include", "pch.h", "-include", "prefix.h"}},
     }));
     FileTable files;
     Project project{files};
@@ -276,8 +282,8 @@ ZEST_CASE(SelfIncludeLeftOut) {
     };
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     auto part = project.file_table.intern(Spelling::absolute(tmp.path("part.h")));
-    ZEXPECT(forced(main) == std::vector<std::string>{"pch.h", "config.h"});
-    ZEXPECT(forced(part) == std::vector<std::string>{"config.h"});
+    ZEXPECT(forced(main) == std::vector<std::string>{"pch.h", "prefix.h"});
+    ZEXPECT(forced(part) == std::vector<std::string>{"prefix.h"});
 }
 
 };  // ZEST_SUITE(CommandResolver)

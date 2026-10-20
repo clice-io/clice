@@ -471,6 +471,11 @@ public:
     /// The entries writing `pch` (pch_output), in storage order.
     llvm::ArrayRef<CompilationEntry> pch_writers(Fid pch) const;
 
+    /// Whether a precompiled header stands for `header`, which the config's
+    /// command forces in: the one an entry of the database writes beside it
+    /// (pch_inputs), or the one cl's `/Yu` builds from it.
+    bool precompiled(ConfigID id, llvm::StringRef header) const;
+
     /// Identity hash of a config (Frontend view + slot position + directory
     /// + schema salt), with the directory and the option values under the
     /// workspace root taken by their portable names so a moved checkout
