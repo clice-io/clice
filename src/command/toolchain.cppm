@@ -102,6 +102,10 @@ private:
         /// The job's arguments as clice's frontend takes them.
         llvm::ArrayRef<Arg> args;
 
+        /// The job's resource directory, whose builtin headers the command's
+        /// own paths may name too.
+        llvm::StringRef job_resource_dir;
+
         /// The job keeps its own clang resource tree: a matched LLVM-MinGW
         /// installation, whose builtin headers and libc++ belong together.
         bool own_resource_dir = false;

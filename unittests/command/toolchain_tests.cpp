@@ -438,14 +438,17 @@ ZEST_CASE(PrecompileFullBMI, skip = Windows) {
 
 ZEST_CASE(ResourceDirBecomesOurs, skip = Windows) {
     // The external driver's resource dir and its builtin headers become
-    // ours, a trailing separator or not; the ignorelist under its share/
-    // has no counterpart in our tree and stays.
+    // ours, a trailing separator or not, and so does a builtin header the
+    // command forces; the ignorelist under its share/ has no counterpart in
+    // our tree and stays.
     auto driver = fake_clang(
         R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "/clice-fake/lib/clang/22//" "-internal-isystem" "/clice-fake/lib/clang/22//include" "-fsanitize=address" "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt")");
-    auto argv = f.resolve(add("a.cpp", {driver.c_str()}));
+    auto argv = f.resolve(
+        add("a.cpp", {driver.c_str(), "-include", "/clice-fake/lib/clang/22/include/stddef.h"}));
 
     ZEXPECT(adjacent(argv, "-resource-dir", resource_dir()));
     ZEXPECT(adjacent(argv, "-internal-isystem", path::join(resource_dir(), "include")));
+    ZEXPECT(adjacent(argv, "-include", path::join(resource_dir(), "include/stddef.h")));
     ZEXPECT(contains(
         argv,
         "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt"));

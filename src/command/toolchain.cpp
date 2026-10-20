@@ -848,16 +848,16 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
         target = clang::TargetInfo::CreateTargetInfo(engine, target_options);
     }
     auto known_name = [&](const kota::option::ParsedArg& arg) {
-        llvm::StringRef name = arg.values[0];
         switch(arg.id) {
-            case option::OPT_target_cpu: return target->isValidCPUName(name);
-            case option::OPT_tune_cpu: return target->isValidTuneCPUName(name);
-            case option::OPT_target_abi: return target->setABI(name.str());
+            case option::OPT_target_cpu: return target->isValidCPUName(arg.values[0]);
+            case option::OPT_tune_cpu: return target->isValidTuneCPUName(arg.values[0]);
+            case option::OPT_target_abi: return target->setABI(std::string(arg.values[0]));
             default: return true;
         }
     };
 
-    Frontend result{.driver = db.strings.save(job[0]).data()};
+    Frontend result{.driver = db.strings.save(job[0]).data(),
+                    .job_resource_dir = db.strings.save(old_resource_dir)};
     // A matched LLVM-MinGW installation keeps its own resource tree.
     result.own_resource_dir =
         llvm::Triple(triple).isWindowsGNUEnvironment() && vfs::is_directory(old_resource_dir);
@@ -917,7 +917,7 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, const Frontend& probe) 
         auto& staged_arg = staged.emplace_back(local(arg));
         if(!probe.own_resource_dir) {
             for(auto& value: staged_arg.values) {
-                if(auto ours = ours_for(arg.opt_id, value, {})) {
+                if(auto ours = ours_for(arg.opt_id, value, probe.job_resource_dir)) {
                     value = db.strings.save(*ours).data();
                 }
             }
