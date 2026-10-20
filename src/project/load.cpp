@@ -110,8 +110,7 @@ SavedLoad load_saved(Project& project, CommandResolver& commands) {
     // the unreadable-header case above instead of writing into a damaged
     // tree every session. The session starts over as a first run.
     if(!read_only && (db.corrupted() || index.damaged())) {
-        LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
-        reopen_fresh_database(project);
+        recover_corrupt_database(project, report);
         return result;
     }
 

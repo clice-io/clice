@@ -509,7 +509,10 @@ kota::task<bool> ProjectIndex::migrate_views(BlobDatabase& db,
             search.load(std::move(blob.buffer));
         }
     }
-    if(db.corrupted()) {
+    // A shard that diverged, and the ones after it, still borrow the old
+    // snapshot: it stays, and the caller discards the index before anything
+    // reads them.
+    if(db.corrupted() || damage) {
         co_return false;
     }
     db.retire_old_snapshot();

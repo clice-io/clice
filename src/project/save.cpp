@@ -27,21 +27,24 @@ void pulse(ContextChoices& contexts) {
     contexts.committed.reset();
 }
 
-/// The recovery from a database found corrupt after it was opened —
-/// damaged pages, or a record failing its checks: nothing in it survives,
-/// so the project starts over as a first run, every unit of the build owed
-/// a reindex.
+}  // namespace
+
 void recover_corrupt_database(Project& project, index::IndexReport& report) {
     LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
     for(auto unit: project.build.members()) {
         report.add_reindex(unit);
     }
+    // No pass over the build reaches a unit of its own (a header indexed
+    // with a borrowed command): as many as the records still name.
+    project.index.for_each_unit([&](Fid unit) {
+        if(project.build.entries(unit).empty()) {
+            report.add_reindex(unit);
+        }
+    });
     // The fresh database records the command snapshot at the next save.
     report.owes_retry = true;
     reopen_fresh_database(project);
 }
-
-}  // namespace
 
 void reopen_fresh_database(Project& project) {
     project.database->condemn();

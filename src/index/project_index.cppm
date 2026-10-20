@@ -365,7 +365,8 @@ public:
     /// snapshot (growing the map first when the write hit a full one): the
     /// committed changes leave memory only once it opened, and the shards
     /// borrowing the previous snapshot move onto it. False when the
-    /// database turned out corrupt: the caller discards it.
+    /// database turned out corrupt or a shard diverged from its blob: the
+    /// caller discards it.
     kota::task<bool> migrate_views(BlobDatabase& db, kota::event_loop& loop, IndexReport& report);
 
     /// Whether a record read since open failed its checks: the database is

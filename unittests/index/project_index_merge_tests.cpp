@@ -47,17 +47,27 @@ bool merge(llvm::StringRef data) {
     return fx.merge(data);
 }
 
+/// The symbols the index holds, saved or not.
+std::uint32_t symbols() {
+    std::uint32_t count = 0;
+    project.index.for_each_symbol([&](index::SymbolHash, const index::SymbolView&, std::uint32_t) {
+        count += 1;
+        return true;
+    });
+    return count;
+}
+
 ZEST_CASE(MergeRejectsGarbage) {
     // A worker shipping corrupted bytes (torn write, stale format) must not
     // crash the master or leave partial state behind.
     ZASSERT(project.index.shard_count() == 0);
-    ZASSERT(project.index.symbol_count() == 0u);
+    ZASSERT(symbols() == 0u);
 
     std::string garbage = "definitely not a blob, but long enough to try";
     ZASSERT(!merge(garbage));
 
     ZASSERT(project.index.shard_count() == 0);
-    ZASSERT(project.index.symbol_count() == 0u);
+    ZASSERT(symbols() == 0u);
 }
 
 ZEST_CASE(SharedLocalPrecompiledInput) {
@@ -370,7 +380,7 @@ ZEST_CASE(RejectsCorruptSection) {
     // would stay canonical for their hashes forever (later merges only
     // fill empty names), and stray FileVersions would persist with the
     // next save.
-    ZASSERT(project.index.symbol_count() == 0u);
+    ZASSERT(symbols() == 0u);
     ZASSERT(project.file_table.versions.empty());
 
     // The intact result still merges afterwards.

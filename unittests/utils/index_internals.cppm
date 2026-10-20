@@ -30,7 +30,11 @@ struct IndexInternals {
     /// Retire `file`'s shard, as a compaction finding no live variant does.
     static void retire_shard(index::ProjectIndex& index, Fid file) {
         index.shards[file] = index::Shard();
+        index.changed_shards.erase(file);
         index.retired_shards.insert(file);
+        auto& record = index.change_file(file);
+        record.generation = 0;
+        record.stored.clear();
     }
 
     /// Whether `tu` is behind the disk (ProjectIndex::mark_behind).

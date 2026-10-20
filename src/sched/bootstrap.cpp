@@ -19,7 +19,6 @@ ProjectLoad bootstrap_project(Project& project,
                               llvm::StringRef requested_configuration,
                               bool read_only_index) {
     auto load = load_project(project, commands, root, requested_configuration, read_only_index);
-    bool owed = !load.index.report.reindex().empty();
     pump.apply_report(load.index.report);
     if(read_only_index) {
         return load;
@@ -29,7 +28,7 @@ ProjectLoad bootstrap_project(Project& project,
     // server ran, and marks what their runs walked behind the disk — for
     // every session indexing units, the background pass or not.
     auto stale = project.index.stale_units();
-    if(project.config.project.enable_indexing.value && (!load.members.empty() || owed)) {
+    if(project.config.project.enable_indexing.value) {
         // Those, and the units the index holds nothing of: DepsOnly — a cold
         // start with a warm index cache must keep serving the stored shards,
         // not blank every query until the pass drains. The units owed their

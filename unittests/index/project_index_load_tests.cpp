@@ -275,10 +275,12 @@ ZEST_CASE(PathIdsAcrossSessions) {
 ZEST_CASE(DamagedRecordRebuildsAll) {
     // A record failing its checks reads as missing and damages the
     // database: the next save discards it, and every unit is indexed again
-    // into a fresh one.
+    // into a fresh one — the build's, and one of its own no build entry
+    // names.
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    tmp.touch("solo.cpp", "int solo() { return 2; }\n");
     auto src = tmp.path("main.cpp");
     auto command = [&](IndexerFixture& f) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
@@ -291,6 +293,7 @@ ZEST_CASE(DamagedRecordRebuildsAll) {
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data);
+        ZASSERT(f.merge(index_file(tmp, tmp.path("solo.cpp")).data));
         f.save();
         header_key = IndexInternals::file_key(
             f.project.index,
@@ -302,6 +305,7 @@ ZEST_CASE(DamagedRecordRebuildsAll) {
     open_store(tmp, f.project);
     command(f);
     f.load();
+    auto solo = f.project.file_table.intern(Spelling::absolute(tmp.path("solo.cpp")));
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
     ZASSERT(f.project.index.shard(tu_id) != nullptr);
@@ -313,7 +317,39 @@ ZEST_CASE(DamagedRecordRebuildsAll) {
     ZEXPECT(!f.project.index.damaged());
     ZEXPECT(!f.project.index.indexed(tu_id));
     ZEXPECT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZEXPECT(f.pump.pending_reason(solo) == ReindexReason::ContentChanged);
     ZEXPECT(!f.project.database->contains(index::BlobKind::Shard, header_key));
+}
+
+ZEST_CASE(MissingShardDamages) {
+    // A file record naming a shard the database lacks is damage like a
+    // shard failing its checks.
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    std::string header_key;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto indexed = index_file(tmp, tmp.path("main.cpp"));
+        ZASSERT(!indexed.data.empty());
+        f.merge(indexed.data);
+        f.save();
+        header_key = IndexInternals::file_key(
+            f.project.index,
+            f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h"))));
+        ZASSERT(f.project.database->write(
+            {
+        },
+            {{index::BlobKind::Shard, header_key}}));
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    ZEXPECT(
+        !f.project.index.shard(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")))));
+    ZEXPECT(f.project.index.damaged());
 }
 
 ZEST_CASE(LoadDamageStartsOver) {

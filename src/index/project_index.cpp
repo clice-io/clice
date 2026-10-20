@@ -389,6 +389,10 @@ const Shard* ProjectIndex::shard(Fid file) const {
     auto key = file_key(file);
     auto blob = db->read(BlobKind::Shard, key);
     if(!blob) {
+        // The file record names the shard it stores.
+        if(auto* record = file_record(file); record && record->generation != 0) {
+            damaged_record(BlobKind::Shard, key);
+        }
         return nullptr;
     }
     slot = Shard::from_buffer(std::move(blob.buffer));
