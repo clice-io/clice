@@ -7,6 +7,7 @@ export interface Setting {
     mode: "pipe" | "socket";
     host: string;
     port: number;
+    env: NodeJS.ProcessEnv;
 }
 
 /// The directory the server starts in and a relative clice.executable
@@ -23,6 +24,32 @@ export function workspaceDirectory(): string | undefined {
 export function resolveExecutable(executable: string, base: string | undefined): string {
     const relative = !path.isAbsolute(executable) && /[\\/]/.test(executable);
     return relative && base ? path.resolve(base, executable) : executable;
+}
+
+/// The environment the server runs in, and the compilers it asks how they
+/// compile: `base` with `overrides` on top. A value names `base`'s
+/// variables as `${env:NAME}`, as terminal.integrated.env.* does. Windows
+/// spells a variable in any case (`Path`), and an override replaces it
+/// whatever its case.
+export function serverEnvironment(
+    base: NodeJS.ProcessEnv,
+    overrides: Record<string, string>,
+    windows = process.platform === "win32",
+): NodeJS.ProcessEnv {
+    const key = (env: NodeJS.ProcessEnv, name: string) =>
+        windows ? Object.keys(env).find((k) => k.toUpperCase() === name.toUpperCase()) : name;
+    const env = { ...base };
+    for (const [name, value] of Object.entries(overrides)) {
+        const replaced = key(env, name);
+        if (replaced !== undefined) {
+            delete env[replaced];
+        }
+        env[name] = value.replace(/\$\{env:([^}]+)\}/g, (_, variable: string) => {
+            const found = key(base, variable);
+            return (found === undefined ? undefined : base[found]) ?? "";
+        });
+    }
+    return env;
 }
 
 /// Read every launch-relevant setting fresh. Throws on invalid values; the
@@ -43,10 +70,18 @@ export function getSetting(): Setting {
         throw new Error("socket mode requires clice.host and a clice.port between 1 and 65535");
     }
 
+    const overrides = setting.get<Record<string, unknown>>("serverEnv") ?? {};
+    for (const [name, value] of Object.entries(overrides)) {
+        if (typeof value !== "string") {
+            throw new Error(`clice.serverEnv.${name} must be a string`);
+        }
+    }
+
     return {
         executable: executable ? resolveExecutable(executable, workspaceDirectory()) : undefined,
         mode,
         host,
         port,
+        env: serverEnvironment(process.env, overrides as Record<string, string>),
     };
 }

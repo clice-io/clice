@@ -33,9 +33,7 @@ COMPILER_PATH=/usr/libexec/gcc/x86_64-linux-gnu/13/:/usr/libexec/gcc/x86_64-linu
 LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/13/:/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/:/lib/x86_64-linux-gnu/
 COLLECT_GCC_OPTIONS='-E' '-dM' '-v' '-shared-libgcc' '-mtune=generic' '-march=x86-64')";
 
-/// GCC's LIBRARY_PATH is a list in the host's spelling: a Linux GCC's
-/// report never reaches clice on Windows, nor MinGW's elsewhere.
-ZEST_CASE(GCCJob, skip = Windows) {
+ZEST_CASE(GCCJob) {
     auto report = parse_driver_report(R"(#define __cplusplus 201703L
 #define __GNUC__ 13)",
                                       ubuntu_gxx);
@@ -57,7 +55,7 @@ ZEST_CASE(GCCJob, skip = Windows) {
     ZEXPECT(report.standard == "gnu++17");
 }
 
-ZEST_CASE(MultilibPrivateDir, skip = Windows) {
+ZEST_CASE(MultilibPrivateDir) {
     /// A multilib variant's library directory comes first in LIBRARY_PATH;
     /// the private include directory sits beside GCC's own.
     constexpr llvm::StringRef err = R"(Target: arm-none-eabi
@@ -76,6 +74,8 @@ LIBRARY_PATH=/usr/lib/gcc/arm-none-eabi/13.2.1/thumb/v7e-m+fp/hard/:/usr/lib/gcc
     ZEXPECT(report.standard == "gnu17");
 }
 
+/// MinGW's LIBRARY_PATH separates Windows paths with `;`, which reach
+/// clice on Windows alone.
 ZEST_CASE(MinGWPrivateDir, skip = !Windows) {
     /// Classic MinGW spells one directory two ways: with backslashes and
     /// `bin/..` in the search list, with forward slashes in LIBRARY_PATH.
@@ -91,6 +91,22 @@ LIBRARY_PATH=c:/mingw/bin/../lib/gcc/mingw32/6.3.0/;c:/mingw/bin/../lib/gcc/;c:/
     std::vector<std::string> options = {"-mtune=generic", "-march=i586"};
     ZEXPECT(report.gcc_options == options);
     ZEXPECT(report.private_dir == std::optional<std::size_t>(1));
+}
+
+ZEST_CASE(CygwinPrivateDir) {
+    /// Cygwin's GCC on Windows lists POSIX paths, separated as on POSIX.
+    constexpr llvm::StringRef err = R"(Target: x86_64-pc-cygwin
+ /usr/lib/gcc/x86_64-pc-cygwin/14/cc1.exe -E -quiet -v -idirafter /usr/lib/gcc/x86_64-pc-cygwin/14/../../../../include/w32api C:\andes\empty.c -mtune=generic -march=x86-64 -dM
+#include <...> search starts here:
+ /usr/lib/gcc/x86_64-pc-cygwin/14/include
+ /usr/include
+ /usr/lib/gcc/x86_64-pc-cygwin/14/../../../../include/w32api
+End of search list.
+LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-cygwin/14/:/usr/lib/gcc/x86_64-pc-cygwin/14/../../../../x86_64-pc-cygwin/lib/:/usr/lib/gcc/x86_64-pc-cygwin/14/../../../:/lib/:/usr/lib/)";
+    auto report = parse_driver_report("#define __STDC_VERSION__ 201710L", err);
+    ZEXPECT(report.target == "x86_64-pc-cygwin");
+    ZASSERT(report.search_dirs.size() == std::size_t(3));
+    ZEXPECT(report.private_dir == std::optional<std::size_t>(0));
 }
 
 ZEST_CASE(FrameworkDir) {

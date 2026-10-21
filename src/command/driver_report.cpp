@@ -108,8 +108,10 @@ DriverReport parse_driver_report(llvm::StringRef out, llvm::StringRef err) {
         } else if(line.consume_front("Target: ")) {
             report.target = line.trim().str();
         } else if(line.consume_front("LIBRARY_PATH=")) {
+            // A Cygwin or MSYS2 GCC lists POSIX paths, separated POSIX-style.
+            char separator = line.starts_with("/") ? ':' : path::list_separator;
             llvm::SmallVector<llvm::StringRef> dirs;
-            line.split(dirs, path::list_separator, -1, false);
+            line.split(dirs, separator, -1, false);
             for(auto dir: dirs) {
                 library_path.push_back(lexical((dir + "/include").str()));
             }

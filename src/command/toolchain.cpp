@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :command.argument_parser;
+import :command.cygwin;
 import :command.driver_report;
 import :command.nvcc;
 import :command.toolchain;
@@ -91,6 +92,56 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
     return job;
 }
 
+/// A Cygwin or MSYS2 driver reports its job's paths and its search list as
+/// POSIX paths, which the mount table of the runtime it loads maps to the
+/// Windows paths clang opens.
+kota::task<std::expected<DriverReport, std::string>> translate_posix_paths(DriverReport report,
+                                                                           std::string driver) {
+    std::vector<std::string*> paths;
+    for(auto& dir: report.search_dirs) {
+        if(is_posix_path(dir.path)) {
+            paths.push_back(&dir.path);
+        }
+    }
+    auto search_dirs = paths.size();
+    for(auto& token: report.clang_job) {
+        if(is_posix_path(token)) {
+            paths.push_back(&token);
+        }
+    }
+    if(paths.empty()) {
+        co_return report;
+    }
+    auto runtime = find_runtime(driver);
+    if(!runtime) {
+        co_return std::unexpected(std::format(
+            "{} reports POSIX paths ({}), and neither its directory nor PATH holds the Cygwin "
+            "or MSYS2 runtime whose mount table maps them",
+            driver,
+            *paths.front()));
+    }
+    auto table = co_await read_mount_table(*runtime);
+    if(!table) {
+        co_return std::unexpected(
+            std::format("Cannot read the mount table of {}: {}", *runtime, table.error()));
+    }
+    for(std::size_t i = 0; i < paths.size(); i += 1) {
+        auto posix = std::exchange(*paths[i], table->to_windows(*paths[i]));
+        // GCC lists only the directories that exist: one that does not
+        // after the translation is not the runtime the driver loads (an
+        // earlier one on PATH).
+        if(i < search_dirs && !vfs::is_directory(*paths[i])) {
+            co_return std::unexpected(
+                std::format("The mount table of {} maps {} of {} to {}, which does not exist",
+                            *runtime,
+                            posix,
+                            driver,
+                            *paths[i]));
+        }
+    }
+    co_return report;
+}
+
 /// Asks a GCC-style driver how it compiles `args`, the driver (its first
 /// `driver_tokens`: two for `zig cc`) followed by its flags and the input:
 /// `-E -dM -v` has it preprocess the input verbosely, printing the job it
@@ -112,9 +163,20 @@ kota::task<std::expected<DriverReport, std::string>> ask_driver(llvm::ArrayRef<s
     if(report.clang_job.empty() && !output->failure.empty()) {
         auto last_line = llvm::StringRef(output->err).rtrim();
         last_line = last_line.substr(last_line.rfind('\n') + 1);
-        co_return std::unexpected(std::format("{}: {}", output->failure, last_line.str()));
+        auto error = last_line.empty() ? output->failure
+                                       : std::format("{}: {}", output->failure, last_line.str());
+        // Windows looks for a program's DLLs on PATH: without its runtime's
+        // directory there, a Cygwin or MSYS2 driver cannot start (exception
+        // 0xC0000135), or cannot start its compiler proper.
+        if(output->failure.ends_with("0xC0000135") ||
+           output->err.contains("error while loading shared libraries")) {
+            error +=
+                " (a DLL it loads is missing: the bin directory of its runtime, Cygwin's or "
+                "MSYS2's, belongs on clice's PATH, which clice.serverEnv sets in VS Code)";
+        }
+        co_return std::unexpected(std::move(error));
     }
-    co_return report;
+    co_return co_await translate_posix_paths(std::move(report), args[0]);
 }
 
 /// GCC's two-core tuning form, `-mcpu=cortex-a72.cortex-a53`, as the first
@@ -533,7 +595,8 @@ struct QuerySpec {
 /// The driver as a path. The name used to invoke it matters: `clang++` is
 /// often a symlink to `clang`, and the name decides C++ mode. So it is
 /// never realpath'd, only found: a bare name on PATH, a relative one in the
-/// probe working directory.
+/// probe working directory. Only a Cygwin symlink is followed, which
+/// Windows cannot start.
 std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm::StringRef cwd) {
     llvm::SmallString<128> found(driver);
     if(!path::is_absolute(driver)) {
@@ -548,6 +611,22 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
             return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
         }
     }
+#ifdef _WIN32
+    // Cygwin and MSYS2 tools name programs without the `.exe` Windows adds
+    // when it starts one.
+    if(!vfs::exists(found) && path::extension(found).empty()) {
+        found += ".exe";
+    }
+    if(auto target = read_cygwin_symlink(found)) {
+        if(is_posix_path(*target)) {
+            return std::unexpected(
+                std::format("Driver {} is a Cygwin symlink to {}: name the program it links to",
+                            found.str(),
+                            *target));
+        }
+        found = (path::parent_path(found) + "/" + *target).str();
+    }
+#endif
     if(!vfs::exists(found) || !llvm::sys::fs::can_execute(found)) {
         return std::unexpected(std::format("Driver {} not found or not executable", found.str()));
     }

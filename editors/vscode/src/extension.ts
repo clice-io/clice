@@ -146,7 +146,7 @@ function makeServerOptions(
             );
         }
         refuseWhenDeactivating();
-        child = cp.spawn(executable, ["serve"], { cwd: workspaceDirectory() });
+        child = cp.spawn(executable, ["serve"], { cwd: workspaceDirectory(), env: setting.env });
         child.on("error", (error) => {
             channel.appendLine(`clice spawn failed: ${error.message}`);
         });
@@ -286,7 +286,13 @@ async function onSettingsChanged(
     event: vscode.ConfigurationChangeEvent,
     context: ExtensionContext,
 ) {
-    const launchSettings = ["clice.executable", "clice.mode", "clice.host", "clice.port"];
+    const launchSettings = [
+        "clice.executable",
+        "clice.mode",
+        "clice.host",
+        "clice.port",
+        "clice.serverEnv",
+    ];
     if (!launchSettings.some((setting) => event.affectsConfiguration(setting))) {
         return;
     }

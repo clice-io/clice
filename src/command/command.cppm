@@ -5,6 +5,7 @@ module;
 module clice:command.command;
 
 import :command.argument_parser;
+import :command.cygwin;
 import :command.search_config;
 import :support.object_pool;
 import :vfs.file_table;
@@ -613,6 +614,11 @@ private:
     /// The source being loaded, which records the response files its
     /// commands expand among its inputs; nullopt outside a load.
     std::optional<SourceID> loading;
+
+    /// The mount table mapping the POSIX paths of the database being
+    /// loaded, one written inside Cygwin or MSYS2 (CMake run from their
+    /// shell); null outside such a load.
+    const MountTable* mounts = nullptr;
 
     /// Every source's entries, sorted by (file, source, ordinal).
     std::vector<CompilationEntry> entry_list;
