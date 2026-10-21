@@ -182,15 +182,16 @@ kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> a
         co_return std::unexpected(
             std::format("Failed to write {}: {}", input.str(), error.message()));
     }
-    // cl hears only the command's `/std:`: its other flags are spelled for
-    // clang's cl mode (`/WX` arrives as -Werror, which cl rejects), and a
-    // standard or version set in clang's spelling (a rule's `-std=c++23`)
-    // is clang's to read, not cl's.
+    // cl hears only the command's `/std:` (and the driver mode that makes
+    // a `clang` clang-cl): its other flags are spelled for clang's cl mode
+    // (`/WX` arrives as -Werror, which cl rejects), and a standard or
+    // version set in clang's spelling (a rule's `-std=c++23`) is clang's
+    // to read, not cl's.
     std::vector<std::string> probe = {args[0], "/nologo", "/EP"};
     bool names_standard = false;
     bool names_version = false;
     for(llvm::StringRef arg: args.drop_front()) {
-        if(arg.starts_with("/std:")) {
+        if(arg.starts_with("/std:") || arg.starts_with("--driver-mode=")) {
             probe.push_back(arg.str());
         }
         arg.consume_front("/clang:");
