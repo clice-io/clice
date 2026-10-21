@@ -496,6 +496,9 @@ std::optional<LocalSourceRange> BracketPairs::visit(const Token& token, bool ski
         }
         return std::nullopt;
     }
+    // FIXME: skipped code is one scope however many conditionals it nests, so
+    // a brace an inner `#if`/`#else` splits pairs across the branches (and the
+    // branch's own fold loses to that pair).
     if(skipped != skipping && !directive) {
         skipping = skipped;
         if(skipping) {

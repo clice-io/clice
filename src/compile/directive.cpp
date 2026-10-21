@@ -199,8 +199,10 @@ public:
 
         // Clang reports a C++20 module name flattened into one component
         // at its first token — a partition's at its colon — so the written
-        // identifiers are lexed back from there. A name spelled by a macro
-        // has no written tokens past the reported one.
+        // identifiers are lexed back from there.
+        // FIXME: when only the first segment comes from a macro
+        // (`import ROOT.bar;`), the written `.bar` past it gets no location:
+        // no token, highlight or jump.
         auto start = names.front().getLoc();
         if(start.isMacroID()) {
             import.name_locations.push_back(start);

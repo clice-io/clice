@@ -944,6 +944,9 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 llvm::StringRef text = session->text();
                 auto declared =
                     text.take_front(text.rfind('\n', completing.replace.begin) + 1).str();
+                // FIXME: a module declaration inside `#if` scans as none, so the unit's own
+                // module is offered and its partitions are not; an import typed in the global
+                // module fragment, where none may go, is offered names too.
                 module_names = complete_module_import(project.dep_graph,
                                                       completing.prefix,
                                                       scan_quick(declared));

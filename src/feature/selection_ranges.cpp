@@ -303,6 +303,8 @@ TextSteps scan_text(llvm::StringRef content,
             // `[[ ]]` and `__attribute__(( ))` write one list in two pairs;
             // the inner one, pushed last, is no step of its own.
             const auto* inner = token_after(tokens, open->end);
+            // FIXME: a comment between the two closers (`[[a] /* c */ ]`) hides the
+            // inner pair: the list is no step, and the declaration's step stops inside it.
             bool doubled = tokens[i - 1].kind == token.kind &&
                            text.closers.lookup(inner->range.begin) == tokens[i - 1].range.end;
             const auto* keyword = token_before(tokens, open->begin);
@@ -805,6 +807,8 @@ void add_ast(CompilationUnit& unit,
 
     for(auto anchor: anchors(unit, steps.offset)) {
         auto tree = SelectionTree::create_right(unit, anchor);
+        // FIXME: every ancestor is mapped though nest() keeps at most step_limit:
+        // in a generated expression 20000 deep each offset costs a third of a second.
         for(const auto* node = tree.common_ancestor(); node && node->parent; node = node->parent) {
             auto range = node_range(unit, tokens, text, *node);
             if(!range) {

@@ -257,6 +257,9 @@ private:
             return;
         }
 
+        // FIXME: the braces of a compound requirement spanning lines (`{ t.foo()
+        // } -> C;`) do not fold: concepts::ExprRequirement records no brace
+        // locations, and compiled code's braces fold from the AST alone.
         if(const auto* requirements = llvm::dyn_cast<clang::RequiresExpr>(stmt)) {
             // The opening brace is recorded nowhere; it follows the
             // parameter list, if any.
@@ -306,6 +309,8 @@ private:
     /// Each case of a switch folds from its label to the next one, or to
     /// the switch's closing brace. A case holding nothing but a block
     /// opening on its label's line folds as that block.
+    /// FIXME: only labels directly in the switch body fold: one nested in another
+    /// statement (Duff's device, `if (c) { case 1: … }`) gets no section.
     void collect_cases(const clang::CompoundStmt* body) {
         struct Case {
             const clang::SwitchCase* label;

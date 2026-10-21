@@ -305,6 +305,9 @@ private:
            !range.valid()) {
             return;
         }
+        // FIXME: a header the PCH holds is read back from the disk here; if it
+        // changed since the build, the columns are off or the range fails to map
+        // (loaded_file_content tells whether this compile read the file).
         auto converted = unit.positions(fid).range(range, encoding);
         if(!converted) {
             return;

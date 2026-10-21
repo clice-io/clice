@@ -241,6 +241,9 @@ void CompilationUnit::run_tidy() {
     // readers see the whole TU again, and the parent map built over the
     // restricted scope goes with it.
     auto& context = instance->getASTContext();
+    // FIXME: a namespace a header context opens around the focus file is
+    // collected whole, so the matchers also walk the host's other declarations
+    // (time only: the presenter drops their findings).
     if(!checker->batch) {
         context.setTraversalScope(collected_decls);
     }
