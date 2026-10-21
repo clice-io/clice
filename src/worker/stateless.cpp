@@ -111,6 +111,9 @@ static worker::ArtifactBuildResult finish_artifact(llvm::StringRef label,
     }
     vfs::remove(tmp_path);
     result.success = false;
+    /// FIXME: clang failing to open its output (the cache directory turned
+    /// unwritable or full mid-session) counts as the user's error: the master keeps
+    /// the failure on unchanged inputs until a consumer is saved.
     result.has_user_errors = !internal_error && !errors.empty();
     result.error =
         errors.empty() ? std::format("{} compilation failed", label) : llvm::join(errors, "; ");

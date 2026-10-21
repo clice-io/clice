@@ -245,6 +245,10 @@ const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
                                                  partial->getTemplateArgs().asArray(),
                                                  arguments,
                                                  deduced);
+        /// FIXME: the match is structural, without the SFINAE probe of the resolver's
+        /// viable_partials: a detection partial (`has_x<T, void_t<typename T::x>>`)
+        /// wins for any T, so a specialization only named here is the partial's, one
+        /// instantiated elsewhere the primary's.
         if(deduction != types::Deduction::Failed) {
             matched.push_back(
                 {.partial = partial, .verified = deduction == types::Deduction::Matched});

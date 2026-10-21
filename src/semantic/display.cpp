@@ -297,6 +297,9 @@ std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
         case clang::DeclarationName::ObjCZeroArgSelector:
         case clang::DeclarationName::ObjCOneArgSelector:
         case clang::DeclarationName::ObjCMultiArgSelector: {
+            /// FIXME: Objective-C message completion names methods by their selector:
+            /// this aborts Debug builds and is undefined in Release; `name.print` would
+            /// spell them.
             std::unreachable();
         }
     }
@@ -577,6 +580,9 @@ auto printing_policy(clang::ASTContext& context, const Options& options) -> clan
         }
         policy.Bool = name->hasMacroDefinition();
     }
+    // FIXME: SuppressStrongLifetime stays off, so an Objective-C ARC parameter
+    // written `id __strong value` shows `__strong` in signature help and
+    // completion labels.
     return policy;
 }
 

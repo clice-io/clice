@@ -1367,6 +1367,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         auto& entry = projections.entries[path_id];
         // A document moving off a preamble it failed on releases that
         // failure: only the preamble's consumers would ever retry it.
+        // FIXME: released even while another open document still fails on that
+        // preamble: its next compile runs the failing build once more.
         if(entry.projection && entry.projection->failed_pch_key &&
            entry.projection->failed_pch_key != failed_pch) {
             pch.forget_failure(*entry.projection->failed_pch_key);
