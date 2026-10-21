@@ -426,8 +426,8 @@ struct WorkerPoolFixture {
         return pool.slot(idx, stateful).memory;
     }
 
-    /// Index `file` on stateless worker 0, sampling it all along: a
-    /// worker's memory grows unannounced. Returns the most sampled.
+    /// Index `file` on stateless worker 0, sampling it all along. Returns
+    /// the most sampled.
     kota::task<std::uint64_t> index_sampled(const std::string& file) {
         std::uint64_t peak = 0;
         bool answered = false;
@@ -440,6 +440,7 @@ struct WorkerPoolFixture {
             while(!answered) {
                 sample_pool();
                 peak = std::max(peak, memory(0, false));
+                // No event: a worker's memory grows unannounced.
                 co_await kota::sleep(std::chrono::milliseconds(50), loop);
             }
         };
