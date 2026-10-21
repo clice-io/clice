@@ -83,16 +83,20 @@ Spelling spelled(llvm::StringRef text, const Spelling& base, const MountTable* m
 }
 
 /// The mount table of the Cygwin or MSYS2 runtime on PATH, which must map
-/// `directory`, a database's, to one that exists: another runtime's maps
-/// it elsewhere.
-std::expected<MountTable, std::string> path_mount_table(llvm::StringRef directory) {
+/// a database entry's `directory` or `file` to one that exists: another
+/// runtime's maps them elsewhere.
+std::expected<MountTable, std::string> path_mount_table(llvm::StringRef directory,
+                                                        llvm::StringRef file) {
     auto runtime = find_runtime({});
     if(!runtime) {
         return std::unexpected("PATH holds no Cygwin or MSYS2 runtime");
     }
     auto [read] = kota::run(read_mount_table(*runtime));
     auto& table = *read;
-    if(table && !vfs::is_directory(table->to_windows(directory))) {
+    auto exists = [&](llvm::StringRef path) {
+        return is_posix_path(path) && vfs::exists(table->to_windows(path));
+    };
+    if(table && !exists(directory) && !exists(file)) {
         return std::unexpected(std::format("the runtime in {} maps it to {}, which does not exist",
                                            *runtime,
                                            table->to_windows(directory)));
@@ -107,6 +111,11 @@ llvm::StringRef anchored(unsigned id,
                          const Spelling& anchor,
                          llvm::UniqueStringSaver& strings,
                          const MountTable* mounts = nullptr) {
+    // A forced include names a file too, which clang looks for rather than
+    // anchors when relative.
+    if(mounts && is_posix_path(value) && (id == option::OPT_include || id == option::OPT_imacros)) {
+        return strings.save(mounts->to_windows(value));
+    }
     if(!names_path(id, value)) {
         return value;
     }
@@ -671,7 +680,11 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
                                                        llvm::StringRef command) {
     llvm::BumpPtrAllocator local;
     llvm::StringSaver saver(local);
-    return normalize(directory, file, tokenize_command(command, saver));
+    // A database written inside Cygwin or MSYS2 quotes its commands for sh.
+    return normalize(directory,
+                     file,
+                     mounts ? tokenize_sh_command(command, saver)
+                            : tokenize_command(command, saver));
 }
 
 void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char*>& tokens,
@@ -689,7 +702,7 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
     /// Splice the arguments of the file `name`, false when it cannot be
     /// read. Read or not, it is among the load's inputs.
     auto splice = [&](llvm::StringRef name) {
-        Spelling full(name, directory);
+        auto full = spelled(name, directory, mounts);
         auto file = file_table.intern(full);
         auto observed = vfs::read_observed(file_table.resolve(file));
         if(observed) {
@@ -1069,7 +1082,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
         if(is_posix_path(dir_ref)) {
             if(!table) {
-                table = path_mount_table(dir_ref);
+                table = path_mount_table(dir_ref, {file_sv.data(), file_sv.size()});
                 if(*table) {
                     mounts = &**table;
                 } else {

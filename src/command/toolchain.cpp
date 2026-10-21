@@ -182,6 +182,7 @@ kota::task<std::expected<DriverReport, std::string>> ask_driver(llvm::ArrayRef<s
         last_line = last_line.substr(last_line.rfind('\n') + 1);
         auto error = last_line.empty() ? output->failure
                                        : std::format("{}: {}", output->failure, last_line.str());
+#ifdef _WIN32
         // Windows looks for a program's DLLs on PATH: without its runtime's
         // directory there, a Cygwin or MSYS2 driver cannot start (exception
         // 0xC0000135), or cannot start its compiler proper.
@@ -191,6 +192,7 @@ kota::task<std::expected<DriverReport, std::string>> ask_driver(llvm::ArrayRef<s
                 " (a DLL it loads is missing: the bin directory of its runtime, Cygwin's or "
                 "MSYS2's, belongs on clice's PATH, which clice.serverEnv sets in VS Code)";
         }
+#endif
         co_return std::unexpected(std::move(error));
     }
     co_return co_await translate_posix_paths(std::move(report), args[0]);

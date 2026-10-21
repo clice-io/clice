@@ -6,18 +6,13 @@ module clice:support.shell;
 
 namespace clice {
 
-/// Split a command line into arguments with the host's shell rules — the
-/// rules a compile_commands.json `command` field is read with. The
-/// arguments live in `saver`.
-inline llvm::SmallVector<const char*, 32> tokenize_command(llvm::StringRef command,
-                                                           llvm::StringSaver& saver) {
+/// Split a command line into arguments as sh and clang's compilation
+/// database read it: a backslash escapes the character after it outside
+/// single quotes and nothing inside them, where LLVM's GNU tokenizer would
+/// take `'a\\b'` for `a\b`. The arguments live in `saver`.
+inline llvm::SmallVector<const char*, 32> tokenize_sh_command(llvm::StringRef command,
+                                                              llvm::StringSaver& saver) {
     llvm::SmallVector<const char*, 32> arguments;
-#ifdef _WIN32
-    llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
-#else
-    // As sh and clang's compilation database read it: a backslash escapes
-    // the character after it outside single quotes and nothing inside them,
-    // where LLVM's GNU tokenizer would take `'a\\b'` for `a\b`.
     std::string argument;
     bool open = false;
     for(std::size_t i = 0; i < command.size(); i += 1) {
@@ -52,8 +47,21 @@ inline llvm::SmallVector<const char*, 32> tokenize_command(llvm::StringRef comma
     if(open) {
         arguments.push_back(saver.save(argument).data());
     }
-#endif
     return arguments;
+}
+
+/// Split a command line into arguments with the host's shell rules — the
+/// rules a compile_commands.json `command` field is read with. The
+/// arguments live in `saver`.
+inline llvm::SmallVector<const char*, 32> tokenize_command(llvm::StringRef command,
+                                                           llvm::StringSaver& saver) {
+#ifdef _WIN32
+    llvm::SmallVector<const char*, 32> arguments;
+    llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
+    return arguments;
+#else
+    return tokenize_sh_command(command, saver);
+#endif
 }
 
 /// `arguments` as one command line, each quoted as the host's shell and

@@ -1,2 +1,2 @@
 #include "h.h"
-int g() { return f(); }
+int g() { return f() + FORCED; }
