@@ -28,6 +28,18 @@ SimSpec on_box(llvm::ArrayRef<UnitLoad> units,
     return spec;
 }
 
+/// A GitHub macOS arm64 runner: 3 vCPU, 7 GiB, the rest of the system
+/// holding 3 GiB.
+SimSpec on_mac(llvm::ArrayRef<UnitLoad> units, std::uint64_t others = 3 * GiB) {
+    auto spec = on_box(units, 7 * GiB, others);
+    spec.machine.physical = 3;
+    spec.machine.logical = 3;
+    spec.machine.oom_kills = false;
+    spec.machine.mac_reserve = true;
+    spec.scheduler = {.background_jobs = 3, .max_workers = 3};
+    return spec;
+}
+
 /// Whether the unit fits the machine alone, with `reserve` left.
 bool fits(const SimSpec& spec, const UnitLoad& unit, std::uint64_t reserve) {
     auto room = spec.machine.memory - spec.machine.others.front().second;
@@ -137,20 +149,32 @@ ZEST_CASE(OtherProgramGrows) {
 }
 
 ZEST_CASE(MacNeverThrashes) {
-    auto spec = on_box(flang_heavy, 7 * GiB, 2200 * MiB);
-    spec.machine.physical = 3;
-    spec.machine.logical = 3;
-    spec.machine.oom_kills = false;
-    spec.machine.mac_reserve = true;
-    spec.scheduler = {.background_jobs = 3, .max_workers = 3};
-    auto result = expect_near_known(spec, 1.1);
+    auto result = expect_near_known(on_mac(flang_heavy, 2200 * MiB), 1.1);
     ZEXPECT(result.min_headroom > 0);
 }
 
-/// Units spread far wider than a real project's: a first run that takes
-/// every unknown peak for the 75th percentile of those seen, at least 1.5
-/// GiB, holds the small ones back, and the bounds are what that costs —
-/// most on a 4 GiB machine, where that leaves room for two units at once.
+ZEST_CASE(MacSmallUnits) {
+    auto result = expect_near_known(on_mac(abseil_mac), 1.1);
+    ZEXPECT(result.min_headroom > 0);
+}
+
+ZEST_CASE(MacProject) {
+    auto result = expect_near_known(on_mac(mlir_mac), 1.1);
+    ZEXPECT(result.min_headroom > 0);
+}
+
+/// Small units first teach the session a small estimate; the heavy ones
+/// after them are stopped before memory runs out.
+ZEST_CASE(MacSmallThenHeavy) {
+    std::vector<UnitLoad> units(std::begin(abseil_mac), std::begin(abseil_mac) + 10);
+    units.insert(units.end(), std::begin(flang_heavy), std::end(flang_heavy));
+    auto result = expect_near_known(on_mac(units), 1.1);
+    ZEXPECT(result.min_headroom > 0);
+}
+
+/// Units spread far wider than a real project's, on machines of 4 to 32
+/// GiB: a first run learns their peaks as it goes, and the bounds are what
+/// that costs.
 ZEST_CASE(RandomWorkloads) {
     std::mt19937_64 random(20261020);
     auto uniform = [&](double low, double high) {
@@ -189,10 +213,10 @@ ZEST_CASE(RandomWorkloads) {
         expect_sound(spec, first);
         ZEXPECT(max_wait(first) <= 1.0);
         auto slower = first.wall / known_run(spec).wall;
-        ZEXPECT(slower <= 2.5);
+        ZEXPECT(slower <= 1.5);
         log_slower += std::log(slower);
     }
-    ZEXPECT(std::exp(log_slower / rounds) <= 1.2);
+    ZEXPECT(std::exp(log_slower / rounds) <= 1.05);
 }
 
 };  // ZEST_SUITE(SchedulerSimulation)

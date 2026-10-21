@@ -113,6 +113,19 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
             opts.args.push_back("--max-documents");
             opts.args.push_back(std::to_string(*options.max_documents));
         }
+    } else {
+#ifdef __APPLE__
+        // libmalloc's medium zone and large cache keep the pages a request
+        // frees and reuse them without telling the kernel, whose footprint
+        // then leaves them out: a worker measured a fraction of what it
+        // used, and the headroom charged the rest to other processes.
+        // Without them the footprint is the worker's memory, which the
+        // scheduler sizes background work by.
+        opts.env_changes = {
+            {.name = "MallocMediumZone", .value = "0"},
+            {.name = "MallocLargeCache", .value = "0"},
+        };
+#endif
     }
     opts.args.push_back("--worker-name");
     opts.args.push_back(name);

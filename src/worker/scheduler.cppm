@@ -251,12 +251,16 @@ public:
     /// The estimate of a background request whose peak is unknown: the
     /// 75th percentile of the peaks of the background requests finished so
     /// far and of the memory the ones killed for memory reached, at least
-    /// default_peak.
+    /// default_peak until trusted_peaks are known.
     std::uint64_t unknown_peak() const;
 
     /// The peak assumed before anything finished, and the floor of every
-    /// estimate of an unknown peak.
+    /// estimate of an unknown peak until trusted_peaks are known.
     constexpr static std::uint64_t default_peak = 1536ull << 20;
+
+    /// The peaks that estimate an unknown one alone: fewer may all be the
+    /// small units a project lists first, ahead of big ones.
+    constexpr static std::size_t trusted_peaks = 3;
 
     /// The user counts as active this long after their last activity, and
     /// while a foreground request is in flight, for at most
@@ -287,6 +291,10 @@ public:
 
     /// How far behind the head a request that fits is looked for.
     constexpr static std::size_t backfill_depth = 16;
+
+    /// While background work waits for memory, the figures that hold it
+    /// back are logged at most this often.
+    constexpr static std::chrono::seconds memory_log_interval{30};
 
     /// The only request running is killed only once the headroom falls, or
     /// is about to fall, below this share of the reserve.
@@ -446,6 +454,9 @@ private:
 
     /// The head of the background queue memory holds back, and since when.
     std::optional<std::pair<RequestId, SchedulerTime>> held;
+
+    /// When the wait for memory was last logged.
+    std::optional<SchedulerTime> memory_logged;
 
     /// Since when a foreground request has waited with no idle worker.
     std::optional<SchedulerTime> starved_since;

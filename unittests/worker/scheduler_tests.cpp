@@ -635,6 +635,20 @@ ZEST_CASE(PeaksLearnedPercentile) {
     ZEXPECT(core.scheduler.unknown_peak() == 4 * GiB);
 }
 
+ZEST_CASE(SmallPeaksDropFloor) {
+    Core core(1);
+    for(RequestId id = 1; id <= WorkerScheduler::trusted_peaks; id += 1) {
+        ZEXPECT(core.scheduler.unknown_peak() == WorkerScheduler::default_peak);
+        core.submit(id, Priority::Low);
+        core.sample(16 * GiB,
+                    {
+                        {.slot = 0, .memory = 200 * MiB}
+        });
+        core.finish(id);
+    }
+    ZEXPECT(core.scheduler.unknown_peak() == 200 * MiB);
+}
+
 };  // ZEST_SUITE(WorkerScheduler)
 
 }  // namespace
