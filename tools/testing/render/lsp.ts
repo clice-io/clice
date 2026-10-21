@@ -483,19 +483,7 @@ export function enumName(table: Record<string, unknown>, value: number): string 
     return String(value);
 }
 
-/// A parameter's label offset into its signature's label, counted in
-/// `encoding`, as a string index.
-function labelIndex(label: string, offset: number, encoding: PositionEncoding): number {
-    return encoding === "utf-16"
-        ? offset
-        : Buffer.from(label, "utf8").subarray(0, offset).toString("utf8").length;
-}
-
-/// The parameters' label offsets count in `encoding`.
-export function signatures(
-    reply: proto.SignatureHelp | null,
-    encoding: PositionEncoding,
-): Signatures {
+export function signatures(reply: proto.SignatureHelp | null): Signatures {
     if (reply === null) {
         return { signatures: [], active: 0 };
     }
@@ -515,11 +503,7 @@ export function signatures(
                     const begin = signature.label.indexOf(parameter.label);
                     span = begin < 0 ? undefined : { begin, end: begin + parameter.label.length };
                 } else {
-                    const [begin, end] = parameter.label;
-                    span = {
-                        begin: labelIndex(signature.label, begin, encoding),
-                        end: labelIndex(signature.label, end, encoding),
-                    };
+                    span = { begin: parameter.label[0], end: parameter.label[1] };
                 }
             }
             const text = (value: string | proto.MarkupContent | undefined) =>

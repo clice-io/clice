@@ -370,10 +370,6 @@ struct SignatureHelpParams {
     /// The label of the signature the client shows active, empty when the
     /// popup is not open.
     std::string selected;
-
-    /// How the client counts a position's character: parameter labels
-    /// count in it.
-    PositionEncoding encoding = PositionEncoding::UTF16;
 };
 
 /// Format a document (or a byte range of it) with clang-format.

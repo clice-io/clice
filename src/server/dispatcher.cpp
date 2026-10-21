@@ -356,7 +356,6 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     wp.file = path;
     wp.text = session.text().str();
     wp.offset = session.positions().offset_clamped(position, encoding);
-    wp.encoding = encoding;
     auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
     wp.config = project.config;
 
@@ -427,6 +426,7 @@ kota::task<worker::CompletionResult, kota::ipc::Error>
                        ticket,
                        position,
                        worker::CompletionParams{.client = client,
+                                                .encoding = encoding,
                                                 .candidates = std::move(candidates),
                                                 .more_candidates = more_candidates},
                        std::move(token));

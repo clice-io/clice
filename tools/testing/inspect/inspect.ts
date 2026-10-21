@@ -315,30 +315,27 @@ export class Inspect extends Client {
         }
         const raw = (await this.atPoint("signature-help", at)) as RawSignatureHelp | null;
         if (raw === null) {
-            return signatures(null, "utf-16");
+            return signatures(null);
         }
-        return signatures(
-            {
-                signatures: (raw.signatures ?? []).map((signature) => ({
-                    label: signature.label,
-                    ...(signature.documentation == null
+        return signatures({
+            signatures: (raw.signatures ?? []).map((signature) => ({
+                label: signature.label,
+                ...(signature.documentation == null
+                    ? {}
+                    : { documentation: signature.documentation }),
+                parameters: (signature.parameters ?? []).map((parameter) => ({
+                    label: parameter.label,
+                    ...(parameter.documentation == null
                         ? {}
-                        : { documentation: signature.documentation }),
-                    parameters: (signature.parameters ?? []).map((parameter) => ({
-                        label: parameter.label,
-                        ...(parameter.documentation == null
-                            ? {}
-                            : { documentation: parameter.documentation }),
-                    })),
-                    ...(signature.active_parameter == null
-                        ? {}
-                        : { activeParameter: signature.active_parameter }),
+                        : { documentation: parameter.documentation }),
                 })),
-                ...(raw.active_signature == null ? {} : { activeSignature: raw.active_signature }),
-                ...(raw.active_parameter == null ? {} : { activeParameter: raw.active_parameter }),
-            },
-            "utf-16",
-        );
+                ...(signature.active_parameter == null
+                    ? {}
+                    : { activeParameter: signature.active_parameter }),
+            })),
+            ...(raw.active_signature == null ? {} : { activeSignature: raw.active_signature }),
+            ...(raw.active_parameter == null ? {} : { activeParameter: raw.active_parameter }),
+        });
     }
 
     protected async fetchHighlights(at: Anchor): Promise<Highlight[]> {

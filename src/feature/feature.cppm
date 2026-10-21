@@ -1029,13 +1029,11 @@ auto hover(CompilationUnit& unit,
            PositionEncoding encoding = PositionEncoding::UTF16) -> std::optional<protocol::Hover>;
 
 /// `selected` is the label of the signature the client shows active: it
-/// stays active while it is listed. Parameter labels are ranges of their
-/// signature's label in `encoding`'s units.
+/// stays active while it is listed.
 auto signature_help(CompilationParams params,
                     const SignatureHelpOptions& options,
                     const DocumentationOptions& documentation,
-                    llvm::StringRef selected = {},
-                    PositionEncoding encoding = PositionEncoding::UTF16) -> protocol::SignatureHelp;
+                    llvm::StringRef selected = {}) -> protocol::SignatureHelp;
 
 /// The edits formatting `content`, or its `range`, with the clang-format
 /// style of `file`: the nearest `.clang-format` above it, else LLVM's. Why

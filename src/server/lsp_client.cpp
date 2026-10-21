@@ -196,14 +196,14 @@ struct DiskTexts {
 
 std::vector<protocol::Diagnostic>
     LSPClient::to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
-                         const PositionMap& positions) {
-    // A note's file as the compile read it: its open buffer, else the disk.
+                         const Session& session) {
+    // A note's file as the compile read it: the buffer compiled, any other
+    // file from the disk, open or not.
+    auto positions = session.positions();
     DiskTexts disk;
     auto note_positions = [&](llvm::StringRef path) -> std::optional<PositionMap> {
-        if(auto path_id = server.files.find(Spelling::absolute(path))) {
-            if(auto session = server.find_session(*path_id)) {
-                return session->positions();
-            }
+        if(server.files.find(Spelling::absolute(path)) == session.path_id) {
+            return positions;
         }
         return disk.positions(path);
     };
@@ -322,13 +322,13 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     params.version = alias.buffer.version;
     if(diverged) {
         params.diagnostics =
-            to_client({feature::file_warning(divergence_message(alias))}, alias.buffer.positions());
+            to_client({feature::file_warning(divergence_message(alias))}, alias.buffer);
     } else if(auto projection =
                   project.ast.projections.projection_at(owner->path_id, owner->version)) {
         auto diagnostics =
             format_diagnostics(*projection->output, project.project.config.diagnostics);
         append_crash_notes(*owner, diagnostics);
-        params.diagnostics = to_client(diagnostics, alias.buffer.positions());
+        params.diagnostics = to_client(diagnostics, alias.buffer);
     } else if(!flipped) {
         // Shared once the owner's compile caught up with the text; until
         // then only a divergence warning is taken down.
@@ -993,37 +993,37 @@ void LSPClient::register_language_features() {
 
     // A pull is always answered with a report, never an error: on an
     // error, clients clear what they hold or stop pulling the document.
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DocumentDiagnosticParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-            std::vector<feature::FileDiagnostic> items;
-            if(session) {
-                items = co_await project->features.diagnostics(session);
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentDiagnosticParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        std::vector<feature::FileDiagnostic> items;
+        if(session) {
+            items = co_await project->features.diagnostics(session);
+        }
+        // A second name answers the warning once its text parted from the
+        // first name's, before the pull or while it waited.
+        if(auto* alias = find_alias(path);
+           alias && (!session || alias->buffer.text() != session->text())) {
+            co_return full_report(
+                to_client({feature::file_warning(divergence_message(*alias))}, alias->buffer));
+        }
+        auto report =
+            full_report(session ? to_client(items, *session) : std::vector<protocol::Diagnostic>{});
+        if(session) {
+            // Recorded against the live session: one that replaced this
+            // pull's meanwhile (the document moved to another project)
+            // compiles the same text, and its commit must correct the
+            // empty answer the closed one gave.
+            if(auto live = server.find_session(path_id)) {
+                pulled[path_id] = {
+                    .version = live->version,
+                    .report = llvm::xxh3_64bits(report.data),
+                };
             }
-            // A second name answers the warning once its text parted from the
-            // first name's, before the pull or while it waited.
-            if(auto* alias = find_alias(path);
-               alias && (!session || alias->buffer.text() != session->text())) {
-                co_return full_report(to_client({feature::file_warning(divergence_message(*alias))},
-                                                alias->buffer.positions()));
-            }
-            auto report = full_report(session ? to_client(items, session->positions())
-                                              : std::vector<protocol::Diagnostic>{});
-            if(session) {
-                // Recorded against the live session: one that replaced this
-                // pull's meanwhile (the document moved to another project)
-                // compiles the same text, and its commit must correct the
-                // empty answer the closed one gave.
-                if(auto live = server.find_session(path_id)) {
-                    pulled[path_id] = {
-                        .version = live->version,
-                        .report = llvm::xxh3_64bits(report.data),
-                    };
-                }
-            }
-            co_return report;
-        });
+        }
+        co_return report;
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
@@ -1632,8 +1632,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
            it != pulled.end() && it->second.version == session.version &&
            it->second.report !=
                llvm::xxh3_64bits(
-                   full_report(to_client(project.features.finished_diagnostics(session),
-                                         session.positions()))
+                   full_report(to_client(project.features.finished_diagnostics(session), session))
                        .data)) {
             refresh_diagnostics();
         }
@@ -1643,7 +1642,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
         params.version = output.version;
         auto diagnostics = format_diagnostics(output, project.project.config.diagnostics);
         append_crash_notes(session, diagnostics);
-        params.diagnostics = to_client(diagnostics, session.positions());
+        params.diagnostics = to_client(diagnostics, session);
         publish(peer, params);
         publish_aliases(session.path_id);
     }

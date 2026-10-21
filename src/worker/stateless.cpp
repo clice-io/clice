@@ -532,8 +532,7 @@ static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpPa
     auto help = feature::signature_help(std::move(cp),
                                         params.config.signature_help,
                                         params.config.documentation,
-                                        params.selected,
-                                        params.encoding);
+                                        params.selected);
     LOG_DEBUG("SignatureHelp done: {}ms", timer.ms());
 
     return to_raw(help);

@@ -554,10 +554,7 @@ export class Serve extends Client {
     protected fetchSignatureHelp(at: Anchor, popup: Popup | undefined): Promise<Signatures> {
         const { uri, position } = this.position(at);
         return this.ask(`signatureHelp ${describeAnchor(at)}`, async (client) =>
-            signatures(
-                await client.signatureHelpAt(uri, position.line, position.character, popup),
-                this.encoding,
-            ),
+            signatures(await client.signatureHelpAt(uri, position.line, position.character, popup)),
         );
     }
 
