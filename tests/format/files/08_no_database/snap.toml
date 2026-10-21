@@ -1,13 +1,17 @@
-[test."$ clice format"]
+["no database"."$ clice format"]
 stderr = "Nothing to format: no compile_commands.json found in ${WS} or its direct subdirectories."
 exit = 2
 
-[test."$ clice format main.cpp"]
+["no database"."$ clice format main.cpp"]
 stdout = "Formatted 1 file in #s."
 exit = 0
 
-[test."$ clice format main.cpp".files]
+["no database"."$ clice format main.cpp".files]
 "main.cpp" = '''
 -int  main() { return 0; }
 +int main() { return 0; }
 '''
+
+["an empty database"."$ clice format"]
+stderr = "Nothing to format: ${WS}/compile_commands.json lists no file."
+exit = 2
