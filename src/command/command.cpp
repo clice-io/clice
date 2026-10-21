@@ -921,6 +921,14 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         return std::nullopt;
     }
 
+    simdjson::ondemand::json_type root_type;
+    if(!doc.type().get(root_type) && root_type == simdjson::ondemand::json_type::object) {
+        LOG_ERROR(
+            "Invalid compilation database format in {}: the root is one entry, not an array of "
+            "them (PowerShell's ConvertTo-Json writes a single entry so); wrap it in [ ].",
+            path);
+        return std::nullopt;
+    }
     simdjson::ondemand::array arr;
     if(auto error = doc.get_array().get(arr)) {
         LOG_ERROR("Invalid compilation database format in {}: root element must be an array.",
@@ -1167,9 +1175,8 @@ static bool cxx_driver(const CompileConfig& config) {
 
 std::optional<Spelling> CompilationDatabase::pch_output(ConfigID id) const {
     namespace types = clang::driver::types;
-    auto language = forced_language(id);
-    bool emits = !language.empty() &&
-                 types::onlyPrecompileType(types::lookupTypeForTypeSpecifier(language.data()));
+    auto type = types::lookupTypeForTypeSpecifier(forced_language(id).str().c_str());
+    bool emits = type != types::TY_INVALID && types::onlyPrecompileType(type);
     const char* output = nullptr;
     for(auto& arg: config(id).args) {
         if(arg.opt_id == option::OPT_emit_pch) {
@@ -1291,6 +1298,14 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     auto remove_parse_options =
         kota::option::ParseOptions{.visibility = family_visibility(cfg.family)};
 
+    /// One remove pattern: the option it names, and whether a `*` joined
+    /// to the option's name takes every option spelled with that prefix
+    /// (`-W*` takes -Wall and -Wextra, options of their own).
+    struct RemovePattern {
+        kota::option::ParsedArg option;
+        bool prefix = false;
+    };
+
     /// Parse one rule's remove list into option patterns. The parsed
     /// patterns view the translated spellings, which therefore outlive
     /// every match below.
@@ -1349,18 +1364,30 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         } else {
             remove_flags = std::move(remove_source);
         }
-        std::vector<kota::option::ParsedArg> removes;
-        for(auto& parsed: option::table().parse(remove_flags, remove_parse_options)) {
-            if(!parsed.has_value()) {
-                continue;
+        std::vector<RemovePattern> removes;
+        for(auto parsed: option::table().parse(remove_flags, remove_parse_options)) {
+            llvm::StringRef written;
+            if(parsed.has_value()) {
+                written = remove_flags[parsed->index];
+            } else {
+                // An option written without its value (`-include`, last
+                // in the list) removes it with every value.
+                auto& wildcard = remove_storage.emplace_back(
+                    std::vector<std::string>{remove_flags[parsed.error().index], "*"});
+                auto retried = option::table().parse(wildcard, remove_parse_options);
+                parsed = *retried.begin();
+                assert(parsed.has_value());
             }
-            auto& remove = removes.emplace_back(*parsed);
+            auto& remove = removes.emplace_back(RemovePattern{
+                .option = *parsed,
+                .prefix = written.consume_back("*") && written == parsed->spelling,
+            });
             // Anchored like the base command's paths, so a relative value
             // names the file the rule's configuration means; the `*`
             // wildcard stays a wildcard.
-            for(auto& value: remove.values) {
+            for(auto& value: remove.option.values) {
                 if(value != "*") {
-                    value = anchored(remove.id, value, anchor, strings);
+                    value = anchored(remove.option.id, value, anchor, strings);
                 }
             }
         }
@@ -1369,7 +1396,27 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
 
     /// Whether a remove pattern names `arg` (a base Arg or an appended
     /// LocalArg).
-    auto removes_arg = [](const kota::option::ParsedArg& remove, const auto& arg) {
+    auto removes_arg = [](const RemovePattern& wanted, const auto& arg) {
+        auto& remove = wanted.option;
+        if(wanted.prefix) {
+            // As the argument renders: its option's name, with the value
+            // joined to it when the option joins one (`-Wno-unused`).
+            Arg view;
+            if constexpr(requires { arg.view(); }) {
+                view = arg.view();
+            } else {
+                view = arg;
+            }
+            std::string start;
+            render_arg(view, [&](std::string_view fragment) {
+                if(start.empty()) {
+                    start = fragment;
+                }
+            });
+            if(llvm::StringRef(start).starts_with(remove.spelling)) {
+                return true;
+            }
+        }
         if(remove.id != arg.opt_id) {
             return false;
         }
@@ -1412,7 +1459,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         }
     };
 
-    std::vector<kota::option::ParsedArg> remove_args;
+    std::vector<RemovePattern> remove_args;
     std::vector<LocalArg> append_args;
     for(auto& edit: options.edits) {
         if(edit.kind == CommandEdit::Kind::Remove) {
@@ -1420,7 +1467,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
             // A remove reaches the appends before it, so a later rule can
             // take back what an earlier one added.
             llvm::erase_if(append_args, [&](const LocalArg& local) {
-                return llvm::any_of(removes, [&](const kota::option::ParsedArg& remove) {
+                return llvm::any_of(removes, [&](const RemovePattern& remove) {
                     return removes_arg(remove, local);
                 });
             });
@@ -1438,9 +1485,8 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     parse_edit(options.extra_prepend, entry_directory, prepend_args);
 
     auto matches_remove = [&](const Arg& arg) {
-        return llvm::any_of(remove_args, [&](const kota::option::ParsedArg& remove) {
-            return removes_arg(remove, arg);
-        });
+        return llvm::any_of(remove_args,
+                            [&](const RemovePattern& remove) { return removes_arg(remove, arg); });
     };
 
     /// Rebuild the sequence: prepends first, base args with removes
@@ -1483,6 +1529,15 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
 
     auto edited_config = cfg;
     edited_config.query_toolchain = cfg.query_toolchain && options.query_toolchain;
+    // A rule may take `--driver-mode=cl` out of a command, or put it in:
+    // the family follows the edited command, as it follows the loaded one.
+    edited_config.family = Toolchain::driver_family(cfg.driver);
+    for(auto& local: edited) {
+        if(local.opt_id == option::OPT_driver_mode && local.values.size() == 1 &&
+           llvm::StringRef(local.values[0]) == "cl") {
+            edited_config.family = CompilerFamily::ClangCL;
+        }
+    }
     auto result_id = save_config(edited_config, edited);
     rule_applied[{static_cast<std::uint32_t>(id), rule_set_id}] =
         static_cast<std::uint32_t>(result_id);

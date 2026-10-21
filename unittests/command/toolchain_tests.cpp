@@ -202,12 +202,17 @@ ZEST_CASE(KeyIgnoresPreprocessorDepfile) {
 }
 
 ZEST_CASE(KeyIgnoresCodegen) {
-    /// Debug info and section layout never change how a driver sets up the
-    /// parse; stack protection does, through its macros.
+    /// Debug info, section layout and colored diagnostics never change how
+    /// a driver sets up the parse; stack protection does, through its macros.
     auto base = f.add("/fake", "/tmp/a.cpp", {"g++", "-std=c++23", "/tmp/a.cpp"});
     auto codegen = f.add("/fake",
                          "/tmp/b.cpp",
-                         {"g++", "-std=c++23", "-g", "-ffunction-sections", "/tmp/b.cpp"});
+                         {"g++",
+                          "-std=c++23",
+                          "-g",
+                          "-ffunction-sections",
+                          "-fdiagnostics-color=always",
+                          "/tmp/b.cpp"});
     ZEXPECT(f.key(base) == f.key(codegen));
     auto off =
         f.add("/fake", "/tmp/c.cpp", {"g++", "-std=c++23", "-fno-stack-protector", "/tmp/c.cpp"});
@@ -752,6 +757,15 @@ ZEST_CASE(UnqueriedCLRunsNothing, skip = Windows) {
     auto argv = f.resolve(unqueried(add("a.cpp", {cl.c_str(), "/std:c++17"})));
     ZEXPECT(contains(argv, "-std=c++17"));
     ZEXPECT(!vfs::exists(ran));
+}
+
+ZEST_CASE(NoJobSaysWhy) {
+    // A command clang's driver builds no job for names the driver's reason.
+    auto argv0 = tmp.path("g++");
+    auto ref = unqueried(add("a.cpp", {argv0.c_str(), "-x", "bogus"}));
+    auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
+    ZASSERT(!resolved);
+    ZEXPECT(llvm::StringRef(resolved.error()).contains("language not recognized: 'bogus'"));
 }
 
 ZEST_CASE(UnqueriedTargetFromName) {

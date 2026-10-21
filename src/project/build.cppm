@@ -110,7 +110,8 @@ public:
 
     /// The builtin fallback command of a file the build does not compile
     /// (CommandSource::Fallback): the driver follows the language clang
-    /// assigns to the file's extension, an ambiguous `.h` counting as C++.
+    /// assigns to the file's extension, an ambiguous `.h` and an extension
+    /// clang does not know counting as C++.
     ConfigID builtin(CanonicalRef path);
 
     /// Apply the edits of `paths` (and a run's extras) to `base`: the
@@ -247,6 +248,12 @@ private:
     /// registered source instead of leaving it to discovery.
     llvm::SmallVector<SourceID, 4> declared_ids() const;
 
+    /// The registered source of a database a rule declares, as find_source
+    /// answered the first time it was asked since a source was added: the
+    /// question costs a stat and a realpath, and entries() asks it for
+    /// every rule's databases each time.
+    std::optional<SourceID> declared_source(const Spelling& database) const;
+
     /// The first matching active rule declaring a default command.
     const CompiledRule* default_rule(CanonicalRef path) const;
 
@@ -282,6 +289,11 @@ private:
     llvm::DenseSet<Fid> records;
     std::uint64_t records_generation = 0;
     llvm::DenseMap<Fid, ConfigID> provisional;
+
+    /// declared_source's answers, valid while the database holds
+    /// `declared_source_count` sources.
+    mutable llvm::StringMap<std::optional<SourceID>> declared_source_ids;
+    mutable std::size_t declared_source_count = 0;
 };
 
 /// How discovered databases rank among themselves: shallower before

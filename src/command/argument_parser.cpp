@@ -290,6 +290,7 @@ bool is_codegen_option(unsigned id) {
         /// Diagnostics output formatting — doesn't affect analysis.
         case OPT_fcolor_diagnostics:
         case OPT_fno_color_diagnostics:
+        case OPT_fdiagnostics_color_EQ:
 
         /// Floating-point codegen — doesn't define macros (unlike -ffast-math).
         case OPT_ftrapping_math:

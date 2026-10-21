@@ -221,6 +221,22 @@ ZEST_CASE(AppendAfterInputFlags) {
             std::format("clang -std=c11 -std=c17 {}", fake("a.c")));
 };
 
+ZEST_CASE(RemoveEveryValue) {
+    /// A flag written without its value, or with `*` for it, removes every
+    /// value; a `*` joined to the name removes every flag of that prefix.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake",
+                         "a.c",
+                         "clang -include pre.h -Iinc -Wall -Wextra -Wno-unused -DKEEP a.c"sv);
+
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Remove, {"-I*", "-W*", "-include"}}
+    };
+    ZEXPECT(print_argv(render_entry(database, fake("a.c"), {.edits = edits})) ==
+            std::format("clang -D KEEP {}", fake("a.c")));
+};
+
 ZEST_CASE(SelectorHistoryRestored) {
     /// Removing the later selector re-exposes the earlier one.
     FileTable file_table;

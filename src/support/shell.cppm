@@ -15,7 +15,43 @@ inline llvm::SmallVector<const char*, 32> tokenize_command(llvm::StringRef comma
 #ifdef _WIN32
     llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
 #else
-    llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
+    // As sh and clang's compilation database read it: a backslash escapes
+    // the character after it outside single quotes and nothing inside them,
+    // where LLVM's GNU tokenizer would take `'a\\b'` for `a\b`.
+    std::string argument;
+    bool open = false;
+    for(std::size_t i = 0; i < command.size(); i += 1) {
+        char c = command[i];
+        if(llvm::isSpace(c)) {
+            if(open) {
+                arguments.push_back(saver.save(argument).data());
+                argument.clear();
+                open = false;
+            }
+            continue;
+        }
+        open = true;
+        if(c == '\'') {
+            auto end = std::min(command.find('\'', i + 1), command.size());
+            argument += command.slice(i + 1, end);
+            i = end;
+        } else if(c == '"') {
+            for(i += 1; i < command.size() && command[i] != '"'; i += 1) {
+                if(command[i] == '\\' && i + 1 < command.size()) {
+                    i += 1;
+                }
+                argument += command[i];
+            }
+        } else if(c == '\\' && i + 1 < command.size()) {
+            i += 1;
+            argument += command[i];
+        } else {
+            argument += c;
+        }
+    }
+    if(open) {
+        arguments.push_back(saver.save(argument).data());
+    }
 #endif
     return arguments;
 }

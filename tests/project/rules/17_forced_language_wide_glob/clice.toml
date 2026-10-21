@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["src/**"]
+default_command = "clang++ -x c++ -std=c++20"

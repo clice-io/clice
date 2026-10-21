@@ -1,0 +1,8 @@
+[test."a.cpp"]
+diagnostics = []
+
+[test."b.cpp"]
+diagnostics = []
+
+[test."c.cpp"]
+diagnostics = []

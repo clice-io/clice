@@ -1,0 +1,18 @@
+[test."inc/Widget"]
+diagnostics = []
+symbols = [
+    {
+        name = "Widget",
+        kind = "Struct",
+        at = "struct ⟦Widget⟧ {",
+        children = [
+            { name = "width", kind = "Field", at = "int ⟦width⟧;" },
+        ],
+    },
+]
+
+[test."impl.tcc"]
+diagnostics = []
+symbols = [
+    { name = "twice", kind = "Function", at = "T ⟦twice⟧(T value) {" },
+]

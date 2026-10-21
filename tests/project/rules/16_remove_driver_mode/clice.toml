@@ -1,0 +1,4 @@
+[[rules]]
+patterns = ["main.cpp"]
+remove = ["--driver-mode=cl"]
+append = ["-DRULE_APPLIED"]

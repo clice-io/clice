@@ -24,15 +24,36 @@ namespace ranges = std::ranges;
 /// A cc1 job as a driver runs it: the program, `-cc1`, then its arguments.
 using Job = std::vector<std::string>;
 
+/// The first error clang's driver reports, which says why it built no job
+/// when it builds none; it builds one despite most (an unknown flag).
+struct FirstError : clang::DiagnosticConsumer {
+    std::string message;
+
+    void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
+                          const clang::Diagnostic& info) override {
+        if(level >= clang::DiagnosticsEngine::Error && message.empty()) {
+            llvm::SmallString<128> text;
+            info.FormatDiagnostic(text);
+            message = text.str();
+        }
+    }
+};
+
 /// The job clang's own driver builds for `args` (a driver, its flags and
 /// the input) when run in `cwd`, the process's own when empty.
 std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
                                              llvm::StringRef cwd) {
-    /// FIXME: collect diagnostic here ...
     clang::DiagnosticOptions options;
+    FirstError first_error;
     clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
                                     options,
-                                    new clang::IgnoringDiagConsumer());
+                                    &first_error,
+                                    /*ShouldOwnClient=*/false);
+    auto failure = [&](llvm::StringRef what) {
+        return first_error.message.empty()
+                   ? std::format("{} for {}", what.str(), args.front())
+                   : std::format("{} for {}: {}", what.str(), args.front(), first_error.message);
+    };
 
     llvm::SmallVector<const char*, 256> list;
     list.emplace_back(args.front().c_str());
@@ -61,7 +82,7 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
 
     std::unique_ptr<clang::driver::Compilation> compilation(driver.BuildCompilation(arguments));
     if(!compilation) {
-        return std::unexpected(std::format("Failed to build compilation for {}", arguments[0]));
+        return std::unexpected(failure("Failed to build compilation"));
     }
 
     // We expect to get back exactly one command job, if we didn't something
@@ -70,20 +91,11 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
     // particular job, it should be controlled via options (e.g.
     // --cuda-{host|device}-only for CUDA) passed to the driver.
     const clang::driver::JobList& jobs = compilation->getJobs();
-    if(jobs.size() > 1) {
-        for(auto& action: compilation->getActions()) {
-            // On MacOSX real actions may end up being wrapped in BindArchAction
-            if(llvm::isa<clang::driver::BindArchAction>(action)) {
-                action = *action->input_begin();
-            }
-        }
-    }
-
     auto cmd = llvm::find_if(jobs, [](const clang::driver::Command& cmd) {
         return cmd.getCreator().getName() == llvm::StringRef("clang");
     });
     if(cmd == jobs.end()) {
-        return std::unexpected(std::format("No clang job found for {}", arguments[0]));
+        return std::unexpected(failure("No clang job found"));
     }
 
     Job job{arguments[0]};

@@ -1,0 +1,6 @@
+[test."$ clice lint"]
+stderr = '''
+error: Invalid compilation database format in ${WS}/compile_commands.json: the root is one entry, not an array of them (PowerShell's ConvertTo-Json writes a single entry so); wrap it in [ ].
+error: Nothing to lint: ${WS}/compile_commands.json cannot be read; the error above says why.
+'''
+exit = 2

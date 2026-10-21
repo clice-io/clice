@@ -291,10 +291,13 @@ ZEST_CASE(EditHashKeepsAnchor) {
 };
 
 ZEST_CASE(ForcedLanguageMembers) {
-    /// An extensionless tool source joins the members when its default
-    /// command forces the language; a header never does.
+    /// A file clang has no language for joins the members when its default
+    /// command forces the language and a pattern names it or its suffix; a
+    /// header never does, nor a file only a wide pattern reaches.
     TempDir tmp;
     tmp.touch("src/tool", "int main() {}\n");
+    tmp.touch("sketch/blink.ino", "");
+    tmp.touch("sketch/README.md", "");
     tmp.touch("src/util.h", "");
     tmp.touch("src/data.txt", "");
     tmp.touch("src/pre.i", "");
@@ -304,6 +307,10 @@ ZEST_CASE(ForcedLanguageMembers) {
         ConfigRule{.patterns = {"src/tool"}, .default_command = std::string("clang++ -x c++")});
     config.rules.push_back(ConfigRule{.patterns = {"src/**"},
                                       .default_command = std::string("clang++ -x c++-header")});
+    config.rules.push_back(ConfigRule{
+        .patterns = {"sketch/*.ino", "sketch/**"},
+        .default_command = std::string("clang++ -x c++")
+    });
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
 
     FileTable files;
@@ -311,7 +318,9 @@ ZEST_CASE(ForcedLanguageMembers) {
     Build build{config, cdb, files};
     build.reset_active("");
     auto members = build.members();
-    ZASSERT(members.size() == 3U);
+    ZASSERT(members.size() == 4U);
+    ZEXPECT(llvm::is_contained(members,
+                               files.intern(Spelling::absolute(tmp.path("sketch/blink.ino")))));
     ZEXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/tool")))));
     ZEXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/pre.i")))));
     ZEXPECT(
