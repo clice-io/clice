@@ -24,9 +24,10 @@ namespace ranges = std::ranges;
 /// A cc1 job as a driver runs it: the program, `-cc1`, then its arguments.
 using Job = std::vector<std::string>;
 
-/// The job clang's own driver builds for `args`: a driver, its flags and
-/// the input.
-std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args) {
+/// The job clang's own driver builds for `args` (a driver, its flags and
+/// the input) when run in `cwd`, the process's own when empty.
+std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
+                                             llvm::StringRef cwd) {
     /// FIXME: collect diagnostic here ...
     clang::DiagnosticOptions options;
     clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
@@ -46,11 +47,15 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args) {
     /// non --target argument is found in the arguments list. See
     /// `clang::driver::BuildCompilation`. We use default arguments because we will
     /// inject related commands before querying.
+    auto view = llvm::makeIntrusiveRefCnt<vfs::View>();
+    if(!cwd.empty()) {
+        [[maybe_unused]] auto error = view->setCurrentWorkingDirectory(cwd);
+    }
     clang::driver::Driver driver(/*DriverExecutable=*/arguments[0],
                                  /*TargetTriple=*/llvm::sys::getDefaultTargetTriple(),
                                  /*Diags=*/engine,
                                  /*Title=*/"clang LLVM compiler",
-                                 /*VFS=*/llvm::makeIntrusiveRefCnt<vfs::View>());
+                                 /*VFS=*/view);
     driver.setCheckInputsExist(false);
     driver.setProbePrecompiled(false);
 
@@ -132,7 +137,8 @@ std::string first_core(llvm::StringRef arg) {
 /// the same headers, which clang cannot parse, and clang's would reach them
 /// through #include_next (clang's stdatomic.h defers to a later one).
 std::expected<Job, std::string> query_as_gcc(const DriverReport& report,
-                                             llvm::ArrayRef<std::string> args) {
+                                             llvm::ArrayRef<std::string> args,
+                                             llvm::StringRef cwd) {
     std::vector<std::string> clang_args = {args[0],
                                            "--target=" + report.target,
                                            "-nostdinc",
@@ -149,7 +155,7 @@ std::expected<Job, std::string> query_as_gcc(const DriverReport& report,
         clang_args.push_back(first_core(arg));
     }
 
-    auto job = query_driver(clang_args);
+    auto job = query_driver(clang_args, cwd);
     if(!job) {
         return job;
     }
@@ -172,7 +178,8 @@ bool names_standard(llvm::ArrayRef<std::string> args) {
 /// The job clang's own driver builds for `args`, with `mode` (what the
 /// driver's name does not tell clang) ahead of the command's own flags.
 std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,
-                                          llvm::ArrayRef<std::string> mode) {
+                                          llvm::ArrayRef<std::string> mode,
+                                          llvm::StringRef cwd) {
     // Before C++20, clang defers template bodies on MSVC targets so that
     // code written for MSVC's lookup rules compiles, but a deferred body has
     // no AST: every feature inside it goes blind. Placed before the
@@ -184,21 +191,22 @@ std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,
     clang_args.insert(clang_args.end(), mode.begin(), mode.end());
     clang_args.push_back("-fno-delayed-template-parsing");
     clang_args.insert(clang_args.end(), args.begin() + 1, args.end());
-    return query_driver(clang_args);
+    return query_driver(clang_args, cwd);
 }
 
 /// cl and clang-cl: clang's own driver in cl mode, which sets the
 /// windows-msvc target itself.
-std::expected<Job, std::string> ask_cl(llvm::ArrayRef<std::string> args) {
-    return ask_clang(args, {"--driver-mode=cl"});
+std::expected<Job, std::string> ask_cl(llvm::ArrayRef<std::string> args, llvm::StringRef cwd) {
+    return ask_clang(args, {"--driver-mode=cl"}, cwd);
 }
 
 /// A driver clice does not query: clang's own driver stands in for it, as a
 /// clang installed under its name would — the name's mode (`g++` compiles
-/// C++) and target prefix (`arm-none-eabi-gcc`), clang's defaults for the
-/// rest.
+/// C++) and target prefix (`arm-none-eabi-gcc`, when its architecture is
+/// one clang knows), clang's defaults for the rest.
 std::expected<Job, std::string> ask_clang_for(std::vector<std::string> args,
-                                              std::size_t driver_tokens) {
+                                              std::size_t driver_tokens,
+                                              llvm::StringRef cwd) {
     args.erase(args.begin() + 1, args.begin() + driver_tokens);
     std::vector<std::string> mode;
     auto name = clang::driver::ToolChain::getTargetAndModeFromProgramName(args[0]);
@@ -207,7 +215,7 @@ std::expected<Job, std::string> ask_clang_for(std::vector<std::string> args,
     if(llvm::Triple(name.TargetPrefix).getArch() != llvm::Triple::UnknownArch) {
         mode.push_back("--target=" + name.TargetPrefix);
     }
-    return ask_clang(args, mode);
+    return ask_clang(args, mode, cwd);
 }
 
 /// Every other driver is GCC-style: asked how it compiles the input, it
@@ -232,7 +240,7 @@ kota::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::strin
         i += 1;
     }
 
-    auto report = co_await ask_driver(args, driver_tokens, std::move(cwd));
+    auto report = co_await ask_driver(args, driver_tokens, cwd);
     if(!report) {
         co_return std::unexpected(std::move(report.error()));
     }
@@ -257,7 +265,7 @@ kota::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::strin
     if(!standard.empty()) {
         args.push_back(std::move(standard));
     }
-    co_return query_as_gcc(*report, args);
+    co_return query_as_gcc(*report, args, cwd);
 }
 
 /// The host compiler nvcc's dryrun names, as a path. The dryrun spells it
@@ -335,7 +343,7 @@ kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string>
         }
     }
     host_probe.push_back(input.str());
-    auto host_report = co_await ask_driver(host_probe, 1, std::move(cwd));
+    auto host_report = co_await ask_driver(host_probe, 1, cwd);
     if(!host_report) {
         co_return std::unexpected(std::move(host_report.error()));
     }
@@ -417,8 +425,8 @@ kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string>
 
     /// A clang host needs no setup: clang's own driver already defaults to
     /// the running machine's triple.
-    co_return host_report->gcc_job ? query_as_gcc(*host_report, cuda_args)
-                                   : query_driver(cuda_args);
+    co_return host_report->gcc_job ? query_as_gcc(*host_report, cuda_args, cwd)
+                                   : query_driver(cuda_args, cwd);
 }
 
 /// The probe working directory, empty when the wanted one does not exist
@@ -527,9 +535,9 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     std::size_t driver_tokens = spec.family == CompilerFamily::Zig ? 2 : 1;
     std::expected<Job, std::string> job;
     if(spec.family == CompilerFamily::MSVC || spec.family == CompilerFamily::ClangCL) {
-        job = ask_cl(args);
+        job = ask_cl(args, spec.cwd);
     } else if(!spec.query_toolchain) {
-        job = ask_clang_for(std::move(args), driver_tokens);
+        job = ask_clang_for(std::move(args), driver_tokens, spec.cwd);
     } else if(spec.family == CompilerFamily::NVCC) {
         job = co_await ask_nvcc(args, *input, spec.kind, spec.cwd);
     } else {

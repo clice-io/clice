@@ -699,6 +699,20 @@ ZEST_CASE(UnqueriedTargetFromName) {
     ZEXPECT(adjacent(argv, "-triple", "riscv64-unknown-linux-gnu"));
 }
 
+ZEST_CASE(UnqueriedRelativeConfig) {
+    // Relative paths clang's driver reads, here from a configuration file,
+    // are the entry directory's, as they are for a driver clice runs.
+    tmp.touch("gcc/lib/gcc/x86_64-linux-gnu/99/crtbegin.o");
+    tmp.mkdir("gcc/include/c++/99");
+    tmp.touch("toolchain.cfg", "--gcc-install-dir=gcc/lib/gcc/x86_64-linux-gnu/99\n");
+    auto config = "--config=" + tmp.path("toolchain.cfg");
+    auto argv = f.resolve(
+        unqueried(add("a.cpp", {"bin/g++", "--target=x86_64-linux-gnu", config.c_str()})));
+    ZEXPECT(std::ranges::any_of(argv, [](llvm::StringRef arg) {
+        return arg.ends_with("include/c++/99");
+    }));
+}
+
 };  // ZEST_SUITE(ToolchainTests)
 
 }  // namespace
