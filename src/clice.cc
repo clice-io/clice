@@ -28,6 +28,18 @@ extern "C++" int main(int argc, const char** argv) {
                             ProcessPowerThrottling,
                             &throttling,
                             sizeof(throttling));
+
+    // The CRT's argv is in the ANSI code page, which spells few names past
+    // ASCII: the arguments are read from the UTF-16 command line, by the
+    // CRT's rules, as LLVM's tools read them.
+    llvm::BumpPtrAllocator allocator;
+    llvm::StringSaver saver(allocator);
+    llvm::SmallVector<const char*, 16> arguments;
+    std::string line;
+    llvm::convertWideToUTF8(::GetCommandLineW(), line);
+    llvm::cl::TokenizeWindowsCommandLineFull(line, saver, arguments);
+    argc = static_cast<int>(arguments.size());
+    argv = arguments.data();
 #else
     signal(SIGPIPE, SIG_IGN);
 #endif

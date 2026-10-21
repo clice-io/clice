@@ -527,8 +527,8 @@ bool search_env_all_absolute() {
     const static bool result = [] {
 #ifdef _WIN32
         for(const char* name: {"INCLUDE", "LIB", "PATH"}) {
-            if(const char* value = std::getenv(name)) {
-                if(!components_all_absolute(value))
+            if(auto value = llvm::sys::Process::GetEnv(name)) {
+                if(!components_all_absolute(*value))
                     return false;
             }
         }
@@ -540,14 +540,14 @@ bool search_env_all_absolute() {
                                "OBJC_INCLUDE_PATH",
                                "COMPILER_PATH",
                                "LIBRARY_PATH"}) {
-            if(const char* value = std::getenv(name)) {
-                if(!components_all_absolute(value))
+            if(auto value = llvm::sys::Process::GetEnv(name)) {
+                if(!components_all_absolute(*value))
                     return false;
             }
         }
         /// A single path, not a list.
-        if(const char* prefix = std::getenv("GCC_EXEC_PREFIX")) {
-            if(!path::is_absolute(prefix))
+        if(auto prefix = llvm::sys::Process::GetEnv("GCC_EXEC_PREFIX")) {
+            if(!path::is_absolute(*prefix))
                 return false;
         }
 #endif

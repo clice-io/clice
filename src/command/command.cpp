@@ -895,7 +895,20 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     source.inputs = {
         {.file = database, .hash = observed->obs.hash}
     };
-    simdjson::padded_string json_buf(observed->content->getBuffer());
+    // simdjson refuses a whole document over one byte that is not UTF-8 (a
+    // path or a define in a legacy code page, which CMake writes as it
+    // finds them): such bytes become U+FFFD, and an entry holding one is
+    // skipped.
+    llvm::StringRef text = observed->content->getBuffer();
+    std::string repaired;
+    if(!llvm::json::isUTF8(text)) {
+        repaired = llvm::json::fixUTF8(text);
+        text = repaired;
+    }
+    auto damaged = [&](llvm::StringRef value) {
+        return !repaired.empty() && value.contains("\xEF\xBF\xBD");
+    };
+    simdjson::padded_string json_buf(text);
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(json_buf).get(doc)) {
@@ -956,6 +969,49 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
 
+        llvm::BumpPtrAllocator local;
+        llvm::StringSaver saver(local);
+        llvm::SmallVector<const char*, 32> args;
+        std::optional<llvm::StringRef> command;
+        simdjson::ondemand::array args_arr;
+        if(!obj["arguments"].get_array().get(args_arr)) {
+            bool malformed = false;
+            for(auto arg_val: args_arr) {
+                std::string_view sv;
+                if(arg_val.get_string().get(sv)) {
+                    malformed = true;
+                    break;
+                }
+                args.push_back(saver.save(llvm::StringRef(sv.data(), sv.size())).data());
+            }
+            if(malformed || args.empty()) {
+                continue;
+            }
+        } else {
+            std::string_view cmd_sv;
+            if(obj["command"].get_string().get(cmd_sv)) {
+                LOG_ERROR(
+                    "Invalid compilation database in {}. Skipping item at index {}: "
+                    "neither 'arguments' nor 'command' key is present.",
+                    path,
+                    index);
+                continue;
+            }
+            command = llvm::StringRef(cmd_sv.data(), cmd_sv.size());
+        }
+
+        llvm::StringRef file_ref(file_sv.data(), file_sv.size());
+        if(damaged(dir_sv) || damaged(file_ref) ||
+           (command ? damaged(*command) : llvm::any_of(args, damaged))) {
+            LOG_ERROR(
+                "Invalid compilation database in {}. Skipping item at index {} ({}): "
+                "it holds bytes that are not UTF-8.",
+                path,
+                index,
+                file_ref);
+            continue;
+        }
+
         // A relative `directory` anchors to the CDB file's own location —
         // self-contained, so every consumer of the same file (server,
         // batch, inspect) resolves it identically.
@@ -968,7 +1024,6 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             known->second = Spelling(CanonicalPath(directory));
         }
         auto& working = known->second;
-        llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
         // Some build systems emit non-C-family files (e.g. .rc, .asm, .S, .def)
         // into compile_commands.json: skipped, unless the command's -x
@@ -983,38 +1038,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                        ? strings.save(file.str())
                                        : llvm::StringRef();
 
-        std::optional<ConfigID> normalized;
-
-        simdjson::ondemand::array args_arr;
-        if(!obj["arguments"].get_array().get(args_arr)) {
-            llvm::BumpPtrAllocator local;
-            llvm::StringSaver saver(local);
-            llvm::SmallVector<const char*, 32> args;
-            bool malformed = false;
-            for(auto arg_val: args_arr) {
-                std::string_view sv;
-                if(arg_val.get_string().get(sv)) {
-                    malformed = true;
-                    break;
-                }
-                args.push_back(saver.save(llvm::StringRef(sv.data(), sv.size())).data());
-            }
-            if(malformed || args.empty()) {
-                continue;
-            }
-            normalized = normalize(working, path_id, args);
-        } else {
-            std::string_view cmd_sv;
-            if(obj["command"].get_string().get(cmd_sv)) {
-                LOG_ERROR(
-                    "Invalid compilation database in {}. Skipping item at index {}: "
-                    "neither 'arguments' nor 'command' key is present.",
-                    path,
-                    index);
-                continue;
-            }
-            normalized = normalize(working, path_id, llvm::StringRef(cmd_sv.data(), cmd_sv.size()));
-        }
+        auto normalized =
+            command ? normalize(working, path_id, *command) : normalize(working, path_id, args);
 
         if(!normalized || is_other_language_path(file_ref) ||
            (!c_family && !forces_c_family(*normalized))) {

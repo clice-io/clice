@@ -182,4 +182,21 @@ bool is_pipe_or_socket(int fd) {
 #endif
 }
 
+bool write_console(int fd, llvm::StringRef text) {
+#ifdef _WIN32
+    HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
+    DWORD mode = 0;
+    std::wstring wide;
+    if(handle == INVALID_HANDLE_VALUE || !::GetConsoleMode(handle, &mode) ||
+       !llvm::ConvertUTF8toWide(text, wide)) {
+        return false;
+    }
+    DWORD written = 0;
+    ::WriteConsoleW(handle, wide.data(), static_cast<DWORD>(wide.size()), &written, nullptr);
+    return true;
+#else
+    return false;
+#endif
+}
+
 }  // namespace clice

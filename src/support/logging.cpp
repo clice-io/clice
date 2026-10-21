@@ -176,12 +176,21 @@ uintptr_t main_executable_base() {
 static void print_frame(llvm::raw_ostream& os, DWORD64 pc) {
     os << llvm::format("0x%016llX", static_cast<unsigned long long>(pc));
     HMODULE module = nullptr;
-    std::array<char, MAX_PATH> path;
-    if(GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+    std::array<wchar_t, MAX_PATH> wide;
+    std::array<char, MAX_PATH * 3> path;
+    if(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                          reinterpret_cast<LPCSTR>(pc),
+                          reinterpret_cast<LPCWSTR>(pc),
                           &module) &&
-       GetModuleFileNameA(module, path.data(), path.size()) != 0) {
+       GetModuleFileNameW(module, wide.data(), wide.size()) != 0 &&
+       WideCharToMultiByte(CP_UTF8,
+                           0,
+                           wide.data(),
+                           -1,
+                           path.data(),
+                           static_cast<int>(path.size()),
+                           nullptr,
+                           nullptr) != 0) {
         auto base = reinterpret_cast<DWORD64>(module);
         os << llvm::format(", %s(0x%016llX) + 0x%llX byte(s)\n",
                            path.data(),

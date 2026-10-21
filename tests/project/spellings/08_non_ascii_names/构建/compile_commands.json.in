@@ -1,0 +1,14 @@
+[
+  {
+    "directory": "${WS}/构建",
+    "file": "../源码/主程序.cpp",
+    "arguments": [
+      "clang++",
+      "-std=c++20",
+      "@参数.rsp",
+      "-DGREETING=\"你好\"",
+      "-fsyntax-only",
+      "../源码/主程序.cpp"
+    ]
+  }
+]

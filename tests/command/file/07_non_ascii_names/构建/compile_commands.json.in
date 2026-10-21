@@ -1,0 +1,16 @@
+[
+  {
+    "directory": "${WS}/构建",
+    "file": "../源码/主程序.cpp",
+    "arguments": [
+      "${WS}/missing-cc",
+      "-std=c++20",
+      "@参数.rsp",
+      "-DGREETING=\"你好\"",
+      "-c",
+      "../源码/主程序.cpp",
+      "-o",
+      "主程序.o"
+    ]
+  }
+]
