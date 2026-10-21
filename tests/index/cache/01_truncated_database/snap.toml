@@ -20,7 +20,7 @@ stdout = '''
 Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = "warning: Index database at ${WS}/.clice/cache/v15/index/default/index.mdb is corrupt (meta failed: MDB_INVALID: File is not an LMDB file); rebuilding"
+stderr = "warning: Index database at ${WS}/.clice/cache/v15/index/default/index.mdb is corrupt (meta failed: MDB_CORRUPTED: Located page was wrong type); rebuilding"
 exit = 0
 
 ["cut after the meta pages"."$ clice query symbol-search add #2"]

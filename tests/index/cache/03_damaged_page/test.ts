@@ -16,8 +16,7 @@ function symbolPages(bytes: Buffer): lmdb.Leaf[] {
         .leaves(bytes)
         .filter(
             (leaf) => leaf.nodes.length > 1 && leaf.nodes.every((node) => node.key.startsWith("Y")),
-        )
-        .sort((lhs, rhs) => ((lhs.nodes[0]?.key ?? "") < (rhs.nodes[0]?.key ?? "") ? -1 : 1));
+        );
 }
 
 // A bad disk garbles a page of symbol records so that it lists its keys out
