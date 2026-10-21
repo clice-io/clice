@@ -1,0 +1,7 @@
+[answers.include.hover]
+markdown = '''
+**header** `工具.h`
+
+`${WS}/头文件/工具.h`
+'''
+range = '#include ⟦"工具.h"⟧'
