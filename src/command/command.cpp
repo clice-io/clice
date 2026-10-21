@@ -921,14 +921,16 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         return std::nullopt;
     }
 
-    simdjson::ondemand::json_type root_type;
-    if(!doc.type().get(root_type) && root_type == simdjson::ondemand::json_type::object) {
+    simdjson::ondemand::object single;
+    std::string_view single_file;
+    if(!doc.get_object().get(single) && !single.find_field_unordered("file").get(single_file)) {
         LOG_ERROR(
             "Invalid compilation database format in {}: the root is one entry, not an array of "
             "them (PowerShell's ConvertTo-Json writes a single entry so); wrap it in [ ].",
             path);
         return std::nullopt;
     }
+    doc.rewind();
     simdjson::ondemand::array arr;
     if(auto error = doc.get_array().get(arr)) {
         LOG_ERROR("Invalid compilation database format in {}: root element must be an array.",
@@ -1379,26 +1381,12 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                 }
             }
         };
-        // A dash-led token starts the next pattern, as no separate value is
-        // one: `["-include", "-I"]` names two options.
-        for(std::size_t begin = 0; begin < remove_flags.size();) {
-            auto end = begin + 1;
-            while(end < remove_flags.size() &&
-                  !llvm::StringRef(remove_flags[end]).starts_with("-")) {
-                end += 1;
-            }
-            auto& pattern = remove_storage.emplace_back(remove_flags.begin() + begin,
-                                                        remove_flags.begin() + end);
-            begin = end;
-            for(auto parsed: option::table().parse(pattern, remove_parse_options)) {
-                if(parsed.has_value()) {
-                    add(*parsed, pattern[parsed->index]);
-                    continue;
-                }
-                // An option written without its value (`-include`) removes
-                // it with every value.
+        for(auto parsed: option::table().parse(remove_flags, remove_parse_options)) {
+            if(!parsed.has_value()) {
+                // An option written without its value, last in the list
+                // (`-include`), removes it with every value.
                 auto& wildcard = remove_storage.emplace_back(
-                    std::vector<std::string>{pattern[parsed.error().index], "*"});
+                    std::vector<std::string>{remove_flags[parsed.error().index], "*"});
                 auto retried = *option::table().parse(wildcard, remove_parse_options).begin();
                 if(!retried) {
                     LOG_WARN("A rule removes {}, which takes several values: write them",
@@ -1406,6 +1394,10 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                     continue;
                 }
                 add(*retried, wildcard[0]);
+            } else if(parsed->id == option::OPT_INPUT) {
+                LOG_WARN("A rule removes {}, which names no option", remove_flags[parsed->index]);
+            } else {
+                add(*parsed, remove_flags[parsed->index]);
             }
         }
         return removes;
@@ -1415,7 +1407,9 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     /// LocalArg).
     auto removes_arg = [](const RemovePattern& wanted, const auto& arg) {
         auto& remove = wanted.option;
-        if(wanted.prefix) {
+        // Among options of the remove's kind: `-W*` takes every warning,
+        // not the preprocessor's `-Wp,-D...`.
+        if(wanted.prefix && arg.cls == classify(remove.id, {})) {
             // As the argument renders: its option's name, with the value
             // joined to it when the option joins one (`-Wno-unused`).
             Arg view;

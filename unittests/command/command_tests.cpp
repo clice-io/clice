@@ -222,21 +222,23 @@ ZEST_CASE(AppendAfterInputFlags) {
 };
 
 ZEST_CASE(RemoveEveryValue) {
-    /// A flag written without its value, or with `*` for it, removes every
-    /// value, ahead of the next flag too; a `*` joined to the name removes
-    /// every flag of that prefix. One that takes several values removes
-    /// nothing until they are written.
+    /// A flag written without its value, last in the list, or with `*` for
+    /// it, removes every value; a `*` joined to the name removes every flag
+    /// of that prefix and kind, so the preprocessor's -Wp stays. One that
+    /// takes several values removes nothing until they are written.
     FileTable file_table;
     CompilationDatabase database{file_table};
-    database.add_command("/fake",
-                         "a.c",
-                         "clang -include pre.h -Iinc -Wall -Wextra -Wno-unused -DKEEP a.c"sv);
+    database.add_command(
+        "/fake",
+        "a.c",
+        "clang -include pre.h -Iinc -Wall -Wextra -Wno-unused -Wp,-DKEPT -DKEEP a.c"sv);
 
     std::vector<CommandEdit> edits = {
-        {CommandEdit::Kind::Remove, {"-include", "-I", "-W*", "-sectcreate"}}
+        {CommandEdit::Kind::Remove, {"-I*", "-W*", "-include"}},
+        {CommandEdit::Kind::Remove, {"-sectcreate"}           },
     };
     ZEXPECT(print_argv(render_entry(database, fake("a.c"), {.edits = edits})) ==
-            std::format("clang -D KEEP {}", fake("a.c")));
+            std::format("clang -Wp,-DKEPT -D KEEP {}", fake("a.c")));
 };
 
 ZEST_CASE(SelectorHistoryRestored) {
