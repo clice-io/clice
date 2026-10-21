@@ -50,9 +50,10 @@ std::string standard_from_macros(llvm::StringRef cplusplus,
                              {201402, "14"},
                              {201703, "17"},
                              {202002, "20"},
-                             {202302, "23"}
+                             {202302, "23"},
+                             {202400, "26"}
         },
-                         "26");
+                         "2d");
         return (strict ? "c++" : "gnu++") + year.str();
     }
     if(stdc_version.empty()) {
@@ -160,6 +161,29 @@ DriverReport parse_driver_report(llvm::StringRef out, llvm::StringRef err) {
     }
     if(!opencl) {
         report.standard = standard_from_macros(cplusplus, stdc_version, strict);
+    }
+    return report;
+}
+
+CLReport parse_cl_report(llvm::StringRef out) {
+    CLReport report;
+    llvm::SmallVector<llvm::StringRef> lines;
+    out.split(lines, '\n', -1, false);
+    for(llvm::StringRef line: lines) {
+        auto [label, value] = line.trim().split(' ');
+        value = value.trim();
+        std::uint64_t number = 0;
+        if(value.rtrim("lL").getAsInteger(10, number)) {
+            continue;
+        }
+        if(label == "msvc_lang") {
+            report.standard = standard_from_macros(value, "", true);
+        } else if(label == "msc_full_ver") {
+            report.version = std::format("{}.{}.{}",
+                                         number / 10'000'000,
+                                         number / 100'000 % 100,
+                                         number % 100'000);
+        }
     }
     return report;
 }

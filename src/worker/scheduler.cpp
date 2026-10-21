@@ -512,6 +512,9 @@ void WorkerScheduler::check_deadlines(SchedulerTime now) {
         }
     }
     for(auto& [_, list]: by_slot) {
+        // FIXME: a query hung in its own work is spared as well, up to the build
+        // deadline, while any build of its worker is listed, even one waiting behind
+        // it: only the worker can tell when a request really starts.
         auto building = std::ranges::any_of(list, &Request::build);
         llvm::SmallVector<const Request*> late;
         for(auto* request: list) {

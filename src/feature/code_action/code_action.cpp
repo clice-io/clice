@@ -768,6 +768,9 @@ std::string template_head(CompilationUnit& unit,
         os << ' ' << parameter_name(param, index);
     }
     os << '>';
+    // FIXME: constraint arguments and the requires-clause are copied as
+    // written: a name in them that does not resolve where the definition goes
+    // (outside its namespace, past an `#undef`) breaks the build.
     if(auto* requires_clause = params->getRequiresClause()) {
         if(auto text = spelled_text(unit, requires_clause->getSourceRange())) {
             os << " requires " << *text;

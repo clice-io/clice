@@ -385,8 +385,9 @@ std::optional<protocol::Diagnostic> to_protocol(
     message += diagnostic.message;
     std::vector<protocol::DiagnosticRelatedInformation> related;
     for(const auto& note: diagnostic.notes) {
-        // The file can have changed since the compile read it: a range past
-        // its text places nothing.
+        // FIXME: the note's file is read when the diagnostic is shown; if it
+        // changed since the compile read it, the columns are off. A range
+        // past its text places nothing.
         auto map = note_positions(note.path);
         if(!map || note.range.end > map->size()) {
             continue;

@@ -213,8 +213,9 @@ void ProjectServer::start() {
     // Construct after the project load: the tracker baselines each
     // database at the read its entries came from.
     tracker = std::make_unique<FileTracker>(project, sessions, root);
-    // Documents opened before the project loaded missed their didOpen-time
-    // discovery.
+    // FIXME: empty here: documents arrive after start() (rehome_sessions),
+    // whose open_session skips discovery, so a nested database of a file
+    // opened before `initialized` waits for the next CDB poll.
     for(auto& [path_id, session]: sessions.sessions) {
         discover_around(path_id);
     }

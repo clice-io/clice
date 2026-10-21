@@ -100,6 +100,8 @@ using SynthesizedFiles = std::vector<SynthesizedFile>;
 /// Only the focus file's include enters the suffix: where another file
 /// enters the header (an earlier occurrence), the header is its text
 /// alone.
+/// FIXME: clang finds a fragment through no search directory, so an
+/// `#include_next` a fragment keeps searches from the first one.
 struct SynthesizedContext {
     /// The fragment of the host before its cut, entering every later one:
     /// injected via -include. Restores the preprocessor state the header

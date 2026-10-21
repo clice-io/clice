@@ -377,6 +377,9 @@ void PCHFamily::invalidate(llvm::StringRef pch_key) {
     // An in-flight rebuild owns the entry; its commit publishes a fresh
     // pair in place of the retracted one, so only an idle entry is
     // dropped.
+    // FIXME: the rebuild in flight is not restarted: a save that retries a PCH
+    // which kept its preamble's errors gets that rebuild's result, still missing
+    // a header created after the build looked for it.
     if(!building(pch_key)) {
         drop(it);
     } else if(project.store) {

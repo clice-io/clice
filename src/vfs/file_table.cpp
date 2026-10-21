@@ -16,6 +16,9 @@ static Spelling fold(const Spelling& path) {
 }
 
 Fid FileTable::intern(const Spelling& path) {
+    // FIXME: a spelling keeps the identity it first resolved to: a directory
+    // that later appears as a symlink, or a case-only rename, leaves the file a
+    // second fid until restart.
     if(auto it = ids.find(path.str()); it != ids.end()) {
         return it->second;
     }

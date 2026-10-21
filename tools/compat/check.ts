@@ -16,7 +16,14 @@ import {
     type DatabaseEntry,
 } from "./database.ts";
 import { compilerMacros, writeExpectations } from "./macros.ts";
-import { buildEnv, missingTools, run, type FileExpectation, type Scenario } from "./scenario.ts";
+import {
+    buildEnv,
+    cliceEnv,
+    missingTools,
+    run,
+    type FileExpectation,
+    type Scenario,
+} from "./scenario.ts";
 
 const PROJECT_DIR = path.join(REPO_ROOT, "tests", "compat", "project");
 
@@ -53,8 +60,9 @@ async function commandProblems(
     root: string,
     file: string,
     expectation: FileExpectation,
+    env: NodeJS.ProcessEnv,
 ): Promise<string[]> {
-    const [command] = await fileCommands(clice, root, file);
+    const [command] = await fileCommands(clice, root, file, env);
     if (command === undefined) {
         throw new Error(`clice command ${file} lists no entry`);
     }
@@ -128,7 +136,8 @@ async function withProject(
 /// Throws with everything clice got wrong about the scenario's build.
 export async function checkScenario(clice: string, scenario: Scenario): Promise<void> {
     await withProject(scenario, async (ws) => {
-        const linted = await lint(clice, ws.root);
+        const env = cliceEnv(scenario);
+        const linted = await lint(clice, ws.root, env);
         if (linted.status !== 0 || !linted.report.trimEnd().endsWith(": 0 findings.")) {
             const log = linted.log.split("\n").slice(-30).join("\n");
             throw new Error(`clice lint exited ${linted.status}:\n${linted.report}\n${log}`);
@@ -136,7 +145,7 @@ export async function checkScenario(clice: string, scenario: Scenario): Promise<
 
         const problems: string[] = [];
         for (const [file, expectation] of Object.entries(scenario.files)) {
-            problems.push(...(await commandProblems(clice, ws.root, file, expectation)));
+            problems.push(...(await commandProblems(clice, ws.root, file, expectation, env)));
         }
         if (problems.length > 0) {
             throw new Error(problems.join("\n"));

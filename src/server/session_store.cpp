@@ -57,6 +57,9 @@ void SessionStore::apply_open(Session& session, std::string text, int version) {
     session.generation++;
     if(auto it = parked.find(session.path_id); it != parked.end()) {
         session.quarantine = std::move(it->second.quarantine);
+        // FIXME: only the document's own text is compared: a header it includes,
+        // fixed while it was closed, leaves its crashed kinds barred until an edit
+        // or save, though the crash note says a header change lifts them.
         if(it->second.hash != session.hash) {
             session.quarantine->on_change(Quarantine::Clock::now());
         }

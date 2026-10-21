@@ -47,6 +47,9 @@ bool quoted(llvm::StringRef text) {
 
 /// Split `text` at the characters `at` accepts, outside quotes and
 /// angle brackets. Quotes and brackets stay in the pieces.
+/// FIXME: parentheses do not nest here: the `>` of `(N > 0)` closes the
+/// argument list, so `Flag<N, (N > 0)>` splits at its spaces or reads as
+/// unbalanced.
 std::expected<std::vector<std::string>, std::string>
     split(llvm::StringRef text, llvm::function_ref<std::size_t(llvm::StringRef)> at) {
     std::vector<std::string> pieces;

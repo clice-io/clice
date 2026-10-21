@@ -289,7 +289,7 @@ ZEST_CASE(ClassTemplate) {
             template <typename T, typename U>
             struct §(primary_decl)foo;
 
-            /// using type = §(forward_full)foo<int, int>;
+            using type = §(forward_full)foo<int, int>;
 
             template <typename T, typename U>
             struct §(primary)⟦foo⟧ {};
@@ -323,8 +323,7 @@ ZEST_CASE(ClassTemplate) {
     GO_TO_DEFINITION("partial_spec_decl", "partial_spec");
     GO_TO_DEFINITION("explicit_partial", "partial_spec");
     GO_TO_DEFINITION("implicit_partial", "partial_spec");
-    /// FIXME: Figure forward template declaration.
-    /// GO_TO_DEFINITION("forward_full", "full_spec");
+    GO_TO_DEFINITION("forward_full", "full_spec");
     GO_TO_DEFINITION("full_spec_decl", "full_spec");
     GO_TO_DEFINITION("implicit_full", "full_spec");
 }
@@ -366,9 +365,7 @@ ZEST_CASE(FunctionTemplate) {
         )");
 
     GO_TO_DEFINITION("primary_decl", "primary");
-    /// FIXME: clang doen't record location info of explicit function instantiation/
-    /// See https://github.com/llvm/llvm-project/issues/115418.
-    /// GO_TO_DEFINITION("explicit_primary", "primary");
+    GO_TO_DEFINITION("explicit_primary", "primary");
     GO_TO_DEFINITION("implicit_primary", "primary");
     GO_TO_DEFINITION("spec_decl", "spec");
     GO_TO_DEFINITION("implicit_spec", "spec");

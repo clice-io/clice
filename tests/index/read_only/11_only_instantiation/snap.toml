@@ -1,0 +1,11 @@
+[test.member]
+index = ["template <typename ⟦T⟧> @-2", "struct ⟦Widget⟧ {};"]
+ast = ["template <typename ⟦T⟧> @-2", "struct ⟦Widget⟧ {};"]
+
+[test.abbreviated]
+index = ["struct ⟦Widget⟧ {};"]
+ast = ["struct ⟦Widget⟧ {};"]
+
+[test.parameter]
+index = ["struct ⟦Widget⟧ {};"]
+ast = ["struct ⟦Widget⟧ {};"]

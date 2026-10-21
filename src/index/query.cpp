@@ -368,6 +368,9 @@ void IndexQuery::for_each_relation(SymbolHash hash,
         return !stopped;
     };
 
+    // TODO: each reference file is resolved (stale check, display path,
+    // positions, instantiation shard) before its shard is asked for a relation
+    // of `kind`: narrow kinds on widely referenced symbols pay that per file.
     auto disk = [&] {
         if(!mask.shard) {
             return true;

@@ -99,6 +99,9 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
 
     // The header's own guard decides which of its includes after the first
     // enter it.
+    // FIXME: another file defining the same guard skips the first include too:
+    // a header included once is not checked, so fixing its guard keeps the
+    // tree's answer until the host's tree is taken again.
     auto repeated = llvm::count_if(nodes, [&](const index::IncludeNode& node) {
                         return files.version(VersionID{node.file}).fid == header;
                     }) > 1;
@@ -127,6 +130,9 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
         // directives, at a line of the command-line buffer: the chain
         // starts at it.
         auto root = path.back();
+        // FIXME: by file, not by node: a file without a guard that the unit both
+        // forces in and includes at its top level is taken for the forced one at
+        // either root.
         bool forced = llvm::is_contained(project.dep_graph.get_forcing_units(file_of(root)), host);
         Entering entering{.host = {.file = host}};
         entering.order = forced ? llvm::SmallVector<std::uint32_t>{0, nodes[root].line}
@@ -404,6 +410,10 @@ std::optional<Host> default_host(Project& project, Fid header) {
             }
             continue;
         }
+        // FIXME: a host only its index contribution names, whose manifest is stale
+        // and whose lexical chain finds another header of that name, is passed
+        // over without asking for its tree: the header borrows a command until the
+        // host reindexes.
         auto chain = lexical_chain(project, host, header);
         if(!chain.empty()) {
             return Host{.file = host, .chain = std::move(chain), .lexical = true};

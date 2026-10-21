@@ -188,6 +188,9 @@ CanonicalPath::CanonicalPath(const Spelling& spelled) {
     llvm::SmallString<256> joined(*real);
     joined += llvm::StringRef(full).drop_front(existing.size());
     // The unresolved tail may still climb (`missing/../cache`).
+    // FIXME: the OS fails `missing/../a.h` where this fold names an existing
+    // a.h: an absent input spelled so looks present, and its PCH rebuilds on
+    // every edit.
     path::remove_dots(joined, /*remove_dot_dot=*/true);
     text = std::string(joined);
     path::canonicalize(text);

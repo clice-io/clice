@@ -111,6 +111,9 @@ static worker::ArtifactBuildResult finish_artifact(llvm::StringRef label,
     }
     vfs::remove(tmp_path);
     result.success = false;
+    // FIXME: clang failing to open its output (the cache directory turned
+    // unwritable or full mid-session) counts as the user's error: the master keeps
+    // the failure on unchanged inputs until a consumer is saved.
     result.has_user_errors = !internal_error && !errors.empty();
     result.error =
         errors.empty() ? std::format("{} compilation failed", label) : llvm::join(errors, "; ");
@@ -253,10 +256,8 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
     if(!success)
         errors = collect_errors(*unit);
 
-    // TODO: PCM indexing. Unlike the PCH, a PCM is not a transient
-    // buffer-derived artifact — module units are ordinary disk files with
-    // CDB entries, so their symbols should flow through the normal
-    // background-indexing path (no per-blob pair needed).
+    // No index for the PCM: module units are ordinary units of the database,
+    // indexed by the background index like any other.
     ScopedTimer flush_timer;
     unit.reset();
     auto flush_ms = flush_timer.ms();
@@ -613,8 +614,6 @@ static void serve(kota::ipc::BincodePeer& peer,
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
     // Limit libuv thread pool to 1 thread so each stateless worker executes
     // only one compilation at a time. Must be set before any kota::queue call.
-    // FIXME: return values of setenv/_putenv_s are unchecked; a failure would
-    // silently fall back to libuv's default pool size.
 #ifdef _WIN32
     _putenv_s("UV_THREADPOOL_SIZE", "1");
 #else

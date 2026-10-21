@@ -143,9 +143,6 @@ struct Embed {
 
     /// Location of the `#` token.
     clang::SourceLocation loc;
-
-    /// TODO: Currently we do not store parameters of the embed directive.
-    /// See clang::LexEmbedParametersResult for details.
 };
 
 /// Information about `__has_embed` directive.

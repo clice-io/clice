@@ -332,6 +332,8 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     } else if(!flipped) {
         // Shared once the owner's compile caught up with the text; until
         // then only a divergence warning is taken down.
+        // FIXME: a crashed compile leaves no projection at the owner's version, so
+        // a push client gets nothing at the alias URI, the crash note included.
         return;
     }
     publish(peer, params);

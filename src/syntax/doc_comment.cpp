@@ -75,6 +75,8 @@ bool separates(llvm::StringRef gap) {
         return false;
     }
     llvm::SmallVector<char> open;
+    // FIXME: brackets inside literals count too: in `template <char C = '>',
+    // class T>` the `'>'` closes the list, so T takes the template's comment.
     for(char c: code) {
         if(c == '(' || c == '<') {
             open.push_back(c);

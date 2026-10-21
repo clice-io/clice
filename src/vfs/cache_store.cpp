@@ -691,6 +691,9 @@ void CacheStore::invalidate(llvm::StringRef ns, llvm::StringRef key) {
         }
         assert(!ns_state->publishing.contains(key) && "invalidating a key mid-commit");
 
+        // FIXME: the entry goes whether or not the removes succeed: on a volume
+        // without POSIX deletes (FAT) a blob a worker maps stays behind,
+        // orphaned; eviction keeps such an entry for a retry.
         if(!ns_state->config.aux_extension.empty()) {
             vfs::remove(state->aux_blob_path(*ns_state, key));
         }

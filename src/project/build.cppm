@@ -20,17 +20,22 @@ struct Candidate {
 };
 
 /// The rules-applied edits of a set of files: every matching active rule
-/// in declaration order, each once, its removes before its appends.
+/// in declaration order, each once, its removes before its appends; the
+/// toolchain query off when any of them turns it off.
 struct Edits {
     std::vector<CommandEdit> edits;
+    bool query_toolchain = true;
 
     bool empty() const {
-        return edits.empty();
+        return edits.empty() && query_toolchain;
     }
 
     CommandOptions options(llvm::ArrayRef<std::string> extra_prepend = {},
                            llvm::ArrayRef<std::string> extra_append = {}) const {
-        return {.edits = edits, .extra_prepend = extra_prepend, .extra_append = extra_append};
+        return {.edits = edits,
+                .extra_prepend = extra_prepend,
+                .extra_append = extra_append,
+                .query_toolchain = query_toolchain};
     }
 };
 

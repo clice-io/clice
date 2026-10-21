@@ -71,11 +71,9 @@ public:
     /// promises every module below it built (see closure). Returns whether
     /// anything was evicted.
     ///
-    /// FIXME: this scans every pcm_builds entry (one stat() per module) on
-    /// every compile, even in steady state when nothing was evicted. For
-    /// large modular projects on NFS this adds measurable latency.
-    /// Consider having CacheStore notify on eviction or caching the scan
-    /// result.
+    /// FIXME: this stats every built PCM (pcm_builds) on every compile that
+    /// imports a module, even when nothing was evicted: slow for a large
+    /// modular project whose cache sits on a network filesystem.
     bool revalidate_blobs();
 
     /// Whether the graph has a node for this module unit (it was built or

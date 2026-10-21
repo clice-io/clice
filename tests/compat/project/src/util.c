@@ -1,9 +1,9 @@
+#include <stdbool.h>
+#include <string.h>
+
 #if __has_include("util.c.expect.h")
 #include "util.c.expect.h"
 #endif
-
-#include <stdbool.h>
-#include <string.h>
 
 #include "util.h"
 

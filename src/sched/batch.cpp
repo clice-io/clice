@@ -287,6 +287,14 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     BatchLifetime lifetime(stack);
     lifetime.aux.spawn(progress_ticker(stack, options));
     co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
+    // The counts read every shard and symbol record: taken before the final
+    // save, damage they meet first is discarded there like any other.
+    if(!lifetime.stop_requested) {
+        result.shard_count = project.index.shard_count();
+        result.shard_bytes = project.index.shard_bytes();
+        result.symbol_count = project.index.symbol_count();
+        result.damaged = project.index.damaged();
+    }
     auto interrupted = co_await lifetime.finish();
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
@@ -304,9 +312,6 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
             result.standalone_headers += 1;
         }
     });
-    result.shard_count = project.index.shard_count();
-    result.shard_bytes = project.index.shard_bytes();
-    result.symbol_count = project.index.symbol_count();
     auto& too_big = stack.sched.pump.too_big();
     for(auto file: stack.sched.pump.failed()) {
         if(auto it = too_big.find(file); it != too_big.end()) {
@@ -326,7 +331,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         }
     }
     std::ranges::sort(result.compiled_with_errors, {}, &BatchResult::UnitErrors::unit);
-    if(!result.failed.empty() || !result.too_big.empty() || result.unsaved) {
+    if(!result.failed.empty() || !result.too_big.empty() || result.unsaved || result.damaged) {
         result.exit_code = 1;
     }
     result.seconds = timer.ms() / 1000.0;
@@ -397,6 +402,9 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
     // out beside other work reruns until it fits or is found too big:
     // each rerun waits for at least the memory the last one reached.
     auto outcome = co_await stack.sched.turun.run(path_id, plan);
+    // FIXME: unbounded: two units whose allocations fail before the first
+    // sample raise their floors by nothing and can die beside each other again
+    // and again (commit exhaustion on Windows).
     while(outcome.result == TURunFamily::Result::OutOfMemory) {
         outcome = co_await stack.sched.turun.run(path_id, plan);
     }

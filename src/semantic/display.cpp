@@ -112,9 +112,8 @@ std::string template_args(const clang::NamedDecl& decl) {
             clang::printTemplateArgumentList(os, args->asArray(), policy);
         }
     } else if(auto* record = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(&decl)) {
-        /// FIXME: Fix cases when getTypeAsWritten returns null inside clang
-        /// AST, e.g. friend decls. Currently we fallback to template
-        /// arguments without location information.
+        /// Implicit class template specializations carry no written arguments;
+        /// fall back to the converted ones.
         clang::printTemplateArgumentList(os, record->getTemplateArgs().asArray(), policy);
     } else if(auto* var = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(&decl)) {
         /// Implicit variable template specializations carry no written
@@ -298,6 +297,9 @@ std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
         case clang::DeclarationName::ObjCZeroArgSelector:
         case clang::DeclarationName::ObjCOneArgSelector:
         case clang::DeclarationName::ObjCMultiArgSelector: {
+            /// FIXME: Objective-C message completion names methods by their selector:
+            /// this aborts Debug builds and is undefined in Release; `name.print` would
+            /// spell them.
             std::unreachable();
         }
     }
@@ -578,6 +580,9 @@ auto printing_policy(clang::ASTContext& context, const Options& options) -> clan
         }
         policy.Bool = name->hasMacroDefinition();
     }
+    // FIXME: SuppressStrongLifetime stays off, so an Objective-C ARC parameter
+    // written `id __strong value` shows `__strong` in signature help and
+    // completion labels.
     return policy;
 }
 
@@ -650,6 +655,9 @@ auto type(clang::ASTContext& context,
             sugared =
                 context.getQualifiedType(deduced->getDeducedType(), sugared.getLocalQualifiers());
         }
+        /// FIXME: the aka has no size cap: aliases whose arguments repeat aliases
+        /// (`using L1 = Foo<L0, L0>;`, n deep) spell k^n leaves, megabytes of hover
+        /// text at six levels of ten arguments.
         if(auto desugared = desugar(context, sugared)) {
             if(options.readable) {
                 desugared =
@@ -992,8 +1000,9 @@ auto param_type(const clang::TemplateTemplateParmDecl& param, const Options& opt
             os << param_type(*template_param, options).text;
         }
     }
-    /// FIXME: TemplateTemplateParameter doesn't store the info on whether this
-    /// param was a "typename" or "class".
+    /// FIXME: The keyword is always `class`: a parameter declared `typename`
+    /// (wasDeclaredWithTypename) or a C++26 concept or variable template
+    /// template parameter (templateParameterKind) prints wrong.
     os << "> class";
     return result;
 }
@@ -1791,6 +1800,10 @@ struct DeclarationPrinter {
                     return " = " + *text;
                 }
             }
+            /// FIXME: an initializer computed from the arguments (`= Size * 2`) or
+            /// naming a parameter of an enclosing template shows nothing until
+            /// something uses the member: clang instantiates it only there, and
+            /// display has no Sema to do it.
             if(auto argument = argument_initializer(var)) {
                 return " = " + *argument;
             }

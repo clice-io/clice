@@ -83,11 +83,10 @@ Spelling ProjectIndex::local(llvm::StringRef name) const {
 }
 
 void ProjectIndex::damaged_record(BlobKind kind, llvm::StringRef key) const {
-    LOG_ERROR(
-        "The index database's record {} of kind {} fails its checks: the database is discarded "
-        "and the project indexed again",
-        llvm::toHex(key),
-        std::to_underlying(kind));
+    LOG_ERROR("The index database's record {} of kind {} fails its checks{}",
+              llvm::toHex(key),
+              std::to_underlying(kind),
+              db->read_only() ? "" : ": the database is discarded and the project indexed again");
     damage = true;
 }
 
@@ -543,6 +542,9 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
             }
             symbol_changed = prefer(target.name, identity.name) || symbol_changed;
             symbol_changed = prefer(target.args, identity.args) || symbol_changed;
+            // FIXME: HasDefinition is never cleared, so once the definition is
+            // deleted no declaration's signature replaces the one it gave: its
+            // parameter names stay until the index is rebuilt.
             // An edit to a function, a parameter renamed, keeps its hash: the
             // unit merging last describes it — a unit defining it, when one
             // does, which sees the names of every declaration.

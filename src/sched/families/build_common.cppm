@@ -10,11 +10,6 @@ namespace clice {
 
 /// Length-prefix each part (so embedded NULs cannot create colliding
 /// splits) and return the 32-hex xxh3_128bits cache key.
-///
-/// FIXME: this concatenates all parts (including the preamble text, which
-/// can be 10-100 KB) into a temporary std::string before hashing.  Use an
-/// incremental xxh3 hasher to feed each StringRef directly and avoid the
-/// large allocation on the ensure_pch hot path.
 inline std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
     std::string input;
     for(auto part: parts) {

@@ -268,6 +268,9 @@ public:
     /// Wait until a worker of the kind can take a request. False when none
     /// ever will again: the pool is stopping, or every slot gave up with
     /// revival off.
+    /// FIXME: takes no cancellation: a request its client cancels while every
+    /// worker of the kind is down still waits here until one returns, up to
+    /// revive_after.
     kota::task<bool> await_capacity(bool stateful);
 
     /// True when a Dead slot is not final: the running pool revives dead
@@ -892,6 +895,9 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // shape is reported as cancelled, so the indexer requeues instead of
         // recording a failure — unless the worker's memory ran out before it
         // stopped, or it never stopped, which its sender learns of.
+        // FIXME: a request whose own crash meets a cancel reads as cancelled too:
+        // its death record is not done yet, so it is requeued unblamed and crashes
+        // its worker once more.
         if(request.preempt.cancelled() && !death->out_of_memory && !death->ignored_cancel) {
             co_await kota::fail(kota::ipc::Error{cancelled, "Request preempted by the scheduler"});
         }

@@ -245,6 +245,10 @@ const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
                                                  partial->getTemplateArgs().asArray(),
                                                  arguments,
                                                  deduced);
+        /// FIXME: the match is structural, without the SFINAE probe of the resolver's
+        /// viable_partials: a detection partial (`has_x<T, void_t<typename T::x>>`)
+        /// wins for any T, so a specialization only named here is the partial's, one
+        /// instantiated elsewhere the primary's.
         if(deduction != types::Deduction::Failed) {
             matched.push_back(
                 {.partial = partial, .verified = deduction == types::Deduction::Matched});
@@ -387,7 +391,6 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
     /// For `FieldDecl` and `TypedefNameDecl`, clang will not store their instantiation information
     /// in the unit. So we need to look up the original decl manually.
     if(llvm::isa<clang::FieldDecl, clang::TypedefNameDecl>(decl)) {
-        /// FIXME: figure out the context.
         if(auto context = getDeclContextForTemplateInstationPattern(decl)) {
             for(auto member: context->lookup(decl->getDeclName())) {
                 if(member->isImplicit()) {

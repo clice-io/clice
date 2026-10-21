@@ -449,6 +449,9 @@ auto overridable(const clang::CXXRecordDecl& record)
         }
     }
 
+    // FIXME: a function final in one base branch is still offered from an
+    // unrelated branch with the same name and signature (`D : L, R`, `L : A` with
+    // `A::f() final`): accepting it overrides the final one, an error.
     llvm::SmallVector<const clang::CXXMethodDecl*> methods;
     for(const auto* base: bases) {
         for(const auto* method: base->methods()) {

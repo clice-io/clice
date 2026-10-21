@@ -415,7 +415,7 @@ public:
     /// was introduced by `#include`.
     auto include_location(clang::FileID fid) -> clang::SourceLocation;
 
-    /// FIXME: Do we really need this function?
+    /// The location's line and column in its file, `#line` directives ignored.
     auto presumed_location(clang::SourceLocation location) -> clang::PresumedLoc;
 
     /// Create a file location with given file id and offset.
