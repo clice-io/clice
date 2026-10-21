@@ -1,7 +1,15 @@
 [utf-16.diagnostics]
 diagnostics = [
     {
-        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + ⟦missing⟧ + add(3);',
+        at = "/* π 🙂 中文 */ #⟦warning⟧ 宽",
+        severity = "warning",
+        message = "宽",
+        source = "clang",
+        code = "-W#warnings",
+        related = [],
+    },
+    {
+        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + ⟦missing⟧; int bad = add(3);',
         severity = "error",
         message = "use of undeclared identifier 'missing'",
         source = "clang",
@@ -9,7 +17,7 @@ diagnostics = [
         related = [],
     },
     {
-        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing + ⟦add⟧(3);',
+        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = ⟦add⟧(3);',
         severity = "error",
         message = "no matching function for call to 'add'",
         source = "clang",
@@ -31,18 +39,20 @@ markdown = '''
 int sum
 ```
 '''
-range = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing + add(3);'
+range = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing; int bad = add(3);'
 
 [utf-16.definition]
-definition = []
+definition = ["/* π 🙂 中文 */ int ⟦add⟧(int a, int b) { return a + b; }"]
 
 [utf-16.highlights]
 highlights = [
-    { at = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing + add(3);', kind = "text" },
+    { at = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing; int bad = add(3);', kind = "text" },
 ]
 
 [utf-16.tokens]
 semantic_tokens = [
+    { at = "⟦/* π 🙂 中文 */⟧ #warning 宽", type = "comment" },
+    { at = "/* π 🙂 中文 */ ⟦#warning⟧ 宽", type = "directive" },
     { at = "⟦/* π 🙂 中文 */⟧ int add(int a, int b) { return a + b; }", type = "comment" },
     { at = "/* π 🙂 中文 */ ⟦int⟧ add(int a, int b) { return a + b; }", type = "primitive" },
     {
@@ -66,39 +76,59 @@ semantic_tokens = [
     { at = "/* π 🙂 中文 */ int add(int a, int b) { return ⟦a⟧ + b; }", type = "parameter", modifiers = ["local"] },
     { at = "/* π 🙂 中文 */ int add(int a, int b) { return a ⟦+⟧ b; }", type = "operator" },
     { at = "/* π 🙂 中文 */ int add(int a, int b) { return a + ⟦b⟧; }", type = "parameter", modifiers = ["local"] },
-    { at = '⟦const⟧ char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing + add(3);', type = "keyword" },
-    { at = 'const ⟦char⟧* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing + add(3);', type = "primitive" },
+    { at = '⟦const⟧ char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(3);', type = "keyword" },
+    { at = 'const ⟦char⟧* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(3);', type = "primitive" },
     {
-        at = 'const char⟦*⟧ greeting = "π 🙂 中文"; int sum = add(1, 2) + missing + add(3);',
+        at = 'const char⟦*⟧ greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(3);',
         type = "operator",
         modifiers = ["declarator"],
     },
     {
-        at = 'const char* ⟦greeting⟧ = "π 🙂 中文"; int sum = add(1, 2) + missing + add(3);',
+        at = 'const char* ⟦greeting⟧ = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(3);',
         type = "variable",
         modifiers = ["definition", "global"],
     },
-    { at = 'const char* greeting ⟦=⟧ "π 🙂 中文"; int sum = add(1, 2) + missing + add(3);', type = "operator" },
-    { at = 'const char* greeting = ⟦"π 🙂 中文"⟧; int sum = add(1, 2) + missing + add(3);', type = "string" },
-    { at = 'const char* greeting = "π 🙂 中文"; ⟦int⟧ sum = add(1, 2) + missing + add(3);', type = "primitive" },
+    { at = 'const char* greeting ⟦=⟧ "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(3);', type = "operator" },
+    { at = 'const char* greeting = ⟦"π 🙂 中文"⟧; int sum = add(1, 2) + missing; int bad = add(3);', type = "string" },
+    { at = 'const char* greeting = "π 🙂 中文"; ⟦int⟧ sum = add(1, 2) + missing; int bad = add(3);', type = "primitive" },
     {
-        at = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing + add(3);',
+        at = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing; int bad = add(3);',
         type = "variable",
         modifiers = ["definition", "global"],
     },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum ⟦=⟧ add(1, 2) + missing + add(3);', type = "operator" },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(⟦1⟧, 2) + missing + add(3);', type = "number" },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, ⟦2⟧) + missing + add(3);', type = "number" },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) ⟦+⟧ missing + add(3);', type = "operator" },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing ⟦+⟧ add(3);', type = "operator" },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing + add(⟦3⟧);', type = "number" },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum ⟦=⟧ add(1, 2) + missing; int bad = add(3);', type = "operator" },
+    {
+        at = 'const char* greeting = "π 🙂 中文"; int sum = ⟦add⟧(1, 2) + missing; int bad = add(3);',
+        type = "function",
+        modifiers = ["global"],
+    },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(⟦1⟧, 2) + missing; int bad = add(3);', type = "number" },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, ⟦2⟧) + missing; int bad = add(3);', type = "number" },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) ⟦+⟧ missing; int bad = add(3);', type = "operator" },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; ⟦int⟧ bad = add(3);', type = "primitive" },
+    {
+        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int ⟦bad⟧ = add(3);',
+        type = "variable",
+        modifiers = ["definition", "global"],
+    },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad ⟦=⟧ add(3);', type = "operator" },
+    {
+        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = ⟦add⟧(3);',
+        type = "function",
+        modifiers = ["global", "dependent"],
+    },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(⟦3⟧);', type = "number" },
 ]
 
 [utf-16.hints]
-inlay_hints = []
+inlay_hints = [
+    { line = 'const char* greeting = "π 🙂 中文"; int sum = add(⟨a:⟩1, ⟨b:⟩2) + missing; int bad = add(3);' },
+]
 
 [utf-16.edited]
-diagnostics = []
+diagnostics = [
+    { at = "/* π 🙂 中文 */ #⟦warning⟧ 宽", severity = "warning", message = "宽", source = "clang", code = "-W#warnings" },
+]
 
 [utf-16."edited hover".hover]
 markdown = '''
@@ -113,7 +143,15 @@ range = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + add(3, �
 [utf-8.diagnostics]
 diagnostics = [
     {
-        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + ⟦missing⟧ + add(3);',
+        at = "/* π 🙂 中文 */ #⟦warning⟧ 宽",
+        severity = "warning",
+        message = "宽",
+        source = "clang",
+        code = "-W#warnings",
+        related = [],
+    },
+    {
+        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + ⟦missing⟧; int bad = add(3);',
         severity = "error",
         message = "use of undeclared identifier 'missing'",
         source = "clang",
@@ -121,7 +159,7 @@ diagnostics = [
         related = [],
     },
     {
-        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing + ⟦add⟧(3);',
+        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = ⟦add⟧(3);',
         severity = "error",
         message = "no matching function for call to 'add'",
         source = "clang",
@@ -143,18 +181,20 @@ markdown = '''
 int sum
 ```
 '''
-range = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing + add(3);'
+range = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing; int bad = add(3);'
 
 [utf-8.definition]
-definition = []
+definition = ["/* π 🙂 中文 */ int ⟦add⟧(int a, int b) { return a + b; }"]
 
 [utf-8.highlights]
 highlights = [
-    { at = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing + add(3);', kind = "text" },
+    { at = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing; int bad = add(3);', kind = "text" },
 ]
 
 [utf-8.tokens]
 semantic_tokens = [
+    { at = "⟦/* π 🙂 中文 */⟧ #warning 宽", type = "comment" },
+    { at = "/* π 🙂 中文 */ ⟦#warning⟧ 宽", type = "directive" },
     { at = "⟦/* π 🙂 中文 */⟧ int add(int a, int b) { return a + b; }", type = "comment" },
     { at = "/* π 🙂 中文 */ ⟦int⟧ add(int a, int b) { return a + b; }", type = "primitive" },
     {
@@ -178,39 +218,59 @@ semantic_tokens = [
     { at = "/* π 🙂 中文 */ int add(int a, int b) { return ⟦a⟧ + b; }", type = "parameter", modifiers = ["local"] },
     { at = "/* π 🙂 中文 */ int add(int a, int b) { return a ⟦+⟧ b; }", type = "operator" },
     { at = "/* π 🙂 中文 */ int add(int a, int b) { return a + ⟦b⟧; }", type = "parameter", modifiers = ["local"] },
-    { at = '⟦const⟧ char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing + add(3);', type = "keyword" },
-    { at = 'const ⟦char⟧* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing + add(3);', type = "primitive" },
+    { at = '⟦const⟧ char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(3);', type = "keyword" },
+    { at = 'const ⟦char⟧* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(3);', type = "primitive" },
     {
-        at = 'const char⟦*⟧ greeting = "π 🙂 中文"; int sum = add(1, 2) + missing + add(3);',
+        at = 'const char⟦*⟧ greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(3);',
         type = "operator",
         modifiers = ["declarator"],
     },
     {
-        at = 'const char* ⟦greeting⟧ = "π 🙂 中文"; int sum = add(1, 2) + missing + add(3);',
+        at = 'const char* ⟦greeting⟧ = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(3);',
         type = "variable",
         modifiers = ["definition", "global"],
     },
-    { at = 'const char* greeting ⟦=⟧ "π 🙂 中文"; int sum = add(1, 2) + missing + add(3);', type = "operator" },
-    { at = 'const char* greeting = ⟦"π 🙂 中文"⟧; int sum = add(1, 2) + missing + add(3);', type = "string" },
-    { at = 'const char* greeting = "π 🙂 中文"; ⟦int⟧ sum = add(1, 2) + missing + add(3);', type = "primitive" },
+    { at = 'const char* greeting ⟦=⟧ "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(3);', type = "operator" },
+    { at = 'const char* greeting = ⟦"π 🙂 中文"⟧; int sum = add(1, 2) + missing; int bad = add(3);', type = "string" },
+    { at = 'const char* greeting = "π 🙂 中文"; ⟦int⟧ sum = add(1, 2) + missing; int bad = add(3);', type = "primitive" },
     {
-        at = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing + add(3);',
+        at = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing; int bad = add(3);',
         type = "variable",
         modifiers = ["definition", "global"],
     },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum ⟦=⟧ add(1, 2) + missing + add(3);', type = "operator" },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(⟦1⟧, 2) + missing + add(3);', type = "number" },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, ⟦2⟧) + missing + add(3);', type = "number" },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) ⟦+⟧ missing + add(3);', type = "operator" },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing ⟦+⟧ add(3);', type = "operator" },
-    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing + add(⟦3⟧);', type = "number" },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum ⟦=⟧ add(1, 2) + missing; int bad = add(3);', type = "operator" },
+    {
+        at = 'const char* greeting = "π 🙂 中文"; int sum = ⟦add⟧(1, 2) + missing; int bad = add(3);',
+        type = "function",
+        modifiers = ["global"],
+    },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(⟦1⟧, 2) + missing; int bad = add(3);', type = "number" },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, ⟦2⟧) + missing; int bad = add(3);', type = "number" },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) ⟦+⟧ missing; int bad = add(3);', type = "operator" },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; ⟦int⟧ bad = add(3);', type = "primitive" },
+    {
+        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int ⟦bad⟧ = add(3);',
+        type = "variable",
+        modifiers = ["definition", "global"],
+    },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad ⟦=⟧ add(3);', type = "operator" },
+    {
+        at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = ⟦add⟧(3);',
+        type = "function",
+        modifiers = ["global", "dependent"],
+    },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing; int bad = add(⟦3⟧);', type = "number" },
 ]
 
 [utf-8.hints]
-inlay_hints = []
+inlay_hints = [
+    { line = 'const char* greeting = "π 🙂 中文"; int sum = add(⟨a:⟩1, ⟨b:⟩2) + missing; int bad = add(3);' },
+]
 
 [utf-8.edited]
-diagnostics = []
+diagnostics = [
+    { at = "/* π 🙂 中文 */ #⟦warning⟧ 宽", severity = "warning", message = "宽", source = "clang", code = "-W#warnings" },
+]
 
 [utf-8."edited hover".hover]
 markdown = '''

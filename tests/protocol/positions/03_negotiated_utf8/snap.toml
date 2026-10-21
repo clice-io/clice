@@ -10,6 +10,14 @@ int 加法(int 甲, int 乙)
 '''
 range = "/* π 🙂 中文 */ int 总 = ⟦加法⟧(1, 2);"
 
+[utf-16."include hover".hover]
+markdown = '''
+**header** `宽.h`
+
+`${WS}/include/宽.h`
+'''
+range = '#include ⟦"宽.h"⟧'
+
 [utf-16.completion.completion]
 items = [
     {
@@ -96,18 +104,29 @@ semantic_tokens = [
     { at = "/* π 🙂 中文 */ int ⟦用⟧(点 p) {", type = "function", modifiers = ["definition", "global"] },
     { at = "/* π 🙂 中文 */ int 用(⟦点⟧ p) {", type = "struct", modifiers = ["global"] },
     { at = "/* π 🙂 中文 */ int 用(点 ⟦p⟧) {", type = "parameter", modifiers = ["definition", "local"] },
-    { at = "⟦return⟧ p.横 + p.纵;", type = "keyword", modifiers = ["controlFlow"] },
-    { at = "return ⟦p⟧.横 + p.纵;", type = "parameter", modifiers = ["local"] },
-    { at = "return p.⟦横⟧ + p.纵;", type = "field", modifiers = ["member"] },
-    { at = "return p.横 ⟦+⟧ p.纵;", type = "operator" },
-    { at = "return p.横 + ⟦p⟧.纵;", type = "parameter", modifiers = ["local"] },
-    { at = "return p.横 + p.⟦纵⟧;", type = "field", modifiers = ["member"] },
+    { at = "⟦return⟧ 加法(p.横, p.纵);", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦加法⟧(p.横, p.纵);", type = "function", modifiers = ["global"] },
+    { at = "return 加法(⟦p⟧.横, p.纵);", type = "parameter", modifiers = ["local"] },
+    { at = "return 加法(p.⟦横⟧, p.纵);", type = "field", modifiers = ["member"] },
+    { at = "return 加法(p.横, ⟦p⟧.纵);", type = "parameter", modifiers = ["local"] },
+    { at = "return 加法(p.横, p.⟦纵⟧);", type = "field", modifiers = ["member"] },
+    { at = "⟦/* π 🙂 中文 */⟧ int  待排  =  0;", type = "comment" },
+    { at = "/* π 🙂 中文 */ ⟦int⟧  待排  =  0;", type = "primitive" },
+    { at = "/* π 🙂 中文 */ int  ⟦待排⟧  =  0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "/* π 🙂 中文 */ int  待排  ⟦=⟧  0;", type = "operator" },
+    { at = "/* π 🙂 中文 */ int  待排  =  ⟦0⟧;", type = "number" },
 ]
 
 [utf-16.hints]
 inlay_hints = [
     { line = "/* π 🙂 中文 */ int 总 = 加法(⟨甲:⟩1, ⟨乙:⟩2);" },
     { line = "/* π 🙂 中文 */ auto 差⟨: int⟩ = 点{⟨.横=⟩1, ⟨.纵=⟩2}.横;" },
+    { line = "return 加法(⟨甲:⟩p.横, ⟨乙:⟩p.纵);" },
+]
+
+[utf-16."hints in a range"]
+inlay_hints = [
+    { line = "/* π 🙂 中文 */ auto 差 = 点{⟨.横=⟩1, ⟨.纵=⟩2}.横;" },
 ]
 
 [utf-16.folds]
@@ -141,6 +160,7 @@ document_symbols = [
         at = "/* π 🙂 中文 */ int ⟦用⟧(点 p) {",
         range = "/* π 🙂 中文 */ ⟦int 用(点 p) { … }⟧ (3 lines)",
     },
+    { name = "待排", kind = "Variable", at = "/* π 🙂 中文 */ int  ⟦待排⟧  =  0;", range = "/* π 🙂 中文 */ ⟦int  待排  =  0⟧;" },
 ]
 
 [utf-16.links]
@@ -159,6 +179,14 @@ int 加法(int 甲, int 乙)
 ```
 '''
 range = "/* π 🙂 中文 */ int 总 = ⟦加法⟧(1, 2);"
+
+[utf-8."include hover".hover]
+markdown = '''
+**header** `宽.h`
+
+`${WS}/include/宽.h`
+'''
+range = '#include ⟦"宽.h"⟧'
 
 [utf-8.completion.completion]
 items = [
@@ -246,18 +274,29 @@ semantic_tokens = [
     { at = "/* π 🙂 中文 */ int ⟦用⟧(点 p) {", type = "function", modifiers = ["definition", "global"] },
     { at = "/* π 🙂 中文 */ int 用(⟦点⟧ p) {", type = "struct", modifiers = ["global"] },
     { at = "/* π 🙂 中文 */ int 用(点 ⟦p⟧) {", type = "parameter", modifiers = ["definition", "local"] },
-    { at = "⟦return⟧ p.横 + p.纵;", type = "keyword", modifiers = ["controlFlow"] },
-    { at = "return ⟦p⟧.横 + p.纵;", type = "parameter", modifiers = ["local"] },
-    { at = "return p.⟦横⟧ + p.纵;", type = "field", modifiers = ["member"] },
-    { at = "return p.横 ⟦+⟧ p.纵;", type = "operator" },
-    { at = "return p.横 + ⟦p⟧.纵;", type = "parameter", modifiers = ["local"] },
-    { at = "return p.横 + p.⟦纵⟧;", type = "field", modifiers = ["member"] },
+    { at = "⟦return⟧ 加法(p.横, p.纵);", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦加法⟧(p.横, p.纵);", type = "function", modifiers = ["global"] },
+    { at = "return 加法(⟦p⟧.横, p.纵);", type = "parameter", modifiers = ["local"] },
+    { at = "return 加法(p.⟦横⟧, p.纵);", type = "field", modifiers = ["member"] },
+    { at = "return 加法(p.横, ⟦p⟧.纵);", type = "parameter", modifiers = ["local"] },
+    { at = "return 加法(p.横, p.⟦纵⟧);", type = "field", modifiers = ["member"] },
+    { at = "⟦/* π 🙂 中文 */⟧ int  待排  =  0;", type = "comment" },
+    { at = "/* π 🙂 中文 */ ⟦int⟧  待排  =  0;", type = "primitive" },
+    { at = "/* π 🙂 中文 */ int  ⟦待排⟧  =  0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "/* π 🙂 中文 */ int  待排  ⟦=⟧  0;", type = "operator" },
+    { at = "/* π 🙂 中文 */ int  待排  =  ⟦0⟧;", type = "number" },
 ]
 
 [utf-8.hints]
 inlay_hints = [
     { line = "/* π 🙂 中文 */ int 总 = 加法(⟨甲:⟩1, ⟨乙:⟩2);" },
     { line = "/* π 🙂 中文 */ auto 差⟨: int⟩ = 点{⟨.横=⟩1, ⟨.纵=⟩2}.横;" },
+    { line = "return 加法(⟨甲:⟩p.横, ⟨乙:⟩p.纵);" },
+]
+
+[utf-8."hints in a range"]
+inlay_hints = [
+    { line = "/* π 🙂 中文 */ auto 差 = 点{⟨.横=⟩1, ⟨.纵=⟩2}.横;" },
 ]
 
 [utf-8.folds]
@@ -291,6 +330,7 @@ document_symbols = [
         at = "/* π 🙂 中文 */ int ⟦用⟧(点 p) {",
         range = "/* π 🙂 中文 */ ⟦int 用(点 p) { … }⟧ (3 lines)",
     },
+    { name = "待排", kind = "Variable", at = "/* π 🙂 中文 */ int  ⟦待排⟧  =  0;", range = "/* π 🙂 中文 */ ⟦int  待排  =  0⟧;" },
 ]
 
 [utf-8.links]
@@ -298,22 +338,42 @@ document_links = [
     { at = '#include ⟦"宽.h"⟧', target = "include/宽.h" },
 ]
 
-["utf-16 index".navigation]
+["utf-16 server".navigation]
 definition = ["int ⟦加法⟧(int 甲, int 乙) { return 甲 + 乙; }"]
 declaration = ["include/宽.h │ int ⟦加法⟧(int 甲, int 乙);", "int ⟦加法⟧(int 甲, int 乙) { return 甲 + 乙; }"]
 type_definition = ["include/宽.h │ struct ⟦点⟧ {"]
-references = ["int ⟦横⟧;", "main.cpp │ /* π 🙂 中文 */ auto 差 = 点{1, 2}.⟦横⟧;", "main.cpp │ return p.⟦横⟧ + p.纵;"]
+references = ["int ⟦横⟧;", "main.cpp │ /* π 🙂 中文 */ auto 差 = 点{1, 2}.⟦横⟧;", "main.cpp │ return 加法(p.⟦横⟧, p.纵);"]
 
-["utf-16 index"."加法"]
+["utf-16 server".calls]
+incoming_calls = [
+    {
+        name = "用",
+        kind = "Function",
+        at = "/* π 🙂 中文 */ int ⟦用⟧(点 p) {",
+        detail = "用(点 p)",
+        sites = ["return ⟦加法⟧(p.横, p.纵);"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "加法",
+        kind = "Function",
+        at = "int ⟦加法⟧(int 甲, int 乙) { return 甲 + 乙; }",
+        detail = "加法(int 甲, int 乙)",
+        sites = ["return ⟦加法⟧(p.横, p.纵);"],
+    },
+]
+
+["utf-16 server"."加法"]
 workspace_symbols = [
     { name = "加法(int 甲, int 乙)", kind = "Function", at = "main.cpp │ int ⟦加法⟧(int 甲, int 乙) { return 甲 + 乙; }" },
 ]
 
-["utf-16 index"."prepare rename".prepare_rename]
+["utf-16 server"."prepare rename".prepare_rename]
 at = "int ⟦横⟧;"
 placeholder = "横"
 
-["utf-16 index".rename.rename.edits]
+["utf-16 server".rename.rename.edits]
 "include/宽.h" = '''
  /// 平面上的一个点。
  struct 点 {
@@ -329,27 +389,60 @@ placeholder = "横"
 +/* π 🙂 中文 */ auto 差 = 点{1, 2}.宽度;
 
  /* π 🙂 中文 */ int 用(点 p) {
--    return p.横 + p.纵;
-+    return p.宽度 + p.纵;
+-    return 加法(p.横, p.纵);
++    return 加法(p.宽度, p.纵);
  }
 '''
 
-["utf-8 index".navigation]
+["utf-16 server".formatting]
+formatting = '''
+ }
+
+-/* π 🙂 中文 */ int  待排  =  0;
++/* π 🙂 中文 */ int 待排 = 0;
+'''
+
+["utf-16 server"."include completion".completion]
+items = [
+    { label = "宽.h", kind = "File", replace = '#include "⟦宽.h"⟧' },
+]
+
+["utf-8 server".navigation]
 definition = ["int ⟦加法⟧(int 甲, int 乙) { return 甲 + 乙; }"]
 declaration = ["include/宽.h │ int ⟦加法⟧(int 甲, int 乙);", "int ⟦加法⟧(int 甲, int 乙) { return 甲 + 乙; }"]
 type_definition = ["include/宽.h │ struct ⟦点⟧ {"]
-references = ["int ⟦横⟧;", "main.cpp │ /* π 🙂 中文 */ auto 差 = 点{1, 2}.⟦横⟧;", "main.cpp │ return p.⟦横⟧ + p.纵;"]
+references = ["int ⟦横⟧;", "main.cpp │ /* π 🙂 中文 */ auto 差 = 点{1, 2}.⟦横⟧;", "main.cpp │ return 加法(p.⟦横⟧, p.纵);"]
 
-["utf-8 index"."加法"]
+["utf-8 server".calls]
+incoming_calls = [
+    {
+        name = "用",
+        kind = "Function",
+        at = "/* π 🙂 中文 */ int ⟦用⟧(点 p) {",
+        detail = "用(点 p)",
+        sites = ["return ⟦加法⟧(p.横, p.纵);"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "加法",
+        kind = "Function",
+        at = "int ⟦加法⟧(int 甲, int 乙) { return 甲 + 乙; }",
+        detail = "加法(int 甲, int 乙)",
+        sites = ["return ⟦加法⟧(p.横, p.纵);"],
+    },
+]
+
+["utf-8 server"."加法"]
 workspace_symbols = [
     { name = "加法(int 甲, int 乙)", kind = "Function", at = "main.cpp │ int ⟦加法⟧(int 甲, int 乙) { return 甲 + 乙; }" },
 ]
 
-["utf-8 index"."prepare rename".prepare_rename]
+["utf-8 server"."prepare rename".prepare_rename]
 at = "int ⟦横⟧;"
 placeholder = "横"
 
-["utf-8 index".rename.rename.edits]
+["utf-8 server".rename.rename.edits]
 "include/宽.h" = '''
  /// 平面上的一个点。
  struct 点 {
@@ -365,7 +458,20 @@ placeholder = "横"
 +/* π 🙂 中文 */ auto 差 = 点{1, 2}.宽度;
 
  /* π 🙂 中文 */ int 用(点 p) {
--    return p.横 + p.纵;
-+    return p.宽度 + p.纵;
+-    return 加法(p.横, p.纵);
++    return 加法(p.宽度, p.纵);
  }
 '''
+
+["utf-8 server".formatting]
+formatting = '''
+ }
+
+-/* π 🙂 中文 */ int  待排  =  0;
++/* π 🙂 中文 */ int 待排 = 0;
+'''
+
+["utf-8 server"."include completion".completion]
+items = [
+    { label = "宽.h", kind = "File", replace = '#include "⟦宽.h"⟧' },
+]

@@ -54,7 +54,8 @@ interface Options {
     file: string | null;
     /// null = derive a symbol-bearing position from the file content.
     position: { line: number; character: number } | null;
-    /// The position encodings offered beside UTF-16; none by default.
+    /// The position encodings the client offers; none, which leaves UTF-16,
+    /// by default.
     positionEncodings: string[] | undefined;
     scenarios: ScenarioName[];
     edits: number;
@@ -232,9 +233,11 @@ function blankNonCode(text: string): string {
 /// do not count. The old 0:0 default usually landed on a license comment,
 /// so the positional features took their empty-result fast paths and
 /// measured nothing.
-function derivePosition(file: string): { line: number; character: number } {
+function derivePosition(file: string, utf8: boolean): { line: number; character: number } {
     const keywords = new Set(["if", "for", "while", "switch", "return", "sizeof", "catch"]);
-    const lines = blankNonCode(fs.readFileSync(file, "utf8")).split("\n");
+    const source = fs.readFileSync(file, "utf8");
+    const original = source.split("\n");
+    const lines = blankNonCode(source).split("\n");
     for (let line = 0; line < lines.length; line += 1) {
         const text = lines[line] ?? "";
         if (text.trimStart().startsWith("#")) {
@@ -243,7 +246,8 @@ function derivePosition(file: string): { line: number; character: number } {
         for (const match of text.matchAll(/\b([A-Za-z_]\w+)\s*\(/g)) {
             const name = match[1];
             if (name !== undefined && !keywords.has(name)) {
-                return { line, character: match.index };
+                const before = (original[line] ?? "").slice(0, match.index);
+                return { line, character: utf8 ? Buffer.byteLength(before) : match.index };
             }
         }
     }
@@ -474,7 +478,9 @@ async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult>
     // Sent as a ranged insertion like a real editor; a full-document
     // replacement would add whole-file serialization to every sample.
     const lines = content.split("\n");
-    let end = { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 };
+    const last = lines[lines.length - 1] ?? "";
+    const utf8 = client.initResult?.capabilities.positionEncoding === "utf-8";
+    let end = { line: lines.length - 1, character: utf8 ? Buffer.byteLength(last) : last.length };
 
     for (let i = 1; i <= opts.edits; i += 1) {
         const comment = `// bench edit ${i}`;
@@ -500,7 +506,8 @@ async function runWarmRequests(opts: Options, file: string): Promise<ScenarioRes
     const bench = new Bench(opts);
     const client = await startServer(opts);
     const [uri] = await client.openAndWait(file, 300_000);
-    const position = opts.position ?? derivePosition(file);
+    const utf8 = client.initResult?.capabilities.positionEncoding === "utf-8";
+    const position = opts.position ?? derivePosition(file, utf8);
     if (opts.position === null) {
         console.log(`derived probe position ${position.line}:${position.character}`);
     }

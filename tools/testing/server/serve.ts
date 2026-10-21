@@ -205,7 +205,6 @@ function recording(client: CliceClient): CliceClient {
 /// order: a reply that long is an arbitrary subset.
 const RESULT_CAP = 100;
 
-/// One server of a test over the test's copy; `s` in a scenario.
 /// The encoding a server chose at the handshake, UTF-16 when it names none.
 function chosenEncoding(result: proto.InitializeResult | null): PositionEncoding {
     const chosen = result?.capabilities.positionEncoding ?? "utf-16";
@@ -215,6 +214,7 @@ function chosenEncoding(result: proto.InitializeResult | null): PositionEncoding
     return chosen;
 }
 
+/// One server of a test over the test's copy; `s` in a scenario.
 export class Serve extends Client {
     readonly steps: StepRecord;
     readonly workspace: Workspace;
@@ -590,7 +590,9 @@ export class Serve extends Client {
     ): Promise<Action[]> {
         const kinds = only === undefined ? "" : ` only ${only.join(", ")}`;
         return this.ask(`codeActions ${file} ${JSON.stringify(range)}${kinds}`, async (client) =>
-            this.context().actions(await this.actionsOf(client, file, range, only)),
+            this.context().actions(
+                await this.actionsOf(client, file, this.context().encodedRange(file, range), only),
+            ),
         );
     }
 
@@ -853,15 +855,16 @@ export class Serve extends Client {
         );
     }
 
+    /// `range` counts as the server does.
     private actionsOf(
         client: CliceClient,
         file: string,
-        range: Range,
+        range: proto.Range,
         only: readonly string[] | undefined,
     ): Promise<(proto.Command | proto.CodeAction)[] | null> {
         return client.sendRequest(proto.CodeActionRequest.type, {
             textDocument: { uri: this.uri(file) },
-            range: this.context().encodedRange(file, range),
+            range,
             context: { diagnostics: [], ...(only === undefined ? {} : { only: [...only] }) },
         });
     }
@@ -1071,7 +1074,7 @@ export class Serve extends Client {
             };
             await client.initialize(this.workspace, initialize);
             this.encoding = chosenEncoding(client.initResult);
-            if (this.encoding !== (positionEncoding ?? "utf-16")) {
+            if (positionEncoding !== undefined && this.encoding !== positionEncoding) {
                 throw new Error(`the server counts positions in ${this.encoding}`);
             }
         });

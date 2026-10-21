@@ -40,7 +40,6 @@ struct LineColumn {
     }
 };
 
-/// A range's ends as LineColumns.
 struct LineColumnRange {
     LineColumn begin;
     LineColumn end;

@@ -101,15 +101,22 @@ export class SourceText {
         if (encoding === "utf-16" || line === undefined) {
             return position;
         }
-        const bytes = Buffer.from(line, "utf8");
-        const within = Math.min(position.character, bytes.length);
-        const prefix = bytes.subarray(0, within).toString("utf8");
-        if (Buffer.byteLength(prefix) !== within) {
+        const within = Math.min(position.character, Buffer.byteLength(line));
+        let bytes = 0;
+        let units = 0;
+        for (const character of line) {
+            if (bytes >= within) {
+                break;
+            }
+            bytes += Buffer.byteLength(character);
+            units += character.length;
+        }
+        if (bytes !== within) {
             throw new Error(
                 `${this.path}: UTF-8 column ${position.character} of line ${position.line} is inside a character`,
             );
         }
-        return { line: position.line, character: prefix.length + position.character - within };
+        return { line: position.line, character: units + position.character - within };
     }
 
     decodeRange(range: Range, encoding: PositionEncoding): Range {

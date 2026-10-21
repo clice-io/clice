@@ -7,6 +7,7 @@ module clice;
 import :feature.feature;
 import :index.navigation;
 import :server.lsp_projection;
+import :syntax.position;
 
 namespace clice::to_lsp {
 

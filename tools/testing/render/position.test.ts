@@ -125,6 +125,10 @@ describe("positions", () => {
         expect(() => source.decode({ line: 0, character: 5 }, "utf-8")).toThrow(
             /inside a character/,
         );
+        // Three of the emoji's four bytes.
+        expect(() => source.decode({ line: 1, character: 13 }, "utf-8")).toThrow(
+            /inside a character/,
+        );
     });
 
     test("non-ASCII round trip", () => {
