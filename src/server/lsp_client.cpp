@@ -175,7 +175,8 @@ std::vector<protocol::Diagnostic>
     LSPClient::to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics) {
     std::vector<protocol::Diagnostic> shaped;
     for(const auto& diagnostic: diagnostics) {
-        shaped.push_back(feature::to_protocol(diagnostic, related_information));
+        shaped.push_back(
+            feature::to_protocol(diagnostic, related_information, server.position_encoding));
     }
     return shaped;
 }
@@ -423,6 +424,12 @@ void LSPClient::register_lifecycle() {
             };
         }
 
+        auto& general = params.capabilities.general;
+        if(general && general->position_encodings &&
+           llvm::is_contained(*general->position_encodings, protocol::PositionEncodingKind::UTF8)) {
+            srv.position_encoding = PositionEncoding::UTF8;
+        }
+
         if(params.initialization_options.has_value() && !params.initialization_options->is_null()) {
             srv.init_options = *params.initialization_options;
         }
@@ -433,6 +440,9 @@ void LSPClient::register_lifecycle() {
         protocol::InitializeResult result;
         auto& caps = result.capabilities;
 
+        caps.position_encoding = srv.position_encoding == PositionEncoding::UTF8
+                                     ? protocol::PositionEncodingKind::UTF8
+                                     : protocol::PositionEncodingKind::UTF16;
         caps.text_document_sync = protocol::TextDocumentSyncOptions{
             .open_close = true,
             .change = protocol::TextDocumentSyncKind::Incremental,
@@ -665,7 +675,8 @@ void LSPClient::register_document_sync() {
         if(auto* alias = find_alias(path_id, path)) {
             project->sessions.apply_change(alias->buffer,
                                            params.content_changes,
-                                           params.text_document.version);
+                                           params.text_document.version,
+                                           srv.position_encoding);
             publish_alias(*alias, srv.find_session(path_id).get(), *project);
             return;
         }
@@ -689,7 +700,8 @@ void LSPClient::register_document_sync() {
 
         project->sessions.apply_change(*session,
                                        params.content_changes,
-                                       params.text_document.version);
+                                       params.text_document.version,
+                                       srv.position_encoding);
         publish_aliases(path_id);
 
         // The edit just made any in-flight compile stale. Supersede it now
@@ -803,16 +815,16 @@ LSPClient::RawResult LSPClient::send_tokens(std::shared_ptr<ProjectServer> proje
             }
             auto positions = session->positions();
             if(request.window) {
-                auto window = positions.offset_range(*request.window, PositionEncoding::UTF16);
+                auto window = positions.offset_range(*request.window, server.position_encoding);
                 co_return to_raw(feature::semantic_tokens_to_protocol(*found,
                                                                       positions,
-                                                                      PositionEncoding::UTF16,
+                                                                      server.position_encoding,
                                                                       token_legend,
                                                                       window));
             }
             auto encoded = feature::semantic_tokens_to_protocol(*found,
                                                                 positions,
-                                                                PositionEncoding::UTF16,
+                                                                server.position_encoding,
                                                                 token_legend);
             next_result_id += 1;
             encoded.result_id = std::to_string(next_result_id);
@@ -1530,18 +1542,8 @@ void LSPClient::publish_config_diagnostics() {
         // a clean load clears diagnostics from a previous broken state.
         by_file.try_emplace(project->config_path);
         for(auto& issue: project->config_issues) {
-            // Issue positions are 1-based; LSP wants 0-based. An unknown
-            // position (0) maps to the file top.
-            auto position = [](std::uint32_t line, std::uint32_t column) {
-                return protocol::Position{.line = line > 0 ? line - 1 : 0,
-                                          .character = column > 0 ? column - 1 : 0};
-            };
-
             protocol::Diagnostic diagnostic;
-            diagnostic.range = protocol::Range{
-                .start = position(issue.line, issue.column),
-                .end = position(issue.end_line, issue.end_column),
-            };
+            diagnostic.range = issue.range.in(server.position_encoding);
             diagnostic.severity = issue.severity == ConfigIssue::Severity::Error
                                       ? protocol::DiagnosticSeverity::Error
                                       : protocol::DiagnosticSeverity::Warning;

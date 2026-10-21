@@ -238,7 +238,7 @@ export class Inspect extends Client {
     }
 
     protected context(): AnswerContext {
-        return new AnswerContext(this.root, (file) => this.text(file));
+        return new AnswerContext(this.root, (file) => this.text(file), "utf-16");
     }
 
     /// The errors of every source but an importer and of every file
@@ -315,27 +315,30 @@ export class Inspect extends Client {
         }
         const raw = (await this.atPoint("signature-help", at)) as RawSignatureHelp | null;
         if (raw === null) {
-            return signatures(null);
+            return signatures(null, "utf-16");
         }
-        return signatures({
-            signatures: (raw.signatures ?? []).map((signature) => ({
-                label: signature.label,
-                ...(signature.documentation == null
-                    ? {}
-                    : { documentation: signature.documentation }),
-                parameters: (signature.parameters ?? []).map((parameter) => ({
-                    label: parameter.label,
-                    ...(parameter.documentation == null
+        return signatures(
+            {
+                signatures: (raw.signatures ?? []).map((signature) => ({
+                    label: signature.label,
+                    ...(signature.documentation == null
                         ? {}
-                        : { documentation: parameter.documentation }),
+                        : { documentation: signature.documentation }),
+                    parameters: (signature.parameters ?? []).map((parameter) => ({
+                        label: parameter.label,
+                        ...(parameter.documentation == null
+                            ? {}
+                            : { documentation: parameter.documentation }),
+                    })),
+                    ...(signature.active_parameter == null
+                        ? {}
+                        : { activeParameter: signature.active_parameter }),
                 })),
-                ...(signature.active_parameter == null
-                    ? {}
-                    : { activeParameter: signature.active_parameter }),
-            })),
-            ...(raw.active_signature == null ? {} : { activeSignature: raw.active_signature }),
-            ...(raw.active_parameter == null ? {} : { activeParameter: raw.active_parameter }),
-        });
+                ...(raw.active_signature == null ? {} : { activeSignature: raw.active_signature }),
+                ...(raw.active_parameter == null ? {} : { activeParameter: raw.active_parameter }),
+            },
+            "utf-16",
+        );
     }
 
     protected async fetchHighlights(at: Anchor): Promise<Highlight[]> {

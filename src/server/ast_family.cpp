@@ -222,8 +222,8 @@ static void note_provider_choices(std::vector<feature::FileDiagnostic>& diagnost
         // the implicit one of an implementation unit at the top.
         if(offset < session.text().size()) {
             auto end = std::min(session.text().find('\n', offset), session.text().size());
-            if(auto range = session.positions().range({offset, static_cast<std::uint32_t>(end)},
-                                                      PositionEncoding::UTF16)) {
+            if(auto range =
+                   session.positions().line_columns({offset, static_cast<std::uint32_t>(end)})) {
                 warning.range = *range;
             }
         }

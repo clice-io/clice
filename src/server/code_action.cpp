@@ -202,7 +202,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                     llvm::ArrayRef<TextReplacement> replacements) {
         std::vector<protocol::TextEdit> edits;
         for(const auto& replacement: replacements) {
-            auto converted = map.range(replacement.range, PositionEncoding::UTF16);
+            auto converted = map.range(replacement.range, encoding);
             if(!converted) {
                 return;
             }
@@ -266,8 +266,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                 if(!definition) {
                     return true;
                 }
-                protocol::Position end{.line = definition->extent.end.line,
-                                       .character = definition->extent.end.utf16_column};
+                auto end = definition->extent.end.in(encoding);
                 if(!after ||
                    std::pair(end.line, end.character) > std::pair(after->line, after->character)) {
                     after = end;
@@ -291,7 +290,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             }
             auto content = host_text->text();
             auto end = *host_text->positions().position(static_cast<std::uint32_t>(content.size()),
-                                                        PositionEncoding::UTF16);
+                                                        encoding);
             edit.range = {end, end};
             edit.new_text =
                 (content.empty() || content.ends_with('\n') ? "\n" : "\n\n") + formatted;

@@ -203,6 +203,9 @@ async function onServer(
         workspace,
         {
             capabilities: EDITOR_CAPABILITIES,
+            ...(options.positionEncoding === undefined
+                ? {}
+                : { positionEncoding: options.positionEncoding }),
             config: {
                 ...config,
                 project: { ...project, enable_indexing: options.indexing === true },

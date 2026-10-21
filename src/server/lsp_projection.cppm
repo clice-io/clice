@@ -9,6 +9,7 @@ import :index.query;
 import :index.site;
 import :index.symbol;
 import :semantic.symbol;
+import :syntax.position;
 
 /// The LSP shapes of the index query's domain values: the one place that
 /// spells URIs, maps sites through their coordinates and encodes symbol
@@ -18,23 +19,27 @@ namespace clice::to_lsp {
 
 namespace protocol = kota::ipc::protocol;
 
-protocol::Range range(const index::Site& site);
+/// Positions count characters in `encoding`, the client's.
+protocol::Range range(const index::Site& site, PositionEncoding encoding);
 
-protocol::Location location(const index::Site& site);
+protocol::Location location(const index::Site& site, PositionEncoding encoding);
 
-std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites);
+std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites,
+                                          PositionEncoding encoding);
 
-std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites);
+std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites, PositionEncoding encoding);
 
 std::vector<protocol::DocumentHighlight>
-    document_highlights(llvm::ArrayRef<index::PlacedHighlight> highlights);
+    document_highlights(llvm::ArrayRef<index::PlacedHighlight> highlights,
+                        PositionEncoding encoding);
 
 /// `container` is the qualified name of the symbol's parent, empty at the
 /// translation unit. A function is named with its signature, which tells
 /// its overloads apart.
 protocol::SymbolInformation symbol_information(const index::SymbolInfo& symbol,
                                                const index::Site& site,
-                                               llvm::StringRef container);
+                                               llvm::StringRef container,
+                                               PositionEncoding encoding);
 
 /// Hierarchy items span the whole declaration (`extent`) and select its
 /// name (`site`); the detail shows a symbol's `qualified` name inside a
@@ -44,11 +49,13 @@ protocol::SymbolInformation symbol_information(const index::SymbolInfo& symbol,
 protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolInfo& symbol,
                                                 const index::Site& site,
                                                 const index::Site& extent,
-                                                llvm::StringRef qualified);
+                                                llvm::StringRef qualified,
+                                                PositionEncoding encoding);
 protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolInfo& symbol,
                                                 const index::Site& site,
                                                 const index::Site& extent,
-                                                llvm::StringRef qualified);
+                                                llvm::StringRef qualified,
+                                                PositionEncoding encoding);
 
 /// The symbol an item's `data` carries, if intact: a prepared hierarchy
 /// item's, or a completion item's whose `#include` the server adds.

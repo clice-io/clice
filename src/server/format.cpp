@@ -52,12 +52,11 @@ std::vector<feature::FileDiagnostic>
     std::set<std::tuple<std::uint32_t, std::uint32_t, bool>> relocated;
     auto diagnostics = output.diagnostics;
     std::erase_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
-        auto start = diagnostic.range.start;
+        auto start = diagnostic.range.begin;
         return llvm::is_contained(options.suppress, diagnostic.code) ||
                (diagnostic.origin != feature::DiagnosticOrigin::File &&
                 !relocated
-                     .insert(
-                         {start.line, start.character, diagnostic.level >= DiagnosticLevel::Error})
+                     .insert({start.line, start.column, diagnostic.level >= DiagnosticLevel::Error})
                      .second);
     });
 

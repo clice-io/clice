@@ -150,8 +150,9 @@ std::pair<unsigned, unsigned> expanded_pack(const clang::FunctionDecl& function)
     return {begin, begin + function.getNumParams() + 1 - params.size()};
 }
 
-/// One signature as it is built: its label and the range of each
-/// parameter in it.
+/// One signature as it is built: its label and the byte range of each
+/// parameter in it, which signature_help counts in the client's encoding
+/// once the signatures are done.
 struct Signature {
     llvm::SmallString<128> label;
     llvm::raw_svector_ostream stream{label};
@@ -172,9 +173,9 @@ struct Signature {
         if(!parameters.empty()) {
             stream << ", ";
         }
-        auto begin = lsp::encoded_length(label.str(), PositionEncoding::UTF16);
+        auto begin = static_cast<protocol::uinteger>(label.size());
         print(stream);
-        auto end = lsp::encoded_length(label.str(), PositionEncoding::UTF16);
+        auto end = static_cast<protocol::uinteger>(label.size());
         parameters.push_back({
             .label = std::tuple<protocol::uinteger, protocol::uinteger>{begin, end},
         });
@@ -861,10 +862,12 @@ auto macro_signature(const MacroCall& call, const Documentation& doc) -> protoco
 
 }  // namespace
 
-auto signature_help(CompilationParams params,
-                    const SignatureHelpOptions& options,
-                    const DocumentationOptions& documentation,
-                    llvm::StringRef selected) -> protocol::SignatureHelp {
+/// The signatures at the completion point, each parameter's label a byte
+/// range of the signature's.
+static auto signatures(CompilationParams params,
+                       const SignatureHelpOptions& options,
+                       const DocumentationOptions& documentation,
+                       llvm::StringRef selected) -> protocol::SignatureHelp {
     protocol::SignatureHelp help;
 
     clang::CodeCompleteOptions complete_options;
@@ -932,6 +935,27 @@ auto signature_help(CompilationParams params,
                               [&](const auto& signature) { return signature.label == selected; });
     if(kept != help.signatures.end()) {
         help.active_signature = kept - help.signatures.begin();
+    }
+    return help;
+}
+
+auto signature_help(CompilationParams params,
+                    const SignatureHelpOptions& options,
+                    const DocumentationOptions& documentation,
+                    llvm::StringRef selected,
+                    PositionEncoding encoding) -> protocol::SignatureHelp {
+    auto help = signatures(std::move(params), options, documentation, selected);
+    for(auto& signature: help.signatures) {
+        if(!signature.parameters) {
+            continue;
+        }
+        llvm::StringRef label = signature.label;
+        for(auto& parameter: *signature.parameters) {
+            auto& [begin, end] =
+                std::get<std::tuple<protocol::uinteger, protocol::uinteger>>(parameter.label);
+            begin = lsp::encoded_length(label.take_front(begin), encoding);
+            end = lsp::encoded_length(label.take_front(end), encoding);
+        }
     }
     return help;
 }

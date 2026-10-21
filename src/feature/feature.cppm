@@ -898,7 +898,7 @@ enum class DiagnosticOrigin : std::uint8_t {
 /// A place a diagnostic's note points at.
 struct DiagnosticNote {
     std::string path;
-    protocol::Range range;
+    LineColumnRange range;
     std::string message;
 };
 
@@ -906,7 +906,7 @@ struct DiagnosticNote {
 /// compiler's and clang-tidy's of its compile, and clice's own about the
 /// file. Each client gets it in the shape it takes (to_protocol).
 struct FileDiagnostic {
-    protocol::Range range;
+    LineColumnRange range;
     DiagnosticLevel level = DiagnosticLevel::Warning;
     DiagnosticSource source = DiagnosticSource::Clice;
 
@@ -928,16 +928,17 @@ struct FileDiagnostic {
 };
 
 /// The diagnostics a compile shows on its focus file.
-auto diagnostics(CompilationUnit& unit, PositionEncoding encoding = PositionEncoding::UTF16)
-    -> std::vector<FileDiagnostic>;
+auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 
 /// A warning from clice itself about the file as a whole, on its first
 /// character.
 FileDiagnostic file_warning(std::string message);
 
-/// The LSP form of `diagnostic`. A client that takes no related
-/// information gets the notes in the message.
-protocol::Diagnostic to_protocol(const FileDiagnostic& diagnostic, bool related_information);
+/// The LSP form of `diagnostic`, in `encoding`. A client that takes no
+/// related information gets the notes in the message.
+protocol::Diagnostic to_protocol(const FileDiagnostic& diagnostic,
+                                 bool related_information,
+                                 PositionEncoding encoding);
 
 /// A name of another namespace unqualified completion may offer, found in
 /// the index: the completion looks it up to tell whether the file reaches
@@ -1022,11 +1023,13 @@ auto hover(CompilationUnit& unit,
            PositionEncoding encoding = PositionEncoding::UTF16) -> std::optional<protocol::Hover>;
 
 /// `selected` is the label of the signature the client shows active: it
-/// stays active while it is listed.
+/// stays active while it is listed. Parameter labels are ranges of their
+/// signature's label in `encoding`'s units.
 auto signature_help(CompilationParams params,
                     const SignatureHelpOptions& options,
                     const DocumentationOptions& documentation,
-                    llvm::StringRef selected = {}) -> protocol::SignatureHelp;
+                    llvm::StringRef selected = {},
+                    PositionEncoding encoding = PositionEncoding::UTF16) -> protocol::SignatureHelp;
 
 /// The edits formatting `content`, or its `range`, with the clang-format
 /// style of `file`: the nearest `.clang-format` above it, else LLVM's. Why

@@ -9,6 +9,7 @@ import :config.config;
 import :feature.feature;
 import :index.symbol;
 import :syntax.header_context;
+import :syntax.position;
 import :syntax.token;
 
 namespace clice::worker {
@@ -123,6 +124,10 @@ struct HoverParams {
 
     /// What a hover card renders as: the markup the client shows it in.
     feature::protocol::MarkupKind markup = feature::protocol::MarkupKind::Markdown;
+
+    /// How the client counts a position's character: the reply's ranges
+    /// count in it.
+    PositionEncoding encoding = PositionEncoding::UTF16;
 
     /// The workspace config, carried whole on every request — the worker
     /// holds no config state and a config change simply shows up on the
@@ -326,6 +331,10 @@ struct CompletionParams {
 
     feature::CompletionClient client;
 
+    /// How the client counts a position's character: the reply's ranges
+    /// count in it.
+    PositionEncoding encoding = PositionEncoding::UTF16;
+
     /// The names of other namespaces the index found for the typed prefix.
     std::vector<feature::ScopeCandidate> candidates;
 
@@ -361,6 +370,10 @@ struct SignatureHelpParams {
     /// The label of the signature the client shows active, empty when the
     /// popup is not open.
     std::string selected;
+
+    /// How the client counts a position's character: parameter labels
+    /// count in it.
+    PositionEncoding encoding = PositionEncoding::UTF16;
 };
 
 /// Format a document (or a byte range of it) with clang-format.

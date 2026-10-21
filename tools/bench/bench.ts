@@ -17,6 +17,9 @@
 ///   --file <rel>             file to open/edit (default: first CDB entry)
 ///   --position <line:char>   position for warm requests (default: derived
 ///                            from the file's first call-like identifier)
+///   --position-encoding utf-8
+///                            offer UTF-8 positions beside UTF-16; the
+///                            server picks, and --position counts in its pick
 ///   --scenario <name>        cold_start | warm_start | edit_loop |
 ///                            warm_requests; repeatable (default: all)
 ///   --edits <N>              edit_loop iterations (default 10)
@@ -51,6 +54,8 @@ interface Options {
     file: string | null;
     /// null = derive a symbol-bearing position from the file content.
     position: { line: number; character: number } | null;
+    /// The position encodings offered beside UTF-16; none by default.
+    positionEncodings: string[] | undefined;
     scenarios: ScenarioName[];
     edits: number;
     repeats: number;
@@ -95,6 +100,7 @@ function parseOptions(): Options {
             workspace: { type: "string" },
             file: { type: "string" },
             position: { type: "string" },
+            "position-encoding": { type: "string" },
             scenario: { type: "string", multiple: true },
             edits: { type: "string", default: "10" },
             repeats: { type: "string", default: "50" },
@@ -144,6 +150,11 @@ function parseOptions(): Options {
         position = { line, character };
     }
 
+    const encoding = values["position-encoding"];
+    if (encoding !== undefined && encoding !== "utf-8") {
+        fail(`unknown --position-encoding '${encoding}' (expected utf-8)`);
+    }
+
     const edits = Number(values.edits);
     const repeats = Number(values.repeats);
     if (!Number.isInteger(edits) || edits < 0 || !Number.isInteger(repeats) || repeats < 0) {
@@ -159,6 +170,7 @@ function parseOptions(): Options {
         cdbDir: "",
         file: values.file ?? null,
         position,
+        positionEncodings: encoding === undefined ? undefined : [encoding, "utf-16"],
         scenarios,
         edits,
         repeats,
@@ -382,6 +394,7 @@ async function startServer(opts: Options): Promise<CliceClient> {
     await client.initialize(new Workspace(opts.workspace), {
         initializationOptions: initializationOptions(opts),
         testDefaults: false,
+        positionEncodings: opts.positionEncodings,
     });
     return client;
 }
@@ -470,7 +483,7 @@ async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult>
         let poke: Promise<unknown> = Promise.resolve();
         await bench.measure("edit_to_diagnostics", async () => {
             const arrived = client.armDiagnostics(uri);
-            client.changeRange(uri, i, { start: end, end }, `\n${comment}`);
+            client.change(uri, i, [{ range: { start: end, end }, text: `\n${comment}` }]);
             poke = client.hoverAt(uri, 0, 0);
             await withTimeout(arrived, 300_000, `diagnostics ${uri}`);
         });

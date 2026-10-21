@@ -138,8 +138,7 @@ bool is_unused(const FileDiagnostic& diagnostic) {
 
 class Presenter {
 public:
-    Presenter(CompilationUnit& unit, PositionEncoding encoding) :
-        unit(unit), encoding(encoding), map(unit.focus_file().positions()) {}
+    explicit Presenter(CompilationUnit& unit) : unit(unit), map(unit.focus_file().positions()) {}
 
     /// A diagnostic and the notes clang attached to it, as shown on the
     /// focus file; nullopt when it does not concern the focus file.
@@ -197,7 +196,7 @@ private:
                 }
                 anchor = note->range;
             }
-            auto range = map.range(anchor, encoding);
+            auto range = map.line_columns(anchor);
             if(!range) {
                 return false;
             }
@@ -254,7 +253,7 @@ private:
         if(note == main.notes.end()) {
             return false;
         }
-        auto range = map.range(note->range, encoding);
+        auto range = map.line_columns(note->range);
         if(!range) {
             return false;
         }
@@ -267,7 +266,7 @@ private:
                   FileDiagnostic& diagnostic,
                   LocalSourceRange anchor,
                   DiagnosticOrigin origin) {
-        auto range = map.range(anchor, encoding);
+        auto range = map.line_columns(anchor);
         if(!range) {
             return false;
         }
@@ -305,7 +304,7 @@ private:
            !range.valid()) {
             return;
         }
-        auto converted = unit.positions(fid).range(range, encoding);
+        auto converted = unit.positions(fid).line_columns(range);
         if(!converted) {
             return;
         }
@@ -317,18 +316,12 @@ private:
     }
 
     CompilationUnit& unit;
-    PositionEncoding encoding;
     PositionMap map;
-};
-
-constexpr protocol::Range file_top = {
-    .start = {.line = 0, .character = 0},
-    .end = {.line = 0, .character = 0},
 };
 
 }  // namespace
 
-auto diagnostics(CompilationUnit& unit, PositionEncoding encoding) -> std::vector<FileDiagnostic> {
+auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic> {
     std::vector<FileDiagnostic> result;
     // A compile that failed before parsing has no text to place what it
     // reports in: why it failed shows at the top of the file.
@@ -336,7 +329,6 @@ auto diagnostics(CompilationUnit& unit, PositionEncoding encoding) -> std::vecto
         for(const auto& main: unit.diagnostics()) {
             if(main.id.level >= DiagnosticLevel::Error) {
                 result.push_back({
-                    .range = file_top,
                     .level = main.id.level,
                     .source = main.id.source,
                     .id = main.id.value,
@@ -347,7 +339,7 @@ auto diagnostics(CompilationUnit& unit, PositionEncoding encoding) -> std::vecto
         }
         return result;
     }
-    Presenter presenter(unit, encoding);
+    Presenter presenter(unit);
     for(const auto& main: unit.diagnostics()) {
         if(auto diagnostic = presenter.present(main)) {
             result.push_back(std::move(*diagnostic));
@@ -357,11 +349,13 @@ auto diagnostics(CompilationUnit& unit, PositionEncoding encoding) -> std::vecto
 }
 
 FileDiagnostic file_warning(std::string message) {
-    return {.range = file_top, .message = std::move(message)};
+    return {.message = std::move(message)};
 }
 
-protocol::Diagnostic to_protocol(const FileDiagnostic& diagnostic, bool related_information) {
-    protocol::Diagnostic result{.range = diagnostic.range, .message = {}};
+protocol::Diagnostic to_protocol(const FileDiagnostic& diagnostic,
+                                 bool related_information,
+                                 PositionEncoding encoding) {
+    protocol::Diagnostic result{.range = diagnostic.range.in(encoding), .message = {}};
     switch(diagnostic.level) {
         case DiagnosticLevel::Note:
         case DiagnosticLevel::Remark:
@@ -404,17 +398,18 @@ protocol::Diagnostic to_protocol(const FileDiagnostic& diagnostic, bool related_
             auto& related = result.related_information.emplace();
             for(const auto& note: diagnostic.notes) {
                 related.push_back({
-                    .location = {.uri = to_uri(note.path), .range = note.range},
+                    .location = {.uri = to_uri(note.path), .range = note.range.in(encoding)},
                     .message = note.message,
                 });
             }
         }
     } else {
         for(const auto& note: diagnostic.notes) {
+            auto start = note.range.begin.in(encoding);
             message += std::format("\n\n{}:{}:{}: {}",
                                    llvm::sys::path::filename(note.path),
-                                   note.range.start.line + 1,
-                                   note.range.start.character + 1,
+                                   start.line + 1,
+                                   start.character + 1,
                                    note.message);
         }
     }

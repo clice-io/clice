@@ -17,6 +17,12 @@ test("capabilities", async (t) => {
     expect(result?.serverInfo?.version).toBe(/^clice version (\S+)/.exec(run.stdout)?.[1]);
 });
 
+// A client that offers UTF-8 positions gets them.
+test("utf-8 offered", async (t) => {
+    const s = await t.start({ positionEncoding: "utf-8" });
+    await t.show("position encoding", s.client.initResult?.capabilities.positionEncoding ?? "");
+});
+
 test("a second initialize", async (t) => {
     const s = await t.start();
     const refused = await s.client

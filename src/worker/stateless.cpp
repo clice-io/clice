@@ -506,7 +506,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
                                              params.config.code_completion,
                                              params.config.documentation,
                                              params.client,
-                                             PositionEncoding::UTF16,
+                                             params.encoding,
                                              params.candidates);
     LOG_DEBUG("Completion done: {} items, {}ms", completion.list.items.size(), timer.ms());
     completion.list.is_incomplete = completion.list.is_incomplete || params.more_candidates;
@@ -531,7 +531,8 @@ static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpPa
     auto help = feature::signature_help(std::move(cp),
                                         params.config.signature_help,
                                         params.config.documentation,
-                                        params.selected);
+                                        params.selected,
+                                        params.encoding);
     LOG_DEBUG("SignatureHelp done: {}ms", timer.ms());
 
     return to_raw(help);

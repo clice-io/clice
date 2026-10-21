@@ -192,7 +192,10 @@ unreleased goes with the server.
 
 **Server options**, given to `t.start` and kept by every restart of that
 server: `config` (initializationOptions in clice.toml's shape), `capabilities`,
-`folders`, `args`, `env`; and the faults the test provokes on purpose —
+`positionEncoding: "utf-8"` (the client offers UTF-8 positions too, and the
+server must take them; the actions convert at the protocol, so what a test
+shows reads the same in either encoding), `folders`, `args`, `env`; and the
+faults the test provokes on purpose —
 `crash: { request, file }` crashes every such request's worker
 (`CLICE_TEST_CRASH_REQUEST`), `kill: { request, file }` kills the first one's
 from outside (`CLICE_TEST_KILL_REQUEST`), `anomalies: true` misleads the
@@ -201,14 +204,15 @@ declared fails the test, and so does a declared one that never happened.
 
 **Test options**:
 
-| Option                     | Means                                                                                             |
-| -------------------------- | ------------------------------------------------------------------------------------------------- |
-| `except: { win32: "…" }`   | platforms the test has no meaning on, each with the reason; there it is listed as not applicable  |
-| `errors: ["…"]`            | the error-level log lines the test provokes; any other fails                                      |
-| `paths: { server: "…" }`   | (answers) one client alone, where the other cannot answer; `inspect` likewise                     |
-| `paths: { separate: "…" }` | (answers) both clients pinned apart where they answer differently on purpose; agreeing then fails |
-| `config: { … }`            | (answers) options in clice.toml's shape, taken by both clients                                    |
-| `indexing: true`           | (answers) the server indexes first                                                                |
+| Option                      | Means                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------- |
+| `except: { win32: "…" }`    | platforms the test has no meaning on, each with the reason; there it is listed as not applicable  |
+| `errors: ["…"]`             | the error-level log lines the test provokes; any other fails                                      |
+| `paths: { server: "…" }`    | (answers) one client alone, where the other cannot answer; `inspect` likewise                     |
+| `paths: { separate: "…" }`  | (answers) both clients pinned apart where they answer differently on purpose; agreeing then fails |
+| `config: { … }`             | (answers) options in clice.toml's shape, taken by both clients                                    |
+| `indexing: true`            | (answers) the server indexes first                                                                |
+| `positionEncoding: "utf-8"` | (answers) the server's client offers UTF-8 positions, as above                                    |
 
 **Recorded sessions.** A `trace.jsonl` is what a real editor sent a server,
 recorded by `tools/testing/server/record.ts` standing in for the server it

@@ -14,6 +14,7 @@ import :server.dispatcher;
 import :server.editor_context;
 import :server.session;
 import :server.session_store;
+import :syntax.position;
 import :syntax.source_text;
 import :vfs.dir_cache;
 
@@ -57,9 +58,10 @@ public:
              Project& project,
              EditorContext& contexts,
              IndexPump& pump,
-             SessionStore& sessions) :
+             SessionStore& sessions,
+             const PositionEncoding& encoding) :
         ast(ast), dispatcher(dispatcher), query(query), project(project), contexts(contexts),
-        pump(pump), sessions(sessions) {}
+        pump(pump), sessions(sessions), encoding(encoding) {}
 
     using RawResult = Dispatcher::RawResult;
 
@@ -429,6 +431,9 @@ private:
     EditorContext& contexts;
     IndexPump& pump;
     SessionStore& sessions;
+
+    /// The client's (MasterServer::position_encoding).
+    const PositionEncoding& encoding;
 };
 
 }  // namespace clice

@@ -168,8 +168,8 @@ public:
     /// ordinary TU index. Borrows the TU index.
     llvm::ArrayRef<std::uint8_t> open_conditionals() const;
 
-    /// The diagnostics the preamble's build raised, as published (a JSON
-    /// array of LSP diagnostics); empty for an ordinary TU index. Borrows
+    /// The diagnostics the preamble's build raised (a JSON array of
+    /// feature::FileDiagnostic); empty for an ordinary TU index. Borrows
     /// the TU index.
     llvm::StringRef preamble_diagnostics() const;
 

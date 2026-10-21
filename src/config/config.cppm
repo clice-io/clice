@@ -5,6 +5,7 @@ module;
 module clice:config.config;
 
 import :feature.feature;
+import :syntax.position;
 
 namespace clice {
 
@@ -343,13 +344,9 @@ struct ConfigIssue {
     /// Absolute path of the configuration file.
     std::string file;
     std::string message;
-    /// 1-based position in the file; 0 when unknown.
-    std::uint32_t line = 0;
-    std::uint32_t column = 0;
-    /// Where the key or value at the position ends, past its last
-    /// character; the position itself for a point (a syntax error).
-    std::uint32_t end_line = 0;
-    std::uint32_t end_column = 0;
+    /// The key or value the issue is about, a point for a syntax error;
+    /// the file's start when unknown.
+    LineColumnRange range;
 };
 
 /// Configuration for the clice LSP server, loadable from clice.toml

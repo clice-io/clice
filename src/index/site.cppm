@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-/// Positions in a text version and the sites index entries resolve to.
+/// The sites index entries resolve to.
 
 module clice:index.site;
 
@@ -11,15 +11,6 @@ import :syntax.token;
 import :vfs.file_table;
 
 namespace clice::index {
-
-/// A position in a text: its 0-based line, and its column from the line
-/// start counted in bytes and in UTF-16 code units — the same number for
-/// ASCII text, and what editors count.
-struct LineColumn {
-    std::uint32_t line = 0;
-    std::uint32_t column = 0;
-    std::uint32_t utf16_column = 0;
-};
 
 /// What a site's entry comes from.
 enum class SiteOrigin : std::uint8_t {
@@ -44,20 +35,6 @@ struct Site {
     SiteOrigin origin = SiteOrigin::Written;
 };
 
-/// The position of an offset with both its columns, counted at once: a
-/// site outlives the line table that counts them.
-inline std::optional<LineColumn> line_column(const PositionMap& map, std::uint32_t offset) {
-    auto bytes = map.position(offset, PositionEncoding::UTF8);
-    if(!bytes) {
-        return std::nullopt;
-    }
-    return LineColumn{
-        .line = bytes->line,
-        .column = bytes->character,
-        .utf16_column = map.position(offset, PositionEncoding::UTF16)->character,
-    };
-}
-
 /// The line holding `offset` in the text `positions` maps, which it must
 /// have been given, its line end excluded.
 inline llvm::StringRef line_at(const PositionMap& positions, std::uint32_t offset) {
@@ -80,8 +57,8 @@ inline std::optional<Site> site_of(Fid file,
         .file = file,
         .path = path.str(),
         .range = range,
-        .begin = *line_column(positions, range.begin),
-        .end = *line_column(positions, range.end),
+        .begin = *positions.line_column(range.begin),
+        .end = *positions.line_column(range.end),
         .origin = origin,
     };
 }
