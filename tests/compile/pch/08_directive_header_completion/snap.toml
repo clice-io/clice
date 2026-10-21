@@ -2,7 +2,7 @@
 value = 2
 
 ["completion reuses the pch"."builds after completion"]
-value = 3
+value = 2
 
 ["completion reuses the pch"."builds after edit and completion"]
-value = 5
+value = 3

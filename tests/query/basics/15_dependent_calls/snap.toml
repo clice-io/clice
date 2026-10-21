@@ -12,8 +12,16 @@ stdout = '''
     "name": "foo",
     "kind": "Method",
     "symbol": "#c9a164fdb055ace8",
-    "references": [],
-    "total": 0
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 10,
+        "context": "    obj.foo();",
+        "function": "process",
+        "via": "instantiation"
+      }
+    ],
+    "total": 1
   },
   "stale": []
 }
@@ -27,8 +35,16 @@ stdout = '''
     "name": "bar",
     "kind": "Method",
     "symbol": "#f50155a3c1ec9558",
-    "references": [],
-    "total": 0
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 16,
+        "context": "    auto generic = [](auto& x) { x.bar(); };",
+        "function": "run",
+        "via": "instantiation"
+      }
+    ],
+    "total": 1
   },
   "stale": []
 }
