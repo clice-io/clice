@@ -57,6 +57,7 @@ const GNU_MACROS = [
     "__NEWLIB__",
     "__NEWLIB_MINOR__",
     "__PICOLIBC__",
+    "__PICOLIBC_MINOR__",
     "__BIONIC__",
     "__ANDROID_API__",
     "__MINGW64_VERSION_MAJOR",
