@@ -9,6 +9,7 @@ import :server.master_server;
 import :server.project_server;
 import :server.session;
 import :support.signal;
+import :syntax.position;
 import :vfs.file_table;
 
 namespace clice {
@@ -110,9 +111,11 @@ private:
     /// information; otherwise they go into its message.
     bool related_information = false;
 
-    /// The diagnostics in the shape the client takes.
+    /// The diagnostics in the shape the client takes; `positions` maps
+    /// the text they were compiled from.
     std::vector<kota::ipc::protocol::Diagnostic>
-        to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);
+        to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
+                  const PositionMap& positions);
 
     /// How the client takes folds (textDocument.foldingRange).
     feature::FoldingClient folding_client;

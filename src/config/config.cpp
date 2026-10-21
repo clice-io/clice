@@ -301,12 +301,11 @@ static std::optional<toml::source_position> end_at(const toml::node& node,
     return std::nullopt;
 }
 
-/// Where a TOML position, its line 1-based and its column counting code
-/// points from 1, is in the text `positions` maps.
-static LineColumn line_column(const PositionMap& positions, toml::source_position at) {
-    auto offset = positions.offset_clamped({.line = at.line - 1, .character = at.column - 1},
-                                           PositionEncoding::UTF32);
-    return *positions.line_column(offset);
+/// The byte a TOML position, its line 1-based and its column counting code
+/// points from 1, is at in the text `positions` maps.
+static std::uint32_t offset_of(const PositionMap& positions, toml::source_position at) {
+    return positions.offset_clamped({.line = at.line - 1, .character = at.column - 1},
+                                    PositionEncoding::UTF32);
 }
 
 /// An issue at its error's position in `text`, spanning the key or value of
@@ -328,12 +327,12 @@ static ConfigIssue make_issue(ConfigIssue::Severity severity,
     PositionMap positions(text, lines);
     toml::source_position begin{static_cast<toml::source_index>(error.location->line),
                                 static_cast<toml::source_index>(error.location->column)};
-    issue.range.begin = issue.range.end = line_column(positions, begin);
+    issue.range.begin = issue.range.end = offset_of(positions, begin);
     if(!parsed) {
         return issue;
     }
     if(auto end = end_at(*parsed, begin)) {
-        issue.range.end = line_column(positions, *end);
+        issue.range.end = offset_of(positions, *end);
     }
     return issue;
 }

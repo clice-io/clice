@@ -5,7 +5,7 @@ module;
 module clice:config.config;
 
 import :feature.feature;
-import :syntax.position;
+import :syntax.token;
 
 namespace clice {
 
@@ -344,9 +344,9 @@ struct ConfigIssue {
     /// Absolute path of the configuration file.
     std::string file;
     std::string message;
-    /// The key or value the issue is about, a point for a syntax error;
-    /// the file's start when unknown.
-    LineColumnRange range;
+    /// The bytes of the key or value the issue is about, a point for a
+    /// syntax error; the file's start when unknown.
+    LocalSourceRange range = {0, 0};
 };
 
 /// Configuration for the clice LSP server, loadable from clice.toml

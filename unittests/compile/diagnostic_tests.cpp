@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :compile.diagnostic;
 import :feature.feature;
+import :syntax.position;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -224,6 +225,54 @@ int main() { return 0; }
         }
     }
     ZASSERT(redefined);
+}
+
+ZEST_CASE(NoteFilesReadLater) {
+    /// A note's file is read when the diagnostic is shown: one gone, or
+    /// shorter than the note's range, places nothing.
+    std::string text = "int x;\n";
+    auto starts = kota::ipc::lsp::line_starts(text);
+    PositionMap positions(text, starts);
+    std::string header = "int \xe7\x94\xb2;\n";
+    auto header_starts = kota::ipc::lsp::line_starts(header);
+    feature::FileDiagnostic diagnostic{
+        .range = {4, 5},
+        .message = "redefinition"
+    };
+    diagnostic.notes.push_back({
+        .path = "/gone.h",
+        .range = {0, 3},
+        .message = "gone"
+    });
+    diagnostic.notes.push_back({
+        .path = "/wide.h",
+        .range = {20, 21},
+        .message = "past"
+    });
+    diagnostic.notes.push_back({
+        .path = "/wide.h",
+        .range = {4, 7},
+        .message = "here"
+    });
+    auto note_positions = [&](llvm::StringRef path) -> std::optional<PositionMap> {
+        if(path == "/gone.h") {
+            return std::nullopt;
+        }
+        return PositionMap(header, header_starts);
+    };
+
+    for(auto [encoding, end]: {
+            std::pair{PositionEncoding::UTF8,  7u},
+            std::pair{PositionEncoding::UTF16, 5u}
+    }) {
+        auto shown = feature::to_protocol(diagnostic, true, encoding, positions, note_positions);
+        ZASSERT(shown);
+        ZASSERT(shown->related_information);
+        ZASSERT(shown->related_information->size() == 1u);
+        auto& related = shown->related_information->front();
+        ZEXPECT(related.message == "here");
+        ZEXPECT(related.location.range.end.character == end);
+    }
 }
 
 };  // ZEST_SUITE(Diagnostic)

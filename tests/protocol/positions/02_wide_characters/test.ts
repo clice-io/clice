@@ -6,7 +6,8 @@ import { test } from "@clice/tools/testing";
 // other encoding, and UTF-8 bytes for a client that offers those: characters
 // outside ASCII before a name on its line, one of them outside the Basic
 // Multilingual Plane, move nothing either way. The warning comes from the
-// preamble, which the precompiled header keeps; the edit travels as its range.
+// preamble, which the precompiled header keeps; a note points into a header
+// no editor opened; the edit travels as its range.
 
 /// Each token of an encoded answer, at its absolute line and column.
 function decode(data: readonly number[]): number[][] {
@@ -52,7 +53,7 @@ for (const encoding of ["utf-16", "utf-8"] as const) {
         );
         expect(decode(part.data)).toEqual(inside);
 
-        s.edit("main.cpp", { replace: "missing; int bad = add(3);", with: "add(3, 4);" });
+        s.edit("main.cpp", { replace: "missing; int bad = twice();", with: "add(3, 4);" });
         await t.show("edited", s.diagnostics("main.cpp"));
         await t.show("edited hover", s.hover(t.at("main.cpp", "add(3, |4)")));
     });

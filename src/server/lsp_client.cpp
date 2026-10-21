@@ -26,6 +26,9 @@ import :server.uri;
 import :support.anomaly;
 import :support.logging;
 import :syntax.header_context;
+import :syntax.position;
+import :syntax.source_text;
+import :vfs.file_system;
 import :vfs.path;
 import :worker.probe;
 import :worker.serialize;
@@ -171,12 +174,48 @@ static kota::codec::RawValue full_report(std::vector<protocol::Diagnostic> items
     return to_raw(protocol::RelatedFullDocumentDiagnosticReport{.items = std::move(items)});
 }
 
+/// Files read from the disk once each, to place positions in.
+struct DiskTexts {
+    std::map<std::string, std::optional<SourceText>, std::less<>> texts;
+
+    /// The positions in `path`'s text as the disk holds it now; nullopt for
+    /// a file it cannot read.
+    std::optional<PositionMap> positions(llvm::StringRef path) {
+        auto [it, fresh] = texts.try_emplace(path.str());
+        if(fresh) {
+            if(auto content = vfs::read(path)) {
+                it->second.emplace((*content)->getBuffer().str());
+            }
+        }
+        if(!it->second) {
+            return std::nullopt;
+        }
+        return it->second->positions();
+    }
+};
+
 std::vector<protocol::Diagnostic>
-    LSPClient::to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics) {
+    LSPClient::to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
+                         const PositionMap& positions) {
+    // A note's file as the compile read it: its open buffer, else the disk.
+    DiskTexts disk;
+    auto note_positions = [&](llvm::StringRef path) -> std::optional<PositionMap> {
+        if(auto path_id = server.files.find(Spelling::absolute(path))) {
+            if(auto session = server.find_session(*path_id)) {
+                return session->positions();
+            }
+        }
+        return disk.positions(path);
+    };
     std::vector<protocol::Diagnostic> shaped;
     for(const auto& diagnostic: diagnostics) {
-        shaped.push_back(
-            feature::to_protocol(diagnostic, related_information, server.position_encoding));
+        if(auto converted = feature::to_protocol(diagnostic,
+                                                 related_information,
+                                                 server.position_encoding,
+                                                 positions,
+                                                 note_positions)) {
+            shaped.push_back(std::move(*converted));
+        }
     }
     return shaped;
 }
@@ -282,13 +321,14 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     params.uri = feature::to_uri(alias.spelling);
     params.version = alias.buffer.version;
     if(diverged) {
-        params.diagnostics = to_client({feature::file_warning(divergence_message(alias))});
+        params.diagnostics =
+            to_client({feature::file_warning(divergence_message(alias))}, alias.buffer.positions());
     } else if(auto projection =
                   project.ast.projections.projection_at(owner->path_id, owner->version)) {
         auto diagnostics =
             format_diagnostics(*projection->output, project.project.config.diagnostics);
         append_crash_notes(*owner, diagnostics);
-        params.diagnostics = to_client(diagnostics);
+        params.diagnostics = to_client(diagnostics, alias.buffer.positions());
     } else if(!flipped) {
         // Shared once the owner's compile caught up with the text; until
         // then only a divergence warning is taken down.
@@ -951,35 +991,37 @@ void LSPClient::register_language_features() {
 
     // A pull is always answered with a report, never an error: on an
     // error, clients clear what they hold or stop pulling the document.
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::DocumentDiagnosticParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
-        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-        std::vector<feature::FileDiagnostic> items;
-        if(session) {
-            items = co_await project->features.diagnostics(session);
-        }
-        // A second name answers the warning once its text parted from the
-        // first name's, before the pull or while it waited.
-        if(auto* alias = find_alias(path);
-           alias && (!session || alias->buffer.text() != session->text())) {
-            co_return full_report(to_client({feature::file_warning(divergence_message(*alias))}));
-        }
-        auto report = full_report(to_client(items));
-        if(session) {
-            // Recorded against the live session: one that replaced this
-            // pull's meanwhile (the document moved to another project)
-            // compiles the same text, and its commit must correct the
-            // empty answer the closed one gave.
-            if(auto live = server.find_session(path_id)) {
-                pulled[path_id] = {
-                    .version = live->version,
-                    .report = llvm::xxh3_64bits(report.data),
-                };
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentDiagnosticParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            std::vector<feature::FileDiagnostic> items;
+            if(session) {
+                items = co_await project->features.diagnostics(session);
             }
-        }
-        co_return report;
-    });
+            // A second name answers the warning once its text parted from the
+            // first name's, before the pull or while it waited.
+            if(auto* alias = find_alias(path);
+               alias && (!session || alias->buffer.text() != session->text())) {
+                co_return full_report(to_client({feature::file_warning(divergence_message(*alias))},
+                                                alias->buffer.positions()));
+            }
+            auto report = full_report(session ? to_client(items, session->positions())
+                                              : std::vector<protocol::Diagnostic>{});
+            if(session) {
+                // Recorded against the live session: one that replaced this
+                // pull's meanwhile (the document moved to another project)
+                // compiles the same text, and its commit must correct the
+                // empty answer the closed one gave.
+                if(auto live = server.find_session(path_id)) {
+                    pulled[path_id] = {
+                        .version = live->version,
+                        .report = llvm::xxh3_64bits(report.data),
+                    };
+                }
+            }
+            co_return report;
+        });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
@@ -1530,6 +1572,9 @@ void LSPClient::register_extensions() {
 /// load clears diagnostics from a previous (broken) state.
 void LSPClient::publish_config_diagnostics() {
     llvm::StringMap<std::vector<protocol::Diagnostic>> by_file;
+    // The issues are at bytes of the files as loaded: one that changed
+    // since is about to load again.
+    DiskTexts disk;
     for(auto& file: published_configs) {
         by_file.try_emplace(file.getKey());
     }
@@ -1543,7 +1588,10 @@ void LSPClient::publish_config_diagnostics() {
         by_file.try_emplace(project->config_path);
         for(auto& issue: project->config_issues) {
             protocol::Diagnostic diagnostic;
-            diagnostic.range = issue.range.in(server.position_encoding);
+            if(auto positions = disk.positions(issue.file);
+               positions && issue.range.end <= positions->size()) {
+                diagnostic.range = *positions->range(issue.range, server.position_encoding);
+            }
             diagnostic.severity = issue.severity == ConfigIssue::Severity::Error
                                       ? protocol::DiagnosticSeverity::Error
                                       : protocol::DiagnosticSeverity::Warning;
@@ -1582,7 +1630,9 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
            it != pulled.end() && it->second.version == session.version &&
            it->second.report !=
                llvm::xxh3_64bits(
-                   full_report(to_client(project.features.finished_diagnostics(session))).data)) {
+                   full_report(to_client(project.features.finished_diagnostics(session),
+                                         session.positions()))
+                       .data)) {
             refresh_diagnostics();
         }
     } else {
@@ -1591,7 +1641,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
         params.version = output.version;
         auto diagnostics = format_diagnostics(output, project.project.config.diagnostics);
         append_crash_notes(session, diagnostics);
-        params.diagnostics = to_client(diagnostics);
+        params.diagnostics = to_client(diagnostics, session.positions());
         publish(peer, params);
         publish_aliases(session.path_id);
     }

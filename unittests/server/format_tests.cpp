@@ -24,7 +24,7 @@ ZEST_CASE(UnmatchedContextWarns) {
         {});
     ZASSERT(diagnostics.size() == 1u);
     ZEXPECT(diagnostics[0].code == "unmatched-includer-context");
-    ZEXPECT(diagnostics[0].range.begin.line == 0u);
+    ZEXPECT(diagnostics[0].range.begin == 0u);
     ZEXPECT(format_diagnostics({.source = CommandSource::IncludeGraph}, {}).empty());
 };
 

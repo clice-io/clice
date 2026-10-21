@@ -895,18 +895,18 @@ enum class DiagnosticOrigin : std::uint8_t {
     IncluderContext,
 };
 
-/// A place a diagnostic's note points at.
+/// A place a diagnostic's note points at: bytes of the file at `path`.
 struct DiagnosticNote {
     std::string path;
-    LineColumnRange range;
+    LocalSourceRange range;
     std::string message;
 };
 
-/// A diagnostic as shown on one file, in the file's positions: the
+/// A diagnostic as shown on one file, at bytes of the text compiled: the
 /// compiler's and clang-tidy's of its compile, and clice's own about the
 /// file. Each client gets it in the shape it takes (to_protocol).
 struct FileDiagnostic {
-    LineColumnRange range;
+    LocalSourceRange range = {0, 0};
     DiagnosticLevel level = DiagnosticLevel::Warning;
     DiagnosticSource source = DiagnosticSource::Clice;
 
@@ -934,11 +934,17 @@ auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 /// character.
 FileDiagnostic file_warning(std::string message);
 
-/// The LSP form of `diagnostic`, in `encoding`. A client that takes no
+/// The LSP form of `diagnostic`, its positions counted in `encoding`:
+/// `positions` maps the text it was compiled from, `note_positions` the
+/// file of a note, nullopt for a file it cannot read (the note is left
+/// out); nullopt when the range is past the text. A client that takes no
 /// related information gets the notes in the message.
-protocol::Diagnostic to_protocol(const FileDiagnostic& diagnostic,
-                                 bool related_information,
-                                 PositionEncoding encoding);
+std::optional<protocol::Diagnostic> to_protocol(
+    const FileDiagnostic& diagnostic,
+    bool related_information,
+    PositionEncoding encoding,
+    const PositionMap& positions,
+    llvm::function_ref<std::optional<PositionMap>(llvm::StringRef path)> note_positions);
 
 /// A name of another namespace unqualified completion may offer, found in
 /// the index: the completion looks it up to tell whether the file reaches

@@ -19,37 +19,6 @@ inline bool ends_crlf(std::span<const std::uint64_t> crlf, std::size_t line) {
     return line / 64 < crlf.size() && ((crlf[line / 64] >> (line % 64)) & 1) != 0;
 }
 
-/// A position in a text: its 0-based line, and its column from the line
-/// start counted in bytes and in UTF-16 code units — the same number for
-/// ASCII text — so that it answers a client in either encoding once the
-/// text's line table is gone.
-struct LineColumn {
-    std::uint32_t line = 0;
-    std::uint32_t column = 0;
-    std::uint32_t utf16_column = 0;
-
-    /// The position as a client counting in `encoding` takes it.
-    kota::ipc::protocol::Position in(PositionEncoding encoding) const {
-        switch(encoding) {
-            case PositionEncoding::UTF8: return {.line = line, .character = column};
-            case PositionEncoding::UTF16: return {.line = line, .character = utf16_column};
-            // No client is offered UTF-32.
-            case PositionEncoding::UTF32: break;
-        }
-        std::unreachable();
-    }
-};
-
-struct LineColumnRange {
-    LineColumn begin;
-    LineColumn end;
-
-    /// The range as a client counting in `encoding` takes it.
-    kota::ipc::protocol::Range in(PositionEncoding encoding) const {
-        return {.start = begin.in(encoding), .end = end.in(encoding)};
-    }
-};
-
 /// The conversions between one text's byte offsets and its positions, over
 /// the line starts its owner keeps, in the encoding each call names.
 /// Borrows everything.
@@ -100,37 +69,6 @@ public:
             LOG_ANOMALY(PositionMapFail, "offset {} cannot be mapped to a position", offset);
         }
         return position;
-    }
-
-    /// The position of an offset in both encodings, as position() converts
-    /// it.
-    std::optional<LineColumn> line_column(std::uint32_t offset) const {
-        auto bytes = position(offset, PositionEncoding::UTF8);
-        if(!bytes) {
-            return std::nullopt;
-        }
-        return LineColumn{
-            .line = bytes->line,
-            .column = bytes->character,
-            .utf16_column = position(offset, PositionEncoding::UTF16)->character,
-        };
-    }
-
-    /// The ends of a byte range in both encodings, as range() converts them.
-    std::optional<LineColumnRange> line_columns(LocalSourceRange range) const {
-        auto bytes = this->range(range, PositionEncoding::UTF8);
-        if(!bytes) {
-            return std::nullopt;
-        }
-        auto units = *this->range(range, PositionEncoding::UTF16);
-        return LineColumnRange{
-            .begin = {.line = bytes->start.line,
-                      .column = bytes->start.character,
-                      .utf16_column = units.start.character},
-            .end = {.line = bytes->end.line,
-                      .column = bytes->end.character,
-                      .utf16_column = units.end.character  },
-        };
     }
 
     /// The positions of a byte range's ends, as position() converts each.
