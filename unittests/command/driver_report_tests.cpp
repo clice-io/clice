@@ -175,6 +175,7 @@ ZEST_CASE(StandardFromMacros) {
     ZEXPECT(standard(R"(#define __STRICT_ANSI__ 1
 #define __cplusplus 201703L)") == "c++17");
     ZEXPECT(standard("#define __cplusplus 202400L") == "gnu++26");
+    ZEXPECT(standard("#define __cplusplus 202700L") == "gnu++2d");
     ZEXPECT(standard("#define __STDC_VERSION__ 202500L") == "gnu2y");
     /// Neither: an assembler input, which no -std fits.
     ZEXPECT(standard("#define __ASSEMBLER__ 1").empty());
@@ -189,6 +190,7 @@ ZEST_CASE(CLReport) {
     auto report = parse_cl_report("msvc_lang 202400L\r\nmsc_full_ver 194435207\r\n");
     ZEXPECT(report.standard == "c++26");
     ZEXPECT(report.version == "19.44.35207");
+    ZEXPECT(parse_cl_report("msvc_lang 202700L").standard == "c++2d");
 
     /// A C input has no `_MSVC_LANG`: the name stays as written.
     auto c = parse_cl_report("msvc_lang _MSVC_LANG\nmsc_full_ver 192930133\n");

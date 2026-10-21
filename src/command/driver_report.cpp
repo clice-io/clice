@@ -50,9 +50,10 @@ std::string standard_from_macros(llvm::StringRef cplusplus,
                              {201402, "14"},
                              {201703, "17"},
                              {202002, "20"},
-                             {202302, "23"}
+                             {202302, "23"},
+                             {202400, "26"}
         },
-                         "26");
+                         "2d");
         return (strict ? "c++" : "gnu++") + year.str();
     }
     if(stdc_version.empty()) {

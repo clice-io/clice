@@ -414,19 +414,51 @@ ZEST_CASE(ClangJobKeepsStandard, skip = Windows) {
     ZEXPECT(!contains(argv, "-std=gnu++14"));
 }
 
-ZEST_CASE(CLStandardAndVersion, skip = Windows) {
-    // `/std:c++latest` means the compiler's newest standard, not the linked
-    // clang's: C++26 to cl 19.44, whose version the job takes too.
-    auto cl = fake_driver("cl", R"(echo 'msvc_lang 202400L'
+/// A cl answering the macro probe as cl 19.44 does, and rejecting a flag
+/// spelled for clang's cl mode as cl does (`/WX` renders as -Werror: D8021).
+std::string fake_cl() {
+    return fake_driver("cl", R"(case " $* " in *" -W"*|*" /clang:"*)
+  echo "cl : Command line error D8021 : invalid numeric argument '/Werror'"
+  exit 2 ;;
+esac
+case " $* " in
+*" /std:c++17 "*) echo 'msvc_lang 201703L' ;;
+*) echo 'msvc_lang 202400L' ;;
+esac
 echo 'msc_full_ver 194435207'
 )");
-    auto argv = f.resolve(add("a.cpp", {cl.c_str(), "/std:c++latest"}));
-    auto standard = std::ranges::find_if(argv | std::views::reverse, [](llvm::StringRef arg) {
-        return arg.starts_with("-std=");
-    });
-    ZASSERT(standard != (argv | std::views::reverse).end());
-    ZEXPECT(llvm::StringRef(*standard) == "-std=c++26");
+}
+
+/// The standard the cc1 command compiles in: its last -std.
+llvm::StringRef last_standard(llvm::ArrayRef<const char*> argv) {
+    for(llvm::StringRef arg: llvm::reverse(argv)) {
+        if(arg.starts_with("-std=")) {
+            return arg;
+        }
+    }
+    return {};
+}
+
+ZEST_CASE(CLStandardAndVersion, skip = Windows) {
+    // `/std:c++latest` means the compiler's newest standard, not the linked
+    // clang's: C++26 to cl 19.44, whose version the job takes too. cl hears
+    // the standard alone: the command's other flags are spelled for clang.
+    auto cl = fake_cl();
+    auto argv = f.resolve(add("a.cpp", {cl.c_str(), "/std:c++latest", "/WX-", "/Wall"}));
+    ZEXPECT(last_standard(argv) == "-std=c++26");
     ZEXPECT(contains(argv, "-fms-compatibility-version=19.44.35207"));
+}
+
+ZEST_CASE(CLKeepsClangSpellings, skip = Windows) {
+    // A standard and a version set in clang's spelling stay clang's reading.
+    auto cl = fake_cl();
+    auto argv = f.resolve(add("a.cpp",
+                              {cl.c_str(),
+                               "/std:c++17",
+                               "/clang:-std=c++23",
+                               "/clang:-fms-compatibility-version=19.29"}));
+    ZEXPECT(last_standard(argv) == "-std=c++23");
+    ZEXPECT(!contains(argv, "-fms-compatibility-version=19.44.35207"));
 }
 
 ZEST_CASE(UserContentAttached, skip = Windows) {
