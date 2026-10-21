@@ -154,8 +154,9 @@ std::uint64_t macos_headroom(const HostMemory& host, llvm::ArrayRef<ProcessUsage
     // any. What the rest of the system holds is the wired, anonymous and
     // compressed memory less the workers' own anonymous pages and their
     // share of the compressor, at its current ratio. A resident size
-    // counts the file pages too, which the anonymous count leaves out, and
-    // a footprint the compressed pages, at their size before compression.
+    // counts the file pages and the reusable ones too, which a footprint
+    // leaves out, and a footprint the compressed pages, at their size
+    // before compression.
     auto ratio = host.compressor > 0 ? double(host.compressed) / double(host.compressor) : 1.0;
     std::uint64_t ours = 0;
     std::uint64_t footprint = 0;
@@ -164,7 +165,9 @@ std::uint64_t macos_headroom(const HostMemory& host, llvm::ArrayRef<ProcessUsage
         ours += anonymous + std::uint64_t(double(worker.memory - anonymous) / ratio);
         footprint += worker.memory;
     }
-    auto held = host.wired + host.anonymous + host.compressor;
+    // The reusable count is read apart from the anonymous one that holds it.
+    auto in_use = host.anonymous - std::min(host.anonymous, host.reusable);
+    auto held = host.wired + in_use + host.compressor;
     auto others = held > ours ? held - ours : 0;
     auto taken = others + footprint;
     return host.total > taken ? host.total - taken : 0;
@@ -237,10 +240,13 @@ std::optional<ProcessUsage> process_usage(std::uint32_t pid) {
 MemoryState memory_state(llvm::ArrayRef<ProcessUsage> workers) {
     std::uint64_t total = 0;
     auto size = sizeof(total);
+    std::uint32_t reusable = 0;
+    auto reusable_size = sizeof(reusable);
     vm_statistics64_data_t vm{};
     mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
     vm_size_t page = 0;
     if(::sysctlbyname("hw.memsize", &total, &size, nullptr, 0) != 0 ||
+       ::sysctlbyname("vm.page_reusable_count", &reusable, &reusable_size, nullptr, 0) != 0 ||
        ::host_statistics64(::mach_host_self(),
                            HOST_VM_INFO64,
                            reinterpret_cast<host_info64_t>(&vm),
@@ -252,6 +258,7 @@ MemoryState memory_state(llvm::ArrayRef<ProcessUsage> workers) {
         .total = total,
         .wired = std::uint64_t(vm.wire_count) * page,
         .anonymous = std::uint64_t(vm.internal_page_count) * page,
+        .reusable = std::uint64_t(reusable) * page,
         .compressor = std::uint64_t(vm.compressor_page_count) * page,
         .compressed = std::uint64_t(vm.total_uncompressed_pages_in_compressor) * page,
     };

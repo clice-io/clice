@@ -18,9 +18,12 @@ common:macos --macos_minimum_os=15.0
 common --@kotatsu//bazel:exceptions=false --@kotatsu//bazel:rtti=false
 common --@simdjson//:exceptions=false
 common --@spdlog//:std_format=true --@spdlog//:exceptions=false
-# The allocator of the Windows executable (src/mimalloc.cc) leaves its memory
-# to the process exit.
+# The allocator of the Windows and macOS executables (src/mimalloc.cc)
+# leaves its memory to the process exit. On macOS mimalloc takes malloc over
+# itself, as its malloc zone also serves the system libraries; under ASan
+# (Debug), ASan's allocator does.
 common --@mimalloc//:skip_collect_on_exit=true
+common:macos --@mimalloc//:override=true
 
 # The build types, each in a directory of its own: build/<type>/bin is
 # Bazel's output tree of it, clice and unittests in its bin/, clang's
@@ -30,6 +33,7 @@ common --@mimalloc//:skip_collect_on_exit=true
 common -c opt --copt=-g --symlink_prefix=build/RelWithDebInfo/
 common:RelWithDebInfo -c opt
 common:Debug -c dbg --features=asan --symlink_prefix=build/Debug/
+common:Debug --@mimalloc//:override=false
 # At -O1, as xclang builds the ASan libclang. clang's inline functions are
 # compiled into both; the link keeps one copy, picked by link order, and
 # libclang's own calls go to it: an -O0 copy slows them ~10x.

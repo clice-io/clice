@@ -133,6 +133,16 @@ ZEST_CASE(MacFilePagesExcluded) {
     ZEXPECT(macos_headroom(host, workers) == 9 * GiB);
 }
 
+ZEST_CASE(MacReusablePagesFree) {
+    // A worker whose allocator gave 1 GiB back as reusable: resident 2 GiB,
+    // its footprint 1 GiB; the machine's anonymous count holds both.
+    HostMemory host{.total = 16 * GiB, .wired = 2 * GiB, .anonymous = 5 * GiB, .reusable = 1 * GiB};
+    std::vector<ProcessUsage> workers{
+        {.memory = 1 * GiB, .resident = 2 * GiB}
+    };
+    ZEXPECT(macos_headroom(host, workers) == 10 * GiB);
+}
+
 ZEST_CASE(MacCompressedShare) {
     // 2 GiB of the worker's 3 compressed fourfold: the compressor holds
     // 512 MiB of it.

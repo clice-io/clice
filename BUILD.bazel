@@ -82,13 +82,17 @@ cc_library(
     ]),
 ]]
 
-# The allocator of the Windows executable, no part of the module: it
-# includes the standard headers as they are.
+# The allocator of the Windows and macOS executables, no part of the module:
+# it includes the standard headers as they are.
 cc_library(
     name = "allocator",
     srcs = ["src/mimalloc.cc"],
     copts = COPTS,
-    target_compatible_with = ["@platforms//os:windows"],
+    target_compatible_with = select({
+        "@platforms//os:macos": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = ["@mimalloc"],
     alwayslink = True,
 )
@@ -113,6 +117,7 @@ cc_binary(
         ":driver",
         "//bazel:llvm",
     ] + select({
+        "@platforms//os:macos": [":allocator"],
         "@platforms//os:windows": [":allocator"],
         "//conditions:default": [],
     }),

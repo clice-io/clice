@@ -32,9 +32,10 @@ struct MemoryState {
     /// What is left: on Linux the least of MemAvailable and, at each level
     /// of the memory cgroups clice runs in, its limit less its usage plus
     /// the file cache no process maps; on macOS the physical memory less
-    /// what the rest of the system holds (wired, anonymous and compressed)
-    /// less the workers' footprints; on Windows the least of the available
-    /// physical memory and the commit charge left.
+    /// what the rest of the system holds (wired, anonymous but not
+    /// reusable, and compressed) less the workers' footprints; on Windows
+    /// the least of the available physical memory and the commit charge
+    /// left.
     std::uint64_t headroom = 0;
 
     /// The headroom kept free: 5% of the limit, at least 512 MiB; on macOS
@@ -58,6 +59,13 @@ struct HostMemory {
 
     /// The anonymous pages in memory.
     std::uint64_t anonymous = 0;
+
+    /// The anonymous pages processes gave back as reusable: macOS takes them
+    /// without compressing them, and no footprint counts them. mimalloc,
+    /// clice's allocator, unmarks a page before it uses it again; libmalloc,
+    /// the rest of the system's, leaves some it reuses marked, out of the
+    /// 0.5–0.7 GB a fresh 7 GB runner marks in all.
+    std::uint64_t reusable = 0;
 
     /// The compressor's pages, and what they hold before compression.
     std::uint64_t compressor = 0;
