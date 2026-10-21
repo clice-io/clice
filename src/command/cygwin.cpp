@@ -20,12 +20,12 @@ MountTable MountTable::parse(llvm::StringRef listing) {
     llvm::SmallVector<llvm::StringRef> lines;
     listing.split(lines, '\n', -1, false);
     for(auto line: lines) {
-        auto on = line.find(" on /");
-        auto type = line.rfind(" type ");
-        if(on == llvm::StringRef::npos || type == llvm::StringRef::npos || type < on) {
+        auto [windows, mount] = line.split(" on /");
+        auto [point, type] = mount.rsplit(" type ");
+        if(type.empty()) {
             continue;
         }
-        table.mounts.emplace_back(line.slice(on + 4, type).str(), line.take_front(on).str());
+        table.mounts.emplace_back(("/" + point).str(), windows.str());
     }
     std::ranges::stable_sort(table.mounts, std::ranges::greater{}, [](const auto& mount) {
         return mount.first.size();
@@ -38,8 +38,7 @@ std::string MountTable::to_windows(llvm::StringRef posix) const {
     llvm::sys::path::remove_dots(folded, /*remove_dot_dot=*/true, llvm::sys::path::Style::posix);
     for(auto& [point, directory]: mounts) {
         llvm::StringRef rest = folded;
-        if(!rest.consume_front(point) ||
-           (!rest.empty() && !rest.starts_with("/") && !llvm::StringRef(point).ends_with("/"))) {
+        if(!rest.consume_front(point) || !(point == "/" || rest.empty() || rest.starts_with("/"))) {
             continue;
         }
         rest = rest.ltrim('/');
@@ -99,7 +98,7 @@ std::optional<std::string> read_cygwin_symlink(llvm::StringRef path) {
     constexpr llvm::StringLiteral cookie = "!<symlink>";
     // A symlink file holds a path; the program a driver names is far larger.
     auto status = vfs::status(path);
-    if(!status || !status->is_file() || status->stamp.size > 4096) {
+    if(!status || status->stamp.size > 4096) {
         return std::nullopt;
     }
     auto buffer = vfs::read(path, vfs::Read::Bytes);

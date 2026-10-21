@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { entryArguments, entrySource, samePath, type DatabaseEntry } from "./database.ts";
+import { cygpath, entryArguments, entrySource, samePath, type DatabaseEntry } from "./database.ts";
 import { run } from "./scenario.ts";
 
 /// Macros whose values follow from the compiler, its target and the
@@ -107,6 +107,7 @@ export async function compilerMacros(
     entry: DatabaseEntry,
     scratch: string,
     env: NodeJS.ProcessEnv,
+    posix?: string,
 ): Promise<Map<string, string | undefined>> {
     const source = entrySource(entry);
     const [driver, ...rest] = entryArguments(entry);
@@ -126,6 +127,10 @@ export async function compilerMacros(
           : "#include <cstdio>\n";
     fs.writeFileSync(probe, library + macros.map((name) => `"${name}"=${name}\n`).join(""));
 
+    // A POSIX database names the source as its runtime spells it.
+    const written = posix === undefined ? [] : rest.filter((arg) => arg.startsWith("/"));
+    const mapped = posix === undefined || written.length === 0 ? [] : await cygpath(posix, written);
+    const native = new Map(written.map((arg, i) => [arg, mapped[i] ?? arg]));
     const args: string[] = [];
     for (let i = 0; i < rest.length; i += 1) {
         const arg = rest[i] ?? "";
@@ -133,7 +138,7 @@ export async function compilerMacros(
             i += 1;
         } else if (
             !(msvc ? MSVC_DROPPED.test(arg) : DROPPED.has(arg)) &&
-            !samePath(path.resolve(entry.directory, arg), source)
+            !samePath(path.resolve(entry.directory, native.get(arg) ?? arg), source)
         ) {
             args.push(arg);
         }
@@ -145,7 +150,15 @@ export async function compilerMacros(
     args.splice(end === -1 ? args.length : end, 0, ...preprocess);
     args.push(probe);
 
-    const probed = await run(driver, args, { cwd: entry.directory, env });
+    // The runtime's env starts the compiler as its shell did: a POSIX
+    // path, without `.exe`, or a Cygwin symlink (/usr/bin/cc).
+    const probed =
+        posix === undefined
+            ? await run(driver, args, { cwd: entry.directory, env })
+            : await run(path.join(posix, "env.exe"), [driver, ...args], {
+                  cwd: entry.directory,
+                  env,
+              });
     if (probed.status !== 0) {
         throw new Error(
             `${source}: preprocessing the probe with the entry's compiler failed ` +

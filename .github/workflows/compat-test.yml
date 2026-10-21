@@ -76,12 +76,23 @@ jobs:
             gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
             gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf
 
-      # MSYS2 ships on the image without compilers.
+      # MSYS2 ships on the image without compilers: its UCRT and clang
+      # environments' native ones, and its own GCC and CMake, which write
+      # POSIX paths.
       - name: Install MSYS2's compilers
         if: runner.os == 'Windows'
         run: |
           C:/msys64/usr/bin/pacman.exe -Sy --noconfirm --needed \
-            mingw-w64-ucrt-x86_64-gcc mingw-w64-clang-x86_64-clang
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-clang-x86_64-clang gcc cmake ninja
+
+      - name: Install Cygwin's compilers
+        if: runner.os == 'Windows'
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/setup-x86_64.exe" https://cygwin.com/setup-x86_64.exe
+          "$RUNNER_TEMP/setup-x86_64.exe" --quiet-mode --no-desktop --no-shortcuts --no-startmenu \
+            --root 'C:\cygwin64' --local-package-dir "$(cygpath -w "$RUNNER_TEMP/cygwin")" \
+            --site https://mirrors.kernel.org/sourceware/cygwin/ \
+            --packages gcc-core,gcc-g++,cmake,ninja
 
       - name: Install zig
         if: runner.os == 'Linux'

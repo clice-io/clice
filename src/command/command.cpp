@@ -471,9 +471,10 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
 
     CompileConfig config;
     config.directory = strings.save(directory.str()).data();
-    config.driver = mounts && is_posix_path(arguments[0])
-                        ? strings.save(mounts->to_windows(arguments[0])).data()
-                        : strings.save(arguments[0]).data();
+    llvm::StringRef driver = arguments[0];
+    config.driver =
+        strings.save(mounts && is_posix_path(driver) ? mounts->to_windows(driver) : driver.str())
+            .data();
     arguments = arguments.drop_front();
 
     config.family = Toolchain::driver_family(config.driver);

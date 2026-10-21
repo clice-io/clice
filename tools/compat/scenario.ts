@@ -43,6 +43,16 @@ export interface Scenario {
     /// compilers load their DLLs from there.
     path?: string[];
 
+    /// The name of the project copy's directory, where its path is what
+    /// the scenario exercises: spaces and letters past ASCII go through the
+    /// build, its database and clice.
+    directory?: string;
+
+    /// The bin directory of the Cygwin or MSYS2 the build runs in, whose
+    /// database spells POSIX paths: its cygpath maps them for the checks,
+    /// and its env runs the compiler as the build did.
+    posix?: string;
+
     /// Build steps run in order in the project copy, each an argv.
     build: [string, ...string[]][];
 
