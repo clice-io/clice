@@ -25,9 +25,9 @@ struct DriverReport {
     /// empty for GCC.
     std::vector<std::string> clang_job;
 
-    /// Whether GCC ran its compiler proper; the fields up to `private_dir`
-    /// are GCC's.
-    bool gcc_job = false;
+    /// The compiler proper GCC ran (cc1, cc1plus) as its job names it;
+    /// empty when it ran none. The fields up to `private_dir` are GCC's.
+    std::string gcc_job;
 
     /// The target triple, from the `Target:` line.
     std::string target;

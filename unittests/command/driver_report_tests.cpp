@@ -104,6 +104,7 @@ ZEST_CASE(CygwinPrivateDir) {
 End of search list.
 LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-cygwin/14/:/usr/lib/gcc/x86_64-pc-cygwin/14/../../../../x86_64-pc-cygwin/lib/:/usr/lib/gcc/x86_64-pc-cygwin/14/../../../:/lib/:/usr/lib/)";
     auto report = parse_driver_report("#define __STDC_VERSION__ 201710L", err);
+    ZEXPECT(report.gcc_job == "/usr/lib/gcc/x86_64-pc-cygwin/14/cc1.exe");
     ZEXPECT(report.target == "x86_64-pc-cygwin");
     ZASSERT(report.search_dirs.size() == std::size_t(3));
     ZEXPECT(report.private_dir == std::optional<std::size_t>(0));
@@ -153,7 +154,7 @@ End of search list.)";
                                     "c++",
                                     "/tmp/probe.cpp"};
     ZEXPECT(report.clang_job == job);
-    ZEXPECT(!report.gcc_job);
+    ZEXPECT(report.gcc_job.empty());
     ZEXPECT(report.gcc_options.empty());
     ZEXPECT(report.standard == "gnu++14");
 }

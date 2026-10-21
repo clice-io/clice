@@ -106,9 +106,14 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
 
 /// A Cygwin or MSYS2 driver reports its job's paths and its search list as
 /// POSIX paths, which the mount table of the runtime it loads maps to the
-/// Windows paths clang opens.
+/// Windows paths clang opens. Such a driver names its job's program
+/// POSIX-style too: a native clang's job for a Linux target names
+/// `/usr/include`, which is clang's to resolve, not a runtime's.
 kota::task<std::expected<DriverReport, std::string>> translate_posix_paths(DriverReport report,
                                                                            std::string driver) {
+    if(!is_posix_path(report.clang_job.empty() ? report.gcc_job : report.clang_job.front())) {
+        co_return report;
+    }
     std::vector<std::string*> paths;
     for(auto& dir: report.search_dirs) {
         if(is_posix_path(dir.path)) {
@@ -386,7 +391,7 @@ kota::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::strin
         }
         co_return job;
     }
-    if(!report->gcc_job) {
+    if(report->gcc_job.empty()) {
         co_return std::unexpected(std::format("{} runs no compiler job for the input", args[0]));
     }
     if(!standard.empty()) {
@@ -474,7 +479,7 @@ kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string>
     if(!host_report) {
         co_return std::unexpected(std::move(host_report.error()));
     }
-    if(host_report->clang_job.empty() && !host_report->gcc_job) {
+    if(host_report->clang_job.empty() && host_report->gcc_job.empty()) {
         co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", *host));
     }
 
@@ -552,8 +557,8 @@ kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string>
 
     /// A clang host needs no setup: clang's own driver already defaults to
     /// the running machine's triple.
-    co_return host_report->gcc_job ? query_as_gcc(*host_report, cuda_args, cwd)
-                                   : query_driver(cuda_args, cwd);
+    co_return !host_report->gcc_job.empty() ? query_as_gcc(*host_report, cuda_args, cwd)
+                                            : query_driver(cuda_args, cwd);
 }
 
 /// The probe working directory, empty when the wanted one does not exist
@@ -624,12 +629,15 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
         }
     }
 #ifdef _WIN32
-    // Cygwin and MSYS2 tools name programs without the `.exe` Windows adds
-    // when it starts one.
-    if(!vfs::exists(found) && path::extension(found).empty() &&
-       vfs::exists(found.str().str() + ".exe")) {
-        found += ".exe";
-    }
+    // Cygwin and MSYS2 tools, and a Cygwin symlink's target, name programs
+    // without the `.exe` Windows adds when it starts one.
+    auto with_exe = [](llvm::SmallString<128>& program) {
+        if(!vfs::exists(program) && path::extension(program).empty() &&
+           vfs::exists(program.str().str() + ".exe")) {
+            program += ".exe";
+        }
+    };
+    with_exe(found);
     if(auto target = read_cygwin_symlink(found)) {
         if(is_posix_path(*target)) {
             return std::unexpected(
@@ -638,6 +646,7 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
                             *target));
         }
         found = (path::parent_path(found) + "/" + *target).str();
+        with_exe(found);
     }
 #endif
     if(!vfs::exists(found) || !llvm::sys::fs::can_execute(found)) {

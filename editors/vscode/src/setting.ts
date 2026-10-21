@@ -26,11 +26,20 @@ export function resolveExecutable(executable: string, base: string | undefined):
     return relative && base ? path.resolve(base, executable) : executable;
 }
 
+/// The value of `name` in `env`, which Windows spells in any case (`Path`).
+export function variable(
+    env: NodeJS.ProcessEnv,
+    name: string,
+    windows = process.platform === "win32",
+): string | undefined {
+    const fold = (key: string) => (windows ? key.toUpperCase() : key);
+    return Object.entries(env).find(([key]) => fold(key) === fold(name))?.[1];
+}
+
 /// The environment the server runs in, and the compilers it asks how they
-/// compile: `base` with `overrides` on top. A value names `base`'s
-/// variables as `${env:NAME}`, as terminal.integrated.env.* does. Windows
-/// spells a variable in any case (`Path`), and an override replaces it
-/// whatever its case.
+/// compile: `base` with `overrides` on top, an override replacing a
+/// variable whatever its case on Windows. A value names `base`'s
+/// variables as `${env:NAME}`, as terminal.integrated.env.* does.
 export function serverEnvironment(
     base: NodeJS.ProcessEnv,
     overrides: Record<string, string>,
@@ -42,10 +51,10 @@ export function serverEnvironment(
         Object.entries(base).filter(([name]) => !replaced.has(fold(name))),
     );
     for (const [name, value] of Object.entries(overrides)) {
-        env[name] = value.replace(/\$\{env:([^}]+)\}/g, (_, variable: string) => {
-            const found = Object.entries(base).find(([other]) => fold(other) === fold(variable));
-            return found?.[1] ?? "";
-        });
+        env[name] = value.replace(
+            /\$\{env:([^}]+)\}/g,
+            (_, other: string) => variable(base, other, windows) ?? "",
+        );
     }
     return env;
 }
