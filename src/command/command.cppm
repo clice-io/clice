@@ -615,9 +615,9 @@ private:
     /// commands expand among its inputs; nullopt outside a load.
     std::optional<SourceID> loading;
 
-    /// The mount table mapping the POSIX paths of the database being
+    /// The mount table mapping the POSIX paths of the database entry being
     /// loaded, one written inside Cygwin or MSYS2 (CMake run from their
-    /// shell); null outside such a load.
+    /// shell); null outside such an entry.
     const MountTable* mounts = nullptr;
 
     /// Every source's entries, sorted by (file, source, ordinal).

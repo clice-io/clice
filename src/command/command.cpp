@@ -999,7 +999,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
     // A database written inside Cygwin or MSYS2 (CMake run from their shell)
     // spells its paths POSIX-style: the mount table of the runtime on PATH,
-    // read at the first such entry, maps them.
+    // read at the first such entry, maps the entries so spelled.
     std::optional<std::expected<MountTable, std::string>> table;
     auto unmount = llvm::make_scope_exit([&] { mounts = nullptr; });
 
@@ -1081,12 +1081,11 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         }
 
         llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
+        mounts = nullptr;
         if(is_posix_path(dir_ref)) {
             if(!table) {
                 table = path_mount_table(dir_ref, {file_sv.data(), file_sv.size()});
-                if(*table) {
-                    mounts = &**table;
-                } else {
+                if(!*table) {
                     LOG_ERROR(
                         "Compilation database {} spells its paths POSIX-style ({}) and they "
                         "cannot be mapped: {}. Put the bin directory of the Cygwin or MSYS2 "
@@ -1097,9 +1096,10 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                         table->error());
                 }
             }
-            if(!mounts) {
+            if(!*table) {
                 continue;
             }
+            mounts = &**table;
         }
 
         // A relative `directory` anchors to the CDB file's own location —
