@@ -195,12 +195,15 @@ std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,
 }
 
 /// cl and clang-cl: asked to preprocess a file naming their macros, the
-/// driver tells the C++ standard it compiles in and its version — what
-/// `/std:c++latest` means moves from one version to the next, and clang's
-/// own detection takes the newest toolset installed. clang's own driver in
-/// cl mode, which sets the windows-msvc target itself, then builds the job
-/// in that standard and version.
+/// driver tells the C++ standard it compiles in — what `/std:c++latest`
+/// means moves from one version to the next — and cl its version, where
+/// clang's own detection would take the newest toolset installed. clang's
+/// own driver in cl mode, which sets the windows-msvc target itself, then
+/// builds the job in that standard and version. clang-cl's version is the
+/// one that detection finds, from the toolset its flags select
+/// (`/winsysroot`), as it does here.
 kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
+                                                   CompilerFamily family,
                                                    llvm::StringRef input,
                                                    std::string cwd) {
     if(auto error = vfs::write(input, cl_probe_source)) {
@@ -244,7 +247,7 @@ kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> a
     if(!names_standard && !report.standard.empty()) {
         job->push_back("-std=" + report.standard);
     }
-    if(!names_version && !report.version.empty()) {
+    if(family == CompilerFamily::MSVC && !names_version && !report.version.empty()) {
         job->push_back("-fms-compatibility-version=" + report.version);
     }
     co_return job;
@@ -589,7 +592,7 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
         job = cl ? ask_clang(args, {"--driver-mode=cl"}, spec.cwd)
                  : ask_clang_for(std::move(args), driver_tokens, spec.cwd);
     } else if(cl) {
-        job = co_await ask_cl(args, *input, spec.cwd);
+        job = co_await ask_cl(args, spec.family, *input, spec.cwd);
     } else if(spec.family == CompilerFamily::NVCC) {
         job = co_await ask_nvcc(args, *input, spec.kind, spec.cwd);
     } else {

@@ -148,7 +148,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 询问时带着命令自身的标志，所以驱动程序回答的就是这条命令，而 GCC 只在这次编译成功时才会给出回答：关闭某项默认设置的标志（`-fno-stack-protector`）、`--sysroot` 或 `--specs` 文件都会体现在回答中。clang 不认识的 CPU 和 ABI 名称（GCC 的 `-mtune=intel`、Darwin 上的 `-mabi=lp64`）会从 cc1 命令中去掉，GCC 的双核写法 `-mcpu=cortex-a72.cortex-a53` 只保留第一个核。通用构建（`-arch arm64 -arch x86_64`）按其中第一个架构读取。
 
-**MSVC / ClangCL**：先让 cl 或 clang-cl 预处理（`/EP`）一个写着 `_MSVC_LANG` 和 `_MSC_FULL_VER` 的文件，只问一次，由此得知它编译所用的 C++ 标准和它的版本：`/std:c++latest` 的含义随版本而变，而 clang 自己的探测会取已安装的最新工具集。随后由处于 MSVC 兼容模式（`--driver-mode=cl`）的 Clang 驱动构建 cc1 命令，使用这个标准，并把这个版本作为 `-fms-compatibility-version`。cl 只会收到命令里的 `/std:`：其余参数是按 clang 的 cl 模式写的，cl 会拒绝；命令用 clang 写法设定的标准或版本（例如规则追加的 `-std=c++23`）仍以 clang 的读法为准。
+**MSVC / ClangCL**：先让 cl 或 clang-cl 预处理（`/EP`）一个写着 `_MSVC_LANG` 和 `_MSC_FULL_VER` 的文件，只问一次。由此得知它编译所用的 C++ 标准，因为 `/std:c++latest` 的含义随版本而变；还得知 cl 的版本，因为 clang 自己的探测会取已安装的最新工具集。随后由处于 MSVC 兼容模式（`--driver-mode=cl`）的 Clang 驱动构建 cc1 命令，使用这个标准，并把 cl 的版本作为 `-fms-compatibility-version`。clang-cl 的版本则是同一套探测从它的参数所选的工具集（`/winsysroot`）中得出的版本。cl 只会收到命令里的 `/std:`：其余参数是按 clang 的 cl 模式写的，cl 会拒绝；命令用 clang 写法设定的标准或版本（例如规则追加的 `-std=c++23`）仍以 clang 的读法为准。
 
 **nvcc**：nvcc 的 dry run 会给出 CUDA 根目录、宿主编译器以及 nvcc 定义的宏。宿主编译器按 GCC 风格驱动程序的方式询问，使用输入文件的语言，带上命令的 `--sysroot`，但不带命令的其他标志：GCC 宿主编译器像上文那样固定目标和搜索列表，clang 宿主编译器则什么都不需要。随后由 Clang 驱动带上 nvcc 的宏构建 cc1 命令，输入为 CUDA 文件时使用 CUDA 模式。
 
