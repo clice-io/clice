@@ -1365,22 +1365,10 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
             remove_flags = std::move(remove_source);
         }
         std::vector<RemovePattern> removes;
-        for(auto parsed: option::table().parse(remove_flags, remove_parse_options)) {
-            llvm::StringRef written;
-            if(parsed.has_value()) {
-                written = remove_flags[parsed->index];
-            } else {
-                // An option written without its value (`-include`, last
-                // in the list) removes it with every value.
-                auto& wildcard = remove_storage.emplace_back(
-                    std::vector<std::string>{remove_flags[parsed.error().index], "*"});
-                auto retried = option::table().parse(wildcard, remove_parse_options);
-                parsed = *retried.begin();
-                assert(parsed.has_value());
-            }
+        auto add = [&](const kota::option::ParsedArg& parsed, llvm::StringRef written) {
             auto& remove = removes.emplace_back(RemovePattern{
-                .option = *parsed,
-                .prefix = written.consume_back("*") && written == parsed->spelling,
+                .option = parsed,
+                .prefix = written.consume_back("*") && written == parsed.spelling,
             });
             // Anchored like the base command's paths, so a relative value
             // names the file the rule's configuration means; the `*`
@@ -1389,6 +1377,35 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                 if(value != "*") {
                     value = anchored(remove.option.id, value, anchor, strings);
                 }
+            }
+        };
+        // A dash-led token starts the next pattern, as no separate value is
+        // one: `["-include", "-I"]` names two options.
+        for(std::size_t begin = 0; begin < remove_flags.size();) {
+            auto end = begin + 1;
+            while(end < remove_flags.size() &&
+                  !llvm::StringRef(remove_flags[end]).starts_with("-")) {
+                end += 1;
+            }
+            auto& pattern = remove_storage.emplace_back(remove_flags.begin() + begin,
+                                                        remove_flags.begin() + end);
+            begin = end;
+            for(auto parsed: option::table().parse(pattern, remove_parse_options)) {
+                if(parsed.has_value()) {
+                    add(*parsed, pattern[parsed->index]);
+                    continue;
+                }
+                // An option written without its value (`-include`) removes
+                // it with every value.
+                auto& wildcard = remove_storage.emplace_back(
+                    std::vector<std::string>{pattern[parsed.error().index], "*"});
+                auto retried = *option::table().parse(wildcard, remove_parse_options).begin();
+                if(!retried) {
+                    LOG_WARN("A rule removes {}, which takes several values: write them",
+                             wildcard[0]);
+                    continue;
+                }
+                add(*retried, wildcard[0]);
             }
         }
         return removes;

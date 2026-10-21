@@ -223,7 +223,9 @@ ZEST_CASE(AppendAfterInputFlags) {
 
 ZEST_CASE(RemoveEveryValue) {
     /// A flag written without its value, or with `*` for it, removes every
-    /// value; a `*` joined to the name removes every flag of that prefix.
+    /// value, ahead of the next flag too; a `*` joined to the name removes
+    /// every flag of that prefix. One that takes several values removes
+    /// nothing until they are written.
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake",
@@ -231,7 +233,7 @@ ZEST_CASE(RemoveEveryValue) {
                          "clang -include pre.h -Iinc -Wall -Wextra -Wno-unused -DKEEP a.c"sv);
 
     std::vector<CommandEdit> edits = {
-        {CommandEdit::Kind::Remove, {"-I*", "-W*", "-include"}}
+        {CommandEdit::Kind::Remove, {"-include", "-I", "-W*", "-sectcreate"}}
     };
     ZEXPECT(print_argv(render_entry(database, fake("a.c"), {.edits = edits})) ==
             std::format("clang -D KEEP {}", fake("a.c")));
