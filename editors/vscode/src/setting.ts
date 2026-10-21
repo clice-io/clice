@@ -36,17 +36,15 @@ export function serverEnvironment(
     overrides: Record<string, string>,
     windows = process.platform === "win32",
 ): NodeJS.ProcessEnv {
-    const key = (env: NodeJS.ProcessEnv, name: string) =>
-        windows ? Object.keys(env).find((k) => k.toUpperCase() === name.toUpperCase()) : name;
-    const env = { ...base };
+    const fold = (name: string) => (windows ? name.toUpperCase() : name);
+    const replaced = new Set(Object.keys(overrides).map(fold));
+    const env: NodeJS.ProcessEnv = Object.fromEntries(
+        Object.entries(base).filter(([name]) => !replaced.has(fold(name))),
+    );
     for (const [name, value] of Object.entries(overrides)) {
-        const replaced = key(env, name);
-        if (replaced !== undefined) {
-            delete env[replaced];
-        }
         env[name] = value.replace(/\$\{env:([^}]+)\}/g, (_, variable: string) => {
-            const found = key(base, variable);
-            return (found === undefined ? undefined : base[found]) ?? "";
+            const found = Object.entries(base).find(([other]) => fold(other) === fold(variable));
+            return found?.[1] ?? "";
         });
     }
     return env;

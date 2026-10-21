@@ -626,7 +626,8 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
 #ifdef _WIN32
     // Cygwin and MSYS2 tools name programs without the `.exe` Windows adds
     // when it starts one.
-    if(!vfs::exists(found) && path::extension(found).empty()) {
+    if(!vfs::exists(found) && path::extension(found).empty() &&
+       vfs::exists(found.str().str() + ".exe")) {
         found += ".exe";
     }
     if(auto target = read_cygwin_symlink(found)) {
