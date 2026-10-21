@@ -293,7 +293,7 @@ private:
             return;
         }
         diagnostic.notes.push_back({
-            .path = unit.file_path(fid).str(),
+            .path = unit.focus_file().contains(fid) ? std::string() : unit.file_path(fid).str(),
             .range = range,
             .message = message.str(),
         });
@@ -339,6 +339,7 @@ std::optional<protocol::Diagnostic> to_protocol(
     const FileDiagnostic& diagnostic,
     bool related_information,
     PositionEncoding encoding,
+    llvm::StringRef path,
     const PositionMap& positions,
     llvm::function_ref<std::optional<PositionMap>(llvm::StringRef path)> note_positions) {
     auto range = positions.range(diagnostic.range, encoding);
@@ -385,22 +386,23 @@ std::optional<protocol::Diagnostic> to_protocol(
     message += diagnostic.message;
     std::vector<protocol::DiagnosticRelatedInformation> related;
     for(const auto& note: diagnostic.notes) {
-        // FIXME: the note's file is read when the diagnostic is shown; if it
+        auto file = note.path.empty() ? path : llvm::StringRef(note.path);
+        // FIXME: another file is read when the diagnostic is shown; if it
         // changed since the compile read it, the columns are off. A range
         // past its text places nothing.
-        auto map = note_positions(note.path);
+        auto map = note.path.empty() ? std::optional(positions) : note_positions(note.path);
         if(!map || note.range.end > map->size()) {
             continue;
         }
         auto placed = *map->range(note.range, encoding);
         if(related_information) {
             related.push_back({
-                .location = {.uri = to_uri(note.path), .range = placed},
+                .location = {.uri = to_uri(file), .range = placed},
                 .message = note.message,
             });
         } else {
             message += std::format("\n\n{}:{}:{}: {}",
-                                   llvm::sys::path::filename(note.path),
+                                   llvm::sys::path::filename(file),
                                    placed.start.line + 1,
                                    placed.start.character + 1,
                                    note.message);

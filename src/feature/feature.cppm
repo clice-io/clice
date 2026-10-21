@@ -895,7 +895,8 @@ enum class DiagnosticOrigin : std::uint8_t {
     IncluderContext,
 };
 
-/// A place a diagnostic's note points at: bytes of the file at `path`.
+/// A place a diagnostic's note points at: bytes of the file at `path`, of
+/// the text compiled when `path` is empty — the diagnostic's own file.
 struct DiagnosticNote {
     std::string path;
     LocalSourceRange range;
@@ -906,6 +907,7 @@ struct DiagnosticNote {
 /// compiler's and clang-tidy's of its compile, and clice's own about the
 /// file. Each client gets it in the shape it takes (to_protocol).
 struct FileDiagnostic {
+    /// The file's first character unless placed.
     LocalSourceRange range = {0, 0};
     DiagnosticLevel level = DiagnosticLevel::Warning;
     DiagnosticSource source = DiagnosticSource::Clice;
@@ -934,15 +936,17 @@ auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 /// character.
 FileDiagnostic file_warning(std::string message);
 
-/// The LSP form of `diagnostic`, its positions counted in `encoding`:
-/// `positions` maps the text it was compiled from, `note_positions` the
-/// file of a note, nullopt for a file it cannot read (the note is left
-/// out); nullopt when the range is past the text. A client that takes no
-/// related information gets the notes in the message.
+/// The LSP form of `diagnostic` of the file at `path`, its positions
+/// counted in `encoding`: `positions` maps the text it was compiled from,
+/// `note_positions` another file a note points into, nullopt for one it
+/// cannot read (the note is left out); nullopt when the range is past the
+/// text. A client that takes no related information gets the notes in the
+/// message.
 std::optional<protocol::Diagnostic> to_protocol(
     const FileDiagnostic& diagnostic,
     bool related_information,
     PositionEncoding encoding,
+    llvm::StringRef path,
     const PositionMap& positions,
     llvm::function_ref<std::optional<PositionMap>(llvm::StringRef path)> note_positions);
 

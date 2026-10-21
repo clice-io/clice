@@ -114,22 +114,13 @@ static bool kept_errors(const std::shared_ptr<index::TUIndex>& preamble) {
 /// The compile's diagnostics behind the ones its PCH's build raised in the
 /// preamble, which the parse consuming the PCH never raises again — those
 /// of the command line it does, and they appear once. Files with one
-/// preamble share the PCH: notes the build placed in its own focus file
-/// move to `path`.
+/// preamble share the PCH: a note in the build's own focus file is in
+/// theirs.
 static std::vector<feature::FileDiagnostic> with_preamble(std::vector<feature::FileDiagnostic> own,
-                                                          const index::TUIndex& preamble,
-                                                          llvm::StringRef path) {
+                                                          const index::TUIndex& preamble) {
     auto merged = preamble_diagnostics(preamble);
     if(merged.empty()) {
         return own;
-    }
-    auto builder = preamble.path(preamble.path_count() - 1);
-    for(auto& diagnostic: merged) {
-        for(auto& note: diagnostic.notes) {
-            if(note.path == builder) {
-                note.path = path.str();
-            }
-        }
     }
     llvm::StringSet<> raised;
     for(auto& diagnostic: own) {
@@ -1268,7 +1259,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         auto& diagnostics = result.value().diagnostics;
         if(preamble_state && preamble_state->matches_preamble(params.text)) {
-            diagnostics = with_preamble(std::move(diagnostics), *preamble_state, file_path);
+            diagnostics = with_preamble(std::move(diagnostics), *preamble_state);
         }
         explain_failed_imports(diagnostics, imports->resolved, pcm, project.dep_graph);
         note_provider_choices(diagnostics, *imports, project, *session);

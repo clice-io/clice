@@ -232,7 +232,7 @@ export class Serve extends Client {
     private readonly shownMessages: string[] = [];
     /// How the server counts a position's character, as it chose at the
     /// handshake from what the client offered.
-    encoding: PositionEncoding = "utf-16";
+    private encoding: PositionEncoding = "utf-16";
 
     /// Server actions over a copy the caller owns, whose case has `marks`;
     /// nothing starts yet.

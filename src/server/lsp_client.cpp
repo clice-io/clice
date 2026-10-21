@@ -197,21 +197,20 @@ struct DiskTexts {
 std::vector<protocol::Diagnostic>
     LSPClient::to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
                          const Session& session) {
-    // A note's file as the compile read it: the buffer compiled, any other
-    // file from the disk, open or not.
-    auto positions = session.positions();
+    // Another file a note points into is read from the disk, open or not:
+    // a compile reads only its own buffer from the editor.
     DiskTexts disk;
-    auto note_positions = [&](llvm::StringRef path) -> std::optional<PositionMap> {
-        if(server.files.find(Spelling::absolute(path)) == session.path_id) {
-            return positions;
-        }
+    auto note_positions = [&](llvm::StringRef path) {
         return disk.positions(path);
     };
+    auto path = server.files.display(session.path_id);
+    auto positions = session.positions();
     std::vector<protocol::Diagnostic> shaped;
     for(const auto& diagnostic: diagnostics) {
         if(auto converted = feature::to_protocol(diagnostic,
                                                  related_information,
                                                  server.position_encoding,
+                                                 path,
                                                  positions,
                                                  note_positions)) {
             shaped.push_back(std::move(*converted));

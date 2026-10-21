@@ -219,16 +219,17 @@ int main() { return 0; }
     auto diagnostics = feature::diagnostics(*unit);
     bool redefined = false;
     for(auto& diag: diagnostics) {
-        redefined |= diag.message.find("macro redefined") != std::string::npos;
-        for(auto& note: diag.notes) {
-            ZASSERT(!note.path.empty());
+        if(diag.message.find("macro redefined") != std::string::npos) {
+            redefined = true;
+            ZEXPECT(diag.notes.empty());
         }
     }
     ZASSERT(redefined);
 }
 
 ZEST_CASE(NoteFilesReadLater) {
-    /// A note's file is read when the diagnostic is shown: one gone, or
+    /// A note in the diagnostic's own file is placed in the text compiled;
+    /// another file is read when the diagnostic is shown: one gone, or
     /// shorter than the note's range, places nothing.
     std::string text = "int x;\n";
     auto starts = kota::ipc::lsp::line_starts(text);
@@ -239,6 +240,11 @@ ZEST_CASE(NoteFilesReadLater) {
         .range = {4, 5},
         .message = "redefinition"
     };
+    diagnostic.notes.push_back({
+        .path = "",
+        .range = {4, 5},
+        .message = "own"
+    });
     diagnostic.notes.push_back({
         .path = "/gone.h",
         .range = {0, 3},
@@ -265,13 +271,21 @@ ZEST_CASE(NoteFilesReadLater) {
             std::pair{PositionEncoding::UTF8,  7u},
             std::pair{PositionEncoding::UTF16, 5u}
     }) {
-        auto shown = feature::to_protocol(diagnostic, true, encoding, positions, note_positions);
+        auto shown = feature::to_protocol(diagnostic,
+                                          true,
+                                          encoding,
+                                          "/main.cpp",
+                                          positions,
+                                          note_positions);
         ZASSERT(shown);
         ZASSERT(shown->related_information);
-        ZASSERT(shown->related_information->size() == 1u);
-        auto& related = shown->related_information->front();
-        ZEXPECT(related.message == "here");
-        ZEXPECT(related.location.range.end.character == end);
+        auto& related = *shown->related_information;
+        ZASSERT(related.size() == 2u);
+        ZEXPECT(related[0].message == "own");
+        ZEXPECT(related[0].location.uri == feature::to_uri("/main.cpp"));
+        ZEXPECT(related[0].location.range.end.character == 5u);
+        ZEXPECT(related[1].message == "here");
+        ZEXPECT(related[1].location.range.end.character == end);
     }
 }
 
