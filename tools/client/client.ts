@@ -428,9 +428,9 @@ export class CliceClient {
         const initializationOptions = initializationOptionsFor(ws, options);
 
         // Protocol URIs stay percent-encoded (a '#' in the path must travel as
-        // %23, not become a fragment); the decoded ws.uri() form is for
+        // %23, not become a fragment); the decoded canonicalUri form is for
         // identity comparisons only.
-        const wsUri = URI.file(ws.root).toString();
+        const wsUri = ws.uri();
         const params: proto.InitializeParams = {
             processId: process.pid,
             // Versioned workspace edits and diagnostics' related
@@ -667,7 +667,7 @@ export class CliceClient {
     }
 
     /// Open a text document (path may be workspace-relative). Returns
-    /// [normalizedUri, content].
+    /// [uri, content], the URI as sent.
     ///
     /// `text` overrides the on-disk content (an editor buffer may differ
     /// from disk).
@@ -683,7 +683,7 @@ export class CliceClient {
                 text: content,
             },
         });
-        return [this.normalizeUri(sentUri), content];
+        return [sentUri, content];
     }
 
     close(uri: string): void {

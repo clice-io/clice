@@ -252,7 +252,7 @@ async function serverFindings(
                 } else {
                     const arrived = client.armDiagnostics(uri);
                     await withTimeout(arrived, 300_000, file);
-                    diagnostics = client.diagnostics.get(uri) ?? [];
+                    diagnostics = client.diagnostics.get(client.normalizeUri(uri)) ?? [];
                 }
                 result.set(file, diagnostics.map(fromLSP));
             } catch (error) {

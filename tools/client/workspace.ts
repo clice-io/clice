@@ -50,10 +50,11 @@ export class Workspace {
         return path.isAbsolute(rel) ? rel : path.join(this.root, rel);
     }
 
-    /// Canonical file:// URI of a workspace-relative path — safe to compare
-    /// against client-normalized server URIs and diagnostics-map keys.
+    /// The file:// URI of a workspace-relative path as an editor sends it,
+    /// percent-encoded; compared with one the server sent, both go through
+    /// canonicalUri.
     uri(rel = ""): string {
-        return canonicalUri(URI.file(this.path(rel)).toString());
+        return URI.file(this.path(rel)).toString();
     }
 
     /// How the server spells a workspace path in text (hover cards, CLI
