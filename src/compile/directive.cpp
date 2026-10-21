@@ -287,6 +287,8 @@ public:
               clang::SourceRange,
               clang::PPCallbacks::ConditionValueKind value,
               clang::SourceLocation) override {
+        /// FIXME: The macros of an `#elif` past a taken branch are never
+        /// evaluated, so they get no reference.
         add_condition(loc, Condition::Elif, value);
     }
 
@@ -306,8 +308,7 @@ public:
     /// Invoke when #elif is skipped.
     void Elifdef(clang::SourceLocation loc, clang::SourceRange, clang::SourceLocation) override {
         /// FIXME: The macro a skipped `#elifdef` / `#elifndef` names gets no
-        /// reference, nor do the macros of an `#elif` past a taken branch, so
-        /// macro references miss these sites.
+        /// reference, so macro references miss these sites.
         add_condition(loc, Condition::Elifdef, Condition::Skipped);
     }
 

@@ -1800,9 +1800,10 @@ struct DeclarationPrinter {
                     return " = " + *text;
                 }
             }
-            // FIXME: an initializer computed from the arguments (`= Size * 2`) or naming a
-            // parameter of an enclosing template shows nothing until something uses the
-            // member: clang instantiates it only there, and display has no Sema to do it.
+            /// FIXME: an initializer computed from the arguments (`= Size * 2`) or
+            /// naming a parameter of an enclosing template shows nothing until
+            /// something uses the member: clang instantiates it only there, and
+            /// display has no Sema to do it.
             if(auto argument = argument_initializer(var)) {
                 return " = " + *argument;
             }

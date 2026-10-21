@@ -910,12 +910,12 @@ public:
             if(auto* CRD = llvm::dyn_cast<clang::CXXRecordDecl>(TD)) {
                 if(auto* def = CRD->getDefinition()) {
                     for(auto& base: CRD->bases()) {
-                        // A dependent base is recorded per instantiation, by project_bases.
                         // Through any alias the base is written with: the
                         // hierarchy relates classes.
                         auto target = types::decl_of(base.getType().getCanonicalType());
                         /// A base that is a template parameter (`struct D : T`)
-                        /// names no class until instantiation.
+                        /// names no class until instantiation: project_bases
+                        /// records it per instantiation.
                         if(!target ||
                            llvm::isa<clang::TemplateTypeParmDecl, clang::TemplateTemplateParmDecl>(
                                target)) {

@@ -1,8 +1,8 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// config.h holds directives only and compiles in main.cpp's context; a
-// header with a declaration after its directives keeps one PCH here.
+// config.h holds directives only and compiles in main.cpp's context:
+// completion there reuses the compile's PCH, and an edit rebuilds it once.
 test("completion reuses the pch", async (t) => {
     const s = await t.start({ config: { project: { enable_indexing: false } } });
     expect(await s.errors("config.h")).toEqual([]);

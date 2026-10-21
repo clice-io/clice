@@ -95,8 +95,8 @@ int run_indexing_via_server(const index::ServerEndpoint& endpoint,
                             llvm::StringRef configuration,
                             bool json) {
     // FIXME: the failed units come in the server's spelling of the workspace,
-    // which differs from this command's when one of them reaches it through a
-    // symlink.
+    // which differs from this command's when the server or the command reaches
+    // the workspace through a symlink.
     auto result = control::request_index(endpoint, configuration);
     if(!result) {
         LOG_ERROR("{}", result.error());

@@ -169,12 +169,12 @@ CallGraph
                     auto direct = index.sites(base.symbol, base.anchor, RelationKind::Direct);
                     for(auto& [caller, calls]: through_base) {
                         for(auto& call: calls) {
-                            // FIXME: a qualified call and a virtual call
-                            // one macro invocation spells share that site,
-                            // so the qualified one hides the other and the
-                            // override loses this caller.
                             // A call a macro spells sits at the whole
                             // invocation, the name it qualifies inside.
+                            // FIXME: a qualified call and a virtual call
+                            // one macro invocation spells share the
+                            // invocation's site, so the qualified one hides
+                            // the other and the override loses this caller.
                             if(llvm::none_of(direct, [&](const Site& site) {
                                    return covers(call, site);
                                })) {

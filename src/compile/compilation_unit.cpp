@@ -536,14 +536,14 @@ std::vector<DepFile> CompilationUnit::deps() {
             }
         }
 
-        /// FIXME: A not-found `#embed` or `__has_embed` leaves no trace, so
-        /// creating the file later cannot invalidate products built while it
-        /// was missing (failed includes and `__has_include` are recorded, see
-        /// absent()).
         for(auto& has_include: directive.has_includes) {
             add_file(has_include.file);
         }
 
+        /// FIXME: A not-found `#embed` or `__has_embed` leaves no trace, so
+        /// creating the file later cannot invalidate products built while it
+        /// was missing (failed includes and `__has_include` are recorded, see
+        /// absent()).
         for(auto& embed: directive.embeds) {
             add_file(embed.file);
         }

@@ -716,7 +716,7 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
     // save (see Quarantine).
     auto kind = evidence_kind(EvidenceKind::PCM);
     // FIXME: an edit within retry_spacing of the module's crash is spent here:
-    // the round runs without the module and lands current, so the module waits
+    // the round runs without the module and finishes current, so the module waits
     // for the next edit or save, not for the spacing to pass.
     bool licensed = session->quarantine->crashed(kind) &&
                     !session->quarantine->barred(kind, Quarantine::Clock::now());

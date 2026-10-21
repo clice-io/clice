@@ -130,7 +130,7 @@ struct Session {
     /// the pass, another crash the compile.
     /// FIXME: held on the session, the suspicion is lost when the document
     /// closes during the retry (its next open crashes once more), and a retry
-    /// landing on edited text books the crash there: the pass waits one more edit.
+    /// finishing on edited text books the crash there: the pass waits one more edit.
     std::optional<kota::ipc::Error> tidy_crash;
 };
 

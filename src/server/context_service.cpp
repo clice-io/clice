@@ -267,7 +267,7 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
     } else if(const auto* context = editor.header_context(path_id)) {
         // FIXME: a self-contained header's cached host stays when re-ranking puts
         // another host with the same command first: the listing shows that one,
-        // and no row is the current one.
+        // and no item is the current one.
         lent(context->host_path_id, {}, {}, context->occurrence);
     } else if(auto host = default_host(ws, path_id)) {
         lent(host->file, {}, {}, 0);
