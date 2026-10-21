@@ -113,6 +113,17 @@ struct ConfigRule {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
+                         "Whether clice runs the compiler of matching files' "
+                         "commands to ask how it compiles them: its target, "
+                         "standard library and system headers, predefined "
+                         "macros and default language standard. `false` runs "
+                         "no compiler: clice's own clang reads the command as "
+                         "written, with clang's defaults for the compiler's "
+                         "name. Any matching rule saying `false` wins.")
+    <bool> query_toolchain = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
                          "Whether matching translation units join the "
                          "background index. `false` keeps them out; they still "
                          "compile when opened and still host the headers they "
@@ -310,6 +321,7 @@ struct CompiledRule {
     Spelling directory;
     std::vector<std::string> append;
     std::vector<std::string> remove;
+    bool query_toolchain = true;
     bool index = true;
     bool lint = true;
     bool format = true;

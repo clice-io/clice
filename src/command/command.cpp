@@ -760,6 +760,9 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
                 break;
         }
     }
+    if(!cfg.query_toolchain) {
+        append("\x01unqueried");
+    }
 }
 
 std::uint64_t CompilationDatabase::entry_hash(ConfigID id) {
@@ -1223,6 +1226,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     }
     append_section(options.extra_prepend);
     append_section(options.extra_append);
+    rule_key += options.query_toolchain ? 'q' : 'u';
 
     auto rule_set_id = rule_set_ids.try_emplace(rule_key, rule_set_ids.size()).first->second;
     auto [memo, inserted] =
@@ -1452,7 +1456,9 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         collapse_gpu_arch_args(edited);
     }
 
-    auto result_id = save_config(cfg, edited);
+    auto edited_config = cfg;
+    edited_config.query_toolchain = cfg.query_toolchain && options.query_toolchain;
+    auto result_id = save_config(edited_config, edited);
     rule_applied[{static_cast<std::uint32_t>(id), rule_set_id}] =
         static_cast<std::uint32_t>(result_id);
     return result_id;

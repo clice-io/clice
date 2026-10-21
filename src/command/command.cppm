@@ -111,6 +111,10 @@ struct CompileConfig {
     /// Ordered arguments, exactly one ArgClass::Input slot among them.
     llvm::ArrayRef<Arg> args;
 
+    /// False when a rule turns the toolchain query off: clang's own driver
+    /// reads the command, and the compiler never runs.
+    bool query_toolchain = true;
+
     friend bool operator==(const CompileConfig&, const CompileConfig&) = default;
 };
 
@@ -224,8 +228,11 @@ struct CommandOptions {
     llvm::ArrayRef<std::string> extra_prepend;
     llvm::ArrayRef<std::string> extra_append;
 
+    /// False when a rule turns the toolchain query off.
+    bool query_toolchain = true;
+
     bool empty() const {
-        return edits.empty() && extra_prepend.empty() && extra_append.empty();
+        return edits.empty() && extra_prepend.empty() && extra_append.empty() && query_toolchain;
     }
 };
 
@@ -636,7 +643,8 @@ struct DenseMapInfo<clice::CompileConfig> {
         llvm::hash_code hash = llvm::hash_combine(config.directory,
                                                   config.driver,
                                                   config.subcommand,
-                                                  static_cast<unsigned>(config.family));
+                                                  static_cast<unsigned>(config.family),
+                                                  config.query_toolchain);
         for(auto& arg: config.args) {
             hash = llvm::hash_combine(hash,
                                       arg.opt_id,

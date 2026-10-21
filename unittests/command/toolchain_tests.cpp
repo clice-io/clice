@@ -660,6 +660,45 @@ ZEST_CASE(NVCCUnknownHost, skip = Windows) {
     ZEXPECT(llvm::StringRef(resolved.error()).starts_with("Unsupported nvcc host compiler"));
 }
 
+/// `ref` under a rule turning the toolchain query off.
+CommandRef unqueried(const CommandRef& ref) {
+    return {ref.file,
+            f.db.apply_rules(ref.config, {.query_toolchain = false}),
+            ref.input,
+            ref.source};
+}
+
+ZEST_CASE(UnqueriedRunsNothing, skip = Windows) {
+    // Neither resolve() nor warm() runs the driver: clang's own builds the
+    // job. Queried, the same command runs it.
+    auto ran = tmp.path("ran");
+    auto driver = fake_driver("g++", std::format("touch '{}'\n", ran));
+    auto ref = add("a.cpp", {driver.c_str(), "-std=c++17"});
+    auto off = unqueried(ref);
+    ZEXPECT(f.key(off) != f.key(ref));
+    ZEXPECT(f.db.entry_hash(off.config) != f.db.entry_hash(ref.config));
+
+    llvm::SmallVector<CommandRef> refs = {off};
+    f.db.warm(refs);
+    auto argv = f.resolve(off);
+    ZEXPECT(contains(argv, "-std=c++17"));
+    ZEXPECT(adjacent(argv, "-resource-dir", resource_dir()));
+    ZEXPECT(!vfs::exists(ran));
+
+    ZEXPECT(!f.db.toolchain().resolve(ref.config, ref.input));
+    ZEXPECT(vfs::exists(ran));
+}
+
+ZEST_CASE(UnqueriedTargetFromName) {
+    // A compiler that is not even here reads as a clang under its name
+    // would: the name's target prefix, unless the command names a target.
+    auto cross = tmp.path("aarch64-linux-gnu-g++");
+    auto argv = f.resolve(unqueried(add("a.cpp", {cross.c_str()})));
+    ZEXPECT(adjacent(argv, "-triple", "aarch64-unknown-linux-gnu"));
+    argv = f.resolve(unqueried(add("b.cpp", {cross.c_str(), "--target=riscv64-linux-gnu"})));
+    ZEXPECT(adjacent(argv, "-triple", "riscv64-unknown-linux-gnu"));
+}
+
 };  // ZEST_SUITE(ToolchainTests)
 
 }  // namespace

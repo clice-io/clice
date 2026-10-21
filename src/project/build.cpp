@@ -160,6 +160,7 @@ Edits Build::edits_of(llvm::ArrayRef<const CompiledRule*> matched) const {
         if(!llvm::is_contained(matched, &rule)) {
             continue;
         }
+        result.query_toolchain = result.query_toolchain && rule.query_toolchain;
         if(!rule.remove.empty()) {
             result.edits.push_back({.kind = CommandEdit::Kind::Remove,
                                     .flags = rule.remove,
@@ -261,6 +262,9 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
             joined += '\0';
         }
         joined += '\1';
+    }
+    if(!edit.query_toolchain) {
+        joined += "unqueried";
     }
     return std::format("{:016x}", llvm::xxh3_64bits(joined));
 }

@@ -169,9 +169,10 @@ bool names_standard(llvm::ArrayRef<std::string> args) {
     return ranges::any_of(args, [](llvm::StringRef arg) { return arg.starts_with("-std="); });
 }
 
-/// cl and clang-cl: clang's own driver in cl mode, which sets the
-/// windows-msvc target itself.
-std::expected<Job, std::string> ask_cl(llvm::ArrayRef<std::string> args) {
+/// The job clang's own driver builds for `args`, with `mode` (what the
+/// driver's name does not tell clang) ahead of the command's own flags.
+std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,
+                                          llvm::ArrayRef<std::string> mode) {
     // Before C++20, clang defers template bodies on MSVC targets so that
     // code written for MSVC's lookup rules compiles, but a deferred body has
     // no AST: every feature inside it goes blind. Placed before the
@@ -179,11 +180,34 @@ std::expected<Job, std::string> ask_cl(llvm::ArrayRef<std::string> args) {
     // command and leaves deferral to a command asking for it
     // (`-fdelayed-template-parsing`, clang-cl's `/Zc:twoPhase-`), which
     // every compile of the file then follows.
-    std::vector<std::string> cl_args = {args[0],
-                                        "--driver-mode=cl",
-                                        "-fno-delayed-template-parsing"};
-    cl_args.insert(cl_args.end(), args.begin() + 1, args.end());
-    return query_driver(cl_args);
+    std::vector<std::string> clang_args = {args[0]};
+    clang_args.insert(clang_args.end(), mode.begin(), mode.end());
+    clang_args.push_back("-fno-delayed-template-parsing");
+    clang_args.insert(clang_args.end(), args.begin() + 1, args.end());
+    return query_driver(clang_args);
+}
+
+/// cl and clang-cl: clang's own driver in cl mode, which sets the
+/// windows-msvc target itself.
+std::expected<Job, std::string> ask_cl(llvm::ArrayRef<std::string> args) {
+    return ask_clang(args, {"--driver-mode=cl"});
+}
+
+/// A driver clice does not query: clang's own driver stands in for it, as a
+/// clang installed under its name would — the name's mode (`g++` compiles
+/// C++) and target prefix (`arm-none-eabi-gcc`), clang's defaults for the
+/// rest.
+std::expected<Job, std::string> ask_clang_for(std::vector<std::string> args,
+                                              std::size_t driver_tokens) {
+    args.erase(args.begin() + 1, args.begin() + driver_tokens);
+    std::vector<std::string> mode;
+    auto name = clang::driver::ToolChain::getTargetAndModeFromProgramName(args[0]);
+    // clang takes the prefix only when a backend it links knows it, and
+    // clice links none: any prefix naming an architecture is a target.
+    if(llvm::Triple(name.TargetPrefix).getArch() != llvm::Triple::UnknownArch) {
+        mode.push_back("--target=" + name.TargetPrefix);
+    }
+    return ask_clang(args, mode);
 }
 
 /// Every other driver is GCC-style: asked how it compiles the input, it
@@ -437,6 +461,10 @@ struct QuerySpec {
 
     CompilerFamily family = CompilerFamily::Unknown;
 
+    /// False: clang's own driver answers in place of the command's, which
+    /// never runs.
+    bool query_toolchain = true;
+
     /// Probe working directory; empty inherits the process cwd.
     std::string cwd;
 };
@@ -469,7 +497,7 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
 /// the probe's language.
 kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     auto driver = find_driver(spec.argv[0], spec.cwd);
-    if(!driver) {
+    if(!driver && spec.query_toolchain) {
         co_return std::unexpected(std::move(driver.error()));
     }
 
@@ -491,21 +519,21 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     /// selectors after the slot must not govern it (`clang foo.c -x c++`
     /// compiles foo.c as C).
     std::vector<std::string> args(spec.argv.begin(), spec.argv.end());
-    args[0] = std::move(*driver);
+    if(driver) {
+        args[0] = std::move(*driver);
+    }
     args.insert(args.begin() + spec.slot, *input);
 
+    std::size_t driver_tokens = spec.family == CompilerFamily::Zig ? 2 : 1;
     std::expected<Job, std::string> job;
-    switch(spec.family) {
-        case CompilerFamily::MSVC:
-        case CompilerFamily::ClangCL: job = ask_cl(args); break;
-        case CompilerFamily::NVCC:
-            job = co_await ask_nvcc(args, *input, spec.kind, spec.cwd);
-            break;
-        default:
-            job = co_await ask_gcc_style(std::move(args),
-                                         spec.family == CompilerFamily::Zig ? 2 : 1,
-                                         spec.cwd);
-            break;
+    if(spec.family == CompilerFamily::MSVC || spec.family == CompilerFamily::ClangCL) {
+        job = ask_cl(args);
+    } else if(!spec.query_toolchain) {
+        job = ask_clang_for(std::move(args), driver_tokens);
+    } else if(spec.family == CompilerFamily::NVCC) {
+        job = co_await ask_nvcc(args, *input, spec.kind, spec.cwd);
+    } else {
+        job = co_await ask_gcc_style(std::move(args), driver_tokens, spec.cwd);
     }
     co_return job;
 }
@@ -723,6 +751,9 @@ Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
         append(config.subcommand);
     }
     append(input.value ? input.value : "");
+    if(!config.query_toolchain) {
+        append("\x01unqueried");
+    }
     if(out.cwd_sensitive) {
         append(config.directory);
     }
@@ -957,6 +988,7 @@ Toolchain::ProbeAdmission Toolchain::admit_probe(ConfigID id, InputKind input) {
     admission.spec.slot = argv.slot;
     admission.spec.kind = input.value;
     admission.spec.family = config.family;
+    admission.spec.query_toolchain = config.query_toolchain;
     admission.spec.cwd =
         probe_cwd(pk.cwd_sensitive ? config.directory : llvm::StringRef(db.workspace_root));
     return admission;

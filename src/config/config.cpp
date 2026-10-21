@@ -206,6 +206,7 @@ void Config::finalize(CanonicalRef workspace_root) {
                 substitute_workspace(flag, root);
             }
         }
+        compiled.query_toolchain = rule.query_toolchain;
         compiled.index = rule.index;
         compiled.lint = rule.lint;
         compiled.format = rule.format;
