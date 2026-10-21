@@ -680,9 +680,9 @@ ZEST_CASE(ConstQualified) {
     )code");
 }
 
-// TODO: Outer<int> is non-dependent, TransformNestedNameSpecifierLoc
-// doesn't trigger our heuristic lookup for non-dependent qualifiers.
-// ZEST_CASE(NestedClassTemplate) { ... }
+// TODO: a member template reached through a non-dependent specialization
+// (`typename Outer<int>::template Inner<X>::type`) is not resolved:
+// TransformNestedNameSpecifierLoc runs no lookup for a non-dependent qualifier.
 
 ZEST_CASE(MultipleInheritance) {
     run(R"code(
@@ -798,10 +798,6 @@ ZEST_CASE(CRTPPattern) {
     )code");
 }
 
-// TODO: NTTP partial specialization matching not yet supported.
-// checkTemplateArguments only fills default TemplateTypeParmDecl args.
-// ZEST_CASE(NonTypeTemplateParam) { ... }
-
 ZEST_CASE(IdentityAlias) {
     // Alias template that forwards type unchanged
     run(R"code(
@@ -841,13 +837,6 @@ ZEST_CASE(ConditionalType) {
         };
     )code");
 }
-
-// TODO: Same as NonTypeTemplateParam — partial specialization on `false`
-// requires NTTP matching which is not yet supported.
-// ZEST_CASE(ConditionalTypeFalse) { ... }
-
-// TODO: Template template parameter deduction not yet supported.
-// ZEST_CASE(TemplateTemplateParam) { ... }
 
 ZEST_CASE(DependentReturnType) {
     // Resolve through a struct that wraps a function return type pattern
@@ -920,8 +909,23 @@ ZEST_CASE(AddPointer) {
     )code");
 }
 
-// TODO: enable_if<true, X> requires NTTP partial specialization matching.
-// ZEST_CASE(EnableIfLike) { ... }
+ZEST_CASE(EnableIfLike) {
+    run(R"code(
+        template <bool B, typename T = void>
+        struct enable_if {};
+
+        template <typename T>
+        struct enable_if<true, T> {
+            using type = T;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename enable_if<true, X>::type;
+            using expect = X;
+        };
+    )code");
+}
 
 ZEST_CASE(NestedLookup) {
     // Two levels of dependent lookup: A<T>::B<T>::type

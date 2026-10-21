@@ -827,17 +827,9 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
 std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
                                             llvm::StringRef configuration,
                                             bool read_only) {
-    // FIXME: no index persistence on remote filesystems. A per-file blob
-    // backend used to fill this gap (one CacheStore-namespace file per
-    // blob, removed in PR #650 — see its history to resurrect it), but it
-    // duplicated everything the database gives for free — atomic batches,
-    // read snapshots, corruption detection — while the remote scenarios
-    // it was meant to serve (NFS home directories, SMB project shares,
-    // WSL drvfs checkouts) differ enough in locking and cache-coherence
-    // behavior that one untested fallback cannot honestly cover them.
-    // What remote workspaces actually need is an open design question;
-    // until it is answered, such sessions run with an in-memory index
-    // and this warning.
+    // FIXME: no index persistence on remote filesystems (NFS, SMB, WSL drvfs):
+    // their locking and cache coherence differ too much to trust LMDB or one
+    // untested fallback there, so such sessions keep the index in memory.
     switch(filesystem_locality(store.base_dir())) {
         case FsLocality::Local: break;
         case FsLocality::Remote: {

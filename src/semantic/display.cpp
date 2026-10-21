@@ -112,9 +112,8 @@ std::string template_args(const clang::NamedDecl& decl) {
             clang::printTemplateArgumentList(os, args->asArray(), policy);
         }
     } else if(auto* record = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(&decl)) {
-        /// FIXME: Fix cases when getTypeAsWritten returns null inside clang
-        /// AST, e.g. friend decls. Currently we fallback to template
-        /// arguments without location information.
+        /// Implicit class template specializations carry no written arguments;
+        /// fall back to the converted ones.
         clang::printTemplateArgumentList(os, record->getTemplateArgs().asArray(), policy);
     } else if(auto* var = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(&decl)) {
         /// Implicit variable template specializations carry no written
@@ -992,8 +991,9 @@ auto param_type(const clang::TemplateTemplateParmDecl& param, const Options& opt
             os << param_type(*template_param, options).text;
         }
     }
-    /// FIXME: TemplateTemplateParameter doesn't store the info on whether this
-    /// param was a "typename" or "class".
+    /// FIXME: The keyword is always `class`: a parameter declared `typename`
+    /// (wasDeclaredWithTypename) or a C++26 concept or variable template
+    /// template parameter (templateParameterKind) prints wrong.
     os << "> class";
     return result;
 }

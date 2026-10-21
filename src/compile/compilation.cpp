@@ -354,8 +354,6 @@ public:
             collect_instantiation(decl);
         }
 
-        /// TODO: check atomic variable after the parse of each declaration
-        /// may result in performance issue, benchmark in the future.
         if(unit.params.stop->load()) {
             return false;
         }
@@ -542,8 +540,6 @@ CompilationStatus CompilationUnit::run() {
                 *SM().getFileEntryRefForID(focus.file()));
         }
     }
-
-    /// FIXME: include-fixer, etc?
 
     /// The checks' PPCallbacks go first: the preamble replay reaches the
     /// callbacks registered before it (see tidy::configure).

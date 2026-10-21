@@ -60,11 +60,6 @@ struct CacheNamespace {
 /// while lookups continue on the event loop.  A synchronous operation runs
 /// to completion once started, so cancellation can never observe a torn
 /// mid-operation state.
-///
-/// TODO: once usage stabilizes, evaluate making commit/checkpoint coroutines
-/// over kota's async fs (kota::fsync/rename) with all state confined to
-/// the event loop — that removes the mutex entirely, but moves the burden
-/// from lock discipline to cancellation points inside each operation.
 class CacheStore {
 public:
     /// A two-phase write in progress.  The caller (or a worker process on

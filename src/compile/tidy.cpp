@@ -715,7 +715,6 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
             &instance.getDiagnostics());
     }
     checker->context.setASTContext(&instance.getASTContext());
-    // TODO: is `file_name` always the file to check?
     checker->context.setCurrentFile(file_name);
     checker->context.setSelfContainedDiags(true);
     checker->checks = factories.createChecksForLanguage(&checker->context);

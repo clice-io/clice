@@ -194,7 +194,6 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     // O(1) per TU and deliberately uncapped — the index's content-hash
     // staleness check filters TUs whose dependencies did not actually
     // change, and the idle/priority scheduling throttles the rest.
-    // TODO: observe on large projects before adding debouncing.
     mark_readers(dependents, dirty);
 
     // Headers whose resolved context was derived from the file through its

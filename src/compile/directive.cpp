@@ -55,13 +55,9 @@ private:
             return;
         }
 
-        /// FIXME: This drops macros living in synthetic buffers (<built-in>,
-        /// <command line>), so a `-D` macro has no definition anywhere in the
-        /// index and go-to-definition on it fails with no feedback. These
-        /// buffers have real content in the SourceManager (`#define FOO 1`
-        /// lines); keep such definitions and serve them through a generated
-        /// preview document (a temp file on disk, or LSP 3.18
-        /// `workspace/textDocumentContent`) instead of dropping them.
+        /// FIXME: A macro defined in <built-in> or <command line> (`-D`) gets no
+        /// definition record, so definition, references and symbol search on a
+        /// `-D` macro find no symbol; hover still shows it.
         if(unit.is_builtin_file(unit.file_id(loc))) {
             return;
         }
@@ -304,7 +300,9 @@ public:
 
     /// Invoke when #elif is skipped.
     void Elifdef(clang::SourceLocation loc, clang::SourceRange, clang::SourceLocation) override {
-        /// FIXME: should we try to evaluate the condition to compute the macro reference?
+        /// FIXME: The macro a skipped `#elifdef` / `#elifndef` names gets no
+        /// reference, nor do the macros of an `#elif` past a taken branch, so
+        /// macro references miss these sites.
         add_condition(loc, Condition::Elifdef, Condition::Skipped);
     }
 

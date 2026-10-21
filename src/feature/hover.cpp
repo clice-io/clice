@@ -1071,7 +1071,6 @@ auto deduced_hover(clang::QualType type,
                    const clang::Expr* source,
                    const Request& request) -> HoverInfo {
     HoverInfo info;
-    /// FIXME: distinguish decltype(auto) vs decltype(expr).
     info.name = clang::tok::getTokenName(keyword);
     if(type->isUndeducedAutoType()) {
         info.definition = "/* not deduced */";

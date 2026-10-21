@@ -116,8 +116,6 @@ ZEST_CASE(Include) {
     EXPECT_INCLUDE(3, "3", "");
     EXPECT_INCLUDE(4, "4", TestVFS::path("guard_macro.h"));
     EXPECT_INCLUDE(5, "5", "");
-
-    /// TODO: test include source range.
 };
 
 ZEST_CASE(HasInclude) {
