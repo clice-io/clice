@@ -1,0 +1,36 @@
+[test."$ clice inspect folding-range main.cpp"]
+stdout = '''
+{
+  "feature": "folding-range",
+  "files": {
+    "main.cpp": {
+      "result": [
+        {
+          "range": {
+            "begin": 30,
+            "end": 91
+          },
+          "kind": "struct",
+          "collapsed_text": "{...}",
+          "lines": null,
+          "closer": 90
+        },
+        {
+          "range": {
+            "begin": 122,
+            "end": 161
+          },
+          "kind": "struct",
+          "collapsed_text": "{...}",
+          "lines": null,
+          "closer": 160
+        }
+      ],
+      "markers": null,
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
