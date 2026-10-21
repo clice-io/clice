@@ -1,0 +1,36 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query references A::foo"]
+stdout = '''
+{
+  "result": {
+    "name": "foo",
+    "kind": "Method",
+    "symbol": "#c9a164fdb055ace8",
+    "references": [],
+    "total": 0
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query references B::bar"]
+stdout = '''
+{
+  "result": {
+    "name": "bar",
+    "kind": "Method",
+    "symbol": "#f50155a3c1ec9558",
+    "references": [],
+    "total": 0
+  },
+  "stale": []
+}
+'''
+exit = 0
