@@ -52,8 +52,9 @@ std::string deeper_databases_hint(const Project& project);
 
 /// Why the build has no member, completing a batch command's "Nothing to
 /// <verb>: ": a database it found that cannot be read, does not exist yet
-/// or lists no file; else that none was found in `root` or its direct
-/// subdirectories, and the deeper ones there are.
+/// or lists no file; the rules' default commands claiming no file; else
+/// that no database was found in `root` or its direct subdirectories, and
+/// the deeper ones there are.
 std::string why_no_members(const Project& project, llvm::StringRef root);
 
 /// What load_saved found.

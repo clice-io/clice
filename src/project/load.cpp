@@ -232,6 +232,9 @@ std::string why_no_members(const Project& project, llvm::StringRef root) {
                            llvm::join(empty, ", "),
                            empty.size() == 1 ? "lists" : "list");
     }
+    if(project.build.declares_sources()) {
+        return "no file on disk matches a rule with a default_command.";
+    }
     return std::format("no compile_commands.json found in {} or its direct subdirectories.{}",
                        root.str(),
                        deeper_databases_hint(project));
