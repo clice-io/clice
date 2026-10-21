@@ -500,6 +500,11 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
     if(result.unsaved) {
         return std::unexpected("part of the index could not be persisted; see the log");
     }
+    if(result.damaged) {
+        return std::unexpected(
+            "the index database is damaged (see the log); it is discarded, and the next `clice "
+            "index` rebuilds the index");
+    }
     return std::move(result.failed);
 }
 
