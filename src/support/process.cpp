@@ -14,6 +14,7 @@ module;
 #define NOMINMAX
 #include <windows.h>
 #elif defined(__APPLE__)
+#include <malloc/malloc.h>
 #include <pthread.h>
 #include <signal.h>
 #include <sys/event.h>
@@ -80,6 +81,11 @@ void release_free_memory() {
     if(clice_allocator_collect) {
         clice_allocator_collect();
     }
+#ifdef __APPLE__
+    // libmalloc's large cache hands its blocks to the next allocation
+    // without telling the kernel, whose footprint then leaves them out.
+    malloc_zone_pressure_relief(nullptr, 0);
+#endif
 }
 
 void purge_freed_memory() {

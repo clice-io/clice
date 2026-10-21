@@ -25,7 +25,8 @@ kota::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::s
 /// Hand freed heap back to the system. glibc keeps the pages of large freed
 /// arenas — an AST, a TU's index, the master's merge buffers — so without
 /// this a process's RSS only ever grows. The Windows allocator keeps all it
-/// frees unless purge_freed_memory() was called.
+/// frees unless purge_freed_memory() was called; macOS's keeps a cache of
+/// large blocks.
 void release_free_memory();
 
 /// Let the allocator return freed memory to the system from now on, for a

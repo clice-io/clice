@@ -115,15 +115,14 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
         }
     } else {
 #ifdef __APPLE__
-        // libmalloc's medium zone and large cache keep the pages a request
-        // frees and reuse them without telling the kernel, whose footprint
-        // then leaves them out: it shows a fraction of what the worker
-        // uses, and the headroom charges the rest to other processes.
-        // Without them the footprint is the worker's memory, which the
-        // scheduler sizes background work by.
+        // libmalloc's medium zone keeps the pages a request frees and
+        // reuses them without telling the kernel, whose footprint then
+        // leaves them out: it shows a fraction of what the worker uses, and
+        // the headroom charges the rest to other processes. Without it, and
+        // with the large cache emptied after each request, the footprint is
+        // the worker's memory, which the scheduler sizes background work by.
         opts.env_changes = {
             {.name = "MallocMediumZone", .value = "0"},
-            {.name = "MallocLargeCache", .value = "0"},
         };
 #endif
     }
