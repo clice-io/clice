@@ -253,10 +253,29 @@ std::size_t WorkerScheduler::running(Priority priority) const {
 }
 
 std::uint64_t WorkerScheduler::estimate(const Request& request) const {
-    auto peak = std::max(request.peak != 0 ? request.peak : unknown_peak(), request.floor);
+    auto peak = request.peak;
+    if(peak == 0) {
+        peak = unknown_peak();
+        if(peak < default_peak && unknown_ahead(request) >= learned_runs) {
+            peak = default_peak;
+        }
+    }
+    peak = std::max(peak, request.floor);
     // One that outgrew its estimate has more to come: a quarter more is
     // assumed, as nothing tells how much.
     return request.memory < peak ? peak : request.memory + request.memory / 4;
+}
+
+std::size_t WorkerScheduler::unknown_ahead(const Request& request) const {
+    return std::ranges::count_if(slots, [&](const auto& entry) {
+        auto& slot = entry.second;
+        if(!slot.request || *slot.request == request.id) {
+            return false;
+        }
+        auto& other = requests.at(*slot.request);
+        return other.priority == Priority::Low && other.peak == 0 &&
+               (!request.slot || other.order < request.order);
+    });
 }
 
 std::uint64_t WorkerScheduler::growth_due() const {

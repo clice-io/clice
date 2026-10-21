@@ -262,6 +262,12 @@ public:
     /// small units a project lists first, ahead of big ones.
     constexpr static std::size_t trusted_peaks = 3;
 
+    /// The requests of unknown peak that run at once on a learned estimate
+    /// below default_peak; those dispatched after them are estimated at
+    /// default_peak. A wrong estimate shows only as they outgrow it, and
+    /// the memory kills that stop them come one at a time.
+    constexpr static std::size_t learned_runs = 3;
+
     /// The user counts as active this long after their last activity, and
     /// while a foreground request is in flight, for at most
     /// foreground_request_hold of its age: one older is either stuck or
@@ -388,6 +394,10 @@ private:
 
     /// The peak a background request is expected to reach.
     std::uint64_t estimate(const Request& request) const;
+
+    /// The running background requests of unknown peak dispatched before
+    /// the request: all of them for a queued one.
+    std::size_t unknown_ahead(const Request& request) const;
 
     /// The memory the running background requests will still take.
     std::uint64_t growth_due() const;

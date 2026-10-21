@@ -649,6 +649,26 @@ ZEST_CASE(SmallPeaksDropFloor) {
     ZEXPECT(core.scheduler.unknown_peak() == 200 * MiB);
 }
 
+ZEST_CASE(LearnedEstimateRunsCapped) {
+    Core core(5, {.background_jobs = 5, .max_workers = 5});
+    for(RequestId id = 1; id <= WorkerScheduler::trusted_peaks; id += 1) {
+        core.submit(id, Priority::Low);
+        core.sample(16 * GiB,
+                    {
+                        {.slot = 0, .memory = 200 * MiB}
+        });
+        core.finish(id);
+    }
+    core.sample(2 * GiB);
+    core.actions.clear();
+    for(RequestId id = 10; id < 15; id += 1) {
+        core.submit(id, Priority::Low);
+    }
+    // Three run on 200 MiB each; the fourth, at 1.5 GiB, does not fit
+    // beside them in 2 GiB.
+    ZEXPECT(core.all<scheduler::Dispatch>().size() == WorkerScheduler::learned_runs);
+}
+
 };  // ZEST_SUITE(WorkerScheduler)
 
 }  // namespace

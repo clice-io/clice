@@ -425,11 +425,45 @@ struct WorkerPoolFixture {
     std::uint64_t memory(std::size_t idx, bool stateful) {
         return pool.slot(idx, stateful).memory;
     }
+
+    /// Index `file` on stateless worker 0, sampling it all along: a
+    /// worker's memory grows unannounced. Returns the most sampled.
+    kota::task<std::uint64_t> index_sampled(const std::string& file) {
+        std::uint64_t peak = 0;
+        bool answered = false;
+        auto sender = [&]() -> kota::task<> {
+            auto result = co_await pool.send_stateless(index_params(file), worker::Priority::High);
+            ZEXPECT(result);
+            answered = true;
+        };
+        auto sampler = [&]() -> kota::task<> {
+            while(!answered) {
+                sample_pool();
+                peak = std::max(peak, memory(0, false));
+                co_await kota::sleep(std::chrono::milliseconds(50), loop);
+            }
+        };
+        co_await kota::when_all(sender(), sampler());
+        co_return peak;
+    }
 };
 
 namespace {
 
 constexpr std::uint64_t MiB = 1ull << 20;
+
+/// A unit big enough to tell in its worker's memory: indexing it reaches
+/// 320 to 560 MiB.
+std::string big_unit(TempDir& tmp) {
+    std::string values = "int values[] = {";
+    for(int i = 0; i < 2'000'000; i += 1) {
+        values += std::to_string(i);
+        values += ',';
+    }
+    values += "};\n";
+    tmp.touch("big.cpp", values);
+    return tmp.path("big.cpp");
+}
 
 ZEST_SUITE(WorkerPoolStateful) {
 
@@ -1905,14 +1939,7 @@ ZEST_CASE(IdleWorkerGivesBack) {
     // A worker that kept what its request freed would hold the high-water
     // mark of its biggest request while idle.
     TempDir tmp;
-    std::string values = "int values[] = {";
-    for(int i = 0; i < 2'000'000; i += 1) {
-        values += std::to_string(i);
-        values += ',';
-    }
-    values += "};\n";
-    tmp.touch("big.cpp", values);
-    auto src = tmp.path("big.cpp");
+    auto src = big_unit(tmp);
 
     WorkerPoolFixture f;
     std::uint64_t before = 0;
@@ -1922,33 +1949,37 @@ ZEST_CASE(IdleWorkerGivesBack) {
         ZASSERT(f.start(1, 0));
         f.sample_pool();
         before = f.memory(0, false);
-        bool answered = false;
-        auto sender = [&]() -> kota::task<> {
-            auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
-                                                         worker::Priority::High);
-            ZEXPECT(result);
-            answered = true;
-        };
-        auto sampler = [&]() -> kota::task<> {
-            while(!answered) {
-                f.sample_pool();
-                peak = std::max(peak, f.memory(0, false));
-                // No event: a worker's memory grows unannounced.
-                co_await kota::sleep(std::chrono::milliseconds(50), f.loop);
-            }
-        };
-        co_await kota::when_all(sender(), sampler());
+        peak = co_await f.index_sampled(src);
         f.sample_pool();
         after = f.memory(0, false);
         co_await f.stop();
     });
-    // The request was big enough to tell: it reaches 320 to 560 MiB.
     ZEXPECT(peak > before + 128 * MiB);
     // ASan's allocator keeps what is freed in its quarantine; the release
     // build's allocators are the ones that must give it back.
 #if !__has_feature(address_sanitizer)
     ZEXPECT(after < before + 64 * MiB);
 #endif
+}
+
+ZEST_CASE(ReusedMemoryStillCounted) {
+    // The second request reuses what the first freed: a worker's memory
+    // that missed reused pages would read it as a small unit.
+    TempDir tmp;
+    auto src = big_unit(tmp);
+
+    WorkerPoolFixture f;
+    std::uint64_t before = 0;
+    std::uint64_t second = 0;
+    f.run([&]() -> kota::task<> {
+        ZASSERT(f.start(1, 0));
+        f.sample_pool();
+        before = f.memory(0, false);
+        co_await f.index_sampled(src);
+        second = co_await f.index_sampled(src);
+        co_await f.stop();
+    });
+    ZEXPECT(second > before + 128 * MiB);
 }
 
 };  // ZEST_SUITE(WorkerPoolIntegration)

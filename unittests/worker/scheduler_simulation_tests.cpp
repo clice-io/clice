@@ -172,6 +172,23 @@ ZEST_CASE(MacSmallThenHeavy) {
     ZEXPECT(result.min_headroom > 0);
 }
 
+/// Small units first teach the session a small estimate, then heavy units
+/// come on many cores and little memory: the kills, one at a time, could
+/// not stop as many outgrowing it at once.
+ZEST_CASE(ManyJobsSmallFirst) {
+    for(std::uint32_t jobs: {8u, 12u}) {
+        for(std::uint32_t heavy: {1500u, 2500u, 4000u}) {
+            std::vector<UnitLoad> units(3, {.seconds = 1, .peak = 200});
+            units.insert(units.end(), 16, {.seconds = 10, .peak = heavy});
+            auto spec = on_box(units, 6 * GiB, 2 * GiB);
+            spec.machine.physical = 16;
+            spec.machine.logical = 32;
+            spec.scheduler = {.background_jobs = jobs, .max_workers = jobs};
+            expect_sound(spec, simulate(spec));
+        }
+    }
+}
+
 /// Units spread far wider than a real project's, on machines of 4 to 32
 /// GiB: a first run learns their peaks as it goes, and the bounds are what
 /// that costs.
