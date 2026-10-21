@@ -655,6 +655,9 @@ auto outline(std::vector<OutlineEntry> entries,
         std::vector<DocumentSymbol> symbols;
         for(auto index: indices) {
             auto& node = nodes[index];
+            // FIXME: a local a macro body declares in a function the same macro defines
+            // (`#define MAKE void f() { int local = 0; }`) lists anyway: macro-made members
+            // list flat under the invocation, so the local is no child of its function.
             bool locals = options.locals || !holds_locals(node.entry.kind);
             symbols.push_back({
                 .name = std::move(node.entry.name),
@@ -739,6 +742,9 @@ private:
         clang::SourceRange name_range = named->getLocation();
         bool definition = true;
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(named)) {
+            // FIXME: the out-of-line destructor of a member class template
+            // (`Outer<T>::Inner<U>::~Inner()`) gets the whole qualified name as its range:
+            // it lists qualified here and as `~Inner` in the index's outline.
             name_range = function->getNameInfo().getSourceRange();
             definition = function->isThisDeclarationADefinition();
         } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(named)) {

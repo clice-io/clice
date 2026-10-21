@@ -273,6 +273,8 @@ auto index_document_symbols(SourceText& source,
     std::vector<LexicalInfo::Directive> macros;
     std::vector<LexicalInfo::Directive> marks;
     for(const auto& directive: lexical.directives) {
+        // FIXME: a mark inside an inactive branch (`#if 0`) lists too and sections
+        // the declarations after it: the index stores no inactive regions.
         if(directive.kind == LexicalInfo::Directive::Kind::PragmaMark) {
             marks.push_back(directive);
         }

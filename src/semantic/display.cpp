@@ -655,6 +655,9 @@ auto type(clang::ASTContext& context,
             sugared =
                 context.getQualifiedType(deduced->getDeducedType(), sugared.getLocalQualifiers());
         }
+        /// FIXME: the aka has no size cap: aliases whose arguments repeat aliases
+        /// (`using L1 = Foo<L0, L0>;`, n deep) spell k^n leaves, megabytes of hover
+        /// text at six levels of ten arguments.
         if(auto desugared = desugar(context, sugared)) {
             if(options.readable) {
                 desugared =
@@ -1797,6 +1800,9 @@ struct DeclarationPrinter {
                     return " = " + *text;
                 }
             }
+            // FIXME: an initializer computed from the arguments (`= Size * 2`) or naming a
+            // parameter of an enclosing template shows nothing until something uses the
+            // member: clang instantiates it only there, and display has no Sema to do it.
             if(auto argument = argument_initializer(var)) {
                 return " = " + *argument;
             }

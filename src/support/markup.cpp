@@ -368,6 +368,9 @@ private:
     std::string language;
 };
 
+/// FIXME: plain text keeps the comment's Markdown and the parser's own markup
+/// (`**Note:**`, code spans, links) as written: a plain-text-only client reads
+/// Markdown source.
 class MarkdownBlock : public Block {
 public:
     explicit MarkdownBlock(std::string text) : text(std::move(text)) {}

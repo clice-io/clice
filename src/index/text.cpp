@@ -55,6 +55,9 @@ std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bo
     if(kind == SymbolKind::Namespace) {
         return {};
     }
+    // TODO: nothing is kept across lookups: every index-served hover lexes the
+    // whole source again, a few ms for ordinary headers, more for large
+    // generated ones.
     // Each source's text is read and its comments scanned once, however
     // many declarations it holds.
     llvm::DenseMap<std::pair<const Shard*, Fid>, std::unique_ptr<SourceText>> texts;
