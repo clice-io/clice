@@ -534,7 +534,9 @@ void apply_warning_options(llvm::ArrayRef<std::string> extra_args,
                            clang::DiagnosticsEngine& diags) {
     for(llvm::StringRef group: extra_args) {
         // Only handle args that are of the form -W[no-]<group>.
-        // Other flags are possible but rare and deliberately out of scope.
+        // FIXME: -Werror, -Werror=<group> and -Wno-error=<group> are skipped
+        // here and command_extra_args withholds them from the command too, so
+        // the severity change they ask for never takes effect.
         llvm::SmallVector<clang::diag::kind> members;
         if(!group.consume_front("-W") || group.empty()) {
             continue;
