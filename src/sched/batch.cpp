@@ -810,6 +810,12 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     if(options.paths.empty() || !directories.empty()) {
         // A database that cannot be loaded makes the file set incomplete.
         auto load = load_build(project, options.root, configuration);
+        if(project.cdb.source_count() == 0) {
+            result.exit_code = 2;
+            result.error =
+                std::format("Nothing to format: {}", why_no_members(project, options.root.str()));
+            return result;
+        }
         for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
             if(!project.cdb.loaded(SourceID(i))) {
                 result.exit_code = 2;
@@ -817,12 +823,6 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
                                            project.cdb.source_path(SourceID(i)));
                 return result;
             }
-        }
-        if(load.members.empty()) {
-            result.exit_code = 2;
-            result.error =
-                std::format("Nothing to format: {}", why_no_members(project, options.root.str()));
-            return result;
         }
         for(auto& file: project_files(project, load.members)) {
             if(!directories.empty() && llvm::none_of(directories, [&](auto& directory) {
