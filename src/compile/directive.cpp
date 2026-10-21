@@ -55,13 +55,9 @@ private:
             return;
         }
 
-        /// FIXME: This drops macros living in synthetic buffers (<built-in>,
-        /// <command line>), so a `-D` macro has no definition anywhere in the
-        /// index and go-to-definition on it fails with no feedback. These
-        /// buffers have real content in the SourceManager (`#define FOO 1`
-        /// lines); keep such definitions and serve them through a generated
-        /// preview document (a temp file on disk, or LSP 3.18
-        /// `workspace/textDocumentContent`) instead of dropping them.
+        /// FIXME: A macro defined in <built-in> or <command line> (`-D`) gets no
+        /// definition record, so definition, references and symbol search on a
+        /// `-D` macro find no symbol; hover still shows it.
         if(unit.is_builtin_file(unit.file_id(loc))) {
             return;
         }
@@ -128,6 +124,9 @@ public:
         for(auto it = angled ? search.angled_dir_begin() : search.quoted_dir_begin();
             it != search.search_dir_end();
             ++it) {
+            // FIXME: header maps and framework directories have no plain directory:
+            // a failed lookup through them records no absent input, so a header
+            // created there later goes unnoticed.
             if(auto directory = it->getDirRef()) {
                 add(directory->getName());
             }
@@ -203,8 +202,10 @@ public:
 
         // Clang reports a C++20 module name flattened into one component
         // at its first token — a partition's at its colon — so the written
-        // identifiers are lexed back from there. A name spelled by a macro
-        // has no written tokens past the reported one.
+        // identifiers are lexed back from there.
+        // FIXME: when only the first segment comes from a macro
+        // (`import ROOT.bar;`), the written `.bar` past it gets no location:
+        // no token, highlight or jump.
         auto start = names.front().getLoc();
         if(start.isMacroID()) {
             import.name_locations.push_back(start);
@@ -286,6 +287,8 @@ public:
               clang::SourceRange,
               clang::PPCallbacks::ConditionValueKind value,
               clang::SourceLocation) override {
+        /// FIXME: The macros of an `#elif` past a taken branch are never
+        /// evaluated, so they get no reference.
         add_condition(loc, Condition::Elif, value);
     }
 
@@ -304,7 +307,8 @@ public:
 
     /// Invoke when #elif is skipped.
     void Elifdef(clang::SourceLocation loc, clang::SourceRange, clang::SourceLocation) override {
-        /// FIXME: should we try to evaluate the condition to compute the macro reference?
+        /// FIXME: The macro a skipped `#elifdef` / `#elifndef` names gets no
+        /// reference, so macro references miss these sites.
         add_condition(loc, Condition::Elifdef, Condition::Skipped);
     }
 

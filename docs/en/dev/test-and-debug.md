@@ -67,7 +67,7 @@ Real build systems and real compilers: each scenario in `tests/compat/scenarios.
 pixi run compat-test          # default RelWithDebInfo
 ```
 
-Each scenario names the compilers of one platform as its CI runner image has them: on Linux the distribution's versioned GCC and Clang plus bear, ccache, meson, ninja, xmake, bazel, zig, Emscripten, the MinGW, RISC-V and Arm cross compilers, and nvcc from the pixi `cuda` environment (`pixi install -e cuda`); on Windows Visual Studio, LLVM and MinGW; on macOS Apple clang and Homebrew's GCC and LLVM. A scenario whose tools are missing is skipped locally and fails in CI. CI runs the suite with every build, and weekly against the newest release.
+Each scenario names the compilers of one platform as its CI runner image has them: on Linux the distribution's versioned GCC and Clang (and libc++) plus bear, ccache, meson, ninja, xmake, bazel, zig, Emscripten, musl-gcc, the Android NDK, the MinGW, RISC-V, AArch64 and Arm cross compilers, nvcc from the pixi `cuda` environment and conda's GCC and clang and xclang's Linux and MinGW targets from the `toolchains` one (`pixi install -e cuda -e toolchains`); on Windows Visual Studio, LLVM, MinGW and MSYS2's UCRT GCC and clang; on macOS Apple clang and Homebrew's GCC and LLVM. A scenario whose tools are missing is skipped locally and fails in CI. CI runs the suite with every build, and weekly against the newest release.
 
 ## Real Projects
 

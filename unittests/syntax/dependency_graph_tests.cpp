@@ -1115,9 +1115,6 @@ int main() {}
 
 // TODO: add tests for:
 // - Circular includes (A→B→A) to verify BFS terminates correctly
-// - get_all_includes across configs: a header in one config but not
-//   another appears once in the deduped union (the union carries plain
-//   fids — conditionality is per-config, asserted via get_includes)
 // - set_includes overwrite: calling twice with same (path_id, config_id)
 
 };  // ZEST_SUITE(ScanDependencyGraph)

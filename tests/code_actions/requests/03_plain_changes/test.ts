@@ -13,9 +13,10 @@ test(async (t) => {
         context: { diagnostics: [] },
     });
     expect(actions.map((action) => action.edit?.documentChanges)).toEqual([undefined, undefined]);
-    expect(actions.map((action) => Object.keys(action.edit?.changes ?? {}))).toEqual([
-        [s.uri("main.cpp")],
-        [s.uri("main.cpp")],
-    ]);
+    expect(
+        actions.map((action) =>
+            Object.keys(action.edit?.changes ?? {}).map((uri) => s.spelling(uri)),
+        ),
+    ).toEqual([["main.cpp"], ["main.cpp"]]);
     await t.show("f", s.codeActions(t.marker("f")));
 });

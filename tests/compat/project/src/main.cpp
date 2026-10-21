@@ -1,10 +1,10 @@
-#if __has_include("main.cpp.expect.h")
-#include "main.cpp.expect.h"
-#endif
-
 #include <cstdio>
 #include <string>
 #include <vector>
+
+#if __has_include("main.cpp.expect.h")
+#include "main.cpp.expect.h"
+#endif
 
 #include "util.h"
 

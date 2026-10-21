@@ -129,10 +129,11 @@ export class Disk {
     }
 
     /// Damage a file as a crash or a bad disk would, its size kept and its
-    /// time not moved forward: every byte, or a stretch in its middle that
-    /// reads `DAMAGE`.
-    corrupt(file: string, where: "all" | "middle"): void {
-        this.steps.note(`disk: corrupt ${where === "all" ? "all of" : "the middle of"} ${file}`);
+    /// time not moved forward: every byte, a stretch in its middle that
+    /// reads `DAMAGE`, or what `where` changes in its bytes.
+    corrupt(file: string, where: "all" | "middle" | ((bytes: Buffer) => void)): void {
+        const what = where === "all" ? "all of" : where === "middle" ? "the middle of" : "part of";
+        this.steps.note(`disk: corrupt ${what} ${file}`);
         const target = this.path(file);
         const { atime, mtimeMs } = fs.statSync(target);
         const bytes = fs.readFileSync(target);
@@ -140,8 +141,10 @@ export class Disk {
             for (let i = 0; i < bytes.length; i += 1) {
                 bytes[i] = (bytes[i] ?? 0) ^ 0xff;
             }
-        } else {
+        } else if (where === "middle") {
             bytes.write(DAMAGE, Math.max(0, Math.floor((bytes.length - DAMAGE.length) / 2)));
+        } else {
+            where(bytes);
         }
         fs.writeFileSync(target, bytes);
         // stat's Date rounds to the nearest millisecond, which can move the

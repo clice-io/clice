@@ -1,16 +1,26 @@
-// The Windows executable allocates through mimalloc: the UCRT heap returns
-// freed memory to the system between requests, so every request faulted
-// its working set back in page by page. Linked into the executable itself
-// so these definitions win over the UCRT imports for all statically linked
-// code (clice, LLVM, libc++). Blocks the UCRT allocated for itself
-// (`strdup`, `_wgetcwd(nullptr)`, ...) still reach free() and realloc();
-// they go back to the UCRT.
+// The Windows and macOS executables allocate through mimalloc.
+//
+// Windows: the UCRT heap returns freed memory to the system between
+// requests, so every request faulted its working set back in page by page.
+// Linked into the executable itself so these definitions win over the UCRT
+// imports for all statically linked code (clice, LLVM, libc++). Blocks the
+// UCRT allocated for itself (`strdup`, `_wgetcwd(nullptr)`, ...) still reach
+// free() and realloc(); they go back to the UCRT.
 //
 // C++ allocation is routed as well: libc++ implements the aligned
 // `operator new` with the UCRT's `_aligned_malloc`, an import no
 // definition here can replace, and LLVM allocates its hash tables and
 // bump allocator slabs through it (llvm::allocate_buffer).
+//
+// macOS: libmalloc hands the pages it took back to later allocations
+// without telling the kernel, whose footprint then leaves them out: a
+// stateless worker measured a fraction of what it used, and the worker
+// scheduler sizes background work by that footprint. mimalloc tells the
+// kernel when it reuses a page. It takes malloc and operator new over
+// itself (--@mimalloc//:override), its malloc zone the system libraries'
+// allocations too.
 
+#ifdef _WIN32
 #include <cstddef>
 #include <cstring>
 
@@ -19,9 +29,13 @@
 #include <windows.h>
 
 #include "mimalloc-new-delete.h"
+#endif
+
 #include "mimalloc.h"
 
 namespace {
+
+#ifdef _WIN32
 
 template <typename F>
 F ucrt(const char* name) {
@@ -46,15 +60,17 @@ const bool retain = [] {
     return true;
 }();
 
-void collect() {
-    mi_collect(true);
-}
-
 /// With a negative delay mimalloc schedules nothing for purging, and no
 /// collect returns it. A second's delay leaves what a request frees and
 /// reuses alone; the collect after it returns the rest.
 void purge() {
     mi_option_set(mi_option_purge_delay, 1000);
+}
+
+#endif
+
+void collect() {
+    mi_collect(true);
 }
 
 }  // namespace
@@ -69,11 +85,15 @@ namespace {
 
 const bool hooked = [] {
     clice_allocator_collect = &collect;
+#ifdef _WIN32
     clice_allocator_purge = &purge;
+#endif
     return true;
 }();
 
 }  // namespace
+
+#ifdef _WIN32
 
 extern "C" {
 
@@ -111,3 +131,5 @@ extern "C" {
     }
 
 }  // extern "C"
+
+#endif

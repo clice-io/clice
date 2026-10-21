@@ -245,9 +245,7 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
 
     auto planned = query::rename(ctx, *requests);
     if(project.index.damaged()) {
-        return fail(
-            "the index database is damaged (the log above says where); run `clice index` "
-            "to rebuild it");
+        return fail(damaged_index_error(project));
     }
     auto& result = planned.result;
     // A unit --fresh failed to index answers from an index that may be old.

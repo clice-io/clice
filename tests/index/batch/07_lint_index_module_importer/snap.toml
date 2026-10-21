@@ -1,0 +1,30 @@
+[index."$ clice index --jobs 2"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 7 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[index."$ clice index unit main.cpp"]
+stdout = '''
+translation unit ${WS}/main.cpp
+  built at #time  content hash=#4b51229383717192
+  contributions=1
+    #19953a38e403e972  ${WS}/main.cpp
+  include tree (0 nodes):
+'''
+exit = 0
+
+["lint --index"."$ clice lint --index --jobs 2"]
+stdout = "Linted 2 translation units in #s: 0 findings."
+exit = 0
+
+["lint --index"."$ clice index unit main.cpp"]
+stdout = '''
+translation unit ${WS}/main.cpp
+  built at #time  content hash=#4b51229383717192
+  contributions=1
+    #19953a38e403e972  ${WS}/main.cpp
+  include tree (0 nodes):
+'''
+exit = 0

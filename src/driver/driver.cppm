@@ -2,10 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-#ifdef _WIN32
-#include <io.h>
-#include <print>
-#endif
+#include <errno.h>
 
 #include "support/logging.macros.h"
 
@@ -103,14 +100,9 @@ inline void add_commands(kota::deco::cli::SubCommander& root, const char* self_p
 /// line must not end a run before it saves.
 inline void write_output(std::FILE* stream, std::string_view text) {
     int fd = ::fileno(stream);
-#ifdef _WIN32
-    // A console takes UTF-16: std::print converts for it, where fwrite
-    // would show UTF-8 in the console's code page.
-    if(::_isatty(fd)) {
-        std::print(stream, "{}", text);
+    if(write_console(fd, text)) {
         return;
     }
-#endif
     if(std::fwrite(text.data(), 1, text.size(), stream) == text.size() &&
        std::fflush(stream) == 0) {
         return;
@@ -499,6 +491,11 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
     }
     if(result.unsaved) {
         return std::unexpected("part of the index could not be persisted; see the log");
+    }
+    if(result.damaged) {
+        return std::unexpected(
+            "the index database is damaged (see the log); it is discarded, and the next `clice "
+            "index` rebuilds the index");
     }
     return std::move(result.failed);
 }

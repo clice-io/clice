@@ -1,0 +1,114 @@
+[names.include.hover]
+markdown = '''
+**header** `工具.h`
+
+`${WS}/头文件/工具.h`
+'''
+range = '#include ⟦"工具.h"⟧'
+
+[names.macro.hover]
+markdown = '''
+**macro** `GREETING`
+
+```cpp
+#define GREETING "你好"
+```
+Expands to:
+```cpp
+"你好"
+```
+'''
+range = "const char* text = ⟦GREETING⟧;"
+
+[names.call.hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+inline int helper()
+```
+'''
+range = "return ⟦helper⟧() + (text[0] == 0);"
+
+[names.links]
+document_links = [
+    { at = '#include ⟦"工具.h"⟧', target = "头文件/工具.h" },
+]
+
+[navigation.definition]
+definition = ["头文件/工具.h │ inline int ⟦helper⟧() {"]
+
+[navigation.references]
+references = ["头文件/工具.h │ inline int ⟦helper⟧() {", "return ⟦helper⟧() + (text[0] == 0);"]
+
+[navigation.rename.rename.edits]
+"头文件/工具.h" = '''
+ }
+
+-inline int helper() {
++inline int assist() {
+     return 1 + offset();
+ }
+'''
+"源码/主程序.cpp" = '''
+ int main() {
+     const char* text = GREETING;
+-    return helper() + (text[0] == 0);
++    return assist() + (text[0] == 0);
+ }
+'''
+
+[commands."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[commands."$ clice query document-symbols 头文件/工具.h"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "offset",
+        "kind": "Function",
+        "startLine": 3,
+        "endLine": 5,
+        "symbol": "#05c39c5ff22bd9de path:${WS}/头文件/工具.h"
+      },
+      {
+        "name": "helper",
+        "kind": "Function",
+        "startLine": 7,
+        "endLine": 9,
+        "symbol": "#e0a9e5cbcaeac7ae"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[commands."$ clice query references \"#05c39c5ff22bd9de path:${WS}/头文件/工具.h\""]
+stdout = '''
+{
+  "result": {
+    "name": "offset",
+    "kind": "Function",
+    "symbol": "#05c39c5ff22bd9de path:${WS}/头文件/工具.h",
+    "references": [
+      {
+        "file": "${WS}/头文件/工具.h",
+        "line": 8,
+        "context": "    return 1 + offset();",
+        "function": "helper"
+      }
+    ],
+    "total": 1
+  },
+  "stale": []
+}
+'''
+exit = 0

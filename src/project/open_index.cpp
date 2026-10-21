@@ -18,6 +18,13 @@ import :vfs.path;
 
 namespace clice {
 
+std::string damaged_index_error(const Project& project) {
+    return std::format(
+        "the index database at {} is damaged (the log above says where); delete that "
+        "directory and run `clice index` to rebuild it",
+        index::database_directory(*project.store, project.build.active_configuration()));
+}
+
 Spelling inspected_path(const Project& project, llvm::StringRef argument) {
     return Spelling(argument, Spelling(project.config.workspace_root));
 }

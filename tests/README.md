@@ -114,6 +114,11 @@ cases: they live in `unittests/` at the repository root.
   databases are written before the first server or command sees it, unless
   the test wrote one (`t.disk.database()`). Nothing a test does reaches the
   repository or another test.
+- **The copy's root is named past ASCII** (`clice-case-é中😀-…`, characters
+  of two, three and four UTF-8 bytes), as a home or project directory often
+  is: every case runs under such a workspace, cache and log directory on
+  every platform. A case about names past ASCII inside the workspace still
+  writes them itself.
 
 ### Positions
 
@@ -180,7 +185,8 @@ in one run. The server opens every source, module interfaces first and the
 entry last, then every marked header, before the script asks. Both check the
 code compiles cleanly (`compiles: false` says it must not), inspect every
 source but an importer and every file it read, the server every file it
-opened.
+opened. The server's client sends URIs as an editor does, percent-encoded
+(`file:///c%3A/…` on Windows), and compares them decoded.
 
 **Diagnostics and parked work.** `s.diagnostics(file)` opens the file if
 needed and pulls its diagnostics, `s.errors(file)` keeps the errors,

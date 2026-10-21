@@ -109,6 +109,8 @@ std::vector<Brace> braces_of(const LexicalInfo& lexical) {
 /// The text of a definition before the body its extent ends with, or
 /// nullopt when the extent ends otherwise (`= default`, an initializer).
 std::optional<llvm::StringRef> before_body(const std::string& text) {
+    // FIXME: a function-try-block's last brace group is its last handler:
+    // the card keeps the body and the `catch (...)` heads.
     auto braces = braces_of(lexical_scan(text, dialect_of()));
     auto written = llvm::StringRef(text).rtrim();
     auto body = last_brace_group(braces, {0, static_cast<std::uint32_t>(written.size())});
@@ -149,6 +151,9 @@ auto index_semantic_tokens(SourceText& source,
         // What a macro's expansion declares or names is spelled in its
         // definition: the expansion's name is the macro's alone.
         if(token.kind == Kind::Macro) {
+            // FIXME: when variants resolve one invocation to different macros, the last
+            // read wins: `empty`, `callable` and `controlFlow` follow the shards' order
+            // instead of being combined like the other names.
             owned[range.begin] = token;
             return;
         }
@@ -268,6 +273,8 @@ auto index_document_symbols(SourceText& source,
     std::vector<LexicalInfo::Directive> macros;
     std::vector<LexicalInfo::Directive> marks;
     for(const auto& directive: lexical.directives) {
+        // FIXME: a mark inside an inactive branch (`#if 0`) lists too and sections
+        // the declarations after it: the index stores no inactive regions.
         if(directive.kind == LexicalInfo::Directive::Kind::PragmaMark) {
             marks.push_back(directive);
         }

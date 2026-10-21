@@ -331,11 +331,10 @@ ZEST_CASE(ControlFlow) {
 
     EXPECT_SELECT(R"(int bar; void foo() §⟦{ foo (); }⟧§)", "CompoundStmt");
 
-    /// FIXME:
-    /// EXPECT_SELECT(R"(
-    ///     /*error-ok*/
-    ///     void func() §⟦{^⟧)",
-    ///               "CompoundStmt");
+    EXPECT_SELECT(R"(
+        /*error-ok*/
+        void func() §⟦{§⟧)",
+                  "CompoundStmt");
 
     EXPECT_SELECT(R"(
         struct Str {
@@ -352,12 +351,11 @@ ZEST_CASE(ControlFlow) {
 }
 
 ZEST_CASE(Declarations) {
-    /// FIXME: how to handle this?
-    /// EXPECT_SELECT(R"(
-    ///      #define TARGET void foo()
-    ///      §⟦TAR§GET{ return; }⟧
-    ///      )",
-    ///              "FunctionDecl");
+    EXPECT_SELECT(R"(
+         #define TARGET void foo()
+         §⟦TAR§GET{ return; }⟧
+         )",
+                  "FunctionDecl");
 
     EXPECT_SELECT(R"(§⟦§void foo§()()⟧;)", "FunctionDecl");
     EXPECT_SELECT(R"(§⟦void §foo()⟧;)", "FunctionDecl");
@@ -651,27 +649,33 @@ ZEST_CASE(InjectedClassName) {
     });
 }
 
-ZEST_CASE(Metrics) {
-    llvm::StringRef code = R"cpp(
-    // error-ok: testing behavior on recovery expression
-    int foo();
-    int foo(int, int);
-    int x = fo^o(42);
-  )cpp";
-
-    /// FIXME:
-}
-
-ZEST_CASE(Selected) {
-    /// FIXME:
-}
-
 ZEST_CASE(PathologicalPreprocessor) {
-    /// FIXME:
+    llvm::StringRef code = R"(
+#[expand.inc]
+MACRO
+
+#[main.cpp]
+#define MACRO while(1)
+void test() {
+#include "expand.inc"
+    br§eak;
+}
+)";
+    add_files("main.cpp", code);
+    ZASSERT(compile());
+
+    auto points = nameless_points("main.cpp");
+    ZASSERT(!points.empty());
+    auto tree = SelectionTree::create_right(*unit, {points[0], points[0]});
+    ZASSERT(unit->diagnostics().empty());
+
+    auto ancestor = tree.common_ancestor();
+    ZASSERT(ancestor);
+    ZASSERT(ancestor->kind() == llvm::StringRef("BreakStmt"));
+    ZASSERT(ancestor->parent->kind() == llvm::StringRef("WhileStmt"));
 }
 
 ZEST_CASE(IncludedFile) {
-    /// FIXME:
     llvm::StringRef code = R"(
 #[expand.inc]
 while (0)

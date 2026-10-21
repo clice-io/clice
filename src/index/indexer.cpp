@@ -415,7 +415,9 @@ public:
     }
 
     void add_macro(const clang::MacroInfo* def, RelationKind kind, clang::SourceLocation location) {
-        // FIXME: Figure out when location is MacroID.
+        // FIXME: A macro location is a name a macro body spells, which
+        // project_expansions records, or a macro name passed as an argument and
+        // invoked by the body (`APPLY(F)` for `F()`), which nothing records.
         if(location.isMacroID()) {
             return;
         }
@@ -490,7 +492,6 @@ public:
         Relation relation{.kind = kind, .range = range, .target = 0};
 
         if(kind.isDeclOrDef()) {
-            // FIXME: why definition or declaration has invalid source range? implicit node?
             auto source_range = decls::written_range(decl);
             if(source_range.isValid()) {
                 auto [def_fid, extent] = unit.produced_range(source_range);
@@ -909,12 +910,12 @@ public:
             if(auto* CRD = llvm::dyn_cast<clang::CXXRecordDecl>(TD)) {
                 if(auto* def = CRD->getDefinition()) {
                     for(auto& base: CRD->bases()) {
-                        // FIXME: Handle dependent base class.
                         // Through any alias the base is written with: the
                         // hierarchy relates classes.
                         auto target = types::decl_of(base.getType().getCanonicalType());
                         /// A base that is a template parameter (`struct D : T`)
-                        /// names no class until instantiation.
+                        /// names no class until instantiation: project_bases
+                        /// records it per instantiation.
                         if(!target ||
                            llvm::isa<clang::TemplateTypeParmDecl, clang::TemplateTemplateParmDecl>(
                                target)) {
@@ -1184,6 +1185,9 @@ public:
         if(const auto* decl = semantics.node(i).node.get<clang::Decl>();
            decl && !semantics.node(i).flags.in_instantiation &&
            unit.file_id(decl->getLocation()) == unit.focus_file().file()) {
+            // FIXME: the mention is a Reference, so document highlight shows a
+            // comment's `@param value` as a read; showing it as text (still in
+            // references and rename) needs a relation kind of its own.
             for(auto& documented: documented_parameters(unit, decl)) {
                 add_name({.decl = documented.parameter,
                           .kind = RelationKind::Reference,

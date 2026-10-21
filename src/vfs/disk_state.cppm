@@ -314,6 +314,8 @@ private:
     const llvm::SmallVectorImpl<llvm::StringRef>& paths;
 
     /// No entry before the first look.
+    /// FIXME: and none leaves: a place no compile looks up any more, or a
+    /// removed project's file, is still looked at by tick() until a restart.
     llvm::DenseMap<Fid, File> files;
 
     llvm::SmallVector<Fid> changes;

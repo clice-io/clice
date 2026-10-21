@@ -136,6 +136,9 @@ bool is_template_parameter(const clang::Decl* decl) {
 /// redeclaration it looked up, and adopting that list re-parents its
 /// parameters into the guide the first time the unit uses CTAD.
 const clang::DeclContext* context_of(const clang::Decl* decl) {
+    /// FIXME: an Objective-C ivar of a class extension (`@interface A () { int
+    /// _state; }`) is named in the anonymous category, so same-named ivars of two
+    /// classes' extensions are one entity; getContainingInterface() would part them.
     const clang::DeclContext* context = decl->getDeclContext();
     auto* guide = llvm::dyn_cast<clang::CXXDeductionGuideDecl>(context);
     if(!guide || !guide->isImplicit() || !is_template_parameter(decl)) {
@@ -782,6 +785,10 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
             /// A lambda in an initializer or default argument is copied
             /// into every instantiation of its variable template or
             /// template; the declaration it belongs to tells them apart.
+            /// FIXME: a lambda in a template's default argument (`template <class U =
+            /// decltype([] {})>`) has no context declaration: the closures each `S<>`
+            /// makes hash alike, so `f(S<>)` declared twice is one symbol. Only the
+            /// mangling number tells them apart, and it is not stable across units.
             if(auto* owner = dyn_cast_if_present<NamedDecl>(record->getLambdaContextDecl())) {
                 hasher.add(entity(owner));
             }

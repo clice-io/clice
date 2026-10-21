@@ -50,6 +50,13 @@ bool is_other_language_path(llvm::StringRef path) {
     return type != clang::driver::types::TY_INVALID && !is_c_family_type(type);
 }
 
+std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
+    if(llvm::json::isUTF8(bytes)) {
+        return std::nullopt;
+    }
+    return llvm::json::fixUTF8(bytes);
+}
+
 bool is_context_header_path(llvm::StringRef path) {
     return path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
            path.ends_with(".tpp") || path.ends_with(".ipp") || path.ends_with(".tcc") ||
@@ -442,8 +449,9 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
     /// response tokenization style.
     auto scan_driver_mode = [&](llvm::ArrayRef<const char*> argv) {
         for(llvm::StringRef token: argv) {
-            if(token.consume_front("--driver-mode=") && token == "cl") {
-                config.family = CompilerFamily::ClangCL;
+            if(token.consume_front("--driver-mode=")) {
+                config.family = token == "cl" ? CompilerFamily::ClangCL
+                                              : Toolchain::driver_family(config.driver);
             }
         }
     };
@@ -760,6 +768,9 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
                 break;
         }
     }
+    if(!cfg.query_toolchain) {
+        append("\x01unqueried");
+    }
 }
 
 std::uint64_t CompilationDatabase::entry_hash(ConfigID id) {
@@ -895,7 +906,13 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     source.inputs = {
         {.file = database, .hash = observed->obs.hash}
     };
-    simdjson::padded_string json_buf(observed->content->getBuffer());
+    // An entry holding a byte the repair replaced is skipped.
+    auto repaired = repaired_database_text(observed->content->getBuffer());
+    auto damaged = [&](llvm::StringRef value) {
+        return repaired && value.contains("\xEF\xBF\xBD");
+    };
+    simdjson::padded_string json_buf(repaired ? llvm::StringRef(*repaired)
+                                              : observed->content->getBuffer());
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(json_buf).get(doc)) {
@@ -907,6 +924,17 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
     simdjson::ondemand::array arr;
     if(auto error = doc.get_array().get(arr)) {
+        // PowerShell's ConvertTo-Json writes a one-entry array as the entry.
+        simdjson::dom::parser checker;
+        simdjson::dom::object single;
+        if(!checker.parse(json_buf).get(single) && single["file"].is_string()) {
+            LOG_ERROR(
+                "Invalid compilation database format in {}: the root is one entry, not an "
+                "array of them (PowerShell's ConvertTo-Json writes a single entry so); wrap it "
+                "in [ ].",
+                path);
+            return std::nullopt;
+        }
         LOG_ERROR("Invalid compilation database format in {}: root element must be an array.",
                   path);
         return std::nullopt;
@@ -956,6 +984,49 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
 
+        llvm::BumpPtrAllocator local;
+        llvm::StringSaver saver(local);
+        llvm::SmallVector<const char*, 32> args;
+        std::optional<llvm::StringRef> command;
+        simdjson::ondemand::array args_arr;
+        if(!obj["arguments"].get_array().get(args_arr)) {
+            bool malformed = false;
+            for(auto arg_val: args_arr) {
+                std::string_view sv;
+                if(arg_val.get_string().get(sv)) {
+                    malformed = true;
+                    break;
+                }
+                args.push_back(saver.save(llvm::StringRef(sv.data(), sv.size())).data());
+            }
+            if(malformed || args.empty()) {
+                continue;
+            }
+        } else {
+            std::string_view cmd_sv;
+            if(obj["command"].get_string().get(cmd_sv)) {
+                LOG_ERROR(
+                    "Invalid compilation database in {}. Skipping item at index {}: "
+                    "neither 'arguments' nor 'command' key is present.",
+                    path,
+                    index);
+                continue;
+            }
+            command = llvm::StringRef(cmd_sv.data(), cmd_sv.size());
+        }
+
+        llvm::StringRef file_ref(file_sv.data(), file_sv.size());
+        if(damaged(dir_sv) || damaged(file_ref) ||
+           (command ? damaged(*command) : llvm::any_of(args, damaged))) {
+            LOG_ERROR(
+                "Invalid compilation database in {}. Skipping item at index {} ({}): "
+                "it holds bytes that are not UTF-8.",
+                path,
+                index,
+                file_ref);
+            continue;
+        }
+
         // A relative `directory` anchors to the CDB file's own location —
         // self-contained, so every consumer of the same file (server,
         // batch, inspect) resolves it identically.
@@ -968,7 +1039,6 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             known->second = Spelling(CanonicalPath(directory));
         }
         auto& working = known->second;
-        llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
         // Some build systems emit non-C-family files (e.g. .rc, .asm, .S, .def)
         // into compile_commands.json: skipped, unless the command's -x
@@ -983,38 +1053,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                        ? strings.save(file.str())
                                        : llvm::StringRef();
 
-        std::optional<ConfigID> normalized;
-
-        simdjson::ondemand::array args_arr;
-        if(!obj["arguments"].get_array().get(args_arr)) {
-            llvm::BumpPtrAllocator local;
-            llvm::StringSaver saver(local);
-            llvm::SmallVector<const char*, 32> args;
-            bool malformed = false;
-            for(auto arg_val: args_arr) {
-                std::string_view sv;
-                if(arg_val.get_string().get(sv)) {
-                    malformed = true;
-                    break;
-                }
-                args.push_back(saver.save(llvm::StringRef(sv.data(), sv.size())).data());
-            }
-            if(malformed || args.empty()) {
-                continue;
-            }
-            normalized = normalize(working, path_id, args);
-        } else {
-            std::string_view cmd_sv;
-            if(obj["command"].get_string().get(cmd_sv)) {
-                LOG_ERROR(
-                    "Invalid compilation database in {}. Skipping item at index {}: "
-                    "neither 'arguments' nor 'command' key is present.",
-                    path,
-                    index);
-                continue;
-            }
-            normalized = normalize(working, path_id, llvm::StringRef(cmd_sv.data(), cmd_sv.size()));
-        }
+        auto normalized =
+            command ? normalize(working, path_id, *command) : normalize(working, path_id, args);
 
         if(!normalized || is_other_language_path(file_ref) ||
            (!c_family && !forces_c_family(*normalized))) {
@@ -1139,9 +1179,8 @@ static bool cxx_driver(const CompileConfig& config) {
 
 std::optional<Spelling> CompilationDatabase::pch_output(ConfigID id) const {
     namespace types = clang::driver::types;
-    auto language = forced_language(id);
-    bool emits = !language.empty() &&
-                 types::onlyPrecompileType(types::lookupTypeForTypeSpecifier(language.data()));
+    auto type = types::lookupTypeForTypeSpecifier(forced_language(id).str().c_str());
+    bool emits = type != types::TY_INVALID && types::onlyPrecompileType(type);
     const char* output = nullptr;
     for(auto& arg: config(id).args) {
         if(arg.opt_id == option::OPT_emit_pch) {
@@ -1223,6 +1262,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     }
     append_section(options.extra_prepend);
     append_section(options.extra_append);
+    rule_key += options.query_toolchain ? 'q' : 'u';
 
     auto rule_set_id = rule_set_ids.try_emplace(rule_key, rule_set_ids.size()).first->second;
     auto [memo, inserted] =
@@ -1261,6 +1301,14 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
 
     auto remove_parse_options =
         kota::option::ParseOptions{.visibility = family_visibility(cfg.family)};
+
+    /// One remove pattern: the option it names, and whether a `*` joined
+    /// to the option's name takes every option spelled with that prefix
+    /// (`-W*` takes -Wall and -Wextra, options of their own).
+    struct RemovePattern {
+        kota::option::ParsedArg option;
+        bool prefix = false;
+    };
 
     /// Parse one rule's remove list into option patterns. The parsed
     /// patterns view the translated spellings, which therefore outlive
@@ -1320,19 +1368,38 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         } else {
             remove_flags = std::move(remove_source);
         }
-        std::vector<kota::option::ParsedArg> removes;
-        for(auto& parsed: option::table().parse(remove_flags, remove_parse_options)) {
-            if(!parsed.has_value()) {
-                continue;
-            }
-            auto& remove = removes.emplace_back(*parsed);
+        std::vector<RemovePattern> removes;
+        auto add = [&](const kota::option::ParsedArg& parsed, llvm::StringRef written) {
+            auto& remove = removes.emplace_back(RemovePattern{
+                .option = parsed,
+                .prefix = written.consume_back("*") && written == parsed.spelling,
+            });
             // Anchored like the base command's paths, so a relative value
             // names the file the rule's configuration means; the `*`
             // wildcard stays a wildcard.
-            for(auto& value: remove.values) {
+            for(auto& value: remove.option.values) {
                 if(value != "*") {
-                    value = anchored(remove.id, value, anchor, strings);
+                    value = anchored(remove.option.id, value, anchor, strings);
                 }
+            }
+        };
+        for(auto parsed: option::table().parse(remove_flags, remove_parse_options)) {
+            if(!parsed.has_value()) {
+                // An option written without its value, last in the list
+                // (`-include`), removes it with every value.
+                auto& wildcard = remove_storage.emplace_back(
+                    std::vector<std::string>{remove_flags[parsed.error().index], "*"});
+                auto retried = *option::table().parse(wildcard, remove_parse_options).begin();
+                if(!retried) {
+                    LOG_WARN("A rule removes {}, which takes several values: write them",
+                             wildcard[0]);
+                    continue;
+                }
+                add(*retried, wildcard[0]);
+            } else if(parsed->id == option::OPT_INPUT) {
+                LOG_WARN("A rule removes {}, which names no option", remove_flags[parsed->index]);
+            } else {
+                add(*parsed, remove_flags[parsed->index]);
             }
         }
         return removes;
@@ -1340,7 +1407,29 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
 
     /// Whether a remove pattern names `arg` (a base Arg or an appended
     /// LocalArg).
-    auto removes_arg = [](const kota::option::ParsedArg& remove, const auto& arg) {
+    auto removes_arg = [](const RemovePattern& wanted, const auto& arg) {
+        auto& remove = wanted.option;
+        // Among options of the remove's kind: `-W*` takes every warning,
+        // not the preprocessor's `-Wp,-D...`.
+        if(wanted.prefix && arg.cls == classify(remove.id, {})) {
+            // As the argument renders: its option's name, with the value
+            // joined to it when the option joins one (`-Wno-unused`).
+            Arg view;
+            if constexpr(requires { arg.view(); }) {
+                view = arg.view();
+            } else {
+                view = arg;
+            }
+            std::string start;
+            render_arg(view, [&](std::string_view fragment) {
+                if(start.empty()) {
+                    start = fragment;
+                }
+            });
+            if(llvm::StringRef(start).starts_with(remove.spelling)) {
+                return true;
+            }
+        }
         if(remove.id != arg.opt_id) {
             return false;
         }
@@ -1383,7 +1472,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         }
     };
 
-    std::vector<kota::option::ParsedArg> remove_args;
+    std::vector<RemovePattern> remove_args;
     std::vector<LocalArg> append_args;
     for(auto& edit: options.edits) {
         if(edit.kind == CommandEdit::Kind::Remove) {
@@ -1391,7 +1480,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
             // A remove reaches the appends before it, so a later rule can
             // take back what an earlier one added.
             llvm::erase_if(append_args, [&](const LocalArg& local) {
-                return llvm::any_of(removes, [&](const kota::option::ParsedArg& remove) {
+                return llvm::any_of(removes, [&](const RemovePattern& remove) {
                     return removes_arg(remove, local);
                 });
             });
@@ -1409,9 +1498,8 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     parse_edit(options.extra_prepend, entry_directory, prepend_args);
 
     auto matches_remove = [&](const Arg& arg) {
-        return llvm::any_of(remove_args, [&](const kota::option::ParsedArg& remove) {
-            return removes_arg(remove, arg);
-        });
+        return llvm::any_of(remove_args,
+                            [&](const RemovePattern& remove) { return removes_arg(remove, arg); });
     };
 
     /// Rebuild the sequence: prepends first, base args with removes
@@ -1452,7 +1540,21 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         collapse_gpu_arch_args(edited);
     }
 
-    auto result_id = save_config(cfg, edited);
+    auto edited_config = cfg;
+    edited_config.query_toolchain = cfg.query_toolchain && options.query_toolchain;
+    // A rule may take `--driver-mode=cl` out of a command, or put it in:
+    // the family follows the edited command's last driver mode, as it
+    // follows the loaded one's.
+    edited_config.family = Toolchain::driver_family(cfg.driver);
+    for(auto& local: llvm::reverse(edited)) {
+        if(local.opt_id == option::OPT_driver_mode && local.values.size() == 1) {
+            if(llvm::StringRef(local.values[0]) == "cl") {
+                edited_config.family = CompilerFamily::ClangCL;
+            }
+            break;
+        }
+    }
+    auto result_id = save_config(edited_config, edited);
     rule_applied[{static_cast<std::uint32_t>(id), rule_set_id}] =
         static_cast<std::uint32_t>(result_id);
     return result_id;

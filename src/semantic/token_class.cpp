@@ -333,6 +333,9 @@ TokenClass token_class(const clang::MacroInfo& macro, const clang::SourceManager
     if(macro.tokens_empty()) {
         add(Empty);
     }
+    // FIXME: only tokens the replacement list writes count: a macro reaching
+    // `return` through another macro (`#define WRAP RET`) gets no ControlFlow;
+    // the token stream's definition_control misses it the same way.
     if(llvm::any_of(macro.tokens(),
                     [](const clang::Token& token) { return leaves_enclosing(token.getKind()); })) {
         add(ControlFlow);

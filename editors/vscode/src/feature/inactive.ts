@@ -19,6 +19,9 @@ export interface InactiveSpans {
     tokens: [number, number, number][];
 }
 
+/// FIXME: with lexical tokens off and a kind renamed to "" (not sent), a line
+/// whose only token left is a dropped macro argument (`DROP(value);` with
+/// `macro` dropped) reads as an inactive line and dims whole.
 export function inactiveSpans(data: ArrayLike<number>, mask: number): InactiveSpans {
     const spans: InactiveSpans = { lines: [], tokens: [] };
     let runStart = -1;

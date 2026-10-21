@@ -56,13 +56,25 @@ llvm::SmallVector<SourceID, 4> Build::declared_ids() const {
     for(auto& rule: config.compiled_rules) {
         if(rule_active(rule, active) || declares) {
             for(auto& database: rule.compile_commands) {
-                if(auto id = cdb.find_source(database)) {
+                if(auto id = declared_source(database)) {
                     declared.push_back(*id);
                 }
             }
         }
     }
     return declared;
+}
+
+std::optional<SourceID> Build::declared_source(const Spelling& database) const {
+    if(declared_source_count != cdb.source_count()) {
+        declared_source_ids.clear();
+        declared_source_count = cdb.source_count();
+    }
+    auto [it, inserted] = declared_source_ids.try_emplace(database.str());
+    if(inserted) {
+        it->second = cdb.find_source(database);
+    }
+    return it->second;
 }
 
 bool Build::discovered(SourceID id) const {
@@ -75,7 +87,7 @@ llvm::SmallVector<SourceID, 4> Build::source_order(CanonicalRef path) const {
     auto declared = declared_ids();
     auto add_sources = [&](const CompiledRule& rule) {
         for(auto& database: rule.compile_commands) {
-            if(auto id = cdb.find_source(database); id && !llvm::is_contained(order, *id)) {
+            if(auto id = declared_source(database); id && !llvm::is_contained(order, *id)) {
                 order.push_back(*id);
             }
         }
@@ -160,6 +172,7 @@ Edits Build::edits_of(llvm::ArrayRef<const CompiledRule*> matched) const {
         if(!llvm::is_contained(matched, &rule)) {
             continue;
         }
+        result.query_toolchain = result.query_toolchain && rule.query_toolchain;
         if(!rule.remove.empty()) {
             result.edits.push_back({.kind = CommandEdit::Kind::Remove,
                                     .flags = rule.remove,
@@ -197,8 +210,9 @@ std::optional<ConfigID> Build::default_command(CanonicalRef path) {
 }
 
 ConfigID Build::builtin(CanonicalRef path) {
-    // Every C++ spelling (.cc, .cxx, .C, .hh) gets clang++, and so does the
-    // ambiguous .h; C, Objective-C and unknown extensions get clang.
+    // Every C++ spelling (.cc, .cxx, .C, .hh) gets clang++, and so do the
+    // ambiguous .h and a name clang has no language for (`Widget`, a `.tcc`
+    // body), which only an include ever reads; C and Objective-C get clang.
     namespace types = clang::driver::types;
     auto type = suffix_type(path);
     llvm::SmallVector<const char*, 8> arguments;
@@ -210,7 +224,7 @@ ConfigID Build::builtin(CanonicalRef path) {
         arguments = {"clang++", "-std=c++20", "-x", "cuda", "--cuda-device-only"};
     } else if(type != types::TY_INVALID && types::isCXX(type)) {
         arguments = {"clang++", "-std=c++20"};
-    } else if(type == types::TY_CHeader) {
+    } else if(type == types::TY_CHeader || type == types::TY_INVALID) {
         // C++ by default, like clangd; -x forces TU semantics instead of a
         // precompiled-header job.
         arguments = {"clang++", "-std=c++20", "-x", "c++"};
@@ -261,6 +275,9 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
             joined += '\0';
         }
         joined += '\1';
+    }
+    if(!edit.query_toolchain) {
+        joined += "unqueried";
     }
     return std::format("{:016x}", llvm::xxh3_64bits(joined));
 }
@@ -386,13 +403,23 @@ bool Build::default_source(CanonicalRef path) {
     if(is_source_path(path)) {
         return true;
     }
-    // A header is no translation unit of its own; an extensionless file
-    // is one when its rule's command forces a source language.
+    // A header is no translation unit of its own; a file clang has no
+    // language for is one when its rule's command forces a source language
+    // and a pattern singles it out, naming its suffix (`*.ino`) or the file
+    // itself: one matching any name there (`src/**`) reaches CMakeLists.txt
+    // and README.md too.
     if(suffix_type(path) != clang::driver::types::TY_INVALID || path::extension(path) == ".cuh") {
         return false;
     }
     auto* rule = default_rule(path);
-    if(!rule || rule->patterns.empty()) {
+    if(!rule) {
+        return false;
+    }
+    auto another_name = llvm::StringRef(path).str() + "~";
+    bool singled_out = llvm::any_of(rule->patterns, [&](const CompiledRule::Pattern& pattern) {
+        return pattern.glob.match(llvm::StringRef(path)) && !pattern.glob.match(another_name);
+    });
+    if(!singled_out) {
         return false;
     }
     auto command = command_of(*rule);

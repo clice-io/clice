@@ -4,6 +4,7 @@
 /// databases the project describes.
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { REPO_ROOT } from "../../repo.ts";
@@ -208,6 +209,14 @@ export function writeDatabases(project: Project, files: readonly string[], root:
         });
         writeDatabase(root, project, Object.fromEntries(own), dir);
     }
+}
+
+/// A new directory a copy of a case goes in. Its name goes past ASCII, as
+/// a home or project directory often does, in characters of two, three and
+/// four UTF-8 bytes (the last a UTF-16 surrogate pair): every case runs
+/// under such a root.
+export function copyRoot(prefix: string): string {
+    return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}é中😀-`)));
 }
 
 /// Copy the inputs of `dir` to `root`: markers stripped, `*.in` with

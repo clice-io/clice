@@ -67,7 +67,7 @@ pixi 环境之外的前置条件：
 pixi run compat-test          # default RelWithDebInfo
 ```
 
-每个场景都按 CI 运行器镜像中的样子指定某一平台的编译器：Linux 上是发行版带版本号的 GCC 与 Clang，以及 bear、ccache、meson、ninja、xmake、bazel、zig、Emscripten、MinGW、RISC-V 和 Arm 交叉编译器，还有 pixi `cuda` 环境中的 nvcc（`pixi install -e cuda`）；Windows 上是 Visual Studio、LLVM 和 MinGW；macOS 上是 Apple clang 以及 Homebrew 的 GCC 和 LLVM。缺少工具的场景在本地跳过，在 CI 中则判为失败。CI 每次构建都会运行它，并每周针对最新的发布版本运行一次。
+每个场景都按 CI 运行器镜像中的样子指定某一平台的编译器：Linux 上是发行版带版本号的 GCC 与 Clang（以及 libc++），以及 bear、ccache、meson、ninja、xmake、bazel、zig、Emscripten、musl-gcc、Android NDK、MinGW、RISC-V、AArch64 和 Arm 交叉编译器，还有 pixi `cuda` 环境中的 nvcc，以及 `toolchains` 环境中 conda 的 GCC 和 clang 与 xclang 的 Linux 和 MinGW 目标（`pixi install -e cuda -e toolchains`）；Windows 上是 Visual Studio、LLVM、MinGW 以及 MSYS2 的 UCRT GCC 和 clang；macOS 上是 Apple clang 以及 Homebrew 的 GCC 和 LLVM。缺少工具的场景在本地跳过，在 CI 中则判为失败。CI 每次构建都会运行它，并每周针对最新的发布版本运行一次。
 
 ## 真实项目
 

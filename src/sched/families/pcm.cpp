@@ -474,6 +474,9 @@ const kota::ipc::Error* PCMFamily::crashed(Fid module) {
     if(it == build_crashes.end()) {
         return nullptr;
     }
+    // FIXME: only the module's own text lifts the refusal: a fix in a header it
+    // includes waits for an importer's edit or save, and its importers fail to
+    // index until then.
     if(content_hash(module) != it->second.content) {
         build_crashes.erase(it);
         return nullptr;

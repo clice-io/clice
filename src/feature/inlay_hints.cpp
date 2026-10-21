@@ -150,16 +150,9 @@ bool is_setter(const clang::FunctionDecl* callee,
     return name.substr(3).ltrim("_").equals_insensitive(names[0]);
 }
 
-// Checks if the callee is one of the builtins
-// addressof, as_const, forward, move(_if_noexcept)
-//
-// The real criterion is "so common and so obvious that a parameter hint is
-// pure noise", and neither the builtin-ID check nor the name fallback below
-// expresses it well: the ID set is whatever clang happens to fold, and the
-// single-parameter guard only shields the std::move algorithm overload.
-// FIXME: Replace both with a curated suppression table (qualified name +
-// signature shape) so the set is explicit and extensible beyond cast-like
-// single-parameter forms.
+// The std cast-like forms (addressof, as_const, forward, forward_like, move,
+// move_if_noexcept): so common and so obvious that a parameter hint on them is
+// pure noise.
 bool is_simple_builtin(const clang::FunctionDecl* callee) {
     switch(callee->getBuiltinID()) {
         case clang::Builtin::BIaddressof:
@@ -598,6 +591,8 @@ private:
         auto rbrace_offset = *rbrace;
 
         llvm::StringRef rest_of_line = focus.content().substr(rbrace_offset).split('\n').first;
+        // TODO: a block a macro closes (`NS_END` for `}`) gets no end hint: the
+        // `}` is seen at the invocation, whose text does not start with `}`.
         if(!rest_of_line.starts_with("}")) {
             return std::nullopt;
         }
@@ -620,7 +615,6 @@ private:
         llvm::StringRef text = rest_of_line.take_front(
             trailing_text.empty() ? 1 : trailing_text.bytes_end() - rest_of_line.bytes_begin());
 
-        /// FIXME: Handle case, if RBraceLoc is from macro expansion.
         return LocalSourceRange(rbrace_offset, rbrace_offset + text.size());
     }
 
@@ -1773,7 +1767,8 @@ private:
                        "");
     }
 
-    // FIXME: Handle RecoveryExpr to try to hint some invalid calls.
+    // TODO: a call that does not resolve (wrong argument count, no viable
+    // overload) is a RecoveryExpr and gets no parameter hints.
 
 private:
     std::vector<InlayHint>& result;

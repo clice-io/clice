@@ -19,7 +19,7 @@ import type { Table } from "../render/value.ts";
 const LOG_LINE = /^\[[^\]]+\] \[(\w+)\] \[thread \d+\] \[[^\]]+\] (.*)$/;
 
 function quote(word: string): string {
-    return /^[\w./:=@%+,-]+$/.test(word) ? word : `"${word.replaceAll('"', '\\"')}"`;
+    return /^[\p{L}\p{N}_./:=@%+,-]+$/u.test(word) ? word : `"${word.replaceAll('"', '\\"')}"`;
 }
 
 /// Every spelling of the workspace root the output may use: as given,

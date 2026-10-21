@@ -95,7 +95,7 @@ std::string canonicalize(llvm::ArrayRef<std::string> args);
 /// from the current executable path using Driver::GetResourcesPath.
 llvm::StringRef resource_dir();
 
-/// Format an argument list as a human-readable string: "[arg1 arg2 ...]".
+/// Format an argument list as one human-readable line.
 std::string print_argv(llvm::ArrayRef<const char*> args);
 
 /// Whether clang parses a file of `type` as C-family code: what it accepts

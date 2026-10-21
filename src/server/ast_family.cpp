@@ -715,6 +715,9 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
     // until one holds a license to retry it: a change to its inputs, or a
     // save (see Quarantine).
     auto kind = evidence_kind(EvidenceKind::PCM);
+    // FIXME: an edit within retry_spacing of the module's crash is spent here:
+    // the round runs without the module and finishes current, so the module waits
+    // for the next edit or save, not for the spacing to pass.
     bool licensed = session->quarantine->crashed(kind) &&
                     !session->quarantine->barred(kind, Quarantine::Clock::now());
     Quarantine::Attempt license(*session->quarantine, kind);
@@ -1367,6 +1370,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         auto& entry = projections.entries[path_id];
         // A document moving off a preamble it failed on releases that
         // failure: only the preamble's consumers would ever retry it.
+        // FIXME: released even while another open document still fails on that
+        // preamble: its next compile runs the failing build once more.
         if(entry.projection && entry.projection->failed_pch_key &&
            entry.projection->failed_pch_key != failed_pch) {
             pch.forget_failure(*entry.projection->failed_pch_key);

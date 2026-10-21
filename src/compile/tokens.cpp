@@ -252,7 +252,6 @@ void TokenMap::finish(llvm::ArrayRef<Token> scanned) {
                 last_expansion = expansion;
                 auto it = by_begin.find(expansion);
                 invocation = it != by_begin.end() ? it->second : none;
-                // FIXME: the parentheses of a function-like invocation too?
                 const auto* named = spelled_at(expansion);
                 name = named ? static_cast<std::uint32_t>(named - spelled.data()) : none;
             }

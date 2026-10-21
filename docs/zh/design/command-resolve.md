@@ -148,9 +148,11 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 询问时带着命令自身的标志，所以驱动程序回答的就是这条命令，而 GCC 只在这次编译成功时才会给出回答：关闭某项默认设置的标志（`-fno-stack-protector`）、`--sysroot` 或 `--specs` 文件都会体现在回答中。clang 不认识的 CPU 和 ABI 名称（GCC 的 `-mtune=intel`、Darwin 上的 `-mabi=lp64`）会从 cc1 命令中去掉，GCC 的双核写法 `-mcpu=cortex-a72.cortex-a53` 只保留第一个核。通用构建（`-arch arm64 -arch x86_64`）按其中第一个架构读取。
 
-**MSVC / ClangCL**：通过 `--driver-mode=cl` 选项将 Clang 驱动切换到 MSVC 兼容模式，然后用 Clang 驱动获取 cc1 参数。
+**MSVC / ClangCL**：先让 cl 或 clang-cl 预处理（`/EP`）一个写着 `_MSVC_LANG` 和 `_MSC_FULL_VER` 的文件，只问一次。由此得知它编译所用的 C++ 标准，因为 `/std:c++latest` 的含义随版本而变；还得知 cl 的版本，因为 clang 自己的探测会取已安装的最新工具集。随后由处于 MSVC 兼容模式（`--driver-mode=cl`）的 Clang 驱动构建 cc1 命令，使用这个标准，并把 cl 的版本作为 `-fms-compatibility-version`。clang-cl 的版本则是同一套探测从它的参数所选的工具集（`/winsysroot`）中得出的版本。cl 只会收到命令里的 `/std:`：其余参数是按 clang 的 cl 模式写的，cl 会拒绝；命令用 clang 写法设定的标准或版本（例如规则追加的 `-std=c++23`）仍以 clang 的读法为准。
 
 **nvcc**：nvcc 的 dry run 会给出 CUDA 根目录、宿主编译器以及 nvcc 定义的宏。宿主编译器按 GCC 风格驱动程序的方式询问，使用输入文件的语言，带上命令的 `--sysroot`，但不带命令的其他标志：GCC 宿主编译器像上文那样固定目标和搜索列表，clang 宿主编译器则什么都不需要。随后由 Clang 驱动带上 nvcc 的宏构建 cc1 命令，输入为 CUDA 文件时使用 CUDA 模式。
+
+**clice 不运行的编译器**：规则写上 `query_toolchain = false`，clice 就不运行它所匹配文件的编译器——用于本机上没有的编译器（在容器里或另一台机器上写出的数据库），或是不该运行的编译器。此时改由 Clang 自己的驱动构建 cc1 命令，就像一个以该编译器名字安装的 clang 那样：`g++` 按 C++ 编译，前缀所指的架构若是 clang 认识的（`aarch64-linux-gnu-g++` 是，`riscv-none-elf-gcc` 不是），这个前缀就是目标，除非命令自己指定了目标。其余一切——标准库、系统头文件、默认标准——都取 clang 对该目标的默认值。
 
 > 外部驱动的版本可能比 clice 内嵌的 LLVM 版本更新，其 cc1 输出中可能包含 clice 无法识别的选项。解析时会静默丢弃未知选项，以保证兼容性。
 
@@ -212,4 +214,4 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 - **MSVC 风格选项解析。** 在非 Windows 系统上，必须特别处理 MSVC 风格选项前缀（`/U`、`/D`、`/I`），避免 Unix 绝对路径（如 `/Users/...`）被误解析为 MSVC 选项。目前通过根据驱动名称动态调整选项可见性来解决，但边界情况仍可能存在。
 
-- **编译器启动器不被识别。** 被启动器包装的 CDB 命令（`ccache g++ ...`、`sccache clang++ ...`）在解析时会将启动器视为编译器，导致家族识别和工具链探测以错误的二进制文件为目标。请从编译数据库的命令中去掉启动器，或用配置规则覆盖相关选项。
+- **只识别常见的编译器启动器。** ccache、sccache、distcc 和 icecc 会连同它们自己的选项和环境变量赋值一起从命令中去掉，clice 询问的是它们后面的编译器。其他启动器会被当成编译器，导致家族识别和工具链探测以错误的二进制文件为目标；请从编译数据库的命令中去掉它。

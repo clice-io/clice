@@ -64,8 +64,9 @@ kota::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::s
 
 extern "C" {
 
-    // Set by the Windows executable's allocator (src/mimalloc.cc), which no
-    // other program links: its own collect, and the switch to purging.
+    // Set by the allocator of the Windows and macOS executables
+    // (src/mimalloc.cc), which no other program links: its own collect, and
+    // on Windows the switch to purging.
     void (*clice_allocator_collect)() = nullptr;
     void (*clice_allocator_purge)() = nullptr;
 }
@@ -179,6 +180,34 @@ bool is_pipe_or_socket(int fd) {
 #else
     struct stat st = {};
     return ::fstat(fd, &st) == 0 && (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode));
+#endif
+}
+
+bool write_console(int fd, llvm::StringRef text) {
+#ifdef _WIN32
+    HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
+    DWORD mode = 0;
+    std::wstring wide;
+    if(handle == INVALID_HANDLE_VALUE || !::GetConsoleMode(handle, &mode) ||
+       !llvm::ConvertUTF8toWide(text, wide)) {
+        return false;
+    }
+    std::wstring_view rest = wide;
+    while(!rest.empty()) {
+        DWORD written = 0;
+        if(!::WriteConsoleW(handle,
+                            rest.data(),
+                            static_cast<DWORD>(rest.size()),
+                            &written,
+                            nullptr) ||
+           written == 0) {
+            return false;
+        }
+        rest.remove_prefix(written);
+    }
+    return true;
+#else
+    return false;
 #endif
 }
 

@@ -79,6 +79,9 @@ Documentation parse_documentation(llvm::StringRef text, CopiedDocLookup lookup);
 /// semantic tokens show them: the commands, and the name each `@param`
 /// and `@tparam` documents. A raw block a command opens (`@code`) goes on
 /// into the next comment of the run, and no command is read in it.
+/// FIXME: Markdown code is read as text: a `@param value` in a code span or a
+/// fence is a command and its name an occurrence of the parameter, so rename
+/// edits the example, where parse_documentation keeps it literal.
 class DocCommandScanner {
 public:
     struct Part {

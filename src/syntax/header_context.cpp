@@ -298,6 +298,8 @@ void copy_run(std::string& out,
 /// cut from, so its includes, `__has_include` probes and macro-spelled
 /// includes resolve there as they do in that file. Returns whether the
 /// fragment names the snapshot.
+/// FIXME: a macro-spelled include naming the target is kept verbatim too, so
+/// that occurrence enters the open buffer, not the snapshot.
 bool emit_fragment(std::string& out,
                    std::vector<SourceRun>& runs,
                    llvm::StringRef content,

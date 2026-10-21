@@ -109,6 +109,9 @@ llvm::SmallVector<OnlyInstantiation> only_instantiations(const clang::VarDecl* v
             // pointers; it only reads through them.
             auto* instantiation = llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(
                 decls::only_instantiation(const_cast<clang::CXXRecordDecl*>(record)));
+            // FIXME: the class's instantiation is taken for every member: one the
+            // specialization explicitly specializes (`template <> void A<int>::f() {}`)
+            // never instantiates this body, yet `auto x = T();` in it reads `int`.
             enclosing.push_back({owner, owner->getTemplateParameters(), instantiation});
         }
         /// A member class template's own list is not among its outer ones.
@@ -814,6 +817,9 @@ public:
                 continue;
             }
             stack.truncate(base_frames);
+            /// FIXME: no dominance through virtual bases: with B<T> and C<T> both
+            /// virtually deriving A<T>, B's `type` hides A's in `D : C<T>, B<T>`, yet the
+            /// two paths read as ambiguous here and the lookup answers nothing.
             if(!same_declarations(found, members)) {
                 LOG_DEBUG(
                     "{}"
@@ -1140,6 +1146,10 @@ public:
         if(type.isNull()) {
             return type;
         }
+        /// FIXME: an `auto` member's deduced type is already in the caller's terms;
+        /// under a frame of the class's own specialization it binds twice
+        /// (`Holder<W<T>>::from_call` in `Holder<T>` reads `W<W<W<T>>>`). An empty
+        /// stack fixes that but loses what a deferred `decltype` return type needs.
         type = resolve(type);
         return type->isReferenceType() ? type : type.withCVRQualifiers(object_quals);
     }
@@ -1238,6 +1248,10 @@ public:
         if(source.isNull()) {
             return source;
         }
+        /// FIXME: no value category of its own for a dependent member access, which
+        /// clang marks an lvalue, nor for subscript_type over an xvalue array: on a
+        /// temporary (`Box<T>::make().value`, `.arr[0]`) `auto&&` and `decltype(auto)`
+        /// deduce `int &` where the instantiation has `int &&`.
         if(decltype_auto) {
             bool lvalue = parenthesized && init->isLValue() && !source->isReferenceType();
             return lvalue ? context.getLValueReferenceType(source) : source;
@@ -1805,6 +1819,10 @@ private:
             llvm::isa<clang::UnresolvedMemberExpr, clang::CXXDependentScopeMemberExpr>(callee);
         clang::QualType object;
         bool rvalue_object = false;
+        /// FIXME: a call needing ADL keeps only what ordinary lookup saw at the
+        /// definition: when the instantiation's ADL finds another overload (`g(t, 1)`
+        /// reaching `N::g`), a lone visible `::g` still answers, its parameter names
+        /// in inlay hints with it.
         if(auto OE = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
             candidates.append(OE->decls_begin(), OE->decls_end());
             if(auto UME = llvm::dyn_cast<clang::UnresolvedMemberExpr>(OE)) {
@@ -1822,6 +1840,9 @@ private:
             auto members = lookup(DSDRE->getQualifier(), DSDRE->getDeclName());
             candidates.append(members.begin(), members.end());
         }
+        /// FIXME: explicit template arguments (`rows.template pick<int>()`) do not
+        /// drop the same-name non-template overloads: navigation lists them too, and a
+        /// return type they disagree on leaves the call untyped.
         drop_unviable(candidates,
                       [&](const clang::FunctionDecl* FD) { return viable(FD, member_call); });
         select_by_object(candidates, object, rvalue_object);

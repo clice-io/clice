@@ -180,6 +180,9 @@ CompletionName completion_name(llvm::StringRef text,
     // keyword or `__has_include(`: taken textually up to the cursor. In
     // `__has_include(` the name ends at the parenthesis closing the call.
     auto header_name = [&](std::uint32_t begin, bool parenthesized) -> CompletionName {
+        // FIXME: a comment before the header name (`#include /* c */ <`) is not
+        // skipped: no include completion is offered there, and a `<` trigger
+        // answers empty.
         auto argument = text.slice(begin, offset).ltrim();
         CompletionName::Kind kind;
         if(argument.consume_front("\"")) {
@@ -260,6 +263,8 @@ CompletionName completion_name(llvm::StringRef text,
         return {};
     }
 
+    // FIXME: a `;` inside a comment (`import /* ; */ m`) counts too: no module
+    // names are offered after it.
     if(text.slice(first.range.begin, offset).contains(';')) {
         return {};
     }

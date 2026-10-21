@@ -132,11 +132,12 @@ ZEST_CASE(DeduplicatesAngledSystem) {
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
-    // /shared in both Angled and System → keep Angled copy.
+    // /shared in both Angled and System: the user's copy goes, as in clang.
     ZASSERT(config.dirs.size() == 2u);
     ZEXPECT(config.angled_start_idx == 0u);
-    ZEXPECT(config.system_start_idx == 1u);
+    ZEXPECT(config.system_start_idx == 0u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "shared"));
+    ZEXPECT(config.dirs[0].driver);
     ZEXPECT(config.dirs[1].path == spelled(tmp, "only_sys"));
 }
 
@@ -180,13 +181,13 @@ ZEST_CASE(DeduplicateAdjustsIndices) {
     auto config = extract(args, tmp.root.str());
 
     // Before dedup: [q | dup, a2 | dup, s] angled=1, system=3
-    // dup in system removed. system_start_idx stays 3.
+    // The Angled dup goes for the System one: [q | a2 | dup, s].
     ZASSERT(config.dirs.size() == 4u);
     ZEXPECT(config.angled_start_idx == 1u);
-    ZEXPECT(config.system_start_idx == 3u);
+    ZEXPECT(config.system_start_idx == 2u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "q"));
-    ZEXPECT(config.dirs[1].path == spelled(tmp, "dup"));
-    ZEXPECT(config.dirs[2].path == spelled(tmp, "a2"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "a2"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "dup"));
     ZEXPECT(config.dirs[3].path == spelled(tmp, "s"));
 }
 
@@ -254,11 +255,29 @@ ZEST_CASE(DirafterDeduplication) {
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
+    // After is a system group: -I's copy goes.
     ZASSERT(config.dirs.size() == 2u);
     ZEXPECT(config.angled_start_idx == 0u);
-    ZEXPECT(config.system_start_idx == 1u);
+    ZEXPECT(config.system_start_idx == 0u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "shared"));
     ZEXPECT(config.dirs[1].path == spelled(tmp, "extra"));
+}
+
+ZEST_CASE(UserSystemFirst) {
+    /// clang puts every -isystem ahead of the driver's -internal-isystem,
+    /// wherever the command writes it.
+    TempDir tmp;
+    std::vector<const char*> args = {"clang++",
+                                     "-internal-isystem",
+                                     tmp.c_path("toolchain"),
+                                     "-isystem",
+                                     tmp.c_path("vendored"),
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root.str());
+
+    ZASSERT(config.dirs.size() == 2u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "vendored"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "toolchain"));
 }
 
 ZEST_CASE(LastSysrootWins) {

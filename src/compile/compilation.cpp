@@ -70,7 +70,7 @@ std::unique_ptr<clang::CompilerInvocation>
         arguments.push_back(argument.c_str());
     }
     // A driver command (what a failed toolchain probe falls back to) gets
-    // the flag the probe gives every cc1 command, see ask_cl in toolchain.cpp.
+    // the flag the probe gives every cc1 command, see ask_clang in toolchain.cpp.
     if(arguments.size() < 2 || llvm::StringRef(arguments[1]) != "-cc1") {
         arguments.insert(arguments.begin() + 1, "-fno-delayed-template-parsing");
     }
@@ -241,6 +241,9 @@ void CompilationUnit::run_tidy() {
     // readers see the whole TU again, and the parent map built over the
     // restricted scope goes with it.
     auto& context = instance->getASTContext();
+    // FIXME: a namespace a header context opens around the focus file is
+    // collected whole, so the matchers also walk the host's other declarations
+    // (time only: the presenter drops their findings).
     if(!checker->batch) {
         context.setTraversalScope(collected_decls);
     }
@@ -354,8 +357,6 @@ public:
             collect_instantiation(decl);
         }
 
-        /// TODO: check atomic variable after the parse of each declaration
-        /// may result in performance issue, benchmark in the future.
         if(unit.params.stop->load()) {
             return false;
         }
@@ -542,8 +543,6 @@ CompilationStatus CompilationUnit::run() {
                 *SM().getFileEntryRefForID(focus.file()));
         }
     }
-
-    /// FIXME: include-fixer, etc?
 
     /// The checks' PPCallbacks go first: the preamble replay reaches the
     /// callbacks registered before it (see tidy::configure).

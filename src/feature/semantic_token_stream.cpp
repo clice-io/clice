@@ -323,6 +323,8 @@ private:
     };
 
     /// The token after the one being classified.
+    /// FIXME: a kept comment counts as that token: `default /* c */:` gets no
+    /// controlFlow, and `module /* c */ m;` / `import /* c */ m;` no keyword.
     Token next() const {
         return at + 1 < stream.size() ? stream[at + 1] : Token{.kind = clang::tok::eof};
     }

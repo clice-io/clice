@@ -1,8 +1,6 @@
 /// What a scenario is handed, `t`, and how one registered test runs and
 /// leaves its output.
 
-import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { running } from "../../client/process.ts";
 import { Workspace } from "../../client/workspace.ts";
@@ -17,7 +15,7 @@ import { at, locate, type Anchor, type MarkerAnchor, type TextAnchor } from "./a
 import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
 import { Output, type Blocks } from "./output.ts";
-import { materialize } from "./project.ts";
+import { copyRoot, materialize } from "./project.ts";
 import type { Registered, TestOptions } from "./script.ts";
 
 export interface TestContext {
@@ -70,7 +68,7 @@ class TestRun implements TestContext {
 
     constructor(c: Case, options: TestOptions) {
         this.case = c;
-        this.root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "clice-case-")));
+        this.root = copyRoot("clice-case-");
         this.workspace = new Workspace(this.root);
         this.disk = new Disk(this.root, c.project, this.steps);
         this.errors = (options.errors ?? []).map((source) => new RegExp(source));

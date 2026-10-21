@@ -786,6 +786,9 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
             project->contexts.forget_selection(path_id);
         }
     }
+    // FIXME: unlike rehome_sessions, this move leaves the crash records behind:
+    // the note and the strike count are lost, and the old project's parked copy
+    // comes back if the document returns there.
     if(target != owner) {
         owner->close_session(path_id);
         owners[path_id] = target.get();
@@ -815,6 +818,8 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
     if(!session) {
         return {};
     }
+    // FIXME: answers success before the forgotten choice is saved, so a failed
+    // save brings it back on restart; with no choice set it still recompiles.
     for(auto& project: projects) {
         project->contexts.forget_selection(path_id);
     }

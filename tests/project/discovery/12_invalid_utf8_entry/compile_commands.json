@@ -1,0 +1,12 @@
+[
+  {
+    "directory": ".",
+    "file": "a.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DLABEL=café", "-c", "a.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "b.cpp",
+    "arguments": ["clang++", "-std=c++20", "-c", "b.cpp"]
+  }
+]

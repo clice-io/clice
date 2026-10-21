@@ -453,11 +453,20 @@ private:
         MDB_val key{1, &prefix};
         MDB_val value;
         int rc = mdb_cursor_get(cursor, &key, &value, MDB_SET_RANGE);
+        llvm::StringRef previous(&prefix, 1);
         while(rc == 0) {
             llvm::StringRef bytes(static_cast<const char*>(key.mv_data), key.mv_size);
-            if(bytes.empty() || bytes[0] != prefix || !fn(bytes.drop_front(), value)) {
+            // LMDB checks a page's type on a lookup but only asserts it on a
+            // cursor walk, which then reads a damaged page as keys out of
+            // order (a zeroed one as an empty key).
+            if(bytes <= previous) {
+                mark_corrupt(std::format("a page among the records under '{}' is damaged", prefix));
                 break;
             }
+            if(bytes[0] != prefix || !fn(bytes.drop_front(), value)) {
+                break;
+            }
+            previous = bytes;
             rc = mdb_cursor_get(cursor, &key, &value, MDB_NEXT);
         }
         if(rc != 0 && rc != MDB_NOTFOUND) {
@@ -470,7 +479,14 @@ private:
     /// decision; everything else stays "missing or transiently unreadable".
     void note_error(int rc) {
         if(is_corruption(rc)) {
-            poisoned.store(true, std::memory_order_relaxed);
+            mark_corrupt(mdb_strerror(rc));
+        }
+    }
+
+    /// Latch corruption, logging where it was first met.
+    void mark_corrupt(llvm::StringRef what) {
+        if(!poisoned.exchange(true, std::memory_order_relaxed)) {
+            LOG_ERROR("The index database at {} is damaged: {}", path, what);
         }
     }
 
@@ -524,16 +540,17 @@ void make_sparse(llvm::StringRef path) {
 
 enum class MetaCheck : std::uint8_t {
     Ok,
-    /// Foreign word size/endianness/schema, or data without any meta —
-    /// the corruption-recovery shape (delete and rebuild when writable).
-    Mismatch,
+    /// Another clice's layout: a foreign schema, word size or byte order,
+    /// or records without any meta (delete and rebuild when writable).
+    Foreign,
     /// Could not validate right now; touch nothing.
     Transient,
 };
 
 /// Validates the meta record under the resident transaction; initializes
-/// it first on a fresh (provably empty) writable database.
-MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
+/// it first on a fresh (provably empty) writable database. The error is
+/// the corruption the read of the record met.
+std::expected<MetaCheck, int> check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     auto mk = to_val(meta_key);
     MDB_val value;
     int rc = mdb_get(txn, dbi, &mk, &value);
@@ -541,10 +558,13 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     if(rc == 0) {
         bool ok = value.mv_size == sizeof(MetaRecord) &&
                   std::memcmp(value.mv_data, &expected, sizeof(MetaRecord)) == 0;
-        return ok ? MetaCheck::Ok : MetaCheck::Mismatch;
+        return ok ? MetaCheck::Ok : MetaCheck::Foreign;
     }
     if(rc != MDB_NOTFOUND) {
-        return is_corruption(rc) ? MetaCheck::Mismatch : MetaCheck::Transient;
+        if(is_corruption(rc)) {
+            return std::unexpected(rc);
+        }
+        return MetaCheck::Transient;
     }
     // Meta missing: only a provably EMPTY database may be initialized in
     // place — populated bytes without our meta are a foreign layout, and
@@ -554,7 +574,7 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
         return MetaCheck::Transient;
     }
     if(stat.ms_entries != 0) {
-        return MetaCheck::Mismatch;
+        return MetaCheck::Foreign;
     }
     if(read_only) {
         return MetaCheck::Ok;
@@ -716,14 +736,38 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             }
             return nullptr;
         }
-        switch(check_meta(env, dbi, txn, read_only)) {
+        auto meta = check_meta(env, dbi, txn, read_only);
+        if(!meta) {
+            mdb_txn_abort(txn);
+            if(fail(meta.error(), "meta")) {
+                continue;
+            }
+            return nullptr;
+        }
+        switch(*meta) {
             case MetaCheck::Ok: break;
-            case MetaCheck::Mismatch: {
+            case MetaCheck::Foreign: {
                 mdb_txn_abort(txn);
-                if(fail(MDB_INVALID, "meta")) {
-                    continue;
+                mdb_env_close(env);
+                if(read_only) {
+                    LOG_WARN(
+                        "Index database at {} was written by another version of clice; run "
+                        "`clice index` to rebuild it",
+                        path);
+                    return nullptr;
                 }
-                return nullptr;
+                if(repaired) {
+                    LOG_WARN(
+                        "Cannot replace the index database at {}, which another version of clice "
+                        "wrote; index persistence is disabled for this session",
+                        path);
+                    return nullptr;
+                }
+                LOG_INFO("Index database at {} was written by another version of clice; rebuilding",
+                         path);
+                remove_database_files(path);
+                repaired = true;
+                continue;
             }
             case MetaCheck::Transient: {
                 mdb_txn_abort(txn);
@@ -827,17 +871,9 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
 std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
                                             llvm::StringRef configuration,
                                             bool read_only) {
-    // FIXME: no index persistence on remote filesystems. A per-file blob
-    // backend used to fill this gap (one CacheStore-namespace file per
-    // blob, removed in PR #650 — see its history to resurrect it), but it
-    // duplicated everything the database gives for free — atomic batches,
-    // read snapshots, corruption detection — while the remote scenarios
-    // it was meant to serve (NFS home directories, SMB project shares,
-    // WSL drvfs checkouts) differ enough in locking and cache-coherence
-    // behavior that one untested fallback cannot honestly cover them.
-    // What remote workspaces actually need is an open design question;
-    // until it is answered, such sessions run with an in-memory index
-    // and this warning.
+    // FIXME: no index persistence on remote filesystems (NFS, SMB, WSL drvfs):
+    // their locking and cache coherence differ too much to trust LMDB or one
+    // untested fallback there, so such sessions keep the index in memory.
     switch(filesystem_locality(store.base_dir())) {
         case FsLocality::Local: break;
         case FsLocality::Remote: {

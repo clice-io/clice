@@ -109,7 +109,7 @@ SavedLoad load_saved(Project& project, CommandResolver& commands) {
     // The reads above may have met a damaged page or record: heal it like
     // the unreadable-header case above instead of writing into a damaged
     // tree every session. The session starts over as a first run.
-    if(!read_only && (db.corrupted() || index.damaged())) {
+    if(!read_only && index.damaged()) {
         recover_corrupt_database(project, report);
         return result;
     }
@@ -215,6 +215,31 @@ std::string deeper_databases_hint(const Project& project) {
         llvm::join(names, ", "));
 }
 
+std::string why_no_members(const Project& project, llvm::StringRef root) {
+    std::vector<std::string> empty;
+    for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
+        auto path = project.cdb.source_path(SourceID(i));
+        if(project.cdb.loaded(SourceID(i))) {
+            empty.push_back(path.str());
+        } else if(vfs::exists(path)) {
+            return std::format("{} cannot be read; the error above says why.", path.str());
+        } else {
+            return std::format("{} does not exist yet; the build writes it.", path.str());
+        }
+    }
+    if(!empty.empty()) {
+        return std::format("{} {} no file.",
+                           llvm::join(empty, ", "),
+                           empty.size() == 1 ? "lists" : "list");
+    }
+    if(project.build.declares_sources()) {
+        return "no file on disk matches a rule with a default_command.";
+    }
+    return std::format("no compile_commands.json found in {} or its direct subdirectories.{}",
+                       root.str(),
+                       deeper_databases_hint(project));
+}
+
 void load_sources(Project& project,
                   CanonicalRef root,
                   llvm::StringRef configuration,
@@ -272,8 +297,8 @@ void load_sources(Project& project,
         if(auto loaded = project.cdb.load_source(id)) {
             LOG_INFO("Loaded CDB from {} with {} entries", project.cdb.source_path(id), *loaded);
             entries += *loaded;
-        } else {
-            LOG_WARN("Compilation database {} is not readable yet", project.cdb.source_path(id));
+        } else if(!vfs::exists(project.cdb.source_path(id))) {
+            LOG_WARN("Compilation database {} does not exist yet", project.cdb.source_path(id));
         }
     }
     LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", entries, cdb_timer.ms());

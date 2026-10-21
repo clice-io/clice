@@ -194,13 +194,15 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     // O(1) per TU and deliberately uncapped — the index's content-hash
     // staleness check filters TUs whose dependencies did not actually
     // change, and the idle/priority scheduling throttles the rest.
-    // TODO: observe on large projects before adding debouncing.
     mark_readers(dependents, dirty);
 
     // Headers whose resolved context was derived from the file through its
     // include chain resolve it again: the synthesized context copies the
     // chain files' content, so neither the dependents cascade above nor
     // clang's own dependency tracking catches this.
+    // FIXME: only the chain: a file the host reads before it that gains an
+    // include of the header, or changes a macro deciding one, leaves the cached
+    // occurrence until a chain file or the command changes.
     for(auto header_id: contexts.chain_dependents(path_id)) {
         dirty.drop_context.push_back(header_id);
         // The chain change may have made the header self-contained (e.g. a

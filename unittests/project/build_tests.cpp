@@ -291,10 +291,13 @@ ZEST_CASE(EditHashKeepsAnchor) {
 };
 
 ZEST_CASE(ForcedLanguageMembers) {
-    /// An extensionless tool source joins the members when its default
-    /// command forces the language; a header never does.
+    /// A file clang has no language for joins the members when its default
+    /// command forces the language and a pattern names it or its suffix; a
+    /// header never does, nor a file only a wide pattern reaches.
     TempDir tmp;
     tmp.touch("src/tool", "int main() {}\n");
+    tmp.touch("sketch/blink.ino", "");
+    tmp.touch("sketch/README.md", "");
     tmp.touch("src/util.h", "");
     tmp.touch("src/data.txt", "");
     tmp.touch("src/pre.i", "");
@@ -304,6 +307,10 @@ ZEST_CASE(ForcedLanguageMembers) {
         ConfigRule{.patterns = {"src/tool"}, .default_command = std::string("clang++ -x c++")});
     config.rules.push_back(ConfigRule{.patterns = {"src/**"},
                                       .default_command = std::string("clang++ -x c++-header")});
+    config.rules.push_back(ConfigRule{
+        .patterns = {"sketch/*.ino", "sketch/**"},
+        .default_command = std::string("clang++ -x c++")
+    });
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
 
     FileTable files;
@@ -311,7 +318,9 @@ ZEST_CASE(ForcedLanguageMembers) {
     Build build{config, cdb, files};
     build.reset_active("");
     auto members = build.members();
-    ZASSERT(members.size() == 3U);
+    ZASSERT(members.size() == 4U);
+    ZEXPECT(llvm::is_contained(members,
+                               files.intern(Spelling::absolute(tmp.path("sketch/blink.ino")))));
     ZEXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/tool")))));
     ZEXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/pre.i")))));
     ZEXPECT(
@@ -772,6 +781,57 @@ ZEST_CASE(EditsAcrossHostAndHeader) {
     auto header_only = build.edits(header).edits;
     ZASSERT(header_only.size() == 3U);
     ZEXPECT(header_only[0].flags == (std::vector<std::string>{"-DB"}));
+};
+
+ZEST_CASE(RuleTurnsQueryOff) {
+    /// A matching rule turning the toolchain query off turns it off for the
+    /// file's command, alone or beside other edits, and the edit hash says
+    /// so; a command lent from such a file keeps it off.
+    TempDir tmp;
+    Config config;
+    config.rules.push_back(ConfigRule{
+        .patterns = {"src/**", "vendor/**"},
+        .append = {"-DA"}
+    });
+    config.rules.push_back(ConfigRule{
+        .patterns = {"vendor/**", "third_party/**"},
+        .query_toolchain = false
+    });
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active("");
+
+    CanonicalPath own(Spelling::absolute(tmp.path("src/a.cpp")));
+    CanonicalPath vendor(Spelling::absolute(tmp.path("vendor/b.cpp")));
+    CanonicalPath third_party(Spelling::absolute(tmp.path("third_party/c.cpp")));
+    CanonicalRef own_file = own;
+    CanonicalRef vendor_file = vendor;
+    CanonicalRef third_party_file = third_party;
+    ZEXPECT(build.edits(own_file).query_toolchain);
+    ZEXPECT(!build.edits(vendor_file).query_toolchain);
+    ZEXPECT(build.edit_hash(own_file) != build.edit_hash(vendor_file));
+    ZEXPECT(!build.edit_hash(third_party_file).empty());
+
+    // One command under the same appends: only the query tells them apart.
+    auto command = std::format("clang++ {}", vendor.str());
+    auto entry = *cdb.add_command(tmp.root.str(), vendor.str(), llvm::StringRef(command));
+    auto unqueried =
+        build.resolve(entry.file, entry.config, CommandSource::CDBExact, vendor_file, vendor_file);
+    auto queried = build.resolve(files.intern(own_file),
+                                 entry.config,
+                                 CommandSource::Inferred,
+                                 own_file,
+                                 own_file);
+    ZEXPECT(!cdb.config(unqueried.config).query_toolchain);
+    ZEXPECT(cdb.config(queried.config).query_toolchain);
+
+    auto lent = build.lend(entry.config, vendor_file, own_file);
+    auto borrowed =
+        build.resolve(files.intern(own_file), lent, CommandSource::Inferred, own_file, own_file);
+    ZEXPECT(!cdb.config(borrowed.config).query_toolchain);
 };
 
 ZEST_CASE(LendMergesRules) {

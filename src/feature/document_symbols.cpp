@@ -655,6 +655,9 @@ auto outline(std::vector<OutlineEntry> entries,
         std::vector<DocumentSymbol> symbols;
         for(auto index: indices) {
             auto& node = nodes[index];
+            // FIXME: a local a macro body declares in a function the same macro defines
+            // (`#define MAKE void f() { int local = 0; }`) lists anyway: macro-made members
+            // list flat under the invocation, so the local is no child of its function.
             bool locals = options.locals || !holds_locals(node.entry.kind);
             symbols.push_back({
                 .name = std::move(node.entry.name),

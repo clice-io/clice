@@ -113,6 +113,9 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
         this.loaded = [];
         this.total = 0;
         try {
+            // FIXME: the workspace can change between the two replies; their epochs then
+            // differ and the tree marks one listing's current context on the other until
+            // the next refresh. loadMore's restart pairs them the same way.
             const [query, current] = await Promise.all([
                 this.client.sendRequest<QueryContextResult>("clice/queryContext", { uri }),
                 this.client.sendRequest<CurrentContextResult>("clice/currentContext", { uri }),

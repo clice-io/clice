@@ -11,8 +11,9 @@ import { entryArguments, entrySource, samePath, type DatabaseEntry } from "./dat
 import { run } from "./scenario.ts";
 
 /// Macros whose values follow from the compiler, its target and the
-/// command's flags: language mode, target, data model, and the semantic
-/// switches clice keeps. All are integers, so `#if` can compare them.
+/// command's flags: language mode, target, data model, the semantic
+/// switches clice keeps, and the versions of the C and C++ libraries the
+/// headers come from. All are integers, so `#if` can compare them.
 /// `__GNUC__` is left out on purpose: clice parses as clang, which reports
 /// GCC 4.2 compatibility whichever GCC built the project.
 const GNU_MACROS = [
@@ -45,9 +46,24 @@ const GNU_MACROS = [
     "__cpp_exceptions",
     "__cpp_rtti",
     "_REENTRANT",
+    "_TIME_BITS",
+    "_FILE_OFFSET_BITS",
+    "__thumb__",
     "__SANITIZE_ADDRESS__",
     "__SSE4_2__",
     "__AVX2__",
+    "__GLIBC__",
+    "__GLIBC_MINOR__",
+    "__NEWLIB__",
+    "__NEWLIB_MINOR__",
+    "__PICOLIBC__",
+    "__PICOLIBC_MINOR__",
+    "__BIONIC__",
+    "__ANDROID_API__",
+    "__MINGW64_VERSION_MAJOR",
+    "__GLIBCXX__",
+    "_GLIBCXX_RELEASE",
+    "_LIBCPP_VERSION",
 ];
 
 /// The same for cl and clang-cl, which spell target and runtime library
@@ -69,6 +85,7 @@ const MSVC_MACROS = [
     "_DEBUG",
     "_CHAR_UNSIGNED",
     "__AVX2__",
+    "_MSVC_STL_VERSION",
 ];
 
 /// What nvcc defines for every pass. `__CUDA_ARCH__` stays out: the
@@ -100,7 +117,14 @@ export async function compilerMacros(
     const nvcc = /^nvcc(\.exe)?$/i.test(path.basename(driver));
     const macros = msvc ? MSVC_MACROS : nvcc ? NVCC_MACROS : GNU_MACROS;
     const probe = path.join(scratch, `probe${path.extname(source)}`);
-    fs.writeFileSync(probe, macros.map((name) => `"${name}"=${name}\n`).join(""));
+    // The libraries define their versions in their headers: the probe reads
+    // one, as the sources do before they include their expectations.
+    const library = nvcc
+        ? ""
+        : path.extname(source) === ".c"
+          ? "#include <string.h>\n"
+          : "#include <cstdio>\n";
+    fs.writeFileSync(probe, library + macros.map((name) => `"${name}"=${name}\n`).join(""));
 
     const args: string[] = [];
     for (let i = 0; i < rest.length; i += 1) {

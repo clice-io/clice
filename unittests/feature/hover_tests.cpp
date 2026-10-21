@@ -367,7 +367,7 @@ ZEST_CASE(structured_no_crash) {
             int a[10];
           };
           constexpr Foo k2 = {
-            §(sym)⟦§{⟧1} // FIXME: why the hover range is 1 character?
+            §(sym)⟦§{⟧1}
           };
          )cpp",
          [](HoverInfo& hi) {

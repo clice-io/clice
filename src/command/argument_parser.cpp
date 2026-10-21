@@ -290,6 +290,7 @@ bool is_codegen_option(unsigned id) {
         /// Diagnostics output formatting — doesn't affect analysis.
         case OPT_fcolor_diagnostics:
         case OPT_fno_color_diagnostics:
+        case OPT_fdiagnostics_color_EQ:
 
         /// Floating-point codegen — doesn't define macros (unlike -ffast-math).
         case OPT_ftrapping_math:
@@ -343,6 +344,10 @@ std::string canonicalize(llvm::ArrayRef<std::string> args) {
 }
 
 std::string print_argv(llvm::ArrayRef<const char*> args) {
+    // Bytes past ASCII are UTF-8 and print as they are.
+    auto control = [](char c) {
+        return static_cast<unsigned char>(c) < 0x20 || c == 0x7f;
+    };
     std::string buf;
     llvm::raw_string_ostream os(buf);
     bool sep = false;
@@ -350,13 +355,20 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
         if(sep)
             os << ' ';
         sep = true;
-        if(llvm::all_of(arg, llvm::isPrint) &&
-           arg.find_first_of(" \t\n\"\\") == llvm::StringRef::npos) {
+        if(!llvm::any_of(arg, control) && arg.find_first_of(R"( "\)") == llvm::StringRef::npos) {
             os << arg;
             continue;
         }
         os << '"';
-        os.write_escaped(arg, /*UseHexEscapes=*/true);
+        for(char c: arg) {
+            if(c == '"' || c == '\\') {
+                os << '\\' << c;
+            } else if(control(c)) {
+                os << llvm::format(R"(\x%02X)", static_cast<unsigned char>(c));
+            } else {
+                os << c;
+            }
+        }
         os << '"';
     }
     return std::move(os.str());

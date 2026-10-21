@@ -32,6 +32,12 @@ LINKOPTS = select({
         "-Wl,-O2",
     ],
     "//conditions:default": [],
+}) + select({
+    # `clice inspect` compiles on the main thread, whose stack lld sizes at
+    # 1 MB on Windows while clang's stack guard assumes 8 MB; LLVM sizes its
+    # own tools' the same way.
+    "@platforms//os:windows": ["-Wl,--stack,16777216"],
+    "//conditions:default": [],
 })
 
 def release_packages():

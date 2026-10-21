@@ -1,0 +1,8 @@
+["completion reuses the pch"."builds after open"]
+value = 2
+
+["completion reuses the pch"."builds after completion"]
+value = 2
+
+["completion reuses the pch"."builds after edit and completion"]
+value = 3

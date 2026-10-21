@@ -48,8 +48,50 @@ function cmakeNinja(
     };
 }
 
+/// Cross compilers for a Linux target build with the target's own libc.
+function cmakeCross(name: string, prefix: string, processor: string, flags = ""): Scenario {
+    return cmakeNinja(name, ["linux"], `/usr/bin/${prefix}-gcc`, `/usr/bin/${prefix}-g++`, {
+        extra: [
+            "-DCMAKE_SYSTEM_NAME=Linux",
+            `-DCMAKE_SYSTEM_PROCESSOR=${processor}`,
+            `-DCMAKE_C_FLAGS=${flags}`,
+            `-DCMAKE_CXX_FLAGS=${flags}`,
+        ],
+    });
+}
+
+/// Conda's GCC and clang of the pixi `toolchains` environment, run without
+/// its activation as a build outside it runs them.
+const CONDA = path.join(REPO_ROOT, ".pixi", "envs", "toolchains", "bin");
+
+/// xclang, the toolchain clice itself builds with: one clang for every
+/// target, whose configuration file (bin/<triple>.cfg, read for
+/// --target) names the target's sysroot, libc++ and runtimes.
+const XCLANG = path.join(REPO_ROOT, ".pixi", "envs", "toolchains", "opt", "xclang", "bin");
+
+function xclang(target: string): Scenario {
+    const flag = `--target=${target}`;
+    return {
+        name: `make bear xclang ${target}`,
+        platforms: ["linux"],
+        requires: ["bear", "make", `${XCLANG}/clang`, `${XCLANG}/clang++`],
+        build: [
+            ["bear", "--", "make", `CC=${XCLANG}/clang ${flag}`, `CXX=${XCLANG}/clang++ ${flag}`],
+        ],
+        files: BOTH,
+    };
+}
+
+/// The NDK the runner images ship.
+const NDK = process.env["ANDROID_NDK_LATEST_HOME"] ?? process.env["ANDROID_NDK_HOME"] ?? "";
+
 const LLVM_WINDOWS = "C:/Program Files/LLVM/bin";
 const MINGW = "C:/mingw64/bin";
+
+/// MSYS2's UCRT GCC and its clang environment, whose clang targets
+/// windows-gnu with its own libc++ and resource tree.
+const MSYS2_UCRT = "C:/msys64/ucrt64/bin";
+const MSYS2_CLANG = "C:/msys64/clang64/bin";
 
 /// The CUDA toolkit of the pixi `cuda` environment, run without its
 /// activation, so nvcc picks the system GCC as its host compiler.
@@ -76,7 +118,12 @@ export const SCENARIOS: Scenario[] = [
     // Versioned driver names, side by side as distributions install them.
     cmakeNinja("cmake ninja gcc-12", ["linux"], "/usr/bin/gcc-12", "/usr/bin/g++-12"),
     cmakeNinja("cmake ninja gcc-14", ["linux"], "/usr/bin/gcc-14", "/usr/bin/g++-14"),
+    // The distribution's `cc` and `c++`, which name GCC by alternatives.
+    cmakeNinja("cmake ninja cc alias", ["linux"], "/usr/bin/cc", "/usr/bin/c++"),
     cmakeNinja("cmake ninja clang-16", ["linux"], "/usr/bin/clang-16", "/usr/bin/clang++-16"),
+    cmakeNinja("cmake ninja clang libc++", ["linux"], CLANG, CLANGXX, {
+        extra: ["-DCMAKE_CXX_FLAGS=-stdlib=libc++"],
+    }),
     cmakeNinja("cmake ninja clang-17", ["linux"], "/usr/bin/clang-17", "/usr/bin/clang++-17"),
     cmakeNinja(
         "cmake ninja riscv64 cross",
@@ -85,7 +132,54 @@ export const SCENARIOS: Scenario[] = [
         "/usr/bin/riscv64-linux-gnu-g++",
         { extra: ["-DCMAKE_SYSTEM_NAME=Linux", "-DCMAKE_SYSTEM_PROCESSOR=riscv64"] },
     ),
+    // Conda's GCC compiles against its own sysroot's glibc.
+    cmakeNinja(
+        "cmake ninja conda gcc",
+        ["linux"],
+        `${CONDA}/x86_64-conda-linux-gnu-gcc`,
+        `${CONDA}/x86_64-conda-linux-gnu-g++`,
+    ),
+    cmakeNinja("cmake ninja conda clang", ["linux"], `${CONDA}/clang`, `${CONDA}/clang++`),
+    // GCC's two-core tuning form, a name clang does not know.
+    cmakeCross(
+        "cmake ninja aarch64 cross",
+        "aarch64-linux-gnu",
+        "aarch64",
+        "-mcpu=cortex-a72.cortex-a53",
+    ),
+    // The distribution's defaults come from GCC's specs: Thumb, ARMv7 and
+    // a 64-bit time_t.
+    cmakeCross("cmake ninja armhf cross", "arm-linux-gnueabihf", "arm"),
+    {
+        name: "cmake ninja android ndk",
+        platforms: ["linux"],
+        requires: ["cmake", "ninja", `${NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++`],
+        build: [
+            [
+                "cmake",
+                "-S",
+                ".",
+                "-B",
+                "build",
+                "-G",
+                "Ninja",
+                `-DCMAKE_TOOLCHAIN_FILE=${NDK}/build/cmake/android.toolchain.cmake`,
+                "-DANDROID_ABI=arm64-v8a",
+                "-DANDROID_PLATFORM=29",
+            ],
+            ["cmake", "--build", "build"],
+        ],
+        files: BOTH,
+    },
     cmakeNinja("cmake ninja apple clang", ["darwin"], "/usr/bin/clang", "/usr/bin/clang++"),
+    // macOS's `cc` and `c++` are clang.
+    cmakeNinja("cmake ninja apple cc alias", ["darwin"], "/usr/bin/cc", "/usr/bin/c++"),
+    cmakeNinja(
+        "cmake ninja homebrew gcc-13",
+        ["darwin"],
+        "/opt/homebrew/bin/gcc-13",
+        "/opt/homebrew/bin/g++-13",
+    ),
     cmakeNinja(
         "cmake ninja homebrew gcc",
         ["darwin"],
@@ -105,6 +199,15 @@ export const SCENARIOS: Scenario[] = [
         "/opt/homebrew/opt/llvm@18/bin/clang++",
     ),
     cmakeNinja("cmake ninja msvc", ["win32"], "cl", "cl", { msvc: true }),
+    // The newest standard, cl's conformance switches, and a Debug build's
+    // runtime library.
+    cmakeNinja("cmake ninja msvc conformance", ["win32"], "cl", "cl", {
+        msvc: true,
+        extra: [
+            "-DCMAKE_BUILD_TYPE=Debug",
+            "-DCMAKE_CXX_FLAGS=/EHsc /std:c++latest /Zc:__cplusplus /permissive-",
+        ],
+    }),
     cmakeNinja(
         "cmake ninja clang-cl",
         ["win32"],
@@ -113,12 +216,34 @@ export const SCENARIOS: Scenario[] = [
         { msvc: true },
     ),
     cmakeNinja(
+        "cmake ninja clang-cl conformance",
+        ["win32"],
+        `${LLVM_WINDOWS}/clang-cl.exe`,
+        `${LLVM_WINDOWS}/clang-cl.exe`,
+        { msvc: true, extra: ["-DCMAKE_CXX_FLAGS=/EHsc /std:c++latest /permissive-"] },
+    ),
+    cmakeNinja(
         "cmake ninja llvm clang",
         ["win32"],
         `${LLVM_WINDOWS}/clang.exe`,
         `${LLVM_WINDOWS}/clang++.exe`,
     ),
     cmakeNinja("cmake ninja mingw gcc", ["win32"], `${MINGW}/gcc.exe`, `${MINGW}/g++.exe`),
+    {
+        ...cmakeNinja(
+            "cmake ninja msys2 ucrt gcc",
+            ["win32"],
+            `${MSYS2_UCRT}/gcc.exe`,
+            `${MSYS2_UCRT}/g++.exe`,
+        ),
+        path: [MSYS2_UCRT],
+    },
+    cmakeNinja(
+        "cmake ninja msys2 clang",
+        ["win32"],
+        `${MSYS2_CLANG}/clang.exe`,
+        `${MSYS2_CLANG}/clang++.exe`,
+    ),
     {
         // Every C++ unit loads the target's PCH, which clice builds itself
         // from cmake_pch.hxx.cxx: CMake's own is clang 17's.
@@ -212,12 +337,13 @@ export const SCENARIOS: Scenario[] = [
                 "make",
                 `CC=${GCC}`,
                 `CXX=${GXX}`,
-                "CXXFLAGS=-std=gnu++20 -O2 -g -fno-exceptions -fno-rtti -pthread -MD -MF build/main.d",
+                "CXXFLAGS=-std=gnu++20 -O2 -g -mtune=intel -fno-exceptions -fno-rtti -pthread -MD -MF build/main.d",
                 "CFLAGS=-std=c11 -Os -ffast-math -funsigned-char -march=x86-64-v3 -ffunction-sections -flto -fsanitize=address",
             ],
         ],
         // Outputs, dependency files, debug info and pure codegen switches
-        // are dropped; what changes the parse stays (the macro check sees
+        // are dropped, and so is a CPU name only GCC knows; what changes the
+        // parse stays (the macro check sees
         // -ffast-math, -funsigned-char, -march and -fno-exceptions), a
         // relative include directory anchored at the entry's directory, and
         // -flto, which the driver requires for flags such as -fsanitize=cfi.
@@ -229,7 +355,7 @@ export const SCENARIOS: Scenario[] = [
                     ["-pthread"],
                     ["-I", "${root}/include"],
                 ],
-                excludes: ["-dependency-file", "-debug-info-kind=constructor"],
+                excludes: ["-dependency-file", "-debug-info-kind=constructor", "intel"],
             },
             "src/util.c": {
                 contains: [["-std=c11"], ["-fsanitize=address"], ["-flto=full"]],
@@ -327,6 +453,38 @@ export const SCENARIOS: Scenario[] = [
         '[[rules]]\npatterns = ["cuda/kernel.cu"]\nappend = ["-arch=all"]\n',
         { "cuda/kernel.cu": { excludes: ["sm_52"] }, "cuda/host.cpp": {} },
     ),
+    // Its macOS and MSVC targets read Apple's and Microsoft's SDKs, which
+    // xclang fetches only on a license accepted by hand.
+    ...[
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-w64-windows-gnu",
+        "aarch64-w64-windows-gnu",
+    ].map(xclang),
+    {
+        // newlib and its libstdc++, without any target flags.
+        name: "make bear arm-none-eabi defaults",
+        platforms: ["linux"],
+        requires: ["bear", "make", "/usr/bin/arm-none-eabi-gcc", "/usr/bin/arm-none-eabi-g++"],
+        build: [
+            [
+                "bear",
+                "--",
+                "make",
+                "CC=/usr/bin/arm-none-eabi-gcc",
+                "CXX=/usr/bin/arm-none-eabi-g++",
+            ],
+        ],
+        files: BOTH,
+    },
+    {
+        // musl's headers, which the wrapper's specs put in place of glibc's.
+        name: "make bear musl-gcc",
+        platforms: ["linux"],
+        requires: ["bear", "make", "/usr/bin/musl-gcc"],
+        build: [["bear", "--", "make", "build/util.o", "CC=/usr/bin/musl-gcc"]],
+        files: { "src/util.c": {} },
+    },
     {
         name: "make bear riscv bare metal",
         platforms: ["linux"],

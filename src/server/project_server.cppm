@@ -102,6 +102,8 @@ public:
     /// command, an include edge, index entries, a compile that read it or
     /// looked for it. The disk changes of files it does not know are not
     /// this project's to cascade.
+    /// FIXME: a rule with a default command and no patterns gives every file a
+    /// command, so such a project takes every other project's changes too.
     bool knows(Fid path_id);
 
     MasterServer& server;

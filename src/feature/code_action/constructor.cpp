@@ -196,6 +196,9 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
             // Whether a dependent type copies, only its instantiation
             // tells: by value and moved, the parameter takes copyable and
             // move-only arguments alike.
+            // FIXME: an instantiation with a reference (`Box<int&>`) then
+            // fails: the moved parameter cannot bind the reference member;
+            // `std::forward<T>` would take both, in an unusual spelling.
             if(!copies || (type->isDependentType() && !type->isScalarType())) {
                 moves = true;
             } else if(!type->isScalarType()) {

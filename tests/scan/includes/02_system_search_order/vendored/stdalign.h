@@ -1,0 +1,1 @@
+#define VENDORED_STDALIGN 1
