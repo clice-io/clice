@@ -94,6 +94,9 @@ std::string format_time(std::uint64_t epoch_ms) {
 int run_indexing_via_server(const index::ServerEndpoint& endpoint,
                             llvm::StringRef configuration,
                             bool json) {
+    // FIXME: the failed units come in the server's spelling of the workspace,
+    // which differs from this command's when one of them reaches it through a
+    // symlink.
     auto result = control::request_index(endpoint, configuration);
     if(!result) {
         LOG_ERROR("{}", result.error());

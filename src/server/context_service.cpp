@@ -251,6 +251,9 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
     // — listed only when it is an entry, not a rule's default — then the
     // host of its resolved context or the default one.
     if(choice && choice->host_path_id.valid()) {
+        // FIXME: reported even when the compile runs elsewhere: the chosen host
+        // no longer enters the header (the default host stands in), or its
+        // context fails to synthesize.
         lent(choice->host_path_id,
              choice->command_hash,
              choice->base_hash,
@@ -262,6 +265,9 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
             own({}, {});
         }
     } else if(const auto* context = editor.header_context(path_id)) {
+        // FIXME: a self-contained header's cached host stays when re-ranking puts
+        // another host with the same command first: the listing shows that one,
+        // and no row is the current one.
         lent(context->host_path_id, {}, {}, context->occurrence);
     } else if(auto host = default_host(ws, path_id)) {
         lent(host->file, {}, {}, 0);

@@ -815,6 +815,8 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
     if(!session) {
         return {};
     }
+    // FIXME: answers success before the forgotten choice is saved, so a failed
+    // save brings it back on restart; with no choice set it still recompiles.
     for(auto& project: projects) {
         project->contexts.forget_selection(path_id);
     }

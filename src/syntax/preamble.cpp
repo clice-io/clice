@@ -113,6 +113,8 @@ bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound) {
 }
 
 bool has_pragma_once(llvm::StringRef content, std::uint32_t bound) {
+    // FIXME: lexical: a `#pragma once` in a branch the compile skips counts,
+    // and `_Pragma("once")` does not.
     Lexer lexer(content, dialect_of());
     for(auto token = lexer.advance(); !token.is_eof() && token.range.begin < bound;
         token = lexer.advance()) {
