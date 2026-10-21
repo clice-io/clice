@@ -429,9 +429,9 @@ ZEST_CASE(EmptyRoundBuildsSearch) {
     ZEXPECT(f.project.index.search_index().loaded());
 }
 
-ZEST_CASE(EmptyRoundDiscardsDamagedDatabase) {
+ZEST_CASE(EmptyRoundDiscardsDamage) {
     // A scan met a damaged page after the load: a session finding nothing
-    // to index still discards the database at its idle save.
+    // to index, its search index current, still discards the database.
     struct DamagedPage final : ForwardingDatabase {
         using ForwardingDatabase::ForwardingDatabase;
 
@@ -461,7 +461,8 @@ ZEST_CASE(EmptyRoundDiscardsDamagedDatabase) {
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
     ZASSERT(f.merge(indexed.data));
-    f.save();
+    f.save(index::SearchRebuild::Idle);
+    ZASSERT(f.project.index.search_index().loaded());
     ZASSERT(!f.project.index.damaged());
 
     page.damaged = true;
