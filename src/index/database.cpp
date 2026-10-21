@@ -756,9 +756,17 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
                         path);
                     return nullptr;
                 }
+                if(repaired) {
+                    LOG_WARN(
+                        "Cannot replace the index database at {}, which another version of clice "
+                        "wrote; index persistence is disabled for this session",
+                        path);
+                    return nullptr;
+                }
                 LOG_INFO("Index database at {} was written by another version of clice; rebuilding",
                          path);
                 remove_database_files(path);
+                repaired = true;
                 continue;
             }
             case MetaCheck::Transient: {

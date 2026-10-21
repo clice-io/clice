@@ -217,6 +217,44 @@ void truncate_to_meta(llvm::StringRef file) {
     llvm::sys::Process::SafelyCloseFileDescriptor(fd);
 }
 
+/// Rewrite the record describing the database, keyed "\xffmeta", with
+/// the schema another version of clice writes.
+void write_foreign_meta(llvm::StringRef file) {
+    MDB_env* env = nullptr;
+    require(mdb_env_create(&env) == 0, "creating the environment failed");
+    require(mdb_env_open(env, file.str().c_str(), MDB_NOSUBDIR, 0644) == 0,
+            "opening index.mdb failed");
+    MDB_txn* txn = nullptr;
+    require(mdb_txn_begin(env, nullptr, 0, &txn) == 0, "beginning a write failed");
+    MDB_dbi dbi;
+    require(mdb_dbi_open(txn, nullptr, 0, &dbi) == 0, "opening the database failed");
+    std::uint32_t meta[] = {1, sizeof(std::size_t) * 8, 0x01020304};
+    MDB_val key{5, const_cast<char*>("\xffmeta")};
+    MDB_val value{sizeof(meta), meta};
+    require(mdb_put(txn, dbi, &key, &value, 0) == 0, "writing the meta record failed");
+    require(mdb_txn_commit(txn) == 0, "committing failed");
+    mdb_env_close(env);
+}
+
+ZEST_CASE(ForeignDatabaseRebuilds) {
+    TempDir tmp;
+    std::string file;
+    {
+        auto store = open_store(tmp, "lmdb");
+        file = populated_database(store, 1);
+    }
+    write_foreign_meta(file);
+    {
+        auto store = open_store(tmp, "lmdb", /*read_only=*/true);
+        ZEXPECT(index::open_database(store, "") == nullptr);
+    }
+    auto store = open_store(tmp, "lmdb");
+    auto db = index::open_database(store, "");
+    ZASSERT(db != nullptr);
+    ZEXPECT(!db->contains(index::BlobKind::Shard, "0"));
+    ZEXPECT(!db->corrupted());
+}
+
 ZEST_CASE(TruncatedDatabaseRebuilds) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
