@@ -238,7 +238,7 @@ export class Inspect extends Client {
     }
 
     protected context(): AnswerContext {
-        return new AnswerContext(this.root, (file) => this.text(file));
+        return new AnswerContext(this.root, (file) => this.text(file), "utf-16");
     }
 
     /// The errors of every source but an importer and of every file

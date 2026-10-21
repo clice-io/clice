@@ -56,13 +56,19 @@ import {
 } from "../render/answers.ts";
 import { Client, type LocationRequest, type ReferenceOptions } from "../render/client.ts";
 import { applyEdits, type TextEdit } from "../render/edits.ts";
-import { AnswerContext, completion, selection, signatures, tokens } from "../render/lsp.ts";
+import { AnswerContext, signatures } from "../render/lsp.ts";
 import { uriToPath } from "../render/paths.ts";
-import { withoutBom, type Location, type Range } from "../render/position.ts";
+import {
+    SourceText,
+    withoutBom,
+    type Location,
+    type PositionEncoding,
+    type Range,
+} from "../render/position.ts";
 import { shown } from "../render/shown.ts";
 import type { Table } from "../render/value.ts";
 import {
-    applyChange,
+    changeSpan,
     describeAnchor,
     locate,
     spanOf,
@@ -99,6 +105,9 @@ export interface ServerOptions {
     config?: Record<string, unknown>;
     /// The client's capabilities; the most conservative client by default.
     capabilities?: proto.ClientCapabilities;
+    /// The client offers UTF-8 positions beside UTF-16, and the server must
+    /// take them.
+    positionEncoding?: "utf-8";
     /// Workspace folders, workspace-relative; null announces only the root.
     folders?: string[] | null;
     /// Folders the client announces coming and going between its
@@ -196,6 +205,15 @@ function recording(client: CliceClient): CliceClient {
 /// order: a reply that long is an arbitrary subset.
 const RESULT_CAP = 100;
 
+/// The encoding a server chose at the handshake, UTF-16 when it names none.
+function chosenEncoding(result: proto.InitializeResult | null): PositionEncoding {
+    const chosen = result?.capabilities.positionEncoding ?? "utf-16";
+    if (chosen !== "utf-8" && chosen !== "utf-16") {
+        throw new Error(`the server counts positions in ${chosen}, which no test client offers`);
+    }
+    return chosen;
+}
+
 /// One server of a test over the test's copy; `s` in a scenario.
 export class Serve extends Client {
     readonly steps: StepRecord;
@@ -212,6 +230,9 @@ export class Serve extends Client {
     private killed = 0;
     /// Every window/showMessage the servers sent, oldest first.
     private readonly shownMessages: string[] = [];
+    /// How the server counts a position's character, as it chose at the
+    /// handshake from what the client offered.
+    private encoding: PositionEncoding = "utf-16";
 
     /// Server actions over a copy the caller owns, whose case has `marks`;
     /// nothing starts yet.
@@ -281,18 +302,30 @@ export class Serve extends Client {
         return this.documents.has(file);
     }
 
+    /// Sent as an editor sends it: a whole text as it is, any other change
+    /// as its range in the text the change before it left.
     edit(file: string, ...changes: Change[]): void {
         const document = this.document(file);
+        const sent: proto.TextDocumentContentChangeEvent[] = [];
         let text = document.text;
         for (const change of changes) {
-            text = applyChange(text, change, file);
+            if ("text" in change) {
+                sent.push({ text: change.text });
+                text = change.text;
+                continue;
+            }
+            const { begin, end, insert } = changeSpan(text, change, file);
+            const source = new SourceText(file, text);
+            const range = { start: source.positionAt(begin), end: source.positionAt(end) };
+            sent.push({ range: source.encodeRange(range, this.encoding), text: insert });
+            text = text.slice(0, begin) + insert + text.slice(end);
         }
         document.version += 1;
         document.text = text;
         this.steps.note(
             `edit ${file} v${document.version}: ${changes.map(describeChange).join("; ")}`,
         );
-        this.live().change(this.uri(file), document.version, text);
+        this.live().change(this.uri(file), document.version, sent);
     }
 
     /// Write the buffer to disk and say so (didSave). A file not open, or one
@@ -509,11 +542,11 @@ export class Serve extends Client {
         const { uri, position } = this.position(at);
         const by = trigger === undefined ? "" : ` triggered by ${JSON.stringify(trigger)}`;
         return this.ask(`completion ${describeAnchor(at)}${by}`, async (client) =>
-            completion(
+            this.context().completion(
+                at.path,
                 await client.completionAt(uri, position.line, position.character, {
                     ...(trigger === undefined ? {} : { triggerCharacter: trigger }),
                 }),
-                at.path,
             ),
         );
     }
@@ -543,7 +576,7 @@ export class Serve extends Client {
             if (reply?.length !== 1) {
                 throw new Error("clice answers every position of a selectionRange request");
             }
-            return selection(reply[0]);
+            return this.context().selection(at.path, reply[0]);
         });
     }
 
@@ -554,7 +587,9 @@ export class Serve extends Client {
     ): Promise<Action[]> {
         const kinds = only === undefined ? "" : ` only ${only.join(", ")}`;
         return this.ask(`codeActions ${file} ${JSON.stringify(range)}${kinds}`, async (client) =>
-            this.context().actions(await this.actionsOf(client, file, range, only)),
+            this.context().actions(
+                await this.actionsOf(client, file, this.context().encodedRange(file, range), only),
+            ),
         );
     }
 
@@ -669,14 +704,22 @@ export class Serve extends Client {
             if (provider === undefined) {
                 throw new Error("the server advertises no semantic tokens legend");
             }
-            return tokens(await client.semanticTokensFull(this.uri(file)), provider.legend);
+            return this.context().tokens(
+                file,
+                await client.semanticTokensFull(this.uri(file)),
+                provider.legend,
+            );
         });
     }
 
     protected fetchInlayHints(file: string, range: Range): Promise<InlayHint[]> {
-        return this.ask(`inlay hints of ${file} ${JSON.stringify(range)}`, async (client) =>
-            this.context().inlayHints(await client.inlayHints(this.uri(file), range)),
-        );
+        return this.ask(`inlay hints of ${file} ${JSON.stringify(range)}`, async (client) => {
+            const context = this.context();
+            return context.inlayHints(
+                file,
+                await client.inlayHints(this.uri(file), context.encodedRange(file, range)),
+            );
+        });
     }
 
     protected fetchFolds(file: string): Promise<Fold[]> {
@@ -742,11 +785,15 @@ export class Serve extends Client {
 
     protected fetchFormatting(file: string, range: Range | undefined): Promise<TextEdit[] | null> {
         const uri = this.uri(file);
+        const decoded = (edits: proto.TextEdit[] | null): TextEdit[] | null =>
+            edits === null ? null : this.context().edits(file, edits);
         if (range === undefined) {
-            return this.ask(`formatting ${file}`, (client) => client.formatDocument(uri));
+            return this.ask(`formatting ${file}`, async (client) =>
+                decoded(await client.formatDocument(uri)),
+            );
         }
-        return this.ask(`formatting ${file} ${JSON.stringify(range)}`, (client) =>
-            client.formatRange(uri, range),
+        return this.ask(`formatting ${file} ${JSON.stringify(range)}`, async (client) =>
+            decoded(await client.formatRange(uri, this.context().encodedRange(file, range))),
         );
     }
 
@@ -762,7 +809,7 @@ export class Serve extends Client {
                     throw new Error("clice answers prepareRename with a range and a placeholder");
                 }
                 return {
-                    location: { path: at.path, range: reply.range },
+                    location: { path: at.path, range: this.context().range(at.path, reply.range) },
                     placeholder: reply.placeholder,
                 };
             }),
@@ -805,10 +852,11 @@ export class Serve extends Client {
         );
     }
 
+    /// `range` counts as the server does.
     private actionsOf(
         client: CliceClient,
         file: string,
-        range: Range,
+        range: proto.Range,
         only: readonly string[] | undefined,
     ): Promise<(proto.Command | proto.CodeAction)[] | null> {
         return client.sendRequest(proto.CodeActionRequest.type, {
@@ -857,9 +905,10 @@ export class Serve extends Client {
     position(anchor: Anchor): { uri: string; position: proto.Position } {
         const text = this.text(anchor.path);
         const offset = locate(text, anchor);
+        const source = this.context().file(anchor.path);
         return {
             uri: this.uri(anchor.path),
-            position: this.context().file(anchor.path).positionAt(offset),
+            position: source.encode(source.positionAt(offset), this.encoding),
         };
     }
 
@@ -868,7 +917,10 @@ export class Serve extends Client {
         const text = this.text(anchor.path);
         const { begin, end } = spanOf(text, anchor);
         const source = this.context().file(anchor.path);
-        return { start: source.positionAt(begin), end: source.positionAt(end) };
+        return source.encodeRange(
+            { start: source.positionAt(begin), end: source.positionAt(end) },
+            this.encoding,
+        );
     }
 
     // Test hooks.
@@ -999,13 +1051,16 @@ export class Serve extends Client {
         return this.steps.run("initialize", async () => {
             const client = this.live();
             this.recordToml("clice.toml");
-            const { config, capabilities, folders, foldersBeforeInitialized } = this.options;
+            const { config, capabilities, positionEncoding, folders, foldersBeforeInitialized } =
+                this.options;
             if (config !== undefined) {
                 recordConfig(config);
             }
             const initialize: InitializeOptions = {
                 initializationOptions: config,
                 capabilities,
+                positionEncodings:
+                    positionEncoding === undefined ? undefined : [positionEncoding, "utf-16"],
                 folders,
                 ...(foldersBeforeInitialized === undefined
                     ? {}
@@ -1015,6 +1070,10 @@ export class Serve extends Client {
                       }),
             };
             await client.initialize(this.workspace, initialize);
+            this.encoding = chosenEncoding(client.initResult);
+            if (positionEncoding !== undefined && this.encoding !== positionEncoding) {
+                throw new Error(`the server counts positions in ${this.encoding}`);
+            }
         });
     }
 
@@ -1279,7 +1338,7 @@ export class Serve extends Client {
     }
 
     protected context(): AnswerContext {
-        return new AnswerContext(this.workspace.root, (file) => this.text(file));
+        return new AnswerContext(this.workspace.root, (file) => this.text(file), this.encoding);
     }
 
     private live(): CliceClient {

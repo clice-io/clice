@@ -11,6 +11,7 @@ import :config.config;
 import :feature.feature;
 import :support.logging;
 import :support.shell;
+import :syntax.position;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -301,11 +302,19 @@ static std::optional<toml::source_position> end_at(const toml::node& node,
     return std::nullopt;
 }
 
-/// An issue at its error's position, spanning the key or value of `parsed`
-/// that starts there: the error carries only where it starts. A document
-/// that does not parse has no such extent, its error marks a point.
+/// The byte a TOML position, its line 1-based and its column counting code
+/// points from 1, is at in the text `positions` maps.
+static std::uint32_t offset_of(const PositionMap& positions, toml::source_position at) {
+    return positions.offset_clamped({.line = at.line - 1, .character = at.column - 1},
+                                    PositionEncoding::UTF32);
+}
+
+/// An issue at its error's position in `text`, spanning the key or value of
+/// `parsed` that starts there: the error carries only where it starts. A
+/// document that does not parse has no such extent, its error marks a point.
 static ConfigIssue make_issue(ConfigIssue::Severity severity,
                               llvm::StringRef path,
+                              llvm::StringRef text,
                               const kota::codec::rich_error& error,
                               const toml::table* parsed) {
     ConfigIssue issue;
@@ -315,16 +324,16 @@ static ConfigIssue make_issue(ConfigIssue::Severity severity,
     if(!error.location) {
         return issue;
     }
-    issue.line = issue.end_line = static_cast<std::uint32_t>(error.location->line);
-    issue.column = issue.end_column = static_cast<std::uint32_t>(error.location->column);
+    auto lines = kota::ipc::lsp::line_starts(text);
+    PositionMap positions(text, lines);
+    toml::source_position begin{static_cast<toml::source_index>(error.location->line),
+                                static_cast<toml::source_index>(error.location->column)};
+    issue.range.begin = issue.range.end = offset_of(positions, begin);
     if(!parsed) {
         return issue;
     }
-    if(auto end = end_at(*parsed,
-                         {static_cast<toml::source_index>(issue.line),
-                          static_cast<toml::source_index>(issue.column)})) {
-        issue.end_line = end->line;
-        issue.end_column = end->column;
+    if(auto end = end_at(*parsed, begin)) {
+        issue.range.end = offset_of(positions, *end);
     }
     return issue;
 }
@@ -337,7 +346,8 @@ std::optional<Config> Config::load(llvm::StringRef path,
     if(!content)
         return std::nullopt;
 
-    auto parsed = kota::codec::toml::parse_table((*content)->getBuffer());
+    auto text = (*content)->getBuffer();
+    auto parsed = kota::codec::toml::parse_table(text);
     auto* table = parsed ? &*parsed : nullptr;
     Config config;
     kota::codec::UnknownFields unknown;
@@ -352,14 +362,14 @@ std::optional<Config> Config::load(llvm::StringRef path,
         LOG_ERROR("Invalid clice.toml {}: {}", path, decoded.error().to_string());
         if(issues)
             issues->push_back(
-                make_issue(ConfigIssue::Severity::Error, path, decoded.error(), table));
+                make_issue(ConfigIssue::Severity::Error, path, text, decoded.error(), table));
         return std::nullopt;
     }
 
     if(issues) {
         for(auto& entry: unknown.entries) {
             LOG_WARN("clice.toml {}: {}", path, entry.to_string());
-            issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, entry, table));
+            issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, text, entry, table));
         }
     }
     auto directory = Spelling::absolute(path).parent();

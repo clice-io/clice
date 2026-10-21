@@ -69,7 +69,8 @@ void SessionStore::apply_open(Session& session, std::string text, int version) {
 
 void SessionStore::apply_change(Session& session,
                                 llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
-                                int version) {
+                                int version,
+                                PositionEncoding encoding) {
     session.version = version;
 
     bool applied = false;
@@ -85,8 +86,7 @@ void SessionStore::apply_change(Session& session,
                 } else {
                     auto map = session.positions();
                     auto& range = c.range;
-                    if(!map.offset(range.start, PositionEncoding::UTF16) ||
-                       !map.offset(range.end, PositionEncoding::UTF16)) {
+                    if(!map.offset(range.start, encoding) || !map.offset(range.end, encoding)) {
                         // The client's view has drifted from ours (or the
                         // client is buggy). LSP 3.17 requires clamping
                         // positions past the document instead of dropping
@@ -102,7 +102,7 @@ void SessionStore::apply_change(Session& session,
                             session.path_id,
                             version);
                     }
-                    auto [start, end] = map.offset_range(range, PositionEncoding::UTF16);
+                    auto [start, end] = map.offset_range(range, encoding);
                     auto text = session.text();
                     if(text.substr(start, end - start) != c.text) {
                         std::string edited;

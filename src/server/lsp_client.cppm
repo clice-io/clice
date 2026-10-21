@@ -110,9 +110,9 @@ private:
     /// information; otherwise they go into its message.
     bool related_information = false;
 
-    /// The diagnostics in the shape the client takes.
+    /// The diagnostics of `session`'s compile in the shape the client takes.
     std::vector<kota::ipc::protocol::Diagnostic>
-        to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);
+        to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics, const Session& session);
 
     /// How the client takes folds (textDocument.foldingRange).
     feature::FoldingClient folding_client;

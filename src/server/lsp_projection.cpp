@@ -7,40 +7,40 @@ module clice;
 import :feature.feature;
 import :index.navigation;
 import :server.lsp_projection;
+import :syntax.position;
 
 namespace clice::to_lsp {
 
-protocol::Range range(const index::Site& site) {
-    return {
-        .start = {.line = site.begin.line, .character = site.begin.utf16_column},
-        .end = {.line = site.end.line,   .character = site.end.utf16_column  },
-    };
+protocol::Range range(const index::Site& site, PositionEncoding encoding) {
+    return {.start = site.begin.in(encoding), .end = site.end.in(encoding)};
 }
 
-protocol::Location location(const index::Site& site) {
-    return {.uri = feature::to_uri(site.path), .range = range(site)};
+protocol::Location location(const index::Site& site, PositionEncoding encoding) {
+    return {.uri = feature::to_uri(site.path), .range = range(site, encoding)};
 }
 
-std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites) {
+std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites,
+                                          PositionEncoding encoding) {
     std::vector<protocol::Location> result;
     result.reserve(sites.size());
     for(const auto& site: sites) {
-        result.push_back(location(site));
+        result.push_back(location(site, encoding));
     }
     return result;
 }
 
-std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites) {
+std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites, PositionEncoding encoding) {
     std::vector<protocol::Range> result;
     result.reserve(sites.size());
     for(const auto& site: sites) {
-        result.push_back(range(site));
+        result.push_back(range(site, encoding));
     }
     return result;
 }
 
 std::vector<protocol::DocumentHighlight>
-    document_highlights(llvm::ArrayRef<index::PlacedHighlight> highlights) {
+    document_highlights(llvm::ArrayRef<index::PlacedHighlight> highlights,
+                        PositionEncoding encoding) {
     auto kind_of = [](index::HighlightKind kind) {
         switch(kind) {
             case index::HighlightKind::Text: return protocol::DocumentHighlightKind::Text;
@@ -52,21 +52,23 @@ std::vector<protocol::DocumentHighlight>
     std::vector<protocol::DocumentHighlight> result;
     result.reserve(highlights.size());
     for(const auto& highlight: highlights) {
-        result.push_back({.range = range(highlight.site), .kind = kind_of(highlight.kind)});
+        result.push_back(
+            {.range = range(highlight.site, encoding), .kind = kind_of(highlight.kind)});
     }
     return result;
 }
 
 protocol::SymbolInformation symbol_information(const index::SymbolInfo& symbol,
                                                const index::Site& site,
-                                               llvm::StringRef container) {
+                                               llvm::StringRef container,
+                                               PositionEncoding encoding) {
     protocol::SymbolInformation info;
     info.name = symbol.display_name() + symbol.signature;
     info.kind = feature::to_protocol_symbol_kind(symbol.kind);
     if(!container.empty()) {
         info.container_name = container.str();
     }
-    info.location = location(site);
+    info.location = location(site, encoding);
     return info;
 }
 
@@ -74,7 +76,8 @@ template <typename Item>
 static Item hierarchy_item(const index::SymbolInfo& symbol,
                            const index::Site& site,
                            const index::Site& extent,
-                           llvm::StringRef qualified) {
+                           llvm::StringRef qualified,
+                           PositionEncoding encoding) {
     Item item;
     item.name = symbol.display_name();
     if(auto detail = qualified.str() + symbol.signature; detail != item.name) {
@@ -82,8 +85,8 @@ static Item hierarchy_item(const index::SymbolInfo& symbol,
     }
     item.kind = feature::to_protocol_symbol_kind(symbol.kind);
     item.uri = feature::to_uri(site.path);
-    item.range = range(extent);
-    item.selection_range = range(site);
+    item.range = range(extent, encoding);
+    item.selection_range = range(site, encoding);
     item.data = protocol::LSPAny(std::format("{}", symbol.hash));
     return item;
 }
@@ -91,15 +94,17 @@ static Item hierarchy_item(const index::SymbolInfo& symbol,
 protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolInfo& symbol,
                                                 const index::Site& site,
                                                 const index::Site& extent,
-                                                llvm::StringRef qualified) {
-    return hierarchy_item<protocol::CallHierarchyItem>(symbol, site, extent, qualified);
+                                                llvm::StringRef qualified,
+                                                PositionEncoding encoding) {
+    return hierarchy_item<protocol::CallHierarchyItem>(symbol, site, extent, qualified, encoding);
 }
 
 protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolInfo& symbol,
                                                 const index::Site& site,
                                                 const index::Site& extent,
-                                                llvm::StringRef qualified) {
-    return hierarchy_item<protocol::TypeHierarchyItem>(symbol, site, extent, qualified);
+                                                llvm::StringRef qualified,
+                                                PositionEncoding encoding) {
+    return hierarchy_item<protocol::TypeHierarchyItem>(symbol, site, extent, qualified, encoding);
 }
 
 std::optional<index::SymbolHash> data_symbol(const std::optional<protocol::LSPAny>& data) {

@@ -11,6 +11,7 @@ import :server.project_server;
 import :server.session;
 import :support.anomaly;
 import :support.signal;
+import :syntax.position;
 import :worker.pool;
 import :worker.probe;
 
@@ -267,6 +268,11 @@ public:
 
     /// The client's initializationOptions, applied to every project.
     std::optional<kota::codec::dyn::Value> init_options;
+
+    /// How the client counts a position's character, chosen at initialize:
+    /// UTF-8 when it lists that encoding, else UTF-16, LSP's default. Every
+    /// position the server takes or sends counts in it.
+    PositionEncoding position_encoding = PositionEncoding::UTF16;
 
     /// The `--configuration` argument: the build configuration this
     /// session runs, over the persisted selection; empty takes the

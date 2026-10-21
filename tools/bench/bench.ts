@@ -17,6 +17,9 @@
 ///   --file <rel>             file to open/edit (default: first CDB entry)
 ///   --position <line:char>   position for warm requests (default: derived
 ///                            from the file's first call-like identifier)
+///   --position-encoding utf-8
+///                            offer UTF-8 positions beside UTF-16; the
+///                            server picks, and --position counts in its pick
 ///   --scenario <name>        cold_start | warm_start | edit_loop |
 ///                            warm_requests; repeatable (default: all)
 ///   --edits <N>              edit_loop iterations (default 10)
@@ -51,6 +54,9 @@ interface Options {
     file: string | null;
     /// null = derive a symbol-bearing position from the file content.
     position: { line: number; character: number } | null;
+    /// The position encodings the client offers; none, which leaves UTF-16,
+    /// by default.
+    positionEncodings: string[] | undefined;
     scenarios: ScenarioName[];
     edits: number;
     repeats: number;
@@ -95,6 +101,7 @@ function parseOptions(): Options {
             workspace: { type: "string" },
             file: { type: "string" },
             position: { type: "string" },
+            "position-encoding": { type: "string" },
             scenario: { type: "string", multiple: true },
             edits: { type: "string", default: "10" },
             repeats: { type: "string", default: "50" },
@@ -144,6 +151,11 @@ function parseOptions(): Options {
         position = { line, character };
     }
 
+    const encoding = values["position-encoding"];
+    if (encoding !== undefined && encoding !== "utf-8") {
+        fail(`unknown --position-encoding '${encoding}' (expected utf-8)`);
+    }
+
     const edits = Number(values.edits);
     const repeats = Number(values.repeats);
     if (!Number.isInteger(edits) || edits < 0 || !Number.isInteger(repeats) || repeats < 0) {
@@ -159,6 +171,7 @@ function parseOptions(): Options {
         cdbDir: "",
         file: values.file ?? null,
         position,
+        positionEncodings: encoding === undefined ? undefined : [encoding, "utf-16"],
         scenarios,
         edits,
         repeats,
@@ -220,9 +233,11 @@ function blankNonCode(text: string): string {
 /// do not count. The old 0:0 default usually landed on a license comment,
 /// so the positional features took their empty-result fast paths and
 /// measured nothing.
-function derivePosition(file: string): { line: number; character: number } {
+function derivePosition(file: string, utf8: boolean): { line: number; character: number } {
     const keywords = new Set(["if", "for", "while", "switch", "return", "sizeof", "catch"]);
-    const lines = blankNonCode(fs.readFileSync(file, "utf8")).split("\n");
+    const source = fs.readFileSync(file, "utf8");
+    const original = source.split("\n");
+    const lines = blankNonCode(source).split("\n");
     for (let line = 0; line < lines.length; line += 1) {
         const text = lines[line] ?? "";
         if (text.trimStart().startsWith("#")) {
@@ -231,7 +246,8 @@ function derivePosition(file: string): { line: number; character: number } {
         for (const match of text.matchAll(/\b([A-Za-z_]\w+)\s*\(/g)) {
             const name = match[1];
             if (name !== undefined && !keywords.has(name)) {
-                return { line, character: match.index };
+                const before = (original[line] ?? "").slice(0, match.index);
+                return { line, character: utf8 ? Buffer.byteLength(before) : match.index };
             }
         }
     }
@@ -382,6 +398,7 @@ async function startServer(opts: Options): Promise<CliceClient> {
     await client.initialize(new Workspace(opts.workspace), {
         initializationOptions: initializationOptions(opts),
         testDefaults: false,
+        positionEncodings: opts.positionEncodings,
     });
     return client;
 }
@@ -461,7 +478,9 @@ async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult>
     // Sent as a ranged insertion like a real editor; a full-document
     // replacement would add whole-file serialization to every sample.
     const lines = content.split("\n");
-    let end = { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 };
+    const last = lines[lines.length - 1] ?? "";
+    const utf8 = client.initResult?.capabilities.positionEncoding === "utf-8";
+    let end = { line: lines.length - 1, character: utf8 ? Buffer.byteLength(last) : last.length };
 
     for (let i = 1; i <= opts.edits; i += 1) {
         const comment = `// bench edit ${i}`;
@@ -470,7 +489,7 @@ async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult>
         let poke: Promise<unknown> = Promise.resolve();
         await bench.measure("edit_to_diagnostics", async () => {
             const arrived = client.armDiagnostics(uri);
-            client.changeRange(uri, i, { start: end, end }, `\n${comment}`);
+            client.change(uri, i, [{ range: { start: end, end }, text: `\n${comment}` }]);
             poke = client.hoverAt(uri, 0, 0);
             await withTimeout(arrived, 300_000, `diagnostics ${uri}`);
         });
@@ -487,7 +506,8 @@ async function runWarmRequests(opts: Options, file: string): Promise<ScenarioRes
     const bench = new Bench(opts);
     const client = await startServer(opts);
     const [uri] = await client.openAndWait(file, 300_000);
-    const position = opts.position ?? derivePosition(file);
+    const utf8 = client.initResult?.capabilities.positionEncoding === "utf-8";
+    const position = opts.position ?? derivePosition(file, utf8);
     if (opts.position === null) {
         console.log(`derived probe position ${position.line}:${position.character}`);
     }

@@ -162,7 +162,7 @@ std::optional<index::IndexQuery::Cursor>
     if(!path_id.valid()) {
         return std::nullopt;
     }
-    return query.symbol_at(path_id, position.line, position.character);
+    return query.symbol_at(path_id, position.line, position.character, encoding);
 }
 
 SourceText& Features::text_of(Session& session) {
@@ -250,8 +250,7 @@ std::optional<protocol::Hover> Features::directive_hover(const Session& session,
     info.file = shown(project.file_table, link.target);
     info.symbol_range = link.range;
 
-    auto hover =
-        feature::to_protocol_hover(info, markup, session.positions(), PositionEncoding::UTF16);
+    auto hover = feature::to_protocol_hover(info, markup, session.positions(), encoding);
     if(!hover.range) {
         return std::nullopt;
     }
@@ -277,7 +276,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
                        std::vector<protocol::DocumentLink>& links) {
         auto map = session->positions();
         for(const auto& link: raw_links) {
-            auto range = map.range(link.range, PositionEncoding::UTF16);
+            auto range = map.range(link.range, encoding);
             if(!range)
                 continue;
             protocol::DocumentLink out{.range = *range};
@@ -363,8 +362,7 @@ Features::RawResult Features::definition(Ticket ticket,
     // mid-flight (the round committed as bounded staleness): the cached
     // links may describe a pre-edit preamble — skip, and let the index and
     // worker paths below answer.
-    auto offset =
-        session ? session->positions().offset(position, PositionEncoding::UTF16) : std::nullopt;
+    auto offset = session ? session->positions().offset(position, encoding) : std::nullopt;
     if(offset && ast.projections.current(path_id)) {
         auto links = find_preamble_links(*session);
         if(auto* link = link_at(links, *offset)) {
@@ -405,7 +403,7 @@ Features::RawResult Features::definition(Ticket ticket,
             llvm::append_range(result, std::move(defined));
         }
         index::dedup_sites(result);
-        return to_lsp::locations(result);
+        return to_lsp::locations(result, encoding);
     };
     if(auto result = index_definition(); !result.empty()) {
         co_return to_raw(result);
@@ -480,10 +478,7 @@ Features::RawResult Features::hover(Ticket ticket,
     auto path_id = session->path_id;
 
     auto index_card = [&](const feature::HoverInfo& info) {
-        return to_raw(feature::to_protocol_hover(info,
-                                                 markup,
-                                                 session->positions(),
-                                                 PositionEncoding::UTF16));
+        return to_raw(feature::to_protocol_hover(info, markup, session->positions(), encoding));
     };
 
     switch(co_await pick_route(ticket, {})) {
@@ -520,7 +515,7 @@ Features::RawResult Features::hover(Ticket ticket,
     // A directive's card names its target, which the worker knows only by
     // identity: this side answers it, from the links. Off a directive line
     // there is none to look for.
-    auto offset = session->positions().offset(position, PositionEncoding::UTF16);
+    auto offset = session->positions().offset(position, encoding);
     bool on_directive = false;
     if(offset) {
         llvm::StringRef text = session->text();
@@ -635,14 +630,13 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
     }
     auto hints = co_await dispatcher.inlay_hints(ticket, range, std::move(token)).or_fail();
     if(!label_parts) {
-        co_return to_raw(
-            feature::inlay_hints_to_protocol(hints, session->positions(), PositionEncoding::UTF16));
+        co_return to_raw(feature::inlay_hints_to_protocol(hints, session->positions(), encoding));
     }
     // A reply names the same few types and parameters over and over.
     llvm::DenseMap<std::pair<index::SymbolHash, Fid>, std::optional<protocol::Location>> located;
     auto locate = [&](const feature::InlayHintPart& part) -> std::optional<protocol::Location> {
         if(part.target) {
-            auto position = session->positions().position(*part.target, PositionEncoding::UTF16);
+            auto position = session->positions().position(*part.target, encoding);
             if(!position) {
                 return std::nullopt;
             }
@@ -673,14 +667,12 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
                        return std::vector<index::Site>{};
                    });
         if(!sites.empty()) {
-            it->second = to_lsp::location(sites.front());
+            it->second = to_lsp::location(sites.front(), encoding);
         }
         return it->second;
     };
-    co_return to_raw(feature::inlay_hints_to_protocol(hints,
-                                                      session->positions(),
-                                                      PositionEncoding::UTF16,
-                                                      locate));
+    co_return to_raw(
+        feature::inlay_hints_to_protocol(hints, session->positions(), encoding, locate));
 }
 
 Features::RawResult Features::folding_range(Ticket ticket,
@@ -691,7 +683,7 @@ Features::RawResult Features::folding_range(Ticket ticket,
         return to_raw(feature::folding_ranges_to_protocol(folds,
                                                           session->text(),
                                                           session->positions(),
-                                                          PositionEncoding::UTF16,
+                                                          encoding,
                                                           client));
     };
 
@@ -733,12 +725,12 @@ Features::RawResult Features::document_symbol(Ticket ticket,
         if(client.hierarchical) {
             return to_raw(feature::document_symbols_to_protocol(symbols,
                                                                 session->positions(),
-                                                                PositionEncoding::UTF16,
+                                                                encoding,
                                                                 client));
         }
         return to_raw(feature::document_symbols_to_information(symbols,
                                                                session->positions(),
-                                                               PositionEncoding::UTF16,
+                                                               encoding,
                                                                client,
                                                                uri));
     };
@@ -771,14 +763,13 @@ Features::RawResult Features::selection_range(Ticket ticket,
     std::vector<std::uint32_t> offsets;
     auto map = session->positions();
     for(const auto& position: positions) {
-        offsets.push_back(map.offset_clamped(position, PositionEncoding::UTF16));
+        offsets.push_back(map.offset_clamped(position, encoding));
     }
     auto convert = [&](llvm::ArrayRef<std::vector<LocalSourceRange>> chains) {
         std::vector<protocol::SelectionRange> result;
         for(const auto& chain: chains) {
-            result.push_back(feature::selection_range_to_protocol(chain,
-                                                                  session->positions(),
-                                                                  PositionEncoding::UTF16));
+            result.push_back(
+                feature::selection_range_to_protocol(chain, session->positions(), encoding));
         }
         return to_raw(result);
     };
@@ -855,7 +846,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     auto path = std::string(project.file_table.resolve(path_id));
 
     auto map = session->positions();
-    auto offset = map.offset(position, PositionEncoding::UTF16);
+    auto offset = map.offset(position, encoding);
 
     const auto& dialect = contexts.dialect(session->path_id);
     CompletionName completing;
@@ -914,7 +905,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                     end = static_cast<std::uint32_t>(text.find(closer, end)) + 1;
                 }
                 return protocol::TextEdit{
-                    .range = *map.range({completing.replace.begin, end}, PositionEncoding::UTF16),
+                    .range = *map.range({completing.replace.begin, end}, encoding),
                     .new_text = candidate.name + (candidate.is_directory ? '/' : closer),
                 };
             };
@@ -979,7 +970,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 item.kind = protocol::CompletionItemKind::Module;
                 item.sort_text = std::format("{:05}", distance(name));
                 item.text_edit = protocol::TextEdit{
-                    .range = *map.range(completing.replace, PositionEncoding::UTF16),
+                    .range = *map.range(completing.replace, encoding),
                     .new_text = completing.closed ? name : name + ";",
                 };
                 items.push_back(std::move(item));
@@ -1152,7 +1143,7 @@ Features::RawResult Features::references(Ticket ticket,
         });
         sites.erase(sites.begin() + limit, sites.end());
     }
-    co_return to_raw(to_lsp::locations(sites));
+    co_return to_raw(to_lsp::locations(sites, encoding));
 }
 
 Features::RawResult Features::document_highlight(Ticket ticket,
@@ -1167,7 +1158,8 @@ Features::RawResult Features::document_highlight(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::document_highlights(index::document_highlights(query, *cursor)));
+    co_return to_raw(
+        to_lsp::document_highlights(index::document_highlights(query, *cursor), encoding));
 }
 
 static kota::ipc::Error rename_refused(std::string message) {
@@ -1220,7 +1212,7 @@ Features::RawResult Features::prepare_rename(Ticket ticket,
         co_await kota::fail(rename_refused(std::move(renamed.error())));
     }
     co_return to_raw(protocol::PrepareRenamePlaceholder{
-        .range = to_lsp::range(renamed->token),
+        .range = to_lsp::range(renamed->token, encoding),
         .placeholder = renamed->target.symbol.symbol.name,
     });
 }
@@ -1364,7 +1356,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
             change = &std::get<protocol::TextDocumentEdit>(changes.emplace_back(std::move(next)));
         }
         change->edits.emplace_back(protocol::TextEdit{
-            .range = to_lsp::range(edit.site),
+            .range = to_lsp::range(edit.site, encoding),
             .new_text = new_name,
         });
         if(edit.heuristic) {
@@ -1552,7 +1544,8 @@ Features::RawResult Features::declaration(Ticket ticket,
                path_id,
                [&](const index::IndexQuery& from, index::SymbolHash named) {
                    return index::declaration(from, {.symbols = {named}, .site = cursor->site});
-               })));
+               }),
+        encoding));
 }
 
 Features::RawResult Features::type_definition(Ticket ticket,
@@ -1572,7 +1565,8 @@ Features::RawResult Features::type_definition(Ticket ticket,
                                  path_id,
                                  [&](const index::IndexQuery& from, index::SymbolHash named) {
                                      return index::type_definition(from, *cursor, named);
-                                 })));
+                                 }),
+                          encoding));
 }
 
 Features::RawResult Features::implementation(Ticket ticket,
@@ -1616,7 +1610,7 @@ Features::RawResult Features::implementation(Ticket ticket,
     // on it, there is nowhere to go.
     std::erase_if(sites,
                   [&](const index::Site& site) { return index::covers(site, cursor->site); });
-    co_return to_raw(to_lsp::locations(sites));
+    co_return to_raw(to_lsp::locations(sites, encoding));
 }
 
 Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
@@ -1644,11 +1638,12 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
                      (kind == SymbolKind::Variable &&
                       located.symbol.scope != index::SymbolScope::FunctionLocal);
         if(function || value) {
-            items.push_back(to_lsp::call_hierarchy_item(
-                located.symbol,
-                located.site,
-                located.extent,
-                qualified_name(located.symbol.hash, located.site.file)));
+            items.push_back(
+                to_lsp::call_hierarchy_item(located.symbol,
+                                            located.site,
+                                            located.extent,
+                                            qualified_name(located.symbol.hash, located.site.file),
+                                            encoding));
         }
     }
     if(items.empty())
@@ -1695,8 +1690,9 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
                                edge.symbol.symbol,
                                edge.symbol.site,
                                edge.symbol.extent,
-                               qualified_name(edge.symbol.symbol.hash, edge.symbol.site.file)),
-                           to_lsp::ranges(edge.sites)});
+                               qualified_name(edge.symbol.symbol.hash, edge.symbol.site.file),
+                               encoding),
+                           to_lsp::ranges(edge.sites, encoding)});
     }
     co_return to_raw(results);
 }
@@ -1721,8 +1717,9 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
                                edge.symbol.symbol,
                                edge.symbol.site,
                                edge.symbol.extent,
-                               qualified_name(edge.symbol.symbol.hash, edge.symbol.site.file)),
-                           to_lsp::ranges(edge.sites)});
+                               qualified_name(edge.symbol.symbol.hash, edge.symbol.site.file),
+                               encoding),
+                           to_lsp::ranges(edge.sites, encoding)});
     }
     co_return to_raw(results);
 }
@@ -1744,11 +1741,12 @@ Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
            kind == SymbolKind::Union) {
-            items.push_back(to_lsp::type_hierarchy_item(
-                located.symbol,
-                located.site,
-                located.extent,
-                qualified_name(located.symbol.hash, located.site.file)));
+            items.push_back(
+                to_lsp::type_hierarchy_item(located.symbol,
+                                            located.site,
+                                            located.extent,
+                                            qualified_name(located.symbol.hash, located.site.file),
+                                            encoding));
         }
     }
     if(items.empty())
@@ -1758,14 +1756,16 @@ Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
 
 static std::vector<protocol::TypeHierarchyItem>
     type_items(llvm::ArrayRef<index::IndexQuery::Located> types,
-               llvm::function_ref<std::string(index::SymbolHash, Fid)> qualified_name) {
+               llvm::function_ref<std::string(index::SymbolHash, Fid)> qualified_name,
+               PositionEncoding encoding) {
     std::vector<protocol::TypeHierarchyItem> results;
     for(auto& located: types) {
         results.push_back(
             to_lsp::type_hierarchy_item(located.symbol,
                                         located.site,
                                         located.extent,
-                                        qualified_name(located.symbol.hash, located.site.file)));
+                                        qualified_name(located.symbol.hash, located.site.file),
+                                        encoding));
     }
     return results;
 }
@@ -1783,9 +1783,10 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
                       index::type_hierarchy(*from, named, path_id, {.subtypes = false}).supertypes,
                       [&](Fid file) { return answers_for(*from, file, asked); });
     }
-    co_return to_raw(type_items(supertypes, [&](index::SymbolHash hash, Fid anchor) {
-        return qualified_name(hash, anchor);
-    }));
+    co_return to_raw(type_items(
+        supertypes,
+        [&](index::SymbolHash hash, Fid anchor) { return qualified_name(hash, anchor); },
+        encoding));
 }
 
 Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
@@ -1801,9 +1802,10 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
                       index::type_hierarchy(*from, named, path_id, {.supertypes = false}).subtypes,
                       [&](Fid file) { return answers_for(*from, file, asked); });
     }
-    co_return to_raw(type_items(subtypes, [&](index::SymbolHash hash, Fid anchor) {
-        return qualified_name(hash, anchor);
-    }));
+    co_return to_raw(type_items(
+        subtypes,
+        [&](index::SymbolHash hash, Fid anchor) { return qualified_name(hash, anchor); },
+        encoding));
 }
 
 std::vector<Features::WorkspaceSymbol> Features::workspace_symbol(llvm::StringRef text) {
@@ -1824,7 +1826,7 @@ std::vector<Features::WorkspaceSymbol> Features::workspace_symbol(llvm::StringRe
             continue;
         }
         auto container = query.container_name(located.symbol.hash, located.site.file);
-        auto info = to_lsp::symbol_information(located.symbol, located.site, container);
+        auto info = to_lsp::symbol_information(located.symbol, located.site, container, encoding);
         if(qualified && !container.empty()) {
             info.name = container + "::" + info.name;
         }

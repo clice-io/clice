@@ -19,6 +19,17 @@ struct LineColumn {
     std::uint32_t line = 0;
     std::uint32_t column = 0;
     std::uint32_t utf16_column = 0;
+
+    /// The position as a client counting in `encoding` takes it.
+    kota::ipc::protocol::Position in(PositionEncoding encoding) const {
+        switch(encoding) {
+            case PositionEncoding::UTF8: return {.line = line, .character = column};
+            case PositionEncoding::UTF16: return {.line = line, .character = utf16_column};
+            // No client is offered UTF-32.
+            case PositionEncoding::UTF32: break;
+        }
+        std::unreachable();
+    }
 };
 
 /// What a site's entry comes from.

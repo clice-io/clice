@@ -113,6 +113,9 @@ export interface InitializeOptions {
     /// information alone, so servers see a conservative client unless a
     /// test opts in.
     capabilities?: proto.ClientCapabilities | undefined;
+    /// The position encodings the client offers (general.positionEncodings)
+    /// beside those capabilities; none, which leaves UTF-16, by default.
+    positionEncodings?: string[] | undefined;
     /// The workspace folders to announce, workspace-relative; the
     /// workspace root alone when omitted, no root at all (neither folders
     /// nor rootUri) when empty, and the root through rootUri alone — a
@@ -121,6 +124,16 @@ export interface InitializeOptions {
     /// Runs between the initialize response and the initialized
     /// notification.
     beforeInitialized?: (() => Promise<void>) | undefined;
+}
+
+/// `capabilities` with `encodings` offered, when given.
+function offering(
+    capabilities: proto.ClientCapabilities,
+    encodings: string[] | undefined,
+): proto.ClientCapabilities {
+    return encodings === undefined
+        ? capabilities
+        : { ...capabilities, general: { ...capabilities.general, positionEncodings: encodings } };
 }
 
 /// The initialization options a client sends for `ws`: the caller's, with
@@ -438,18 +451,21 @@ export class CliceClient {
             // then carry the buffer version they apply to, and a
             // diagnostic's notes point at their places. Document symbols
             // as a tree in every kind, as every editor takes them.
-            capabilities: options.capabilities ?? {
-                workspace: { workspaceEdit: { documentChanges: true } },
-                textDocument: {
-                    hover: { contentFormat: ["markdown", "plaintext"] },
-                    rename: { prepareSupport: true },
-                    publishDiagnostics: { relatedInformation: true },
-                    documentSymbol: {
-                        hierarchicalDocumentSymbolSupport: true,
-                        symbolKind: { valueSet: Object.values(proto.SymbolKind) },
+            capabilities: offering(
+                options.capabilities ?? {
+                    workspace: { workspaceEdit: { documentChanges: true } },
+                    textDocument: {
+                        hover: { contentFormat: ["markdown", "plaintext"] },
+                        rename: { prepareSupport: true },
+                        publishDiagnostics: { relatedInformation: true },
+                        documentSymbol: {
+                            hierarchicalDocumentSymbolSupport: true,
+                            symbolKind: { valueSet: Object.values(proto.SymbolKind) },
+                        },
                     },
                 },
-            },
+                options.positionEncodings,
+            ),
             rootUri: options.folders?.length === 0 ? null : wsUri,
             initializationOptions,
         };
@@ -692,19 +708,15 @@ export class CliceClient {
         });
     }
 
-    /// Full-document didChange.
-    change(uri: string, version: number, text: string): void {
+    /// didChange: a whole text, or the changes in the order they apply.
+    change(
+        uri: string,
+        version: number,
+        changes: string | proto.TextDocumentContentChangeEvent[],
+    ): void {
         void this.sendNotification(proto.DidChangeTextDocumentNotification.type, {
             textDocument: { uri, version },
-            contentChanges: [{ text }],
-        });
-    }
-
-    /// Incremental didChange: replace `range` with `text`.
-    changeRange(uri: string, version: number, range: proto.Range, text: string): void {
-        void this.sendNotification(proto.DidChangeTextDocumentNotification.type, {
-            textDocument: { uri, version },
-            contentChanges: [{ range, text }],
+            contentChanges: typeof changes === "string" ? [{ text: changes }] : changes,
         });
     }
 

@@ -314,8 +314,11 @@ public:
     std::optional<Cursor> symbol_at(Fid file, std::uint32_t offset) const;
 
     /// The same for a position as the editor spells it: a line and a
-    /// UTF-16 column in the serving source's text.
-    std::optional<Cursor> symbol_at(Fid file, std::uint32_t line, std::uint32_t utf16_column) const;
+    /// column counted in `encoding` in the serving source's text.
+    std::optional<Cursor> symbol_at(Fid file,
+                                    std::uint32_t line,
+                                    std::uint32_t column,
+                                    PositionEncoding encoding) const;
 
     /// A symbol's name and kind, from whichever table knows the hash: open
     /// sessions, the project index, PCH overlays, then the per-file shards

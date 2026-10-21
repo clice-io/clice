@@ -109,6 +109,28 @@ describe("positions", () => {
         expect(source.positionAtByte(bytes)).toEqual({ line: 1, character: 19 });
     });
 
+    test("UTF-8 columns", () => {
+        // "😀" takes 4 bytes and 2 UTF-16 units, "名" 3 bytes and 1 unit.
+        const utf8 = { line: 1, character: 21 };
+        expect(source.decode(utf8, "utf-8")).toEqual({ line: 1, character: 19 });
+        expect(source.encode({ line: 1, character: 19 }, "utf-8")).toEqual(utf8);
+        expect(source.encode({ line: 0, character: 6 }, "utf-8")).toEqual({
+            line: 0,
+            character: 10,
+        });
+        expect(source.decode({ line: 0, character: 10 }, "utf-8")).toEqual({
+            line: 0,
+            character: 6,
+        });
+        expect(() => source.decode({ line: 0, character: 5 }, "utf-8")).toThrow(
+            /inside a character/,
+        );
+        // Three of the emoji's four bytes.
+        expect(() => source.decode({ line: 1, character: 13 }, "utf-8")).toThrow(
+            /inside a character/,
+        );
+    });
+
     test("non-ASCII round trip", () => {
         const scope: RenderScope = { file: () => source, query: { path: "u.cpp", line: 0 } };
         const name = {

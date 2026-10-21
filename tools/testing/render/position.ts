@@ -25,6 +25,11 @@ export interface Range {
     end: Position;
 }
 
+/// How a client counts a position's character, as it and the server agree
+/// at the handshake (LSP's PositionEncodingKind): in UTF-16 code units, the
+/// shape answers take, or in UTF-8 bytes.
+export type PositionEncoding = "utf-8" | "utf-16";
+
 export interface Location {
     /// Workspace-relative POSIX path, or a `${...}`-rooted one outside it.
     path: string;
@@ -87,6 +92,52 @@ export class SourceText {
     positionAtByte(byteOffset: number): Position {
         const prefix = Buffer.from(this.text, "utf8").subarray(0, byteOffset).toString("utf8");
         return this.positionAt(prefix.length);
+    }
+
+    /// A position counted in `encoding` as answers take it. A UTF-8 column
+    /// inside a character is an error: no client could place it.
+    decode(position: Position, encoding: PositionEncoding): Position {
+        const line = this.lines[position.line];
+        if (encoding === "utf-16" || line === undefined) {
+            return position;
+        }
+        const within = Math.min(position.character, Buffer.byteLength(line));
+        let bytes = 0;
+        let units = 0;
+        for (const character of line) {
+            if (bytes >= within) {
+                break;
+            }
+            bytes += Buffer.byteLength(character);
+            units += character.length;
+        }
+        if (bytes !== within) {
+            throw new Error(
+                `${this.path}: UTF-8 column ${position.character} of line ${position.line} is inside a character`,
+            );
+        }
+        return { line: position.line, character: units + position.character - within };
+    }
+
+    decodeRange(range: Range, encoding: PositionEncoding): Range {
+        return { start: this.decode(range.start, encoding), end: this.decode(range.end, encoding) };
+    }
+
+    /// A position as a client counting in `encoding` sends it.
+    encode(position: Position, encoding: PositionEncoding): Position {
+        const line = this.lines[position.line];
+        if (encoding === "utf-16" || line === undefined) {
+            return position;
+        }
+        const within = Math.min(position.character, line.length);
+        return {
+            line: position.line,
+            character: Buffer.byteLength(line.slice(0, within)) + position.character - within,
+        };
+    }
+
+    encodeRange(range: Range, encoding: PositionEncoding): Range {
+        return { start: this.encode(range.start, encoding), end: this.encode(range.end, encoding) };
     }
 
     offsetAt(position: Position): number {

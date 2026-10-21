@@ -94,22 +94,31 @@ export type Change =
     | { remove: string }
     | { text: string };
 
+/// Where a change other than a whole text's applies in `text`, and what
+/// it puts there.
+export function changeSpan(
+    text: string,
+    change: Exclude<Change, { text: string }>,
+    where: string,
+): { begin: number; end: number; insert: string } {
+    if ("replace" in change) {
+        return { ...uniqueSpan(text, change.replace, where), insert: change.with };
+    }
+    if ("after" in change) {
+        const { end } = uniqueSpan(text, change.after, where);
+        return { begin: end, end, insert: change.insert };
+    }
+    if ("before" in change) {
+        const { begin } = uniqueSpan(text, change.before, where);
+        return { begin, end: begin, insert: change.insert };
+    }
+    return { ...uniqueSpan(text, change.remove, where), insert: "" };
+}
+
 export function applyChange(text: string, change: Change, where: string): string {
     if ("text" in change) {
         return change.text;
     }
-    if ("replace" in change) {
-        const { begin, end } = uniqueSpan(text, change.replace, where);
-        return text.slice(0, begin) + change.with + text.slice(end);
-    }
-    if ("after" in change) {
-        const { end } = uniqueSpan(text, change.after, where);
-        return text.slice(0, end) + change.insert + text.slice(end);
-    }
-    if ("before" in change) {
-        const { begin } = uniqueSpan(text, change.before, where);
-        return text.slice(0, begin) + change.insert + text.slice(begin);
-    }
-    const { begin, end } = uniqueSpan(text, change.remove, where);
-    return text.slice(0, begin) + text.slice(end);
+    const { begin, end, insert } = changeSpan(text, change, where);
+    return text.slice(0, begin) + insert + text.slice(end);
 }

@@ -13,6 +13,7 @@ import :server.dispatcher;
 import :server.editor_context;
 import :support.anomaly;
 import :syntax.dependency_graph;
+import :syntax.position;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
@@ -67,7 +68,8 @@ struct Stack {
     PCHFamily pch{graph, project, pool};
     SessionStore sessions;
     ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions};
-    Dispatcher dispatcher{project, contexts, ast, pool};
+    PositionEncoding encoding = PositionEncoding::UTF16;
+    Dispatcher dispatcher{project, contexts, ast, pool, encoding};
 
     Stack() {
         pcm.register_runner();

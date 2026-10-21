@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :compile.diagnostic;
 import :feature.feature;
+import :syntax.position;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -218,12 +219,74 @@ int main() { return 0; }
     auto diagnostics = feature::diagnostics(*unit);
     bool redefined = false;
     for(auto& diag: diagnostics) {
-        redefined |= diag.message.find("macro redefined") != std::string::npos;
-        for(auto& note: diag.notes) {
-            ZASSERT(!note.path.empty());
+        if(diag.message.find("macro redefined") != std::string::npos) {
+            redefined = true;
+            ZEXPECT(diag.notes.empty());
         }
     }
     ZASSERT(redefined);
+}
+
+ZEST_CASE(NoteFilesReadLater) {
+    /// A note in the diagnostic's own file is placed in the text compiled;
+    /// another file is read when the diagnostic is shown: one gone, or
+    /// shorter than the note's range, places nothing.
+    std::string text = "int x;\n";
+    auto starts = kota::ipc::lsp::line_starts(text);
+    PositionMap positions(text, starts);
+    std::string header = "int \xe7\x94\xb2;\n";
+    auto header_starts = kota::ipc::lsp::line_starts(header);
+    feature::FileDiagnostic diagnostic{
+        .range = {4, 5},
+        .message = "redefinition"
+    };
+    diagnostic.notes.push_back({
+        .path = "",
+        .range = {4, 5},
+        .message = "own"
+    });
+    diagnostic.notes.push_back({
+        .path = "/gone.h",
+        .range = {0, 3},
+        .message = "gone"
+    });
+    diagnostic.notes.push_back({
+        .path = "/wide.h",
+        .range = {20, 21},
+        .message = "past"
+    });
+    diagnostic.notes.push_back({
+        .path = "/wide.h",
+        .range = {4, 7},
+        .message = "here"
+    });
+    auto note_positions = [&](llvm::StringRef path) -> std::optional<PositionMap> {
+        if(path == "/gone.h") {
+            return std::nullopt;
+        }
+        return PositionMap(header, header_starts);
+    };
+
+    for(auto [encoding, end]: {
+            std::pair{PositionEncoding::UTF8,  7u},
+            std::pair{PositionEncoding::UTF16, 5u}
+    }) {
+        auto shown = feature::to_protocol(diagnostic,
+                                          true,
+                                          encoding,
+                                          "/main.cpp",
+                                          positions,
+                                          note_positions);
+        ZASSERT(shown);
+        ZASSERT(shown->related_information);
+        auto& related = *shown->related_information;
+        ZASSERT(related.size() == 2u);
+        ZEXPECT(related[0].message == "own");
+        ZEXPECT(related[0].location.uri == feature::to_uri("/main.cpp"));
+        ZEXPECT(related[0].location.range.end.character == 5u);
+        ZEXPECT(related[1].message == "here");
+        ZEXPECT(related[1].location.range.end.character == end);
+    }
 }
 
 };  // ZEST_SUITE(Diagnostic)
