@@ -169,9 +169,33 @@ bool names_standard(llvm::ArrayRef<std::string> args) {
     return ranges::any_of(args, [](llvm::StringRef arg) { return arg.starts_with("-std="); });
 }
 
-/// cl and clang-cl: clang's own driver in cl mode, which sets the
-/// windows-msvc target itself.
-std::expected<Job, std::string> ask_cl(llvm::ArrayRef<std::string> args) {
+/// cl and clang-cl: asked to preprocess a file naming their macros, the
+/// driver tells the C++ standard it compiles in and its version — what
+/// `/std:c++latest` means moves from one version to the next, and clang's
+/// own detection takes the newest toolset installed. clang's own driver in
+/// cl mode, which sets the windows-msvc target itself, then builds the job
+/// in that standard and version.
+kota::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
+                                                   llvm::StringRef input,
+                                                   std::string cwd) {
+    if(auto error = vfs::write(input, cl_probe_source)) {
+        co_return std::unexpected(
+            std::format("Failed to write {}: {}", input.str(), error.message()));
+    }
+    std::vector<std::string> probe = {args[0], "/nologo", "/EP"};
+    probe.insert(probe.end(), args.begin() + 1, args.end());
+    auto output = co_await execute(std::move(probe), std::move(cwd));
+    if(!output) {
+        co_return std::unexpected(std::move(output.error()));
+    }
+    if(!output->failure.empty()) {
+        // cl reports its errors on stdout, clang-cl on stderr.
+        auto last_line = llvm::StringRef(output->err.empty() ? output->out : output->err).rtrim();
+        last_line = last_line.substr(last_line.rfind('\n') + 1);
+        co_return std::unexpected(std::format("{}: {}", output->failure, last_line.str()));
+    }
+    auto report = parse_cl_report(output->out);
+
     // Before C++20, clang defers template bodies on MSVC targets so that
     // code written for MSVC's lookup rules compiles, but a deferred body has
     // no AST: every feature inside it goes blind. Placed before the
@@ -183,7 +207,17 @@ std::expected<Job, std::string> ask_cl(llvm::ArrayRef<std::string> args) {
                                         "--driver-mode=cl",
                                         "-fno-delayed-template-parsing"};
     cl_args.insert(cl_args.end(), args.begin() + 1, args.end());
-    return query_driver(cl_args);
+    auto job = query_driver(cl_args);
+    if(!job) {
+        co_return job;
+    }
+    if(!report.standard.empty()) {
+        job->push_back("-std=" + report.standard);
+    }
+    if(!report.version.empty()) {
+        job->push_back("-fms-compatibility-version=" + report.version);
+    }
+    co_return job;
 }
 
 /// Every other driver is GCC-style: asked how it compiles the input, it
@@ -497,7 +531,7 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     std::expected<Job, std::string> job;
     switch(spec.family) {
         case CompilerFamily::MSVC:
-        case CompilerFamily::ClangCL: job = ask_cl(args); break;
+        case CompilerFamily::ClangCL: job = co_await ask_cl(args, *input, spec.cwd); break;
         case CompilerFamily::NVCC:
             job = co_await ask_nvcc(args, *input, spec.kind, spec.cwd);
             break;

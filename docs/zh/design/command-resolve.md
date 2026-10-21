@@ -148,7 +148,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 询问时带着命令自身的标志，所以驱动程序回答的就是这条命令，而 GCC 只在这次编译成功时才会给出回答：关闭某项默认设置的标志（`-fno-stack-protector`）、`--sysroot` 或 `--specs` 文件都会体现在回答中。clang 不认识的 CPU 和 ABI 名称（GCC 的 `-mtune=intel`、Darwin 上的 `-mabi=lp64`）会从 cc1 命令中去掉，GCC 的双核写法 `-mcpu=cortex-a72.cortex-a53` 只保留第一个核。通用构建（`-arch arm64 -arch x86_64`）按其中第一个架构读取。
 
-**MSVC / ClangCL**：通过 `--driver-mode=cl` 选项将 Clang 驱动切换到 MSVC 兼容模式，然后用 Clang 驱动获取 cc1 参数。
+**MSVC / ClangCL**：先让 cl 或 clang-cl 预处理（`/EP`）一个写着 `_MSVC_LANG` 和 `_MSC_FULL_VER` 的文件，只问一次，由此得知它编译所用的 C++ 标准和它的版本：`/std:c++latest` 的含义随版本而变，而 clang 自己的探测会取已安装的最新工具集。随后由处于 MSVC 兼容模式（`--driver-mode=cl`）的 Clang 驱动构建 cc1 命令，使用这个标准，并把这个版本作为 `-fms-compatibility-version`。
 
 **nvcc**：nvcc 的 dry run 会给出 CUDA 根目录、宿主编译器以及 nvcc 定义的宏。宿主编译器按 GCC 风格驱动程序的方式询问，使用输入文件的语言，带上命令的 `--sysroot`，但不带命令的其他标志：GCC 宿主编译器像上文那样固定目标和搜索列表，clang 宿主编译器则什么都不需要。随后由 Clang 驱动带上 nvcc 的宏构建 cc1 命令，输入为 CUDA 文件时使用 CUDA 模式。
 

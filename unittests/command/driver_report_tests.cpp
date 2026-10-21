@@ -185,6 +185,17 @@ ZEST_CASE(StandardFromMacros) {
                 .empty());
 }
 
+ZEST_CASE(CLReport) {
+    auto report = parse_cl_report("msvc_lang 202400L\r\nmsc_full_ver 194435207\r\n");
+    ZEXPECT(report.standard == "c++26");
+    ZEXPECT(report.version == "19.44.35207");
+
+    /// A C input has no `_MSVC_LANG`: the name stays as written.
+    auto c = parse_cl_report("msvc_lang _MSVC_LANG\nmsc_full_ver 192930133\n");
+    ZEXPECT(c.standard.empty());
+    ZEXPECT(c.version == "19.29.30133");
+}
+
 };  // ZEST_SUITE(DriverReportTests)
 
 }  // namespace

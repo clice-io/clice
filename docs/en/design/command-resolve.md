@@ -148,7 +148,7 @@ Different compiler families use different probing strategies:
 
 Asked with the command's own flags, the driver answers for the command, and a GCC answers only when that compile succeeds: a flag that switches one of its defaults off (`-fno-stack-protector`), a `--sysroot` or a `--specs` file shows in its answer. CPU and ABI names clang does not know (GCC's `-mtune=intel`, `-mabi=lp64` on Darwin) are dropped from the cc1 command, and GCC's two-core form `-mcpu=cortex-a72.cortex-a53` keeps its first core. A universal build (`-arch arm64 -arch x86_64`) is read for its first architecture.
 
-**MSVC / ClangCL**: Switch Clang's driver to MSVC-compatible mode via the `--driver-mode=cl` directive, then use Clang's driver to obtain cc1 arguments.
+**MSVC / ClangCL**: cl or clang-cl is asked once to preprocess (`/EP`) a file naming `_MSVC_LANG` and `_MSC_FULL_VER`, which tell the C++ standard it compiles in and its version: what `/std:c++latest` means moves from one version to the next, and clang's own detection would take the newest toolset installed. Clang's driver in MSVC-compatible mode (`--driver-mode=cl`) then builds the cc1 command, in that standard and with that version as `-fms-compatibility-version`.
 
 **nvcc**: nvcc's dry run names the CUDA root, the host compiler and the macros nvcc defines. The host compiler is asked as a GCC-style driver is, in the input's language, with the command's `--sysroot` but none of its other flags: a GCC host pins the target and the search list as above, a clang host needs nothing. Clang's driver then builds the cc1 command with nvcc's macros, in CUDA mode for a CUDA input.
 

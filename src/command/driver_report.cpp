@@ -164,6 +164,29 @@ DriverReport parse_driver_report(llvm::StringRef out, llvm::StringRef err) {
     return report;
 }
 
+CLReport parse_cl_report(llvm::StringRef out) {
+    CLReport report;
+    llvm::SmallVector<llvm::StringRef> lines;
+    out.split(lines, '\n', -1, false);
+    for(llvm::StringRef line: lines) {
+        auto [label, value] = line.trim().split(' ');
+        value = value.trim();
+        std::uint64_t number = 0;
+        if(value.rtrim("lL").getAsInteger(10, number)) {
+            continue;
+        }
+        if(label == "msvc_lang") {
+            report.standard = standard_from_macros(value, "", true);
+        } else if(label == "msc_full_ver") {
+            report.version = std::format("{}.{}.{}",
+                                         number / 10'000'000,
+                                         number / 100'000 % 100,
+                                         number % 100'000);
+        }
+    }
+    return report;
+}
+
 std::vector<std::string> parse_clang_job(llvm::StringRef output) {
     llvm::SmallVector<llvm::StringRef> lines;
     output.split(lines, '\n', -1, false);

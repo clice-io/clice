@@ -414,6 +414,21 @@ ZEST_CASE(ClangJobKeepsStandard, skip = Windows) {
     ZEXPECT(!contains(argv, "-std=gnu++14"));
 }
 
+ZEST_CASE(CLStandardAndVersion, skip = Windows) {
+    // `/std:c++latest` means the compiler's newest standard, not the linked
+    // clang's: C++26 to cl 19.44, whose version the job takes too.
+    auto cl = fake_driver("cl", R"(echo 'msvc_lang 202400L'
+echo 'msc_full_ver 194435207'
+)");
+    auto argv = f.resolve(add("a.cpp", {cl.c_str(), "/std:c++latest"}));
+    auto standard = std::ranges::find_if(argv | std::views::reverse, [](llvm::StringRef arg) {
+        return arg.starts_with("-std=");
+    });
+    ZASSERT(standard != (argv | std::views::reverse).end());
+    ZEXPECT(llvm::StringRef(*standard) == "-std=c++26");
+    ZEXPECT(contains(argv, "-fms-compatibility-version=19.44.35207"));
+}
+
 ZEST_CASE(UserContentAttached, skip = Windows) {
     // The probe never sees user content; the render puts it back on the
     // driver's cc1 line.
