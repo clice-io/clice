@@ -453,11 +453,20 @@ private:
         MDB_val key{1, &prefix};
         MDB_val value;
         int rc = mdb_cursor_get(cursor, &key, &value, MDB_SET_RANGE);
+        llvm::StringRef previous(&prefix, 1);
         while(rc == 0) {
             llvm::StringRef bytes(static_cast<const char*>(key.mv_data), key.mv_size);
-            if(bytes.empty() || bytes[0] != prefix || !fn(bytes.drop_front(), value)) {
+            // LMDB checks a page's type on a lookup but only asserts it on a
+            // cursor walk, which then reads a damaged page as keys out of
+            // order (a zeroed one as an empty key).
+            if(bytes <= previous) {
+                mark_corrupt(std::format("a page among the records under '{}' is damaged", prefix));
                 break;
             }
+            if(bytes[0] != prefix || !fn(bytes.drop_front(), value)) {
+                break;
+            }
+            previous = bytes;
             rc = mdb_cursor_get(cursor, &key, &value, MDB_NEXT);
         }
         if(rc != 0 && rc != MDB_NOTFOUND) {
@@ -470,7 +479,14 @@ private:
     /// decision; everything else stays "missing or transiently unreadable".
     void note_error(int rc) {
         if(is_corruption(rc)) {
-            poisoned.store(true, std::memory_order_relaxed);
+            mark_corrupt(mdb_strerror(rc));
+        }
+    }
+
+    /// Latch corruption, logging where it was first met.
+    void mark_corrupt(llvm::StringRef what) {
+        if(!poisoned.exchange(true, std::memory_order_relaxed)) {
+            LOG_ERROR("The index database at {} is damaged: {}", path, what);
         }
     }
 

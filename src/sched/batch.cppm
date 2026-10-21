@@ -96,6 +96,10 @@ struct BatchResult {
     /// cannot resume from it.
     bool unsaved = false;
 
+    /// The summary met damage in the index database after the final save:
+    /// the database is discarded, and the next run rebuilds the index.
+    bool damaged = false;
+
     double seconds = 0;
 };
 

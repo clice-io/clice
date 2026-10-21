@@ -164,9 +164,7 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
     query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
     auto outcome = ask(ctx);
     if(project.index.damaged()) {
-        return fail(
-            "the index database is damaged (the log above says where); run `clice index` "
-            "to rebuild it");
+        return fail(damaged_index_error(project));
     }
 
     std::vector<std::string> stale;

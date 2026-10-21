@@ -371,10 +371,10 @@ public:
     /// caller discards it.
     kota::task<bool> migrate_views(BlobDatabase& db, kota::event_loop& loop, IndexReport& report);
 
-    /// Whether a record read since open failed its checks: the database is
-    /// to be discarded.
+    /// Whether a record read since open failed its checks, or the database
+    /// met a damaged page: the database is to be discarded.
     bool damaged() const {
-        return damage;
+        return damage || (db && db->corrupted());
     }
 
     /// Shard blobs whose write has not durably completed: changed since the

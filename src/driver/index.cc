@@ -238,6 +238,11 @@ int run_indexing(Spelling root,
     if(result.unsaved) {
         driver::println("Part of the index could not be persisted (see the log).");
     }
+    if(result.damaged) {
+        driver::println(
+            "The index database is damaged (see the log); it is discarded, and the next "
+            "`clice index` rebuilds the index.");
+    }
     if(!result.log_dir.empty()) {
         driver::println("Session log: {}", result.log_dir);
     }
@@ -505,7 +510,7 @@ void print_stats(const Project& project, const IndexStats& stats, std::uint32_t 
                     format_bytes(stats.search_bytes),
                     project.index.search_pending().size());
     if(project_index.damaged()) {
-        driver::println("The index database is damaged; run `clice index` to rebuild it");
+        driver::println("Warning: {}", damaged_index_error(project));
     }
 
     if(auto& usage = stats.usage) {

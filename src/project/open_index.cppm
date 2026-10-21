@@ -34,6 +34,12 @@ std::optional<LoadedIndex> load_index(Project& project,
                                       llvm::StringRef requested_configuration,
                                       bool with_build);
 
+/// What a reader says of an index database the index reports damaged: a
+/// writer discards one only when it meets the damage itself, and `clice
+/// index` reads few of the records, so the reader names the directory to
+/// delete.
+std::string damaged_index_error(const Project& project);
+
 /// An inspected file as the command line names it: a relative argument
 /// names a file under the workspace, whatever the process working
 /// directory.

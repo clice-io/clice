@@ -307,6 +307,12 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     result.shard_count = project.index.shard_count();
     result.shard_bytes = project.index.shard_bytes();
     result.symbol_count = project.index.symbol_count();
+    // The counts read every shard and symbol record, past the final save
+    // that discards a damaged database: this run discards it here instead.
+    if(project.index.damaged()) {
+        project.database->condemn();
+        result.damaged = true;
+    }
     auto& too_big = stack.sched.pump.too_big();
     for(auto file: stack.sched.pump.failed()) {
         if(auto it = too_big.find(file); it != too_big.end()) {
@@ -326,7 +332,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         }
     }
     std::ranges::sort(result.compiled_with_errors, {}, &BatchResult::UnitErrors::unit);
-    if(!result.failed.empty() || !result.too_big.empty() || result.unsaved) {
+    if(!result.failed.empty() || !result.too_big.empty() || result.unsaved || result.damaged) {
         result.exit_code = 1;
     }
     result.seconds = timer.ms() / 1000.0;

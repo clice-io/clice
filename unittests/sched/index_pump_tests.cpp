@@ -7,6 +7,7 @@ module clice;
 import :index.project_index;
 import :sched.index.pending_table;
 import :sched.index.pump;
+import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -426,6 +427,48 @@ ZEST_CASE(EmptyRoundBuildsSearch) {
 
     f.run_round();
     ZEXPECT(f.project.index.search_index().loaded());
+}
+
+ZEST_CASE(EmptyRoundDiscardsDamagedDatabase) {
+    // A scan met a damaged page after the load: a session finding nothing
+    // to index still discards the database at its idle save.
+    struct DamagedPage final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
+        bool damaged = false;
+
+        bool* condemned;
+
+        bool corrupted() const override {
+            return damaged || real->corrupted();
+        }
+
+        void condemn() override {
+            *condemned = true;
+            real->condemn();
+        }
+    };
+
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    bool condemned = false;
+    auto spy = std::make_unique<DamagedPage>(std::move(f.project.database));
+    spy->condemned = &condemned;
+    auto& page = *spy;
+    f.project.database = std::move(spy);
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ZASSERT(!indexed.data.empty());
+    ZASSERT(f.merge(indexed.data));
+    f.save();
+    ZASSERT(!f.project.index.damaged());
+
+    page.damaged = true;
+    ZEXPECT(f.project.index.damaged());
+    f.run_round();
+    // The recovery replaced the database, the spy with it.
+    ZEXPECT(condemned);
 }
 
 };  // ZEST_SUITE(IndexPumpReports)
