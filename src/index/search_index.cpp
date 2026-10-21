@@ -691,6 +691,9 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(const Root& root) {
             return std::unexpected("parent outside the entries");
         }
     }
+    // FIXME: by_lower_name is range-checked but not checked for its order: a
+    // blob out of lowercase-name order loads, and lower_range's binary search
+    // misses entries silently.
     for(auto entry: columns->by_lower_name) {
         if(entry >= count) {
             return std::unexpected("name order outside the entries");

@@ -1686,6 +1686,9 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
                     index::call_graph(*from, named, path_id, {.callees = false}).callers,
                     [&](Fid file) { return answers_for(*from, file, asked); });
     }
+    // TODO: callers are not capped: a function as common as llvm::errs() answers
+    // thousands, each with its call ranges and a qualified name; a cap would
+    // follow `[references] limit`.
     std::vector<protocol::CallHierarchyIncomingCall> results;
     for(auto& edge: callers) {
         results.push_back({to_lsp::call_hierarchy_item(

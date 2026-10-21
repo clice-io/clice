@@ -543,6 +543,9 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
             }
             symbol_changed = prefer(target.name, identity.name) || symbol_changed;
             symbol_changed = prefer(target.args, identity.args) || symbol_changed;
+            // FIXME: HasDefinition is never cleared, so once the definition is
+            // deleted no declaration's signature replaces the one it gave: its
+            // parameter names stay until the index is rebuilt.
             // An edit to a function, a parameter renamed, keeps its hash: the
             // unit merging last describes it — a unit defining it, when one
             // does, which sees the names of every declaration.

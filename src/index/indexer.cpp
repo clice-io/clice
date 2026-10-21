@@ -1185,6 +1185,9 @@ public:
         if(const auto* decl = semantics.node(i).node.get<clang::Decl>();
            decl && !semantics.node(i).flags.in_instantiation &&
            unit.file_id(decl->getLocation()) == unit.focus_file().file()) {
+            // FIXME: the mention is a Reference, so document highlight shows a
+            // comment's `@param value` as a read; showing it as text (still in
+            // references and rename) needs a relation kind of its own.
             for(auto& documented: documented_parameters(unit, decl)) {
                 add_name({.decl = documented.parameter,
                           .kind = RelationKind::Reference,
