@@ -921,18 +921,19 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         return std::nullopt;
     }
 
-    simdjson::ondemand::object single;
-    std::string_view single_file;
-    if(!doc.get_object().get(single) && !single.find_field_unordered("file").get(single_file)) {
-        LOG_ERROR(
-            "Invalid compilation database format in {}: the root is one entry, not an array of "
-            "them (PowerShell's ConvertTo-Json writes a single entry so); wrap it in [ ].",
-            path);
-        return std::nullopt;
-    }
-    doc.rewind();
     simdjson::ondemand::array arr;
     if(auto error = doc.get_array().get(arr)) {
+        // PowerShell's ConvertTo-Json writes a one-entry array as the entry.
+        simdjson::dom::parser checker;
+        simdjson::dom::object single;
+        if(!checker.parse(json_buf).get(single) && single["file"].is_string()) {
+            LOG_ERROR(
+                "Invalid compilation database format in {}: the root is one entry, not an "
+                "array of them (PowerShell's ConvertTo-Json writes a single entry so); wrap it "
+                "in [ ].",
+                path);
+            return std::nullopt;
+        }
         LOG_ERROR("Invalid compilation database format in {}: root element must be an array.",
                   path);
         return std::nullopt;

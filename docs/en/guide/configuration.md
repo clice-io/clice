@@ -766,7 +766,7 @@ Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`
 | -------- | ----------------- | ------- |
 | `remove` | `array of string` | `[]`    |
 
-Compilation flags removed for matching files, e.g. `["-Wall"]`. A flag with a value removes that value (`-DDEBUG`); one with `*` for its value (`-I*`, `["-include", "*"]`) or written without one (`-include`) removes every value; a `*` right after a flag's name removes every flag spelled with that prefix (`-W*` takes `-Wall` and `-Wextra` too).
+Compilation flags removed for matching files, e.g. `["-Wall"]`. A flag with a value removes that value (`-DDEBUG`), the next element being a separate value as on a command line; one with `*` for its value (`-I*`, `["-include", "*"]`), or without one at the end of the list (`["-include"]`), removes every value; a `*` right after a flag's name removes every flag of its kind spelled with that prefix (`-W*` takes `-Wall` and `-Wextra` too).
 
 </div>
 
