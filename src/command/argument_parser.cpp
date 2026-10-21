@@ -354,7 +354,7 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
         if(sep)
             os << ' ';
         sep = true;
-        if(!llvm::any_of(arg, control) && arg.find_first_of(" \"\\") == llvm::StringRef::npos) {
+        if(!llvm::any_of(arg, control) && arg.find_first_of(R"( "\)") == llvm::StringRef::npos) {
             os << arg;
             continue;
         }
@@ -363,7 +363,7 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
             if(c == '"' || c == '\\') {
                 os << '\\' << c;
             } else if(control(c)) {
-                os << llvm::format("\\x%02X", static_cast<unsigned char>(c));
+                os << llvm::format(R"(\x%02X)", static_cast<unsigned char>(c));
             } else {
                 os << c;
             }

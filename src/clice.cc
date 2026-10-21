@@ -29,9 +29,9 @@ extern "C++" int main(int argc, const char** argv) {
                             &throttling,
                             sizeof(throttling));
 
-    // The CRT's argv is in the ANSI code page, which spells few names past
-    // ASCII: the arguments are read from the UTF-16 command line, by the
-    // CRT's rules, as LLVM's tools read them.
+    // The CRT's argv is in the ANSI code page, which holds few characters
+    // past ASCII: the arguments are read from the UTF-16 command line, by
+    // the CRT's rules, as LLVM's tools read them.
     llvm::BumpPtrAllocator allocator;
     llvm::StringSaver saver(allocator);
     llvm::SmallVector<const char*, 16> arguments;

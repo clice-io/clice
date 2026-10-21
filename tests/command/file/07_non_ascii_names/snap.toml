@@ -2,8 +2,8 @@
 stdout = '''
 ${WS}/构建/compile_commands.json:
   directory: ${WS}/构建
-  command:   ${WS}/missing-cc -std=c++20 @参数.rsp -DGREETING=\"你好\" -c ../源码/主程序.cpp -o 主程序.o
-  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} -std=c++20 -I ${WS}/构建/../头文件 -D GREETING=\"你好\" ${WS}/构建/../源码/主程序.cpp
+  command:   ${WS}/missing-cc -std=c++20 @参数.rsp -DLABEL=你好 -c ../源码/主程序.cpp -o 主程序.o
+  resolved:  ${WS}/missing-cc -resource-dir ${RESOURCE} -std=c++20 -I ${WS}/构建/../头文件 -D LABEL=你好 ${WS}/构建/../源码/主程序.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
 '''
 stderr = "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable"
@@ -23,7 +23,7 @@ stdout = '''
           "${WS}/missing-cc",
           "-std=c++20",
           "@参数.rsp",
-          "-DGREETING=\"你好\"",
+          "-DLABEL=你好",
           "-c",
           "../源码/主程序.cpp",
           "-o",
@@ -40,7 +40,7 @@ stdout = '''
           "-I",
           "${WS}/构建/../头文件",
           "-D",
-          "GREETING=\"你好\"",
+          "LABEL=你好",
           "${WS}/构建/../源码/主程序.cpp"
         ]
       },
@@ -66,7 +66,7 @@ stdout = '''
       "-I",
       "${WS}/构建/../头文件",
       "-D",
-      "GREETING=\"你好\"",
+      "LABEL=你好",
       "${WS}/构建/../源码/主程序.cpp"
     ]
   }

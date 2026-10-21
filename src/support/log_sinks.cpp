@@ -32,8 +32,9 @@ struct Written {
 
 /// Writes until done or refused. A non-blocking pipe refuses when full
 /// (EAGAIN; under Windows' PIPE_NOWAIT a write that took nothing); a
-/// blocking descriptor only on a real error — or, for a Windows console,
-/// at a Ctrl-Z, which `_write` treats as the end of the output.
+/// blocking descriptor only on a real error — or, for a Windows console
+/// given text that is no UTF-8, at a Ctrl-Z, which `_write` treats as the
+/// end of the output.
 Written write_fd(int fd, llvm::StringRef text) {
     if(write_console(fd, text)) {
         return {.bytes = text.size()};
