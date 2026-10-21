@@ -49,12 +49,14 @@ inline std::string join_command(llvm::ArrayRef<std::string> arguments) {
 #else
         // A backslash escapes the character after it, outside quotes and
         // in LLVM's reading inside them too, so it alone quotes for both.
+        // Bytes past ASCII are UTF-8, which neither reads specially.
         if(argument.empty()) {
             line += "''";
             continue;
         }
         for(char c: argument) {
-            if(!llvm::isAlnum(c) && !llvm::StringRef("@%+=:,./_-").contains(c)) {
+            if(!llvm::isAlnum(c) && !llvm::StringRef("@%+=:,./_-").contains(c) &&
+               static_cast<unsigned char>(c) < 0x80) {
                 line += '\\';
             }
             line += c;

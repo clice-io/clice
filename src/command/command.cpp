@@ -50,6 +50,13 @@ bool is_other_language_path(llvm::StringRef path) {
     return type != clang::driver::types::TY_INVALID && !is_c_family_type(type);
 }
 
+std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
+    if(llvm::json::isUTF8(bytes)) {
+        return std::nullopt;
+    }
+    return llvm::json::fixUTF8(bytes);
+}
+
 bool is_context_header_path(llvm::StringRef path) {
     return path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
            path.ends_with(".tpp") || path.ends_with(".ipp") || path.ends_with(".tcc") ||
@@ -760,6 +767,9 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
                 break;
         }
     }
+    if(!cfg.query_toolchain) {
+        append("\x01unqueried");
+    }
 }
 
 std::uint64_t CompilationDatabase::entry_hash(ConfigID id) {
@@ -895,7 +905,13 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     source.inputs = {
         {.file = database, .hash = observed->obs.hash}
     };
-    simdjson::padded_string json_buf(observed->content->getBuffer());
+    // An entry holding a byte the repair replaced is skipped.
+    auto repaired = repaired_database_text(observed->content->getBuffer());
+    auto damaged = [&](llvm::StringRef value) {
+        return repaired && value.contains("\xEF\xBF\xBD");
+    };
+    simdjson::padded_string json_buf(repaired ? llvm::StringRef(*repaired)
+                                              : observed->content->getBuffer());
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(json_buf).get(doc)) {
@@ -956,6 +972,49 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
 
+        llvm::BumpPtrAllocator local;
+        llvm::StringSaver saver(local);
+        llvm::SmallVector<const char*, 32> args;
+        std::optional<llvm::StringRef> command;
+        simdjson::ondemand::array args_arr;
+        if(!obj["arguments"].get_array().get(args_arr)) {
+            bool malformed = false;
+            for(auto arg_val: args_arr) {
+                std::string_view sv;
+                if(arg_val.get_string().get(sv)) {
+                    malformed = true;
+                    break;
+                }
+                args.push_back(saver.save(llvm::StringRef(sv.data(), sv.size())).data());
+            }
+            if(malformed || args.empty()) {
+                continue;
+            }
+        } else {
+            std::string_view cmd_sv;
+            if(obj["command"].get_string().get(cmd_sv)) {
+                LOG_ERROR(
+                    "Invalid compilation database in {}. Skipping item at index {}: "
+                    "neither 'arguments' nor 'command' key is present.",
+                    path,
+                    index);
+                continue;
+            }
+            command = llvm::StringRef(cmd_sv.data(), cmd_sv.size());
+        }
+
+        llvm::StringRef file_ref(file_sv.data(), file_sv.size());
+        if(damaged(dir_sv) || damaged(file_ref) ||
+           (command ? damaged(*command) : llvm::any_of(args, damaged))) {
+            LOG_ERROR(
+                "Invalid compilation database in {}. Skipping item at index {} ({}): "
+                "it holds bytes that are not UTF-8.",
+                path,
+                index,
+                file_ref);
+            continue;
+        }
+
         // A relative `directory` anchors to the CDB file's own location —
         // self-contained, so every consumer of the same file (server,
         // batch, inspect) resolves it identically.
@@ -968,7 +1027,6 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             known->second = Spelling(CanonicalPath(directory));
         }
         auto& working = known->second;
-        llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
         // Some build systems emit non-C-family files (e.g. .rc, .asm, .S, .def)
         // into compile_commands.json: skipped, unless the command's -x
@@ -983,38 +1041,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                        ? strings.save(file.str())
                                        : llvm::StringRef();
 
-        std::optional<ConfigID> normalized;
-
-        simdjson::ondemand::array args_arr;
-        if(!obj["arguments"].get_array().get(args_arr)) {
-            llvm::BumpPtrAllocator local;
-            llvm::StringSaver saver(local);
-            llvm::SmallVector<const char*, 32> args;
-            bool malformed = false;
-            for(auto arg_val: args_arr) {
-                std::string_view sv;
-                if(arg_val.get_string().get(sv)) {
-                    malformed = true;
-                    break;
-                }
-                args.push_back(saver.save(llvm::StringRef(sv.data(), sv.size())).data());
-            }
-            if(malformed || args.empty()) {
-                continue;
-            }
-            normalized = normalize(working, path_id, args);
-        } else {
-            std::string_view cmd_sv;
-            if(obj["command"].get_string().get(cmd_sv)) {
-                LOG_ERROR(
-                    "Invalid compilation database in {}. Skipping item at index {}: "
-                    "neither 'arguments' nor 'command' key is present.",
-                    path,
-                    index);
-                continue;
-            }
-            normalized = normalize(working, path_id, llvm::StringRef(cmd_sv.data(), cmd_sv.size()));
-        }
+        auto normalized =
+            command ? normalize(working, path_id, *command) : normalize(working, path_id, args);
 
         if(!normalized || is_other_language_path(file_ref) ||
            (!c_family && !forces_c_family(*normalized))) {
@@ -1223,6 +1251,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     }
     append_section(options.extra_prepend);
     append_section(options.extra_append);
+    rule_key += options.query_toolchain ? 'q' : 'u';
 
     auto rule_set_id = rule_set_ids.try_emplace(rule_key, rule_set_ids.size()).first->second;
     auto [memo, inserted] =
@@ -1452,7 +1481,9 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         collapse_gpu_arch_args(edited);
     }
 
-    auto result_id = save_config(cfg, edited);
+    auto edited_config = cfg;
+    edited_config.query_toolchain = cfg.query_toolchain && options.query_toolchain;
+    auto result_id = save_config(edited_config, edited);
     rule_applied[{static_cast<std::uint32_t>(id), rule_set_id}] =
         static_cast<std::uint32_t>(result_id);
     return result_id;

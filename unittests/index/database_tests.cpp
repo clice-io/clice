@@ -231,6 +231,83 @@ ZEST_CASE(TruncatedDatabaseRebuilds) {
     ZASSERT(db->read(index::BlobKind::CommandSnapshot, "cdb").buffer->getBuffer() == "fresh");
 }
 
+/// A database of `count` small records of three kinds, committed at once:
+/// each kind spans several leaf pages, the paths' between the files' and
+/// the symbols'.
+std::string small_records_database(CacheStore& store, int count) {
+    auto db = index::open_database(store, "");
+    require(db != nullptr, "opening the database failed");
+    std::vector<index::BlobDatabase::Blob> blobs;
+    for(int i = 0; i < count; i += 1) {
+        auto key = std::format("{:05}", i);
+        blobs.push_back(blob(index::BlobKind::File, key, std::string(40, 'f')));
+        blobs.push_back(blob(index::BlobKind::Path, key, std::string(40, 'p')));
+        blobs.push_back(blob(index::BlobKind::Symbol, key, std::string(40, 'y')));
+    }
+    require(db->write(blobs, {}), "writing the records failed");
+    return path::join(index::database_directory(store, ""), "index.mdb");
+}
+
+/// Swap the first two keys of the second leaf page holding nothing but
+/// keys starting with `prefix`, so a walk reaches the page from the one
+/// before and reads its keys out of order. An LMDB page starts with a
+/// 16-byte header (flags at 10, the end of the node pointers at 12), node
+/// pointers follow it, and a node is four 16-bit fields, the last its key
+/// size, then the key.
+void swap_page_keys(llvm::StringRef file, char prefix) {
+    auto buffer = llvm::MemoryBuffer::getFile(file);
+    require(static_cast<bool>(buffer), "reading index.mdb failed");
+    std::string bytes = (*buffer)->getBuffer().str();
+    auto page_size = static_cast<std::uint32_t>(llvm::sys::Process::getPageSizeEstimate());
+    auto u16 = [&](std::size_t at) {
+        std::uint16_t value = 0;
+        std::memcpy(&value, bytes.data() + at, sizeof(value));
+        return value;
+    };
+    std::vector<std::pair<std::string, std::size_t>> pages;
+    for(std::size_t page = 2 * page_size; page + page_size <= bytes.size(); page += page_size) {
+        constexpr std::uint16_t leaf = 0x02;
+        if(u16(page + 10) != leaf || u16(page + 12) <= 18) {
+            continue;
+        }
+        bool only_prefix = true;
+        for(std::size_t pointer = page + 16; pointer < page + u16(page + 12); pointer += 2) {
+            auto node = page + u16(pointer);
+            only_prefix = only_prefix && u16(node + 6) > 0 && bytes[node + 8] == prefix;
+        }
+        if(only_prefix) {
+            auto node = page + u16(page + 16);
+            pages.emplace_back(bytes.substr(node + 8, u16(node + 6)), page);
+        }
+    }
+    llvm::sort(pages);
+    require(pages.size() > 1, "too few leaf pages of the kind");
+    auto pointers = pages[1].second + 16;
+    auto first = bytes.begin() + static_cast<std::ptrdiff_t>(pointers);
+    std::ranges::swap_ranges(first, first + 2, first + 2, first + 4);
+    std::error_code ec;
+    llvm::raw_fd_ostream os(file, ec);
+    require(!ec, "rewriting index.mdb failed");
+    os << bytes;
+}
+
+ZEST_CASE(ScanMeetsDamage) {
+    TempDir tmp;
+    std::string file;
+    {
+        auto store = open_store(tmp, "lmdb");
+        file = small_records_database(store, 2000);
+    }
+    swap_page_keys(file, 'Y');
+    auto store = open_store(tmp, "lmdb");
+    auto db = index::open_database(store, "");
+    ZASSERT(db != nullptr);
+    ZEXPECT(db->count(index::BlobKind::File) == 2000u);
+    ZEXPECT(!db->corrupted());
+    db->count(index::BlobKind::Symbol);
+    ZEXPECT(db->corrupted());
+}
+
 ZEST_CASE(ReadOnlyRefusesTruncated) {
     TempDir tmp;
     {

@@ -3,8 +3,6 @@
 /// its own copy, and the two must show the same.
 
 import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import { Workspace } from "../../client/workspace.ts";
 import { withTimeout } from "../../promise.ts";
@@ -18,7 +16,7 @@ import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
 import { Output, writeSnapshot, type Blocks } from "./output.ts";
-import { materialize, writeDatabases } from "./project.ts";
+import { copyRoot, materialize, writeDatabases } from "./project.ts";
 import type { AnswersOptions } from "./script.ts";
 
 /// The requests an answers test asks, the same on both clients.
@@ -139,7 +137,7 @@ function gateCompile(c: Case, client: string, errors: readonly string[]): void {
 
 /// A fresh copy of the case, its databases written.
 function copy(c: Case, prefix: string): { root: string; copied: string[] } {
-    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+    const root = copyRoot(prefix);
     const copied = materialize(c.dir, root);
     writeDatabases(c.project, copied, root);
     return { root, copied };

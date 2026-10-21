@@ -1406,8 +1406,7 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
                !path.contains("/.");
     });
     if(project.index.damaged()) {
-        return std::unexpected(
-            LoadError{.message = "the index database is damaged; run `clice index` to rebuild it"});
+        return std::unexpected(LoadError{.message = damaged_index_error(project)});
     }
     if(edit) {
         if(auto edited = edit(project, commands, facts); !edited) {

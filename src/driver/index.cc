@@ -184,15 +184,25 @@ int run_indexing(Spelling root,
         }
         return result.exit_code;
     }
-    driver::println("Indexed {} translation unit{} in {:.1f}s: {} file shard{} ({}), {} symbol{}.",
-                    result.indexed_tus,
-                    plural_s(result.indexed_tus),
-                    result.seconds,
-                    result.shard_count,
-                    plural_s(result.shard_count),
-                    format_bytes(result.shard_bytes),
-                    result.symbol_count,
-                    plural_s(result.symbol_count));
+    if(result.damaged) {
+        driver::println(
+            "Indexed {} translation unit{} in {:.1f}s, but the index database is damaged (see the "
+            "log): it is discarded, and the next `clice index` rebuilds the index.",
+            result.indexed_tus,
+            plural_s(result.indexed_tus),
+            result.seconds);
+    } else {
+        driver::println(
+            "Indexed {} translation unit{} in {:.1f}s: {} file shard{} ({}), {} symbol{}.",
+            result.indexed_tus,
+            plural_s(result.indexed_tus),
+            result.seconds,
+            result.shard_count,
+            plural_s(result.shard_count),
+            format_bytes(result.shard_bytes),
+            result.symbol_count,
+            plural_s(result.symbol_count));
+    }
     if(result.standalone_headers != 0) {
         driver::println(
             "The index holds {} header{} indexed standalone under borrowed compile "
@@ -505,7 +515,7 @@ void print_stats(const Project& project, const IndexStats& stats, std::uint32_t 
                     format_bytes(stats.search_bytes),
                     project.index.search_pending().size());
     if(project_index.damaged()) {
-        driver::println("The index database is damaged; run `clice index` to rebuild it");
+        driver::println("Warning: {}", damaged_index_error(project));
     }
 
     if(auto& usage = stats.usage) {

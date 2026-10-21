@@ -164,7 +164,10 @@ std::expected<DatabaseText, std::string> read_database(const Spelling& path) {
         return std::unexpected(std::format("cannot read {}: {}", path, observed.error().message()));
     }
     DatabaseText text{.hash = observed->obs.hash};
-    if(auto result = kota::codec::json::from_string(observed->content->getBuffer(), text.entries);
+    auto repaired = repaired_database_text(observed->content->getBuffer());
+    if(auto result = kota::codec::json::from_string(repaired ? llvm::StringRef(*repaired)
+                                                             : observed->content->getBuffer(),
+                                                    text.entries);
        !result) {
         return std::unexpected(
             std::format("{} holds no array of entries: {}", path, result.error().message));

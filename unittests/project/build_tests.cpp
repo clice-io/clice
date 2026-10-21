@@ -774,6 +774,57 @@ ZEST_CASE(EditsAcrossHostAndHeader) {
     ZEXPECT(header_only[0].flags == (std::vector<std::string>{"-DB"}));
 };
 
+ZEST_CASE(RuleTurnsQueryOff) {
+    /// A matching rule turning the toolchain query off turns it off for the
+    /// file's command, alone or beside other edits, and the edit hash says
+    /// so; a command lent from such a file keeps it off.
+    TempDir tmp;
+    Config config;
+    config.rules.push_back(ConfigRule{
+        .patterns = {"src/**", "vendor/**"},
+        .append = {"-DA"}
+    });
+    config.rules.push_back(ConfigRule{
+        .patterns = {"vendor/**", "third_party/**"},
+        .query_toolchain = false
+    });
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active("");
+
+    CanonicalPath own(Spelling::absolute(tmp.path("src/a.cpp")));
+    CanonicalPath vendor(Spelling::absolute(tmp.path("vendor/b.cpp")));
+    CanonicalPath third_party(Spelling::absolute(tmp.path("third_party/c.cpp")));
+    CanonicalRef own_file = own;
+    CanonicalRef vendor_file = vendor;
+    CanonicalRef third_party_file = third_party;
+    ZEXPECT(build.edits(own_file).query_toolchain);
+    ZEXPECT(!build.edits(vendor_file).query_toolchain);
+    ZEXPECT(build.edit_hash(own_file) != build.edit_hash(vendor_file));
+    ZEXPECT(!build.edit_hash(third_party_file).empty());
+
+    // One command under the same appends: only the query tells them apart.
+    auto command = std::format("clang++ {}", vendor.str());
+    auto entry = *cdb.add_command(tmp.root.str(), vendor.str(), llvm::StringRef(command));
+    auto unqueried =
+        build.resolve(entry.file, entry.config, CommandSource::CDBExact, vendor_file, vendor_file);
+    auto queried = build.resolve(files.intern(own_file),
+                                 entry.config,
+                                 CommandSource::Inferred,
+                                 own_file,
+                                 own_file);
+    ZEXPECT(!cdb.config(unqueried.config).query_toolchain);
+    ZEXPECT(cdb.config(queried.config).query_toolchain);
+
+    auto lent = build.lend(entry.config, vendor_file, own_file);
+    auto borrowed =
+        build.resolve(files.intern(own_file), lent, CommandSource::Inferred, own_file, own_file);
+    ZEXPECT(!cdb.config(borrowed.config).query_toolchain);
+};
+
 ZEST_CASE(LendMergesRules) {
     /// A borrowed command carries the edits of the rules matching its lender
     /// but not the borrower; rendered as the borrower's own it gains the

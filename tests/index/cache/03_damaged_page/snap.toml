@@ -1,0 +1,45 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 1005 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice index #2"]
+stdout = '''
+Indexed 0 translation units in #s, but the index database is damaged (see the log): it is discarded, and the next `clice index` rebuilds the index.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = '''
+error: The index database at ${WS}/.clice/cache/v15/index/default/index.mdb is damaged: a page among the records under 'Y' is damaged
+warning: Index database is corrupt; discarding it and rebuilding from scratch
+'''
+exit = 1
+
+[test."$ clice index #3"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 1005 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query symbol-search f1500"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "f1500",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "container": null,
+        "symbol": "#ce1debbfc96ee946"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

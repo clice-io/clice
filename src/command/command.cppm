@@ -111,6 +111,10 @@ struct CompileConfig {
     /// Ordered arguments, exactly one ArgClass::Input slot among them.
     llvm::ArrayRef<Arg> args;
 
+    /// False when a rule turns the toolchain query off: clang's own driver
+    /// reads the command, and the compiler never runs.
+    bool query_toolchain = true;
+
     friend bool operator==(const CompileConfig&, const CompileConfig&) = default;
 };
 
@@ -148,6 +152,12 @@ bool is_other_language_path(llvm::StringRef path);
 /// `.tcc` or `.txx` body — which compiles only under its includer's
 /// context.
 bool is_context_header_path(llvm::StringRef path);
+
+/// A compile_commands.json's bytes as a JSON reader takes them: it refuses
+/// a whole document over one byte that is not UTF-8 (a path or a define in
+/// a legacy code page, which CMake writes as it finds them), so each such
+/// byte becomes U+FFFD. Nullopt when the bytes are UTF-8.
+std::optional<std::string> repaired_database_text(llvm::StringRef bytes);
 
 /// The language dimension of a command for one input file: the clang
 /// language name ("c++", "cuda", ...) selected by the governing selector or
@@ -224,8 +234,11 @@ struct CommandOptions {
     llvm::ArrayRef<std::string> extra_prepend;
     llvm::ArrayRef<std::string> extra_append;
 
+    /// False when a rule turns the toolchain query off.
+    bool query_toolchain = true;
+
     bool empty() const {
-        return edits.empty() && extra_prepend.empty() && extra_append.empty();
+        return edits.empty() && extra_prepend.empty() && extra_append.empty() && query_toolchain;
     }
 };
 
@@ -636,7 +649,8 @@ struct DenseMapInfo<clice::CompileConfig> {
         llvm::hash_code hash = llvm::hash_combine(config.directory,
                                                   config.driver,
                                                   config.subcommand,
-                                                  static_cast<unsigned>(config.family));
+                                                  static_cast<unsigned>(config.family),
+                                                  config.query_toolchain);
         for(auto& arg: config.args) {
             hash = llvm::hash_combine(hash,
                                       arg.opt_id,

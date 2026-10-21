@@ -42,8 +42,8 @@ test(
             "textDocument/documentSymbol",
             "alias.cpp",
         );
-        expect(new Set(reply.map((symbol) => symbol.location.uri))).toEqual(
-            new Set([s.uri("alias.cpp")]),
+        expect(new Set(reply.map((symbol) => s.spelling(symbol.location.uri)))).toEqual(
+            new Set(["alias.cpp"]),
         );
     },
 );

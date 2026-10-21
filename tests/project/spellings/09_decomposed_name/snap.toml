@@ -1,0 +1,4 @@
+["composed name of a decomposed file".hosts]
+contexts = [
+    { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
+]
