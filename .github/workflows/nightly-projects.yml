@@ -124,6 +124,13 @@ jobs:
     env:
       TARGET: ${{ fromJSON('{"linux":"x86_64-unknown-linux-gnu","macos":"aarch64-apple-darwin","windows":"x86_64-w64-mingw32"}')[matrix.platform] }}
     steps:
+      # Spotlight indexes the checkout, the build and clice's cache as the
+      # job writes them, and its CPU and memory make one index's time swing
+      # twofold between runners.
+      - name: Turn Spotlight off
+        if: matrix.platform == 'macos'
+        run: sudo mdutil -a -i off
+
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
