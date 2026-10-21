@@ -15,5 +15,8 @@ test("completion reuses the pch", async (t) => {
     expect(await s.errors("config.h")).toEqual([]);
     await s.completion(t.at("config.h", "#define OTHER |3"));
     await s.sync();
-    await t.show("builds after edit and completion", (await s.counts()).files["config.h"]?.pch ?? 0);
+    await t.show(
+        "builds after edit and completion",
+        (await s.counts()).files["config.h"]?.pch ?? 0,
+    );
 });
