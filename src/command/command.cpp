@@ -449,8 +449,9 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
     /// response tokenization style.
     auto scan_driver_mode = [&](llvm::ArrayRef<const char*> argv) {
         for(llvm::StringRef token: argv) {
-            if(token.consume_front("--driver-mode=") && token == "cl") {
-                config.family = CompilerFamily::ClangCL;
+            if(token.consume_front("--driver-mode=")) {
+                config.family = token == "cl" ? CompilerFamily::ClangCL
+                                              : Toolchain::driver_family(config.driver);
             }
         }
     };
@@ -1542,12 +1543,15 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     auto edited_config = cfg;
     edited_config.query_toolchain = cfg.query_toolchain && options.query_toolchain;
     // A rule may take `--driver-mode=cl` out of a command, or put it in:
-    // the family follows the edited command, as it follows the loaded one.
+    // the family follows the edited command's last driver mode, as it
+    // follows the loaded one's.
     edited_config.family = Toolchain::driver_family(cfg.driver);
-    for(auto& local: edited) {
-        if(local.opt_id == option::OPT_driver_mode && local.values.size() == 1 &&
-           llvm::StringRef(local.values[0]) == "cl") {
-            edited_config.family = CompilerFamily::ClangCL;
+    for(auto& local: llvm::reverse(edited)) {
+        if(local.opt_id == option::OPT_driver_mode && local.values.size() == 1) {
+            if(llvm::StringRef(local.values[0]) == "cl") {
+                edited_config.family = CompilerFamily::ClangCL;
+            }
+            break;
         }
     }
     auto result_id = save_config(edited_config, edited);

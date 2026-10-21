@@ -580,6 +580,27 @@ ZEST_CASE(DriverModeFromRsp) {
     EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("main.cpp"))), "/TP");
 };
 
+ZEST_CASE(RuleDriverModeFamily) {
+    /// The family follows the driver mode a rule leaves, the last one
+    /// winning as in clang.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "a.cpp", "clang++ --driver-mode=cl a.cpp"sv);
+    auto base = database.candidate_entries(fake("a.cpp")).front().config;
+    ZEXPECT(database.config(base).family == CompilerFamily::ClangCL);
+
+    std::vector<CommandEdit> removed = {
+        {CommandEdit::Kind::Remove, {"--driver-mode=cl"}}
+    };
+    ZEXPECT(database.config(database.apply_rules(base, {.edits = removed})).family !=
+            CompilerFamily::ClangCL);
+    std::vector<CommandEdit> overridden = {
+        {CommandEdit::Kind::Append, {"--driver-mode=g++"}}
+    };
+    ZEXPECT(database.config(database.apply_rules(base, {.edits = overridden})).family !=
+            CompilerFamily::ClangCL);
+};
+
 ZEST_CASE(PrependAfterBinary) {
     llvm::SmallVector args = {"clang++", "-DA", "main.cpp"};
 
