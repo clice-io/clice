@@ -214,4 +214,4 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
 - **MSVC-style option parsing.** On non-Windows systems, MSVC-style option prefixes (`/U`, `/D`, `/I`) must be handled specially to prevent Unix absolute paths (such as `/Users/...`) from being misparsed as MSVC options. This is currently resolved by dynamically adjusting option visibility based on the driver name, but edge cases may still exist.
 
-- **Compiler launchers are not recognized.** CDB commands wrapped in a launcher (`ccache g++ ...`, `sccache clang++ ...`) are parsed as if the launcher were the compiler, so family identification and toolchain probing target the wrong binary. Strip the launcher from the compilation database, or override the flags with configuration rules.
+- **Only the common compiler launchers are recognized.** ccache, sccache, distcc and icecc are taken off a command with their own options and environment assignments, and the compiler after them is the one clice asks. Any other launcher is taken for the compiler, so family identification and toolchain probing target the wrong binary; strip it from the compilation database.

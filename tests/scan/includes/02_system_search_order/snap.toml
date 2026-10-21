@@ -1,0 +1,41 @@
+[test.errors]
+errors = []
+
+[test.links]
+document_links = [
+    { at = "#include ⟦<stdalign.h>⟧", target = "vendored/stdalign.h" },
+    { at = "#include ⟦<pick.h>⟧", target = "b/pick.h" },
+]
+
+[test."$ clice scan --json"]
+stdout = '''
+{
+  "files": [
+    {
+      "path": "${WS}/b/pick.h",
+      "source": false,
+      "modules": [],
+      "includes": [],
+      "unresolved": []
+    },
+    {
+      "path": "${WS}/main.cpp",
+      "source": true,
+      "modules": [],
+      "includes": [
+        "${WS}/vendored/stdalign.h",
+        "${WS}/b/pick.h"
+      ],
+      "unresolved": []
+    },
+    {
+      "path": "${WS}/vendored/stdalign.h",
+      "source": false,
+      "modules": [],
+      "includes": [],
+      "unresolved": []
+    }
+  ]
+}
+'''
+exit = 0

@@ -221,6 +221,26 @@ ZEST_CASE(AppendAfterInputFlags) {
             std::format("clang -std=c11 -std=c17 {}", fake("a.c")));
 };
 
+ZEST_CASE(RemoveEveryValue) {
+    /// A flag written without its value, last in the list, or with `*` for
+    /// it, removes every value; a `*` joined to the name removes every flag
+    /// of that prefix and kind, so the preprocessor's -Wp stays. One that
+    /// takes several values removes nothing until they are written.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command(
+        "/fake",
+        "a.c",
+        "clang -include pre.h -Iinc -Wall -Wextra -Wno-unused -Wp,-DKEPT -DKEEP a.c"sv);
+
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Remove, {"-I*", "-W*", "-include"}},
+        {CommandEdit::Kind::Remove, {"-sectcreate"}           },
+    };
+    ZEXPECT(print_argv(render_entry(database, fake("a.c"), {.edits = edits})) ==
+            std::format("clang -Wp,-DKEPT -D KEEP {}", fake("a.c")));
+};
+
 ZEST_CASE(SelectorHistoryRestored) {
     /// Removing the later selector re-exposes the earlier one.
     FileTable file_table;
@@ -558,6 +578,27 @@ ZEST_CASE(DriverModeFromRsp) {
     database.add_command(tmp.root.str(), "main.cpp", "clang++ @flags.rsp main.cpp"sv);
 
     EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("main.cpp"))), "/TP");
+};
+
+ZEST_CASE(RuleDriverModeFamily) {
+    /// The family follows the driver mode a rule leaves, the last one
+    /// winning as in clang.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "a.cpp", "clang++ --driver-mode=cl a.cpp"sv);
+    auto base = database.candidate_entries(fake("a.cpp")).front().config;
+    ZEXPECT(database.config(base).family == CompilerFamily::ClangCL);
+
+    std::vector<CommandEdit> removed = {
+        {CommandEdit::Kind::Remove, {"--driver-mode=cl"}}
+    };
+    ZEXPECT(database.config(database.apply_rules(base, {.edits = removed})).family !=
+            CompilerFamily::ClangCL);
+    std::vector<CommandEdit> overridden = {
+        {CommandEdit::Kind::Append, {"--driver-mode=g++"}}
+    };
+    ZEXPECT(database.config(database.apply_rules(base, {.edits = overridden})).family !=
+            CompilerFamily::ClangCL);
 };
 
 ZEST_CASE(PrependAfterBinary) {

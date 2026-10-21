@@ -257,11 +257,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_return;
     }
     if(report.members.empty()) {
-        LOG_ERROR(
-            "Nothing to index: no compile_commands.json found in {} or its direct "
-            "subdirectories.{}",
-            options.root,
-            deeper_databases_hint(project));
+        LOG_ERROR("Nothing to index: {}", why_no_members(project, options.root.str()));
         result.exit_code = 1;
         co_await shutdown(stack);
         co_return;
@@ -538,11 +534,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
 
     auto& members = report.members;
     if(members.empty()) {
-        LOG_ERROR(
-            "Nothing to lint: no compile_commands.json found in {} or its direct "
-            "subdirectories.{}",
-            options.root,
-            deeper_databases_hint(project));
+        LOG_ERROR("Nothing to lint: {}", why_no_members(project, options.root.str()));
         result.exit_code = 2;
         co_await shutdown(stack);
         co_return;
@@ -823,11 +815,8 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         auto load = load_build(project, options.root, configuration);
         if(project.cdb.source_count() == 0) {
             result.exit_code = 2;
-            result.error = std::format(
-                "Nothing to format: no compile_commands.json found in {} or its direct "
-                "subdirectories.{}",
-                options.root,
-                deeper_databases_hint(project));
+            result.error =
+                std::format("Nothing to format: {}", why_no_members(project, options.root.str()));
             return result;
         }
         for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {

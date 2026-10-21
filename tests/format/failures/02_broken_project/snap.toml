@@ -9,7 +9,6 @@ exit = 2
 ["a broken compilation database"."$ clice format --check"]
 stderr = '''
 error: Invalid compilation database format in ${WS}/compile_commands.json: root element must be an array.
-warning: Compilation database ${WS}/compile_commands.json is not readable yet
 ${WS}/compile_commands.json: the compilation database could not be loaded
 '''
 exit = 2

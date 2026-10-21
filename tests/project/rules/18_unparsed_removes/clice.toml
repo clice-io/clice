@@ -1,0 +1,11 @@
+[[rules]]
+patterns = ["a.cpp"]
+remove = ["-include"]
+
+[[rules]]
+patterns = ["b.cpp"]
+remove = ["-I"]
+
+[[rules]]
+patterns = ["c.cpp"]
+remove = ["-W*"]

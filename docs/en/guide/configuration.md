@@ -746,7 +746,7 @@ Compilation databases, in priority order: a compile_commands.json or a directory
 | ----------------- | ----------------------------- | ------- |
 | `default_command` | `string` or `array of string` | `""`    |
 
-The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the workspace root for a rule passed through initializationOptions), and the matching source files on disk join the background index (unless the rule turns `index` off) — enumerated at startup and again on every workspace poll, so a file created later compiles when opened and joins the index within a poll period. Omitted means none.
+The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the workspace root for a rule passed through initializationOptions), and the matching source files on disk join the background index (unless the rule turns `index` off) — enumerated at startup and again on every workspace poll, so a file created later compiles when opened and joins the index within a poll period. A file clang has no language for (an Arduino `.ino`, an extensionless tool) is a source only when the command forces a language (`-x c++`) and a pattern names its suffix (`*.ino`) or the file itself. Omitted means none.
 
 </div>
 
@@ -766,7 +766,7 @@ Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`
 | -------- | ----------------- | ------- |
 | `remove` | `array of string` | `[]`    |
 
-Compilation flags removed for matching files, e.g. `["-Wall"]`.
+Compilation flags removed for matching files, e.g. `["-Wall"]`. A flag with a value removes that value (`-DDEBUG`), the next element being a separate value as on a command line; one with `*` for its value (`-I*`, `["-include", "*"]`), or without one at the end of the list (`["-include"]`), removes every value; a `*` right after a flag's name removes every flag of its kind spelled with that prefix (`-W*` takes `-Wall` and `-Wextra` too).
 
 </div>
 
