@@ -109,6 +109,8 @@ std::vector<Brace> braces_of(const LexicalInfo& lexical) {
 /// The text of a definition before the body its extent ends with, or
 /// nullopt when the extent ends otherwise (`= default`, an initializer).
 std::optional<llvm::StringRef> before_body(const std::string& text) {
+    // FIXME: a function-try-block's last brace group is its last handler:
+    // the card keeps the body and the `catch (...)` heads.
     auto braces = braces_of(lexical_scan(text, dialect_of()));
     auto written = llvm::StringRef(text).rtrim();
     auto body = last_brace_group(braces, {0, static_cast<std::uint32_t>(written.size())});

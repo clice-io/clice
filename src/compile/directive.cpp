@@ -124,6 +124,9 @@ public:
         for(auto it = angled ? search.angled_dir_begin() : search.quoted_dir_begin();
             it != search.search_dir_end();
             ++it) {
+            // FIXME: header maps and framework directories have no plain directory:
+            // a failed lookup through them records no absent input, so a header
+            // created there later goes unnoticed.
             if(auto directory = it->getDirRef()) {
                 add(directory->getName());
             }

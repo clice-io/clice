@@ -573,6 +573,8 @@ std::vector<std::string> CompilationUnit::absent() {
         // `#include_next` does not start at the first directory, a lookup
         // also fails on a directory of that name): only a place holding
         // nothing is absent.
+        // FIXME: a header generated here while the compile ran, after its lookup
+        // failed, is filtered out too, and its creation is never seen.
         if(!vfs::exists(entry.getKey())) {
             result.emplace_back(entry.getKey());
         }

@@ -27,6 +27,9 @@ llvm::SmallVector<Fid> DiskState::take_changes() {
     return std::exchange(changes, {});
 }
 
+// FIXME: every failed stat lands here, EACCES and EIO as well as ENOENT:
+// a directory unreadable for a moment reads as a delete (dependents
+// invalidated, the file's rows withheld) and then as a change.
 void DiskState::saw_missing(Fid fid) {
     saw(fid, std::nullopt, true);
 }

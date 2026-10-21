@@ -35,9 +35,10 @@ const clang::LangOptions& raw_dialect(clang::Language language,
         auto& options = it->second;
         std::vector<std::string> includes;
         clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
-        // FIXME: a command's -fno-operator-names never reaches a raw dialect: the
-        // index route of semantic tokens shows `int and;` as an operator until the
-        // file's compile finishes.
+        // FIXME: only the language and -std reach a raw dialect, never
+        // -fno-operator-names, -fno-char8_t or -fno-gnu-keywords: until the
+        // file's compile finishes, the index route of semantic tokens paints
+        // `int and;` as an operator and a variable named `char8_t` as a type.
         options.CXXOperatorNames = options.CPlusPlus;
         options.Char8 = options.CPlusPlus20;
         options.CPlusPlusModules = options.CPlusPlus20;
