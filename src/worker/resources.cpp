@@ -91,6 +91,9 @@ std::optional<CgroupMemory> cgroup_memory(llvm::StringRef root, llvm::StringRef 
             dir = (root + "/memory").str();
         }
         auto stat = read_text(dir + "/memory.stat");
+        // FIXME: this usage is the cgroup's own while the limit below may be an
+        // ancestor's: its siblings' usage is left out and the headroom overstated,
+        // bounded only by MemAvailable. v2 below walks every level.
         auto usage = limit_file(dir + "/memory.usage_in_bytes");
         if(!stat || !usage) {
             return std::nullopt;

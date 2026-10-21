@@ -397,6 +397,9 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
     // out beside other work reruns until it fits or is found too big:
     // each rerun waits for at least the memory the last one reached.
     auto outcome = co_await stack.sched.turun.run(path_id, plan);
+    // FIXME: unbounded: two units whose allocations fail before the first
+    // sample raise their floors by nothing and can die beside each other again
+    // and again (commit exhaustion on Windows).
     while(outcome.result == TURunFamily::Result::OutOfMemory) {
         outcome = co_await stack.sched.turun.run(path_id, plan);
     }
