@@ -1,0 +1,7 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = "error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 0 (a.cpp): it holds bytes that are not UTF-8."
+exit = 0
