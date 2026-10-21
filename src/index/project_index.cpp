@@ -83,11 +83,10 @@ Spelling ProjectIndex::local(llvm::StringRef name) const {
 }
 
 void ProjectIndex::damaged_record(BlobKind kind, llvm::StringRef key) const {
-    LOG_ERROR(
-        "The index database's record {} of kind {} fails its checks: the database is discarded "
-        "and the project indexed again",
-        llvm::toHex(key),
-        std::to_underlying(kind));
+    LOG_ERROR("The index database's record {} of kind {} fails its checks{}",
+              llvm::toHex(key),
+              std::to_underlying(kind),
+              db->read_only() ? "" : ": the database is discarded and the project indexed again");
     damage = true;
 }
 

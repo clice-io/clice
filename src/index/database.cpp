@@ -540,16 +540,17 @@ void make_sparse(llvm::StringRef path) {
 
 enum class MetaCheck : std::uint8_t {
     Ok,
-    /// Foreign word size/endianness/schema, or data without any meta —
-    /// the corruption-recovery shape (delete and rebuild when writable).
-    Mismatch,
+    /// Another clice's layout: a foreign schema, word size or byte order,
+    /// or records without any meta (delete and rebuild when writable).
+    Foreign,
     /// Could not validate right now; touch nothing.
     Transient,
 };
 
 /// Validates the meta record under the resident transaction; initializes
-/// it first on a fresh (provably empty) writable database.
-MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
+/// it first on a fresh (provably empty) writable database. The error is
+/// the corruption the read of the record met.
+std::expected<MetaCheck, int> check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     auto mk = to_val(meta_key);
     MDB_val value;
     int rc = mdb_get(txn, dbi, &mk, &value);
@@ -557,10 +558,13 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     if(rc == 0) {
         bool ok = value.mv_size == sizeof(MetaRecord) &&
                   std::memcmp(value.mv_data, &expected, sizeof(MetaRecord)) == 0;
-        return ok ? MetaCheck::Ok : MetaCheck::Mismatch;
+        return ok ? MetaCheck::Ok : MetaCheck::Foreign;
     }
     if(rc != MDB_NOTFOUND) {
-        return is_corruption(rc) ? MetaCheck::Mismatch : MetaCheck::Transient;
+        if(is_corruption(rc)) {
+            return std::unexpected(rc);
+        }
+        return MetaCheck::Transient;
     }
     // Meta missing: only a provably EMPTY database may be initialized in
     // place — populated bytes without our meta are a foreign layout, and
@@ -570,7 +574,7 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
         return MetaCheck::Transient;
     }
     if(stat.ms_entries != 0) {
-        return MetaCheck::Mismatch;
+        return MetaCheck::Foreign;
     }
     if(read_only) {
         return MetaCheck::Ok;
@@ -732,14 +736,30 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             }
             return nullptr;
         }
-        switch(check_meta(env, dbi, txn, read_only)) {
+        auto meta = check_meta(env, dbi, txn, read_only);
+        if(!meta) {
+            mdb_txn_abort(txn);
+            if(fail(meta.error(), "meta")) {
+                continue;
+            }
+            return nullptr;
+        }
+        switch(*meta) {
             case MetaCheck::Ok: break;
-            case MetaCheck::Mismatch: {
+            case MetaCheck::Foreign: {
                 mdb_txn_abort(txn);
-                if(fail(MDB_INVALID, "meta")) {
-                    continue;
+                mdb_env_close(env);
+                if(read_only) {
+                    LOG_WARN(
+                        "Index database at {} was written by another version of clice; run "
+                        "`clice index` to rebuild it",
+                        path);
+                    return nullptr;
                 }
-                return nullptr;
+                LOG_INFO("Index database at {} was written by another version of clice; rebuilding",
+                         path);
+                remove_database_files(path);
+                continue;
             }
             case MetaCheck::Transient: {
                 mdb_txn_abort(txn);
