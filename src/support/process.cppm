@@ -58,8 +58,8 @@ bool is_pipe_or_socket(int fd);
 
 /// Write UTF-8 `text` to `fd` when it is a Windows console, as the UTF-16 a
 /// console takes: bytes would show in its code page. False when `fd` is no
-/// console, as everywhere else, or `text` is no UTF-8: the caller writes
-/// the bytes.
+/// console, as everywhere else, `text` is no UTF-8 or the console refuses
+/// it: the caller writes the bytes, and their write reports a failure.
 bool write_console(int fd, llvm::StringRef text);
 
 }  // namespace clice

@@ -191,8 +191,19 @@ bool write_console(int fd, llvm::StringRef text) {
        !llvm::ConvertUTF8toWide(text, wide)) {
         return false;
     }
-    DWORD written = 0;
-    ::WriteConsoleW(handle, wide.data(), static_cast<DWORD>(wide.size()), &written, nullptr);
+    std::wstring_view rest = wide;
+    while(!rest.empty()) {
+        DWORD written = 0;
+        if(!::WriteConsoleW(handle,
+                            rest.data(),
+                            static_cast<DWORD>(rest.size()),
+                            &written,
+                            nullptr) ||
+           written == 0) {
+            return false;
+        }
+        rest.remove_prefix(written);
+    }
     return true;
 #else
     return false;
