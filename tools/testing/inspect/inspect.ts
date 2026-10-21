@@ -99,8 +99,7 @@ interface RawSignatureHelp {
               label: string;
               documentation?: string | null;
               parameters?:
-                  | { label: string | [number, number]; documentation?: string | null }[]
-                  | null;
+                  { label: string | [number, number]; documentation?: string | null }[] | null;
               active_parameter?: number | null;
           }[]
         | null;
@@ -272,7 +271,10 @@ export class Inspect extends Client {
         return {
             kind: raw.kind,
             text: raw.contents,
-            range: raw.range === null ? undefined : this.location(at.path, raw.range),
+            range:
+                raw.range === null
+                    ? undefined
+                    : this.location(this.context().file(at.path), raw.range),
         };
     }
 
@@ -347,15 +349,17 @@ export class Inspect extends Client {
 
     protected async fetchHighlights(at: Anchor): Promise<Highlight[]> {
         const raws = ((await this.atPoint("document-highlight", at)) ?? []) as RawHighlight[];
+        const source = this.context().file(at.path);
         return raws.map((raw) => ({
-            location: this.location(at.path, raw.range),
+            location: this.location(source, raw.range),
             kind: raw.kind === "Read" ? "read" : raw.kind === "Write" ? "write" : "text",
         }));
     }
 
     protected async fetchSelectionRange(at: Anchor): Promise<Range[]> {
         const raws = ((await this.atPoint("selection-range", at)) ?? []) as RawRange[];
-        return raws.map((raw) => this.range(at.path, raw));
+        const source = this.context().file(at.path);
+        return raws.map((raw) => this.range(source, raw));
     }
 
     protected async fetchCodeActions(
@@ -368,9 +372,10 @@ export class Inspect extends Client {
         }
         const raws = ((await this.overRange("code-action", file, selection)) ??
             []) as RawCodeAction[];
+        const source = this.context().file(file);
         return raws.map((raw) => {
             const edits = raw.edits.map((edit) => ({
-                range: this.range(file, edit.range),
+                range: this.range(source, edit.range),
                 newText: edit.text,
             }));
             return {
@@ -457,30 +462,36 @@ export class Inspect extends Client {
     }
 
     protected async fetchFolds(file: string): Promise<Fold[]> {
-        return ((await this.document("folding-range", file)) as RawFold[]).map((raw) => ({
-            range: this.range(file, raw.range),
+        const folds = (await this.document("folding-range", file)) as RawFold[];
+        const source = this.context().file(file);
+        return folds.map((raw) => ({
+            range: this.range(source, raw.range),
             kind: raw.kind ?? undefined,
             collapsedText: raw.collapsed_text === "" ? undefined : raw.collapsed_text,
         }));
     }
 
     protected async fetchSymbols(file: string): Promise<OutlineSymbol[]> {
+        const symbols = (await this.document("document-symbols", file)) as RawSymbol[];
+        const source = this.context().file(file);
         const convert = (raw: RawSymbol): OutlineSymbol => ({
             name: raw.name,
             kind: LSP_SYMBOL_KIND[raw.kind] ?? "Variable",
-            selection: this.location(file, raw.selection_range),
+            selection: this.location(source, raw.selection_range),
             detail: raw.detail,
-            range: this.location(file, raw.range),
+            range: this.location(source, raw.range),
             tags: raw.deprecated ? ["Deprecated"] : [],
             children: raw.children.map(convert),
         });
-        return ((await this.document("document-symbols", file)) as RawSymbol[]).map(convert);
+        return symbols.map(convert);
     }
 
     protected async fetchLinks(file: string): Promise<Link[]> {
         const context = this.context();
-        return ((await this.document("document-links", file)) as RawLink[]).map((raw) => ({
-            location: this.location(file, raw.range),
+        const links = (await this.document("document-links", file)) as RawLink[];
+        const source = context.file(file);
+        return links.map((raw) => ({
+            location: this.location(source, raw.range),
             target: context.pathOfFile(raw.target),
         }));
     }
@@ -517,13 +528,12 @@ export class Inspect extends Client {
         return withoutBom(fs.readFileSync(path.join(this.root, file), "utf8"));
     }
 
-    private range(file: string, raw: RawRange): Range {
-        const source = this.context().file(file);
+    private range(source: SourceText, raw: RawRange): Range {
         return { start: source.positionAtByte(raw.begin), end: source.positionAtByte(raw.end) };
     }
 
-    private location(file: string, raw: RawRange): Location {
-        return { path: file, range: this.range(file, raw) };
+    private location(source: SourceText, raw: RawRange): Location {
+        return { path: source.path, range: this.range(source, raw) };
     }
 
     /// A token split at its line ends, a line's "\r" left out and an empty

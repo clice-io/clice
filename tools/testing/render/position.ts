@@ -37,26 +37,50 @@ export function withoutBom(text: string): string {
     return text.startsWith("\uFEFF") ? text.slice(1) : text;
 }
 
+/// The line whose start, of the ascending `starts`, is the last at or
+/// before `offset`.
+function lineAt(starts: readonly number[], offset: number): number {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if ((starts[mid] ?? 0) <= offset) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return lo;
+}
+
 /// A file as answers address it: lines split at "\n", a trailing "\r"
 /// belonging to the line ending.
 export class SourceText {
     readonly path: string;
     readonly text: string;
     readonly lines: readonly string[];
+    private readonly raw: readonly string[];
     private readonly starts: readonly number[];
+    private readonly byteStarts: readonly number[];
 
     constructor(path: string, text: string) {
         this.path = path;
         this.text = text;
         const raw = text.split("\n");
+        this.raw = raw;
         this.lines = raw.map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
         const starts: number[] = [];
+        const byteStarts: number[] = [];
         let offset = 0;
+        let byteOffset = 0;
         for (const line of raw) {
             starts.push(offset);
+            byteStarts.push(byteOffset);
             offset += line.length + 1;
+            byteOffset += Buffer.byteLength(line, "utf8") + 1;
         }
         this.starts = starts;
+        this.byteStarts = byteStarts;
     }
 
     line(index: number): string {
@@ -69,24 +93,18 @@ export class SourceText {
 
     /// The position of a UTF-16 offset into the text.
     positionAt(offset: number): Position {
-        let lo = 0;
-        let hi = this.starts.length - 1;
-        while (lo < hi) {
-            const mid = (lo + hi + 1) >> 1;
-            if ((this.starts[mid] ?? 0) <= offset) {
-                lo = mid;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        return { line: lo, character: offset - (this.starts[lo] ?? 0) };
+        const line = lineAt(this.starts, offset);
+        return { line, character: offset - (this.starts[line] ?? 0) };
     }
 
     /// The position of a UTF-8 byte offset, which is how `clice inspect`
     /// addresses the file.
     positionAtByte(byteOffset: number): Position {
-        const prefix = Buffer.from(this.text, "utf8").subarray(0, byteOffset).toString("utf8");
-        return this.positionAt(prefix.length);
+        const line = lineAt(this.byteStarts, byteOffset);
+        const prefix = Buffer.from(this.raw[line] ?? "", "utf8")
+            .subarray(0, byteOffset - (this.byteStarts[line] ?? 0))
+            .toString("utf8");
+        return { line, character: prefix.length };
     }
 
     offsetAt(position: Position): number {

@@ -109,6 +109,14 @@ describe("positions", () => {
         expect(source.positionAtByte(bytes)).toEqual({ line: 1, character: 19 });
     });
 
+    test("every byte offset reads as the text before it", () => {
+        const encoded = Buffer.from(text, "utf8");
+        for (let byte = 0; byte <= encoded.length + 1; byte += 1) {
+            const before = encoded.subarray(0, byte).toString("utf8");
+            expect(source.positionAtByte(byte)).toEqual(source.positionAt(before.length));
+        }
+    });
+
     test("non-ASCII round trip", () => {
         const scope: RenderScope = { file: () => source, query: { path: "u.cpp", line: 0 } };
         const name = {
