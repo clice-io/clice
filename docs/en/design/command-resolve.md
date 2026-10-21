@@ -135,6 +135,8 @@ CDB loading uses simdjson for streaming JSON parsing, processing entries one by 
 6. Parse and classify each option once into the structured configuration, absolutizing relative include paths against `directory`
 7. Deduplicate identical configurations into shared `ConfigID`s
 
+A database written inside Cygwin or MSYS2, by CMake run from their shell or a tool like it, spells its paths POSIX-style: `/cygdrive/c/proj` or `/c/proj`, and `/usr/bin/c++.exe` for the compiler. On Windows, the mount table of the Cygwin or MSYS2 runtime first on `PATH` maps them to Windows paths: the entry's directory and file, its compiler and the values of its path options. When `PATH` holds no such runtime, or its table maps the entry's directory to one that does not exist (another runtime wrote the database), the entries so spelled are skipped and an error names the database.
+
 The parsing process also recognizes the precompiled headers CMake passes to cc1 directly: a unit's `-Xclang -include-pch -Xclang <pchfile>` and the `-Xclang -emit-pch` of the entry building it become structured options that no compile renders. The PCH on disk may come from another compiler, so clice builds its own from the command of the entry writing it (CMake's `cmake_pch.hxx.cxx`, also found through the `.gch` GCC writes beside a forced header), and every unit reading that PCH loads clice's build instead: the open file's preamble PCH chains onto it, and the background index parses over it. A header the PCH holds, opened on its own, compiles without it: the PCH's guards would skip the header's own text. The forced header the PCH stands for goes from its command too, as any forced include the compile enters a header through does (see [Compilation Context](compilation-context.md#automatic-self-containedness-detection)).
 
 ### Toolchain Probing
@@ -147,6 +149,8 @@ Different compiler families use different probing strategies:
 - The language standard, read from `__cplusplus` or `__STDC_VERSION__`, which fills in `-std` when the command names none: GCC 15 compiles C as C23, Apple clang C++ as C++14.
 
 Asked with the command's own flags, the driver answers for the command, and a GCC answers only when that compile succeeds: a flag that switches one of its defaults off (`-fno-stack-protector`), a `--sysroot` or a `--specs` file shows in its answer. CPU and ABI names clang does not know (GCC's `-mtune=intel`, `-mabi=lp64` on Darwin) are dropped from the cc1 command, and GCC's two-core form `-mcpu=cortex-a72.cortex-a53` keeps its first core. A universal build (`-arch arm64 -arch x86_64`) is read for its first architecture.
+
+**Cygwin and MSYS2 compilers** on Windows (Cygwin's and MSYS2's own GCC, and toolchains built on Cygwin such as Andes' RISC-V GCC) answer as any GCC-style driver does, but in POSIX paths (`/usr/include`, `/cygdrive/c/...`), which clice's clang cannot open. The mount table of the runtime the driver loads, the `cygwin1.dll` or `msys-2.0.dll` beside it or else first on `PATH`, maps them, read from the runtime's own `mount` for each probe: an assumed mapping would get them wrong, since Cygwin mounts `/usr/lib` at `<root>/lib`, MSYS2 its drives at `/c`, and a user's `/etc/fstab` adds mounts of its own. The driver itself is found as Cygwin finds it: by a name without `.exe`, and through a Cygwin symlink (CMake records `/usr/bin/cc`, a link to `gcc.exe`). Such a compiler starts only with its runtime's `bin` directory on `PATH`; without it, the query fails with an error that says so, and [Editor Setup](../guide/editors.md#compiler-environment) sets it per editor.
 
 **MSVC / ClangCL**: cl or clang-cl is asked once to preprocess (`/EP`) a file naming `_MSVC_LANG` and `_MSC_FULL_VER`. They tell the C++ standard it compiles in, since what `/std:c++latest` means moves from one version to the next, and cl's version, where clang's own detection would take the newest toolset installed. Clang's driver in MSVC-compatible mode (`--driver-mode=cl`) then builds the cc1 command in that standard, with cl's version as `-fms-compatibility-version`. clang-cl's version is the one that same detection finds from the toolset its flags select (`/winsysroot`). cl hears only the command's `/std:`: the other flags are spelled for clang's cl mode, which cl rejects, and a standard or version the command sets in clang's spelling (a rule appending `-std=c++23`) stays clang's.
 
@@ -193,6 +197,10 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 - **Why is the driver invoked by the name the command uses rather than its resolved path?**
 
   Compiler driver behavior is affected by the name used to invoke it. For example, `/usr/bin/clang++` is typically a symlink to `/usr/lib/llvm-20/bin/clang`, but invoking it as `clang++` automatically enables C++ mode and links C++ libraries. Using `realpath` to resolve to the actual path before identification would lose the semantic information carried by the invocation name. Similarly, if `arm-none-eabi-g++` were resolved to some generic GCC binary path, the cross-compilation context would be lost.
+
+- **Why are no paths mapped from Windows to POSIX for a Cygwin compiler?**
+
+  The compiler runs only to answer how it compiles, on an empty file of the command's language, and a Cygwin program takes Windows paths as arguments itself. clice compiles with its own clang, which opens the Windows paths the editor names: no path clice hands the compiler, and no diagnostic clice reports, passes through the POSIX side. Only the compiler's answers and a database written inside Cygwin are POSIX, and those are mapped.
 
 - **How are files without a CDB entry handled?**
 
