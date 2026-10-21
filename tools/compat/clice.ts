@@ -3,7 +3,7 @@
 /// for the real compiler) and, per file, `clice command`: the database's
 /// entries as clice reads them and the commands it compiles with.
 
-import { run, systemEnv } from "./scenario.ts";
+import { run } from "./scenario.ts";
 
 export interface LintRun {
     status: number | null;
@@ -29,8 +29,8 @@ export interface EntryCommands {
 }
 
 /// `clice lint`: the parse of every unit.
-export async function lint(clice: string, root: string): Promise<LintRun> {
-    const linted = await run(clice, ["lint", "--workspace", root], { env: systemEnv() });
+export async function lint(clice: string, root: string, env: NodeJS.ProcessEnv): Promise<LintRun> {
+    const linted = await run(clice, ["lint", "--workspace", root], { env });
     return { status: linted.status, report: linted.stdout, log: linted.stderr };
 }
 
@@ -40,10 +40,9 @@ export async function fileCommands(
     clice: string,
     root: string,
     file: string,
+    env: NodeJS.ProcessEnv,
 ): Promise<EntryCommands[]> {
-    const ran = await run(clice, ["command", file, "--workspace", root, "--json"], {
-        env: systemEnv(),
-    });
+    const ran = await run(clice, ["command", file, "--workspace", root, "--json"], { env });
     if (ran.status !== 0) {
         throw new Error(
             `clice command ${file}: ${ran.error ?? `exit ${ran.status}`}\n${ran.stdout}\n${ran.stderr}`,

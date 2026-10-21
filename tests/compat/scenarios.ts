@@ -88,6 +88,11 @@ const NDK = process.env["ANDROID_NDK_LATEST_HOME"] ?? process.env["ANDROID_NDK_H
 const LLVM_WINDOWS = "C:/Program Files/LLVM/bin";
 const MINGW = "C:/mingw64/bin";
 
+/// MSYS2's UCRT GCC and its clang environment, whose clang targets
+/// windows-gnu with its own libc++ and resource tree.
+const MSYS2_UCRT = "C:/msys64/ucrt64/bin";
+const MSYS2_CLANG = "C:/msys64/clang64/bin";
+
 /// The CUDA toolkit of the pixi `cuda` environment, run without its
 /// activation, so nvcc picks the system GCC as its host compiler.
 const NVCC = path.join(REPO_ROOT, ".pixi", "envs", "cuda", "bin", "nvcc");
@@ -194,6 +199,15 @@ export const SCENARIOS: Scenario[] = [
         "/opt/homebrew/opt/llvm@18/bin/clang++",
     ),
     cmakeNinja("cmake ninja msvc", ["win32"], "cl", "cl", { msvc: true }),
+    // The newest standard, cl's conformance switches, and a Debug build's
+    // runtime library.
+    cmakeNinja("cmake ninja msvc conformance", ["win32"], "cl", "cl", {
+        msvc: true,
+        extra: [
+            "-DCMAKE_BUILD_TYPE=Debug",
+            "-DCMAKE_CXX_FLAGS=/EHsc /std:c++latest /Zc:__cplusplus /permissive-",
+        ],
+    }),
     cmakeNinja(
         "cmake ninja clang-cl",
         ["win32"],
@@ -202,12 +216,34 @@ export const SCENARIOS: Scenario[] = [
         { msvc: true },
     ),
     cmakeNinja(
+        "cmake ninja clang-cl conformance",
+        ["win32"],
+        `${LLVM_WINDOWS}/clang-cl.exe`,
+        `${LLVM_WINDOWS}/clang-cl.exe`,
+        { msvc: true, extra: ["-DCMAKE_CXX_FLAGS=/EHsc /std:c++latest /permissive-"] },
+    ),
+    cmakeNinja(
         "cmake ninja llvm clang",
         ["win32"],
         `${LLVM_WINDOWS}/clang.exe`,
         `${LLVM_WINDOWS}/clang++.exe`,
     ),
     cmakeNinja("cmake ninja mingw gcc", ["win32"], `${MINGW}/gcc.exe`, `${MINGW}/g++.exe`),
+    {
+        ...cmakeNinja(
+            "cmake ninja msys2 ucrt gcc",
+            ["win32"],
+            `${MSYS2_UCRT}/gcc.exe`,
+            `${MSYS2_UCRT}/g++.exe`,
+        ),
+        path: [MSYS2_UCRT],
+    },
+    cmakeNinja(
+        "cmake ninja msys2 clang",
+        ["win32"],
+        `${MSYS2_CLANG}/clang.exe`,
+        `${MSYS2_CLANG}/clang++.exe`,
+    ),
     {
         // Every C++ unit loads the target's PCH, which clice builds itself
         // from cmake_pch.hxx.cxx: CMake's own is clang 17's.

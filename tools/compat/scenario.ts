@@ -38,6 +38,10 @@ export interface Scenario {
 
     /// Executables the scenario runs, by name or absolute path.
     requires: string[];
+    /// Directories the toolchain's own programs need on PATH, where its
+    /// users keep them for the build and the editor alike: MSYS2's
+    /// compilers load their DLLs from there.
+    path?: string[];
 
     /// Build steps run in order in the project copy, each an argv.
     build: [string, ...string[]][];
@@ -164,10 +168,25 @@ function developerEnv(): NodeJS.ProcessEnv | null {
     return developer;
 }
 
+function withPath(env: NodeJS.ProcessEnv, dirs: string[] | undefined): NodeJS.ProcessEnv {
+    if (dirs === undefined) {
+        return env;
+    }
+    const key = pathKey(env);
+    return { ...env, [key]: [...dirs, env[key] ?? ""].join(path.delimiter) };
+}
+
 /// The environment the scenario's build and its compiler run in; null
 /// when it needs a Visual Studio the machine does not have.
 export function buildEnv(scenario: Scenario): NodeJS.ProcessEnv | null {
-    return scenario.msvc === true ? developerEnv() : systemEnv();
+    const env = scenario.msvc === true ? developerEnv() : systemEnv();
+    return env === null ? null : withPath(env, scenario.path);
+}
+
+/// The environment clice runs in for the scenario: never the developer
+/// prompt's, as an editor runs it.
+export function cliceEnv(scenario: Scenario): NodeJS.ProcessEnv {
+    return withPath(systemEnv(), scenario.path);
 }
 
 function locate(tool: string, env: NodeJS.ProcessEnv): string | undefined {

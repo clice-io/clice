@@ -62,6 +62,13 @@ jobs:
             gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
             gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf
 
+      # MSYS2 ships on the image without compilers.
+      - name: Install MSYS2's compilers
+        if: runner.os == 'Windows'
+        run: |
+          C:/msys64/usr/bin/pacman.exe -Sy --noconfirm --needed \
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-clang-x86_64-clang
+
       - name: Install zig
         if: runner.os == 'Linux'
         run: |
