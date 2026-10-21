@@ -41,10 +41,24 @@ jobs:
           persist-credentials: false
 
       # The `cuda` and `toolchains` environments hold nvcc and conda's
-      # compilers for the Linux scenarios and have no packages elsewhere.
+      # compilers for the Linux scenarios and have no packages elsewhere; a
+      # release older than one of them neither declares nor uses it.
+      - name: Pick the pixi environments
+        id: environments
+        run: |
+          environments=node
+          if [ "$RUNNER_OS" = Linux ]; then
+            for name in cuda toolchains; do
+              if grep -q "^$name = " pixi.toml; then
+                environments="$environments $name"
+              fi
+            done
+          fi
+          echo "names=$environments" >> "$GITHUB_OUTPUT"
+
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: ${{ runner.os == 'Linux' && 'node cuda toolchains' || 'node' }}
+          environments: ${{ steps.environments.outputs.names }}
           activate-environment: node
 
       # The Windows and macOS scenarios use what the runner images ship
