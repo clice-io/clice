@@ -133,16 +133,33 @@ export class Disk {
     /// reads `DAMAGE`.
     corrupt(file: string, where: "all" | "middle"): void {
         this.steps.note(`disk: corrupt ${where === "all" ? "all of" : "the middle of"} ${file}`);
+        this.damage(file, (bytes) => {
+            if (where === "all") {
+                for (let i = 0; i < bytes.length; i += 1) {
+                    bytes[i] = (bytes[i] ?? 0) ^ 0xff;
+                }
+            } else {
+                bytes.write(DAMAGE, Math.max(0, Math.floor((bytes.length - DAMAGE.length) / 2)));
+            }
+        });
+    }
+
+    /// Zero stretches of a file, each [offset, length], as a bad disk would,
+    /// its size and time kept as corrupt keeps them.
+    zero(file: string, stretches: readonly (readonly [number, number])[]): void {
+        this.steps.note(`disk: zero ${String(stretches.length)} stretches of ${file}`);
+        this.damage(file, (bytes) => {
+            for (const [offset, length] of stretches) {
+                bytes.fill(0, offset, offset + length);
+            }
+        });
+    }
+
+    private damage(file: string, change: (bytes: Buffer) => void): void {
         const target = this.path(file);
         const { atime, mtimeMs } = fs.statSync(target);
         const bytes = fs.readFileSync(target);
-        if (where === "all") {
-            for (let i = 0; i < bytes.length; i += 1) {
-                bytes[i] = (bytes[i] ?? 0) ^ 0xff;
-            }
-        } else {
-            bytes.write(DAMAGE, Math.max(0, Math.floor((bytes.length - DAMAGE.length) / 2)));
-        }
+        change(bytes);
         fs.writeFileSync(target, bytes);
         // stat's Date rounds to the nearest millisecond, which can move the
         // time past a file written just after this one: the cache store then

@@ -287,6 +287,14 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     BatchLifetime lifetime(stack);
     lifetime.aux.spawn(progress_ticker(stack, options));
     co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
+    // The counts read every shard and symbol record: taken before the final
+    // save, damage they meet first is discarded there like any other.
+    if(!lifetime.stop_requested) {
+        result.shard_count = project.index.shard_count();
+        result.shard_bytes = project.index.shard_bytes();
+        result.symbol_count = project.index.symbol_count();
+        result.damaged = project.index.damaged();
+    }
     auto interrupted = co_await lifetime.finish();
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
@@ -304,15 +312,6 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
             result.standalone_headers += 1;
         }
     });
-    result.shard_count = project.index.shard_count();
-    result.shard_bytes = project.index.shard_bytes();
-    result.symbol_count = project.index.symbol_count();
-    // The counts read every shard and symbol record, past the final save
-    // that discards a damaged database: this run discards it here instead.
-    if(project.index.damaged()) {
-        project.database->condemn();
-        result.damaged = true;
-    }
     auto& too_big = stack.sched.pump.too_big();
     for(auto file: stack.sched.pump.failed()) {
         if(auto it = too_big.find(file); it != too_big.end()) {
