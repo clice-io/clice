@@ -80,9 +80,6 @@ std::optional<std::size_t> find_match(llvm::StringRef content,
             }
         }
     }
-    // FIXME: the tree's lines are presumed ones: past a `#line`, a header the
-    // file includes more than once is cut at its first include, whichever the
-    // tree named.
     llvm::SmallVector<std::size_t> candidates;
     for(std::size_t j = 0; j < resolved.size(); j += 1) {
         if(resolved[j] && resolved[j]->path == next_path) {
@@ -301,6 +298,8 @@ void copy_run(std::string& out,
 /// cut from, so its includes, `__has_include` probes and macro-spelled
 /// includes resolve there as they do in that file. Returns whether the
 /// fragment names the snapshot.
+/// FIXME: a macro-spelled include naming the target is kept verbatim too, so
+/// that occurrence enters the open buffer, not the snapshot.
 bool emit_fragment(std::string& out,
                    std::vector<SourceRun>& runs,
                    llvm::StringRef content,
@@ -317,8 +316,6 @@ bool emit_fragment(std::string& out,
         if(include.name_offset < from || include.offset >= to) {
             continue;
         }
-        // FIXME: an include the scan cannot resolve (its name spelled by a macro)
-        // may name the target too; kept as is, it enters the open buffer.
         if(!resolved[j] || resolved[j]->path != target_path) {
             continue;
         }

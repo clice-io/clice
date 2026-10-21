@@ -681,8 +681,7 @@ ZEST_CASE(ConstQualified) {
 }
 
 // TODO: a member template reached through a non-dependent specialization
-// (`typename Outer<int>::template Inner<X>::type`) is not resolved:
-// TransformNestedNameSpecifierLoc runs no lookup for a non-dependent qualifier.
+// (`typename Outer<int>::template Inner<X>::type`) is not resolved.
 
 ZEST_CASE(MultipleInheritance) {
     run(R"code(

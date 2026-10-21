@@ -742,9 +742,6 @@ private:
         clang::SourceRange name_range = named->getLocation();
         bool definition = true;
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(named)) {
-            // FIXME: the out-of-line destructor of a member class template
-            // (`Outer<T>::Inner<U>::~Inner()`) gets the whole qualified name as its range:
-            // it lists qualified here and as `~Inner` in the index's outline.
             name_range = function->getNameInfo().getSourceRange();
             definition = function->isThisDeclarationADefinition();
         } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(named)) {
