@@ -75,15 +75,13 @@ async function checkout(project: Project, target: string): Promise<boolean> {
     return false;
 }
 
-/// The build directory's generated sources and headers built, and only
-/// what they need: the order-only dependencies CMake adds to a custom
-/// command (the whole target its output belongs to, the libraries of its
-/// tools) are dropped from build.ninja first. LLVM's take 11 minutes on 4
-/// cores this way, more than an hour with them.
-async function buildGenerated(build: string): Promise<void> {
-    const ninja = path.join(build, "build.ninja");
-    const lines = fs.readFileSync(ninja, "utf8").split("\n");
+/// build.ninja without the order-only dependencies of its custom commands,
+/// and the TableGen files TableGen itself writes there (MLIR's
+/// AccCommon.td), which other TableGen runs include.
+export function withoutOrderOnly(ninja: string): { ninja: string; tablegenFiles: string[] } {
+    const lines = ninja.split("\n");
     const out: string[] = [];
+    const tablegenFiles: string[] = [];
     for (let i = 0; i < lines.length; i += 1) {
         let line = lines[i] ?? "";
         if (line.startsWith("build ") && line.includes(" CUSTOM_COMMAND")) {
@@ -92,20 +90,40 @@ async function buildGenerated(build: string): Promise<void> {
                 line = line.slice(0, -1) + (lines[i] ?? "").trimStart();
             }
             line = line.split(" || ")[0] ?? line;
+            const [outputs = "", inputs = ""] = line
+                .slice("build ".length)
+                .split(": CUSTOM_COMMAND");
+            if (inputs.includes("tblgen")) {
+                tablegenFiles.push(
+                    ...outputs
+                        .split(" ")
+                        .filter((each) => each.endsWith(".td") && !each.startsWith("$")),
+                );
+            }
         }
         out.push(line);
     }
-    fs.writeFileSync(ninja, out.join("\n"));
+    return { ninja: out.join("\n"), tablegenFiles };
+}
+
+/// The build directory's generated sources and headers built, and only
+/// what they need: the order-only dependencies CMake adds to a custom
+/// command (the whole target its output belongs to, the libraries of its
+/// tools) are dropped from build.ninja first. LLVM's take 11 minutes on 4
+/// cores this way, more than an hour with them.
+async function buildGenerated(build: string): Promise<void> {
+    const file = path.join(build, "build.ninja");
+    const { ninja, tablegenFiles } = withoutOrderOnly(fs.readFileSync(file, "utf8"));
+    fs.writeFileSync(file, ninja);
     const generated = (await output("ninja", ["-t", "targets", "rule", "CUSTOM_COMMAND"], build))
         .split(/\r?\n/)
         .filter((target) => !path.isAbsolute(target));
-    // Generated TableGen files (MLIR's AccCommon.td) are built first: the
-    // TableGen runs that include them came after them only through the
-    // order-only dependencies dropped above.
-    const passes = [
-        generated.filter((target) => target.endsWith(".td")),
-        generated.filter((target) => /\.(cpp|h|inc)$/.test(target)),
-    ];
+    // The TableGen files TableGen writes come first: the runs including them
+    // came after them only through the dropped order-only dependencies. One
+    // a tool of the tree writes (MLIR's yamlgen.td) its readers name as an
+    // input; building that tool first would compile code whose generated
+    // headers race the first pass.
+    const passes = [tablegenFiles, generated.filter((target) => /\.(cpp|h|inc)$/.test(target))];
     for (const targets of passes) {
         // A few hundred targets a command: Windows bounds a command line at
         // 32767 characters, and LLVM has over a thousand.

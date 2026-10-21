@@ -6,6 +6,7 @@ import { missingInputs } from "./confirm.ts";
 import { includedHeaders, jobDatabase, syntaxOnly } from "./database.ts";
 import { unitsInFlight } from "./index.ts";
 import type { Results } from "./nightly.ts";
+import { withoutOrderOnly } from "./prepare.ts";
 import { jobs, loadProjects, type Project } from "./projects.ts";
 import { residentNow } from "./memory.ts";
 import { report } from "./report.ts";
@@ -25,6 +26,27 @@ describe("projects", () => {
             "abseil",
             "abseil-gcc",
             "mp-units",
+        ]);
+    });
+});
+
+describe("prepare", () => {
+    test("custom commands lose their order-only inputs, TableGen's .td outputs listed", () => {
+        const { ninja, tablegenFiles } = withoutOrderOnly(
+            [
+                "build mlir/AccCommon.td | ${cmake_ninja_workdir}mlir/AccCommon.td: CUSTOM_COMMAND $",
+                "    bin/mlir-tblgen /src/ACC.td || acc_common_td_deps",
+                "build mlir/Linalg.yamlgen.td mlir/Linalg.yamlgen.cpp.inc: CUSTOM_COMMAND bin/mlir-linalg-ods-yaml-gen /src/Linalg.yaml || yaml_deps",
+                "build mlir/AccOps.h.inc: CUSTOM_COMMAND bin/mlir-tblgen /src/AccOps.td || acc_common_td",
+                "build lib/a.o: CXX_COMPILER a.cpp || generated_headers",
+            ].join("\n"),
+        );
+        expect(tablegenFiles).toEqual(["mlir/AccCommon.td"]);
+        expect(ninja.split("\n")).toEqual([
+            "build mlir/AccCommon.td | ${cmake_ninja_workdir}mlir/AccCommon.td: CUSTOM_COMMAND bin/mlir-tblgen /src/ACC.td",
+            "build mlir/Linalg.yamlgen.td mlir/Linalg.yamlgen.cpp.inc: CUSTOM_COMMAND bin/mlir-linalg-ods-yaml-gen /src/Linalg.yaml",
+            "build mlir/AccOps.h.inc: CUSTOM_COMMAND bin/mlir-tblgen /src/AccOps.td",
+            "build lib/a.o: CXX_COMPILER a.cpp || generated_headers",
         ]);
     });
 });
