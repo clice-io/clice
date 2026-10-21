@@ -50,6 +50,13 @@ bool is_other_language_path(llvm::StringRef path) {
     return type != clang::driver::types::TY_INVALID && !is_c_family_type(type);
 }
 
+std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
+    if(llvm::json::isUTF8(bytes)) {
+        return std::nullopt;
+    }
+    return llvm::json::fixUTF8(bytes);
+}
+
 bool is_context_header_path(llvm::StringRef path) {
     return path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
            path.ends_with(".tpp") || path.ends_with(".ipp") || path.ends_with(".tcc") ||
@@ -895,20 +902,13 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     source.inputs = {
         {.file = database, .hash = observed->obs.hash}
     };
-    // simdjson refuses a whole document over one byte that is not UTF-8 (a
-    // path or a define in a legacy code page, which CMake writes as it
-    // finds them): such bytes become U+FFFD, and an entry holding one is
-    // skipped.
-    llvm::StringRef text = observed->content->getBuffer();
-    std::string repaired;
-    if(!llvm::json::isUTF8(text)) {
-        repaired = llvm::json::fixUTF8(text);
-        text = repaired;
-    }
+    // An entry holding a byte the repair replaced is skipped.
+    auto repaired = repaired_database_text(observed->content->getBuffer());
     auto damaged = [&](llvm::StringRef value) {
-        return !repaired.empty() && value.contains("\xEF\xBF\xBD");
+        return repaired && value.contains("\xEF\xBF\xBD");
     };
-    simdjson::padded_string json_buf(text);
+    simdjson::padded_string json_buf(repaired ? llvm::StringRef(*repaired)
+                                              : observed->content->getBuffer());
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(json_buf).get(doc)) {

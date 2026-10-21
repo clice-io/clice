@@ -17,7 +17,9 @@ function wipe(target: string): void {
         if (directory) {
             fs.rmdirSync(target);
         } else {
-            fs.rmSync(target);
+            // Not fs.rmSync: on Windows, Node 26's ends the process when it
+            // fails on a path the ANSI code page cannot represent.
+            fs.unlinkSync(target);
         }
     } catch (error) {
         const code = (error as NodeJS.ErrnoException).code ?? "";

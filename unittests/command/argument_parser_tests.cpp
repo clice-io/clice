@@ -141,6 +141,9 @@ ZEST_CASE(PrintArgv) {
     std::vector<const char*> escaped = {"clang++", "-DPATH=C:\\foo"};
     auto result2 = print_argv(escaped);
     ZEXPECT(llvm::StringRef(result2).contains("\""));
+
+    std::vector<const char*> unicode = {"clang++", "-I/home/张三/头文件", "-DNAME=a b\tç"};
+    ZEXPECT(print_argv(unicode) == R"(clang++ -I/home/张三/头文件 "-DNAME=a b\x09ç")");
 };
 
 };  // ZEST_SUITE(ArgumentParser)

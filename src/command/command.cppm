@@ -149,6 +149,12 @@ bool is_other_language_path(llvm::StringRef path);
 /// context.
 bool is_context_header_path(llvm::StringRef path);
 
+/// A compile_commands.json's bytes as a JSON reader takes them: it refuses
+/// a whole document over one byte that is not UTF-8 (a path or a define in
+/// a legacy code page, which CMake writes as it finds them), so each such
+/// byte becomes U+FFFD. Nullopt when the bytes are UTF-8.
+std::optional<std::string> repaired_database_text(llvm::StringRef bytes);
+
 /// The language dimension of a command for one input file: the clang
 /// language name ("c++", "cuda", ...) selected by the governing selector or
 /// derived from the file extension; the raw extension itself when no table
