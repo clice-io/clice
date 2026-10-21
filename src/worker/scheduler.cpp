@@ -2,8 +2,11 @@ module;
 
 #include "modules/prelude.h"
 
+#include "support/logging.macros.h"
+
 module clice;
 
+import :support.logging;
 import :worker.scheduler;
 
 namespace clice {
@@ -227,7 +230,8 @@ std::uint64_t WorkerScheduler::unknown_peak() const {
     if(peaks.empty()) {
         return default_peak;
     }
-    return std::max(default_peak, peaks[peaks.size() * 3 / 4]);
+    auto p75 = peaks[peaks.size() * 3 / 4];
+    return peaks.size() >= trusted_peaks ? p75 : std::max(default_peak, p75);
 }
 
 bool WorkerScheduler::user_active(SchedulerTime now) const {
@@ -249,10 +253,29 @@ std::size_t WorkerScheduler::running(Priority priority) const {
 }
 
 std::uint64_t WorkerScheduler::estimate(const Request& request) const {
-    auto peak = std::max(request.peak != 0 ? request.peak : unknown_peak(), request.floor);
+    auto peak = request.peak;
+    if(peak == 0) {
+        peak = unknown_peak();
+        if(peak < default_peak && unknown_ahead(request) >= learned_runs) {
+            peak = default_peak;
+        }
+    }
+    peak = std::max(peak, request.floor);
     // One that outgrew its estimate has more to come: a quarter more is
     // assumed, as nothing tells how much.
     return request.memory < peak ? peak : request.memory + request.memory / 4;
+}
+
+std::size_t WorkerScheduler::unknown_ahead(const Request& request) const {
+    return std::ranges::count_if(slots, [&](const auto& entry) {
+        auto& slot = entry.second;
+        if(!slot.request || *slot.request == request.id) {
+            return false;
+        }
+        auto& other = requests.at(*slot.request);
+        return other.priority == Priority::Low && other.peak == 0 &&
+               (!request.slot || other.order < request.order);
+    });
 }
 
 std::uint64_t WorkerScheduler::growth_due() const {
@@ -403,6 +426,18 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
         }
         if(!held || held->first != head.id) {
             held = {head.id, now};
+        }
+        if(!memory_logged || now - *memory_logged >= memory_log_interval) {
+            memory_logged = now;
+            LOG_INFO(
+                "Background work waits for memory: {} MiB headroom, {} MiB of the idle "
+                "worker, {} MiB reserve, {} MiB growth due, {} MiB expected, {} running",
+                last_sample.headroom >> 20,
+                slot->memory >> 20,
+                last_sample.reserve >> 20,
+                growth_due() >> 20,
+                estimate(head) >> 20,
+                running(Priority::Low));
         }
         // While the head waits for memory, a later request that fits takes
         // the room; past long_wait the queue drains for the head instead,

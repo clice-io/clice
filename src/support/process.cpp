@@ -64,8 +64,9 @@ kota::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::s
 
 extern "C" {
 
-    // Set by the Windows executable's allocator (src/mimalloc.cc), which no
-    // other program links: its own collect, and the switch to purging.
+    // Set by the allocator of the Windows and macOS executables
+    // (src/mimalloc.cc), which no other program links: its own collect, and
+    // on Windows the switch to purging.
     void (*clice_allocator_collect)() = nullptr;
     void (*clice_allocator_purge)() = nullptr;
 }
