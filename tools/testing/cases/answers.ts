@@ -166,6 +166,9 @@ async function onInspect(
     const shows: Shows = { output: new Output(), compared: new Output() };
     const run = async (): Promise<void> => {
         await fn(contextOf(c, client, root, shows));
+        // FIXME: importers are left out of inspect's errors: a case whose only
+        // errors sit in importers fails here under compiles: false as compiling
+        // cleanly.
         gateCompile(c, "clice inspect", await client.compileErrors());
     };
     try {
