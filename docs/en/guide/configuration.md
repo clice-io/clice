@@ -772,6 +772,16 @@ Compilation flags removed for matching files, e.g. `["-Wall"]`.
 
 <div class="config-option">
 
+| Option            | Type   | Default |
+| ----------------- | ------ | ------- |
+| `query_toolchain` | `bool` | `true`  |
+
+Whether clice runs the compiler of matching files' commands to ask how it compiles them: its target, standard library and system headers, predefined macros and default language standard. `false` runs no compiler: clice's own clang reads the command as written, with clang's defaults for the compiler's name. Any matching rule saying `false` wins.
+
+</div>
+
+<div class="config-option">
+
 | Option  | Type   | Default |
 | ------- | ------ | ------- |
 | `index` | `bool` | `true`  |
