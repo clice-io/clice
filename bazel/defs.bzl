@@ -33,9 +33,9 @@ LINKOPTS = select({
     ],
     "//conditions:default": [],
 }) + select({
-    # The main thread's stack, which `clice inspect` and the other commands
-    # compile on, as LLVM sizes its own tools' on Windows: clang's stack
-    # guard assumes 8 MB, the linker's default is 2.
+    # `clice inspect` compiles on the main thread, whose stack lld sizes at
+    # 1 MB on Windows while clang's stack guard assumes 8 MB; LLVM sizes its
+    # own tools' the same way.
     "@platforms//os:windows": ["-Wl,--stack,16777216"],
     "//conditions:default": [],
 })
