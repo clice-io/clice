@@ -699,6 +699,15 @@ ZEST_CASE(UnqueriedTargetFromName) {
     ZEXPECT(adjacent(argv, "-triple", "riscv64-unknown-linux-gnu"));
 }
 
+ZEST_CASE(UnqueriedNVCC) {
+    // clang's own CUDA support reads an nvcc that is not here on the device
+    // side, as for an nvcc clice runs; the tokens only nvcc's dryrun reads
+    // are unknown to clang and leave its first job, the device one, alone.
+    auto nvcc = tmp.path("nvcc");
+    auto argv = f.resolve(unqueried(add("a.cu", {nvcc.c_str(), "-ccbin", "g++", "-c"})));
+    ZEXPECT(contains(argv, "-fcuda-is-device"));
+}
+
 ZEST_CASE(UnqueriedRelativeConfig) {
     // Relative paths clang's driver reads, here from a configuration file,
     // are the entry directory's, as they are for a driver clice runs.
