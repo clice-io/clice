@@ -41,6 +41,7 @@ export interface Failure {
         | "hang"
         | "unfinished"
         | "index"
+        | "memory"
         | "compile"
         | "disagree"
         | "inspect"
@@ -80,10 +81,6 @@ export interface Results {
     > & { files: number };
     /// Units clice reported errors on that the compiler rejects too.
     compilerRejects: { unit: string; output: string }[];
-    /// Units whose compile alone outgrew the runner's memory: whether one
-    /// fits is the machine's as much as clice's, and the peaks show the
-    /// trend.
-    tooLarge?: { unit: string; megabytes: number }[];
     /// Error-level lines of clice's logs: what went wrong without failing.
     logErrors: string[];
     failures: Failure[];
@@ -262,10 +259,14 @@ async function indexStep(
         compiledWithErrors: report.compiledWithErrors.length,
         failed: report.failed.length,
     };
-    results.tooLarge = (report.tooBig ?? []).map(({ unit, memory }) => ({
-        unit: inside(checkout, unit) ?? unit,
-        megabytes: Math.round(memory / 1024 ** 2),
-    }));
+    for (const { unit, memory } of report.tooBig ?? []) {
+        results.failures.push({
+            kind: "memory",
+            file: inside(checkout, unit) ?? unit,
+            detail: `clice index gave it up: its worker reached ${String(Math.round(memory / 1024 ** 2))} MB alone`,
+            repro: again,
+        });
+    }
     await judgeUnits(
         [
             ...report.failed.map((unit) => ({ unit, repro: again })),

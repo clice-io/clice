@@ -462,11 +462,12 @@ an exemption naming nothing uncovered fails too.
   one inside a unit including it.
   The job fails on a preparation that fails, a crash, a hang, an index run
   that does not finish, an anomaly in clice's logs, a request either answers
-  with an error, a unit clice fails or reports errors on that the compiler
-  compiles (or that the compiler cannot check), and a place where inspect and
+  with an error, a unit clice gives up as too large for the machine, a unit
+  clice fails or reports errors on that the compiler compiles (or that the
+  compiler cannot check), and a place where inspect and
   the server answer differently, and on an error of the runner itself; a unit
-  the compiler rejects too is listed, and so are a difference a case pins as
-  accepted and a unit whose compile alone outgrew the runner's memory.
+  the compiler rejects too is listed, and so is a difference a case pins as
+  accepted.
   Counts, sizes, memory and time are recorded beside the previous round's,
   never gated. Every failure names the command that reproduces it:
   `node tools/nightly/run.ts <job> --dir <dir>` prepares the project in
