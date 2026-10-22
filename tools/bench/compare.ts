@@ -85,7 +85,11 @@ for (const { result, runs } of groups.values()) {
     console.log(`|---|---|${servers.map(() => "---:|---:").join("|")}|---:|`);
     for (const scenario of SCENARIOS) {
         const table = new Map<string, Samples>();
-        for (const run of runs.filter((each) => each.scenario === scenario)) {
+        // A failed run counts below, not in the medians: a crashed server
+        // reads as holding no memory.
+        for (const run of runs.filter(
+            (each) => each.scenario === scenario && each.error === undefined,
+        )) {
             for (const [measure, values] of Object.entries(run.series)) {
                 for (const value of values) {
                     add(table, measure, run.server, value);
@@ -108,12 +112,23 @@ for (const { result, runs } of groups.values()) {
                 add(table, "index MB on disk", run.server, run.index.indexMB);
                 add(table, "cache MB on disk", run.server, run.index.diskMB);
             }
-            if (run.error !== undefined) {
-                add(table, "failed runs", run.server, 1);
-            }
             if (run.dropped !== undefined) {
                 add(table, "file cache dropped", run.server, run.dropped ? 1 : 0);
             }
+        }
+        const failed = servers.map(
+            (server) =>
+                runs.filter(
+                    (run) =>
+                        run.scenario === scenario &&
+                        run.server === server &&
+                        run.error !== undefined,
+                ).length,
+        );
+        if (failed.some((count) => count > 0)) {
+            console.log(
+                `| ${scenario} | failed runs | ${failed.map((count) => `${count} | – | `).join("")}– |`,
+            );
         }
         for (const [measure, samples] of table) {
             const cells = servers.map(

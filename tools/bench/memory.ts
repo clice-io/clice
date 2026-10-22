@@ -146,7 +146,29 @@ function tree(usages: readonly Usage[], root: number): Usage[] {
     return out;
 }
 
-export function watchMemory(root: number): { stop: () => PeakMemory } {
+/// The most a process tree held at once, and what it held at the end.
+export interface WatchedMemory {
+    peak: PeakMemory;
+    end: Resident;
+}
+
+/// What a process tree holds in one sample, each process's own.
+function resident(usages: readonly Usage[], root: number): Resident {
+    const now: Resident = { root: 0, children: 0 };
+    for (const usage of tree(usages, root)) {
+        if (usage.pid === root) {
+            now.root = usage.own;
+        } else {
+            now.children += usage.own;
+        }
+    }
+    return now;
+}
+
+/// Samples the tree under `root` every second; `stop` takes one last
+/// sample, so a tree watched for less than a second still has its peak,
+/// and returns the peak with what the tree holds at that last sample.
+export function watchMemory(root: number): { stop: () => WatchedMemory } {
     const peak: PeakMemory = { root: 0, child: 0, total: 0 };
     const look = (usages: readonly Usage[]) => {
         let total = 0;
@@ -161,6 +183,11 @@ export function watchMemory(root: number): { stop: () => PeakMemory } {
         }
         peak.total = Math.max(peak.total, total);
     };
+    const last = (): WatchedMemory => {
+        const usages = usageNow();
+        look(usages);
+        return { peak, end: resident(usages, root) };
+    };
     if (process.platform === "linux") {
         // Time is the feature: memory announces nothing, a sample a second is
         // the measurement.
@@ -170,14 +197,14 @@ export function watchMemory(root: number): { stop: () => PeakMemory } {
         return {
             stop: () => {
                 clearInterval(timer);
-                return peak;
+                return last();
             },
         };
     }
     const { shell, once, loop } = listing();
     const [command = "", ...args] = shell;
     const sampler = spawn(command, [...args, loop(once)], { stdio: ["ignore", "pipe", "ignore"] });
-    // The job goes on without its memory numbers.
+    // The last sample stop() takes is then the only one.
     sampler.on("error", (error) => {
         console.warn(`cannot sample memory: ${error.message}`);
     });
@@ -198,19 +225,7 @@ export function watchMemory(root: number): { stop: () => PeakMemory } {
     return {
         stop: () => {
             sampler.kill();
-            return peak;
+            return last();
         },
     };
-}
-
-export function residentNow(root: number): Resident {
-    const now: Resident = { root: 0, children: 0 };
-    for (const usage of tree(usageNow(), root)) {
-        if (usage.pid === root) {
-            now.root = usage.own;
-        } else {
-            now.children += usage.own;
-        }
-    }
-    return now;
 }

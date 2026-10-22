@@ -1,6 +1,7 @@
 /// The results bench.ts writes and compare.ts reads.
 
-import type { PeakMemory, Resident } from "./memory.ts";
+import type { Position } from "vscode-languageserver-protocol";
+import type { WatchedMemory } from "./memory.ts";
 import type { Stats } from "./perf.ts";
 
 export const SCENARIOS = [
@@ -16,11 +17,6 @@ export type ServerName = (typeof SERVERS)[number];
 export const PROBES = ["symbol", "member", "unqualified", "template", "call"] as const;
 export type ProbeKind = (typeof PROBES)[number];
 
-export interface Position {
-    line: number;
-    character: number;
-}
-
 /// One run of one scenario by one server.
 export interface RunResult {
     server: ServerName;
@@ -33,7 +29,7 @@ export interface RunResult {
     sizes: Record<string, number>;
     /// Megabytes the server's processes held: the most at once over the
     /// run, and at its end.
-    memory?: { peak: PeakMemory; end: Resident };
+    memory?: WatchedMemory;
     /// The index scenario: the most files a round counted, and the
     /// megabytes on disk of the server's index and of its whole cache.
     index?: { files: number; indexMB: number; diskMB: number };

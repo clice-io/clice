@@ -87,8 +87,8 @@ E2E scenarios, clice vs clangd:
 ```bash
 node tools/bench/bench.ts --workspace benchmarks/workloads/llvm \
     --file clang/lib/Sema/SemaExpr.cpp --server clice --server clangd \
-    --scenario cold_start --runs 5 --json temp/semaexpr.json
-node tools/bench/compare.ts temp/semaexpr.json
+    --scenario cold_start --runs 5 --json /tmp/semaexpr.json
+node tools/bench/compare.ts /tmp/semaexpr.json
 ```
 
 Breakdown of a real (non-benchmark) session from its logs:

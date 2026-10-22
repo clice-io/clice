@@ -54,14 +54,13 @@ import { Workspace } from "../client/workspace.ts";
 import { logFiles } from "../process_gate.ts";
 import { withTimeout } from "../promise.ts";
 import { REPO_ROOT } from "../repo.ts";
-import { residentNow, watchMemory, type PeakMemory } from "./memory.ts";
+import { watchMemory, type WatchedMemory } from "./memory.ts";
 import { computeStats, parsePerfLines, summarize } from "./perf.ts";
 import {
     PROBES,
     SCENARIOS,
     SERVERS,
     type BenchResult,
-    type Position,
     type ProbeKind,
     type RunResult,
     type ScenarioName,
@@ -85,7 +84,7 @@ interface Options {
     /// Directory holding compile_commands.json; resolved in main().
     cdbDir: string;
     file: string;
-    probes: Partial<Record<ProbeKind, Position>>;
+    probes: Partial<Record<ProbeKind, proto.Position>>;
     query: string;
     scenarios: ScenarioName[];
     runs: number;
@@ -100,7 +99,7 @@ function fail(message: string): never {
     process.exit(1);
 }
 
-function parsePosition(text: string, what: string): Position {
+function parsePosition(text: string, what: string): proto.Position {
     const parts = text.split(":");
     const line = Number(parts[0]);
     const character = Number(parts[1]);
@@ -170,7 +169,7 @@ function parseOptions(): Options {
         return name as ScenarioName;
     });
 
-    const probes: Partial<Record<ProbeKind, Position>> = {};
+    const probes: Partial<Record<ProbeKind, proto.Position>> = {};
     for (const probe of values.probe ?? []) {
         const [kind = "", at = ""] = probe.split("=");
         if (!(PROBES as readonly string[]).includes(kind)) {
@@ -257,7 +256,7 @@ function blankNonCode(text: string): string {
 /// do not count. The old 0:0 default usually landed on a license comment,
 /// so the positional features took their empty-result fast paths and
 /// measured nothing.
-function derivePosition(file: string): Position {
+function derivePosition(file: string): proto.Position {
     const keywords = new Set([
         "if",
         "for",
@@ -287,7 +286,7 @@ function derivePosition(file: string): Position {
     fail(`cannot derive a symbol-bearing position in ${file}; pass --probe symbol=<l>:<c>`);
 }
 
-function identifierAt(file: string, at: Position): string {
+function identifierAt(file: string, at: proto.Position): string {
     const line = fs.readFileSync(file, "utf8").split("\n")[at.line] ?? "";
     const name = /^[A-Za-z_]\w*/.exec(line.slice(at.character))?.[0];
     if (name === undefined) {
@@ -333,6 +332,12 @@ function nowMs(): number {
     return Number(process.hrtime.bigint()) / 1e6;
 }
 
+/// A request bounded like a compile: the client never settles the requests
+/// of a server that died under them.
+function bounded<T>(request: Promise<T>, what: string): Promise<T> {
+    return withTimeout(request, COMPILE_BOUND, what);
+}
+
 function pause(ms: number): Promise<void> {
     // No event: an empty answer or a quiet index announces nothing; the
     // caller looks again after this pause.
@@ -357,6 +362,26 @@ function wipeCache(opts: Options, server: ServerName): void {
     }
 }
 
+/// The bytes `file` occupies on disk. Windows extends clice's LMDB file to
+/// its whole reserved map, sparse: only the ranges fsutil lists as
+/// allocated count there. A file the server moves meanwhile counts none.
+function diskBytes(file: string): number {
+    const size = fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0;
+    if (process.platform !== "win32" || size < 64 * 1024 * 1024) {
+        return size;
+    }
+    try {
+        const ranges = execFileSync("fsutil", ["sparse", "queryrange", file], { encoding: "utf8" });
+        return [...ranges.matchAll(/Length: 0x([0-9a-f]+)/gi)].reduce(
+            (sum, match) => sum + Number.parseInt(match[1] ?? "0", 16),
+            0,
+        );
+    } catch {
+        // Not a sparse file: all of it is on disk.
+        return size;
+    }
+}
+
 /// Megabytes the server's cache holds on disk, clice's logs aside: all of
 /// it, and its index alone. clangd keeps nothing but the index there (its
 /// preambles live in memory or in temporary files); clice keeps its index
@@ -374,8 +399,7 @@ function cacheMB(opts: Options, server: ServerName): { diskMB: number; indexMB: 
             if (!entry.isFile() || file.startsWith(logs + path.sep)) {
                 continue;
             }
-            // The server may still move a file it is writing.
-            const bytes = fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0;
+            const bytes = diskBytes(file);
             disk += bytes;
             const parts = path.relative(dir, file).split(path.sep);
             if (server === "clangd" || (parts[0] === "cache" && parts[2] === "index")) {
@@ -496,7 +520,7 @@ class Run {
     readonly result: RunResult;
     readonly opts: Options;
     client: CliceClient | null = null;
-    private memory: { stop: () => PeakMemory } | null = null;
+    private memory: { stop: () => WatchedMemory } | null = null;
     /// Log files that existed before this run's server started; the files
     /// beyond them are exactly this run's session logs.
     private priorLogs = new Set<string>();
@@ -522,7 +546,7 @@ class Run {
 
     async measure(name: string, fn: () => Promise<unknown>): Promise<unknown> {
         const start = nowMs();
-        const answer = await fn();
+        const answer = await bounded(fn(), name);
         this.record(name, nowMs() - start);
         return answer;
     }
@@ -584,7 +608,7 @@ class Run {
     ): Promise<void> {
         for (;;) {
             const final = settled();
-            const held = size(await ask());
+            const held = size(await bounded(ask(), name));
             if (held > 0) {
                 this.record(name, nowMs() - from);
                 this.result.sizes[name] = held;
@@ -615,6 +639,9 @@ class Run {
         let ended: number | null = null;
         let files = 0;
         while (nowMs() - this.started < INDEX_BOUND) {
+            if (client.child.exitCode !== null || client.child.signalCode !== null) {
+                throw new Error(`${this.server} exited while its background index was awaited`);
+            }
             const events = client.progressEvents;
             for (; seen < events.length; seen += 1) {
                 const event = events[seen];
@@ -645,16 +672,17 @@ class Run {
         if (client === null) {
             return this.result;
         }
-        const pid = client.child.pid;
-        const end = pid === undefined ? undefined : residentNow(pid);
-        const peak = this.memory?.stop();
-        if (end !== undefined && peak !== undefined) {
-            this.result.memory = { peak, end };
+        try {
+            const memory = this.memory?.stop();
+            if (memory !== undefined) {
+                this.result.memory = memory;
+            }
+            if (this.server === "clice") {
+                this.collectPerf(client);
+            }
+        } finally {
+            await shutdownServer(client, this.server);
         }
-        if (this.server === "clice") {
-            this.collectPerf(client);
-        }
-        await shutdownServer(client, this.server);
         return this.result;
     }
 
@@ -701,7 +729,7 @@ async function shutdownServer(client: CliceClient, server: ServerName): Promise<
     }
 }
 
-function symbolProbe(opts: Options): Position {
+function symbolProbe(opts: Options): proto.Position {
     const symbol = opts.probes.symbol;
     if (symbol === undefined) {
         throw new Error("main() derives the symbol probe");
@@ -712,9 +740,9 @@ function symbolProbe(opts: Options): Position {
 /// Server start → the opened file's first diagnostics, and the first
 /// non-empty semantic tokens, hover and definition at the symbol probe,
 /// asked right at the open as an editor does; a warm start also times the
-/// first workspace symbol answer and the first references reaching a
-/// second file — the index loaded. The open's samples count from the
-/// didOpen.
+/// first references reaching a second file — the saved index loaded, as
+/// clangd's index of the open file holds no other file's references. The
+/// open's samples count from the didOpen.
 async function runStart(run: Run, warm: boolean): Promise<void> {
     const opts = run.opts;
     const client = await run.start();
@@ -725,7 +753,7 @@ async function runStart(run: Run, warm: boolean): Promise<void> {
     let indexed = false;
     const afterBuild = (): boolean => built;
     const waits = [
-        withTimeout(client.armDiagnostics(uri), COMPILE_BOUND, `diagnostics ${uri}`).then(() => {
+        bounded(client.armDiagnostics(uri), `diagnostics ${uri}`).then(() => {
             run.record("open_to_diagnostics", nowMs() - opened);
             built = true;
         }),
@@ -755,12 +783,6 @@ async function runStart(run: Run, warm: boolean): Promise<void> {
                 indexed = true;
             }),
             run.untilAnswered(
-                "open_to_workspace_symbol",
-                opened,
-                () => client.workspaceSymbols(opts.query),
-                afterLoad,
-            ),
-            run.untilAnswered(
                 "open_to_cross_file_references",
                 opened,
                 () => client.referencesAt(uri, line, character),
@@ -779,19 +801,29 @@ async function runIndex(run: Run): Promise<void> {
     const opts = run.opts;
     const client = await run.start();
     const [uri] = client.open(opts.file);
-    await client.semanticTokensFull(uri);
+    await bounded(client.semanticTokensFull(uri), `semantic tokens ${uri}`);
     const { ended, files } = await run.indexIdle(true);
     run.record("index", ended - run.started);
-    run.result.index = { files, ...cacheMB(opts, run.server) };
+    // Sized once the server is down: clice saves its index after the round
+    // ends, and again at exit.
+    run.result.index = { files, indexMB: 0, diskMB: 0 };
+}
+
+/// Opens `file` and waits for its first diagnostics, the build pulled by
+/// the semantic tokens an editor asks at once.
+async function openBuilt(client: CliceClient, file: string): Promise<[string, string]> {
+    const opened = client.open(file);
+    const [uri] = opened;
+    const built = client.armDiagnostics(uri);
+    await bounded(client.semanticTokensFull(uri), `semantic tokens ${uri}`);
+    await bounded(built, `diagnostics ${uri}`);
+    return opened;
 }
 
 async function runEditLoop(run: Run): Promise<void> {
     const opts = run.opts;
     const client = await run.start();
-    const [uri, content] = client.open(opts.file);
-    const opened = client.armDiagnostics(uri);
-    await client.semanticTokensFull(uri);
-    await withTimeout(opened, COMPILE_BOUND, `diagnostics ${uri}`);
+    const [uri, content] = await openBuilt(client, opts.file);
 
     // Append at the end of the TU: every edit invalidates the opened file
     // but not the preamble — the interactive path the server optimizes.
@@ -808,10 +840,10 @@ async function runEditLoop(run: Run): Promise<void> {
         // The semantic tokens an editor asks after every change; they also
         // pull clice's rebuild.
         await Promise.all([
-            withTimeout(arrived, COMPILE_BOUND, `diagnostics ${uri}`).then(() => {
+            bounded(arrived, `diagnostics ${uri}`).then(() => {
                 run.record("edit_to_diagnostics", nowMs() - edited);
             }),
-            client.semanticTokensFull(uri).then(() => {
+            bounded(client.semanticTokensFull(uri), `semantic tokens ${uri}`).then(() => {
                 run.record("edit_to_semantic_tokens", nowMs() - edited);
             }),
         ]);
@@ -822,10 +854,7 @@ async function runEditLoop(run: Run): Promise<void> {
 async function runWarmRequests(run: Run): Promise<void> {
     const opts = run.opts;
     const client = await run.start();
-    const [uri] = client.open(opts.file);
-    const opened = client.armDiagnostics(uri);
-    await client.semanticTokensFull(uri);
-    await withTimeout(opened, COMPILE_BOUND, `diagnostics ${uri}`);
+    const [uri] = await openBuilt(client, opts.file);
     // References and the call hierarchy read the whole index: it must be
     // loaded first, as it is in a session that has run a while.
     await run.indexIdle(false);
@@ -896,9 +925,9 @@ async function runScenario(
     opts: Options,
     server: ServerName,
     scenario: ScenarioName,
-    index: number,
+    number: number,
 ): Promise<RunResult> {
-    const run = new Run(opts, server, scenario, index);
+    const run = new Run(opts, server, scenario, number);
     if (scenario === "cold_start" || scenario === "index") {
         wipeCache(opts, server);
         if (opts.dropCaches) {
@@ -931,6 +960,9 @@ async function runScenario(
         await run.finish();
     } catch (error) {
         run.result.error ??= String(error);
+    }
+    if (run.result.index !== undefined) {
+        Object.assign(run.result.index, cacheMB(opts, server));
     }
     return run.result;
 }
@@ -1001,9 +1033,9 @@ async function main(): Promise<void> {
     // The servers alternate run by run: a drift of the machine over the
     // session reaches both alike.
     for (const scenario of opts.scenarios) {
-        for (let index = 1; index <= opts.runs; index += 1) {
+        for (let number = 1; number <= opts.runs; number += 1) {
             for (const server of opts.servers) {
-                const run = await runScenario(opts, server, scenario, index);
+                const run = await runScenario(opts, server, scenario, number);
                 result.runs.push(run);
                 printRun(run);
                 write();
