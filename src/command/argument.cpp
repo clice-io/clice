@@ -466,7 +466,6 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
     option::table().render(parsed, forward);
 }
 
-/// Render `arg` through the alias the command wrote.
 static void render_alias(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
     auto alias = option::table().option(arg.alias);
     std::string name(alias->prefixed_name());
@@ -499,17 +498,21 @@ static void render_alias(const Arg& arg, llvm::function_ref<void(std::string_vie
     }
 }
 
+bool keeps_alias(CompilerFamily family) {
+    // nvcc's arguments are clice's translation of its command, which its
+    // query reads by clang's names.
+    return !cl_mode(family) && family != CompilerFamily::NVCC;
+}
+
 void render_driver_arg(const Arg& arg,
                        CompilerFamily family,
                        llvm::function_ref<void(std::string_view)> cb) {
+    if(arg.alias && keeps_alias(family)) {
+        render_alias(arg, cb);
+        return;
+    }
     if(!cl_mode(family)) {
-        // nvcc's arguments are clice's translation of its command, which
-        // its query reads by clang's names.
-        if(arg.alias && family != CompilerFamily::NVCC) {
-            render_alias(arg, cb);
-        } else {
-            render_arg(arg, cb);
-        }
+        render_arg(arg, cb);
         return;
     }
 

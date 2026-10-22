@@ -290,7 +290,7 @@ ZEST_CASE(GCCTargetNames, skip = Windows) {
     ZEXPECT(!contains(x86, "clice-future-cpu"));
 }
 
-ZEST_CASE(GCCSeesItsOwnSpellings, skip = Windows) {
+ZEST_CASE(GCCSeesWrittenAliases, skip = Windows) {
     /// clang reads these as aliases of options GCC spells otherwise or not
     /// at all (`-G 8`, `-flto=full`, `-ftrigraphs`), which GCC rejects.
     auto args = tmp.path("args");
@@ -316,10 +316,10 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     }
     ZEXPECT(!contains(lines, "-G"));
 
-    /// Two spellings of one option are two queries: GCC may take one alone.
-    auto clang_spelling = add("b.c", {driver.c_str(), "-G", "8", "-c"});
-    auto gcc_spelling = add("c.c", {driver.c_str(), "-msmall-data-limit=8", "-c"});
-    ZEXPECT(f.key(clang_spelling) != f.key(gcc_spelling));
+    /// Two names of one option are two queries: GCC may take one alone.
+    auto clang_name = add("b.c", {driver.c_str(), "-G", "8", "-c"});
+    auto gcc_name = add("c.c", {driver.c_str(), "-msmall-data-limit=8", "-c"});
+    ZEXPECT(f.key(clang_name) != f.key(gcc_name));
 }
 
 ZEST_CASE(GCCErrorReported, skip = Windows) {

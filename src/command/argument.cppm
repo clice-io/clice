@@ -195,6 +195,10 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb);
 /// the option's own name: the parse resolves an alias to its option.
 std::uint16_t written_alias(const kota::option::ParsedArg& parsed);
 
+/// Whether the command's own driver gets an argument through the alias the
+/// command wrote: a GCC-style driver, which may know that name alone.
+bool keeps_alias(CompilerFamily family);
+
 /// Render one argument for the command's own driver. A GCC-style driver
 /// gets an option as the command wrote it, which another compiler may know
 /// by that name alone: GCC's `-msmall-data-limit=8` is clang's `-G 8`,

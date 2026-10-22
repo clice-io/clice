@@ -173,7 +173,7 @@ ZEST_CASE(FailedQueryRetries, skip = Windows) {
     ZEXPECT(f.toolchain.query_count() == std::size_t(2));
 }
 
-ZEST_CASE(FailedQueryTargetFromName) {
+ZEST_CASE(FallbackTargetFromName) {
     // Without the compiler's answer, clang's own driver reads the command
     // for the target the compiler's name sets, as for an unqueried one.
     auto ref = add("a.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-mcmodel=medany", "-c"});

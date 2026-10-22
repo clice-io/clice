@@ -961,14 +961,14 @@ ZEST_CASE(DefaultFallback) {
     ZEXPECT(render_fallback(database, fake("foo.m"))[0] == "clang"sv);
 
     /// CUDA files pin cuda mode and the device-side view NVCC-backed
-    /// commands default to (the render spells the unaliased form).
+    /// commands default to.
     for(llvm::StringRef cuda_file: {"kern.cu", "kernels.cuh"}) {
         auto cu_argv = render_fallback(database, fake(cuda_file));
         ZASSERT(cu_argv.size() == 6U);
         ZEXPECT(cu_argv[0] == "clang++"sv);
         ZEXPECT(cu_argv[2] == "-x"sv);
         ZEXPECT(cu_argv[3] == "cuda"sv);
-        ZEXPECT(cu_argv[4] == "--offload-device-only"sv);
+        ZEXPECT(cu_argv[4] == "--cuda-device-only"sv);
     }
 };
 
