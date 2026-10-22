@@ -376,7 +376,7 @@ export interface SweepRun {
     unasked: string[];
     cut: string[];
     /// The server's memory once it started, its peaks while asked, and once
-    /// every file closed; measured on Linux only.
+    /// every file closed.
     memory?: { start: Resident; peak: PeakMemory; end: Resident };
     /// The server requests slower than SLOW_MS.
     slow: { file: string; label: string; seconds: number }[];
@@ -621,7 +621,7 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
     try {
         await server.start();
         const pid = server.client.child.pid;
-        if (process.platform === "linux" && pid !== undefined) {
+        if (pid !== undefined) {
             watching = { pid, start: residentNow(pid), watch: watchMemory(pid) };
         }
         const queue = [...places];

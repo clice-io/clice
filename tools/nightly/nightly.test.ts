@@ -227,7 +227,7 @@ describe("sweep", () => {
 });
 
 describe("memory", () => {
-    test.runIf(process.platform === "linux")("a process holds memory of its own", () => {
+    test("a process holds memory of its own", () => {
         expect(residentNow(process.pid).root).toBeGreaterThan(0);
     });
 });

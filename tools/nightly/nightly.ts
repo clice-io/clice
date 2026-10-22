@@ -71,7 +71,6 @@ export interface Results {
         shardBytes: number;
         symbols: number;
         cacheBytes: number;
-        /// Measured on Linux only.
         memory?: PeakMemory;
         compiledWithErrors: number;
         failed: number;

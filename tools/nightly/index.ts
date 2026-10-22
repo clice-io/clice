@@ -35,7 +35,6 @@ export interface IndexRun {
     /// Absent when the command printed no report: it died, or never got to
     /// the end of a run.
     report?: IndexReport;
-    /// Measured on Linux only.
     memory?: PeakMemory;
     /// Bytes of the cache directory the run left.
     cacheBytes: number;
@@ -99,10 +98,7 @@ export function runIndex(checkout: string): Promise<IndexRun> {
         ["index", "--json", "--workspace", checkout, "--jobs", String(os.availableParallelism())],
         { stdio: ["ignore", "pipe", "pipe"] },
     );
-    const memory =
-        process.platform === "linux" && child.pid !== undefined
-            ? watchMemory(child.pid)
-            : undefined;
+    const memory = child.pid === undefined ? undefined : watchMemory(child.pid);
     let stdout = "";
     let stderr = "";
     let progress = "";
