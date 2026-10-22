@@ -37,7 +37,7 @@ std::string selected_hash(Project& project, Fid file) {
 /// was last saved. A standalone-indexed header gets an entry too (empty
 /// hashes): its own matched rules plus the host source whose command its
 /// index borrowed. Paths are the database's names (ProjectIndex::portable).
-struct CDBSnapshotEntry {
+struct Entry {
     std::string file;
 
     std::vector<std::string> hashes;
@@ -62,8 +62,8 @@ struct CDBSnapshotEntry {
     std::string host_selected;
 };
 
-struct CommandSnapshotBlob {
-    std::vector<CDBSnapshotEntry> entries;
+struct Blob {
+    std::vector<Entry> entries;
 
     /// The files recorded as provisional members (Build::recorded), sorted.
     std::vector<std::string> provisional;
@@ -75,10 +75,10 @@ struct CommandSnapshotBlob {
 /// candidates that a rule's default command covers records that command's
 /// identity as its selection, so an offline edit of the command text is
 /// caught the same way.
-CommandSnapshotBlob build_snapshot(Project& project,
-                                   const llvm::DenseMap<Fid, Fid>& header_hosts,
-                                   llvm::ArrayRef<Fid> standalone_debt) {
-    CommandSnapshotBlob snapshot;
+Blob build_snapshot(Project& project,
+                    const llvm::DenseMap<Fid, Fid>& header_hosts,
+                    llvm::ArrayRef<Fid> standalone_debt) {
+    Blob snapshot;
     for(auto& bucket: project.cdb.command_hash_snapshot()) {
         auto path_id = bucket.first;
         auto candidates = project.build.entries(path_id);
@@ -154,7 +154,7 @@ CommandSnapshotBlob build_snapshot(Project& project,
         snapshot.provisional.push_back(project.index.portable(project.file_table.resolve(file)));
     }
     // Deterministic bytes: a save decides "unchanged" by byte equality.
-    std::ranges::sort(snapshot.entries, {}, &CDBSnapshotEntry::file);
+    std::ranges::sort(snapshot.entries, {}, &Entry::file);
     std::ranges::sort(snapshot.provisional);
     return snapshot;
 }
@@ -183,7 +183,7 @@ CommandSnapshot::Remembered CommandSnapshot::remembered(const Project& project) 
         return result;
     }
     auto blob = project.database->read(index::BlobKind::CommandSnapshot, "cdb");
-    CommandSnapshotBlob persisted;
+    Blob persisted;
     if(!blob ||
        !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
         return result;
@@ -246,7 +246,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         dirty = true;
         return;
     }
-    CommandSnapshotBlob persisted;
+    Blob persisted;
     if(!kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
         LOG_ERROR("Index cache at {} cannot tell which commands built it; reindexing every file",
                   std::string_view(project.config.project.cache_dir));
@@ -258,7 +258,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
     }
     persisted_bytes = blob.buffer->getBuffer().str();
 
-    llvm::StringMap<const CDBSnapshotEntry*> before;
+    llvm::StringMap<const Entry*> before;
     for(auto& entry: persisted.entries) {
         before[entry.file] = &entry;
     }

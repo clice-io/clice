@@ -183,7 +183,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                             [&](std::string_view kind) { return admits(only, kind); })) {
         co_return out;
     }
-    // Code actions are AST products with no index projection; a session
+    // Code actions are AST products the index cannot compute; a session
     // the policy keeps un-compiled answers honestly empty rather than
     // forcing the compile the policy declined.
     if(!ast_answerable(*session) && session->serving == ServingMode::IndexOnly) {

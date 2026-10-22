@@ -67,7 +67,7 @@ struct SessionStore {
     /// offset mapping, in-place text replacement, line-start rebuild), then
     /// bump version and generation. Ranges that do not fit the buffer are
     /// clamped per LSP 3.17 (see the struct comment on desync tolerance).
-    /// The projection-side supersede (ASTFamily::supersede) is the
+    /// The compile result's supersede (ASTFamily::supersede) is the
     /// caller's job — the store owns buffer truth only.
     void apply_change(Session& session,
                       llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,

@@ -112,42 +112,42 @@ ZEST_CASE(SupersedeTouchesEntry) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
-    stack.ast.projections.entries[pid].current = true;
-    auto epoch = stack.ast.projections.epoch(pid);
+    stack.ast.results.entries[pid].current = true;
+    auto epoch = stack.ast.results.epoch(pid);
 
     stack.ast.supersede(pid);
 
-    ZASSERT(!stack.ast.projections.current(pid));
-    ZASSERT(stack.ast.projections.epoch(pid) == epoch + 1);
+    ZASSERT(!stack.ast.results.current(pid));
+    ZASSERT(stack.ast.results.epoch(pid) == epoch + 1);
 }
 
-ZEST_CASE(InvalidateKeepsProjection) {
+ZEST_CASE(InvalidateKeepsResult) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
-    stack.ast.projections.set_pch_key(pid, "key");
-    stack.ast.projections.entries[pid].current = true;
+    stack.ast.results.set_pch_key(pid, "key");
+    stack.ast.results.entries[pid].current = true;
 
     stack.ast.invalidate(pid);
 
     // Only the currency flag is revoked; the products stay for the
     // bounded-staleness consumers (preamble links, hover gap).
-    ZASSERT(!stack.ast.projections.current(pid));
-    auto projection = stack.ast.projections.projection(pid);
-    ZASSERT(projection != nullptr);
-    ZASSERT(projection->pch_key);
+    ZASSERT(!stack.ast.results.current(pid));
+    auto compiled = stack.ast.results.result(pid);
+    ZASSERT(compiled != nullptr);
+    ZASSERT(compiled->pch_key);
 }
 
 ZEST_CASE(DropErasesEntry) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
-    stack.ast.projections.set_pch_key(pid, "key");
+    stack.ast.results.set_pch_key(pid, "key");
 
     stack.ast.drop(pid);
 
-    ZASSERT(stack.ast.projections.projection(pid) == nullptr);
-    ZASSERT(!stack.ast.projections.current(pid));
+    ZASSERT(stack.ast.results.result(pid) == nullptr);
+    ZASSERT(!stack.ast.results.current(pid));
 }
 
 ZEST_CASE(ClosedSessionSkipsCompile) {
@@ -177,11 +177,11 @@ ZEST_CASE(SwitchIdentityResets) {
     auto session = stack.open("/proj/h.h", "int x;\n");
     auto pid = session->path_id;
     session->trial_done = true;
-    auto& entry = stack.ast.projections.entries[pid];
-    auto projection = std::make_shared<ASTProjection>();
-    projection->pch_key = "key";
-    projection->output = CompileOutput{.version = 3, .source = CommandSource::CDBExact};
-    entry.projection = std::move(projection);
+    auto& entry = stack.ast.results.entries[pid];
+    auto compiled = std::make_shared<CompileResult>();
+    compiled->pch_key = "key";
+    compiled->output = CompileOutput{.version = 3, .source = CommandSource::CDBExact};
+    entry.result = std::move(compiled);
     entry.deps.emplace();
     entry.current = true;
     auto generation = session->generation;
@@ -194,9 +194,9 @@ ZEST_CASE(SwitchIdentityResets) {
     // session fields).
     ZASSERT(session->generation == generation + 1);
     ZASSERT(!session->trial_done);
-    ZASSERT(!stack.ast.projections.current(pid));
-    ZASSERT(!stack.ast.projections.entries[pid].deps.has_value());
-    auto after = stack.ast.projections.projection(pid);
+    ZASSERT(!stack.ast.results.current(pid));
+    ZASSERT(!stack.ast.results.entries[pid].deps.has_value());
+    auto after = stack.ast.results.result(pid);
     ZASSERT(!after->pch_key.has_value());
     ZASSERT(after->output);
 }
@@ -207,10 +207,10 @@ ZEST_CASE(CrashPublishesNote) {
     // no AST stands behind them anymore.
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
-    stack.ast.projections.set_output(session->path_id,
-                                     CompileOutput{.version = 1,
-                                                   .source = CommandSource::CDBExact,
-                                                   .diagnostics = {feature::file_warning("old")}});
+    stack.ast.results.set_output(session->path_id,
+                                 CompileOutput{.version = 1,
+                                               .source = CommandSource::CDBExact,
+                                               .diagnostics = {feature::file_warning("old")}});
 
     int emits = 0;
     auto conn = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { emits += 1; });
@@ -219,9 +219,9 @@ ZEST_CASE(CrashPublishesNote) {
         evidence_kind(EvidenceKind::Compile),
         kota::ipc::Error{worker::dispatch_errc::worker_crashed, "killed by signal 11 (SIGSEGV)"});
     ZEXPECT(emits == 1);
-    auto projection = stack.ast.projections.projection(session->path_id);
-    ZASSERT((projection && projection->output.has_value()));
-    ZEXPECT(projection->output->diagnostics.empty());
+    auto compiled = stack.ast.results.result(session->path_id);
+    ZASSERT((compiled && compiled->output.has_value()));
+    ZEXPECT(compiled->output->diagnostics.empty());
 
     std::vector<feature::FileDiagnostic> notes;
     append_crash_notes(*session, notes);
@@ -353,7 +353,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
         // the fresh content.
         bool second_ok = co_await stack.ast.ensure_compiled(session);
         ZEXPECT(second_ok);
-        ZEXPECT(stack.ast.projections.current(session->path_id));
+        ZEXPECT(stack.ast.results.current(session->path_id));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -418,7 +418,7 @@ ZEST_CASE(SupersededCompileCancelled) {
 
         ZEXPECT(first_done);
         ZEXPECT(second_ok);
-        ZEXPECT(stack.ast.projections.current(session->path_id));
+        ZEXPECT(stack.ast.results.current(session->path_id));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -485,7 +485,7 @@ ZEST_CASE(BufferImportBuildsPCM) {
     ZEXPECT(done);
 
     ZEXPECT(ok);
-    ZEXPECT(stack.ast.projections.current(session->path_id));
+    ZEXPECT(stack.ast.results.current(session->path_id));
     auto mod_ids = stack.project.dep_graph.lookup_module("m");
     ZASSERT(!mod_ids.empty());
     auto build = stack.project.pcm_builds.find(mod_ids[0]);
@@ -922,12 +922,12 @@ ZEST_CASE(EpochGuardsPCHWrite) {
     auto pid = session->path_id;
     // No preamble directives: a current request would take the pch_key
     // reset branch; an invalidated continuation must not touch it.
-    stack.ast.projections.set_pch_key(pid, "key");
+    stack.ast.results.set_pch_key(pid, "key");
 
     auto gen = session->generation;
-    auto epoch = stack.ast.projections.epoch(pid);
+    auto epoch = stack.ast.results.epoch(pid);
     // A Lost-type invalidation (disk/CDB change behind the in-flight
-    // request) arrives after takeoff: the projection epoch bumps,
+    // request) arrives after takeoff: the compile result's epoch bumps,
     // generation stays.
     stack.ast.invalidate(pid);
 
@@ -948,9 +948,9 @@ ZEST_CASE(EpochGuardsPCHWrite) {
 
     ZEXPECT(!wrote);
     // The stale continuation left the adopted PCH reference untouched.
-    auto projection = stack.ast.projections.projection(pid);
-    ZASSERT((projection && projection->pch_key.has_value()));
-    ZEXPECT(*projection->pch_key == std::string("key"));
+    auto compiled = stack.ast.results.result(pid);
+    ZASSERT((compiled && compiled->pch_key.has_value()));
+    ZEXPECT(*compiled->pch_key == std::string("key"));
 }
 
 ZEST_CASE(PCHCrashBarsDocument) {
@@ -982,7 +982,7 @@ ZEST_CASE(PCHCrashBarsDocument) {
             co_await ASTFamilyFixture::ensure_pch(stack.ast,
                                                   session,
                                                   session->generation,
-                                                  stack.ast.projections.epoch(session->path_id),
+                                                  stack.ast.results.epoch(session->path_id),
                                                   directory,
                                                   arguments);
         ZEXPECT(!built);
@@ -1095,7 +1095,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
 
         ZEXPECT(cancelled_returned);
         ZEXPECT(other_answered);
-        ZEXPECT(stack.ast.projections.current(session->path_id));
+        ZEXPECT(stack.ast.results.current(session->path_id));
         ZEXPECT(!stack.is_compiling(session->path_id));
 
         co_await stack.ast.stop();
@@ -1253,7 +1253,7 @@ ZEST_CASE(PoisonPreambleShared) {
             return ASTFamilyFixture::ensure_pch(stack.ast,
                                                 session,
                                                 session->generation,
-                                                stack.ast.projections.epoch(session->path_id),
+                                                stack.ast.results.epoch(session->path_id),
                                                 directory,
                                                 arguments);
         };
@@ -1309,7 +1309,7 @@ ZEST_CASE(EpochGuardsPCHWash) {
         ZASSERT(stack.pool.start(opts));
 
         auto gen = session->generation;
-        auto epoch = stack.ast.projections.epoch(session->path_id);
+        auto epoch = stack.ast.results.epoch(session->path_id);
         bool built = true;
         auto launch = [&]() -> kota::task<> {
             built = co_await ASTFamilyFixture::ensure_pch(stack.ast,
@@ -1331,8 +1331,8 @@ ZEST_CASE(EpochGuardsPCHWash) {
         // request compiles against it, but it adopted nothing and cleared
         // nothing.
         ZEXPECT(built);
-        auto projection = stack.ast.projections.projection(session->path_id);
-        ZEXPECT((!projection || !projection->pch_key.has_value()));
+        auto compiled = stack.ast.results.result(session->path_id);
+        ZEXPECT((!compiled || !compiled->pch_key.has_value()));
         ZEXPECT(session->quarantine->crashed(pch));
 
         // A current request adopts the cached pair and only then clears
@@ -1340,12 +1340,12 @@ ZEST_CASE(EpochGuardsPCHWash) {
         built = co_await ASTFamilyFixture::ensure_pch(stack.ast,
                                                       session,
                                                       session->generation,
-                                                      stack.ast.projections.epoch(session->path_id),
+                                                      stack.ast.results.epoch(session->path_id),
                                                       directory,
                                                       arguments);
         ZEXPECT(built);
-        projection = stack.ast.projections.projection(session->path_id);
-        ZEXPECT((projection && projection->pch_key.has_value()));
+        compiled = stack.ast.results.result(session->path_id);
+        ZEXPECT((compiled && compiled->pch_key.has_value()));
         ZEXPECT(!session->quarantine->crashed(pch));
 
         co_await stack.graph.shutdown();
@@ -1390,7 +1390,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
         return ASTFamilyFixture::ensure_pch(stack.ast,
                                             session,
                                             session->generation,
-                                            stack.ast.projections.epoch(session->path_id),
+                                            stack.ast.results.epoch(session->path_id),
                                             directory,
                                             arguments);
     };
@@ -1404,7 +1404,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
         ZASSERT(stack.pool.start(opts));
 
         ZASSERT(co_await build(builder));
-        auto adopted = stack.ast.projections.projection(builder->path_id);
+        auto adopted = stack.ast.results.result(builder->path_id);
         ZASSERT((adopted && adopted->pch_key.has_value()));
         auto builder_key = *adopted->pch_key;
 
@@ -1425,11 +1425,11 @@ ZEST_CASE(StaleDepsNoAdopt) {
 
         ZEXPECT(!first_built);
         ZEXPECT(!second_built);
-        // The projection keeps the builder's adoption — the failed rebuild
+        // The compile result keeps the builder's adoption — the failed rebuild
         // wrote nothing over it, and the stale pair heals on a later
         // successful acquisition.
-        auto projection = stack.ast.projections.projection(first->path_id);
-        ZEXPECT((projection && projection->pch_key == builder_key));
+        auto compiled = stack.ast.results.result(first->path_id);
+        ZEXPECT((compiled && compiled->pch_key == builder_key));
 
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();

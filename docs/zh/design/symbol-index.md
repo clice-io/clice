@@ -69,7 +69,7 @@ ProjectIndex   Global directory: external symbols + which TUs contributed which 
 Shard          Per-file variant storage (exact positions and relations), loaded on demand
 Instantiations Per-file storage of what instantiations and macro expansions resolve
     ↑ overlay
-Live index     The open buffer's latest compile results, owned by its published projection
+Live index     The index of the open buffer's latest compile, held in its compile result
 ```
 
 **TUIndex** 是编译翻译单元时产生的原始索引数据，由编译期间构建的统一语义映射投影生成。由于一次编译涉及焦点文件及其包含的所有头文件，`TUIndex` 内部会为每个文件维护一组独立的条目。它还包含一份符号表以及本次编译的包含树：每进入一个文件就有一个节点，记录该文件、包含它的节点以及包含指令所在的行。符号表不收录文件局部符号——函数内的局部符号、模板的参数——但另一个文件涉及的少数几个除外——通过实例化、宏展开，或函数返回的局部类：其余的只有所在文件会涉及，描述它们的也正是该文件的条目。`TUIndex` 是临时数据，合并到持久化索引后即被丢弃。

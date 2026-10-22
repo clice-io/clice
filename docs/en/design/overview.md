@@ -70,7 +70,7 @@ See [Dependency Scanning](dependency-scanning.md).
 
 Semantic analysis capabilities beyond Clang's native APIs, over the AST of a compilation unit.
 
-- `Semantics`: The unified semantic map — a single AST traversal per compilation records every interesting node and its token ownership; selection, feature projections, and index production are pure queries over the map rather than separate AST walks
+- `Semantics`: The unified semantic map — a single AST traversal per compilation records every interesting node and its token ownership; selection, features, and index production are pure queries over the map rather than separate AST walks
 - `EntityTable`: The identity of a declaration, equal across translation units for the declarations the compiler would merge
 - `TemplateResolver`: Resolves dependent names through pseudo-instantiation, enabling semantic analysis to see through template contexts. See [Template Resolver](template-resolver.md).
 - `SymbolKind` / `RelationKind`: Fine-grained symbol kinds and relation types
@@ -130,7 +130,7 @@ The language server's core runtime, responsible for assembling all the layers ab
 **Document state** — Document state and the invalidation machinery.
 
 - `Session` / `SessionStore`: The open-buffer truth for each open file — content, document version, generation, and serving state — created on didOpen and destroyed on didClose. Compile products do not live here
-- `ASTProjection` / `ASTProjectionTable`: The published products of each document's most recent compilation (feature results, PCH key, dependency snapshot) — an immutable read model replaced wholesale on each publication
+- `CompileResult` / `CompileResults`: The published products of each document's most recent compilation (feature results, PCH key, dependency snapshot) — an immutable read model replaced wholesale on each publication
 - `EditorContext`: The editor's side of command resolution — the user's context choices and the header contexts resolved for open files — layered over the project's `CommandResolver` for editor-facing compiles only
 - `Invalidator`: The invalidation engine — folds file events (on-disk changes and removals, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
 - `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`: the project's database watch plus a sweep, through the file table, of the files on disk and of the places a failed include lookup looked
@@ -138,7 +138,7 @@ The language server's core runtime, responsible for assembling all the layers ab
 
 **Services** — Read-side services consuming compilation and index results.
 
-- `Features`: Assembles each feature's answer from its providers — the worker's AST, the PCH's cached preamble products, or the index — routing each request by readiness: an up-to-date AST answers when available, otherwise index-backed projections answer immediately. Under `readonly = on/auto`, documents serve exclusively from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
+- `Features`: Assembles each feature's answer from its providers — the worker's AST, the PCH's cached preamble products, or the index — routing each request by readiness: an up-to-date AST answers when available, otherwise results computed from the index answer immediately. Under `readonly = on/auto`, documents serve exclusively from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
 - `ASTFamily`: The document-AST node family in the task graph — schedules compiles for open documents and publishes their results
 - `Dispatcher`: The document side of talking to workers — every request carrying an open document's content (stateful queries, interactive completion/signature builds, formatting) is admitted through the document's quarantine, dispatched, and landed through one exit that answers `ContentModified` for a buffer the client already edited away
 - `IndexQuery`: Read-only queries over every index source — the project index, per-file shards, and the live data of open files — under one freshness arbitration, answering in domain values that the transports project onto their protocols

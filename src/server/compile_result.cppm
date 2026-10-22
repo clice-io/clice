@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:server.ast_projection;
+module clice:server.compile_result;
 
 import :feature.feature;
 import :index.tu_index;
@@ -12,7 +12,7 @@ import :vfs.file_table;
 namespace clice {
 
 /// The publishable products of the most recent compilation (materialized
-/// whole-document feature results). The data lives in the projection; the
+/// whole-document feature results). The data lives in the compile result; the
 /// AST family's on_output signal only wakes the push path up — a missed
 /// signal is harmless, and with no transport connected the output simply
 /// stays put.
@@ -40,10 +40,10 @@ struct CompileOutput {
 
 /// One open document's compilation products, owned by the AST family and
 /// read by everything that used to read them off the Session. Immutable
-/// once published: every change installs a fresh projection (copy-on-write
+/// once published: every change installs a fresh result (copy-on-write
 /// over the cheap members), so a reader that copied the shared_ptr may
 /// keep using it across suspension points.
-struct ASTProjection {
+struct CompileResult {
     /// Content key into Project.pch_cache for the PCH the document's parse
     /// loads, if any: its preamble's, else the precompiled header the build
     /// declares for its command. The PCH itself is owned by Project
@@ -74,21 +74,21 @@ struct ASTProjection {
     }
 };
 
-/// The AST family's per-document table: projections plus the freshness
+/// The AST family's per-document table: results plus the freshness
 /// state that used to live on the Session (ast_dirty, dirty_epoch). Owned
 /// and written by the family and its facade; readers (IndexQuery,
 /// Features, transports) only look things up. A separate type so
 /// read-side tests can populate one without the family's machinery.
-struct ASTProjectionTable {
+struct CompileResults {
     struct Entry {
-        std::shared_ptr<const ASTProjection> projection;
+        std::shared_ptr<const CompileResult> result;
 
         /// Dependency snapshot from the last successful AST compilation,
         /// used for staleness detection. Kept out of the immutable
-        /// projection: no reader outside the family consumes it.
+        /// result: no reader outside the family consumes it.
         std::optional<DepsSnapshot> deps;
 
-        /// Whether the projection describes the current buffer: the last
+        /// Whether the result describes the current buffer: the last
         /// compile finished and no invalidation arrived since. The
         /// ast_dirty flag of the old world, inverted, with its single
         /// write points in the family (round commit and invalidation).
@@ -109,19 +109,18 @@ struct ASTProjectionTable {
         return it == entries.end() ? nullptr : &it->second;
     }
 
-    /// The document's projection, or null before its first compile.
-    std::shared_ptr<const ASTProjection> projection(Fid path_id) const {
+    /// The document's compile result, or null before its first compile.
+    std::shared_ptr<const CompileResult> result(Fid path_id) const {
         const auto* entry = find(path_id);
-        return entry ? entry->projection : nullptr;
+        return entry ? entry->result : nullptr;
     }
 
-    /// The document's projection while its output describes buffer
+    /// The document's compile result while its output describes buffer
     /// `version`, or null.
-    std::shared_ptr<const ASTProjection> projection_at(Fid path_id, int version) const {
-        auto projection = this->projection(path_id);
-        return projection && projection->output && projection->output->version == version
-                   ? projection
-                   : nullptr;
+    std::shared_ptr<const CompileResult> result_at(Fid path_id, int version) const {
+        auto compiled = this->result(path_id);
+        return compiled && compiled->output && compiled->output->version == version ? compiled
+                                                                                    : nullptr;
     }
 
     /// The last compile finished and no invalidation arrived since
@@ -131,15 +130,15 @@ struct ASTProjectionTable {
         return entry && entry->current;
     }
 
-    /// Whether the projection's index describes the current buffer. The
+    /// Whether the result's index describes the current buffer. The
     /// arbitration key of the index freshness contract (IndexQuery
-    /// clauses 3-4): a current-but-indexless projection (no AST, or an
+    /// clauses 3-4): a current-but-indexless result (no AST, or an
     /// index the worker could not hand over) is an honest gap, not a
     /// servable index.
     bool index_current(Fid path_id) const {
         const auto* entry = find(path_id);
-        return entry && entry->current && entry->projection && entry->projection->index &&
-               entry->projection->index->loaded();
+        return entry && entry->current && entry->result && entry->result->index &&
+               entry->result->index->loaded();
     }
 
     std::uint64_t epoch(Fid path_id) const {
@@ -147,20 +146,20 @@ struct ASTProjectionTable {
         return entry ? entry->epoch : 0;
     }
 
-    /// Replace one field of the projection, keeping the rest (readers
+    /// Replace one field of the result, keeping the rest (readers
     /// holding the old shared_ptr are unaffected).
     void set_pch_key(Fid path_id, std::optional<std::string> pch_key) {
         auto& entry = entries[path_id];
-        auto next = entry.projection ? ASTProjection(*entry.projection) : ASTProjection();
+        auto next = entry.result ? CompileResult(*entry.result) : CompileResult();
         next.pch_key = std::move(pch_key);
-        entry.projection = std::make_shared<const ASTProjection>(std::move(next));
+        entry.result = std::make_shared<const CompileResult>(std::move(next));
     }
 
     void set_output(Fid path_id, CompileOutput output) {
         auto& entry = entries[path_id];
-        auto next = entry.projection ? ASTProjection(*entry.projection) : ASTProjection();
+        auto next = entry.result ? CompileResult(*entry.result) : CompileResult();
         next.output = std::move(output);
-        entry.projection = std::make_shared<const ASTProjection>(std::move(next));
+        entry.result = std::make_shared<const CompileResult>(std::move(next));
     }
 };
 

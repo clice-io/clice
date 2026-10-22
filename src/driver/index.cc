@@ -33,7 +33,7 @@ namespace clice::driver {
 
 namespace {
 
-struct IndexOptions {
+struct Options {
     kota::deco::decl::HelpOption help;
     WorkspaceOptions where;
     JobsOption jobs;
@@ -337,7 +337,7 @@ struct StoredBlobs {
     std::uint64_t bytes = 0;
 };
 
-struct IndexStats {
+struct Stats {
     std::vector<ShardStat> shards;
     index::FieldBytes shard_fields;
     std::uint64_t shard_bytes = 0;
@@ -375,8 +375,8 @@ struct IndexStats {
     std::array<StoredBlobs, std::size(stored_kinds)> stored;
 };
 
-IndexStats collect_stats(Project& project) {
-    IndexStats stats;
+Stats collect_stats(Project& project) {
+    Stats stats;
     auto& project_index = project.index;
 
     project_index.for_each_indexed_file([&](Fid path_id) {
@@ -473,7 +473,7 @@ IndexStats collect_stats(Project& project) {
     return stats;
 }
 
-void print_stats(const Project& project, const IndexStats& stats, std::uint32_t top) {
+void print_stats(const Project& project, const Stats& stats, std::uint32_t top) {
     auto& project_index = project.index;
     auto share = [](std::uint64_t bytes, std::uint64_t whole) {
         return whole != 0 ? 100.0 * static_cast<double>(bytes) / static_cast<double>(whole) : 0.0;
@@ -611,7 +611,7 @@ void print_stats(const Project& project, const IndexStats& stats, std::uint32_t 
 
 /// Every file shard with its variant count, most variants first — the
 /// machine-readable form for cross-run comparisons.
-void print_variants(const IndexStats& stats) {
+void print_variants(const Stats& stats) {
     auto by_variants = stats.shards;
     std::ranges::stable_sort(by_variants, std::ranges::greater{}, &ShardStat::variants);
     driver::println();
@@ -1017,21 +1017,20 @@ CommandHandler build(const char* self_path) {
         .description = "A translation unit's persisted manifest: include tree and contributions",
         .run = show_file("clice index unit <PATH> [OPTIONS]", run_show_tu),
     });
-    auto index =
-        operation<IndexOptions>("clice index [OPTIONS]",
-                                "index",
-                                Errors::Text,
-                                [self_path](const IndexOptions& opts) {
-                                    auto spelling = opts.where.root();
-                                    if(!workspace_exists(spelling)) {
-                                        return 1;
-                                    }
-                                    return run_indexing(std::move(spelling),
-                                                        opts.where.configuration.tag(),
-                                                        opts.jobs.jobs.value_or(0),
-                                                        static_cast<bool>(opts.report.json),
-                                                        self_path);
-                                });
+    auto index = operation<Options>("clice index [OPTIONS]",
+                                    "index",
+                                    Errors::Text,
+                                    [self_path](const Options& opts) {
+                                        auto spelling = opts.where.root();
+                                        if(!workspace_exists(spelling)) {
+                                            return 1;
+                                        }
+                                        return run_indexing(std::move(spelling),
+                                                            opts.where.configuration.tag(),
+                                                            opts.jobs.jobs.value_or(0),
+                                                            static_cast<bool>(opts.report.json),
+                                                            self_path);
+                                    });
     return with_operations("", std::move(operations), Errors::Text, std::move(index));
 }
 

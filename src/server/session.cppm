@@ -55,7 +55,7 @@ enum class ServingMode : std::uint8_t {
 ///
 /// Created on didOpen, destroyed on didClose.  The session holds the
 /// buffer and its identity; the document's compilation products live in
-/// the AST family's projection (see server/ast_projection.cppm) and
+/// the AST family's compile result (see server/compile_result.cppm) and
 /// NEVER leak to Project or other Sessions.
 struct Session {
     /// Path ID of this file in FileTable.  Set on creation, never changes.
@@ -108,7 +108,7 @@ struct Session {
     /// fixtures) behaves like the pre-policy server.
     ServingMode serving = ServingMode::Escalated;
 
-    /// Set when an index projection answered a request for this session;
+    /// Set when a result computed from the index answered a request for this session;
     /// the compile-output push path reads it to tell clients to re-pull
     /// what the AST now answers better (semantic tokens, inlay hints).
     bool index_served = false;

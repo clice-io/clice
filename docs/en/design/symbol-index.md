@@ -69,7 +69,7 @@ ProjectIndex   Global directory: external symbols + which TUs contributed which 
 Shard          Per-file variant storage (exact positions and relations), loaded on demand
 Instantiations Per-file storage of what instantiations and macro expansions resolve
     ↑ overlay
-Live index     The open buffer's latest compile results, owned by its published projection
+Live index     The index of the open buffer's latest compile, held in its compile result
 ```
 
 **TUIndex** is the raw index data produced by compiling a translation unit, projected from the unified semantic map built during the compile. Since a compilation involves the focus file and all included headers, `TUIndex` internally maintains a separate set of entries per file. It also carries a symbol table and the include tree of this compilation: one node per entered file, naming the file, the node that included it and the line of the directive. The symbol table leaves out file-local symbols — a function's locals, a template's parameters — except the few that another file names, through an instantiation, a macro expansion, or a local class a function returns: the rest only their own file names, and that file's entries describe them. `TUIndex` is transient data, discarded after being merged into the persistent indexes.
@@ -80,7 +80,7 @@ Live index     The open buffer's latest compile results, owned by its published 
 
 **Instantiations** of a file hold what the template instantiations and macro expansions of every indexed translation unit resolve in that file's text and its shard leaves open (see below). They live beside the shard, at its content generation.
 
-An open file's **live index** comes from its most recent in-memory compilation and is owned by the document's published projection. It is never written to global state — it only overlays queries, so results reflect the buffer the user is actually editing.
+An open file's **live index** comes from its most recent in-memory compilation and is owned by the document's published compile result. It is never written to global state — it only overlays queries, so results reflect the buffer the user is actually editing.
 
 ### Symbol Table Layering
 
@@ -90,7 +90,7 @@ Symbol metadata (name, kind) is looked up in layers: an open file's live data fi
 
 ### Index Construction
 
-`TUIndex` construction is a projection over the unified semantic map: one AST traversal per compilation records every interesting node, and the index projection emits `Occurrence` and `Relation` entries per file. After projection, each file's entries are canonicalized — deduplicated and sorted (occurrences by position for binary search, relations by kind and position for filtering) — so that the encoded blob is deterministic.
+`TUIndex` construction is a projection over the unified semantic map: one AST traversal per compilation records every interesting node, and the indexer emits `Occurrence` and `Relation` entries per file from it. After that, each file's entries are canonicalized — deduplicated and sorted (occurrences by position for binary search, relations by kind and position for filtering) — so that the encoded blob is deterministic.
 
 During construction, the focus file's entries are kept separate from the headers'. This allows different treatment during merging — the focus file is merged as the translation unit's own contribution, while headers are merged as context variants.
 

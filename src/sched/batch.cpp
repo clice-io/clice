@@ -48,7 +48,7 @@ void show_path(FileTable& files, std::string& path) {
 
 /// The lean batch assembly: the scheduling stack the server also runs on,
 /// minus everything serving-side.
-struct BatchStack {
+struct Stack {
     kota::event_loop& loop;
     FileTable files;
     Project project{files};
@@ -60,10 +60,10 @@ struct BatchStack {
     /// logging is off.
     std::string log_dir;
 
-    explicit BatchStack(kota::event_loop& loop) : loop(loop) {}
+    explicit Stack(kota::event_loop& loop) : loop(loop) {}
 };
 
-kota::task<> checkpoint_task(BatchStack& stack) {
+kota::task<> checkpoint_task(Stack& stack) {
     while(true) {
         // Time is the feature: the checkpoints' pace.
         co_await kota::sleep(SchedulingStack::checkpoint_interval());
@@ -73,7 +73,7 @@ kota::task<> checkpoint_task(BatchStack& stack) {
 
 /// The current round's progress to the driver's callback; nothing before
 /// the first round has a total.
-void report_progress(BatchStack& stack, const BatchOptions& options) {
+void report_progress(Stack& stack, const BatchOptions& options) {
     auto& round = stack.sched.pump.progress();
     if(!options.on_progress || round.total == 0) {
         return;
@@ -85,7 +85,7 @@ void report_progress(BatchStack& stack, const BatchOptions& options) {
 
 /// A paced report on top of the round boundaries: one unit can take
 /// longer than the pace, and a run must not fall silent while it runs.
-kota::task<> progress_ticker(BatchStack& stack, const BatchOptions& options) {
+kota::task<> progress_ticker(Stack& stack, const BatchOptions& options) {
     constexpr auto pace = std::chrono::seconds(10);
     while(true) {
         // Time is the feature: the report's pace.
@@ -119,7 +119,7 @@ std::optional<TestPause> test_pause() {
 }
 
 /// Quiesce the pump, then the shared contract-11 tail.
-kota::task<> shutdown(BatchStack& stack) {
+kota::task<> shutdown(Stack& stack) {
     co_await stack.sched.pump.stop();
     co_await stack.sched.shutdown();
     co_await stack.pool.stop();
@@ -130,13 +130,13 @@ kota::task<> shutdown(BatchStack& stack) {
 /// is judged only after the scheduling stack shut down and the watchers
 /// finished: a signal arriving while the final save/teardown ran must still
 /// report an interruption, not a normal completion with exit code 0.
-struct BatchLifetime {
-    BatchStack& stack;
+struct Lifetime {
+    Stack& stack;
     bool stop_requested = false;
     kota::cancellation_source stop;
     kota::task_group<> aux;
 
-    explicit BatchLifetime(BatchStack& stack) : stack(stack) {
+    explicit Lifetime(Stack& stack) : stack(stack) {
         // Every signal stops gracefully: in-flight files are abandoned,
         // finished ones are persisted, and a rerun resumes from there. A
         // closed terminal sends SIGHUP.
@@ -170,7 +170,7 @@ struct BatchLifetime {
 /// Shared batch startup: the command's config with the run's overrides,
 /// the session file logger, and the worker pool. `log_tag` names the log
 /// files after the subcommand.
-bool start_batch(BatchStack& stack,
+bool start_batch(Stack& stack,
                  Config config,
                  const Spelling& root,
                  std::uint32_t workers,
@@ -215,7 +215,7 @@ bool start_batch(BatchStack& stack,
     return true;
 }
 
-kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& result) {
+kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result) {
     ScopedTimer timer;
     auto& project = stack.project;
 
@@ -281,7 +281,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
             }
         });
     }
-    BatchLifetime lifetime(stack);
+    Lifetime lifetime(stack);
     lifetime.aux.spawn(progress_ticker(stack, options));
     co_await kota::with_token(stack.sched.pump.wait_idle(), lifetime.token());
     // The counts read every shard and symbol record: taken before the final
@@ -364,7 +364,7 @@ void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
     findings.erase(duplicates.begin(), duplicates.end());
 }
 
-kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass& pass) {
+kota::task<> lint_one(Stack& stack, bool with_index, Fid path_id, LintPass& pass) {
     auto file = stack.project.file_table.resolve(path_id);
     // A TU outside the lint set is here for the index only.
     TURunFamily::Plan plan;
@@ -475,7 +475,7 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
     pass.task_done.set();
 }
 
-kota::task<> run_lint_pass(BatchStack& stack,
+kota::task<> run_lint_pass(Stack& stack,
                            const BatchLintOptions& options,
                            llvm::ArrayRef<Fid> tus,
                            LintPass& pass) {
@@ -484,7 +484,7 @@ kota::task<> run_lint_pass(BatchStack& stack,
     // The dispatch loop runs as a child of `workers`, like the pump's
     // round feeder: a cancel cascades through the join and every in-flight
     // task unwinds before the group is destroyed.
-    auto feeder = [](BatchStack& stack,
+    auto feeder = [](Stack& stack,
                      const BatchLintOptions& options,
                      llvm::ArrayRef<Fid> tus,
                      LintPass& pass,
@@ -504,7 +504,7 @@ kota::task<> run_lint_pass(BatchStack& stack,
     co_await workers.join();
 }
 
-kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchLintResult& result) {
+kota::task<> run_lint(Stack& stack, const BatchLintOptions& options, BatchLintResult& result) {
     ScopedTimer timer;
     auto& project = stack.project;
 
@@ -560,7 +560,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         }
     }
 
-    BatchLifetime lifetime(stack);
+    Lifetime lifetime(stack);
     LintPass pass;
     co_await kota::with_token(run_lint_pass(stack, options, tus, pass), lifetime.token());
     // What arrived is the report, whole or cut short by an interruption.
@@ -891,7 +891,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
 
 BatchResult run_batch_index(const BatchOptions& options) {
     kota::event_loop loop;
-    BatchStack stack(loop);
+    Stack stack(loop);
     BatchResult result;
     loop.schedule(run(stack, options, result));
     loop.run();
@@ -900,7 +900,7 @@ BatchResult run_batch_index(const BatchOptions& options) {
 
 BatchLintResult run_batch_lint(const BatchLintOptions& options) {
     kota::event_loop loop;
-    BatchStack stack(loop);
+    Stack stack(loop);
     BatchLintResult result;
     loop.schedule(run_lint(stack, options, result));
     loop.run();

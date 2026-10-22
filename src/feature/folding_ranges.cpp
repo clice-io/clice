@@ -90,9 +90,9 @@ std::vector<FoldingRange> nest(std::vector<Candidate> candidates) {
 /// comments or using declarations on consecutive lines, or of includes and
 /// imports with only blank and comment lines between them, folds below its
 /// first line.
-class FoldingRangeCollector {
+class Builder {
 public:
-    explicit FoldingRangeCollector(CompilationUnit& unit) :
+    explicit Builder(CompilationUnit& unit) :
         unit(unit), semantics(unit.get<Semantics>()), lexical(unit.focus_file().lexical()),
         content(unit.focus_file().content()) {
         for(auto& directive: lexical.directives) {
@@ -102,7 +102,7 @@ public:
         }
     }
 
-    auto collect() -> std::vector<FoldingRange> {
+    auto build() -> std::vector<FoldingRange> {
         auto nodes = semantics.node_entries();
         std::uint32_t index = 0;
         while(index < nodes.size()) {
@@ -779,7 +779,7 @@ private:
 }  // namespace
 
 auto folding_ranges(CompilationUnit& unit) -> std::vector<FoldingRange> {
-    return FoldingRangeCollector(unit).collect();
+    return Builder(unit).build();
 }
 
 auto declaration_fold_kind(SymbolKind kind) -> std::optional<protocol::FoldingRangeKind> {

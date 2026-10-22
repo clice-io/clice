@@ -17,7 +17,7 @@ namespace clice::driver {
 namespace {
 
 /// What every question takes.
-struct QueryOptions {
+struct Options {
     WorkspaceOptions where;
     FreshOption fresh;
 };
@@ -25,7 +25,7 @@ struct QueryOptions {
 struct FileQuestion {
     kota::deco::decl::HelpOption help;
     FileTarget target;
-    QueryOptions query;
+    Options query;
     LogLevelOption log;
 };
 
@@ -39,7 +39,7 @@ struct FileDepsQuestion {
     DecoKV(help = "Levels to follow (default 1, 0 for all)", required = false)
     <int> depth;
 
-    QueryOptions query;
+    Options query;
     LogLevelOption log;
 };
 
@@ -49,7 +49,7 @@ struct ProjectFilesQuestion {
     DecoKV(help = "all (default), source, header or module", required = false)
     <std::string> filter;
 
-    QueryOptions query;
+    Options query;
     LogLevelOption log;
 };
 
@@ -64,14 +64,14 @@ struct SearchQuestion {
     DecoKV(help = "At most this many symbols (default 100)", required = false)
     <int> limit;
 
-    QueryOptions query;
+    Options query;
     LogLevelOption log;
 };
 
 struct SymbolQuestion {
     kota::deco::decl::HelpOption help;
     SymbolTarget target;
-    QueryOptions query;
+    Options query;
     LogLevelOption log;
 };
 
@@ -84,7 +84,7 @@ struct ReferencesQuestion {
              required = false)
     include_declaration;
 
-    QueryOptions query;
+    Options query;
     LogLevelOption log;
 };
 
@@ -95,7 +95,7 @@ struct CallGraphQuestion {
     DecoKV(help = "callers, callees or both (default)", required = false)
     <std::string> direction;
 
-    QueryOptions query;
+    Options query;
     LogLevelOption log;
 };
 
@@ -106,7 +106,7 @@ struct TypeHierarchyQuestion {
     DecoKV(help = "supertypes, subtypes or both (default)", required = false)
     <std::string> direction;
 
-    QueryOptions query;
+    Options query;
     LogLevelOption log;
 };
 
@@ -118,7 +118,7 @@ struct TypeHierarchyQuestion {
 /// not index, whose shards are as absent as a withheld file's, and the
 /// units the load found unservable.
 template <typename Ask>
-int run_query(const QueryOptions& opts, bool with_build, const char* self_path, Ask ask) {
+int run_query(const Options& opts, bool with_build, const char* self_path, Ask ask) {
     auto spelling = opts.where.root();
     auto config = Config::load_from_workspace(CanonicalPath(spelling));
     auto configuration = opts.where.configuration.tag();
@@ -189,10 +189,10 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
 }
 
 /// A question about the file `ask` takes, after the query context.
-template <typename Options, typename Ask>
+template <typename Question, typename Ask>
 CommandHandler
     file_question(std::string_view usage, bool with_build, const char* self_path, Ask ask) {
-    return operation<Options>(usage, "query", Errors::JSON, [=](const Options& opts) {
+    return operation<Question>(usage, "query", Errors::JSON, [=](const Question& opts) {
         auto args = positional(opts.target.inputs.as_optional(), {"<PATH>"});
         if(!args) {
             return usage_error(Errors::JSON, args.error());
@@ -204,9 +204,9 @@ CommandHandler
 }
 
 /// A question about the symbol `ask` takes, after the query context.
-template <typename Options, typename Ask>
+template <typename Question, typename Ask>
 CommandHandler symbol_question(std::string_view usage, const char* self_path, Ask ask) {
-    return operation<Options>(usage, "query", Errors::JSON, [=](const Options& opts) {
+    return operation<Question>(usage, "query", Errors::JSON, [=](const Question& opts) {
         auto args = positional(opts.target.inputs.as_optional(), {"<LOCATOR>"});
         if(!args) {
             return usage_error(Errors::JSON, args.error());

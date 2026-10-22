@@ -63,7 +63,7 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
 constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
 
 bool Features::ast_answerable(const Session& session) const {
-    return ast.projections.index_current(session.path_id) && !ASTFamily::compile_barred(session);
+    return ast.results.index_current(session.path_id) && !ASTFamily::compile_barred(session);
 }
 
 kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
@@ -78,7 +78,7 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
             co_return Route::Ast;
         }
         // An oversized buffer is not worth a synchronous main-thread lex;
-        // the full-lex projections follow the investment policy instead of
+        // the full-lex index results follow the investment policy instead of
         // the index slice. Index-backed answers serve at any size.
         bool capped = options.full_lex && session.text().size() > full_lex_cap;
         if(!capped) {
@@ -98,7 +98,7 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
                 // pending build: this request still pulls the compile it
                 // would otherwise have waited on, just without blocking.
                 if(session.serving == ServingMode::Escalated &&
-                   !ast.projections.current(session.path_id)) {
+                   !ast.results.current(session.path_id)) {
                     ast.request_compile(ticket.session);
                 }
                 if(source) {
@@ -294,9 +294,9 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             // Manifest edges cover the whole document (the background
             // index has no preamble split); guard-skipped lines and
             // __has_include/#embed have no edge and produce no link.
-            // Unlike the entries the other projections serve, the edges are
+            // Unlike the entries the other index results serve, the edges are
             // disk truth: the quarantine fallback (own index current,
-            // buffer edited) must not project them onto a buffer the
+            // buffer edited) must not apply them to a buffer the
             // manifest never described — an edited directive would get
             // the old target, confidently wrong.
             std::vector<protocol::DocumentLink> links;
@@ -339,8 +339,8 @@ std::vector<feature::FileDiagnostic> Features::finished_diagnostics(const Sessio
     }
     // A compile that failed or is barred left an output of an older
     // buffer, whose ranges a versionless report would place on this one.
-    if(auto projection = ast.projections.projection_at(session.path_id, session.version)) {
-        diagnostics = format_diagnostics(*projection->output, project.config.diagnostics);
+    if(auto compiled = ast.results.result_at(session.path_id, session.version)) {
+        diagnostics = format_diagnostics(*compiled->output, project.config.diagnostics);
     }
     append_crash_notes(session, diagnostics);
     return diagnostics;
@@ -358,14 +358,14 @@ Features::RawResult Features::definition(Ticket ticket,
     }
 
     // Preamble include lines first: they have no symbol occurrence in
-    // the index and are invisible to the worker's AST. A projection still
-    // not current after the awaited compile means the world was re-dirtied
+    // the index and are invisible to the worker's AST. A compile result
+    // still not current after the awaited compile means the world was re-dirtied
     // mid-flight (the round committed as bounded staleness): the cached
     // links may describe a pre-edit preamble — skip, and let the index and
     // worker paths below answer.
     auto offset =
         session ? session->positions().offset(position, PositionEncoding::UTF16) : std::nullopt;
-    if(offset && ast.projections.current(path_id)) {
+    if(offset && ast.results.current(path_id)) {
         auto links = find_preamble_links(*session);
         if(auto* link = link_at(links, *offset)) {
             co_return to_raw(directive_definition(*link));
@@ -421,7 +421,7 @@ Features::RawResult Features::definition(Ticket ticket,
     // whose compile a crash bars cannot reach a worker at all. What the
     // worker leg covers — include directives, which have no symbol
     // occurrence — the manifest edges answer instead, under the same
-    // content gate as the links projection: manifest lines are meaningless
+    // content gate as the index's links: manifest lines are meaningless
     // against a buffer the index never described.
     auto serving = query.serving(path_id);
     bool shard_served = serving && serving->kind == index::IndexSource::Kind::Shard;
@@ -459,9 +459,9 @@ Features::RawResult Features::definition(Ticket ticket,
     }
 
     // The buffer compiled since the first lookup: retry against the refreshed
-    // projection, but only when the compile actually completed — a failed
-    // compile leaves the projection non-current and the caches stale.
-    if(ast.projections.current(path_id)) {
+    // compile result, but only when the compile actually completed — a failed
+    // compile leaves the result non-current and the caches stale.
+    if(ast.results.current(path_id)) {
         if(auto retry = index_definition(); !retry.empty()) {
             co_return to_raw(retry);
         }
@@ -538,16 +538,16 @@ Features::RawResult Features::hover(Ticket ticket,
     }
 
     auto raw = co_await dispatcher.hover(ticket, position, std::move(token), markup);
-    if(raw.has_value() && to_lsp::is_null(raw.value()) && ast.projections.current(path_id)) {
+    if(raw.has_value() && to_lsp::is_null(raw.value()) && ast.results.current(path_id)) {
         // The preamble region is the one place a null from the AST is not
         // authoritative — it is compiled into the PCH and invisible to
         // the worker (a `#define` there has no node). The index card
         // fills that gap, and only that gap: past the bound the AST saw
         // the code and declined on purpose (a lambda's auto parameter
         // must not hover, and the index would happily name it `auto:1`).
-        auto projection = ast.projections.projection(path_id);
-        if(projection && projection->pch_key) {
-            if(auto it = project.pch_cache.find(*projection->pch_key);
+        auto compiled = ast.results.result(path_id);
+        if(compiled && compiled->pch_key) {
+            if(auto it = project.pch_cache.find(*compiled->pch_key);
                it != project.pch_cache.end()) {
                 if(offset && *offset < it->second.bound) {
                     if(auto info = index_hover_card(*session, position)) {

@@ -20,7 +20,7 @@ namespace clice::feature {
 namespace {
 
 /// The identifier the completion point sits in.
-struct CompletionPrefix {
+struct Prefix {
     /// From its start to the cursor: what candidates are matched against.
     LocalSourceRange typed;
 
@@ -29,7 +29,7 @@ struct CompletionPrefix {
 
     llvm::StringRef spelling;
 
-    static auto from(llvm::StringRef content, std::uint32_t offset) -> CompletionPrefix {
+    static auto from(llvm::StringRef content, std::uint32_t offset) -> Prefix {
         assert(offset <= content.size());
 
         auto start = offset;
@@ -42,7 +42,7 @@ struct CompletionPrefix {
             end += 1;
         }
 
-        return CompletionPrefix{
+        return Prefix{
             .typed = LocalSourceRange(start, offset),
             .whole = LocalSourceRange(start, end),
             .spelling = content.substr(start, offset - start),
@@ -1074,7 +1074,7 @@ const clang::FunctionDecl* enclosing_template(const clang::DeclContext* context)
     return nullptr;
 }
 
-class CodeCompletionCollector final : public clang::CodeCompleteConsumer {
+class Builder final : public clang::CodeCompleteConsumer {
 public:
     /// Sema reports macro candidates and statement keywords only on
     /// request: `if`, `for` and the like exist only as code patterns. The
@@ -1088,16 +1088,16 @@ public:
         return sema;
     }
 
-    CodeCompletionCollector(FocusFile focus,
-                            std::uint32_t offset,
-                            PositionEncoding encoding,
-                            std::vector<protocol::CompletionItem>& output,
-                            std::vector<const clang::NamedDecl*>& documented,
-                            const CodeCompletionOptions& options,
-                            const CompletionClient& client,
-                            llvm::ArrayRef<ScopeCandidate> candidates,
-                            bool& includes_pending,
-                            WholeBuffer& whole) :
+    Builder(FocusFile focus,
+            std::uint32_t offset,
+            PositionEncoding encoding,
+            std::vector<protocol::CompletionItem>& output,
+            std::vector<const clang::NamedDecl*>& documented,
+            const CodeCompletionOptions& options,
+            const CompletionClient& client,
+            llvm::ArrayRef<ScopeCandidate> candidates,
+            bool& includes_pending,
+            WholeBuffer& whole) :
         clang::CodeCompleteConsumer(sema_options(options)), focus(focus), offset(offset),
         encoding(encoding), output(output), documented(documented), options(options),
         argument_style(arguments_of(options.arguments)), client(client),
@@ -1464,7 +1464,7 @@ public:
 
         auto& source_manager = sema.getSourceManager();
         auto content = focus.content();
-        auto prefix = CompletionPrefix::from(content, offset);
+        auto prefix = Prefix::from(content, offset);
         FuzzyMatcher matcher(prefix.spelling);
 
         auto map = focus.positions();
@@ -2480,16 +2480,16 @@ auto code_complete(CompilationParams params,
     WholeBuffer whole(params);
     bool includes = false;
     params.completion.consumer = [&](CompilationUnit& unit) {
-        return std::make_unique<CodeCompletionCollector>(unit.focus_file(),
-                                                         offset,
-                                                         encoding,
-                                                         items,
-                                                         documented,
-                                                         options,
-                                                         client,
-                                                         candidates,
-                                                         includes,
-                                                         whole);
+        return std::make_unique<Builder>(unit.focus_file(),
+                                         offset,
+                                         encoding,
+                                         items,
+                                         documented,
+                                         options,
+                                         client,
+                                         candidates,
+                                         includes,
+                                         whole);
     };
     auto unit = compile(std::move(params));
 
@@ -2527,7 +2527,7 @@ auto code_complete(CompilationParams params,
 
 auto unqualified_prefix(llvm::StringRef text, std::uint32_t offset)
     -> std::optional<llvm::StringRef> {
-    auto prefix = CompletionPrefix::from(text, offset);
+    auto prefix = Prefix::from(text, offset);
     if(prefix.spelling.empty() || clang::isDigit(prefix.spelling.front())) {
         return std::nullopt;
     }

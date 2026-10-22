@@ -117,7 +117,7 @@ defending against ghosts.
 - Cancellation flows down the ownership tree through `task_group::cancel()`;
   tokens and sources exist only to cross an ownership boundary — the serve
   mode shutdown source in `MasterServer`, the batch commands' in
-  `BatchLifetime`. Graceful shutdown is not
+  `Lifetime` (`sched/batch.cpp`). Graceful shutdown is not
   cancellation — kota has no shield, a cancel cascades all the way down — so
   a shutdown is a cancellable serving phase bounded by `with_token`, then a
   non-cancellable drain that joins each task in order.
@@ -138,7 +138,16 @@ defending against ghosts.
 - **Variables, member fields, function names**: `snake_case`. Class member fields do NOT use any special suffix/prefix (no trailing `_`, no `m_` prefix).
 - **Class names, template parameter names, enum names**: `PascalCase`. Exception: some class names also use `snake_case` — follow the existing style in the project.
 - **Enum values**: `PascalCase`.
-- **Acronyms stay uppercase in type names**: `PCHFamily`, `ASTProjection`, `TUIndex` — never `PcmFamily`, `AstProjection`.
+- **Acronyms stay uppercase in type names**: `PCHFamily`, `ASTFamily`, `TUIndex` — never `PcmFamily`, `AstFamily`.
+- **A file-local type is named by its role in the file**, without the
+  words of the file's own subject: in an anonymous namespace,
+  `FoldingRangeCollector` in `folding_ranges.cpp` is `Builder`, `ScanOptions`
+  in `scan.cc` is `Options`. A type that is the file's subject itself keeps
+  its name (`Indexer` in `indexer.cpp`).
+- **Role words**: the type producing the file's answer is a `Builder`; a
+  visitor looking for nodes is a `<What>Finder` (`PackForwardFinder`); a
+  clang callback that only records what clang reports is a `<What>Recorder`
+  (`CompilationUnit::DiagnosticRecorder`). Nothing is a `Collector`.
 - Doc comments on declarations use `///`; the bar for when to write a
   comment at all is in CLAUDE.md.
 
@@ -168,6 +177,8 @@ These were renamed out of the codebase; don't bring them back:
 | tier (an encoding choice)          | `encoding` (`MaskEncoding`); the search ranking's `NameRank::tier` stays                                                                  |
 | surface (verb), vouch for          | `report` / `show`, `guarantee` / `confirm`                                                                                                |
 | stamp outside `vfs`                | `version` / `generation`                                                                                                                  |
+| collector                          | `Builder` / `<What>Finder` / `<What>Recorder` (see Naming Conventions)                                                                    |
+| projection                         | what it is: the compile result (`CompileResult`), a result computed from the index (`index_semantic_tokens`), the LSP form                |
 
 Domain words with one meaning each — use them only in that meaning:
 

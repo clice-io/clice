@@ -683,12 +683,12 @@ namespace {
 /// The declarations of the unit's focus file the outline lists, from the
 /// unit's cached Semantics node table — the DFS pre-order record of the
 /// file's written AST — instead of another RecursiveASTVisitor over the TU.
-class Collector {
+class Builder {
 public:
-    explicit Collector(CompilationUnit& unit) :
+    explicit Builder(CompilationUnit& unit) :
         unit(unit), entities(unit.get<EntityTable>()), readable(unit.context(), {}) {}
 
-    auto collect() -> std::vector<OutlineEntry> {
+    auto build() -> std::vector<OutlineEntry> {
         auto nodes = unit.get<Semantics>().node_entries();
         std::uint32_t index = 0;
         while(index < nodes.size()) {
@@ -979,7 +979,7 @@ auto document_symbols(CompilationUnit& unit,
             marks.push_back(directive);
         }
     }
-    return outline(Collector(unit).collect(),
+    return outline(Builder(unit).build(),
                    source,
                    macros,
                    semantics.module_declarations(),

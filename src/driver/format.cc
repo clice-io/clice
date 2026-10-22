@@ -12,7 +12,7 @@ namespace clice::driver {
 
 namespace {
 
-struct FormatOptions {
+struct Options {
     kota::deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<PATH>",
@@ -65,22 +65,22 @@ int run_format(BatchFormatOptions options) {
 }
 
 CommandHandler build(const char*) {
-    return operation<FormatOptions>(
-        "clice format [<PATH>...] [OPTIONS]",
-        "format",
-        Errors::Text,
-        [](const FormatOptions& opts) {
-            BatchFormatOptions options{
-                .root = CanonicalPath(opts.where.root()),
-                .configuration = opts.where.configuration.tag(),
-                .jobs = opts.jobs.jobs.value_or(0),
-                .check = static_cast<bool>(opts.check),
-            };
-            for(auto& argument: opts.paths.value_or(std::vector<std::string>{})) {
-                options.paths.emplace_back(argument, Spelling(options.root));
-            }
-            return run_format(std::move(options));
-        });
+    return operation<Options>("clice format [<PATH>...] [OPTIONS]",
+                              "format",
+                              Errors::Text,
+                              [](const Options& opts) {
+                                  BatchFormatOptions options{
+                                      .root = CanonicalPath(opts.where.root()),
+                                      .configuration = opts.where.configuration.tag(),
+                                      .jobs = opts.jobs.jobs.value_or(0),
+                                      .check = static_cast<bool>(opts.check),
+                                  };
+                                  for(auto& argument:
+                                      opts.paths.value_or(std::vector<std::string>{})) {
+                                      options.paths.emplace_back(argument, Spelling(options.root));
+                                  }
+                                  return run_format(std::move(options));
+                              });
 }
 
 [[maybe_unused]] const bool registered =

@@ -281,16 +281,15 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     params.version = alias.buffer.version;
     if(diverged) {
         params.diagnostics = to_client({feature::file_warning(divergence_message(alias))});
-    } else if(auto projection =
-                  project.ast.projections.projection_at(owner->path_id, owner->version)) {
+    } else if(auto compiled = project.ast.results.result_at(owner->path_id, owner->version)) {
         auto diagnostics =
-            format_diagnostics(*projection->output, project.project.config.diagnostics);
+            format_diagnostics(*compiled->output, project.project.config.diagnostics);
         append_crash_notes(*owner, diagnostics);
         params.diagnostics = to_client(diagnostics);
     } else if(!flipped) {
         // Shared once the owner's compile caught up with the text; until
         // then only a divergence warning is taken down.
-        // FIXME: a crashed compile leaves no projection at the owner's version, so
+        // FIXME: a crashed compile leaves no compile result at the owner's version, so
         // a push client gets nothing at the alias URI, the crash note included.
         return;
     }
@@ -542,9 +541,8 @@ void LSPClient::register_lifecycle() {
         // pushes fresh results instead.
         for(auto& project: srv.projects) {
             project->sessions.for_each([&](Fid path_id, const Session& session) {
-                auto& projections = project->ast.projections;
-                if(projections.current(path_id) &&
-                   projections.projection_at(path_id, session.version)) {
+                auto& results = project->ast.results;
+                if(results.current(path_id) && results.result_at(path_id, session.version)) {
                     this->push_output(*project, session);
                 }
                 return true;
@@ -1568,15 +1566,15 @@ void LSPClient::publish_config_diagnostics() {
 void LSPClient::push_output(ProjectServer& project, const Session& session) {
     // Held back until the handshake completes (the LSP spec forbids
     // publishDiagnostics before the initialize response); the output stays
-    // materialized in the projection and the initialized handler replays it.
+    // materialized in the compile result and the initialized handler replays it.
     if(!client_ready) {
         return;
     }
-    auto projection = project.ast.projections.projection(session.path_id);
-    if(!projection || !projection->output.has_value()) {
+    auto compiled = project.ast.results.result(session.path_id);
+    if(!compiled || !compiled->output.has_value()) {
         return;
     }
-    auto& output = *projection->output;
+    auto& output = *compiled->output;
 
     if(pull_diagnostics) {
         if(auto it = pulled.find(session.path_id);
@@ -1598,7 +1596,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     }
 
     // Two cases make the client re-pull whole-document results it already
-    // holds: index projections served while this compile was pending
+    // holds: results computed from the index served while this compile was pending
     // (their answers just got better), and a compile that finished for
     // unchanged text — a context switch or a changed dependency reshapes
     // tokens (including their inactive regions), hints and folds with no
@@ -1627,7 +1625,7 @@ void LSPClient::refresh_index_served() {
     if(!client_ready) {
         return;
     }
-    // Inlay hints stay out: index projections never produce them, so a
+    // Inlay hints stay out: the index never computes them, so a
     // background merge cannot have changed what the client holds.
     if(semantic_tokens_refresh) {
         fire_refresh(server.loop, peer, protocol::SemanticTokensRefreshParams{});

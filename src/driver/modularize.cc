@@ -35,7 +35,7 @@ struct OutputOptions {
     no_mirrors;
 };
 
-struct ModularizeOptions {
+struct Options {
     kota::deco::decl::HelpOption help;
 
     DecoKV(help =
@@ -223,7 +223,7 @@ int run_merge(const MergeOptions& opts) {
     return 0;
 }
 
-int run_modularize(const ModularizeOptions& opts) {
+int run_modularize(const Options& opts) {
     if(!opts.partition || !opts.output.out) {
         return fail("modularize needs --partition and --out");
     }
@@ -321,10 +321,10 @@ CommandHandler build(const char*) {
     return with_operations("",
                            std::move(operations),
                            Errors::JSON,
-                           operation<ModularizeOptions>("clice modularize [OPTIONS]",
-                                                        "modularize",
-                                                        Errors::JSON,
-                                                        run_modularize));
+                           operation<Options>("clice modularize [OPTIONS]",
+                                              "modularize",
+                                              Errors::JSON,
+                                              run_modularize));
 }
 
 [[maybe_unused]] const bool registered = register_command(

@@ -16,7 +16,7 @@ namespace clice::driver {
 
 namespace {
 
-struct LintOptions {
+struct Options {
     kota::deco::decl::HelpOption help;
 
     DecoFlag(names = {"--index"},
@@ -94,21 +94,21 @@ int run_lint(Spelling root,
 }
 
 CommandHandler build(const char* self_path) {
-    return operation<LintOptions>("clice lint [OPTIONS]",
-                                  "lint",
-                                  Errors::Text,
-                                  [self_path](const LintOptions& opts) {
-                                      auto workspace = opts.where.root();
-                                      if(!workspace_exists(workspace)) {
-                                          return 2;
-                                      }
-                                      return run_lint(std::move(workspace),
-                                                      opts.where.configuration.tag(),
-                                                      opts.jobs.jobs.value_or(0),
-                                                      static_cast<bool>(opts.index),
-                                                      static_cast<bool>(opts.report.json),
-                                                      self_path);
-                                  });
+    return operation<Options>("clice lint [OPTIONS]",
+                              "lint",
+                              Errors::Text,
+                              [self_path](const Options& opts) {
+                                  auto workspace = opts.where.root();
+                                  if(!workspace_exists(workspace)) {
+                                      return 2;
+                                  }
+                                  return run_lint(std::move(workspace),
+                                                  opts.where.configuration.tag(),
+                                                  opts.jobs.jobs.value_or(0),
+                                                  static_cast<bool>(opts.index),
+                                                  static_cast<bool>(opts.report.json),
+                                                  self_path);
+                              });
 }
 
 [[maybe_unused]] const bool registered =

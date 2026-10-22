@@ -700,7 +700,7 @@ auto semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& options
 
 /// Protocol encoding of computed tokens against the text they describe,
 /// those overlapping `window` alone when one is given — one encoder for the
-/// worker's AST results and the master's index projections, so both paths
+/// worker's AST results and the master's results from the index, so both paths
 /// emit byte-identical replies.
 auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
                                  const PositionMap& map,
@@ -718,8 +718,8 @@ auto semantic_tokens_edits(llvm::ArrayRef<std::uint32_t> before,
 auto folding_ranges(CompilationUnit& unit) -> std::vector<FoldingRange>;
 
 /// The kind of the fold a declaration's block makes, by the declaration's
-/// kind; none for a declaration owning no block. The AST collector and the
-/// index projection share it, so a block keeps its kind when the AST
+/// kind; none for a declaration owning no block. The AST builder and the
+/// index's folds share it, so a block keeps its kind when the AST
 /// takes over.
 auto declaration_fold_kind(SymbolKind kind) -> std::optional<protocol::FoldingRangeKind>;
 
@@ -737,7 +737,7 @@ auto declaration_lines(llvm::StringRef content,
     -> std::optional<LocalSourceRange>;
 
 /// Protocol encoding of computed folds of `content`, for the worker's AST
-/// results and the master's index projections alike. A client folding
+/// results and the master's results from the index alike. A client folding
 /// whole lines gets one fold per set of hidden lines; when it also shows
 /// collapsed text, that text is the fold's whole first line, and a fold
 /// whose closer sits on a line of its own folds that line too
@@ -1160,11 +1160,11 @@ auto cleanup_edits(llvm::StringRef file,
 /// for `file`; unchanged without one.
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
 
-/// Index projections: whole-document features computed from index entries plus
+/// Whole-document features computed from index entries plus
 /// the document text, serving open files that have no AST yet (see
 /// Features' routing rules). Inputs are index vocabulary types and
 /// narrow resolvers, never index storage — the caller extracts entries from
-/// shard/ProjectIndex and hands them over. Each projection's output is an
+/// shard/ProjectIndex and hands them over. Each one's output is an
 /// honest subset of its AST twin's: missing pieces (Sema modifiers, outline
 /// detail, statement folds, ...) are pinned by the index/read_only cases.
 
@@ -1178,7 +1178,7 @@ struct IndexDecl {
     bool definition = false;
 };
 
-/// The entries of one document the projections consume, extracted from its
+/// The entries of one document these functions consume, extracted from its
 /// serving shard: every occurrence, the reference relations of names nested in
 /// another's written name (the class in `~Foo`, which owns no occurrence
 /// there) as occurrences of their own, and the Decl/Def relations as decl

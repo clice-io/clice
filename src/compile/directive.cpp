@@ -11,9 +11,9 @@ import :vfs.path;
 
 namespace clice {
 
-class CompilationUnit::DirectiveCollector : public clang::PPCallbacks {
+class CompilationUnit::DirectiveRecorder : public clang::PPCallbacks {
 public:
-    DirectiveCollector(CompilationUnit& unit) : unit(unit) {}
+    DirectiveRecorder(CompilationUnit& unit) : unit(unit) {}
 
 private:
     void add_condition(clang::SourceLocation location,
@@ -375,8 +375,8 @@ private:
     CompilationUnit& unit;
 };
 
-std::unique_ptr<clang::PPCallbacks> CompilationUnit::directive_collector() {
-    return std::make_unique<DirectiveCollector>(*this);
+std::unique_ptr<clang::PPCallbacks> CompilationUnit::directive_recorder() {
+    return std::make_unique<DirectiveRecorder>(*this);
 }
 
 }  // namespace clice

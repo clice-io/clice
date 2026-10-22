@@ -690,7 +690,7 @@ private:
 
     // Take all untaken expanded tokens in S for node `self`.
     //
-    // The whole-TU shape only feeds the index projection, which never queries
+    // The whole-TU shape only feeds the index build, which never queries
     // token ownership — skip the take machinery entirely. This matters: the
     // preamble-state build runs a whole-TU pass over the preamble unit, and
     // taking its entire expanded stream would be paid on every PCH build.

@@ -39,7 +39,7 @@ index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kin
     // what the other units do in the file serves while the buffer is the
     // text they read.
     if(kind == index::IndexSource::Kind::SessionShard) {
-        auto& state = *projections.projection(file)->index;
+        auto& state = *results.result(file)->index;
         if(auto section = state.instantiation_section_of(state.path_count() - 1)) {
             source.instantiations.push_back(&state.instantiation_shard(*section));
         }
@@ -53,14 +53,14 @@ index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kin
 }
 
 const index::Shard* ServerLiveSources::session_shard(Fid file, const Session& session) const {
-    auto projection = projections.projection(file);
-    if(!projection || !projection->index || !projection->index->loaded()) {
+    auto compiled = results.result(file);
+    if(!compiled || !compiled->index || !compiled->index->loaded()) {
         return nullptr;
     }
     // A shard compiled from exactly the buffer's bytes describes it however
     // its dependencies moved since (the shard's DepsOnly contract).
-    auto& shard = projection->file_shard();
-    if(projections.current(file) || shard.matches_content(session.text().size(), session.hash)) {
+    auto& shard = compiled->file_shard();
+    if(results.current(file) || shard.matches_content(session.text().size(), session.hash)) {
         return &shard;
     }
     return nullptr;
@@ -93,18 +93,18 @@ void ServerLiveSources::for_each_session(
 void ServerLiveSources::for_each_session_index(
     llvm::function_ref<bool(const index::TUIndex&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
-        return !session_shard(file, session) || visit(*projections.projection(file)->index);
+        return !session_shard(file, session) || visit(*results.result(file)->index);
     });
 }
 
 std::shared_ptr<index::TUIndex> ServerLiveSources::overlay_of(Fid file) const {
-    auto projection = projections.projection(file);
-    if(!projection || !projection->pch_key) {
+    auto compiled = results.result(file);
+    if(!compiled || !compiled->pch_key) {
         return nullptr;
     }
     // Returned by value: a reference into the map value would not survive
     // a rehash.
-    return pch.preamble_state(*projection->pch_key);
+    return pch.preamble_state(*compiled->pch_key);
 }
 
 void ServerLiveSources::for_each_preamble(
@@ -146,14 +146,14 @@ void ServerLiveSources::for_each_overlay(
         return state ? visit(*state) : true;
     };
     sessions.for_each([&](Fid file, const Session&) -> bool {
-        auto projection = projections.projection(file);
-        if(!projection || !projection->pch_key) {
+        auto compiled = results.result(file);
+        if(!compiled || !compiled->pch_key) {
             return true;
         }
-        if(!visit_key(*projection->pch_key)) {
+        if(!visit_key(*compiled->pch_key)) {
             return false;
         }
-        auto it = project.pch_cache.find(*projection->pch_key);
+        auto it = project.pch_cache.find(*compiled->pch_key);
         return it == project.pch_cache.end() || visit_key(std::string(it->second.base));
     });
 }

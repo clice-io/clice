@@ -6,7 +6,7 @@ module clice;
 
 import :compile.compilation;
 import :feature.feature;
-import :feature.projection_check;
+import :feature.index_check;
 import :feature.semantic_token_stream;
 import :index.indexer;
 import :index.symbol;

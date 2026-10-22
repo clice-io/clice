@@ -18,7 +18,7 @@ namespace clice::driver {
 
 namespace {
 
-struct WorkerOptions {
+struct Options {
     kota::deco::decl::HelpOption help;
 
     DecoFlag(names = {"--stateful"},
@@ -43,8 +43,8 @@ struct WorkerOptions {
 }  // namespace
 
 int run_worker(std::span<std::string> args) {
-    auto cmd = kota::deco::cli::command<WorkerOptions>("clice worker [OPTIONS]");
-    cmd.match_all([](WorkerOptions opts) {
+    auto cmd = kota::deco::cli::command<Options>("clice worker [OPTIONS]");
+    cmd.match_all([](Options opts) {
         // A worker lives and dies with its master: an orphan answers no one
         // and nothing stops it when it hangs. Its own process group keeps a
         // terminal's Ctrl-C and SIGHUP for the master, which stops it.

@@ -11,7 +11,7 @@ namespace clice::driver {
 
 namespace {
 
-struct ServeOptions {
+struct Options {
     kota::deco::decl::HelpOption help;
     ServerOptions server;
     ConfigurationOption configuration;
@@ -19,8 +19,8 @@ struct ServeOptions {
 };
 
 CommandHandler build(const char* self_path) {
-    auto cmd = kota::deco::cli::command<ServeOptions>("clice serve [OPTIONS]");
-    cmd.match_all([self_path](ServeOptions opts) {
+    auto cmd = kota::deco::cli::command<Options>("clice serve [OPTIONS]");
+    cmd.match_all([self_path](Options opts) {
         opts.log.apply();
         return run_serve_mode(opts.server, opts.configuration.tag(), self_path);
     });

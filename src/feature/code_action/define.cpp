@@ -151,7 +151,7 @@ bool declaration_only(TokenKind kind) {
 }
 
 /// How a declaration turns into the head of its out-of-line definition.
-struct DefinitionOptions {
+struct Options {
     /// Mark the definition `inline`: it stays in a header.
     bool mark_inline = false;
 };
@@ -163,7 +163,7 @@ public:
     Transform(CompilationUnit& unit,
               const clang::FunctionDecl* decl,
               const clang::DeclContext* from,
-              DefinitionOptions options) : unit(unit), decl(decl), from(from), options(options) {}
+              Options options) : unit(unit), decl(decl), from(from), options(options) {}
 
     std::optional<std::string> run() {
         auto range = written_declaration(decl)->getSourceRange();
@@ -574,7 +574,7 @@ private:
     CompilationUnit& unit;
     const clang::FunctionDecl* decl;
     const clang::DeclContext* from;
-    DefinitionOptions options;
+    Options options;
 
     clang::FileID fid;
     std::uint32_t base = 0;
@@ -590,7 +590,7 @@ private:
 std::optional<std::string> definition_text(CompilationUnit& unit,
                                            const clang::FunctionDecl* decl,
                                            const clang::DeclContext* from,
-                                           DefinitionOptions options = {}) {
+                                           Options options = {}) {
     return Transform(unit, decl, from, options).run();
 }
 

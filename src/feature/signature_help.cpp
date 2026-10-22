@@ -203,11 +203,11 @@ struct Documented {
     std::vector<llvm::SmallVector<std::string, 1>> parameters;
 };
 
-class SignatureCollector final : public clang::CodeCompleteConsumer {
+class Builder final : public clang::CodeCompleteConsumer {
 public:
-    SignatureCollector(protocol::SignatureHelp& help,
-                       std::vector<Documented>& sources,
-                       clang::CodeCompleteOptions complete_options) :
+    Builder(protocol::SignatureHelp& help,
+            std::vector<Documented>& sources,
+            clang::CodeCompleteOptions complete_options) :
         clang::CodeCompleteConsumer(complete_options), help(help), sources(sources),
         info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
@@ -882,7 +882,7 @@ auto signature_help(CompilationParams params,
     auto offset = params.completion.offset;
     std::vector<Documented> sources;
     params.completion.consumer = [&](CompilationUnit&) {
-        return std::make_unique<SignatureCollector>(help, sources, complete_options);
+        return std::make_unique<Builder>(help, sources, complete_options);
     };
     auto unit = compile(std::move(params));
     if(!unit->completed()) {
@@ -894,7 +894,7 @@ auto signature_help(CompilationParams params,
             auto& resolver = unit->get<types::TemplateResolver>();
             auto candidates = resolver.callees(call->callee, call->written);
             const auto* access = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(call->callee);
-            SignatureCollector(help, sources, complete_options)
+            Builder(help, sources, complete_options)
                 .dependent(unit->context(),
                            candidates,
                            static_cast<std::uint32_t>(call->written.size()),

@@ -34,7 +34,7 @@ namespace protocol = kota::ipc::protocol;
 /// Routing is derived per request from readiness, never from a mode
 /// flag: a current AST answers as today; otherwise an index source that
 /// is byte-identical to the buffer answers immediately (whole-document
-/// features through the feature::index_* projections, cursor queries
+/// features through the feature::index_* functions, cursor queries
 /// through index::IndexQuery's freshness clauses); otherwise the request awaits
 /// the compile the policy owes, or answers honestly empty when it owes
 /// none (ServingMode::IndexOnly).
@@ -111,8 +111,8 @@ public:
                          kota::cancellation_token token = {});
 
     /// Whole-document features and hover, routed by readiness (see
-    /// pick_route): the AST answers when current, the index projections
-    /// answer while it is not, and a session the policy keeps un-compiled
+    /// pick_route): the AST answers when current, the results computed
+    /// from the index answer while it is not, and a session the policy keeps un-compiled
     /// answers with its pinned degraded surface (empty inlay hints). Each
     /// takes the request's cancellation token and forwards it to the
     /// worker sends (see Dispatcher::query).
@@ -290,7 +290,7 @@ private:
     };
 
     struct RouteOptions {
-        /// The projection raw-lexes the whole buffer (semantic tokens,
+        /// The index result raw-lexes the whole buffer (semantic tokens,
         /// folds, the outline): it follows the investment policy once the buffer is
         /// oversized, while index- and cursor-backed answers serve at any
         /// size.

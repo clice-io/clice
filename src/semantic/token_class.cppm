@@ -197,8 +197,8 @@ inline bool leaves_enclosing(clang::tok::TokenKind kind) {
 }
 
 /// What every written name of `decl` shows: its kind and the modifiers it
-/// carries at each occurrence. The tokens of the AST and the symbols the
-/// index stores for its projection both come from here.
+/// carries at each occurrence. The tokens of the AST and those computed
+/// from the symbols the index stores both come from here.
 TokenClass token_class(const clang::NamedDecl* decl);
 
 /// The same of the macro defined by `macro`.

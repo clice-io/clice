@@ -13,7 +13,7 @@ import :compile.tidy;
 import :config.config;
 import :driver.driver;
 import :feature.feature;
-import :feature.projection_check;
+import :feature.index_check;
 import :index.indexer;
 import :index.instantiation_shard;
 import :index.navigation;
@@ -36,7 +36,7 @@ namespace clice::driver {
 namespace {
 
 /// What every feature takes.
-struct InspectOptions {
+struct Options {
     DecoInput(meta_var = "<PATH>", help = "The source file", required = false)
     <std::vector<std::string>> path;
 
@@ -57,14 +57,14 @@ struct InspectOptions {
 
 struct FeatureOptions {
     kota::deco::decl::HelpOption help;
-    InspectOptions inspect;
+    Options inspect;
     LogLevelOption log;
 };
 
 /// The options of a feature that checks its own results.
 struct CheckedFeatureOptions {
     kota::deco::decl::HelpOption help;
-    InspectOptions inspect;
+    Options inspect;
 
     DecoFlag(names = {"--check"},
              help =
@@ -85,7 +85,7 @@ struct SchemaOptions {
 /// project's native spelling) and enums serialize as their C++ value
 /// names; the TS side owns any mapping to LSP vocabulary. Text that is not
 /// UTF-8 is written as U+FFFD, as the server writes it to the client.
-struct InspectJsonConfig {
+struct JsonConfig {
     constexpr static auto enum_repr = kota::codec::enum_repr::String;
     constexpr static auto invalid_utf8 = kota::codec::invalid_utf8::Replace;
 };
@@ -114,14 +114,14 @@ struct FileMarkers {
 };
 
 /// `files` holds the inspected file's entry under its file name.
-struct InspectOutput {
+struct Output {
     std::string feature;
     std::map<std::string, FileEntry> files;
 };
 
 template <typename T>
 std::optional<kota::codec::RawValue> to_raw_json(const T& value) {
-    auto json = kota::codec::json::to_string<InspectJsonConfig>(value);
+    auto json = kota::codec::json::to_string<JsonConfig>(value);
     if(!json) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return std::nullopt;
@@ -558,7 +558,7 @@ CanonicalPath workspace_of(CanonicalRef start) {
 /// are; the databases the configuration names, else the ones discovered
 /// under its root and those between the root and the file; the dependency
 /// graph.
-auto load_inspected(Project& project, const InspectOptions& opts, const Spelling& directory)
+auto load_inspected(Project& project, const Options& opts, const Spelling& directory)
     -> std::expected<void, std::string> {
     auto identity = CanonicalPath(directory);
     auto root = workspace_of(identity);
@@ -722,7 +722,7 @@ void run_feature(FileEntry& entry,
     entry.markers = std::move(markers);
 }
 
-int run_inspect(const InspectOptions& opts, const FeatureSpec& spec) {
+int run_inspect(const Options& opts, const FeatureSpec& spec) {
     auto args = positional(opts.path.as_optional(), {"<PATH>"});
     if(!args) {
         return usage_error(Errors::Text, args.error());
@@ -741,7 +741,7 @@ int run_inspect(const InspectOptions& opts, const FeatureSpec& spec) {
         return 1;
     }
 
-    InspectOutput output{.feature = spec.name.str()};
+    Output output{.feature = spec.name.str()};
     auto& entry = output.files[path::filename(file->path).str()];
     auto input = project_input(*file, project, commands);
     run_feature(entry, spec, *file, input, project.config);
@@ -749,7 +749,7 @@ int run_inspect(const InspectOptions& opts, const FeatureSpec& spec) {
         vfs::remove(input.pch.first);
     }
 
-    auto json = kota::codec::json::to_string<InspectJsonConfig>(output);
+    auto json = kota::codec::json::to_string<JsonConfig>(output);
     if(!json) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return 1;

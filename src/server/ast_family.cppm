@@ -9,7 +9,7 @@ import :project.project;
 import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.graph;
-import :server.ast_projection;
+import :server.compile_result;
 import :server.editor_context;
 import :server.session;
 import :server.session_store;
@@ -35,10 +35,10 @@ struct ASTFamilyFixture;
 /// The family owns the whole compile lifecycle the retired Compiler ran:
 /// dependency preparation (through RoundContext::depend, the only wait
 /// form that records edges), the stateful dispatch, crash accounting,
-/// trial planning, and the projection commit. Contract 16: the committed
-/// package (projection, deps snapshot, serving bits, output push) is
+/// trial planning, and the compile result commit. Contract 16: the committed
+/// package (compile result, deps snapshot, serving bits, output push) is
 /// written inside the round with no suspension before the outcome becomes
-/// visible — a joiner must never see Success before the projection.
+/// visible — a joiner must never see Success before the compile result.
 ///
 /// Supersede and invalidation flow through the facade's single write
 /// points; the round distinguishes them at commit: a Lost invalidation
@@ -58,9 +58,9 @@ public:
     /// against a synthetic runner register their own under Family::AST.
     void register_runner();
 
-    /// Per-document projections and freshness state; the read surface for
+    /// Per-document compile results and freshness state; the read surface for
     /// IndexQuery, Features and the transports.
-    ASTProjectionTable projections;
+    CompileResults results;
 
     /// Parsed form of config.project.readonly, written once by the master
     /// at initialization.
@@ -69,7 +69,7 @@ public:
     /// Compile an open file's AST if it is not current: join the
     /// document's round (spawning one if none is live) and retry through
     /// stale attempts until a terminal outcome. Returns true when the
-    /// projection is current on return. A buffer edit or session
+    /// compile result is current on return. A buffer edit or session
     /// replacement abandons the join — the editor re-requests after an
     /// edit, so the result would describe a buffer that no longer exists.
     kota::task<bool> ensure_compiled(std::shared_ptr<Session> session);
@@ -96,7 +96,7 @@ public:
         std::unordered_map<std::string, std::string> pcms;
     };
 
-    /// `ticket` is the pch_key write license together with the projection
+    /// `ticket` is the pch_key write license together with the result
     /// epoch snapshotted here, before the first suspension: a supersede
     /// bumps the generation, a Lost-type invalidation bumps only the
     /// epoch — either way the resolved command may describe a command
@@ -115,14 +115,14 @@ public:
                                               StatelessInputs& inputs);
 
     /// The edit path's whole supersede (didChange): the buffer moved, so
-    /// the projection is no longer current and the in-flight round's
+    /// the compile result is no longer current and the in-flight round's
     /// result is void. Fires the round's advisory token and cancels its
     /// compile over IPC, which interrupts the worker's parse; the round
     /// still observes the real reply (crash accounting depends on it).
     void supersede(Fid path_id);
 
     /// A Lost-type invalidation (dependency changed on disk, worker
-    /// crash, eviction — the buffer itself is unchanged): the projection
+    /// crash, eviction — the buffer itself is unchanged): the result
     /// is no longer current and an in-flight round must not commit as
     /// such, but its parse keeps running — the round publishes the
     /// product as bounded staleness before reporting Stale.
@@ -151,8 +151,8 @@ public:
     void switch_identity(Session& session);
 
     /// Emitted after a compile round (or an announcement path)
-    /// materializes publishable products into the document's projection.
-    /// Subscribers read the output from the projection; with no
+    /// materializes publishable products into the document's compile result.
+    /// Subscribers read the output from the result; with no
     /// subscriber connected the output simply stays there.
     Signal<std::shared_ptr<Session>> on_output;
 

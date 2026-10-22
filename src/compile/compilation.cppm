@@ -512,19 +512,19 @@ private:
     friend std::unique_ptr<CompilationUnit> compile(CompilationParams params);
     friend class FocusFile;
 
-    class DiagnosticCollector;
-    class DirectiveCollector;
+    class DiagnosticRecorder;
+    class DirectiveRecorder;
     class ParseConsumer;
     class ParseAction;
 
     explicit CompilationUnit(CompilationParams params);
 
     /// The consumer filling collected_diagnostics, see diagnostic.cpp.
-    std::unique_ptr<clang::DiagnosticConsumer> diagnostic_collector();
+    std::unique_ptr<clang::DiagnosticConsumer> diagnostic_recorder();
 
     /// The callbacks filling collected_directives and absent_paths, see
     /// directive.cpp.
-    std::unique_ptr<clang::PPCallbacks> directive_collector();
+    std::unique_ptr<clang::PPCallbacks> directive_recorder();
 
     auto SM() -> clang::SourceManager& {
         return instance->getSourceManager();

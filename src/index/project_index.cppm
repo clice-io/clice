@@ -211,8 +211,8 @@ public:
                                 Fid anchor,
                                 llvm::function_ref<void(Fid)> visit) const;
 
-    /// The include edges of a document, the input of the document-link
-    /// projection: every way a unit resolved its `#include` lines at its
+    /// The include edges of a document, the input of the document links
+    /// computed from the index: every way a unit resolved its `#include` lines at its
     /// shard's content generation. Empty when the file was never indexed.
     std::vector<IncludeEdge> include_edges(Fid file) const;
 

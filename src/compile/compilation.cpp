@@ -249,7 +249,7 @@ void CompilationUnit::run_tidy() {
         context.setTraversalScope(collected_decls);
     }
     // Checks re-lex through the preprocessor (modernize-use-trailing-return-type
-    // does): what the directive collector records meanwhile is no directive
+    // does): what the directive recorder records meanwhile is no directive
     // of the file.
     auto collected = std::move(collected_directives);
 
@@ -486,7 +486,7 @@ static std::unique_ptr<clang::FrontendAction> frontend_action(CompilationKind ki
 }
 
 CompilationStatus CompilationUnit::run() {
-    auto diagnostic_consumer = diagnostic_collector();
+    auto diagnostic_consumer = diagnostic_recorder();
     auto invocation = create_invocation(diagnostic_consumer.get());
     if(!invocation) {
         return CompilationStatus::SetupFail;
@@ -555,7 +555,7 @@ CompilationStatus CompilationUnit::run() {
     }
 
     /// Add PPCallbacks to collect preprocessing information.
-    instance->getPreprocessor().addPPCallbacks(directive_collector());
+    instance->getPreprocessor().addPPCallbacks(directive_recorder());
 
     // Past the end of the focus file clang instantiates the templates the
     // preamble uses, and checks little else: the end of the last

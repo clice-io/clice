@@ -161,13 +161,13 @@ ScanResult scan_quick(llvm::StringRef content) {
 
 namespace {
 
-class ScanDirectivesGetter : public clang::DependencyDirectivesGetter {
+class DirectivesGetter : public clang::DependencyDirectivesGetter {
 public:
-    explicit ScanDirectivesGetter(clang::FileManager& file_mgr) : file_mgr(&file_mgr) {}
+    explicit DirectivesGetter(clang::FileManager& file_mgr) : file_mgr(&file_mgr) {}
 
     std::unique_ptr<clang::DependencyDirectivesGetter>
         cloneFor(clang::FileManager& new_file_mgr) override {
-        return std::make_unique<ScanDirectivesGetter>(new_file_mgr);
+        return std::make_unique<DirectivesGetter>(new_file_mgr);
     }
 
     std::optional<llvm::ArrayRef<clang::dependency_directives_scan::Directive>>
@@ -213,9 +213,9 @@ private:
 
 /// Collects the imports the preprocessor reaches, each with its offset in
 /// the scanned file.
-class ImportCollector : public clang::PPCallbacks {
+class ImportRecorder : public clang::PPCallbacks {
 public:
-    ImportCollector(ScanResult& result, const clang::SourceManager& sources) :
+    ImportRecorder(ScanResult& result, const clang::SourceManager& sources) :
         result(result), sources(sources) {}
 
     void moduleImport(clang::SourceLocation location,
@@ -292,7 +292,7 @@ void scan_with_preprocessor(
     instance->getDiagnostics().setSuppressAllDiagnostics(true);
     instance->createFileManager();
 
-    auto getter = std::make_unique<ScanDirectivesGetter>(instance->getFileManager());
+    auto getter = std::make_unique<DirectivesGetter>(instance->getFileManager());
     auto& directives = *getter;
     instance->setDependencyDirectivesGetter(std::move(getter));
 
@@ -343,7 +343,7 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
         result,
         [&](clang::CompilerInstance& instance, clang::FrontendAction& action) {
             instance.getPreprocessor().addPPCallbacks(
-                std::make_unique<ImportCollector>(result, instance.getSourceManager()));
+                std::make_unique<ImportRecorder>(result, instance.getSourceManager()));
             if(auto error = action.Execute()) {
                 llvm::consumeError(std::move(error));
             }

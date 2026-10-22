@@ -115,11 +115,11 @@ bool template_compatible(const clang::TemplateTemplateParmDecl* TTP, clang::Temp
 /// Indices of the deduction-depth parameter packs referenced inside an
 /// expansion pattern; a zero-length expansion must still bind them (to the
 /// empty pack) so cardinality conflicts with other occurrences show up.
-struct PackIndexCollector : clang::RecursiveASTVisitor<PackIndexCollector> {
+struct PackIndexFinder : clang::RecursiveASTVisitor<PackIndexFinder> {
     unsigned depth;
     llvm::SmallVector<unsigned, 2> indices;
 
-    explicit PackIndexCollector(unsigned depth) : depth(depth) {}
+    explicit PackIndexFinder(unsigned depth) : depth(depth) {}
 
     bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
         if(T->isParameterPack() && T->getDepth() == depth) {
@@ -810,9 +810,9 @@ bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
             /// non-zero length, empty groups belong to packs guarded away by
             /// nested expansions and stay unbound.
             if(length == 0) {
-                PackIndexCollector collector(depth);
-                collector.traverse(inner);
-                for(auto index: collector.indices) {
+                PackIndexFinder finder(depth);
+                finder.traverse(inner);
+                for(auto index: finder.indices) {
                     if(!bind(index, clang::TemplateArgument::CreatePackCopy(context, {}))) {
                         return false;
                     }

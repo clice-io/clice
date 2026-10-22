@@ -32,7 +32,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     sched(loop, project, commands, server.pool),
     ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions),
     dispatcher(project, contexts, ast, server.pool),
-    live_sources(project, sched.pch, sessions, ast.projections),
+    live_sources(project, sched.pch, sessions, ast.results),
     index_query(project.index, project.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
     invalidator(project, sessions, contexts, ast, sched.pcm) {
@@ -269,9 +269,8 @@ void ProjectServer::saved(Fid path_id) {
 
 std::shared_ptr<Session> ProjectServer::create_session(Fid path_id) {
     // A replaced live session (an editor resending didOpen) leaves a
-    // projection describing the old session's compile; the fresh session
-    // starts with none, exactly like the pre-projection world's fresh
-    // Session fields.
+    // compile result describing the old session's compile; the fresh
+    // session starts with none.
     ast.drop(path_id);
     auto session = sessions.open(path_id);
     // The serving mode's creation write point; the only other write is
@@ -396,7 +395,7 @@ void ProjectServer::index_attempt_finished(Fid path_id) {
 
 bool ProjectServer::session_served_by_shard(Fid path_id) const {
     auto session = sessions.find(path_id);
-    return session && !ast.projections.index_current(path_id) && session->index_served;
+    return session && !ast.results.index_current(path_id) && session->index_served;
 }
 
 void ProjectServer::on_index_changed(llvm::ArrayRef<Fid> path_ids) {
@@ -426,7 +425,7 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         commands.reset_header_mode(path_id);
     }
 
-    // The Lost invalidation voids the projection's currency (and any
+    // The Lost invalidation voids the compile result's currency (and any
     // in-flight round's commit-as-current) without touching generation —
     // the buffer is still the same buffer, and the round still publishes
     // its product as bounded staleness; the next request recompiles.

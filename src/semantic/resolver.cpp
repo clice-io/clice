@@ -262,7 +262,7 @@ struct InstantiationStack {
 
 /// Collect every template type parameter pack referenced anywhere inside a
 /// type, for element-wise expansion of structured pack patterns.
-struct PackParmCollector : clang::RecursiveASTVisitor<PackParmCollector> {
+struct PackParmFinder : clang::RecursiveASTVisitor<PackParmFinder> {
     llvm::SmallVector<const clang::TemplateTypeParmType*, 2> packs;
     llvm::SmallVector<const clang::TemplateTemplateParmDecl*, 2> template_packs;
     llvm::SmallVector<const clang::NonTypeTemplateParmDecl*, 2> value_packs;
@@ -2806,10 +2806,9 @@ private:
     /// rewriting the pattern as a whole.
     std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
         expand_pack_pattern(clang::QualType pattern, Policy policy) {
-        PackParmCollector collector;
-        collector.TraverseType(pattern);
-        if(collector.packs.empty() && collector.template_packs.empty() &&
-           collector.value_packs.empty()) {
+        PackParmFinder finder;
+        finder.TraverseType(pattern);
+        if(finder.packs.empty() && finder.template_packs.empty() && finder.value_packs.empty()) {
             return std::nullopt;
         }
 
@@ -2833,17 +2832,17 @@ private:
             return true;
         };
 
-        for(auto TTPT: collector.packs) {
+        for(auto TTPT: finder.packs) {
             if(!admit(stack.find_slot(TTPT->getDecl(), TTPT->getDepth(), TTPT->getIndex()))) {
                 return std::nullopt;
             }
         }
-        for(auto TTP: collector.template_packs) {
+        for(auto TTP: finder.template_packs) {
             if(!admit(stack.find_slot(TTP, TTP->getDepth(), TTP->getIndex()))) {
                 return std::nullopt;
             }
         }
-        for(auto NTTP: collector.value_packs) {
+        for(auto NTTP: finder.value_packs) {
             if(!admit(stack.find_slot(NTTP, NTTP->getDepth(), NTTP->getIndex()))) {
                 return std::nullopt;
             }

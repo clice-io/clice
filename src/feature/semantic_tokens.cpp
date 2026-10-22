@@ -138,15 +138,15 @@ bool is_format_string(clang::QualType type) {
 /// Tokens inside macro definition bodies get nothing: highlighting them
 /// from their expansions belongs to the future expansion-preview feature
 /// (a virtual file rendering the expansion with full semantic tokens).
-class FactsCollector {
+class Builder {
 public:
-    FactsCollector(CompilationUnit& unit,
-                   llvm::ArrayRef<std::uint32_t> inactive_regions,
-                   bool index_known) :
+    Builder(CompilationUnit& unit,
+            llvm::ArrayRef<std::uint32_t> inactive_regions,
+            bool index_known) :
         unit(unit), semantics(unit.get<Semantics>()), sources(unit.context().getSourceManager()),
         inactive_regions(inactive_regions), index_known(index_known) {}
 
-    auto collect() -> TokenFacts {
+    auto build() -> TokenFacts {
         for(auto [entry_index, entry]: std::views::enumerate(semantics.node_entries())) {
             visit(static_cast<std::uint32_t>(entry_index), entry);
         }
@@ -605,12 +605,12 @@ std::string lower_first(llvm::StringRef name) {
     return result;
 }
 
-class SemanticTokenEncoder {
+class Encoder {
 public:
-    SemanticTokenEncoder(const PositionMap& map,
-                         PositionEncoding encoding,
-                         const SemanticTokenLegend& legend,
-                         protocol::SemanticTokens& output) :
+    Encoder(const PositionMap& map,
+            PositionEncoding encoding,
+            const SemanticTokenLegend& legend,
+            protocol::SemanticTokens& output) :
         map(map), encoding(encoding), legend(legend), output(output) {}
 
     void append(const SemanticToken& token, std::optional<LocalSourceRange> window) {
@@ -760,7 +760,7 @@ auto named_tokens(llvm::ArrayRef<SemanticToken> tokens, const SemanticTokenLegen
 auto semantic_token_facts(CompilationUnit& unit,
                           llvm::ArrayRef<std::uint32_t> inactive_regions,
                           bool index_known) -> TokenFacts {
-    return FactsCollector(unit, inactive_regions, index_known).collect();
+    return Builder(unit, inactive_regions, index_known).build();
 }
 
 auto semantic_tokens(CompilationUnit& unit,
@@ -785,7 +785,7 @@ auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
     protocol::SemanticTokens result;
     result.data.reserve(tokens.size() * 5);
 
-    SemanticTokenEncoder encoder(map, encoding, legend, result);
+    Encoder encoder(map, encoding, legend, result);
     for(const auto& token: tokens) {
         encoder.append(token, window);
     }

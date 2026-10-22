@@ -5,7 +5,7 @@ module;
 module clice:server.format;
 
 import :feature.feature;
-import :server.ast_projection;
+import :server.compile_result;
 import :server.session;
 
 namespace clice {

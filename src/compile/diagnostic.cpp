@@ -81,9 +81,9 @@ DiagnosticLevel diagnostic_level(clang::DiagnosticsEngine::Level level) {
 
 }  // namespace
 
-class CompilationUnit::DiagnosticCollector : public clang::DiagnosticConsumer {
+class CompilationUnit::DiagnosticRecorder : public clang::DiagnosticConsumer {
 public:
-    DiagnosticCollector(CompilationUnit& unit) : unit(unit) {}
+    DiagnosticRecorder(CompilationUnit& unit) : unit(unit) {}
 
     /// Where a file location is; the preamble a PCH recorded of the focus
     /// file is the focus file.
@@ -330,8 +330,8 @@ private:
     std::set<std::tuple<clang::FileID, std::uint32_t, std::uint32_t, std::string>> findings;
 };
 
-std::unique_ptr<clang::DiagnosticConsumer> CompilationUnit::diagnostic_collector() {
-    return std::make_unique<DiagnosticCollector>(*this);
+std::unique_ptr<clang::DiagnosticConsumer> CompilationUnit::diagnostic_recorder() {
+    return std::make_unique<DiagnosticRecorder>(*this);
 }
 
 }  // namespace clice

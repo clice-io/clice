@@ -470,7 +470,7 @@ namespace {
 //
 // This is used to determine which diagnostics can be enabled by ExtraArgs in
 // the clang-tidy configuration.
-class TidyDiagnosticGroups {
+class DiagnosticGroups {
     // Whether all diagnostic groups are enabled by default.
     // True if we've seen clang-diagnostic-*.
     bool default_enable = false;
@@ -479,7 +479,7 @@ class TidyDiagnosticGroups {
     llvm::DenseSet<unsigned> exceptions;
 
 public:
-    TidyDiagnosticGroups(llvm::StringRef checks) {
+    DiagnosticGroups(llvm::StringRef checks) {
         constexpr llvm::StringLiteral CDPrefix = "clang-diagnostic-";
 
         llvm::StringRef check;
@@ -667,7 +667,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         // they are generated, as this spreads clang-tidy emulation everywhere.
         // Instead, we just use these to filter which extra diagnostics we enable.
         auto& diags = instance.getDiagnostics();
-        TidyDiagnosticGroups groups(opts.Checks ? *opts.Checks : llvm::StringRef());
+        DiagnosticGroups groups(opts.Checks ? *opts.Checks : llvm::StringRef());
         if(opts.ExtraArgsBefore) {
             apply_warning_options(*opts.ExtraArgsBefore, groups, diags);
         }
@@ -700,7 +700,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     // clang-tidy: the compiler's stops reporting after a fatal error (a
     // missing header) and applies the command's -Werror and -w to them.
     // The compiler's diagnostics reach the findings through the unit's
-    // collector.
+    // recorder.
     if(batch) {
         auto options = std::make_unique<clang::DiagnosticOptions>();
         checker->engine =
@@ -730,7 +730,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         check->registerMatchers(&checker->finder);
     }
     // The checks' callbacks are all the preprocessor has yet: the replay
-    // reaches them alone, never the unit's own collectors added later.
+    // reaches them alone, never the unit's own recorders added later.
     if(auto bound = instance.getPreprocessorOpts().PrecompiledPreambleBytes.first;
        bound != 0 && pp->getPPCallbacks()) {
         pp->addPPCallbacks(

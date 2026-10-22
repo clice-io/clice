@@ -11,7 +11,7 @@ import :index.symbol_query;
 import :project.project;
 import :sched.families.pch;
 import :sched.graph;
-import :server.ast_projection;
+import :server.compile_result;
 import :server.live_sources;
 import :server.session_store;
 import :unittests.utils.merge_unit;
@@ -31,9 +31,9 @@ struct IndexQueryTester : Tester {
     SessionStore store;
     WorkerPool pool{loop};
     TaskGraph graph;
-    ASTProjectionTable projections;
+    CompileResults results;
     PCHFamily pch{graph, project, pool};
-    ServerLiveSources live{project, pch, store, projections};
+    ServerLiveSources live{project, pch, store, results};
     index::FreshnessGate gate{project.file_table};
     index::IndexQuery query{project.index, project.file_table, &gate, &live};
 

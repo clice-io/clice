@@ -370,8 +370,8 @@ auto index_folding_ranges(SourceText& source,
             continue;
         }
 
-        // Single-line ranges are not worth folding — and the AST collector
-        // drops them too, so the projection stays a subset.
+        // Single-line ranges are not worth folding — and the AST builder
+        // drops them too, so the index's folds stay a subset.
         if(!content.substr(group->begin, group->length()).contains('\n')) {
             continue;
         }

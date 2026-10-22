@@ -225,7 +225,7 @@ struct NameOccurrence {
 
 /// Every declaration `node` refers to — the single implementation of
 /// "node → referenced decl" (the distilled content of the former
-/// SemanticVisitor visit methods). Semantic tokens, the index projection
+/// SemanticVisitor visit methods). Semantic tokens, the indexer
 /// and hover consume the spelled subset through resolve_occurrences.
 ///
 /// Dependent names (typename T::type, unresolved lookups, dependent using
@@ -255,8 +255,8 @@ clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
                                 const clang::SourceManager& SM);
 
 struct SemanticsOptions {
-    /// Traverse everything the unit parsed, the transient shape the full
-    /// index projection uses; it reads no tokens, so it builds on a
+    /// Traverse everything the unit parsed, the transient shape the
+    /// whole-TU index build uses; it reads no tokens, so it builds on a
     /// compile that collected none. Without it only the focus file's
     /// top-level decls are traversed — the shape features consume, cached
     /// on the unit, owning the focus file's spelled tokens.
@@ -276,7 +276,7 @@ struct SemanticsOptions {
 
 /// The semantic map of the focus file, built once after a successful
 /// parse and serving every consumer that used to run its own traversal:
-/// selection, semantic tokens, hover and the TUIndex projection.
+/// selection, semantic tokens, hover and the TU index build.
 ///
 /// It stores only structure — the recorded nodes and which spelled token
 /// belongs to which node. Everything semantic (referenced decls, relations,

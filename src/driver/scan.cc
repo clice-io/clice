@@ -19,7 +19,7 @@ namespace clice::driver {
 
 namespace {
 
-struct ScanOptions {
+struct Options {
     kota::deco::decl::HelpOption help;
 
     DecoFlag(names = {"--json"},
@@ -52,7 +52,7 @@ struct ScannedFile {
     std::vector<std::string> unresolved;
 };
 
-struct ScanOutput {
+struct Output {
     std::vector<ScannedFile> files;
 };
 
@@ -72,7 +72,7 @@ Loaded load(const Spelling& root, const Config& config, llvm::StringRef configur
     return loaded;
 }
 
-ScanOutput describe(const Loaded& loaded) {
+Output describe(const Loaded& loaded) {
     auto& files = *loaded.files;
     auto& graph = loaded.project->dep_graph;
 
@@ -92,7 +92,7 @@ ScanOutput describe(const Loaded& loaded) {
         }
     }
 
-    ScanOutput output;
+    Output output;
     for(auto fid: graph.all_files()) {
         auto& file = output.files.emplace_back();
         file.path = files.display(fid);
@@ -113,7 +113,7 @@ ScanOutput describe(const Loaded& loaded) {
     return output;
 }
 
-void print_summary(const ScanOutput& output, const ScanReport& scan) {
+void print_summary(const Output& output, const ScanReport& scan) {
     auto sources = static_cast<std::size_t>(
         std::ranges::count_if(output.files, [](const ScannedFile& file) { return file.source; }));
     auto headers = output.files.size() - sources;
@@ -174,7 +174,7 @@ void time_scans(Loaded first,
                     warm_median);
 }
 
-int run_scan(const ScanOptions& opts) {
+int run_scan(const Options& opts) {
     if(opts.runs && static_cast<bool>(opts.json)) {
         LOG_ERROR("--runs prints times, --json the graph: pass one of them");
         return 1;
@@ -215,7 +215,7 @@ int run_scan(const ScanOptions& opts) {
 }
 
 CommandHandler build(const char*) {
-    return operation<ScanOptions>("clice scan [OPTIONS]", "scan", Errors::Text, run_scan);
+    return operation<Options>("clice scan [OPTIONS]", "scan", Errors::Text, run_scan);
 }
 
 [[maybe_unused]] const bool registered = register_command(

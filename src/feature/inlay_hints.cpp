@@ -26,7 +26,7 @@ using llvm::dyn_cast;
 using llvm::dyn_cast_or_null;
 
 // For now, inlay hints are always anchored at the left or right of their range.
-enum class HintSide : std::uint8_t { Left, Right };
+enum class Side : std::uint8_t { Left, Right };
 
 /// The types the code wrote for the parts of a type: every alias and
 /// template specialization in it, through the aliases' own definitions,
@@ -511,12 +511,12 @@ private:
 /// DFS pre-order record of the focus file's written AST — instead of
 /// running another RecursiveASTVisitor over the TU. The table stores only
 /// structure; everything a hint needs is derived from the recorded node.
-class Collector {
+class Builder {
 public:
-    Collector(std::vector<InlayHint>& result,
-              CompilationUnit& unit,
-              LocalSourceRange restrict_range,
-              const InlayHintsOptions& options) :
+    Builder(std::vector<InlayHint>& result,
+            CompilationUnit& unit,
+            LocalSourceRange restrict_range,
+            const InlayHintsOptions& options) :
         result(result), unit(unit), restrict_range(restrict_range), options(options) {}
 
     void run() {
@@ -839,7 +839,7 @@ private:
                     label.push_back(linked(name, named_params[i]));
                 }
                 add_inlay_hint(args[i]->getSourceRange(),
-                               HintSide::Left,
+                               Side::Left,
                                HintCategory::Parameter,
                                reference_hint ? "&" : "",
                                std::move(label),
@@ -871,7 +871,7 @@ private:
             }
 
             add_inlay_hint(clang::SourceRange(rpunc_location),
-                           HintSide::Left,
+                           Side::Left,
                            HintCategory::DefaultArgument,
                            has_non_default_args ? ", " : "",
                            std::move(hint),
@@ -961,7 +961,7 @@ private:
                       std::uint32_t limit,
                       std::optional<std::uint32_t> target) {
         add_inlay_hint(LocalSourceRange(offset, offset),
-                       HintSide::Right,
+                       Side::Right,
                        HintCategory::BlockEnd,
                        " // ",
                        {
@@ -1070,10 +1070,10 @@ private:
         return label;
     }
 
-    // We pass HintSide rather than SourceLocation because we want to ensure
+    // We pass Side rather than SourceLocation because we want to ensure
     // it is in the same file as the common file range.
     void add_inlay_hint(clang::SourceRange range,
-                        HintSide side,
+                        Side side,
                         HintCategory kind,
                         llvm::StringRef prefix,
                         std::vector<InlayHintPart> label,
@@ -1087,7 +1087,7 @@ private:
     }
 
     void add_inlay_hint(LocalSourceRange range,
-                        HintSide side,
+                        Side side,
                         HintCategory kind,
                         llvm::StringRef prefix,
                         std::vector<InlayHintPart> label,
@@ -1097,7 +1097,7 @@ private:
         // Assert in debug mode but add a dynamic check in production.
         assert(options.enabled && "Shouldn't get here if disabled!");
 
-        std::uint32_t offset = side == HintSide::Left ? range.begin : range.end;
+        std::uint32_t offset = side == Side::Left ? range.begin : range.end;
         if(restrict_range.valid() && !restrict_range.contains(offset))
             return;
 
@@ -1156,7 +1156,7 @@ private:
         auto text = display::type(unit.context(), printed, display_options).text;
         if(auto fitted = fit_type(text)) {
             add_inlay_hint(range,
-                           HintSide::Right,
+                           Side::Right,
                            HintCategory::Type,
                            prefix,
                            type_label(printed, *fitted),
@@ -1183,7 +1183,7 @@ private:
                 continue;
             }
             add_inlay_hint(init->getSourceRange(),
-                           HintSide::Left,
+                           Side::Left,
                            HintCategory::Designator,
                            /*Prefix=*/"",
                            std::move(label),
@@ -1763,7 +1763,7 @@ private:
             label.erase(label.begin());
         }
         add_inlay_hint(loc.getSourceRange(),
-                       HintSide::Right,
+                       Side::Right,
                        HintCategory::Type,
                        "",
                        std::move(label),
@@ -1812,8 +1812,8 @@ auto inlay_hints(CompilationUnit& unit, LocalSourceRange target, const InlayHint
 
     std::vector<InlayHint> raw_hints;
 
-    Collector collector(raw_hints, unit, target, options);
-    collector.run();
+    Builder builder(raw_hints, unit, target, options);
+    builder.run();
 
     std::ranges::sort(raw_hints, [](const InlayHint& lhs, const InlayHint& rhs) {
         return std::tie(lhs.offset, lhs.label, lhs.kind, lhs.padding_left, lhs.padding_right) <
