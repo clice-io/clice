@@ -120,8 +120,11 @@ jobs:
           } > user.bazelrc
           pixi run install-tests
 
+      # Hang detection: an unreachable mirror stalls apt for the job's whole
+      # six hours.
       - name: Install the project's packages
         if: matrix.packages != ''
+        timeout-minutes: 15
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
