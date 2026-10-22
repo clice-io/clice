@@ -12,7 +12,7 @@
 
 ## A file's commands
 
-`clice command <file>` lists every entry the compilation databases have for the file, in the order the build ranks them, the first being the one an editor compiles with until the user picks another. Each shows the database holding it, the entry as written, a `command` string split as clice splits it, and the command clice compiles the file with under that entry: the entry edited by the [rules](../guide/configuration.md#rules) of `clice.toml`, then resolved through the compiler it names, which gives the target and the system include directories as the arguments of a `-cc1` command. When the compiler cannot be queried, because it is not installed or rejects the query, the error says why, and the command is clice's own reading of the entry. `--json` prints the same as one JSON object.
+`clice command <file>` lists every entry the compilation databases have for the file, in the order the build ranks them, the first being the one an editor compiles with until the user picks another. Each shows the database holding it, the entry as written, a `command` string split as clice splits it, and the command clice compiles the file with under that entry: the entry edited by the [rules](../guide/configuration.md#rules) of `clice.toml`, then resolved through the compiler it names, which gives the target and the system include directories as the arguments of a `-cc1` command. When the compiler cannot be queried, because it is not installed or rejects the query, the error says why, and the command is clang's own reading of the entry, as for a rule's `query_toolchain = false`. `--json` prints the same as one JSON object.
 
 The databases are the ones the editor loads for the file: those the rules name, else the `compile_commands.json` at the workspace root, in its direct subdirectories and in the directories between the file and the root. A file without an entry of its own, such as a header, which the editor compiles under the command of a source including it, is reported as having none.
 
@@ -32,4 +32,4 @@ The exit code is 0 when the file's entries are listed, 1 when the file does not 
 
 The converted commands are `-cc1` commands of the Clang clice is built on: they suit a tool built on a compatible Clang.
 
-The exit code is 0 when every command is converted; 1 when a compiler cannot be queried, after printing what was converted, the commands it could not resolve as clice reads them; 1 as well when the database cannot be read or the command compiles no C-family source file or several; 2 when the arguments do not parse.
+The exit code is 0 when every command is converted; 1 when a compiler cannot be queried, after printing what was converted, the commands it could not query as clang reads them; 1 as well when the database cannot be read or the command compiles no C-family source file or several; 2 when the arguments do not parse.
