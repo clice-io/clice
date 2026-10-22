@@ -114,7 +114,7 @@ ZEST_CASE(RuleLeavesClSpellings) {
                    commands.input_kind(entry.command, "a.cpp"),
                    CommandSource::CDBExact};
     auto argv = commands.render_driver(ref, database.spelling(ref.file));
-    ZEXPECT(std::ranges::contains(argv, "-D"sv) || std::ranges::contains(argv, "-DFOO"sv));
+    ZEXPECT(std::ranges::contains(argv, "-D"sv));
     ZEXPECT(!std::ranges::contains(argv, "/D"sv));
 };
 

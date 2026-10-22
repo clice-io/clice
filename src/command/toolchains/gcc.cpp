@@ -310,7 +310,7 @@ kota::task<std::expected<GCCStyleOutput, std::string>>
                 "MSYS2's, belongs on clice's PATH, which clice.serverEnv sets in VS Code)";
         }
 #endif
-        LOG_WARN("The toolchain query ran: {}", command);
+        LOG_WARN("The toolchain query {} failed: {}", command, error);
         co_return std::unexpected(std::move(error));
     }
     co_return co_await translate_posix_paths(std::move(parsed), args[0]);
