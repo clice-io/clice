@@ -377,6 +377,18 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     ZEXPECT(f.key(clang_name) != f.key(gcc_name));
 }
 
+ZEST_CASE(CommandISAForClang, skip = Windows) {
+    /// The command's own -march, which GCC takes as written and clang
+    /// without what LLVM does not know.
+    auto driver = fake_driver("riscv32-wch-elf-gcc", R"(echo 'Target: riscv32-wch-elf' >&2
+echo ' /opt/wch/libexec/gcc/riscv32-wch-elf/15/cc1 -E -quiet query.c -dM' >&2
+)");
+    auto argv = f.resolve(
+        add("a.c", {driver.c_str(), "-march=rv32imc_zba_zbb_zbc_zbs_xw", "-mabi=ilp32", "-c"}));
+    ZEXPECT(adjacent(argv, "-target-feature", "+m"));
+    ZEXPECT(adjacent(argv, "-target-feature", "+zbs"));
+}
+
 ZEST_CASE(GCCErrorReported, skip = Windows) {
     /// GCC rejects an option before `-v` prints its version, the last line.
     auto driver = fake_driver("riscv32-unknown-elf-gcc", R"(echo 'Using built-in specs.' >&2

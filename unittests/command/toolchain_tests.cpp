@@ -117,6 +117,17 @@ ZEST_CASE(KeyTracksSemantics) {
     ZEXPECT(f.key(base) != f.key(semantic));
 }
 
+ZEST_CASE(KeyTracksWrittenAlias) {
+    /// A GCC may know an option by one name alone; nvcc's query reads
+    /// clang's names, whichever the command wrote.
+    auto g = f.add("/fake", "/tmp/a.c", {"gcc", "-G", "8", "/tmp/a.c"});
+    auto limit = f.add("/fake", "/tmp/b.c", {"gcc", "-msmall-data-limit=8", "/tmp/b.c"});
+    ZEXPECT(f.key(g) != f.key(limit));
+    auto offload = f.add("/fake", "/tmp/c.cu", {"nvcc", "--offload-host-only", "/tmp/c.cu"});
+    auto cuda = f.add("/fake", "/tmp/d.cu", {"nvcc", "--cuda-host-only", "/tmp/d.cu"});
+    ZEXPECT(f.key(offload) == f.key(cuda));
+}
+
 ZEST_CASE(KeyTracksConfigFile) {
     /// A --config path resolves against the compilation directory, so
     /// identical commands in different directories must not share a query.
