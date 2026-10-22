@@ -1064,16 +1064,13 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         mounts = nullptr;
         if(is_posix_path(dir_ref)) {
             if(!table) {
-                // Two runtimes of one kind map a drive's paths alike; only
-                // the one that wrote the database holds its compiler.
+                // Another runtime's table maps the directory under its own
+                // root; another of one kind, Git for Windows' MSYS2 beside
+                // MSYS2, maps a drive's paths alike but lacks the compiler.
+                std::vector<std::string> written = {dir_ref.str()};
                 auto tokens = command ? tokenize_sh_command(*command, saver) : args;
-                llvm::StringRef compiler = tokens.empty() ? "" : tokens.front();
-                std::vector<std::string> written = {compiler.str()};
-                if(!is_posix_path(compiler)) {
-                    written = {dir_ref.str()};
-                    if(is_posix_path(file_ref)) {
-                        written.push_back(file_ref.str());
-                    }
+                if(!tokens.empty() && is_posix_path(tokens.front())) {
+                    written.emplace_back(tokens.front());
                 }
                 auto [found] = kota::run(find_mount_table({}, std::move(written)));
                 if(!*found) {

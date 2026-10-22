@@ -36,7 +36,7 @@ struct MountTable {
 /// MSYS2 runtime that spelled `written`, POSIX paths of files that exist:
 /// of the runtimes (cygwin1.dll, msys-2.0.dll) beside `program` and on PATH,
 /// in the order Windows looks for a program's DLLs, the first whose table
-/// maps one of them to a file that exists. Taking the first runtime alone
+/// maps each of them to a file that exists. Taking the first runtime alone
 /// would be wrong where PATH holds two, Git for Windows' MSYS2 ahead of the
 /// Cygwin a toolchain outside it loads. An empty `program` searches PATH
 /// alone.

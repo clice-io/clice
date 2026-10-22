@@ -109,14 +109,16 @@ kota::task<std::expected<MountTable, std::string>>
             misses.push_back(std::format("{}: {}", dir, table.error()));
             continue;
         }
-        for(auto& file: written) {
+        auto missing = std::ranges::find_if(written, [&](const std::string& file) {
             // A program is named as Cygwin names it, without `.exe`.
             auto windows = table->to_windows(file);
-            if(vfs::exists(windows) || vfs::exists(windows + ".exe")) {
-                co_return std::move(*table);
-            }
+            return !vfs::exists(windows) && !vfs::exists(windows + ".exe");
+        });
+        if(missing == written.end()) {
+            co_return std::move(*table);
         }
-        misses.push_back(std::format("{} maps it to {}", dir, table->to_windows(written.front())));
+        misses.push_back(
+            std::format("{} maps {} to {}", dir, *missing, table->to_windows(*missing)));
     }
     if(misses.empty()) {
         co_return std::unexpected(
@@ -124,8 +126,8 @@ kota::task<std::expected<MountTable, std::string>>
                 ? "PATH holds no Cygwin or MSYS2 runtime"
                 : std::format("no Cygwin or MSYS2 runtime is beside {} or on PATH", program));
     }
-    co_return std::unexpected(std::format("no runtime maps {} to a file that exists ({})",
-                                          written.front(),
+    co_return std::unexpected(std::format("no runtime maps {} to files that exist ({})",
+                                          llvm::join(written, " and "),
                                           llvm::join(misses, "; ")));
 }
 
