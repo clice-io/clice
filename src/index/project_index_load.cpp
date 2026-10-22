@@ -78,7 +78,7 @@ llvm::SmallVector<Fid> ProjectIndex::stale_units() {
         }
         for(auto& keyed: {&found->readers, &found->importers}) {
             for(auto& [hash, units]: *keyed) {
-                if(llvm::is_contained(changed, hash)) {
+                if(std::ranges::contains(changed, hash)) {
                     stale |= units;
                 }
             }

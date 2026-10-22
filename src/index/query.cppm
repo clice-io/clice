@@ -121,7 +121,7 @@ public:
 
     /// The files whose indexes were withheld, in no particular order.
     llvm::SmallVector<Fid> withheld() const {
-        return llvm::to_vector(withheld_files);
+        return std::ranges::to<llvm::SmallVector<Fid>>(withheld_files);
     }
 
     FreshnessOptions options;
@@ -199,8 +199,9 @@ inline auto site_key(const Site& site) {
 }
 
 inline bool is_function(SymbolKind kind) {
-    return llvm::is_contained({SymbolKind::Function, SymbolKind::Method, SymbolKind::Operator},
-                              kind);
+    return std::ranges::contains(
+        std::array<SymbolKind, 3>{SymbolKind::Function, SymbolKind::Method, SymbolKind::Operator},
+        kind);
 }
 
 /// Read-only queries over every index source: disk shards, open sessions'

@@ -59,7 +59,7 @@ ZEST_CASE(EditorCachesContext) {
     ZASSERT(background.source == CommandSource::IncludeGraph);
     ZASSERT(background.host == fx.host);
     ZASSERT(background.synthesized != nullptr);
-    ZASSERT(llvm::is_contained(arguments, background.synthesized->prefix));
+    ZASSERT(std::ranges::contains(arguments, background.synthesized->prefix));
     ZASSERT(editor.header_contexts.empty());
 
     auto resolution = editor.resolve_command(fx.header, directory, arguments);
@@ -139,12 +139,12 @@ ZEST_CASE(PinSteersEditorOnly) {
     std::string directory;
     std::vector<std::string> arguments;
     resolver.resolve_command(file, directory, arguments);
-    ZASSERT(llvm::is_contained(arguments, define_of(pinned)));
+    ZASSERT(std::ranges::contains(arguments, define_of(pinned)));
 
     // ...but background indexing must never see user choices.
     arguments.clear();
     commands.resolve_command(file, directory, arguments);
-    ZASSERT(llvm::is_contained(arguments, define_of(candidates.front().command)));
+    ZASSERT(std::ranges::contains(arguments, define_of(candidates.front().command)));
 }
 
 ZEST_CASE(PinBaseSurvivesRules) {
@@ -181,13 +181,13 @@ ZEST_CASE(PinBaseSurvivesRules) {
     std::string directory;
     std::vector<std::string> arguments;
     resolver.resolve_command(file, directory, arguments);
-    ZASSERT(llvm::is_contained(arguments, define_of(pinned)));
+    ZASSERT(std::ranges::contains(arguments, define_of(pinned)));
 
     // ...while the same stale hash without a base falls back to the default.
     resolver.selections[file] = Selection{Fid{}, std::nullopt, "0123456789abcdef", ""};
     arguments.clear();
     resolver.resolve_command(file, directory, arguments);
-    ZASSERT(llvm::is_contained(arguments, define_of(candidates.front().command)));
+    ZASSERT(std::ranges::contains(arguments, define_of(candidates.front().command)));
 }
 
 ZEST_CASE(ValidateKeepsValidChoice) {

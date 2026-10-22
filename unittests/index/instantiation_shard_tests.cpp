@@ -158,7 +158,7 @@ ZEST_CASE(LookupAcrossBlocks) {
         auto offset = i * 15 + 1;
         auto found = at(shard, offset);
         ZEXPECT(found.size() == (offset >= 16 && offset <= 400 ? 2u : 1u));
-        ZEXPECT(llvm::is_contained(found, reference(i * 15, 100 + i)));
+        ZEXPECT(std::ranges::contains(found, reference(i * 15, 100 + i)));
         ZEXPECT(naming(shard, 100 + i) == std::vector{reference(i * 15, 100 + i)});
     }
     ZEXPECT(at(shard, 399) == std::vector{outer});

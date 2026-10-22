@@ -193,7 +193,7 @@ public:
             // An editor applies insertions at one offset in their order.
             auto at = edits.end();
             if(hint.BeforePreviousInsertions) {
-                at = llvm::find_if(edits, [&](const TextReplacement& edit) {
+                at = std::ranges::find_if(edits, [&](const TextReplacement& edit) {
                     return edit.range.begin == removed->begin && edit.range.length() == 0;
                 });
             }
@@ -203,10 +203,10 @@ public:
         for(auto& edit: edits) {
             ranges.push_back(edit.range);
         }
-        llvm::sort(ranges, [](LocalSourceRange a, LocalSourceRange b) {
+        std::ranges::sort(ranges, [](LocalSourceRange a, LocalSourceRange b) {
             return std::pair(a.begin, a.end) < std::pair(b.begin, b.end);
         });
-        for(auto [before, after]: llvm::zip(ranges, llvm::drop_begin(ranges))) {
+        for(auto [before, after]: std::views::zip(ranges, std::views::drop(ranges, 1))) {
             if(after.begin < before.end) {
                 return {};
             }

@@ -694,7 +694,7 @@ bool Unifier::unify(const clang::TemplateArgument& pattern,
             if(argument.getKind() == clang::TemplateArgument::Expression) {
                 auto expr = argument.getAsExpr();
                 if(expr->isValueDependent()) {
-                    bool undecided = llvm::is_contained(open, expr);
+                    bool undecided = std::ranges::contains(open, expr);
                     undecided_values |= undecided;
                     return undecided;
                 }
@@ -818,9 +818,10 @@ bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
                     }
                 }
             }
-            for(auto [index, group]: llvm::enumerate(elements)) {
+            for(auto [index, group]: std::views::enumerate(elements)) {
                 if(!group.empty() &&
-                   !bind(index, clang::TemplateArgument::CreatePackCopy(context, group))) {
+                   !bind(static_cast<unsigned>(index),
+                         clang::TemplateArgument::CreatePackCopy(context, group))) {
                     return false;
                 }
             }
@@ -1321,13 +1322,13 @@ Deduction deduce_arguments(clang::ASTContext& context,
     }
 
     deduced.assign(unifier.results().begin(), unifier.results().end());
-    for(auto [i, argument]: llvm::enumerate(deduced)) {
+    for(auto [i, argument]: std::views::enumerate(deduced)) {
         if(!argument.isNull()) {
             continue;
         }
 
         /// An unbound pack deduces as empty.
-        if(params->getParam(i)->isTemplateParameterPack()) {
+        if(params->getParam(static_cast<unsigned>(i))->isTemplateParameterPack()) {
             argument = clang::TemplateArgument::CreatePackCopy(context, {});
             continue;
         }

@@ -123,7 +123,8 @@ inline std::string print_argv(llvm::ArrayRef<const char*> args) {
         if(sep)
             os << ' ';
         sep = true;
-        if(!llvm::any_of(arg, control) && arg.find_first_of(R"( "\)") == llvm::StringRef::npos) {
+        if(!std::ranges::any_of(arg, control) &&
+           arg.find_first_of(R"( "\)") == llvm::StringRef::npos) {
             os << arg;
             continue;
         }

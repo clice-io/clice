@@ -81,7 +81,8 @@ std::optional<CgroupMemory> cgroup_memory(llvm::StringRef root, llvm::StringRef 
     // cgroup v1: the memory controller's line, "N:memory:/path".
     for(auto line: lines) {
         auto [controllers, path] = line.split(':').second.split(':');
-        if(!llvm::is_contained(llvm::split(controllers, ','), "memory")) {
+        auto names = llvm::split(controllers, ',');
+        if(std::find(names.begin(), names.end(), "memory") == names.end()) {
             continue;
         }
         // A container without a cgroup namespace mounts its own cgroup at

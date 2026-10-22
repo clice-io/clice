@@ -147,7 +147,7 @@ public:
         inactive_regions(inactive_regions), index_known(index_known) {}
 
     auto collect() -> TokenFacts {
-        for(auto [entry_index, entry]: llvm::enumerate(semantics.node_entries())) {
+        for(auto [entry_index, entry]: std::views::enumerate(semantics.node_entries())) {
             visit(static_cast<std::uint32_t>(entry_index), entry);
         }
         for(auto& reference: references) {
@@ -419,7 +419,7 @@ private:
             }
             const auto& macro = *ref->macro;
             auto used = [&](const clang::IdentifierInfo* parameter) {
-                return llvm::any_of(macro.tokens(), [&](const clang::Token& token) {
+                return std::ranges::any_of(macro.tokens(), [&](const clang::Token& token) {
                     return token.getIdentifierInfo() == parameter;
                 });
             };
@@ -503,7 +503,7 @@ private:
             return std::nullopt;
         }
         auto spelled = semantics.spelled_tokens();
-        auto it = llvm::partition_point(spelled, [&](const Token& token) {
+        auto it = std::ranges::partition_point(spelled, [&](const Token& token) {
             return token.range.begin <= offset;
         });
         if(it == spelled.begin()) {
@@ -695,7 +695,7 @@ auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticToke
         return it == names.end() ? name : it->second;
     };
     auto position = [](std::vector<std::string>& names, const std::string& name) {
-        auto it = llvm::find(names, name);
+        auto it = std::ranges::find(names, name);
         if(it == names.end()) {
             names.push_back(name);
             return static_cast<std::uint32_t>(names.size() - 1);
@@ -747,7 +747,7 @@ auto named_tokens(llvm::ArrayRef<SemanticToken> tokens, const SemanticTokenLegen
         }
         NamedToken entry{.range = token.range, .kind = legend.types[*type]};
         auto bits = legend.bits(token.modifiers);
-        for(auto [position, name]: llvm::enumerate(legend.modifiers)) {
+        for(auto [position, name]: std::views::enumerate(legend.modifiers)) {
             if(bits & (std::uint32_t(1) << position)) {
                 entry.modifiers.push_back(name);
             }

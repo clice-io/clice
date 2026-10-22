@@ -104,7 +104,8 @@ kota::task<> IndexPump::await_attempt(Fid server_path_id) {
     }
     auto ticket = pending->ticket;
     auto& waits = attempt_waits[server_path_id];
-    auto it = llvm::find_if(waits, [&](const AttemptWait& wait) { return wait.ticket == ticket; });
+    auto it =
+        std::ranges::find_if(waits, [&](const AttemptWait& wait) { return wait.ticket == ticket; });
     if(it == waits.end()) {
         waits.push_back({ticket, std::make_shared<kota::event>()});
         it = waits.end() - 1;
@@ -127,7 +128,11 @@ void IndexPump::wake_attempt_waits(Fid server_path_id, std::uint64_t ticket) {
             woken.push_back(std::move(wait.event));
         }
     }
-    llvm::erase_if(it->second, [&](const AttemptWait& wait) { return wait.ticket <= ticket; });
+    it->second.erase(
+        std::ranges::remove_if(it->second,
+                               [&](const AttemptWait& wait) { return wait.ticket <= ticket; })
+            .begin(),
+        it->second.end());
     if(it->second.empty()) {
         attempt_waits.erase(it);
     }
@@ -167,7 +172,8 @@ kota::task<> IndexPump::stop() {
     }
     // Cancelled tasks unwind before their finish bookkeeping; release any
     // parked feature request rather than stranding it past shutdown.
-    for(auto& waits: llvm::make_second_range(attempt_waits)) {
+    for(auto& waits:
+        std::views::transform(attempt_waits, [](auto& entry) -> auto& { return entry.second; })) {
         for(auto& wait: waits) {
             wait.event->set();
         }

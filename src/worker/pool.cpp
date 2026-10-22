@@ -679,7 +679,7 @@ kota::ipc::Error WorkerPool::death_error(const WorkerDeath& death,
         };
     }
     auto named = !death.culprits.empty();
-    auto code = named && llvm::is_contained(death.culprits, tag)          ? errc::worker_crashed
+    auto code = named && std::ranges::contains(death.culprits, tag)       ? errc::worker_crashed
                 : !named && death.in_flight <= 1 && !death.ignored_cancel ? errc::worker_died
                                                                           : errc::worker_lost;
     return kota::ipc::Error{code, death.cause, std::move(identity)};

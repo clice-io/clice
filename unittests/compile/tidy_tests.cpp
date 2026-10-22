@@ -33,7 +33,7 @@ std::unique_ptr<CompilationUnit> compile_main(const Sources& sources,
     params.tidy = std::move(tidy);
     params.input.vfs = vfs;
     params.input.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef"};
-    llvm::append_range(params.input.arguments, flags);
+    params.input.arguments.append_range(flags);
     params.input.arguments.push_back(main_path);
     return compile(std::move(params));
 }
@@ -179,10 +179,11 @@ ZEST_CASE(CompilerWarningProvenance) {
         {"main.cpp", "int f() { int unused; return 0; }\n"},
     };
     auto warning = [](CompilationUnit& unit) {
-        auto it = llvm::find_if(unit.diagnostics(), [](const Diagnostic& diag) {
+        auto diagnostics = unit.diagnostics();
+        auto it = std::ranges::find_if(diagnostics, [](const Diagnostic& diag) {
             return diag.id.level == DiagnosticLevel::Warning;
         });
-        return it == unit.diagnostics().end() ? std::optional<DiagnosticID>() : it->id;
+        return it == diagnostics.end() ? std::optional<DiagnosticID>() : it->id;
     };
     // A checker stays out of a compiler warning in the editor; a batch run
     // takes it as a finding only under its enabled clang-diagnostic name.
@@ -207,7 +208,7 @@ ZEST_CASE(CompilerWarningProvenance) {
 
 ZEST_CASE(NolintSilencesWarnings) {
     auto warnings = [](CompilationUnit& unit) {
-        return llvm::count_if(unit.diagnostics(), [](const Diagnostic& diag) {
+        return std::ranges::count_if(unit.diagnostics(), [](const Diagnostic& diag) {
             return diag.id.level == DiagnosticLevel::Warning;
         });
     };
@@ -236,10 +237,11 @@ ZEST_CASE(OverlappingFixDropped) {
     };
     auto unit = compile_main(sources, {.checks = "-*,misc-unused-parameters"});
     ZASSERT(unit->completed());
-    auto finding = llvm::find_if(unit->diagnostics(), [](const Diagnostic& diag) {
+    auto diagnostics = unit->diagnostics();
+    auto finding = std::ranges::find_if(diagnostics, [](const Diagnostic& diag) {
         return diag.id.name == "misc-unused-parameters";
     });
-    ZASSERT(finding != unit->diagnostics().end());
+    ZASSERT(finding != diagnostics.end());
     ZEXPECT(finding->fix.empty());
 }
 
@@ -262,7 +264,7 @@ ZEST_CASE(SystemMacroErrorKept) {
     ZASSERT(unit->completed());
     // -Wint-conversion is an error by default; the compiler shows it in a
     // system macro, and clang-tidy keeps out of it.
-    ZEXPECT(llvm::any_of(unit->diagnostics(), [](const Diagnostic& diag) {
+    ZEXPECT(std::ranges::any_of(unit->diagnostics(), [](const Diagnostic& diag) {
         return diag.id.level == DiagnosticLevel::Error;
     }));
 }
@@ -275,10 +277,11 @@ ZEST_CASE(FixItReplacements) {
     },
         {});
     ZASSERT(unit->completed());
-    auto error = llvm::find_if(unit->diagnostics(), [](const Diagnostic& diag) {
+    auto diagnostics = unit->diagnostics();
+    auto error = std::ranges::find_if(diagnostics, [](const Diagnostic& diag) {
         return diag.id.level == DiagnosticLevel::Error;
     });
-    ZASSERT(error != unit->diagnostics().end());
+    ZASSERT(error != diagnostics.end());
     auto offset = static_cast<std::uint32_t>(content.find(" }"));
     ZASSERT(error->fix.size() == 1);
     ZEXPECT(error->fix[0].range == LocalSourceRange{offset, offset});
@@ -291,10 +294,11 @@ ZEST_CASE(FixItReplacements) {
             {"main.cpp", moved.str()}
     },
         {});
-    error = llvm::find_if(misplaced->diagnostics(), [](const Diagnostic& diag) {
+    auto misplaced_diagnostics = misplaced->diagnostics();
+    error = std::ranges::find_if(misplaced_diagnostics, [](const Diagnostic& diag) {
         return diag.id.level == DiagnosticLevel::Error;
     });
-    ZASSERT(error != misplaced->diagnostics().end());
+    ZASSERT(error != misplaced_diagnostics.end());
     auto at = static_cast<std::uint32_t>(moved.find("public"));
     auto attribute = static_cast<std::uint32_t>(moved.find("[[]]"));
     ZASSERT(error->fix.size() == 2);
@@ -320,20 +324,21 @@ int f(int value, int total) {
     ZASSERT(unit->completed());
     // Clang drops the `)` it cannot place after `1` in the definition: the
     // `(` left in the argument is no fix.
-    auto assignment = llvm::find_if(unit->diagnostics(), [](const Diagnostic& diag) {
+    auto diagnostics = unit->diagnostics();
+    auto assignment = std::ranges::find_if(diagnostics, [](const Diagnostic& diag) {
         return diag.id.level == DiagnosticLevel::Warning;
     });
-    ZASSERT(assignment != unit->diagnostics().end());
-    auto parentheses = llvm::find_if(assignment->notes, [](const Diagnostic& note) {
+    ZASSERT(assignment != diagnostics.end());
+    auto parentheses = std::ranges::find_if(assignment->notes, [](const Diagnostic& note) {
         return llvm::StringRef(note.message).starts_with("place parentheses");
     });
     ZASSERT(parentheses != assignment->notes.end());
     ZEXPECT(parentheses->fix.empty());
 
-    auto typo = llvm::find_if(unit->diagnostics(), [](const Diagnostic& diag) {
+    auto typo = std::ranges::find_if(diagnostics, [](const Diagnostic& diag) {
         return diag.id.level == DiagnosticLevel::Error;
     });
-    ZASSERT(typo != unit->diagnostics().end());
+    ZASSERT(typo != diagnostics.end());
     auto offset = static_cast<std::uint32_t>(content.find("totl"));
     ZASSERT(typo->fix.size() == 1);
     ZEXPECT(typo->fix[0].range == LocalSourceRange{offset, offset + 4});
@@ -380,7 +385,7 @@ ZEST_CASE(ResolveWithoutConfig) {
     // Every directory up to the root looked in, none holding one.
     ZASSERT(!resolution.files.empty());
     ZEXPECT(resolution.files[0].path == tmp.path(".clang-tidy"));
-    ZEXPECT(llvm::all_of(resolution.files, [](const DepFile& file) { return file.absent; }));
+    ZEXPECT(std::ranges::all_of(resolution.files, [](const DepFile& file) { return file.absent; }));
 }
 
 ZEST_CASE(ExtraArgsCommandSplit) {

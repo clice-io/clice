@@ -73,7 +73,7 @@ std::vector<std::string> definitions(llvm::StringRef marker) {
 void apply(llvm::StringRef marker, llvm::StringRef title) {
     auto offset = point(marker);
     actions = feature::code_actions(*unit, {offset, offset});
-    auto action = llvm::find_if(actions, [&](const feature::CodeAction& action) {
+    auto action = std::ranges::find_if(actions, [&](const feature::CodeAction& action) {
         return action.title == title;
     });
     ZASSERT(action != actions.end());
@@ -92,8 +92,9 @@ void apply(llvm::StringRef marker, llvm::StringRef title) {
                                       {request->range, request->before + *text + request->after}
         });
     }
-    llvm::sort(edits,
-               [](const auto& lhs, const auto& rhs) { return lhs.range.begin > rhs.range.begin; });
+    std::ranges::sort(edits, [](const auto& lhs, const auto& rhs) {
+        return lhs.range.begin > rhs.range.begin;
+    });
     applied = original;
     for(const auto& edit: edits) {
         applied.replace(edit.range.begin, edit.range.length(), edit.text);

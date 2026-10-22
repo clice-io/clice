@@ -103,7 +103,7 @@ CommandSnapshotBlob build_snapshot(Project& project,
                 continue;
             }
             auto source = project.index.portable(database);
-            if(!llvm::is_contained(sources, source)) {
+            if(!std::ranges::contains(sources, source)) {
                 sources.push_back(std::move(source));
             }
         }
@@ -191,7 +191,7 @@ CommandSnapshot::Remembered CommandSnapshot::remembered(const Project& project) 
     for(auto& entry: persisted.entries) {
         for(auto& source: entry.sources) {
             auto absolute = project.index.local(source);
-            if(!llvm::is_contained(result.sources, absolute)) {
+            if(!std::ranges::contains(result.sources, absolute)) {
                 result.sources.push_back(std::move(absolute));
             }
         }
@@ -253,7 +253,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         dirty = true;
         llvm::SmallVector<Fid> units;
         project_index.for_each_unit([&](Fid tu) { units.push_back(tu); });
-        llvm::for_each(units, rebuild);
+        std::ranges::for_each(units, rebuild);
         return;
     }
     persisted_bytes = blob.buffer->getBuffer().str();
@@ -358,7 +358,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
             continue;
         }
         auto host_id = file_of(old.host);
-        if(project.build.commands(host_id).empty() || llvm::is_contained(changed_ids, host_id) ||
+        if(project.build.commands(host_id).empty() || std::ranges::contains(changed_ids, host_id) ||
            old.host_selected != host_selected) {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
                      project.file_table.resolve(server_id));
@@ -409,7 +409,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         if(!project.build.commands(server_id).empty()) {
             continue;
         }
-        bool healthy = llvm::all_of(old.sources, [&](const std::string& source) {
+        bool healthy = std::ranges::all_of(old.sources, [&](const std::string& source) {
             auto id = project.cdb.find_source(project_index.local(source));
             return id ? project.cdb.loaded(*id) : declared || replaced;
         });
@@ -448,7 +448,7 @@ void CommandSnapshot::reconcile(Project& project, index::IndexReport& report) {
         if(cdb_ids.contains(tu) || pinned_fresh.contains(tu)) {
             return;
         }
-        if(llvm::any_of(changed_ids, [&](Fid host) {
+        if(std::ranges::any_of(changed_ids, [&](Fid host) {
                return !project.dep_graph.find_include_chain(host, tu).empty();
            })) {
             hosted.push_back(tu);

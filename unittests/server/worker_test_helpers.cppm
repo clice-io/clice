@@ -47,8 +47,9 @@ inline kota::task<> parked(BuildProbe& probe, std::uint64_t id) {
             held.set();
         }
     });
-    if(llvm::none_of(probe.gates(),
-                     [&](const BuildProbe::Gate& gate) { return gate.id == id && gate.parked; })) {
+    if(std::ranges::none_of(probe.gates(), [&](const BuildProbe::Gate& gate) {
+           return gate.id == id && gate.parked;
+       })) {
         co_await held.wait();
     }
 }

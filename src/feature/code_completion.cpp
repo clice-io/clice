@@ -244,9 +244,11 @@ bool hidden_tag(const clang::TagDecl* tag) {
     if(!tag->getDeclName() || !scope->isFileContext()) {
         return false;
     }
-    return llvm::any_of(scope->lookup(tag->getDeclName()), [](const clang::NamedDecl* found) {
-        return found->isInIdentifierNamespace(clang::Decl::IDNS_Ordinary);
-    });
+    return std::ranges::any_of(scope->lookup(tag->getDeclName()),
+                               [](const clang::NamedDecl* found) {
+                                   return found->isInIdentifierNamespace(
+                                       clang::Decl::IDNS_Ordinary);
+                               });
 }
 
 /// The place of each field a designator in an initializer of `record`
@@ -365,7 +367,7 @@ auto unchecked_naming_class(clang::Sema& sema, clang::CodeCompletionContext& con
         if(auto* type = entry->getFriendType()) {
             befriended = type->getType()->getAsCXXRecordDecl();
         }
-        if(befriended && llvm::any_of(scopes, [&](const clang::NamedDecl* scope) {
+        if(befriended && std::ranges::any_of(scopes, [&](const clang::NamedDecl* scope) {
                return befriends(befriended, scope);
            })) {
             return nullptr;
@@ -897,7 +899,7 @@ struct Rebuilder {
             for(auto parameter: function->getParamTypes()) {
                 parameters.push_back(type(parameter));
             }
-            if(!returned.isNull() && llvm::none_of(parameters, &clang::QualType::isNull)) {
+            if(!returned.isNull() && std::ranges::none_of(parameters, &clang::QualType::isNull)) {
                 // The exception specification's expressions and types live in
                 // the other compile; of it, the type keeps whether it throws.
                 auto info = function->getExtProtoInfo();
@@ -1003,7 +1005,7 @@ struct Rebuilder {
                 written.addArgument(sema.getTrivialTemplateArgumentLoc(each, {}, loc));
             };
             if(rebuilt->getKind() == clang::TemplateArgument::Pack) {
-                llvm::for_each(rebuilt->pack_elements(), add);
+                std::ranges::for_each(rebuilt->pack_elements(), add);
             } else {
                 add(*rebuilt);
             }
@@ -1625,7 +1627,7 @@ public:
         auto* module = sema.getCurrentModule();
         bool named_module = module && module->isNamedModule();
         auto completion_loc = sema.getPreprocessor().getCodeCompletionLoc();
-        auto declared = llvm::any_of(
+        auto declared = std::ranges::any_of(
             sema.getASTContext().getTranslationUnitDecl()->noload_decls(),
             [&](const clang::Decl* decl) {
                 return !decl->isImplicit() && !llvm::isa<clang::ImportDecl>(decl) &&
@@ -1800,10 +1802,11 @@ public:
 
         llvm::DenseSet<const clang::Decl*> offered;
         /// After `struct`, `union` or `enum`, where Sema offers only tags.
-        bool tags_only = llvm::is_contained({clang::CodeCompletionContext::CCC_ClassOrStructTag,
+        bool tags_only =
+            std::ranges::contains(std::array{clang::CodeCompletionContext::CCC_ClassOrStructTag,
                                              clang::CodeCompletionContext::CCC_UnionTag,
                                              clang::CodeCompletionContext::CCC_EnumTag},
-                                            context.getKind());
+                                  context.getKind());
         /// `relevance` scales what the context makes of the candidate.
         auto add_declaration = [&](clang::CodeCompletionResult& candidate, float relevance) {
             if(auto* tag = llvm::dyn_cast<clang::TagDecl>(candidate.Declaration);
@@ -1978,7 +1981,7 @@ public:
             add(item);
         };
 
-        for(auto& candidate: llvm::make_range(candidates, candidates + candidate_count)) {
+        for(auto& candidate: std::ranges::subrange(candidates, candidates + candidate_count)) {
             switch(candidate.Kind) {
                 case clang::CodeCompletionResult::RK_Keyword:
                     if(allowed_keyword(candidate.Keyword)) {
@@ -2162,7 +2165,7 @@ public:
                     qualifier = clang::NestedNameSpecifier::getGlobal();
                     shared = 0;
                 }
-                for(auto* space: llvm::drop_begin(spaces, shared)) {
+                for(auto* space: std::views::drop(spaces, shared)) {
                     qualifier = clang::NestedNameSpecifier(ast, space, qualifier);
                 }
                 return qualifier;
@@ -2260,15 +2263,17 @@ public:
                 if((!language.CPlusPlus && (!segments.empty() || candidate.kind == Kind::Class ||
                                             candidate.kind == Kind::Enum)) ||
                    (!language.CPlusPlusModules && !candidate.module.empty()) ||
-                   llvm::any_of(segments,
-                                [](llvm::StringRef segment) { return segment.starts_with("_"); })) {
+                   std::ranges::any_of(segments, [](llvm::StringRef segment) {
+                       return segment.starts_with("_");
+                   })) {
                     continue;
                 }
                 clang::DeclContext* scope = ast.getTranslationUnitDecl();
                 for(const auto& segment: segments) {
                     auto found = visible(scope, segment);
                     auto space =
-                        llvm::find_if(found, llvm::IsaPred<clang::NamespaceDecl, clang::EnumDecl>);
+                        std::ranges::find_if(found,
+                                             llvm::IsaPred<clang::NamespaceDecl, clang::EnumDecl>);
                     scope = space == found.end() ? nullptr : llvm::cast<clang::DeclContext>(*space);
                     if(!scope) {
                         break;
@@ -2327,7 +2332,7 @@ public:
                     qualifier = "::";
                     shared = 0;
                 }
-                for(const auto& segment: llvm::drop_begin(segments, shared)) {
+                for(const auto& segment: std::views::drop(segments, shared)) {
                     qualifier += segment + "::";
                 }
                 Candidate item{
@@ -2488,7 +2493,8 @@ auto code_complete(CompilationParams params,
     };
     auto unit = compile(std::move(params));
 
-    for(auto [item, decl]: llvm::zip_equal(items, documented)) {
+    assert(std::ranges::size(items) == std::ranges::size(documented));
+    for(auto [item, decl]: std::views::zip(items, documented)) {
         if(!decl) {
             continue;
         }

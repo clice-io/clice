@@ -53,7 +53,7 @@ bool cxx_driver(const Command& command) {
     if(command.subcommand) {
         return llvm::StringRef(command.subcommand) == "c++";
     }
-    for(auto& arg: llvm::reverse(command.args)) {
+    for(auto& arg: std::views::reverse(command.args)) {
         if(arg.opt_id == option::OPT_driver_mode && arg.values.size() == 1) {
             return llvm::StringRef(arg.values[0]) == "g++";
         }

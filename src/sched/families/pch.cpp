@@ -52,7 +52,8 @@ PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit) {
 bool PCHFamily::reads(llvm::StringRef key, Fid file) const {
     auto it = project.pch_cache.find(key);
     return it != project.pch_cache.end() &&
-           llvm::any_of(it->second.deps, [&](const DepState& dep) { return dep.path_id == file; });
+           std::ranges::any_of(it->second.deps,
+                               [&](const DepState& dep) { return dep.path_id == file; });
 }
 
 NodeId PCHFamily::prepare(Request request) {

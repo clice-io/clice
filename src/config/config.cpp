@@ -218,7 +218,7 @@ void Config::finalize(CanonicalRef workspace_root) {
         }
     }
     if(!default_configuration.empty() &&
-       !llvm::is_contained(configurations(), llvm::StringRef(default_configuration))) {
+       !std::ranges::contains(configurations(), llvm::StringRef(default_configuration))) {
         LOG_WARN("default_configuration = {} names no rule's configuration", default_configuration);
     }
 }
@@ -255,7 +255,7 @@ llvm::SmallVector<const CompiledRule*> Config::matching_rules(CanonicalRef path,
 llvm::SmallVector<llvm::StringRef> Config::configurations() const {
     llvm::SmallVector<llvm::StringRef> tags;
     for(auto& rule: compiled_rules) {
-        if(!rule.configuration.empty() && !llvm::is_contained(tags, rule.configuration)) {
+        if(!rule.configuration.empty() && !std::ranges::contains(tags, rule.configuration)) {
             tags.push_back(rule.configuration);
         }
     }

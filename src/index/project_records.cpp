@@ -100,9 +100,7 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
 }
 
 void add_unit(KeyedUnits& sets, std::uint64_t key, std::uint32_t unit) {
-    auto it = llvm::lower_bound(sets, key, [](const auto& set, std::uint64_t key) {
-        return set.first < key;
-    });
+    auto it = std::ranges::lower_bound(sets, key, {}, &KeyedUnits::value_type::first);
     if(it == sets.end() || it->first != key) {
         it = sets.emplace(it, key, Bitmap());
     }
@@ -110,9 +108,7 @@ void add_unit(KeyedUnits& sets, std::uint64_t key, std::uint32_t unit) {
 }
 
 void remove_unit(KeyedUnits& sets, std::uint64_t key, std::uint32_t unit) {
-    auto it = llvm::lower_bound(sets, key, [](const auto& set, std::uint64_t key) {
-        return set.first < key;
-    });
+    auto it = std::ranges::lower_bound(sets, key, {}, &KeyedUnits::value_type::first);
     if(it == sets.end() || it->first != key) {
         return;
     }
@@ -136,11 +132,13 @@ std::vector<std::byte> encode_record(const Header& header) {
 std::optional<Header> decode_header(llvm::StringRef data) {
     auto* root = verify_root<HeaderBlob>(data, "index database header");
     auto named = [&](const auto& paths) {
-        return strictly_ascending(paths) &&
-               llvm::all_of(paths, [&](std::uint32_t path) { return path < root->next_path; });
+        return strictly_ascending(paths) && std::ranges::all_of(paths, [&](std::uint32_t path) {
+                   return path < root->next_path;
+               });
     };
     if(!root || !strictly_ascending(root->search_pending) ||
-       llvm::any_of(root->search_pending, [](SymbolHash hash) { return reserved_key(hash); }) ||
+       std::ranges::any_of(root->search_pending,
+                           [](SymbolHash hash) { return reserved_key(hash); }) ||
        !named(root->search_pending_files) || !named(root->owed_units)) {
         return std::nullopt;
     }
@@ -261,8 +259,8 @@ std::optional<Internals> decode_internals(llvm::StringRef data) {
     if(root->name_ends.size() != count || root->args_ends.size() != count ||
        root->parents.size() != count || root->kinds.size() != count ||
        root->flags.size() != count || !strictly_ascending(root->hashes) ||
-       llvm::any_of(root->hashes, [](SymbolHash hash) { return reserved_key(hash); }) ||
-       llvm::any_of(root->parents, [](SymbolHash hash) { return reserved_key(hash); }) ||
+       std::ranges::any_of(root->hashes, [](SymbolHash hash) { return reserved_key(hash); }) ||
+       std::ranges::any_of(root->parents, [](SymbolHash hash) { return reserved_key(hash); }) ||
        !monotone_ends(root->name_ends, root->names.size()) ||
        !monotone_ends(root->args_ends, root->args.size())) {
         return std::nullopt;

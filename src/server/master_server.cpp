@@ -265,7 +265,7 @@ ProjectServer* MasterServer::compiler(Fid path_id) {
     if(auto* listing = deepest_holding(projects, path, lists)) {
         return listing;
     }
-    if(auto it = llvm::find_if(projects, [&](auto& project) { return lists(*project); });
+    if(auto it = std::ranges::find_if(projects, [&](auto& project) { return lists(*project); });
        it != projects.end()) {
         return it->get();
     }
@@ -275,7 +275,8 @@ ProjectServer* MasterServer::compiler(Fid path_id) {
     if(auto* hosting = deepest_holding(projects, path, includes)) {
         return hosting;
     }
-    auto borrowed = llvm::find_if(projects, [&](auto& project) { return includes(*project); });
+    auto borrowed =
+        std::ranges::find_if(projects, [&](auto& project) { return includes(*project); });
     return borrowed != projects.end() ? borrowed->get() : nullptr;
 }
 
@@ -381,7 +382,7 @@ void MasterServer::open_session(Fid path_id, std::string text, int version) {
             Spelling spelled(root);
             return cdb.find_source(spelled) || cdb.find_source(Spelling("build", spelled));
         };
-        if(!root.empty() && llvm::none_of(projects, covered)) {
+        if(!root.empty() && std::ranges::none_of(projects, covered)) {
             workspace_roots.push_back(std::move(root));
             serve_folders();
         }
@@ -459,18 +460,18 @@ void MasterServer::change_folders(std::vector<Spelling> removed, std::vector<Spe
         files.spell_root(root);
     }
     auto identities = [](llvm::ArrayRef<Spelling> roots) {
-        return llvm::to_vector(
-            llvm::map_range(roots, [](auto& root) { return CanonicalPath(root); }));
+        return std::ranges::to<llvm::SmallVector<CanonicalPath>>(
+            std::views::transform(roots, [](auto& root) { return CanonicalPath(root); }));
     };
     auto gone = identities(removed);
     auto fresh = identities(added);
     for(auto& root: gone) {
-        if(!llvm::is_contained(fresh, root)) {
-            llvm::erase(workspace_roots, root);
+        if(!std::ranges::contains(fresh, root)) {
+            std::erase(workspace_roots, root);
         }
     }
     for(auto& root: fresh) {
-        if(!llvm::is_contained(workspace_roots, root)) {
+        if(!std::ranges::contains(workspace_roots, root)) {
             workspace_roots.push_back(std::move(root));
         }
     }
@@ -512,7 +513,7 @@ std::vector<CanonicalPath> MasterServer::project_roots() const {
     std::vector<CanonicalPath> roots;
     for(auto& folder: workspace_roots) {
         auto root = root_of(folder);
-        if(!llvm::is_contained(roots, root)) {
+        if(!std::ranges::contains(roots, root)) {
             roots.push_back(std::move(root));
         }
     }
@@ -523,11 +524,12 @@ std::vector<CanonicalPath> MasterServer::project_roots() const {
 }
 
 void MasterServer::serve_folders() {
-    llvm::erase_if(retired, [](auto& weak) { return weak.expired(); });
+    std::erase_if(retired, [](auto& weak) { return weak.expired(); });
     std::vector<std::shared_ptr<ProjectServer>> serving;
     llvm::SmallVector<ProjectServer*> fresh;
     auto serve = [&](CanonicalPath root) {
-        if(auto it = llvm::find_if(projects, [&](auto& project) { return project->root == root; });
+        if(auto it =
+               std::ranges::find_if(projects, [&](auto& project) { return project->root == root; });
            it != projects.end()) {
             serving.push_back(*it);
             return;
@@ -538,7 +540,7 @@ void MasterServer::serve_folders() {
     };
     for(auto& root: project_roots()) {
         // A removed project holds its cache directory until it is gone.
-        if(llvm::none_of(retired, [&](auto& weak) {
+        if(std::ranges::none_of(retired, [&](auto& weak) {
                auto project = weak.lock();
                return project && project->root == root;
            })) {
@@ -551,7 +553,7 @@ void MasterServer::serve_folders() {
 
     std::vector<std::shared_ptr<ProjectServer>> leaving;
     for(auto& project: projects) {
-        if(!llvm::is_contained(serving, project)) {
+        if(!std::ranges::contains(serving, project)) {
             leaving.push_back(project);
         }
     }
@@ -602,7 +604,7 @@ void MasterServer::carry(const IndexPump::Progress& progress) {
 void MasterServer::index_progress_changed(ProjectServer& changed) {
     using Stage = IndexPump::Progress::Stage;
     // A retiring project's pump winds down outside the round.
-    if(llvm::none_of(projects, [&](auto& project) { return project.get() == &changed; })) {
+    if(std::ranges::none_of(projects, [&](auto& project) { return project.get() == &changed; })) {
         return;
     }
     auto& now = changed.sched.pump.progress();
@@ -624,7 +626,8 @@ void MasterServer::fold_index_progress() {
     using Stage = IndexPump::Progress::Stage;
     IndexPump::Progress all = carried;
     bool active = false;
-    for(auto& one: llvm::make_second_range(round)) {
+    for(auto& one:
+        std::views::transform(round, [](auto& entry) -> auto& { return entry.second; })) {
         active = active || one.stage != Stage::End;
         all.total += one.total;
         all.completed += one.completed;
@@ -727,7 +730,7 @@ ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
                 return known.uri == item.uri && known.occurrence == item.occurrence &&
                        known.command_hash == item.command_hash;
             };
-            if(llvm::none_of(items, same)) {
+            if(std::ranges::none_of(items, same)) {
                 items.push_back(std::move(item));
             }
         }
@@ -759,16 +762,16 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     // The listing spells the URIs the server's way, not the client's.
     auto context_uri = feature::to_uri(files.display(context_path_id));
     auto offers = [&](ProjectServer& project) {
-        return llvm::any_of(project.context_service.contexts(path_id),
-                            [&](const ext::ContextItem& item) {
-                                return item.uri == context_uri &&
-                                       item.occurrence == params.occurrence &&
-                                       item.command_hash == params.command_hash;
-                            });
+        return std::ranges::any_of(project.context_service.contexts(path_id),
+                                   [&](const ext::ContextItem& item) {
+                                       return item.uri == context_uri &&
+                                              item.occurrence == params.occurrence &&
+                                              item.command_hash == params.command_hash;
+                                   });
     };
     auto target = owner;
     if(!offers(*owner)) {
-        auto it = llvm::find_if(projects, [&](auto& project) { return offers(*project); });
+        auto it = std::ranges::find_if(projects, [&](auto& project) { return offers(*project); });
         if(it == projects.end()) {
             co_return result;
         }
@@ -932,8 +935,8 @@ kota::task<> MasterServer::wait_idle(const kota::ipc::JSONPeer& editor) {
     auto quiet = [&] {
         drain_disk_changes();
         return awaited_requests(editor).empty() &&
-               llvm::none_of(projects, [](auto& project) { return working(*project); }) &&
-               llvm::all_of(retired, [](auto& weak) { return weak.expired(); });
+               std::ranges::none_of(projects, [](auto& project) { return working(*project); }) &&
+               std::ranges::all_of(retired, [](auto& weak) { return weak.expired(); });
     };
     while(true) {
         if(quiet()) {

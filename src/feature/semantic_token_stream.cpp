@@ -458,17 +458,17 @@ private:
             if(lang_opts.CPlusPlusModules && line_head &&
                (spelling == "module" || spelling == "import")) {
                 auto following = next();
-                bool opens =
-                    spelling == "module"
-                        ? llvm::is_contained(
-                              {clang::tok::raw_identifier, clang::tok::colon, clang::tok::semi},
-                              following.kind)
-                        : llvm::is_contained({clang::tok::raw_identifier,
-                                              clang::tok::colon,
-                                              clang::tok::less,
-                                              clang::tok::header_name,
-                                              clang::tok::string_literal},
-                                             following.kind);
+                bool opens = spelling == "module"
+                                 ? std::ranges::contains(std::array{clang::tok::raw_identifier,
+                                                                    clang::tok::colon,
+                                                                    clang::tok::semi},
+                                                         following.kind)
+                                 : std::ranges::contains(std::array{clang::tok::raw_identifier,
+                                                                    clang::tok::colon,
+                                                                    clang::tok::less,
+                                                                    clang::tok::header_name,
+                                                                    clang::tok::string_literal},
+                                                         following.kind);
                 if(opens) {
                     return {{.kind = Kind::Keyword}, true};
                 }
@@ -494,8 +494,9 @@ private:
                 piece.classified = {.kind = Kind::Directive};
                 if(spelling == "define") {
                     directive = Directive::AfterDefine;
-                } else if(llvm::is_contained({"ifdef", "ifndef", "elifdef", "elifndef", "undef"},
-                                             spelling)) {
+                } else if(std::ranges::contains(
+                              std::array{"ifdef", "ifndef", "elifdef", "elifndef", "undef"},
+                              spelling)) {
                     directive = Directive::MacroName;
                 } else if(spelling == "if" || spelling == "elif") {
                     directive = Directive::Condition;
@@ -533,7 +534,7 @@ private:
             }
             case Directive::Body: {
                 definition_control |= leaves_enclosing(kind);
-                if(word && llvm::is_contained(macro_parameters, spelling)) {
+                if(word && std::ranges::contains(macro_parameters, spelling)) {
                     piece = {{.kind = Kind::MacroParameter}, true};
                 }
                 break;

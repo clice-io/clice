@@ -119,7 +119,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
         // Fill ALL available PCM paths (clang needs transitive deps too).
         for(auto& [pid, pcm_path]: pcm_paths) {
             for(auto& [mod_name, mod_ids]: graph.modules()) {
-                if(llvm::find(mod_ids, Fid{pid}) != mod_ids.end()) {
+                if(std::ranges::find(mod_ids, Fid{pid}) != mod_ids.end()) {
                     cp.input.pcms.try_emplace(mod_name, pcm_path);
                     break;
                 }
@@ -1146,7 +1146,7 @@ ZEST_CASE(module_implementation_unit) {
         // Pass the built PCM so clang can resolve `module Greeter;`.
         for(auto& [pid, pcm_path]: env.pcm_paths) {
             for(auto& [mod_name, mod_ids]: env.graph.modules()) {
-                if(llvm::find(mod_ids, Fid{pid}) != mod_ids.end()) {
+                if(std::ranges::find(mod_ids, Fid{pid}) != mod_ids.end()) {
                     cp.input.pcms.try_emplace(mod_name, pcm_path);
                     break;
                 }

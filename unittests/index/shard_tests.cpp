@@ -802,7 +802,8 @@ void fill_content(index::ShardBlob& blob, llvm::StringRef text) {
         auto next = last ? blob.content_size : starts[i + 1];
         auto length = next - starts[i];
         auto line = text.slice(starts[i], last ? next : next - 1);
-        if(llvm::any_of(line, [](char c) { return static_cast<unsigned char>(c) >= 0x80; })) {
+        if(std::ranges::any_of(line,
+                               [](char c) { return static_cast<unsigned char>(c) >= 0x80; })) {
             blob.utf8_lines.push_back(static_cast<std::uint32_t>(i));
             blob.utf8_text += line;
             blob.utf8_text_ends.push_back(static_cast<std::uint32_t>(blob.utf8_text.size()));

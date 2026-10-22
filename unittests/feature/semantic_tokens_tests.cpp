@@ -83,7 +83,7 @@ void EXPECT_TOKEN(llvm::StringRef name,
                   SemanticTokenKind expected_kind,
                   std::uint32_t expected_modifiers = 0) {
     auto expected = range(name);
-    auto it = llvm::find_if(tokens, [&](const feature::SemanticToken& token) {
+    auto it = std::ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
         return token.range == expected;
     });
     ZASSERT(it != tokens.end());
@@ -169,7 +169,7 @@ u8"你";
     auto wide = encode(PositionEncoding::UTF16);
     auto length = [&](const protocol::SemanticTokens& encoded) {
         auto decoded = decode_relative_tokens(encoded);
-        auto it = llvm::find_if(decoded, [&](const DecodedToken& token) {
+        auto it = std::ranges::find_if(decoded, [&](const DecodedToken& token) {
             return token.type == string_type && token.length > 2;
         });
         return it == decoded.end() ? 0u : it->length;

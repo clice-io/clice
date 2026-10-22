@@ -798,8 +798,8 @@ ZEST_CASE(FirstLoadAllAdded) {
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
     ZASSERT(diff->added.size() == 2U);
-    ZEXPECT(llvm::is_contained(diff->added, id_of(cdb, tmp, "a.cpp")));
-    ZEXPECT(llvm::is_contained(diff->added, id_of(cdb, tmp, "b.cpp")));
+    ZEXPECT(std::ranges::contains(diff->added, id_of(cdb, tmp, "a.cpp")));
+    ZEXPECT(std::ranges::contains(diff->added, id_of(cdb, tmp, "b.cpp")));
     ZEXPECT(diff->removed.empty());
     ZEXPECT(diff->changed.empty());
 };

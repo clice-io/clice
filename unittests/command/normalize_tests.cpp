@@ -205,7 +205,7 @@ ZEST_CASE(InternedCommand) {
                    commands.input_kind(spelled, "/ws/src/a.cpp"),
                    CommandSource::Default};
     auto rendered = commands.render_driver(ref, database.spelling(ref.file));
-    ZEXPECT(llvm::is_contained(rendered, "-std=c++20"sv));
+    ZEXPECT(std::ranges::contains(rendered, "-std=c++20"sv));
     ZEXPECT(has_arg(rendered, "/ws/include"));
     ZEXPECT(std::string_view(rendered.back()) == file_table.resolve(ref.file).str());
 };
@@ -364,7 +364,7 @@ ZEST_CASE(WorkingDirectoryAnchorsIncludes) {
     /// The directory itself is anchored too, so no reader depends on
     /// where it runs.
     auto command = database.candidate_entries("/project/main.cpp").front().command;
-    auto working = llvm::find_if(commands.get(command).args, [](const Arg& arg) {
+    auto working = std::ranges::find_if(commands.get(command).args, [](const Arg& arg) {
         return arg.opt_id == option::OPT_working_directory;
     });
     ZASSERT(working != commands.get(command).args.end());
@@ -391,9 +391,9 @@ ZEST_CASE(BareFileValueAnchored) {
             values.push_back(path::convert_to_slash(value));
         }
     }
-    ZEXPECT(llvm::is_contained(values, "/project/ignore.txt"));
-    ZEXPECT(llvm::is_contained(values, "/project/sdk"));
-    ZEXPECT(llvm::is_contained(values, "x.cfg"));
+    ZEXPECT(std::ranges::contains(values, "/project/ignore.txt"));
+    ZEXPECT(std::ranges::contains(values, "/project/sdk"));
+    ZEXPECT(std::ranges::contains(values, "x.cfg"));
 };
 
 ZEST_CASE(SysrootIncludeKept) {
@@ -405,7 +405,7 @@ ZEST_CASE(SysrootIncludeKept) {
                          "main.cpp",
                          "clang++ --sysroot=/sdk -I=/usr/include/foo main.cpp"sv);
     auto argv = render_entry(database, "/project/main.cpp");
-    ZEXPECT(llvm::any_of(argv, [](llvm::StringRef arg) {
+    ZEXPECT(std::ranges::any_of(argv, [](llvm::StringRef arg) {
         return arg == "=/usr/include/foo" || arg == "-I=/usr/include/foo";
     }));
 };

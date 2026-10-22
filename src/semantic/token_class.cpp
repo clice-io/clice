@@ -177,7 +177,7 @@ bool has_call_operator(const clang::CXXRecordDecl* record) {
     if(!record->lookup(call).empty()) {
         return true;
     }
-    return llvm::any_of(record->bases(), [](const clang::CXXBaseSpecifier& base) {
+    return std::ranges::any_of(record->bases(), [](const clang::CXXBaseSpecifier& base) {
         const auto* type = base.getType()->getAsCXXRecordDecl();
         return type && has_call_operator(type);
     });
@@ -336,8 +336,9 @@ TokenClass token_class(const clang::MacroInfo& macro, const clang::SourceManager
     // FIXME: only tokens the replacement list writes count: a macro reaching
     // `return` through another macro (`#define WRAP RET`) gets no ControlFlow;
     // the token stream's definition_control misses it the same way.
-    if(llvm::any_of(macro.tokens(),
-                    [](const clang::Token& token) { return leaves_enclosing(token.getKind()); })) {
+    if(std::ranges::any_of(macro.tokens(), [](const clang::Token& token) {
+           return leaves_enclosing(token.getKind());
+       })) {
         add(ControlFlow);
     }
     // Not a predefined one (`__GNUC__`), defined in no file: no index holds

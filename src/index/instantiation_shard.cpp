@@ -154,7 +154,7 @@ CheckResult symbols_ok(const Root& root) {
     if(!strictly_ascending(hashes)) {
         return std::unexpected("symbol hashes are not strictly ascending");
     }
-    if(llvm::any_of(hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
+    if(std::ranges::any_of(hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
         return std::unexpected("a reserved symbol hash");
     }
     return {};
@@ -215,7 +215,7 @@ CheckResult records_ok(const Root& root) {
 // empty set is a key's "nothing here" in disguise.
 CheckResult sets_ok(const SetTable& table) {
     if(!strictly_ascending(table.hashes) ||
-       llvm::any_of(table.hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
+       std::ranges::any_of(table.hashes, [](std::uint64_t hash) { return reserved_key(hash); })) {
         return std::unexpected("set identities are not strictly ascending");
     }
     if(table.ends.size() != table.hashes.size() ||
@@ -245,7 +245,7 @@ CheckResult resolutions_ok(const Root& root) {
     for(std::uint32_t i = 0; i < table.members.size(); i += 1) {
         owned[table.members[i]] = true;
     }
-    if(llvm::is_contained(owned, false)) {
+    if(std::ranges::contains(owned, false)) {
         return std::unexpected("a record no resolution holds");
     }
     return {};
@@ -290,7 +290,7 @@ CheckResult keys_ok(const Root& root) {
     if(producer_runs.size() != producers) {
         return std::unexpected("producer columns do not line up");
     }
-    if(llvm::any_of(producer_units, [](std::uint64_t unit) { return reserved_key(unit); })) {
+    if(std::ranges::any_of(producer_units, [](std::uint64_t unit) { return reserved_key(unit); })) {
         return std::unexpected("a reserved producer unit");
     }
     for(std::uint32_t i = 1; i < producers; i += 1) {
@@ -421,7 +421,7 @@ void InstantiationShard::set_live(llvm::ArrayRef<UseHash> live) {
         return;
     }
     llvm::SmallVector<UseHash> sorted(live);
-    llvm::sort(sorted);
+    std::ranges::sort(sorted);
     auto& root = view_of(bytes());
     auto uses = SetTable::uses_of(root);
     auto resolutions = SetTable::resolutions_of(root);
@@ -752,7 +752,7 @@ std::optional<std::vector<std::byte>>
     // The uses kept, and the added one; their resolutions are the ones of
     // `old` that survive.
     llvm::SmallVector<UseHash> kept_uses(keep);
-    llvm::sort(kept_uses);
+    std::ranges::sort(kept_uses);
     for(auto use: old.uses()) {
         if(std::ranges::binary_search(kept_uses, use)) {
             draft.uses.emplace_back(use, old.resolutions_of(use));
@@ -768,7 +768,7 @@ std::optional<std::vector<std::byte>>
     std::ranges::sort(draft.uses, {}, use_order);
     draft.uses.erase(std::ranges::unique(draft.uses, {}, use_order).begin(), draft.uses.end());
     llvm::DenseSet<ResolutionHash> used;
-    for(auto& resolutions: llvm::make_second_range(draft.uses)) {
+    for(auto& resolutions: std::views::values(draft.uses)) {
         used.insert(resolutions.begin(), resolutions.end());
     }
 

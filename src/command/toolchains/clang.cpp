@@ -78,7 +78,7 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
     // particular job, it should be controlled via options (e.g.
     // --cuda-{host|device}-only for CUDA) passed to the driver.
     const clang::driver::JobList& jobs = compilation->getJobs();
-    auto cmd = llvm::find_if(jobs, [](const clang::driver::Command& cmd) {
+    auto cmd = std::ranges::find_if(jobs, [](const clang::driver::Command& cmd) {
         return cmd.getCreator().getName() == llvm::StringRef("clang");
     });
     if(cmd == jobs.end()) {

@@ -276,7 +276,8 @@ int run_file(const FileOptions& opts) {
     }
     project.toolchain.warm(refs);
     FileCommands commands{.file = files.display(file)};
-    for(auto [entry, ref]: llvm::zip_equal(entries, refs)) {
+    assert(std::ranges::size(entries) == std::ranges::size(refs));
+    for(auto [entry, ref]: std::views::zip(entries, refs)) {
         auto written = written_entry(project.cdb, entry);
         auto database = Spelling::absolute(project.cdb.source_path(entry.source));
         if(!written) {
@@ -307,8 +308,9 @@ int run_file(const FileOptions& opts) {
 /// `directory` moved by -working-directory.
 llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command,
                                              const Spelling& directory) {
-    auto family = llvm::is_contained(command, "--driver-mode=cl") ? CompilerFamily::ClangCL
-                                                                  : driver_family(command.front());
+    auto family = std::ranges::contains(command, "--driver-mode=cl")
+                      ? CompilerFamily::ClangCL
+                      : driver_family(command.front());
     std::vector<std::string> args(command.begin() + 1, command.end());
     auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
                                               .visibility = family_visibility(family)};
@@ -355,10 +357,10 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
                       ? "no C-family source"
                       : std::format("{} C-family sources ({})",
                                     sources.size(),
-                                    llvm::join(llvm::map_range(sources,
-                                                               [](const Spelling& source) {
-                                                                   return source.str();
-                                                               }),
+                                    llvm::join(std::views::transform(sources,
+                                                                     [](const Spelling& source) {
+                                                                         return source.str();
+                                                                     }),
                                                ", ")));
         return 1;
     }

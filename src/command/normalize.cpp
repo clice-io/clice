@@ -37,7 +37,8 @@ bool is_assignment_token(llvm::StringRef token) {
     if(eq == llvm::StringRef::npos || eq == 0) {
         return false;
     }
-    return llvm::all_of(token.take_front(eq), [](char c) { return llvm::isAlnum(c) || c == '_'; });
+    return std::ranges::all_of(token.take_front(eq),
+                               [](char c) { return llvm::isAlnum(c) || c == '_'; });
 }
 
 }  // namespace
@@ -136,8 +137,12 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     /// ccache's --ccache-skip guards the NEXT token from ccache's own
     /// processing; the token itself belongs to the compiler command.
     if(wrapper_len > 0) {
-        llvm::erase_if(tokens,
-                       [](const char* token) { return llvm::StringRef(token) == "--ccache-skip"; });
+        tokens.erase(std::ranges::remove_if(tokens,
+                                            [](const char* token) {
+                                                return llvm::StringRef(token) == "--ccache-skip";
+                                            })
+                         .begin(),
+                     tokens.end());
     }
 
     /// nvcc spellings are rewritten into clang's before the table parse —

@@ -75,8 +75,8 @@ End of search list.
 LIBRARY_PATH=/usr/lib/gcc/arm-none-eabi/13.2.1/thumb/v7e-m+fp/hard/:/usr/lib/gcc/arm-none-eabi/13.2.1/:/usr/lib/gcc/arm-none-eabi/13.2.1/../../../arm-none-eabi/lib/)";
     auto output = parse_gcc_style_output("#define __STDC_VERSION__ 201710L", err);
     ZEXPECT(output.private_dir == std::optional<std::size_t>(1));
-    ZEXPECT(llvm::is_contained(output.gcc_options, "-D__USES_INITFINI__"));
-    ZEXPECT(llvm::is_contained(output.gcc_options, "-mthumb"));
+    ZEXPECT(std::ranges::contains(output.gcc_options, "-D__USES_INITFINI__"));
+    ZEXPECT(std::ranges::contains(output.gcc_options, "-mthumb"));
     ZEXPECT(output.standard == "gnu17");
 }
 

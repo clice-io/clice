@@ -105,14 +105,14 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     FileEvent events[] = {FileEvent::disk_changed(iface)};
     auto dirty = invalidator.apply(events);
 
-    ZEXPECT(llvm::is_contained(dirty.reindex_content_changed, closed));
-    ZEXPECT(llvm::is_contained(dirty.mark_ast_dirty, open));
+    ZEXPECT(std::ranges::contains(dirty.reindex_content_changed, closed));
+    ZEXPECT(std::ranges::contains(dirty.mark_ast_dirty, open));
     ZEXPECT(dirty.drop_index.empty());
 
     // The same save again: the name already has its provider.
     auto again = invalidator.apply(events);
-    ZEXPECT(!llvm::is_contained(again.reindex_content_changed, closed));
-    ZEXPECT(!llvm::is_contained(again.mark_ast_dirty, open));
+    ZEXPECT(!std::ranges::contains(again.reindex_content_changed, closed));
+    ZEXPECT(!std::ranges::contains(again.mark_ast_dirty, open));
 }
 
 ZEST_CASE(ReloadProviderCascades) {
@@ -148,9 +148,9 @@ ZEST_CASE(ReloadProviderCascades) {
     FileEvent events[] = {FileEvent::cdb_changed(std::move(delta))};
     auto dirty = invalidator.apply(events);
 
-    ZEXPECT(!llvm::is_contained(dirty.reindex_content_changed, retired));
-    ZEXPECT(llvm::is_contained(dirty.drop_index, retired));
-    ZEXPECT(llvm::is_contained(dirty.clear_reindex, retired));
+    ZEXPECT(!std::ranges::contains(dirty.reindex_content_changed, retired));
+    ZEXPECT(std::ranges::contains(dirty.drop_index, retired));
+    ZEXPECT(std::ranges::contains(dirty.clear_reindex, retired));
 }
 
 ZEST_CASE(DiskRemovedDropsProvider) {
@@ -257,7 +257,7 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
     // recompile, closed files go back to the background indexer.
     ZEXPECT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_user});
     llvm::SmallVector<Fid> reindexed{mod, closed_user};
-    llvm::sort(reindexed);
+    std::ranges::sort(reindexed);
     ZEXPECT(dirty.reindex_deps_only == reindexed);
     ZEXPECT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{mod});
 }
@@ -289,11 +289,11 @@ ZEST_CASE(ChainHitAndMiss) {
     // drops its decision; an open one recompiles, a closed one reindexes in
     // the background — its shard was built under the old chain.
     llvm::SmallVector<Fid> dropped{hit, closed};
-    llvm::sort(dropped);
+    std::ranges::sort(dropped);
     ZASSERT(dirty.drop_context == dropped);
     ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{hit});
     llvm::SmallVector<Fid> reset{saved, hit, closed};
-    llvm::sort(reset);
+    std::ranges::sort(reset);
     ZASSERT(dirty.reset_header_mode == reset);
     // The closed header's own content did not change — only its chain did.
     ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
@@ -409,9 +409,9 @@ ZEST_CASE(BatchSeesEarlierEdges) {
     auto dirty =
         invalidator.apply({FileEvent::disk_changed(added), FileEvent::disk_changed(header)});
 
-    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, known));
-    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, added));
-    ZASSERT(llvm::is_contained(project.dep_graph.get_includers(header), added));
+    ZASSERT(std::ranges::contains(dirty.reindex_deps_only, known));
+    ZASSERT(std::ranges::contains(dirty.reindex_deps_only, added));
+    ZASSERT(std::ranges::contains(project.dep_graph.get_includers(header), added));
 }
 
 ZEST_CASE(RemovalThenChangeKeepsClear) {
@@ -437,9 +437,9 @@ ZEST_CASE(RemovalThenChangeKeepsClear) {
     auto dirty =
         invalidator.apply({FileEvent::disk_removed(removed), FileEvent::disk_changed(header)});
 
-    ZASSERT(llvm::is_contained(dirty.clear_reindex, removed));
-    ZASSERT(!llvm::is_contained(dirty.reindex_deps_only, removed));
-    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, kept));
+    ZASSERT(std::ranges::contains(dirty.clear_reindex, removed));
+    ZASSERT(!std::ranges::contains(dirty.reindex_deps_only, removed));
+    ZASSERT(std::ranges::contains(dirty.reindex_deps_only, kept));
 }
 
 ZEST_CASE(RescanKeepsGuardedProvider) {
@@ -476,7 +476,7 @@ ZEST_CASE(RescanKeepsGuardedProvider) {
     invalidator.apply(FileEvent::disk_changed(iface));
 
     ZEXPECT(project.dep_graph.module_of(iface) == "m");
-    ZEXPECT(llvm::is_contained(project.dep_graph.lookup_module("m"), iface));
+    ZEXPECT(std::ranges::contains(project.dep_graph.lookup_module("m"), iface));
 }
 
 ZEST_CASE(CrashMarksLostDirty) {
@@ -497,7 +497,7 @@ ZEST_CASE(CrashMarksLostDirty) {
     auto dirty = invalidator.apply(FileEvent::worker_crashed(lost));
 
     llvm::SmallVector<Fid> expected{first, second};
-    llvm::sort(expected);
+    std::ranges::sort(expected);
     ZASSERT(dirty.mark_lost == expected);
     // A crash loses build products, not compile inputs: no result reset.
     ZASSERT(dirty.mark_ast_dirty.empty());
@@ -628,7 +628,7 @@ ZEST_CASE(CompiledIncluderCascades) {
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     llvm::SmallVector<Fid> reindexed{scanned, compiled};
-    llvm::sort(reindexed);
+    std::ranges::sort(reindexed);
     ZASSERT(dirty.reindex_deps_only == reindexed);
     // Until they are indexed again, what their runs walked is behind the
     // disk — and the file's own, should it be a unit of its own.
@@ -661,7 +661,7 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
-    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, user));
+    ZASSERT(std::ranges::contains(dirty.reindex_deps_only, user));
 }
 
 ZEST_CASE(FailedModuleHeaderCascades) {
@@ -689,11 +689,11 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     build.failure = PCMBuild::Failure{.error = "use of undeclared identifier 'x'"};
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
 
-    ZASSERT(llvm::is_contained(invalidator.readers(header), mod));
+    ZASSERT(std::ranges::contains(invalidator.readers(header), mod));
     auto changed = invalidator.apply(FileEvent::disk_changed(header));
-    ZASSERT(llvm::is_contained(changed.reindex_deps_only, user));
+    ZASSERT(std::ranges::contains(changed.reindex_deps_only, user));
     auto removed = invalidator.apply(FileEvent::disk_removed(header));
-    ZASSERT(llvm::is_contained(removed.reindex_deps_only, user));
+    ZASSERT(std::ranges::contains(removed.reindex_deps_only, user));
 }
 
 ZEST_CASE(AppearedHeaderCascades) {
@@ -778,7 +778,7 @@ ZEST_CASE(RemoveRecreateBatchOrder) {
     {
         FileEvent events[] = {FileEvent::disk_changed(file), FileEvent::disk_removed(file)};
         auto dirty = invalidator.apply(events);
-        ZASSERT(llvm::find(dirty.reindex_content_changed, file) ==
+        ZASSERT(std::ranges::find(dirty.reindex_content_changed, file) ==
                 dirty.reindex_content_changed.end());
         ZASSERT(dirty.clear_reindex == llvm::SmallVector<Fid>{file});
     }
@@ -791,7 +791,7 @@ ZEST_CASE(RemoveRecreateBatchOrder) {
         FileEvent events[] = {FileEvent::disk_removed(file), FileEvent::disk_changed(file)};
         auto dirty = invalidator.apply(events);
         ZASSERT(dirty.clear_reindex.empty());
-        ZASSERT(llvm::find(dirty.reindex_content_changed, file) !=
+        ZASSERT(std::ranges::find(dirty.reindex_content_changed, file) !=
                 dirty.reindex_content_changed.end());
     }
 }
@@ -895,9 +895,9 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     // pull-side cache keys (canonical flags) miss on their own.
     ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_id});
     llvm::SmallVector<Fid> reindexed{open_id, closed_id};
-    llvm::sort(reindexed);
+    std::ranges::sort(reindexed);
     auto content_changed = dirty.reindex_content_changed;
-    llvm::sort(content_changed);
+    std::ranges::sort(content_changed);
     ZASSERT(content_changed == reindexed);
     ZASSERT(dirty.reindex_deps_only.empty());
     ZASSERT(dirty.recheck_contexts);
@@ -907,7 +907,7 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     // filtered out, here or after a restart. The shards themselves stay
     // with the indexer, which masks and retires them off the manifests.
     auto dropped = dirty.drop_index;
-    llvm::sort(dropped);
+    std::ranges::sort(dropped);
     ZASSERT(dropped == reindexed);
     ZASSERT(project.index.shard(closed_id) != nullptr);
     ZASSERT(project.index.shard(open_id) != nullptr);
@@ -966,15 +966,15 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     // of theirs borrowed the changed command too, so it is dropped along
     // with the host's. Unrelated contexts are untouched.
     llvm::SmallVector<Fid> dropped{open_header, closed_header};
-    llvm::sort(dropped);
+    std::ranges::sort(dropped);
     ZASSERT(dirty.drop_context == dropped);
     llvm::SmallVector<Fid> evicted{host, open_header, closed_header};
-    llvm::sort(evicted);
+    std::ranges::sort(evicted);
     auto drop = dirty.drop_index;
-    llvm::sort(drop);
+    std::ranges::sort(drop);
     ZASSERT(drop == evicted);
-    ZASSERT(llvm::is_contained(dirty.mark_ast_dirty, open_header));
-    ZASSERT(llvm::is_contained(dirty.reindex_content_changed, closed_header));
+    ZASSERT(std::ranges::contains(dirty.mark_ast_dirty, open_header));
+    ZASSERT(std::ranges::contains(dirty.reindex_content_changed, closed_header));
     ZASSERT(project.index.shard(closed_header) != nullptr);
 }
 
@@ -999,9 +999,9 @@ ZEST_CASE(CDBDropsBorrowedIndex) {
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
     ZASSERT(dirty.drop_context.empty());
-    ZASSERT(llvm::is_contained(dirty.drop_index, header));
-    ZASSERT(llvm::is_contained(dirty.reindex_content_changed, header));
-    ZASSERT(!llvm::is_contained(dirty.mark_ast_dirty, header));
+    ZASSERT(std::ranges::contains(dirty.drop_index, header));
+    ZASSERT(std::ranges::contains(dirty.reindex_content_changed, header));
+    ZASSERT(!std::ranges::contains(dirty.mark_ast_dirty, header));
 }
 
 ZEST_CASE(CDBBorrowersByServing) {
@@ -1028,12 +1028,12 @@ ZEST_CASE(CDBBorrowersByServing) {
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-    ZASSERT(llvm::is_contained(dirty.drop_index, served));
-    ZASSERT(llvm::is_contained(dirty.drop_index, compiled));
-    ZASSERT(llvm::is_contained(dirty.reindex_content_changed, served));
-    ZASSERT(!llvm::is_contained(dirty.reindex_content_changed, compiled));
-    ZASSERT(!llvm::is_contained(dirty.mark_ast_dirty, served));
-    ZASSERT(!llvm::is_contained(dirty.mark_ast_dirty, compiled));
+    ZASSERT(std::ranges::contains(dirty.drop_index, served));
+    ZASSERT(std::ranges::contains(dirty.drop_index, compiled));
+    ZASSERT(std::ranges::contains(dirty.reindex_content_changed, served));
+    ZASSERT(!std::ranges::contains(dirty.reindex_content_changed, compiled));
+    ZASSERT(!std::ranges::contains(dirty.mark_ast_dirty, served));
+    ZASSERT(!std::ranges::contains(dirty.mark_ast_dirty, compiled));
 }
 
 ZEST_CASE(CDBChangedCascadesModule) {
@@ -1071,7 +1071,7 @@ ZEST_CASE(CDBChangedCascadesModule) {
     ZEXPECT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{mod});
     ZEXPECT(dirty.drop_index == llvm::SmallVector<Fid>{mod});
     llvm::SmallVector<Fid> deps{mod, closed_user};
-    llvm::sort(deps);
+    std::ranges::sort(deps);
     ZEXPECT(dirty.reindex_deps_only == deps);
 }
 
@@ -1210,7 +1210,7 @@ ZEST_CASE(BatchDiskEventsDeduplicate) {
     auto dirty = invalidator.apply(events);
 
     llvm::SmallVector<Fid> expected{first, second};
-    llvm::sort(expected);
+    std::ranges::sort(expected);
     ZASSERT(dirty.reindex_content_changed == expected);
     ZASSERT(dirty.reindex_deps_only.empty());
 }

@@ -166,7 +166,7 @@ struct LexicalInfo {
 
     /// The tokens from the one holding `offset` on, comments left out.
     auto code_from(std::uint32_t offset) const {
-        return llvm::make_filter_range(
+        return std::views::filter(
             llvm::ArrayRef(tokens).drop_front(token_at(offset)),
             [](const Token& token) { return token.kind != clang::tok::comment; });
     }

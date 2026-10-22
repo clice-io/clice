@@ -342,7 +342,7 @@ ArgClass classify_option(unsigned id, llvm::ArrayRef<const char*> values) {
     }
     /// g++ takes an LTO job count (-flto=8), which clang rejects.
     if(id == option::OPT_flto_EQ && values.size() == 1 &&
-       !llvm::is_contained({"full", "thin", "none"}, llvm::StringRef(values[0]))) {
+       !std::ranges::contains(std::array{"full", "thin", "none"}, llvm::StringRef(values[0]))) {
         return ArgClass::Discarded;
     }
     if(is_discarded_option(id)) {
@@ -444,9 +444,10 @@ void render_driver_arg(const Arg& arg,
         for(auto& parsed: option::table().parse(fragments, parse_options)) {
             count += 1;
             same = same && parsed && parsed->id == arg.opt_id &&
-                   llvm::equal(parsed->values,
-                               arg.values,
-                               [](std::string_view lhs, const char* rhs) { return lhs == rhs; });
+                   std::ranges::equal(
+                       parsed->values,
+                       arg.values,
+                       [](std::string_view lhs, const char* rhs) { return lhs == rhs; });
         }
         return same && count == 1;
     };

@@ -99,10 +99,11 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
            (query.external_only && identity.scope != SymbolScope::External)) {
             return;
         }
-        if(!query.kinds.empty() && !llvm::is_contained(query.kinds, identity.kind)) {
+        if(!query.kinds.empty() && !std::ranges::contains(query.kinds, identity.kind)) {
             return;
         }
-        if(!query.paths.empty() && llvm::none_of(query.paths, [&](const std::string& wanted) {
+        if(!query.paths.empty() &&
+           std::ranges::none_of(query.paths, [&](const std::string& wanted) {
                return !path.empty() && path_matches(wanted, path);
            })) {
             return;
@@ -198,7 +199,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         }
         for(auto file: candidates) {
             llvm::StringRef path = files.resolve(file);
-            if(llvm::none_of(query.paths, [&](const std::string& wanted) {
+            if(std::ranges::none_of(query.paths, [&](const std::string& wanted) {
                    return path_matches(wanted, path);
                })) {
                 continue;
@@ -400,7 +401,7 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
             continue;
         }
         if(query.args.empty() && has_flag(hit.symbol.flags, SymbolFlags::Specialization) &&
-           llvm::any_of(
+           std::ranges::any_of(
                index.targets(hit.symbol.hash, hit.anchor, RelationKind::Primary),
                [&](const IndexQuery::Target& primary) { return exact.contains(primary.symbol); })) {
             continue;

@@ -256,7 +256,7 @@ auto namespace_path(const clang::NamespaceDecl& ns) -> std::string {
             names.push_back(outer->isAnonymousNamespace() ? "(anonymous)" : outer->getName());
         }
     }
-    return llvm::join(llvm::reverse(names), "::");
+    return llvm::join(std::views::reverse(names), "::");
 }
 
 /// Where a declaration is: the kind and qualified name of the namespace,
@@ -402,7 +402,7 @@ void add_alias(HoverInfo& info,
         }
     }
     auto shown = display::type(context, type.getUnqualifiedType(), options);
-    if(shown.aka && llvm::none_of(info.aliases, [&](const display::Type& known) {
+    if(shown.aka && std::ranges::none_of(info.aliases, [&](const display::Type& known) {
            return known.text == shown.text;
        })) {
         info.aliases.push_back(std::move(shown));
@@ -531,7 +531,7 @@ void add_macros(HoverInfo& info,
         return;
     }
     for(const auto& macro: definition.attribute_macros) {
-        if(llvm::none_of(info.attribute_macros, [&](const display::AttributeMacro& known) {
+        if(std::ranges::none_of(info.attribute_macros, [&](const display::AttributeMacro& known) {
                return known.use == macro.use;
            })) {
             info.attribute_macros.push_back(macro);
@@ -615,17 +615,19 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
         /// as many as a class's members at most.
         auto targets = brought_in(*using_decl);
         auto& sources = context.getSourceManager();
-        llvm::sort(targets, [&](const clang::NamedDecl* left, const clang::NamedDecl* right) {
-            return sources.isBeforeInTranslationUnit(left->getLocation(), right->getLocation());
-        });
+        std::ranges::sort(targets,
+                          [&](const clang::NamedDecl* left, const clang::NamedDecl* right) {
+                              return sources.isBeforeInTranslationUnit(left->getLocation(),
+                                                                       right->getLocation());
+                          });
         /// The using-declaration of inheriting constructors is named after
         /// the class it is in.
         if(!targets.empty()) {
             info.kind = card_kind(templated(targets.front()));
             info.name = title_name(targets.front(), options);
         }
-        for(auto [index, target]: llvm::enumerate(targets)) {
-            if(index == options.max_members) {
+        for(auto [index, target]: std::views::enumerate(targets)) {
+            if(static_cast<std::size_t>(index) == options.max_members) {
                 info.target_definition += "\n// ...";
                 break;
             }
@@ -785,7 +787,8 @@ void add_layout(const clang::NamedDecl& decl, HoverInfo& info) {
         if(!holder) {
             break;
         }
-        const auto* member = *llvm::find_if(holder->fields(), [&](const clang::FieldDecl* field) {
+        auto fields = holder->fields();
+        const auto* member = *std::ranges::find_if(fields, [&](const clang::FieldDecl* field) {
             return field->getType()->getAsRecordDecl() == outer;
         });
         outer_offset += context.getASTRecordLayout(holder).getFieldOffset(member->getFieldIndex());
@@ -1348,7 +1351,7 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<Token> touched) -> Targets {
                at.offset <= end.offset;
     };
 
-    for(const auto& token: llvm::reverse(touched)) {
+    for(const auto& token: std::views::reverse(touched)) {
         auto kind = focus.kind(token);
         if(should_ignore_token(kind)) {
             continue;
@@ -1381,7 +1384,7 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<Token> touched) -> Targets {
                             decls.push_back(occurrence.decl);
                         }
                     } else if(inside(occurrence, location) &&
-                              !llvm::is_contained(named, occurrence.decl)) {
+                              !std::ranges::contains(named, occurrence.decl)) {
                         named.push_back(occurrence.decl);
                     }
                 }
@@ -1395,13 +1398,13 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<Token> touched) -> Targets {
             return decl->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName;
         };
         if(!decls.empty() && &token != &touched.front() &&
-           llvm::is_contained({clang::tok::colon,
-                               clang::tok::equal,
-                               clang::tok::ampamp,
-                               clang::tok::pipepipe,
-                               clang::tok::question},
-                              kind) &&
-           llvm::none_of(decls, spells_operator)) {
+           std::ranges::contains(std::array{clang::tok::colon,
+                                            clang::tok::equal,
+                                            clang::tok::ampamp,
+                                            clang::tok::pipepipe,
+                                            clang::tok::question},
+                                 kind) &&
+           std::ranges::none_of(decls, spells_operator)) {
             separated = {.decls = std::move(decls), .token = &token};
             decls.clear();
             continue;
@@ -1426,7 +1429,7 @@ auto pick_decl(llvm::ArrayRef<const clang::NamedDecl*> candidates, const Selecti
     if(candidates.empty()) {
         return nullptr;
     }
-    const auto* using_decl = llvm::find_if(candidates, [](const clang::NamedDecl* decl) {
+    const auto* using_decl = std::ranges::find_if(candidates, [](const clang::NamedDecl* decl) {
         return llvm::isa<clang::UsingDecl>(decl);
     });
     if(using_decl == candidates.end()) {
@@ -1552,8 +1555,8 @@ void parse_rst_inline(llvm::StringRef text, markup::Paragraph& out) {
         if(before.ends_with(":")) {
             auto start = before.drop_back().rfind(':');
             if(start != llvm::StringRef::npos &&
-               llvm::all_of(before.slice(start + 1, before.size() - 1),
-                            [](char c) { return llvm::isAlpha(c) || c == '-'; })) {
+               std::ranges::all_of(before.slice(start + 1, before.size() - 1),
+                                   [](char c) { return llvm::isAlpha(c) || c == '-'; })) {
                 before = before.substr(0, start);
                 role = true;
             }
@@ -1791,7 +1794,7 @@ markup::Document HoverInfo::present() const {
     }
     if(!overrides.empty()) {
         auto& line = output.add_paragraph().append_text("Overrides: ");
-        for(auto [index, overridden]: llvm::enumerate(overrides)) {
+        for(auto [index, overridden]: std::views::enumerate(overrides)) {
             if(index != 0) {
                 line.append_text(", ");
             }

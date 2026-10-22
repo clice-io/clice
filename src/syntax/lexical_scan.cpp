@@ -43,12 +43,12 @@ std::optional<llvm::StringRef> guard_tested(llvm::StringRef content, llvm::Array
 std::optional<LexicalInfo::IncludeGuard> find_include_guard(llvm::StringRef content,
                                                             const LexicalInfo& info) {
     auto& directives = info.directives;
-    auto opening = static_cast<std::uint32_t>(llvm::find_if(directives,
-                                                            [](const Directive& directive) {
-                                                                return directive.kind !=
-                                                                       Directive::Kind::PragmaOnce;
-                                                            }) -
-                                              directives.begin());
+    auto opening = static_cast<std::uint32_t>(
+        std::ranges::find_if(directives,
+                             [](const Directive& directive) {
+                                 return directive.kind != Directive::Kind::PragmaOnce;
+                             }) -
+        directives.begin());
     if(opening + 1 >= directives.size() || directives[opening].kind != Directive::Kind::If) {
         return std::nullopt;
     }
@@ -161,7 +161,7 @@ std::optional<MacroDefinition> macro_definition(llvm::ArrayRef<Token> words) {
     // Function-like when the parenthesis touches the name.
     if(auto& body = definition.body; !body.empty() && body.front().kind == clang::tok::l_paren &&
                                      body.front().range.begin == definition.name.range.end) {
-        auto close = llvm::find_if(body, [](const Token& token) {
+        auto close = std::ranges::find_if(body, [](const Token& token) {
             return token.kind == clang::tok::r_paren;
         });
         auto length = close == body.end() ? body.size() : close - body.begin() + 1;
@@ -517,8 +517,9 @@ std::optional<LocalSourceRange> BracketPairs::visit(const Token& token, bool ski
         opens.push_back({kind, token.range});
         return std::nullopt;
     }
-    if(!llvm::is_contained({clang::tok::r_paren, clang::tok::r_square, clang::tok::r_brace},
-                           token.kind)) {
+    if(!std::ranges::contains(
+           std::array{clang::tok::r_paren, clang::tok::r_square, clang::tok::r_brace},
+           token.kind)) {
         return std::nullopt;
     }
     auto bottom = scopes.empty() ? 0 : scopes.back();

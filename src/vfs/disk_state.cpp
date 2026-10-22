@@ -220,9 +220,9 @@ std::size_t DiskState::tick(Clock::duration budget) {
         }
         std::ranges::sort(batch, {}, [&](Fid fid) { return path(fid); });
         StatusBatch statuses;
-        for(auto [index, fid]: llvm::enumerate(batch)) {
+        for(auto [index, fid]: std::views::enumerate(batch)) {
             if(looked != 0 && Clock::now() >= deadline) {
-                for(auto rest: llvm::drop_begin(batch, index)) {
+                for(auto rest: std::views::drop(batch, index)) {
                     auto& file = files.find(rest)->second;
                     schedule(rest, file, file.due);
                 }
@@ -239,9 +239,9 @@ std::size_t DiskState::tick(Clock::duration budget) {
 }
 
 void DiskState::look(llvm::ArrayRef<Fid> fids) {
-    auto sorted = llvm::to_vector(fids);
+    auto sorted = std::ranges::to<llvm::SmallVector<Fid>>(fids);
     std::ranges::sort(sorted, {}, [&](Fid fid) { return path(fid); });
-    sorted.erase(llvm::unique(sorted), sorted.end());
+    sorted.erase(std::ranges::unique(sorted).begin(), sorted.end());
     StatusBatch statuses;
     for(auto fid: sorted) {
         look_at(fid, statuses);
@@ -249,7 +249,7 @@ void DiskState::look(llvm::ArrayRef<Fid> fids) {
 }
 
 void DiskState::find_missing(llvm::ArrayRef<Fid> fids) {
-    auto sorted = llvm::to_vector(fids);
+    auto sorted = std::ranges::to<llvm::SmallVector<Fid>>(fids);
     std::ranges::sort(sorted, {}, [&](Fid fid) { return path(fid); });
     StatusBatch statuses;
     for(auto fid: sorted) {
@@ -261,7 +261,8 @@ void DiskState::find_missing(llvm::ArrayRef<Fid> fids) {
 
 void DiskState::look_all() {
     look_flags();
-    look(llvm::to_vector(llvm::make_first_range(files)));
+    look(std::ranges::to<llvm::SmallVector<Fid>>(
+        std::views::transform(files, [](auto& entry) { return entry.first; })));
 }
 
 std::shared_ptr<const Flag> DiskState::watch(std::string path, std::function<void()> on_change) {
@@ -376,7 +377,7 @@ void DiskState::verify(Fid fid, const Look& found) {
 
 std::uint32_t DiskState::root_of(llvm::StringRef path) const {
     auto found = no_root;
-    for(auto [index, root]: llvm::enumerate(roots)) {
+    for(auto [index, root]: std::views::enumerate(roots)) {
         if(path::under(path, root.dir) &&
            (found == no_root || root.dir.size() > roots[found].dir.size())) {
             found = static_cast<std::uint32_t>(index);
@@ -401,7 +402,11 @@ void DiskState::enqueue(Fid fid, File& file, Clock::time_point at) {
 
 void DiskState::look_flags() {
     // An owner may watch or drop flags when it hears of a change.
-    llvm::erase_if(watches, [](const std::weak_ptr<Watch>& watch) { return watch.expired(); });
+    watches.erase(
+        std::ranges::remove_if(watches,
+                               [](const std::weak_ptr<Watch>& watch) { return watch.expired(); })
+            .begin(),
+        watches.end());
     llvm::SmallVector<std::shared_ptr<Watch>> live;
     for(auto& watch: watches) {
         live.push_back(watch.lock());

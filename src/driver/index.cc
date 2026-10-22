@@ -461,7 +461,7 @@ IndexStats collect_stats(Project& project) {
     }
 
     stats.usage = db.usage();
-    for(auto [i, kind]: llvm::enumerate(llvm::make_first_range(stored_kinds))) {
+    for(auto [i, kind]: std::views::enumerate(std::views::keys(stored_kinds))) {
         auto& stored = stats.stored[i];
         db.for_each_key(kind, [&](llvm::StringRef key) {
             if(auto blob = db.read(kind, key)) {
@@ -533,7 +533,7 @@ void print_stats(const Project& project, const IndexStats& stats, std::uint32_t 
     }
     driver::println();
     driver::println("Stored blobs by kind:");
-    for(auto [i, label]: llvm::enumerate(llvm::make_second_range(stored_kinds))) {
+    for(auto [i, label]: std::views::enumerate(std::views::values(stored_kinds))) {
         auto& stored = stats.stored[i];
         driver::println("  {:<24} {:>10}  {:>7}", label, format_bytes(stored.bytes), stored.count);
     }

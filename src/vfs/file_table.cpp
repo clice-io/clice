@@ -95,7 +95,10 @@ void FileTable::spell_root(const Spelling& root) {
 
 void FileTable::unspell_root(const Spelling& root) {
     auto folded = fold(root);
-    llvm::erase_if(spelled_roots, [&](auto& entry) { return entry.second == folded; });
+    spelled_roots.erase(
+        std::ranges::remove_if(spelled_roots, [&](auto& entry) { return entry.second == folded; })
+            .begin(),
+        spelled_roots.end());
 }
 
 VersionID FileTable::intern_version(Fid fid, std::uint64_t content_hash) {

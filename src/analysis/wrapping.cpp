@@ -66,7 +66,7 @@ std::expected<std::vector<std::string>, std::string>
         if(done.contains(name)) {
             return {};
         }
-        if(llvm::is_contained(path, name)) {
+        if(std::ranges::contains(path, name)) {
             path.push_back(name.str());
             return std::unexpected(
                 std::format("modules import each other: {}", llvm::join(path, " -> ")));
@@ -287,9 +287,8 @@ std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
             llvm::StringRef primary = declared.primary;
             if(llvm::sys::path::is_absolute(primary) ||
                llvm::sys::path::is_absolute(primary, llvm::sys::path::Style::posix) ||
-               llvm::is_contained(
-                   llvm::make_range(llvm::sys::path::begin(primary), llvm::sys::path::end(primary)),
-                   "..")) {
+               std::find(llvm::sys::path::begin(primary), llvm::sys::path::end(primary), "..") !=
+                   llvm::sys::path::end(primary)) {
                 return std::unexpected(
                     std::format("module {}: primary {} lies outside the workspace",
                                 declared.name,
@@ -593,10 +592,11 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
     std::set<std::string> emptied;
     // The mirrors apply to every configuration alike.
     std::optional<bool> std_emptied;
-    for(auto [index, configuration]: llvm::enumerate(configurations)) {
+    for(auto [index, configuration]: std::views::enumerate(configurations)) {
         llvm::StringRef name = configuration.name;
         if(name.empty() || name == "mirror" ||
-           !llvm::all_of(name, [](char c) { return llvm::isAlnum(c) || c == '_' || c == '-'; }) ||
+           !std::ranges::all_of(name,
+                                [](char c) { return llvm::isAlnum(c) || c == '_' || c == '-'; }) ||
            !names.insert(name).second) {
             return std::unexpected(
                 std::format("configuration {}: not a distinct directory name", configuration.name));
@@ -604,7 +604,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
         if(configuration.condition.empty()) {
             return std::unexpected(std::format("configuration {} has no condition", name.str()));
         }
-        auto empties_std = llvm::any_of(configuration.files, [](const Wrapping::File& file) {
+        auto empties_std = std::ranges::any_of(configuration.files, [](const Wrapping::File& file) {
             return llvm::StringRef(file.path).starts_with("mirror/std/");
         });
         if(mirrors && std_emptied && *std_emptied != empties_std) {
@@ -643,14 +643,16 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
                                                    wrapper.error()));
             }
             auto& list = wrappers[path];
-            if(list.size() != index) {
+            if(list.size() != static_cast<std::size_t>(index)) {
                 return differs();
             }
             result.files.push_back(
                 {std::format("{}/{}.fragment.h", name.str(), path.str()), wrapper->fragment});
             list.push_back(std::move(*wrapper));
         }
-        if(llvm::any_of(wrappers, [&](auto& entry) { return entry.second.size() != index + 1; })) {
+        if(std::ranges::any_of(wrappers, [&](auto& entry) {
+               return entry.second.size() != static_cast<std::size_t>(index) + 1;
+           })) {
             return differs();
         }
     }
@@ -658,7 +660,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
     // Each configuration's file of a name, by the first condition holding.
     auto dispatch = [&](llvm::StringRef file) {
         std::string text;
-        for(auto [index, configuration]: llvm::enumerate(configurations)) {
+        for(auto [index, configuration]: std::views::enumerate(configurations)) {
             text += std::format("#{} {}\n#include \"{}/{}\"\n",
                                 index == 0 ? "if" : "elif",
                                 configuration.condition,
@@ -687,7 +689,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
             llvm::StringRef(wrapper.fragment).split(lines, '\n', -1, false);
             for(auto line: lines) {
                 if(line.consume_front("import ") && line.consume_back(";") &&
-                   wrappers.contains(line) && !llvm::is_contained(imported, line)) {
+                   wrappers.contains(line) && !std::ranges::contains(imported, line)) {
                     imported.push_back(line.str());
                 }
             }
@@ -698,8 +700,9 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
         return std::unexpected(order.error());
     }
 
-    auto std_mirror =
-        llvm::any_of(emptied, [](llvm::StringRef path) { return path.starts_with("mirror/std/"); });
+    auto std_mirror = std::ranges::any_of(emptied, [](llvm::StringRef path) {
+        return path.starts_with("mirror/std/");
+    });
     if(std_mirror) {
         result.plan.mirrors.push_back("mirror/std");
     }
@@ -718,13 +721,13 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
 
         // Exported by every configuration first, then by fewer.
         std::map<std::tuple<std::string, bool, std::string>, std::vector<std::size_t>> owners;
-        for(auto [index, wrapper]: llvm::enumerate(wrappers[name])) {
+        for(auto [index, wrapper]: std::views::enumerate(wrappers[name])) {
             for(auto& [scope, lines]: wrapper.exports) {
                 for(auto& alias: lines.aliases) {
-                    owners[{scope, true, alias}].push_back(index);
+                    owners[{scope, true, alias}].push_back(static_cast<std::size_t>(index));
                 }
                 for(auto& used: lines.names) {
-                    owners[{scope, false, used}].push_back(index);
+                    owners[{scope, false, used}].push_back(static_cast<std::size_t>(index));
                 }
             }
         }
@@ -736,7 +739,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
         }
         std::string unit = "module;\n\n" + dispatch(std::format("{}.fragment.h", name)) +
                            std::format("\nexport module {};\n", name);
-        if(llvm::any_of(wrappers[name], &Wrapper::names_unnamed_enums)) {
+        if(std::ranges::any_of(wrappers[name], &Wrapper::names_unnamed_enums)) {
             unit += std::format("\n{}\n", unnamed_enum.str());
         }
         for(auto& [key, exports]: groups) {

@@ -54,7 +54,7 @@ ZEST_CASE(CRLFIncludeSort) {
     ZASSERT(!edits->empty());
 
     std::string result = code.str();
-    for(const auto& edit: llvm::reverse(*edits)) {
+    for(const auto& edit: std::views::reverse(*edits)) {
         result.replace(edit.range.begin, edit.range.length(), edit.text);
     }
     ZEXPECT(result == "#include \"a.h\"\r\n#include \"b.h\"\r\nint x;\r\n");
@@ -84,7 +84,7 @@ ZEST_CASE(EditsNeedStyleFile) {
     tmp.touch(".clang-format", "BasedOnStyle: InheritParentConfig\n");
     auto formatted = feature::format_edits(file, code, edits);
     std::string result = code.str();
-    for(const auto& edit: llvm::reverse(formatted)) {
+    for(const auto& edit: std::views::reverse(formatted)) {
         result.replace(edit.range.begin, edit.range.length(), edit.text);
     }
     ZEXPECT(result == "int f();\nint g() {}\n");

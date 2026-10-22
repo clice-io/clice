@@ -179,8 +179,8 @@ CommandID
             auto removes = parse_removes(edit.flags, edit.directory);
             // A remove reaches the appends before it, so a later rule can
             // take back what an earlier one added.
-            llvm::erase_if(append_args, [&](const LocalArg& local) {
-                return llvm::any_of(removes, [&](const RemovePattern& remove) {
+            std::erase_if(append_args, [&](const LocalArg& local) {
+                return std::ranges::any_of(removes, [&](const RemovePattern& remove) {
                     return removes_arg(remove, local);
                 });
             });
@@ -202,8 +202,9 @@ CommandID
     parse_edit(edits.extra_prepend, entry_directory, prepend_args);
 
     auto matches_remove = [&](const Arg& arg) {
-        return llvm::any_of(remove_args,
-                            [&](const RemovePattern& remove) { return removes_arg(remove, arg); });
+        return std::ranges::any_of(remove_args, [&](const RemovePattern& remove) {
+            return removes_arg(remove, arg);
+        });
     };
 
     /// Rebuild the sequence: prepends first, base args with removes
@@ -234,9 +235,9 @@ CommandID
             .values = {arg.values.begin(), arg.values.end()}
         });
     }
-    llvm::append_range(edited, append_args);
+    edited.append_range(append_args);
     edited.push_back({.opt_id = option::OPT_INPUT, .cls = ArgClass::Input});
-    llvm::append_range(edited, trailing_selectors);
+    edited.append_range(trailing_selectors);
 
     /// An appended -gencode adds its architecture next to the base's, the
     /// way nvcc itself accumulates them — resolve them to the newest.
@@ -250,7 +251,7 @@ CommandID
     // the family follows the edited command's last driver mode, as it
     // follows the loaded one's.
     command.family = driver_family(base.driver);
-    for(auto& local: llvm::reverse(edited)) {
+    for(auto& local: std::views::reverse(edited)) {
         if(local.opt_id == option::OPT_driver_mode && local.values.size() == 1) {
             if(llvm::StringRef(local.values[0]) == "cl") {
                 command.family = CompilerFamily::ClangCL;

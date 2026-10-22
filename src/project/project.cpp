@@ -59,11 +59,11 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
             changes.appeared.push_back(entry.getKey().str());
             continue;
         }
-        auto now = llvm::to_vector(entry.getValue());
-        llvm::sort(it->second);
-        llvm::sort(now);
+        auto now = std::ranges::to<llvm::SmallVector<Fid>>(entry.getValue());
+        std::ranges::sort(it->second);
+        std::ranges::sort(now);
         if(it->second != now) {
-            llvm::append_range(changes.replaced, it->second);
+            changes.replaced.append(it->second.begin(), it->second.end());
         }
     }
     return changes;
@@ -71,7 +71,7 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
 
 CDBDiff Project::refresh_provisional() {
     CDBDiff diff;
-    auto recorded = llvm::to_vector(build.recorded());
+    auto recorded = std::ranges::to<llvm::SmallVector<Fid>>(build.recorded());
     std::ranges::sort(recorded, {}, [&](Fid file) { return file_table.resolve(file); });
     for(auto file: recorded) {
         if(build.declared(file)) {
@@ -80,8 +80,9 @@ CDBDiff Project::refresh_provisional() {
         }
         // A file a declared unit includes compiles in its includer's
         // context, as the part of a unity build does.
-        auto hosted = llvm::any_of(dep_graph.find_host_sources(file),
-                                   [&](Fid root) { return root != file && build.declared(root); });
+        auto hosted = std::ranges::any_of(dep_graph.find_host_sources(file), [&](Fid root) {
+            return root != file && build.declared(root);
+        });
         std::optional<CommandID> command;
         if(!hosted) {
             if(auto lender = command_lender(*this, file)) {
@@ -113,13 +114,17 @@ std::optional<Spelling> database_in(const Spelling& dir) {
 
 /// The places that hold a database.
 llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
-    llvm::erase_if(places, [](const Spelling& place) { return !vfs::exists(place); });
+    places.erase(
+        std::ranges::remove_if(places, [](const Spelling& place) { return !vfs::exists(place); })
+            .begin(),
+        places.end());
     return places;
 }
 
 bool configured(const Spelling& dir) {
-    return llvm::any_of(config_file_names,
-                        [&](llvm::StringRef name) { return vfs::exists(Spelling(name, dir)); });
+    return std::ranges::any_of(config_file_names, [&](llvm::StringRef name) {
+        return vfs::exists(Spelling(name, dir));
+    });
 }
 
 }  // namespace
@@ -161,8 +166,8 @@ llvm::SmallVector<Spelling> deeper_compile_commands(CanonicalRef workspace_root,
     constexpr std::size_t deepest = 3;
     auto depth = [&](llvm::StringRef dir) {
         return static_cast<std::size_t>(
-            llvm::count_if(dir.drop_front(workspace_root.size()),
-                           [](char c) { return path::is_separator(c); }));
+            std::ranges::count_if(dir.drop_front(workspace_root.size()),
+                                  [](char c) { return path::is_separator(c); }));
     };
     llvm::SmallVector<Spelling> found;
     vfs::walk(workspace_root, [&](const vfs::Entry& entry) {
@@ -345,7 +350,7 @@ const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
 
 const DepsSnapshot* Project::build_inputs(Fid module) const {
     llvm::SmallVector<Fid, 4> chain;
-    for(auto current = module; !llvm::is_contained(chain, current);) {
+    for(auto current = module; !std::ranges::contains(chain, current);) {
         auto it = pcm_builds.find(current);
         if(it == pcm_builds.end()) {
             return nullptr;

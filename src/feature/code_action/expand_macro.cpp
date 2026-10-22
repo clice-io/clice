@@ -93,17 +93,17 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
             continue;
         }
         // A pragma the expansion executes leaves no token behind.
-        if(llvm::any_of(unit.directives()[focus.file()].pragma_operators,
-                        [&](clang::SourceLocation loc) {
-                            auto offset = unit.produced_at(loc).offset;
-                            return begin <= offset && offset < end;
-                        })) {
+        if(std::ranges::any_of(unit.directives()[focus.file()].pragma_operators,
+                               [&](clang::SourceLocation loc) {
+                                   auto offset = unit.produced_at(loc).offset;
+                                   return begin <= offset && offset < end;
+                               })) {
             return;
         }
 
         auto expanded = expansion.expanded;
         std::string text;
-        for(auto [index, token]: llvm::enumerate(expanded)) {
+        for(auto [index, token]: std::views::enumerate(expanded)) {
             if(index > 0) {
                 const auto& left = expanded[index - 1];
                 auto before = index > 1 ? expanded[index - 2].kind() : clang::tok::unknown;

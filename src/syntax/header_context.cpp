@@ -170,12 +170,13 @@ Cut place_cut(const LexicalInfo& lexical, llvm::StringRef content, std::uint32_t
         }
     }
     if(cut.braces > 0) {
-        auto taken = llvm::find_if(llvm::reverse(candidates), [&](const Candidate& candidate) {
-            return candidate.branches.size() <= branches.size() &&
-                   std::equal(candidate.branches.begin(),
-                              candidate.branches.end(),
-                              branches.begin());
-        });
+        auto taken =
+            std::ranges::find_if(std::views::reverse(candidates), [&](const Candidate& candidate) {
+                return candidate.branches.size() <= branches.size() &&
+                       std::equal(candidate.branches.begin(),
+                                  candidate.branches.end(),
+                                  branches.begin());
+            });
         cut.top = taken->offset;
         cut.top_conditionals = static_cast<std::uint16_t>(taken->branches.size());
     }
@@ -221,8 +222,9 @@ std::uint32_t braces_close(const LexicalInfo& lexical,
     std::int32_t conditionals = 0;
     auto& tokens = lexical.tokens;
     auto first = lexical.token_at(resume);
-    auto directive = llvm::partition_point(lexical.directives,
-                                           [&](const auto& each) { return each.first < first; });
+    auto directive = std::ranges::partition_point(lexical.directives, [&](const auto& each) {
+        return each.first < first;
+    });
     for(auto index = first; index < tokens.size(); index += 1) {
         if(directive != lexical.directives.end() && index == directive->first) {
             if(directive->kind == LexicalInfo::Directive::Kind::If) {

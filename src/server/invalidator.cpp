@@ -31,8 +31,8 @@ llvm::SmallVector<FileEvent> take_disk_events(FileTable& files) {
 /// Batch effects may name the same file twice (two saves in one batch);
 /// execution must see each id once.
 static void dedup(llvm::SmallVector<Fid>& ids) {
-    llvm::sort(ids);
-    ids.erase(llvm::unique(ids), ids.end());
+    std::ranges::sort(ids);
+    ids.erase(std::ranges::unique(ids).begin(), ids.end());
 }
 
 /// An invalidated dependent recompiles when its session invests in an
@@ -54,7 +54,7 @@ void Invalidator::mark_dependent(Fid path_id, DirtySet& dirty) {
 llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
     auto result = project.dep_graph.find_readers(path_id);
     auto add = [&](Fid reader) {
-        if(reader != path_id && !llvm::is_contained(result, reader)) {
+        if(reader != path_id && !std::ranges::contains(result, reader)) {
             result.push_back(reader);
         }
     };
@@ -62,9 +62,11 @@ llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
     project.index.for_each_absent_lookup(path_id, add);
     project.index.for_each_importer(path_id, add);
     auto names = [&](const DepsSnapshot& deps) {
-        return llvm::any_of(deps, [&](const DepState& dep) { return dep.path_id == path_id; });
+        return std::ranges::any_of(deps,
+                                   [&](const DepState& dep) { return dep.path_id == path_id; });
     };
-    for(auto document: llvm::make_first_range(store.sessions)) {
+    for(auto document:
+        std::views::transform(store.sessions, [](auto& entry) -> auto& { return entry.first; })) {
         bool read = false;
         ast.each_input(document, [&](const DepsSnapshot& deps) { read = read || names(deps); });
         if(read) {
@@ -155,7 +157,8 @@ void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
 }
 
 void Invalidator::cascade_providers(llvm::StringRef module_name, Fid except, DirtySet& dirty) {
-    for(auto provider: llvm::to_vector(project.dep_graph.lookup_module(module_name))) {
+    for(auto provider:
+        std::ranges::to<llvm::SmallVector<Fid>>(project.dep_graph.lookup_module(module_name))) {
         if(provider != except) {
             cascade_compile_graph(provider, dirty);
         }
@@ -366,7 +369,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         if(store.find(header_id)) {
                             dirty.mark_ast_dirty.push_back(header_id);
                         }
-                        if(!llvm::is_contained(borrowers, header_id)) {
+                        if(!std::ranges::contains(borrowers, header_id)) {
                             borrowers.push_back(header_id);
                         }
                     }

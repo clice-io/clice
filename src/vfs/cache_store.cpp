@@ -99,12 +99,12 @@ bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
 /// writable open creates `tmp/{pid}` and keeps it until shutdown.
 bool has_live_instance(llvm::StringRef base) {
     auto tmp_parent = path::join(base, "tmp");
-    return llvm::any_of(vfs::read_dir(tmp_parent).value_or(std::vector<vfs::Entry>()),
-                        [](const vfs::Entry& entry) {
-                            std::uint32_t pid = 0;
-                            return !path::filename(entry.path).getAsInteger(10, pid) &&
-                                   process_alive(pid);
-                        });
+    return std::ranges::any_of(vfs::read_dir(tmp_parent).value_or(std::vector<vfs::Entry>()),
+                               [](const vfs::Entry& entry) {
+                                   std::uint32_t pid = 0;
+                                   return !path::filename(entry.path).getAsInteger(10, pid) &&
+                                          process_alive(pid);
+                               });
 }
 
 std::int64_t now_ms() {

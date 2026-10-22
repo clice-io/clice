@@ -52,8 +52,8 @@ void install_test_gates(kota::ipc::BincodePeer& peer, kota::event_loop& loop) {
     });
     peer.on_notification([](const worker::GateReleaseParams& params) {
         std::lock_guard lock(gates.mutex);
-        auto it =
-            llvm::find_if(gates.standing, [&](const Gate& gate) { return gate.id == params.id; });
+        auto it = std::ranges::find_if(gates.standing,
+                                       [&](const Gate& gate) { return gate.id == params.id; });
         assert(it != gates.standing.end());
         if(!it->parked) {
             erase_gate(it);
@@ -70,8 +70,9 @@ void park_at_test_gate(llvm::StringRef tag) {
         return;
     }
     std::unique_lock lock(gates.mutex);
-    auto it = llvm::find_if(gates.standing,
-                            [&](const Gate& gate) { return !gate.parked && gate.tag == tag; });
+    auto it = std::ranges::find_if(gates.standing, [&](const Gate& gate) {
+        return !gate.parked && gate.tag == tag;
+    });
     if(it == gates.standing.end()) {
         return;
     }
@@ -79,7 +80,8 @@ void park_at_test_gate(llvm::StringRef tag) {
     auto id = it->id;
     it->relay.send([id] { gates.peer->send_notification(worker::GateParkedParams{id}); });
     auto find = [id] {
-        return llvm::find_if(gates.standing, [id](const Gate& gate) { return gate.id == id; });
+        return std::ranges::find_if(gates.standing,
+                                    [id](const Gate& gate) { return gate.id == id; });
     };
     gates.changed.wait(lock, [&] { return find()->released; });
     erase_gate(find());

@@ -66,7 +66,7 @@ std::vector<FoldingRange> nest(std::vector<Candidate> candidates) {
     }
 
     std::vector<FoldingRange> folds;
-    for(auto [candidate, gone]: llvm::zip(candidates, dropped)) {
+    for(auto [candidate, gone]: std::views::zip(candidates, dropped)) {
         if(!gone) {
             folds.push_back(std::move(candidate.fold));
         }
@@ -347,8 +347,9 @@ private:
         }
 
         auto focus = unit.focus_file();
-        for(auto [index, item]: llvm::enumerate(cases)) {
-            auto next = index + 1 < cases.size() ? cases[index + 1].begin : body->getRBracLoc();
+        for(auto [index, item]: std::views::enumerate(cases)) {
+            auto next = static_cast<std::size_t>(index) + 1 < cases.size() ? cases[index + 1].begin
+                                                                           : body->getRBracLoc();
             auto colon = focus.produced_range(item.label->getColonLoc());
             auto end = focus.offset(next);
             if(!colon || !end) {
@@ -404,7 +405,8 @@ private:
         auto& tokens = lexical.tokens;
         auto skipped = unit.focus_file().tokens().preprocessed_away();
         BracketPairs pairs;
-        for(auto [token, skip]: llvm::zip_equal(tokens, skipped)) {
+        assert(std::ranges::size(tokens) == std::ranges::size(skipped));
+        for(auto [token, skip]: std::views::zip(tokens, skipped)) {
             auto open = pairs.visit(token, skip);
             if(!open || pairs.in_directive() ||
                (token.kind == clang::tok::r_brace && !pairs.in_skipped())) {
@@ -470,12 +472,12 @@ private:
     /// The global module fragment runs to the module declaration, the
     /// private one to the end of the file.
     void collect_module_fragments(llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules) {
-        for(auto [index, module]: llvm::enumerate(modules)) {
+        for(auto [index, module]: std::views::enumerate(modules)) {
             if(module.kind == LexicalInfo::ModuleDeclaration::Kind::Declaration) {
                 continue;
             }
             auto end = static_cast<std::uint32_t>(content.size());
-            if(index + 1 < modules.size()) {
+            if(static_cast<std::size_t>(index) + 1 < modules.size()) {
                 const auto& next = modules[index + 1];
                 end = next.export_keyword.valid() ? next.export_keyword.begin : next.keyword.begin;
             }
@@ -934,7 +936,8 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
         }
         auto line = fold->closer_line;
         if(line && !starts.contains(*line) &&
-           llvm::none_of(around, [&](const LineFold* outer) { return outer->end + 1 == *line; })) {
+           std::ranges::none_of(around,
+                                [&](const LineFold* outer) { return outer->end + 1 == *line; })) {
             fold->end = *line;
             fold->joined = true;
         }

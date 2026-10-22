@@ -22,17 +22,17 @@ llvm::StringRef text(llvm::StringRef content, LocalSourceRange range) {
 /// The directives of `info` that open, continue or close a block.
 std::vector<Directive> blocks(const LexicalInfo& info) {
     std::vector<Directive> found;
-    llvm::copy_if(info.directives, std::back_inserter(found), [](const Directive& directive) {
-        return directive.block();
-    });
+    std::ranges::copy_if(info.directives,
+                         std::back_inserter(found),
+                         [](const Directive& directive) { return directive.block(); });
     return found;
 }
 
 std::vector<Directive> of_kind(const LexicalInfo& info, Directive::Kind kind) {
     std::vector<Directive> found;
-    llvm::copy_if(info.directives, std::back_inserter(found), [&](const Directive& directive) {
-        return directive.kind == kind;
-    });
+    std::ranges::copy_if(info.directives,
+                         std::back_inserter(found),
+                         [&](const Directive& directive) { return directive.kind == kind; });
     return found;
 }
 
@@ -219,7 +219,7 @@ int a;
     ZASSERT(text(content, found[1].range) == "#elifdef B");
     ZASSERT(found[2].kind == Directive::Kind::Else);
     ZASSERT(found[3].kind == Directive::Kind::EndIf);
-    for(const auto& directive: llvm::drop_begin(found)) {
+    for(const auto& directive: std::views::drop(found, 1)) {
         ZASSERT(directive.opening == 0U);
         ZASSERT(directive.depth == 0U);
     }

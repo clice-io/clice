@@ -13,7 +13,7 @@ namespace clice::feature::action {
 /// Whether a switch body declares something at its own scope, which a
 /// label added after the declaration would jump past.
 static bool declares_in_scope(const clang::CompoundStmt* body) {
-    return llvm::any_of(body->body(), [](const clang::Stmt* statement) {
+    return std::ranges::any_of(body->body(), [](const clang::Stmt* statement) {
         return llvm::isa<clang::DeclStmt>(statement->stripLabelLikeStatements());
     });
 }

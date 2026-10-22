@@ -184,7 +184,7 @@ void TokenMap::finish(llvm::ArrayRef<Token> scanned) {
     // Every token, a header's included: the focus file's nodes have ranges
     // in headers too, and a miss costs a search by isBeforeInTranslationUnit.
     expanded_index.reserve(expanded_tokens.size());
-    for(auto [index, token]: llvm::enumerate(expanded_tokens)) {
+    for(auto [index, token]: std::views::enumerate(expanded_tokens)) {
         expanded_index[token.location()] = static_cast<std::uint32_t>(index);
     }
 
@@ -202,7 +202,7 @@ void TokenMap::finish(llvm::ArrayRef<Token> scanned) {
     // ahead and hand them over later, and a builtin like
     // `__has_cpp_attribute` expands the macros of its argument first.
     llvm::DenseMap<clang::SourceLocation, std::uint32_t> by_begin;
-    for(auto [index, invocation]: llvm::enumerate(invocations)) {
+    for(auto [index, invocation]: std::views::enumerate(invocations)) {
         by_begin[invocation.getBegin()] = static_cast<std::uint32_t>(index);
     }
     llvm::ArrayRef<clang::syntax::Token> stream = expanded_tokens;
@@ -275,7 +275,8 @@ void TokenMap::finish(llvm::ArrayRef<Token> scanned) {
     }
 
     expansions.reserve(invocations.size());
-    for(auto [invocation, run]: llvm::zip_equal(invocations, runs)) {
+    assert(std::ranges::size(invocations) == std::ranges::size(runs));
+    for(auto [invocation, run]: std::views::zip(invocations, runs)) {
         auto first = spelled_at_or_after(focus_offset(invocation.getBegin()));
         auto last = spelled_at_or_after(focus_offset(invocation.getEnd()) + 1);
         expansions.push_back({
@@ -283,7 +284,7 @@ void TokenMap::finish(llvm::ArrayRef<Token> scanned) {
             .expanded = stream.slice(run.first, run.second - run.first),
         });
     }
-    for(auto [index, expansion]: llvm::enumerate(expansions)) {
+    for(auto [index, expansion]: std::views::enumerate(expansions)) {
         if(!expansion.expanded.empty()) {
             producing.push_back(static_cast<std::uint32_t>(index));
             for(auto& token: expansion.spelled) {
@@ -291,12 +292,12 @@ void TokenMap::finish(llvm::ArrayRef<Token> scanned) {
             }
         }
     }
-    llvm::sort(producing, [&](std::uint32_t left, std::uint32_t right) {
+    std::ranges::sort(producing, [&](std::uint32_t left, std::uint32_t right) {
         return expansions[left].expanded.begin() < expansions[right].expanded.begin();
     });
 
     bool before = false;
-    for(auto [index, token]: llvm::enumerate(spelled)) {
+    for(auto [index, token]: std::views::enumerate(spelled)) {
         if(token.kind == clang::tok::comment || token.is_eod()) {
             away[index] = before;
         } else {
@@ -357,8 +358,9 @@ void TokenMap::set_macro_origins(clang::FileID fid,
 }
 
 std::uint32_t TokenMap::spelled_at_or_after(std::uint32_t offset) const {
-    auto it = llvm::partition_point(spelled_tokens,
-                                    [&](const Token& token) { return token.range.begin < offset; });
+    auto it = std::ranges::partition_point(spelled_tokens, [&](const Token& token) {
+        return token.range.begin < offset;
+    });
     return static_cast<std::uint32_t>(it - spelled_tokens.begin());
 }
 
@@ -375,7 +377,7 @@ const Token* TokenMap::spelled_at(clang::SourceLocation location) const {
 }
 
 const MacroExpansion* TokenMap::expansion_of(const clang::syntax::Token& token) const {
-    auto it = llvm::partition_point(producing, [&](std::uint32_t index) {
+    auto it = std::ranges::partition_point(producing, [&](std::uint32_t index) {
         return expansions[index].expanded.begin() <= &token;
     });
     if(it == producing.begin()) {
@@ -475,10 +477,11 @@ llvm::ArrayRef<clang::syntax::Token> TokenMap::expanded(clang::SourceRange range
     // The rest, a split `>>` for one, binary-search the stream.
     search_count += 1;
     llvm::ArrayRef<clang::syntax::Token> stream = expanded_tokens;
-    const auto* first = llvm::partition_point(stream, [&](const clang::syntax::Token& token) {
-        return SM.isBeforeInTranslationUnit(token.location(), range.getBegin());
-    });
-    const auto* last = llvm::partition_point(stream, [&](const clang::syntax::Token& token) {
+    const auto* first =
+        std::ranges::partition_point(stream, [&](const clang::syntax::Token& token) {
+            return SM.isBeforeInTranslationUnit(token.location(), range.getBegin());
+        });
+    const auto* last = std::ranges::partition_point(stream, [&](const clang::syntax::Token& token) {
         return !SM.isBeforeInTranslationUnit(range.getEnd(), token.location());
     });
     if(first > last) {
@@ -493,10 +496,10 @@ llvm::ArrayRef<MacroExpansion>
         return {};
     }
     llvm::ArrayRef<MacroExpansion> all = expansions;
-    const auto* first = llvm::partition_point(all, [&](const MacroExpansion& expansion) {
+    const auto* first = std::ranges::partition_point(all, [&](const MacroExpansion& expansion) {
         return expansion.spelled.end() <= &spelled.front();
     });
-    const auto* last = llvm::partition_point(all, [&](const MacroExpansion& expansion) {
+    const auto* last = std::ranges::partition_point(all, [&](const MacroExpansion& expansion) {
         return expansion.spelled.begin() <= &spelled.back();
     });
     return {first, last};

@@ -102,7 +102,7 @@ std::unique_ptr<clang::CompilerInvocation>
         pp_opts.addRemappedFile(file, buffer.get());
     }
     if(params.kind != CompilationKind::Preamble) {
-        llvm::append_range(pp_opts.Includes, input.forced_includes);
+        pp_opts.Includes.append_range(input.forced_includes);
     }
 
     auto& [pch, bound] = input.pch;
@@ -445,7 +445,7 @@ private:
 /// was built under, which conflict with the unit's own — not for its
 /// bytes, a failure the master must still see to retract the PCH.
 static bool refused_for_options(CompilationUnit& unit) {
-    return llvm::any_of(unit.diagnostics(), [](const Diagnostic& diag) {
+    return std::ranges::any_of(unit.diagnostics(), [](const Diagnostic& diag) {
         if(diag.id.source != DiagnosticSource::Clang) {
             return false;
         }

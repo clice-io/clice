@@ -599,8 +599,8 @@ int main() {{ gen(); return 0; }}
     for(std::uint32_t i = 0; i < index.path_count(); i += 1) {
         ZEXPECT(index.path(i) != synthesized);
     }
-    ZEXPECT(
-        !llvm::any_of(unit->deps(), [&](const DepFile& dep) { return dep.path == synthesized; }));
+    ZEXPECT(!std::ranges::any_of(unit->deps(),
+                                 [&](const DepFile& dep) { return dep.path == synthesized; }));
 }
 
 ZEST_CASE(UnreadableBlobCleared) {

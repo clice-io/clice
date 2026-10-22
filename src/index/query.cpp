@@ -167,7 +167,7 @@ void add_resolved(const InstantiationShard& shard,
         if(!named) {
             named = Named{.range = record.range};
         }
-        if(!llvm::is_contained(named->symbols, record.target)) {
+        if(!std::ranges::contains(named->symbols, record.target)) {
             named->symbols.push_back(record.target);
         }
         return true;
@@ -498,15 +498,15 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     std::unique_ptr<llvm::MemoryBuffer> kept;
     auto separates = [&](const Named& named) {
         if(named.range.begin != offset || named.range.length() > 2 ||
-           llvm::any_of(named.symbols, [&](SymbolHash hash) {
+           std::ranges::any_of(named.symbols, [&](SymbolHash hash) {
                auto info = symbol_info(hash, file);
                return info && name_form(info->flags) == NameForm::Operator;
            })) {
             return false;
         }
         auto text = source_text(*source, kept);
-        return text && llvm::is_contained({":", "=", "&&", "||", "?"},
-                                          text->slice(named.range.begin, named.range.end));
+        return text && std::ranges::contains(std::array{":", "=", "&&", "||", "?"},
+                                             text->slice(named.range.begin, named.range.end));
     };
     auto hit = [&](const Shard& shard) {
         auto named = named_at(shard, offset, is_macro);

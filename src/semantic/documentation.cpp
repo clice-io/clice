@@ -133,12 +133,12 @@ llvm::SmallVector<DocumentedParameter> documented_parameters(CompilationUnit& un
             };
             const clang::NamedDecl* parameter = nullptr;
             if(part.kind == Kind::Parameter && function) {
-                if(auto it = llvm::find_if(function->parameters(), named);
-                   it != function->param_end()) {
+                auto parameters = function->parameters();
+                if(auto it = std::ranges::find_if(parameters, named); it != function->param_end()) {
                     parameter = *it;
                 }
             } else if(part.kind == Kind::TemplateParameter && templates) {
-                if(auto it = llvm::find_if(*templates, named); it != templates->end()) {
+                if(auto it = std::ranges::find_if(*templates, named); it != templates->end()) {
                     parameter = *it;
                 }
             }
@@ -192,7 +192,7 @@ llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(CompilationUnit& u
     for(; scope; scope = scope->getParent()) {
         auto first = lookup(scope, copied->parts.front());
         llvm::SmallVector<const clang::NamedDecl*> found(first.begin(), first.end());
-        for(auto part: llvm::drop_begin(copied->parts)) {
+        for(auto part: std::views::drop(copied->parts, 1)) {
             llvm::SmallVector<const clang::NamedDecl*> members;
             for(const auto* candidate: found) {
                 if(const auto* inner = scope_of(candidate)) {
@@ -206,8 +206,11 @@ llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(CompilationUnit& u
             continue;
         }
         if(copied->parameters && found.size() > 1) {
-            llvm::erase_if(found,
-                           [&](const clang::NamedDecl* candidate) { return !declares(candidate); });
+            found.erase(std::ranges::remove_if(
+                            found,
+                            [&](const clang::NamedDecl* candidate) { return !declares(candidate); })
+                            .begin(),
+                        found.end());
         }
         return found;
     }

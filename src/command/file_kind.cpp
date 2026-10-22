@@ -51,8 +51,8 @@ bool is_context_header_path(llvm::StringRef path) {
 bool is_c_family_type(clang::driver::types::ID type) {
     namespace types = clang::driver::types;
     return types::isAcceptedByClang(type) && type != types::TY_Asm && !types::isLLVMIR(type) &&
-           !llvm::is_contained(
-               {types::TY_AST, types::TY_ModuleFile, types::TY_PCH, types::TY_API_INFO},
+           !std::ranges::contains(
+               std::array{types::TY_AST, types::TY_ModuleFile, types::TY_PCH, types::TY_API_INFO},
                type);
 }
 

@@ -927,7 +927,8 @@ private:
             auto bucket = std::span(owners).subspan(start, stop - start);
             std::ranges::sort(bucket);
             offsets[token] = kept;
-            for(auto node: llvm::make_range(bucket.begin(), std::ranges::unique(bucket).begin())) {
+            for(auto node:
+                std::ranges::subrange(bucket.begin(), std::ranges::unique(bucket).begin())) {
                 owners[kept] = node;
                 kept += 1;
                 semantics.nodes[node].owned += 1;
@@ -1051,7 +1052,7 @@ void refer_calls_named(References& out,
     if(auto* call = llvm::dyn_cast<clang::CallExpr>(S)) {
         auto* callee = call->getDirectCallee();
         if(auto* name = callee ? callee->getIdentifier() : nullptr;
-           name && llvm::is_contained(names, name->getName())) {
+           name && std::ranges::contains(names, name->getName())) {
             refer(out, callee, RelationKind::Reference, location);
             return;
         }
@@ -1889,11 +1890,12 @@ bool is_written(const Semantics& semantics, std::uint32_t index) {
             return op->isIncrementDecrementOp();
         }
         const auto* call = enclosing(parent_index).first;
-        return call && llvm::any_of(decls::parameter_bindings(call),
-                                    [&](const decls::ParameterBinding& binding) {
-                                        return binding.argument->IgnoreParenImpCasts() == op &&
-                                               to_mutable(binding.forwarded->getType());
-                                    });
+        return call &&
+               std::ranges::any_of(decls::parameter_bindings(call),
+                                   [&](const decls::ParameterBinding& binding) {
+                                       return binding.argument->IgnoreParenImpCasts() == op &&
+                                              to_mutable(binding.forwarded->getType());
+                                   });
     }
 
     if(auto* call = llvm::dyn_cast<clang::CXXOperatorCallExpr>(parent);
@@ -1901,7 +1903,7 @@ bool is_written(const Semantics& semantics, std::uint32_t index) {
         auto op = call->getOperator();
         return call->isAssignmentOp() || op == clang::OO_PlusPlus || op == clang::OO_MinusMinus;
     }
-    return llvm::any_of(
+    return std::ranges::any_of(
         decls::parameter_bindings(parent),
         [&](const decls::ParameterBinding& binding) {
             auto type = binding.forwarded->getType();

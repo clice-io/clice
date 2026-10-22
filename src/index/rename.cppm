@@ -175,7 +175,7 @@ struct BatchPlan {
     std::vector<std::string> conflicts;
 
     bool blocked() const {
-        return !conflicts.empty() || llvm::any_of(plans, &RenamePlan::blocked);
+        return !conflicts.empty() || std::ranges::any_of(plans, &RenamePlan::blocked);
     }
 };
 

@@ -215,11 +215,12 @@ std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Co
         text.split(block, '\n');
 
         // Javadoc decorates every line after the first with a leading `*`.
-        bool decorated = block.size() > 1 && llvm::all_of(llvm::drop_begin(block), [](auto line) {
-                             line = line.trim();
-                             return line.empty() || line.starts_with("*");
-                         });
-        for(auto [index, line]: llvm::enumerate(block)) {
+        bool decorated =
+            block.size() > 1 && std::ranges::all_of(std::views::drop(block, 1), [](auto line) {
+                line = line.trim();
+                return line.empty() || line.starts_with("*");
+            });
+        for(auto [index, line]: std::views::enumerate(block)) {
             if(index > 0 && decorated) {
                 line = line.ltrim();
                 line.consume_front("*");

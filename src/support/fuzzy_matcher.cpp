@@ -40,7 +40,7 @@ bool is_upper(char c) {
 }
 
 bool has_lowercase_letter(llvm::StringRef text) {
-    return llvm::any_of(text, [](char c) { return c >= 'a' && c <= 'z'; });
+    return std::ranges::any_of(text, [](char c) { return c >= 'a' && c <= 'z'; });
 }
 
 /// Whether a match may land on the character after a gap: a word head, a
@@ -83,8 +83,8 @@ NameToken trigram(char a, char b, char c) {
 }
 
 void sort_unique(llvm::SmallVectorImpl<NameToken>& tokens) {
-    llvm::sort(tokens);
-    tokens.erase(llvm::unique(tokens), tokens.end());
+    std::ranges::sort(tokens);
+    tokens.erase(std::ranges::unique(tokens).begin(), tokens.end());
 }
 
 /// The lowercase letters of a pattern in order, separators dropped —

@@ -288,7 +288,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
         llvm::StringRef file_ref(file_sv.data(), file_sv.size());
         if(damaged(dir_sv) || damaged(file_ref) ||
-           (command ? damaged(*command) : llvm::any_of(args, damaged))) {
+           (command ? damaged(*command) : std::ranges::any_of(args, damaged))) {
             LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {} ({}): "
                 "it holds bytes that are not UTF-8.",

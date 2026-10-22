@@ -38,9 +38,9 @@ inline void add_symbol(index::TUIndexBlob& blob,
     blob.symbol_token_kinds.push_back(static_cast<std::uint8_t>(symbol.token_class.kind));
     blob.symbol_token_modifiers.push_back(symbol.token_class.modifiers);
     blob.symbol_files.push_back(symbol.file);
-    llvm::append_range(blob.symbol_references, references);
+    blob.symbol_references.append_range(references);
     blob.symbol_reference_ends.push_back(static_cast<std::uint32_t>(blob.symbol_references.size()));
-    llvm::append_range(blob.symbol_instantiations, instantiation_files);
+    blob.symbol_instantiations.append_range(instantiation_files);
     blob.symbol_instantiation_ends.push_back(
         static_cast<std::uint32_t>(blob.symbol_instantiations.size()));
 }

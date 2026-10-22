@@ -53,7 +53,7 @@ std::vector<feature::FileDiagnostic>
     auto diagnostics = output.diagnostics;
     std::erase_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
         auto start = diagnostic.range.start;
-        return llvm::is_contained(options.suppress, diagnostic.code) ||
+        return std::ranges::contains(options.suppress, diagnostic.code) ||
                (diagnostic.origin != feature::DiagnosticOrigin::File &&
                 !relocated
                      .insert(

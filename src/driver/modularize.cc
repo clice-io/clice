@@ -100,9 +100,12 @@ llvm::SmallString<256> join_path(llvm::StringRef base, llvm::StringRef relative)
 llvm::SmallVector<llvm::StringRef> manifest_paths(llvm::StringRef manifest) {
     llvm::SmallVector<llvm::StringRef> paths;
     manifest.split(paths, '\n', -1, false);
-    llvm::erase_if(paths, [](llvm::StringRef path) {
-        return path.starts_with("/") || path.contains("..");
-    });
+    paths.erase(std::ranges::remove_if(paths,
+                                       [](llvm::StringRef path) {
+                                           return path.starts_with("/") || path.contains("..");
+                                       })
+                    .begin(),
+                paths.end());
     return paths;
 }
 
@@ -261,7 +264,7 @@ int run_modularize(const ModularizeOptions& opts) {
     Spelling out_spelling(*opts.output.out, Spelling::cwd());
     auto out = out_spelling.str();
     std::optional<analysis::Rewriting> rewriting;
-    if(llvm::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
+    if(std::ranges::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
         // The prelude by its path from the workspace root, which the
         // rewritten files' include path holds.
         CanonicalPath canonical_out(out_spelling);

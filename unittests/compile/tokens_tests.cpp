@@ -80,9 +80,11 @@ std::string spelled_for(llvm::StringRef sequence) {
     auto stream = unit->focus_file().tokens().expanded();
     for(std::size_t i = 0; i + words.size() <= stream.size(); i += 1) {
         auto run = stream.slice(i, words.size());
-        if(llvm::equal(run, words, [&](const clang::syntax::Token& token, llvm::StringRef word) {
-               return token.text(SM) == word;
-           })) {
+        if(std::ranges::equal(run,
+                              words,
+                              [&](const clang::syntax::Token& token, llvm::StringRef word) {
+                                  return token.text(SM) == word;
+                              })) {
             auto range = clang::SourceRange(run.front().location(), run.back().location());
             return text(unit->focus_file().tokens().spelled_for(range));
         }
@@ -107,7 +109,7 @@ std::string origins() {
     auto content = unit->focus_file().content();
     auto spelled = unit->focus_file().tokens().spelled();
     std::string out;
-    for(auto [index, token]: llvm::enumerate(unit->focus_file().tokens().expanded())) {
+    for(auto [index, token]: std::views::enumerate(unit->focus_file().tokens().expanded())) {
         if(token.kind() == clang::tok::eof) {
             continue;
         }
@@ -366,7 +368,7 @@ ZEST_CASE(AssemblerComment) {
     *language = "assembler-with-cpp";
     ZASSERT(try_compile());
     ZEXPECT(spelled_where(false) == "# comment . text");
-    ZEXPECT(llvm::none_of(
+    ZEXPECT(std::ranges::none_of(
         unit->focus_file().tokens().expanded(),
         [](const clang::syntax::Token& token) { return token.kind() == clang::tok::eod; }));
     unit->get<Semantics>();

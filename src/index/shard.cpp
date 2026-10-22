@@ -725,7 +725,7 @@ bool Shard::has_variant(VariantHash hash) const {
     if(stored.empty()) {
         return hash == blob_hash;
     }
-    return llvm::is_contained(stored, hash);
+    return std::ranges::contains(stored, hash);
 }
 
 void Shard::set_live(llvm::ArrayRef<VariantHash> live_hashes) {
@@ -738,7 +738,7 @@ void Shard::set_live(llvm::ArrayRef<VariantHash> live_hashes) {
     std::uint32_t matched = 0;
     Live next;
     for(std::uint32_t id = 0; id < stored.size(); id += 1) {
-        if(!llvm::is_contained(live_hashes, stored[id])) {
+        if(!std::ranges::contains(live_hashes, stored[id])) {
             continue;
         }
         matched += 1;
@@ -1675,7 +1675,7 @@ std::vector<std::byte> merge_shards(const Shard& old,
     llvm::SmallVector<std::int64_t> id_map(old_variants.size(), -1);
     std::vector<VariantHash> variants;
     for(std::uint32_t id = 0; id < old_variants.size(); id += 1) {
-        if(llvm::is_contained(keep, old_variants[id])) {
+        if(std::ranges::contains(keep, old_variants[id])) {
             id_map[id] = static_cast<std::int64_t>(variants.size());
             variants.push_back(old_variants[id]);
         }
@@ -1691,7 +1691,7 @@ std::vector<std::byte> merge_shards(const Shard& old,
         assert(shard.loaded() && "fresh shards must hold a blob");
         auto identity = shard.variants();
         assert(identity.size() == 1 && "fresh shards are single-variant worker blobs");
-        assert(!llvm::is_contained(variants, identity.front()) &&
+        assert(!std::ranges::contains(variants, identity.front()) &&
                "a variant already stored must not be re-appended");
         variants.push_back(identity.front());
     }

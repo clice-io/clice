@@ -163,7 +163,7 @@ struct Text {
     /// Whether `line` writes the identifier `word`, outside its comments,
     /// literals and directives.
     bool names(std::uint32_t line, llvm::StringRef word) const {
-        return llvm::any_of(tokens_on(line), [&](const Token& token) {
+        return std::ranges::any_of(tokens_on(line), [&](const Token& token) {
             return token.is_identifier() && token.text(content) == word;
         });
     }
@@ -353,7 +353,7 @@ struct Text {
             auto on_open = tokens_on(open);
             if(&on_open.front() != &tokens[i] || on_open.front().text(content) != "namespace" ||
                on_open.size() < 3 || on_open.back().kind != clang::tok::l_brace ||
-               !llvm::all_of(on_open.drop_front().drop_back(), [](const auto& token) {
+               !std::ranges::all_of(on_open.drop_front().drop_back(), [](const auto& token) {
                    return token.is_identifier() || token.kind == clang::tok::coloncolon;
                })) {
                 continue;

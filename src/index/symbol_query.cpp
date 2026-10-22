@@ -19,7 +19,7 @@ bool is_space(char c) {
 }
 
 bool is_digits(llvm::StringRef text) {
-    return !text.empty() && llvm::all_of(text, [](char c) { return c >= '0' && c <= '9'; });
+    return !text.empty() && std::ranges::all_of(text, [](char c) { return c >= '0' && c <= '9'; });
 }
 
 /// Whether `text` ends in an operator's name, possibly with some of its
@@ -311,7 +311,8 @@ std::string symbol_locator(SymbolHash hash, llvm::StringRef anchor) {
         return id;
     }
     // Quotes hold together what would split the term or open arguments.
-    bool quote = llvm::any_of(anchor, [](char c) { return is_space(c) || c == '<' || c == '>'; });
+    bool quote =
+        std::ranges::any_of(anchor, [](char c) { return is_space(c) || c == '<' || c == '>'; });
     return quote ? std::format(R"({} path:"{}")", id, std::string_view(anchor))
                  : std::format("{} path:{}", id, std::string_view(anchor));
 }
@@ -321,7 +322,7 @@ bool args_match(llvm::StringRef wanted, llvm::StringRef actual) {
 }
 
 bool glob_matches(llvm::StringRef pattern, llvm::StringRef name) {
-    bool sensitive = llvm::any_of(pattern, [](char c) { return c >= 'A' && c <= 'Z'; });
+    bool sensitive = std::ranges::any_of(pattern, [](char c) { return c >= 'A' && c <= 'Z'; });
     auto same = [&](char p, char n) {
         return sensitive ? p == n : llvm::toLower(p) == llvm::toLower(n);
     };
@@ -366,7 +367,7 @@ llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern) {
 void SymbolQuery::resolve_paths(const Spelling& root) {
     for(auto& wanted: paths) {
         if(wanted == "." || wanted == ".." ||
-           llvm::any_of(wanted, [](char c) { return path::is_separator(c); })) {
+           std::ranges::any_of(wanted, [](char c) { return path::is_separator(c); })) {
             wanted = CanonicalPath(Spelling(wanted, root)).str();
         }
     }
@@ -384,7 +385,7 @@ bool segments_match(llvm::ArrayRef<SymbolQuery::Segment> segments,
                     bool exact) {
     if(exact) {
         return segments.size() == chain.size() &&
-               llvm::all_of(llvm::zip_equal(segments, chain), [](auto pair) {
+               std::ranges::all_of(std::views::zip(segments, chain), [](auto pair) {
                    return segment_matches(std::get<0>(pair), std::get<1>(pair));
                });
     }

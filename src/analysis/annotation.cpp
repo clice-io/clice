@@ -11,8 +11,9 @@ import :vfs.file_system;
 namespace clice::analysis {
 
 const Annotation* Annotations::find(llvm::StringRef name) const {
-    auto it =
-        llvm::find_if(list, [&](const Annotation& annotation) { return annotation.name == name; });
+    auto it = std::ranges::find_if(list, [&](const Annotation& annotation) {
+        return annotation.name == name;
+    });
     return it == list.end() ? nullptr : &*it;
 }
 

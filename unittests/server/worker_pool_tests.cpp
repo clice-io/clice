@@ -875,12 +875,12 @@ ZEST_CASE(StatefulLostDocuments) {
 
     for(auto path_id: expected) {
         ZEXPECT(!f.has_owner(path_id));
-        ZEXPECT(llvm::is_contained(report.lost_documents, path_id));
+        ZEXPECT(std::ranges::contains(report.lost_documents, path_id));
     }
 
     // Other worker's documents are preserved
     for(auto id: {100u, 200u, 300u}) {
-        if(!llvm::is_contained(expected, id))
+        if(!std::ranges::contains(expected, id))
             ZEXPECT(f.has_owner(id));
     }
 }

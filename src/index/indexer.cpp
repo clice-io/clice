@@ -385,7 +385,7 @@ public:
             flags |= SymbolFlags::TemplateParameter;
         }
         // `FWD(Expr)` forward-declares a class defined by hand.
-        if(llvm::all_of(decl->redecls(), [](const clang::Decl* redecl) {
+        if(std::ranges::all_of(decl->redecls(), [](const clang::Decl* redecl) {
                return redecl->getLocation().isMacroID();
            })) {
             flags |= SymbolFlags::SpelledInMacro;
@@ -1364,7 +1364,7 @@ public:
         auto before = [&](clang::SourceLocation left, clang::SourceLocation right) {
             return SM.isBeforeInTranslationUnit(left, right);
         };
-        llvm::sort(expansions, before);
+        std::ranges::sort(expansions, before);
         llvm::DenseSet<const clang::Decl*> own(unit.top_level_decls().begin(),
                                                unit.top_level_decls().end());
         std::vector<const clang::Decl*> decls;
@@ -1377,7 +1377,7 @@ public:
             if(range.isInvalid()) {
                 continue;
             }
-            auto first = llvm::lower_bound(expansions, range.getBegin(), before);
+            auto first = std::ranges::lower_bound(expansions, range.getBegin(), before);
             if(first != expansions.end() && !before(range.getEnd(), *first)) {
                 decls.push_back(decl);
             }
@@ -1515,9 +1515,11 @@ public:
                 return it != internal_decls.end() &&
                        SM.getFileID(SM.getFileLoc(it->second->getLocation())) != home;
             };
-            bool names_foreign = llvm::any_of(records, [&](const InstantiationRecord& record) {
-                return foreign(record.target) || (has_from(record.kind) && foreign(record.from));
-            });
+            bool names_foreign =
+                std::ranges::any_of(records, [&](const InstantiationRecord& record) {
+                    return foreign(record.target) ||
+                           (has_from(record.kind) && foreign(record.from));
+                });
             if(!spilled && !names_foreign) {
                 add_walked(home, decl, std::move(records));
             } else if(!records.empty()) {
@@ -1533,7 +1535,7 @@ public:
         const auto* pattern = record->getTemplateInstantiationPattern();
         if(!pattern || !record->hasDefinition() ||
            (!standard_library && decls::in_standard_library(record)) ||
-           llvm::none_of(pattern->bases(), [](const clang::CXXBaseSpecifier& base) {
+           std::ranges::none_of(pattern->bases(), [](const clang::CXXBaseSpecifier& base) {
                return base.getType()->isDependentType();
            })) {
             return;
@@ -1619,7 +1621,9 @@ public:
                 .expansion = true
             });
         };
-        for(auto& directive: llvm::make_second_range(unit.directives())) {
+        for(auto& directive: std::views::transform(unit.directives(), [](auto& entry) -> auto& {
+                return entry.second;
+            })) {
             for(auto& macro: directive.macros) {
                 if(macro.kind == MacroRef::Ref && macro.loc.isMacroID()) {
                     add(macro.loc, entities.entity(macro.macro), InstantiationKind::Reference);
@@ -1640,7 +1644,7 @@ public:
                 add(name.location, ensure_symbol(decls::normalize(name.decl)), *kind);
             }
         }
-        for(auto& [home, records]: llvm::make_second_range(expansions)) {
+        for(auto& [home, records]: std::views::values(expansions)) {
             resolved[home].walked.resolutions.push_back(std::move(records));
         }
     }
@@ -1753,7 +1757,8 @@ public:
         for(auto& [fid, index]: file_indices) {
             indexed_fids.push_back(fid);
         }
-        for(auto fid: llvm::make_first_range(resolved)) {
+        for(auto fid:
+            std::views::transform(resolved, [](auto& entry) -> auto& { return entry.first; })) {
             if(!file_indices.contains(fid)) {
                 indexed_fids.push_back(fid);
             }
@@ -1821,7 +1826,8 @@ public:
             }
         }
 
-        for(auto& file_index: llvm::make_second_range(by_path)) {
+        for(auto& file_index:
+            std::views::transform(by_path, [](auto& entry) -> auto& { return entry.second; })) {
             drop_nested(file_index.occurrences);
         }
 
@@ -1848,7 +1854,7 @@ public:
                 }
                 into.walked.keys.push_back(key);
             }
-            llvm::append_range(into.skipped, file.skipped);
+            into.skipped.append_range(file.skipped);
         }
         // An external symbol lists the files whose instantiations name it on
         // their own; any other reaches them as its reference files.
@@ -1922,10 +1928,11 @@ public:
 
         llvm::SmallVector<std::uint32_t> path_ids;
         path_ids.reserve(by_path.size());
-        for(auto path_id: llvm::make_first_range(by_path)) {
+        for(auto path_id:
+            std::views::transform(by_path, [](auto& entry) -> auto& { return entry.first; })) {
             path_ids.push_back(path_id);
         }
-        llvm::sort(path_ids);
+        std::ranges::sort(path_ids);
         std::vector<FileSection> sections;
         llvm::BitVector known_paths(tree.paths.size());
         for(auto path_id: path_ids) {
@@ -1943,8 +1950,9 @@ public:
             sections.push_back({path_id, hash, std::move(bytes)});
         }
         std::vector<InstantiationSection> instantiation_sections;
-        llvm::SmallVector<std::uint32_t> resolved_paths(llvm::make_first_range(resolved_by_path));
-        llvm::sort(resolved_paths);
+        auto resolved_paths = std::ranges::to<llvm::SmallVector<std::uint32_t>>(
+            std::views::transform(resolved_by_path, [](auto& entry) { return entry.first; }));
+        std::ranges::sort(resolved_paths);
         for(auto path_id: resolved_paths) {
             auto& file = resolved_by_path[path_id];
             InstantiationSection section{.path_id = path_id};
@@ -1954,8 +1962,8 @@ public:
                                                     llvm::xxh3_64bits(content),
                                                     static_cast<std::uint32_t>(content.size()));
             }
-            llvm::sort(file.skipped);
-            file.skipped.erase(llvm::unique(file.skipped), file.skipped.end());
+            std::ranges::sort(file.skipped);
+            file.skipped.erase(std::ranges::unique(file.skipped).begin(), file.skipped.end());
             section.skipped = std::move(file.skipped);
             instantiation_sections.push_back(std::move(section));
         }
@@ -1977,13 +1985,14 @@ public:
             }
             if(symbol.scope == SymbolScope::External && !symbol.reference_files.isEmpty() &&
                symbol.instantiation_files.isEmpty() &&
-               llvm::all_of(symbol.reference_files,
-                            [&](std::uint32_t path_id) { return known_paths.test(path_id); })) {
+               std::all_of(symbol.reference_files.begin(),
+                           symbol.reference_files.end(),
+                           [&](std::uint32_t path_id) { return known_paths.test(path_id); })) {
                 continue;
             }
             table.push_back(hash);
         }
-        llvm::sort(table);
+        std::ranges::sort(table);
         for(auto hash: table) {
             auto& symbol = symbols.find(hash)->second;
             blob.symbol_hashes.push_back(hash);

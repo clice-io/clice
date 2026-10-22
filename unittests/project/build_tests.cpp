@@ -129,10 +129,10 @@ ZEST_CASE(DefaultCommandMembers) {
 
     auto members = layout.build.members();
     ZASSERT(members.size() == 2U);
-    ZEXPECT(llvm::is_contained(members, layout.fid("src/main.cpp")));
-    ZEXPECT(llvm::is_contained(members, layout.fid("src/skip/vendored.cpp")));
-    ZEXPECT(!llvm::is_contained(members, layout.fid("include/lib.h")));
-    ZEXPECT(!llvm::is_contained(members, layout.fid("tools/other.cpp")));
+    ZEXPECT(std::ranges::contains(members, layout.fid("src/main.cpp")));
+    ZEXPECT(std::ranges::contains(members, layout.fid("src/skip/vendored.cpp")));
+    ZEXPECT(!std::ranges::contains(members, layout.fid("include/lib.h")));
+    ZEXPECT(!std::ranges::contains(members, layout.fid("tools/other.cpp")));
     ZEXPECT(layout.indexed("src/main.cpp"));
     ZEXPECT(!layout.indexed("src/skip/vendored.cpp"));
 };
@@ -276,9 +276,9 @@ ZEST_CASE(PatternRootsEnumerate) {
     auto members = build.members();
     ZASSERT(members.size() == 2U);
     ZEXPECT(
-        llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/main.cpp")))));
+        std::ranges::contains(members, files.intern(Spelling::absolute(tmp.path("src/main.cpp")))));
     ZEXPECT(
-        llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("lib/util.cpp")))));
+        std::ranges::contains(members, files.intern(Spelling::absolute(tmp.path("lib/util.cpp")))));
     ZEXPECT(build.commands(files.intern(Spelling::absolute(tmp.path("other/skip.cpp")))).empty());
     auto util = build.commands(files.intern(Spelling::absolute(tmp.path("lib/util.cpp"))));
     ZASSERT(util.size() == 1U);
@@ -337,12 +337,13 @@ ZEST_CASE(ForcedLanguageMembers) {
     build.reset_active("");
     auto members = build.members();
     ZASSERT(members.size() == 4U);
-    ZEXPECT(llvm::is_contained(members,
-                               files.intern(Spelling::absolute(tmp.path("sketch/blink.ino")))));
-    ZEXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/tool")))));
-    ZEXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/pre.i")))));
+    ZEXPECT(std::ranges::contains(members,
+                                  files.intern(Spelling::absolute(tmp.path("sketch/blink.ino")))));
+    ZEXPECT(std::ranges::contains(members, files.intern(Spelling::absolute(tmp.path("src/tool")))));
     ZEXPECT(
-        llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/iface.cppm")))));
+        std::ranges::contains(members, files.intern(Spelling::absolute(tmp.path("src/pre.i")))));
+    ZEXPECT(std::ranges::contains(members,
+                                  files.intern(Spelling::absolute(tmp.path("src/iface.cppm")))));
 };
 
 ZEST_CASE(WorkspaceRuleCoversKnownSources) {
@@ -373,7 +374,7 @@ ZEST_CASE(WorkspaceRuleCoversKnownSources) {
     build.reset_active("");
     members = build.members();
     ZEXPECT(members.size() == 2U);
-    ZEXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("tool")))));
+    ZEXPECT(std::ranges::contains(members, files.intern(Spelling::absolute(tmp.path("tool")))));
 };
 
 ZEST_CASE(UnitsDeduplicated) {
@@ -891,7 +892,7 @@ ZEST_CASE(LendMergesRules) {
     auto ref = build.resolve(files.intern(file), lent, CommandSource::Inferred, file, file);
     auto argv = commands.render_driver(ref, cdb.spelling(ref.file));
     auto count = [&](llvm::StringRef macro) {
-        return llvm::count_if(argv, [&](const char* arg) {
+        return std::ranges::count_if(argv, [&](const char* arg) {
             return llvm::StringRef(arg).contains(macro);
         });
     };

@@ -302,10 +302,7 @@ std::uint32_t CompilationUnit::source_offset(clang::FileID fid, std::uint32_t of
     if(!found) {
         return offset;
     }
-    auto run =
-        llvm::upper_bound(found->runs, offset, [](std::uint32_t offset, const SourceRun& run) {
-            return offset < run.offset;
-        });
+    auto run = std::ranges::upper_bound(found->runs, offset, {}, &SourceRun::offset);
     assert(run != found->runs.begin() && offset - std::prev(run)->offset < std::prev(run)->length &&
            "a position the context did not copy from its file");
     run = std::prev(run);

@@ -49,7 +49,7 @@ IndexEntries extract_index_entries(const index::Shard& shard) {
         }
         return true;
     });
-    llvm::append_range(entries.occurrences, names);
+    entries.occurrences.append_range(names);
     return entries;
 }
 
@@ -357,7 +357,7 @@ auto index_folding_ranges(SourceText& source,
         if(!decl.definition || !decl.extent.valid() || decl.extent.begin >= decl.extent.end) {
             continue;
         }
-        if(llvm::any_of(ambiguous, [&](const LocalSourceRange& region) {
+        if(std::ranges::any_of(ambiguous, [&](const LocalSourceRange& region) {
                return region.begin < decl.extent.end && decl.extent.begin < region.end;
            })) {
             continue;

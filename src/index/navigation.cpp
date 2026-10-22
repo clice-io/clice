@@ -18,7 +18,9 @@ namespace clice::index {
 namespace {
 
 bool is_class(SymbolKind kind) {
-    return llvm::is_contained({SymbolKind::Class, SymbolKind::Struct, SymbolKind::Union}, kind);
+    return std::ranges::contains(
+        std::array<SymbolKind, 3>{SymbolKind::Class, SymbolKind::Struct, SymbolKind::Union},
+        kind);
 }
 
 /// Drop the cursor's own site from an answer set — standing on a
@@ -52,10 +54,10 @@ std::vector<Site> mismatched_declarations(const IndexQuery& index, SymbolHash ha
                                 {},
                                 [&](const IndexSource& source, const Relation& relation) {
                                     auto extent = extent_of(source, relation);
-                                    in_class =
-                                        extent && llvm::any_of(defined, [&](const Site& site) {
-                                            return covers(*extent, site);
-                                        });
+                                    in_class = extent &&
+                                               std::ranges::any_of(defined, [&](const Site& site) {
+                                                   return covers(*extent, site);
+                                               });
                                     return !in_class;
                                 });
         if(in_class) {
@@ -79,7 +81,8 @@ std::vector<Site> mismatched_declarations(const IndexQuery& index, SymbolHash ha
         for(auto& site: index.sites(other.hash, namesake.site.file, RelationKind::Declaration)) {
             // Two files' internal functions are never one.
             if(info->scope == SymbolScope::External ||
-               llvm::any_of(defined, [&](const Site& own) { return own.path == site.path; })) {
+               std::ranges::any_of(defined,
+                                   [&](const Site& own) { return own.path == site.path; })) {
                 result.push_back(std::move(site));
             }
         }
@@ -126,9 +129,10 @@ std::vector<Highlight>
         auto kind = kind_of(symbol);
         // Only a variable is read or written; any other symbol is named.
         bool accessed =
-            kind &&
-            llvm::is_contained({SymbolKind::Variable, SymbolKind::Field, SymbolKind::Parameter},
-                               *kind);
+            kind && std::ranges::contains(std::array<SymbolKind, 3>{SymbolKind::Variable,
+                                                                    SymbolKind::Field,
+                                                                    SymbolKind::Parameter},
+                                          *kind);
         auto used = accessed ? HighlightKind::Read : HighlightKind::Text;
         add(symbol, RelationKind::Declaration, HighlightKind::Text);
         add(symbol, RelationKind::Definition, HighlightKind::Text);
@@ -201,7 +205,7 @@ std::vector<Site> definition(const IndexQuery& index, const IndexQuery::Cursor& 
         auto found = definition_sites(index, symbol, anchor);
         // Every block of a namespace defines it; definition gives the one.
         if(info && info->kind == SymbolKind::Namespace) {
-            llvm::append_range(result, std::move(found));
+            result.append_range(std::move(found));
             continue;
         }
         // At its own declaration, a virtual function nothing defines, a pure
@@ -222,7 +226,7 @@ std::vector<Site> definition(const IndexQuery& index, const IndexQuery::Cursor& 
         if(found.empty() || std::ranges::any_of(found, [&](const Site& site) {
                return covers(site, cursor.site);
            })) {
-            llvm::append_range(found, index.sites(symbol, anchor, RelationKind::Declaration));
+            found.append_range(index.sites(symbol, anchor, RelationKind::Declaration));
             // A specialization leads on to the template it specializes.
             for(auto& primary: index.located_targets(symbol, anchor, RelationKind::Primary)) {
                 found.push_back(std::move(primary.site));
@@ -230,7 +234,7 @@ std::vector<Site> definition(const IndexQuery& index, const IndexQuery::Cursor& 
             dedup_sites(found);
             drop_cursor_site(found, cursor.site);
         }
-        llvm::append_range(result, std::move(found));
+        result.append_range(std::move(found));
     }
     dedup_sites(result);
     LOG_PERF("index_query",
@@ -249,24 +253,23 @@ std::vector<Site> declaration(const IndexQuery& index, const IndexQuery::Cursor&
         // and the first in the cursor's file.
         if(auto info = index.symbol_info(symbol, cursor.site.file);
            info && info->kind == SymbolKind::Namespace) {
-            llvm::append_range(result, definition_sites(index, symbol, cursor.site.file));
+            result.append_range(definition_sites(index, symbol, cursor.site.file));
             if(auto own = first_block(index, symbol, cursor.site.file)) {
                 result.push_back(std::move(*own));
             }
             continue;
         }
         for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-            llvm::append_range(result, index.sites(symbol, cursor.site.file, kind));
+            result.append_range(index.sites(symbol, cursor.site.file, kind));
         }
     }
     dedup_sites(result);
     drop_cursor_site(result, cursor.site);
     // Only the cursor's own site is left when the symbol has no other.
-    if(llvm::all_of(result, [&](const Site& site) { return covers(site, cursor.site); })) {
+    if(std::ranges::all_of(result, [&](const Site& site) { return covers(site, cursor.site); })) {
         std::vector<Site> mismatched;
         for(auto symbol: cursor.symbols) {
-            llvm::append_range(mismatched,
-                               mismatched_declarations(index, symbol, cursor.site.file));
+            mismatched.append_range(mismatched_declarations(index, symbol, cursor.site.file));
         }
         if(!mismatched.empty()) {
             result = std::move(mismatched);
@@ -292,7 +295,7 @@ std::vector<Site> references(const IndexQuery& index,
     std::vector<Site> result;
     auto add = [&](SymbolHash symbol, Fid from, llvm::ArrayRef<RelationKind> kinds) {
         for(auto kind: kinds) {
-            llvm::append_range(result, index.sites(symbol, from, kind));
+            result.append_range(index.sites(symbol, from, kind));
         }
     };
     for(auto symbol: cursor.symbols) {
@@ -308,7 +311,7 @@ std::vector<Site> references(const IndexQuery& index,
                 auto direct = index.sites(base.symbol, base.anchor, RelationKind::Direct);
                 for(auto kind: {RelationKind::Reference, RelationKind::WeakReference}) {
                     for(auto& site: index.sites(base.symbol, base.anchor, kind)) {
-                        if(llvm::none_of(direct, [&](const Site& call) {
+                        if(std::ranges::none_of(direct, [&](const Site& call) {
                                return site_key(call) == site_key(site);
                            })) {
                             result.push_back(std::move(site));
@@ -415,7 +418,7 @@ std::vector<Site> type_definition(const IndexQuery& index,
            has_flag(named->flags, SymbolFlags::TemplateParameter)) {
             continue;
         }
-        llvm::append_range(found, declared_type(target));
+        found.append(declared_type(target));
     }
     std::vector<Site> result;
     for(auto target: found) {

@@ -246,8 +246,7 @@ std::expected<RenameTarget, std::string> rename_target(const IndexQuery& serving
             continue;
         }
         auto follow = [&](RelationKind kind) {
-            llvm::append_range(pending,
-                               query.located_targets(next.symbol.hash, next.site.file, kind));
+            pending.append_range(query.located_targets(next.symbol.hash, next.site.file, kind));
         };
         follow(RelationKind::Specialization);
         if(class_like(next.symbol.kind)) {
@@ -447,7 +446,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
                     // one on another name is a macro's invocation.
                     auto written =
                         llvm::StringRef(*text.text).slice(site.range.begin, site.range.end);
-                    if(llvm::any_of(written, is_identifier_char) &&
+                    if(std::ranges::any_of(written, is_identifier_char) &&
                        keyword_kind(written, cxx_keywords) == clang::tok::identifier) {
                         plan.unconfirmed.push_back(
                             {.site = site,
@@ -532,8 +531,8 @@ RenamePlan plan_rename(const IndexQuery& serving,
             }
             if(auto cursor = query.symbol_at(file, offset);
                cursor && cursor->site.range.contains(offset)) {
-                if(llvm::any_of(cursor->symbols,
-                                [&](SymbolHash symbol) { return renames(symbol, file); })) {
+                if(std::ranges::any_of(cursor->symbols,
+                                       [&](SymbolHash symbol) { return renames(symbol, file); })) {
                     add_edit(file, cursor->site, offset, false);
                 }
                 continue;
@@ -549,7 +548,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
         }
     }
 
-    for(auto& key: llvm::make_first_range(edits)) {
+    for(auto& key: std::views::keys(edits)) {
         edited.insert(key.first);
     }
 
@@ -804,7 +803,7 @@ BatchPlan plan_renames(const IndexQuery& query,
         std::vector<std::string> own;
         for(auto name: {llvm::StringRef(old_name), llvm::StringRef(new_name)}) {
             if(auto found = spelled.find(name); found != spelled.end()) {
-                llvm::append_range(own, found->second);
+                own.append_range(found->second);
             }
         }
         std::ranges::sort(own);
@@ -833,7 +832,7 @@ BatchPlan plan_renames(const IndexQuery& query,
             it->second.edit.heuristic &= edit.heuristic;
         }
     }
-    for(auto& edit: llvm::make_second_range(edits)) {
+    for(auto& edit: std::views::values(edits)) {
         result.edits.push_back(std::move(edit));
     }
     return result;

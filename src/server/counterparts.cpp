@@ -243,7 +243,7 @@ struct Pairing {
             named.emplace_back(other, distance_to(other_path));
         }
         auto nearest = std::numeric_limits<std::uint32_t>::max();
-        for(auto distance: llvm::make_second_range(named)) {
+        for(auto distance: std::views::values(named)) {
             nearest = std::min(nearest, distance);
         }
         for(auto [other, distance]: named) {
@@ -283,10 +283,11 @@ Ranking rank_counterparts(std::vector<Evidence> candidates) {
         }
         return !a.module.empty() && b.module.empty();
     };
-    bool decisive = !candidates.empty() &&
-                    llvm::all_of(llvm::drop_begin(candidates), [&](const Evidence& candidate) {
-                        return beats(candidates.front(), candidate);
-                    });
+    bool decisive =
+        !candidates.empty() &&
+        std::ranges::all_of(std::views::drop(candidates, 1), [&](const Evidence& candidate) {
+            return beats(candidates.front(), candidate);
+        });
     return {.candidates = std::move(candidates), .decisive = decisive};
 }
 

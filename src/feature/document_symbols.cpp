@@ -310,13 +310,13 @@ void add_marks(std::vector<DocumentSymbol>& symbols,
     };
 
     auto child_containing = [](DocumentSymbol& scope, LocalSourceRange range) -> DocumentSymbol* {
-        auto child = llvm::find_if(scope.children, [&](const DocumentSymbol& child) {
+        auto child = std::ranges::find_if(scope.children, [&](const DocumentSymbol& child) {
             return child.range.contains(range);
         });
         return child == scope.children.end() ? nullptr : &*child;
     };
 
-    for(auto [index, mark]: llvm::enumerate(marks)) {
+    for(auto [index, mark]: std::views::enumerate(marks)) {
         auto* scope = &root;
         while(auto* child = child_containing(*scope, mark.range)) {
             scope = child;
@@ -338,7 +338,7 @@ void add_marks(std::vector<DocumentSymbol>& symbols,
         symbol.name = group.empty() ? "(unnamed group)" : group.ltrim().str();
 
         auto end = scope->range.end;
-        for(const auto& next: marks.drop_front(index + 1)) {
+        for(const auto& next: marks.drop_front(static_cast<std::size_t>(index) + 1)) {
             if(!scope->range.contains(next.range)) {
                 break;
             }
@@ -460,7 +460,7 @@ bool names_tag(const LexicalInfo& lexical, const OutlineEntry& tag, const Outlin
 /// names, unnamed or named alike, lists once, as the typedef's name.
 void merge_typedefs(std::vector<Node>& nodes, const LexicalInfo& lexical) {
     std::vector<std::uint32_t> tags;
-    for(auto [index, node]: llvm::enumerate(nodes)) {
+    for(auto [index, node]: std::views::enumerate(nodes)) {
         if(is_tag(node.entry.kind)) {
             tags.push_back(static_cast<std::uint32_t>(index));
         }

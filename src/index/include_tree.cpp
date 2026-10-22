@@ -63,10 +63,11 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
     auto& directives = unit.directives();
     llvm::SmallVector<clang::FileID> directive_fids;
     directive_fids.reserve(directives.size());
-    for(auto fid: llvm::make_first_range(directives)) {
+    for(auto fid:
+        std::views::transform(directives, [](auto& entry) -> auto& { return entry.first; })) {
         directive_fids.push_back(fid);
     }
-    llvm::sort(directive_fids);
+    std::ranges::sort(directive_fids);
     // A header's borrowed includer context is its host's to record: the
     // synthesized files name nothing on disk, and what they include is the
     // host's tree.
@@ -110,7 +111,7 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
     }
 
     llvm::SmallVector<clang::FileID> sorted_indexed(indexed_fids.begin(), indexed_fids.end());
-    llvm::sort(sorted_indexed);
+    std::ranges::sort(sorted_indexed);
     for(auto fid: sorted_indexed) {
         tree.file_nodes[fid] = add_include_chain(unit, fid, tree, path_table);
     }

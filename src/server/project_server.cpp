@@ -115,8 +115,8 @@ void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init
     auto& cache_dir = project.config.project.cache_dir;
     auto taken = [&] {
         return !cache_dir.empty() &&
-               (llvm::is_contained(taken_cache_dirs,
-                                   CanonicalPath(Spelling::absolute(cache_dir))) ||
+               (std::ranges::contains(taken_cache_dirs,
+                                      CanonicalPath(Spelling::absolute(cache_dir))) ||
                 owned_elsewhere(cache_dir, root));
     };
     if(!root.empty() && taken()) {
@@ -403,7 +403,7 @@ void ProjectServer::on_index_changed(llvm::ArrayRef<Fid> path_ids) {
     // Sessions without a current file index serve these very shards
     // (freshness clause 4); index_served says the client pulled from
     // them. Tell subscribers so those results get re-pulled.
-    if(llvm::any_of(path_ids, [&](Fid id) { return session_served_by_shard(id); })) {
+    if(std::ranges::any_of(path_ids, [&](Fid id) { return session_served_by_shard(id); })) {
         server.on_serving_index_changed.emit();
     }
 }
@@ -495,7 +495,7 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
 
     // The database gained or lost entries: an open document may belong to
     // another project now.
-    if(llvm::any_of(events, [](const FileEvent& event) {
+    if(std::ranges::any_of(events, [](const FileEvent& event) {
            return event.kind == FileEvent::Kind::CDBChanged &&
                   (!event.cdb.added.empty() || !event.cdb.removed.empty());
        })) {
@@ -552,7 +552,7 @@ void ProjectServer::drain_store_evictions() {
         if(evicted.ns != "pch") {
             continue;
         }
-        auto it = llvm::find_if(project.pch_cache, [&](const auto& entry) {
+        auto it = std::ranges::find_if(project.pch_cache, [&](const auto& entry) {
             return entry.second.blob == evicted.key;
         });
         if(it != project.pch_cache.end() && !sched.pch.building(it->getKey())) {

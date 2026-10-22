@@ -47,7 +47,7 @@ struct UnitFacts {
 
 template <typename Range>
 void add_distinct(Range& range, std::uint64_t value) {
-    if(!llvm::is_contained(range, value)) {
+    if(!std::ranges::contains(range, value)) {
         range.push_back(value);
     }
 }
@@ -60,8 +60,8 @@ std::vector<std::uint32_t> listed_paths(llvm::ArrayRef<VersionID> versions,
     for(auto version: versions) {
         set.push_back(path_of(version));
     }
-    llvm::sort(set);
-    set.erase(llvm::unique(set), set.end());
+    std::ranges::sort(set);
+    set.erase(std::ranges::unique(set).begin(), set.end());
     return set;
 }
 
@@ -260,7 +260,7 @@ void ProjectIndex::for_each_contributor(Fid file, llvm::function_ref<void(Fid)> 
         return;
     }
     Bitmap units;
-    for(auto& set: llvm::make_second_range(found->contributors)) {
+    for(auto& set: std::views::values(found->contributors)) {
         units |= set;
     }
     for(auto unit: units) {
@@ -300,7 +300,7 @@ void ProjectIndex::for_each_importer(Fid input, llvm::function_ref<void(Fid)> vi
         return;
     }
     Bitmap units;
-    for(auto& set: llvm::make_second_range(found->importers)) {
+    for(auto& set: std::views::values(found->importers)) {
         units |= set;
     }
     for(auto unit: units) {
@@ -315,7 +315,7 @@ void ProjectIndex::for_each_file_of_local(SymbolHash hash,
                                           llvm::function_ref<void(Fid)> visit) const {
     llvm::SmallVector<llvm::SmallVector<Fid, 4>> sets;
     if(auto* local = read(shared_local_records, number_key(hash), decode_shared_local)) {
-        for(auto& listed: llvm::make_first_range(*local)) {
+        for(auto& listed: std::views::keys(*local)) {
             auto& set = sets.emplace_back();
             for(auto path: listed) {
                 if(auto file = fid_of(path); file.valid()) {
@@ -330,9 +330,9 @@ void ProjectIndex::for_each_file_of_local(SymbolHash hash,
     llvm::BitVector joined(sets.size());
     for(bool grew = true; grew;) {
         grew = false;
-        for(auto [index, set]: llvm::enumerate(sets)) {
+        for(auto [index, set]: std::views::enumerate(sets)) {
             if(joined[index] ||
-               llvm::none_of(set, [&](Fid file) { return reached.contains(file); })) {
+               std::ranges::none_of(set, [&](Fid file) { return reached.contains(file); })) {
                 continue;
             }
             joined.set(index);
@@ -369,7 +369,7 @@ std::vector<IncludeEdge> ProjectIndex::include_edges(Fid file) const {
             }
         }
     }
-    llvm::stable_sort(edges, [](const IncludeEdge& lhs, const IncludeEdge& rhs) {
+    std::ranges::stable_sort(edges, [](const IncludeEdge& lhs, const IncludeEdge& rhs) {
         return lhs.line < rhs.line;
     });
     return edges;
@@ -457,7 +457,8 @@ const InstantiationShard* ProjectIndex::instantiation_shard(Fid file) const {
 llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(Fid file) const {
     llvm::SmallVector<std::uint64_t> variants;
     if(auto* found = dependents(file)) {
-        llvm::append_range(variants, llvm::make_first_range(found->contributors));
+        auto keys = std::views::keys(found->contributors);
+        variants.append(keys.begin(), keys.end());
     }
     return variants;
 }
@@ -465,7 +466,8 @@ llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(Fid file) const {
 llvm::SmallVector<std::uint64_t> ProjectIndex::live_uses(Fid file) const {
     llvm::SmallVector<std::uint64_t> uses;
     if(auto* found = dependents(file)) {
-        llvm::append_range(uses, llvm::make_first_range(found->uses));
+        auto keys = std::views::keys(found->uses);
+        uses.append(keys.begin(), keys.end());
     }
     return uses;
 }
@@ -582,7 +584,7 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
         });
     index.for_each_instantiation_file([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
         auto* stored = symbol(hash);
-        if(stored && llvm::all_of(files, [&](std::uint32_t file) {
+        if(stored && std::ranges::all_of(files, [&](std::uint32_t file) {
                return stored->instantiation_files.contains(path_of(file));
            })) {
             return true;
@@ -632,8 +634,8 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(Fid tu, TUManifest manifest)
     // The run is what tells a unit with a manifest (FileRecord::run).
     assert(manifest.built_at != 0 && "a manifest names the run that built it");
     assert(manifest.tu_version.valid() && "a manifest names the unit's version");
-    llvm::sort(manifest.absent);
-    manifest.absent.erase(llvm::unique(manifest.absent), manifest.absent.end());
+    std::ranges::sort(manifest.absent);
+    manifest.absent.erase(std::ranges::unique(manifest.absent).begin(), manifest.absent.end());
     return replace_manifest(tu, std::move(manifest));
 }
 
@@ -666,7 +668,7 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
                 node.parent == no_node ? of.tu_version : VersionID{of.nodes[node.parent].file};
             auto& record = files.version(parent);
             auto& resolutions = facts[record.fid].resolutions;
-            auto it = llvm::find_if(resolutions, [&](const auto& resolution) {
+            auto it = std::ranges::find_if(resolutions, [&](const auto& resolution) {
                 return resolution.first == record.content_hash;
             });
             if(it == resolutions.end()) {
@@ -691,16 +693,17 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
         for(auto& use: of.instantiations) {
             add_distinct(facts[files.version(use.file).fid].uses, use.use);
         }
-        for(auto& file: llvm::make_second_range(facts)) {
-            llvm::sort(file.read);
-            llvm::sort(file.variants);
-            llvm::sort(file.imported);
-            llvm::sort(file.uses);
-            for(auto& edges: llvm::make_second_range(file.resolutions)) {
-                llvm::sort(edges);
-                edges.erase(llvm::unique(edges), edges.end());
+        for(auto& file:
+            std::views::transform(facts, [](auto& entry) -> auto& { return entry.second; })) {
+            std::ranges::sort(file.read);
+            std::ranges::sort(file.variants);
+            std::ranges::sort(file.imported);
+            std::ranges::sort(file.uses);
+            for(auto& edges: std::views::values(file.resolutions)) {
+                std::ranges::sort(edges);
+                edges.erase(std::ranges::unique(edges).begin(), edges.end());
             }
-            llvm::sort(file.resolutions);
+            std::ranges::sort(file.resolutions);
         }
         return facts;
     };
@@ -729,9 +732,10 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
             remove_unit(record.uses, use, unit);
         }
         for(auto& [content, edges]: before.resolutions) {
-            auto it = llvm::find_if(record.resolutions, [&](const IncludeResolution& resolution) {
-                return resolution.content == content && resolution.edges == edges;
-            });
+            auto it =
+                std::ranges::find_if(record.resolutions, [&](const IncludeResolution& resolution) {
+                    return resolution.content == content && resolution.edges == edges;
+                });
             if(it != record.resolutions.end()) {
                 it->units.remove(unit);
                 if(it->units.isEmpty()) {
@@ -755,9 +759,10 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
             add_unit(record.uses, use, unit);
         }
         for(auto& [content, edges]: after.resolutions) {
-            auto it = llvm::find_if(record.resolutions, [&](const IncludeResolution& resolution) {
-                return resolution.content == content && resolution.edges == edges;
-            });
+            auto it =
+                std::ranges::find_if(record.resolutions, [&](const IncludeResolution& resolution) {
+                    return resolution.content == content && resolution.edges == edges;
+                });
             if(it == record.resolutions.end()) {
                 record.resolutions.push_back({.content = content, .edges = edges});
                 it = std::prev(record.resolutions.end());
@@ -768,12 +773,13 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
         auto& file_entry = change_file(file);
         file_entry.consumed.clear();
         for(auto& keyed: {&record.readers, &record.importers}) {
-            for(auto hash: llvm::make_first_range(*keyed)) {
+            for(auto hash: std::views::keys(*keyed)) {
                 file_entry.consumed.push_back(hash);
             }
         }
-        llvm::sort(file_entry.consumed);
-        file_entry.consumed.erase(llvm::unique(file_entry.consumed), file_entry.consumed.end());
+        std::ranges::sort(file_entry.consumed);
+        file_entry.consumed.erase(std::ranges::unique(file_entry.consumed).begin(),
+                                  file_entry.consumed.end());
         file_entry.absent = !record.absent.isEmpty();
 
         if(before.variants != after.variants || before.uses != after.uses ||
@@ -797,7 +803,7 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
         for(auto& local: of.shared_locals) {
             locals.emplace_back(local.symbol, listed_paths(local.files, path_of));
         }
-        llvm::sort(locals);
+        std::ranges::sort(locals);
         return locals;
     };
     using Locals = std::vector<std::pair<SymbolHash, std::vector<std::uint32_t>>>;
@@ -808,9 +814,8 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
             continue;
         }
         auto& sets = change(shared_local_records, number_key(local.first), decode_shared_local);
-        auto it = llvm::lower_bound(sets, local.second, [](const auto& set, const auto& files) {
-            return set.first < files;
-        });
+        auto it =
+            std::ranges::lower_bound(sets, local.second, {}, &SharedLocalSets::value_type::first);
         if(it != sets.end() && it->first == local.second) {
             it->second -= 1;
             if(it->second == 0) {
@@ -826,9 +831,8 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
             continue;
         }
         auto& sets = change(shared_local_records, number_key(local.first), decode_shared_local);
-        auto it = llvm::lower_bound(sets, local.second, [](const auto& set, const auto& files) {
-            return set.first < files;
-        });
+        auto it =
+            std::ranges::lower_bound(sets, local.second, {}, &SharedLocalSets::value_type::first);
         if(it == sets.end() || it->first != local.second) {
             it = sets.emplace(it, local.second, 0);
         }
@@ -845,7 +849,7 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
     change_file(tu).run = manifest ? manifest->built_at : 0;
     changed_manifests[tu] = std::move(manifest);
 
-    llvm::sort(affected);
+    std::ranges::sort(affected);
     for(auto file: affected) {
         refresh_live(file);
     }

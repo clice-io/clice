@@ -82,7 +82,7 @@ bool SelectionTree::create_each(CompilationUnit& unit,
     auto& tokens = focus.tokens();
 
     // Prefer right token over left.
-    for(const auto& token: llvm::reverse(tokens.spelled_touching(focus.location(begin)))) {
+    for(const auto& token: std::views::reverse(tokens.spelled_touching(focus.location(begin)))) {
         if(should_ignore_token(focus.kind(token))) {
             continue;
         }

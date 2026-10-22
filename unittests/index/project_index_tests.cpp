@@ -444,7 +444,7 @@ ZEST_CASE(MergedRecordsRoundTrip) {
     ZASSERT(symbol != 0);
     auto fresh_id = fresh.find(Spelling::absolute(pool.resolve(focus)));
     ZASSERT(fresh_id);
-    ZASSERT(llvm::is_contained(reference_files(loaded, symbol), fresh_id->raw));
+    ZASSERT(std::ranges::contains(reference_files(loaded, symbol), fresh_id->raw));
     ZASSERT(loaded.indexed(*fresh_id));
 }
 
@@ -628,7 +628,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
             for(auto name: names) {
                 fids.push_back(table.intern(Spelling::absolute(name)));
             }
-            llvm::sort(fids);
+            std::ranges::sort(fids);
             return fids;
         };
         for(auto group: {ids({"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}),
@@ -638,7 +638,7 @@ ZEST_CASE(SharedLocalAcrossUnits) {
                 index.for_each_file_of_local(helper, start, [&](Fid file) {
                     reached.push_back(file);
                 });
-                llvm::sort(reached);
+                std::ranges::sort(reached);
                 ZEXPECT(reached == group);
             }
         }

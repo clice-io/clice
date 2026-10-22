@@ -105,8 +105,8 @@ ZEST_CASE(ModuleOfFollowsRedeclaredName) {
 
     graph.update_module_decl(Fid{1}, "a");
     ZEXPECT(graph.module_of(Fid{1}) == "a");
-    ZEXPECT(llvm::is_contained(graph.lookup_module("a"), Fid{1}));
-    ZEXPECT(llvm::is_contained(graph.lookup_module("b"), Fid{1}));
+    ZEXPECT(std::ranges::contains(graph.lookup_module("a"), Fid{1}));
+    ZEXPECT(std::ranges::contains(graph.lookup_module("b"), Fid{1}));
 }
 
 ZEST_CASE(MultipleModules) {
@@ -188,9 +188,9 @@ ZEST_CASE(GetAllIncludesUnion) {
     auto all = graph.get_all_includes(Fid{1});
     // Union of {10, 20} and {20, 30} = {10, 20, 30}.
     ZASSERT(all.size() == 3u);
-    ZEXPECT(llvm::is_contained(all, Fid{10}));
-    ZEXPECT(llvm::is_contained(all, Fid{20}));
-    ZEXPECT(llvm::is_contained(all, Fid{30}));
+    ZEXPECT(std::ranges::contains(all, Fid{10}));
+    ZEXPECT(std::ranges::contains(all, Fid{20}));
+    ZEXPECT(std::ranges::contains(all, Fid{30}));
 }
 
 ZEST_CASE(ConditionalFlag) {
@@ -311,7 +311,7 @@ ZEST_CASE(ReadersClimbForcedIncludes) {
     ZASSERT(graph.find_include_chain(Fid{1}, Fid{30}).empty());
 
     auto readers = graph.find_readers(Fid{30});
-    llvm::sort(readers);
+    std::ranges::sort(readers);
     ZASSERT(readers == (llvm::SmallVector<Fid, 4>{Fid{1}, Fid{2}}));
     ZASSERT(graph.find_readers(Fid{10}) == (llvm::SmallVector<Fid, 4>{Fid{1}}));
 }
@@ -328,7 +328,7 @@ ZEST_CASE(ClosureFollowsForcedIncludes) {
 
     auto closure = graph.include_closure(Fid{1});
     llvm::SmallVector<Fid> files(closure.begin(), closure.end());
-    llvm::sort(files);
+    std::ranges::sort(files);
     ZEXPECT(files == (llvm::SmallVector<Fid>{Fid{1}, Fid{10}, Fid{11}, Fid{12}, Fid{20}, Fid{30}}));
     ZEXPECT(graph.include_closure(Fid{12}).size() == 1u);
 }

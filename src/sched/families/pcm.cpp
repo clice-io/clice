@@ -422,7 +422,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 std::optional<PCMFamily::BuildFailure> PCMFamily::build_failure(Fid module) const {
     BuildFailure failure;
     for(auto current = module;;) {
-        if(auto seen = llvm::find(failure.chain, current); seen != failure.chain.end()) {
+        if(auto seen = std::ranges::find(failure.chain, current); seen != failure.chain.end()) {
             failure.cycle = seen - failure.chain.begin();
             return failure;
         }
@@ -514,12 +514,13 @@ bool PCMFamily::revalidate_blobs() {
     // a round is what rebuilds an import first.
     for(bool marked = true; marked;) {
         marked = false;
-        for(auto pid: llvm::make_first_range(project.pcm_builds)) {
+        for(auto pid: std::views::transform(project.pcm_builds,
+                                            [](auto& entry) -> auto& { return entry.first; })) {
             auto id = node(pid);
             if(!graph.has_node(id) || graph.is_dirty(id)) {
                 continue;
             }
-            if(llvm::any_of(graph.dependencies(id), [&](NodeId dep) {
+            if(std::ranges::any_of(graph.dependencies(id), [&](NodeId dep) {
                    return dep.family == Family::PCM && !is_unresolved(dep) && graph.is_dirty(dep);
                })) {
                 graph.mark_dirty(id);
@@ -574,7 +575,7 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
             waits.push_back(graph.request(node(dep), {.foreground = true}));
         }
         auto results = co_await kota::when_all(std::move(waits));
-        if(llvm::is_contained(results, JoinOutcome::Shutdown)) {
+        if(std::ranges::contains(results, JoinOutcome::Shutdown)) {
             co_return std::nullopt;
         }
     }

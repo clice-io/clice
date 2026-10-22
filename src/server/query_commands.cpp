@@ -136,12 +136,12 @@ std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::Sy
     if(query.by_pattern()) {
         return located;
     }
-    llvm::erase_if(located, [&](const index::IndexQuery::Located& hit) {
-        if(!query.kinds.empty() && !llvm::is_contained(query.kinds, hit.symbol.kind)) {
+    std::erase_if(located, [&](const index::IndexQuery::Located& hit) {
+        if(!query.kinds.empty() && !std::ranges::contains(query.kinds, hit.symbol.kind)) {
             return true;
         }
         return !query.handle && !query.paths.empty() &&
-               llvm::none_of(query.paths, [&](const std::string& wanted) {
+               std::ranges::none_of(query.paths, [&](const std::string& wanted) {
                    return hit.site.file.valid() &&
                           index::path_matches(wanted,
                                               ctx.project.file_table.resolve(hit.site.file));
@@ -221,8 +221,8 @@ bool one_overload_set(llvm::ArrayRef<const index::IndexQuery::Located*> symbols)
     auto one_file = [&](const index::IndexQuery::Located* located) {
         return located->site.file == first.site.file;
     };
-    return llvm::all_of(symbols, overloaded) &&
-           (llvm::none_of(symbols, internal) || llvm::all_of(symbols, one_file));
+    return std::ranges::all_of(symbols, overloaded) &&
+           (std::ranges::none_of(symbols, internal) || std::ranges::all_of(symbols, one_file));
 }
 
 /// The rename target of the symbols a locator names: one symbol's, or,
@@ -247,7 +247,7 @@ Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator)
             return ambiguous(ctx, *candidates);
         }
         auto root = target->symbol.symbol.hash;
-        if(llvm::none_of(targets, [&](const index::RenameTarget& known) {
+        if(std::ranges::none_of(targets, [&](const index::RenameTarget& known) {
                return known.symbol.symbol.hash == root;
            })) {
             targets.push_back(std::move(*target));
@@ -263,8 +263,8 @@ Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator)
         }
     }
     auto merged = std::move(targets.front());
-    for(auto& other: llvm::drop_begin(targets)) {
-        llvm::append_range(merged.group, other.group);
+    for(auto& other: std::views::drop(targets, 1)) {
+        merged.group.append_range(other.group);
     }
     return merged;
 }
@@ -335,7 +335,8 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::CallEdge> edges) {
 }  // namespace
 
 Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) {
-    if(!llvm::is_contained<llvm::StringRef>({"all", "source", "header", "module"}, filter)) {
+    if(!std::ranges::contains(std::array<llvm::StringRef, 4>{"all", "source", "header", "module"},
+                              filter)) {
         return std::unexpected(
             std::format("invalid filter '{}': expected all, source, header or module",
                         std::string_view(filter)));
@@ -376,7 +377,8 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
 
 Outcome<FileDepsResult>
     file_deps(Context& ctx, const Spelling& path, llvm::StringRef direction, int depth) {
-    if(!llvm::is_contained<llvm::StringRef>({"includes", "includers", "both"}, direction)) {
+    if(!std::ranges::contains(std::array<llvm::StringRef, 3>{"includes", "includers", "both"},
+                              direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected includes, includers or both",
                         std::string_view(direction)));
@@ -429,11 +431,11 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     // including them.
     llvm::SmallVector<Fid> importers;
     ws.index.for_each_importer(*file, [&](Fid importer) { importers.push_back(importer); });
-    llvm::sort(importers, [&](Fid lhs, Fid rhs) {
+    std::ranges::sort(importers, [&](Fid lhs, Fid rhs) {
         return ws.file_table.resolve(lhs) < ws.file_table.resolve(rhs);
     });
     for(auto importer: importers) {
-        if(!llvm::is_contained(readers, importer)) {
+        if(!std::ranges::contains(readers, importer)) {
             readers.push_back(importer);
         }
     }
@@ -611,7 +613,9 @@ Outcome<ReferencesResult> references(Context& ctx,
     auto sites = index::references(ctx.query, cursor, include_declaration);
     auto contexts = index::context_lines(ctx.query, sites);
     auto functions = index::enclosing_functions(ctx.query, sites);
-    for(auto [site, context, function]: llvm::zip_equal(sites, contexts, functions)) {
+    assert(std::ranges::size(sites) == std::ranges::size(contexts) &&
+           std::ranges::size(sites) == std::ranges::size(functions));
+    for(auto [site, context, function]: std::views::zip(sites, contexts, functions)) {
         ReferenceEntry entry{
             .file = std::string(site.path),
             .line = lines_of(site).start,
@@ -628,7 +632,7 @@ Outcome<ReferencesResult> references(Context& ctx,
 }
 
 bool units_pending(Project& project) {
-    return llvm::any_of(project.build.members(), [&](Fid unit) {
+    return std::ranges::any_of(project.build.members(), [&](Fid unit) {
         return project.build.indexed(project.file_table.resolve(unit)) &&
                !project.index.indexed(unit);
     });
@@ -754,7 +758,8 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
 Outcome<CallGraphResult> call_graph(Context& ctx,
                                     index::SymbolQuery locator,
                                     llvm::StringRef direction) {
-    if(!llvm::is_contained<llvm::StringRef>({"callers", "callees", "both"}, direction)) {
+    if(!std::ranges::contains(std::array<llvm::StringRef, 3>{"callers", "callees", "both"},
+                              direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected callers, callees or both",
                         std::string_view(direction)));
@@ -784,7 +789,7 @@ Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQ
     if(!candidates) {
         return std::unexpected(candidates.error());
     }
-    llvm::erase_if(*candidates, [](const index::IndexQuery::Located& candidate) {
+    std::erase_if(*candidates, [](const index::IndexQuery::Located& candidate) {
         return candidate.symbol.kind == SymbolKind::Macro;
     });
     if(candidates->empty()) {
@@ -825,7 +830,8 @@ Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery lo
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
                                             index::SymbolQuery locator,
                                             llvm::StringRef direction) {
-    if(!llvm::is_contained<llvm::StringRef>({"supertypes", "subtypes", "both"}, direction)) {
+    if(!std::ranges::contains(std::array<llvm::StringRef, 3>{"supertypes", "subtypes", "both"},
+                              direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected supertypes, subtypes or both",
                         std::string_view(direction)));

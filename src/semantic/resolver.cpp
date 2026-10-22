@@ -235,11 +235,11 @@ struct InstantiationStack {
 
     /// Whether a frame holds the parameter's template, bound or not.
     bool owns(const clang::NamedDecl* decl, unsigned depth) const {
-        return llvm::any_of(data, [&](const Frame& frame) {
+        return std::ranges::any_of(data, [&](const Frame& frame) {
             if(!frame.params) {
                 return false;
             }
-            return decl ? llvm::is_contained(frame.params->asArray(), decl)
+            return decl ? std::ranges::contains(frame.params->asArray(), decl)
                         : frame.params->getDepth() == depth;
         });
     }
@@ -268,7 +268,7 @@ struct PackParmCollector : clang::RecursiveASTVisitor<PackParmCollector> {
     llvm::SmallVector<const clang::NonTypeTemplateParmDecl*, 2> value_packs;
 
     bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
-        if(T->isParameterPack() && !llvm::is_contained(packs, T)) {
+        if(T->isParameterPack() && !std::ranges::contains(packs, T)) {
             packs.push_back(T);
         }
         return true;
@@ -276,7 +276,7 @@ struct PackParmCollector : clang::RecursiveASTVisitor<PackParmCollector> {
 
     bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
         if(auto NTTP = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(expr->getDecl());
-           NTTP && NTTP->isParameterPack() && !llvm::is_contained(value_packs, NTTP)) {
+           NTTP && NTTP->isParameterPack() && !std::ranges::contains(value_packs, NTTP)) {
             value_packs.push_back(NTTP);
         }
         return true;
@@ -285,7 +285,7 @@ struct PackParmCollector : clang::RecursiveASTVisitor<PackParmCollector> {
     bool TraverseTemplateName(clang::TemplateName name) {
         if(auto TTP =
                llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(name.getAsTemplateDecl());
-           TTP && TTP->isParameterPack() && !llvm::is_contained(template_packs, TTP)) {
+           TTP && TTP->isParameterPack() && !std::ranges::contains(template_packs, TTP)) {
             template_packs.push_back(TTP);
         }
         return RecursiveASTVisitor::TraverseTemplateName(name);
@@ -299,7 +299,7 @@ bool mentions_parameters(clang::QualType type, const clang::TemplateParameterLis
         bool found = false;
 
         bool owns(const clang::NamedDecl* decl) const {
-            return decl && llvm::is_contained(*params, decl);
+            return decl && std::ranges::contains(*params, decl);
         }
 
         bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
@@ -1638,7 +1638,7 @@ public:
     /// to any number of arguments: fixed-arity filtering would remove viable
     /// overloads.
     static bool expands_pack(llvm::ArrayRef<const clang::Expr*> arguments) {
-        return llvm::any_of(arguments, llvm::IsaPred<clang::PackExpansionExpr>);
+        return std::ranges::any_of(arguments, llvm::IsaPred<clang::PackExpansionExpr>);
     }
 
     /// Drop the function overloads `viable` rejects. Non-function candidates
@@ -2827,7 +2827,7 @@ private:
                 return false;
             }
             length = bound.pack_size();
-            if(!llvm::is_contained(slots, *handle)) {
+            if(!std::ranges::contains(slots, *handle)) {
                 slots.push_back(*handle);
             }
             return true;
@@ -2849,8 +2849,8 @@ private:
             }
         }
 
-        llvm::SmallVector<clang::TemplateArgument, 2> saved(
-            llvm::map_range(slots, [&](auto handle) { return stack.slot(handle); }));
+        auto saved = std::ranges::to<llvm::SmallVector<clang::TemplateArgument, 2>>(
+            std::views::transform(slots, [&](auto handle) { return stack.slot(handle); }));
 
         /// While narrowed, node-pointer-keyed caches are bypassed: the same
         /// pattern node resolves differently per element, and a cached first
@@ -2859,7 +2859,7 @@ private:
         bool ok = true;
         llvm::SmallVector<clang::TemplateArgument, 4> expanded;
         for(unsigned k = 0; k < length && ok; k += 1) {
-            for(auto [handle, pack]: llvm::zip(slots, saved)) {
+            for(auto [handle, pack]: std::views::zip(slots, saved)) {
                 stack.slot(handle) = pack.pack_begin()[k];
             }
             auto element = rewrite(pattern, policy);
@@ -2870,7 +2870,7 @@ private:
         }
         pack_narrowing -= 1;
 
-        for(auto [handle, pack]: llvm::zip(slots, saved)) {
+        for(auto [handle, pack]: std::views::zip(slots, saved)) {
             stack.slot(handle) = pack;
         }
 

@@ -88,7 +88,7 @@ ZEST_CASE(InternalNamesSearched) {
     for(auto& result: search("cached")) {
         names.push_back(result.symbol.name);
     }
-    llvm::sort(names);
+    std::ranges::sort(names);
     ZEXPECT(names == (std::vector<std::string>{"CachedEntry", "cached_total"}));
 }
 

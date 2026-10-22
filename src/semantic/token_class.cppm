@@ -73,7 +73,7 @@ enum class SemanticTokenKind : std::uint8_t {
 /// Whether every byte of an index column names a kind: one past the enum
 /// would index the legend's tables out of bounds.
 inline bool all_token_kinds(llvm::ArrayRef<std::uint8_t> kinds) {
-    return llvm::all_of(kinds, [](std::uint8_t kind) {
+    return std::ranges::all_of(kinds, [](std::uint8_t kind) {
         return kind <= static_cast<std::uint8_t>(SemanticTokenKind::Plain);
     });
 }
@@ -187,13 +187,13 @@ inline void combine(TokenClass& result, TokenClass candidate) {
 /// Whether a statement led by `kind` leaves the code around it: `return`,
 /// `break`, `continue`, `goto`, `throw`, `co_return`.
 inline bool leaves_enclosing(clang::tok::TokenKind kind) {
-    return llvm::is_contained({clang::tok::kw_return,
-                               clang::tok::kw_break,
-                               clang::tok::kw_continue,
-                               clang::tok::kw_goto,
-                               clang::tok::kw_throw,
-                               clang::tok::kw_co_return},
-                              kind);
+    return std::ranges::contains(std::array{clang::tok::kw_return,
+                                            clang::tok::kw_break,
+                                            clang::tok::kw_continue,
+                                            clang::tok::kw_goto,
+                                            clang::tok::kw_throw,
+                                            clang::tok::kw_co_return},
+                                 kind);
 }
 
 /// What every written name of `decl` shows: its kind and the modifiers it

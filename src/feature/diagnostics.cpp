@@ -191,7 +191,7 @@ private:
             // opened.
             auto anchor = main.range;
             if(anchor.begin > focus.content().size()) {
-                auto note = llvm::find_if(main.notes, in_focus);
+                auto note = std::ranges::find_if(main.notes, in_focus);
                 if(note == main.notes.end()) {
                     return false;
                 }
@@ -205,7 +205,7 @@ private:
             return true;
         }
 
-        auto request = llvm::find_if(main.notes, [&](const Diagnostic& note) {
+        auto request = std::ranges::find_if(main.notes, [&](const Diagnostic& note) {
             return in_focus(note) && instantiation_note(note.id.value);
         });
         if(request != main.notes.end()) {
@@ -214,7 +214,8 @@ private:
         bool in_context = unit.from_context(main.fid);
         if(main.error_by_default) {
             if(in_context) {
-                if(auto note = llvm::find_if(main.notes, in_focus); note != main.notes.end()) {
+                if(auto note = std::ranges::find_if(main.notes, in_focus);
+                   note != main.notes.end()) {
                     return relocate(main,
                                     diagnostic,
                                     note->range,
@@ -250,7 +251,7 @@ private:
             return false;
         }
 
-        auto note = llvm::find_if(main.notes, in_focus);
+        auto note = std::ranges::find_if(main.notes, in_focus);
         if(note == main.notes.end()) {
             return false;
         }

@@ -41,7 +41,7 @@ static std::string shown(FileTable& files, llvm::StringRef identity) {
 /// The link whose argument covers `offset`.
 const static index::DocumentLink* link_at(llvm::ArrayRef<index::DocumentLink> links,
                                           std::uint32_t offset) {
-    auto it = llvm::find_if(links, [&](const index::DocumentLink& link) {
+    auto it = std::ranges::find_if(links, [&](const index::DocumentLink& link) {
         return link.range.contains(offset);
     });
     return it != links.end() ? &*it : nullptr;
@@ -392,7 +392,7 @@ Features::RawResult Features::definition(Ticket ticket,
                                   [&](const index::IndexQuery& from, index::SymbolHash named) {
                                       return index::definition_sites(from, named, path_id);
                                   });
-            if(defined.empty() || llvm::any_of(defined, [&](const index::Site& site) {
+            if(defined.empty() || std::ranges::any_of(defined, [&](const index::Site& site) {
                    return index::covers(site, cursor->site);
                })) {
                 defined = gather(
@@ -402,7 +402,7 @@ Features::RawResult Features::definition(Ticket ticket,
                         return index::definition(from, {.symbols = {named}, .site = cursor->site});
                     });
             }
-            llvm::append_range(result, std::move(defined));
+            result.append_range(std::move(defined));
         }
         index::dedup_sites(result);
         return to_lsp::locations(result);
@@ -1021,7 +1021,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             return false;
         }
         item.data.reset();
-        auto candidate = llvm::find_if(candidates, [&](const feature::ScopeCandidate& each) {
+        auto candidate = std::ranges::find_if(candidates, [&](const feature::ScopeCandidate& each) {
             return each.symbol == *symbol;
         });
         assert(candidate != candidates.end() && "the worker names a candidate it was given");
@@ -1082,7 +1082,7 @@ bool Features::scope_candidates(llvm::StringRef prefix,
         if(!namespaces.empty() && namespaces.back().kind == SymbolKind::Enum) {
             namespaces = namespaces.drop_back();
         }
-        if(llvm::any_of(namespaces, [](const index::SymbolInfo& container) {
+        if(std::ranges::any_of(namespaces, [](const index::SymbolInfo& container) {
                return container.kind != SymbolKind::Namespace;
            })) {
             continue;
@@ -1399,7 +1399,7 @@ llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol,
     auto declared = [&](const index::IndexQuery& from, index::SymbolHash hash) {
         std::vector<index::Site> sites;
         for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-            llvm::append_range(sites, from.sites(hash, anchor, kind));
+            sites.append_range(from.sites(hash, anchor, kind));
         }
         return sites;
     };
@@ -1410,8 +1410,8 @@ llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol,
         files.push_back(site.file);
     }
     for(auto* peer: others) {
-        if(llvm::any_of(declared(*peer, symbol), [&](const index::Site& site) {
-               return llvm::is_contained(files, site.file);
+        if(std::ranges::any_of(declared(*peer, symbol), [&](const index::Site& site) {
+               return std::ranges::contains(files, site.file);
            })) {
             relevant.push_back({peer, symbol});
             continue;
@@ -1445,7 +1445,7 @@ llvm::SmallVector<Features::Source> Features::sources(index::SymbolHash symbol, 
     llvm::SmallVector<Source> all{
         {&query, symbol}
     };
-    llvm::append_range(all, peers_of(symbol, anchor));
+    all.append(peers_of(symbol, anchor));
     return all;
 }
 
@@ -1465,8 +1465,9 @@ bool Features::answers_for(const index::IndexQuery& from,
                            Fid file,
                            llvm::ArrayRef<Source> asked) const {
     auto* serving = open_in(file);
-    return !serving || serving == &from ||
-           llvm::none_of(asked, [&](const Source& source) { return source.query == serving; });
+    return !serving || serving == &from || std::ranges::none_of(asked, [&](const Source& source) {
+        return source.query == serving;
+    });
 }
 
 std::vector<index::Site> Features::gather(
@@ -1506,17 +1507,17 @@ static void merge_edges(std::vector<index::CallEdge>& into,
                         std::vector<index::CallEdge> edges,
                         llvm::function_ref<bool(Fid)> keep) {
     for(auto& edge: edges) {
-        llvm::erase_if(edge.sites, [&](const index::Site& site) { return !keep(site.file); });
+        std::erase_if(edge.sites, [&](const index::Site& site) { return !keep(site.file); });
         if(edge.sites.empty()) {
             continue;
         }
-        auto known = llvm::find_if(into, [&](const index::CallEdge& other) {
+        auto known = std::ranges::find_if(into, [&](const index::CallEdge& other) {
             return same_entity(other.symbol, edge.symbol);
         });
         if(known == into.end()) {
             into.push_back(std::move(edge));
         } else {
-            llvm::append_range(known->sites, edge.sites);
+            known->sites.append_range(edge.sites);
             index::dedup_sites(known->sites);
         }
     }
@@ -1527,7 +1528,8 @@ static void merge_located(std::vector<index::IndexQuery::Located>& into,
                           std::vector<index::IndexQuery::Located> located,
                           llvm::function_ref<bool(Fid)> keep) {
     for(auto& one: located) {
-        if(keep(one.site.file) && llvm::none_of(into, [&](const index::IndexQuery::Located& other) {
+        if(keep(one.site.file) &&
+           std::ranges::none_of(into, [&](const index::IndexQuery::Located& other) {
                return same_entity(other, one);
            })) {
             into.push_back(std::move(one));
@@ -1593,16 +1595,14 @@ Features::RawResult Features::implementation(Ticket ticket,
         // set's candidates, a using-declaration's targets — implements it,
         // as an override implements a virtual function.
         if(index::names_weakly(query, *cursor, symbol)) {
-            llvm::append_range(
-                sites,
+            sites.append_range(
                 gather(symbol,
                        path_id,
                        [&](const index::IndexQuery& from, index::SymbolHash named) {
                            return from.sites(named, path_id, RelationKind::Definition);
                        }));
         }
-        llvm::append_range(
-            sites,
+        sites.append_range(
             gather(symbol, path_id, [&](const index::IndexQuery& from, index::SymbolHash named) {
                 std::vector<index::Site> placed;
                 for(auto& located: index::implementation(from, named, path_id)) {

@@ -185,7 +185,7 @@ bool continues_character(char c) {
 
 /// The length of `text` in characters.
 std::size_t characters(llvm::StringRef text) {
-    return llvm::count_if(text, [](char c) { return !continues_character(c); });
+    return std::ranges::count_if(text, [](char c) { return !continues_character(c); });
 }
 
 /// `text` within `limit` characters, cut with `…` where it no longer fits;
@@ -284,9 +284,9 @@ std::optional<std::string> elide(llvm::StringRef text, std::size_t limit) {
     std::string result = (list->head + "<").str();
     std::size_t used = 0;
     bool elided = false;
-    for(auto [index, argument]: llvm::enumerate(list->arguments)) {
+    for(auto [index, argument]: std::views::enumerate(list->arguments)) {
         std::size_t separator = index == 0 ? 0 : 2;
-        std::size_t reserved = index + 1 < list->arguments.size() ? 3 : 0;
+        std::size_t reserved = static_cast<std::size_t>(index) + 1 < list->arguments.size() ? 3 : 0;
         std::optional<std::string> kept;
         if(used + separator + reserved < room) {
             kept = elide(argument, room - used - separator - reserved);
@@ -336,7 +336,7 @@ bool names_result(const clang::CallExpr* call, clang::QualType type) {
         return false;
     }
     auto core = named_core(type);
-    if(llvm::is_contained(written, core)) {
+    if(std::ranges::contains(written, core)) {
         return true;
     }
     llvm::ArrayRef<clang::TemplateArgument> arguments;
@@ -350,9 +350,9 @@ bool names_result(const clang::CallExpr* call, clang::QualType type) {
         arguments = arguments.drop_back();
     }
     return !arguments.empty() &&
-           llvm::all_of(arguments, [&](const clang::TemplateArgument& argument) {
+           std::ranges::all_of(arguments, [&](const clang::TemplateArgument& argument) {
                return argument.getKind() == clang::TemplateArgument::Type &&
-                      llvm::is_contained(written, named_core(argument.getAsType()));
+                      std::ranges::contains(written, named_core(argument.getAsType()));
            });
 }
 
@@ -851,10 +851,11 @@ private:
             const auto limit = options.max_length.default_arguments;
             std::vector<InlayHintPart> hint;
             std::size_t size = 0;
-            for(auto&& [index, element]: llvm::enumerate(formatted_default_args)) {
+            for(auto&& [index, element]: std::views::enumerate(formatted_default_args)) {
                 std::size_t separator = hint.empty() ? 0 : 2;
                 // While more defaults follow, `, …` must still fit after this one.
-                std::size_t rest = index + 1 < formatted_default_args.size() ? 3 : 0;
+                std::size_t rest =
+                    static_cast<std::size_t>(index) + 1 < formatted_default_args.size() ? 3 : 0;
                 auto element_size = text_size(element);
                 if(limit && size + separator + element_size + rest > limit) {
                     append(hint, plain(hint.empty() ? "…" : ", …"));
@@ -930,7 +931,7 @@ private:
         auto words = lexical.words(opening);
         std::string condition = words.front().text(content) == "ifndef" ? "!" : "";
         std::optional<std::uint32_t> previous;
-        for(const auto& token: llvm::drop_begin(words)) {
+        for(const auto& token: std::views::drop(words, 1)) {
             if(previous && *previous < token.range.begin) {
                 condition += ' ';
             }
@@ -1001,10 +1002,11 @@ private:
         // A pack expands to any number of parameters, so past it indices
         // part ways; an instantiated parameter keeps the location of the
         // one it was written as, the parameters of a pack all the pack's.
-        auto written = llvm::find_if(pattern->parameters(), [&](const auto* each) {
+        auto parameters = pattern->parameters();
+        auto written = std::ranges::find_if(parameters, [&](const auto* each) {
             return each->getLocation() == param->getLocation();
         });
-        return written == pattern->parameters().end() ? param : *written;
+        return written == parameters.end() ? param : *written;
     }
 
     /// Append a piece, merging plain text into the plain text before it.
@@ -1039,7 +1041,8 @@ private:
         // Once elision has cut a name out, a namesake of another declaration
         // can take its place in the search: such names stay plain.
         auto ambiguous = [&](llvm::StringRef name, const clang::NamedDecl* decl) {
-            return text.contains("…") && llvm::any_of(spelled.names, [&](const SpelledName& other) {
+            return text.contains("…") &&
+                   std::ranges::any_of(spelled.names, [&](const SpelledName& other) {
                        return other.name == name &&
                               other.decl->getCanonicalDecl() != decl->getCanonicalDecl();
                    });
@@ -1862,7 +1865,7 @@ auto inlay_hints_to_protocol(
         auto links = [](const InlayHintPart& part) {
             return part.symbol != 0 || part.target;
         };
-        if(locate && llvm::any_of(hint.label, links)) {
+        if(locate && std::ranges::any_of(hint.label, links)) {
             std::vector<protocol::InlayHintLabelPart> parts;
             for(const auto& part: hint.label) {
                 parts.push_back(

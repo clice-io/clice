@@ -844,8 +844,8 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
 
     // The shards commit without the search index a cold round never built.
     ZASSERT(log.writes.size() == 1u);
-    ZASSERT(llvm::is_contained(log.writes[0], index::BlobKind::TUManifest));
-    ZASSERT(!llvm::is_contained(log.writes[0], index::BlobKind::SearchIndex));
+    ZASSERT(std::ranges::contains(log.writes[0], index::BlobKind::TUManifest));
+    ZASSERT(!std::ranges::contains(log.writes[0], index::BlobKind::SearchIndex));
     ZASSERT(!project.index.search_index().loaded());
 }
 

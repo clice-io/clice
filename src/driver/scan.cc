@@ -87,7 +87,7 @@ ScanOutput describe(const Loaded& loaded) {
         auto name = include.angled ? std::format("<{}>", include.name)
                                    : std::format("\"{}\"", include.name);
         auto& names = unresolved[include.includer];
-        if(!llvm::is_contained(names, name)) {
+        if(!std::ranges::contains(names, name)) {
             names.push_back(std::move(name));
         }
     }
@@ -96,8 +96,8 @@ ScanOutput describe(const Loaded& loaded) {
     for(auto fid: graph.all_files()) {
         auto& file = output.files.emplace_back();
         file.path = files.display(fid);
-        file.source =
-            llvm::any_of(graph.contexts(fid), [](ScanContext context) { return context.unit; });
+        file.source = std::ranges::any_of(graph.contexts(fid),
+                                          [](ScanContext context) { return context.unit; });
         if(auto it = modules.find(fid); it != modules.end()) {
             file.modules = std::move(it->second);
             std::ranges::sort(file.modules);
@@ -115,7 +115,7 @@ ScanOutput describe(const Loaded& loaded) {
 
 void print_summary(const ScanOutput& output, const ScanReport& scan) {
     auto sources = static_cast<std::size_t>(
-        llvm::count_if(output.files, [](const ScannedFile& file) { return file.source; }));
+        std::ranges::count_if(output.files, [](const ScannedFile& file) { return file.source; }));
     auto headers = output.files.size() - sources;
     auto found = scan.includes_resolved + scan.unresolved.size();
     driver::println(

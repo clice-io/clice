@@ -539,10 +539,10 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
 CanonicalPath workspace_of(CanonicalRef start) {
     CanonicalPath workspace = start;
     path::walk_ancestors(start, [&](CanonicalRef dir) {
-        bool marked = llvm::any_of(config_file_names,
-                                   [&](llvm::StringRef marker) {
-                                       return vfs::exists(path::join(dir, marker));
-                                   }) ||
+        bool marked = std::ranges::any_of(config_file_names,
+                                          [&](llvm::StringRef marker) {
+                                              return vfs::exists(path::join(dir, marker));
+                                          }) ||
                       vfs::exists(path::join(dir, "compile_commands.json"));
         if(marked) {
             workspace = dir;
@@ -609,7 +609,7 @@ std::string build_pch(Project& project,
     // The writer's own source is no dep of its unit, but the PCH holds it.
     auto& files = project.file_table;
     auto self = files.intern(Spelling::absolute(file));
-    bool reads = writer.file == self || llvm::any_of(unit->deps(), [&](const DepFile& dep) {
+    bool reads = writer.file == self || std::ranges::any_of(unit->deps(), [&](const DepFile& dep) {
                      return files.intern(Spelling::absolute(dep.path)) == self;
                  });
     bool built = unit->has_output() && !reads;

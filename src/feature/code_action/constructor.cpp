@@ -66,16 +66,18 @@ bool callable(const clang::CXXConstructorDecl* ctor, const clang::CXXRecordDecl*
     if(ctor->getAccess() == clang::AS_public) {
         return true;
     }
-    return llvm::any_of(ctor->getParent()->friends(), [&](const clang::FriendDecl* friend_decl) {
-        const clang::CXXRecordDecl* befriended = nullptr;
-        if(const auto* type = friend_decl->getFriendType()) {
-            befriended = type->getType()->getAsCXXRecordDecl();
-        } else if(const auto* pattern = llvm::dyn_cast_if_present<clang::ClassTemplateDecl>(
-                      friend_decl->getFriendDecl())) {
-            befriended = pattern->getTemplatedDecl();
-        }
-        return befriended && befriended->getCanonicalDecl() == caller->getCanonicalDecl();
-    });
+    return std::ranges::any_of(
+        ctor->getParent()->friends(),
+        [&](const clang::FriendDecl* friend_decl) {
+            const clang::CXXRecordDecl* befriended = nullptr;
+            if(const auto* type = friend_decl->getFriendType()) {
+                befriended = type->getType()->getAsCXXRecordDecl();
+            } else if(const auto* pattern = llvm::dyn_cast_if_present<clang::ClassTemplateDecl>(
+                          friend_decl->getFriendDecl())) {
+                befriended = pattern->getTemplatedDecl();
+            }
+            return befriended && befriended->getCanonicalDecl() == caller->getCanonicalDecl();
+        });
 }
 
 /// Whether a `const T&` argument copy-constructs the class. One not yet
@@ -132,9 +134,11 @@ bool declares_std_move(clang::ASTContext& context, clang::SourceLocation locatio
     auto& SM = context.getSourceManager();
     for(auto* decl: context.getTranslationUnitDecl()->lookup(&context.Idents.get("std"))) {
         if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
-            return llvm::any_of(ns->lookup(&context.Idents.get("move")), [&](const auto* move) {
-                return SM.isBeforeInTranslationUnit(move->getLocation(), location);
-            });
+            return std::ranges::any_of(ns->lookup(&context.Idents.get("move")),
+                                       [&](const auto* move) {
+                                           return SM.isBeforeInTranslationUnit(move->getLocation(),
+                                                                               location);
+                                       });
         }
     }
     return false;
@@ -181,7 +185,7 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
     std::string parameters;
     std::string initializers;
     bool moves_any = false;
-    for(auto [index, field]: llvm::enumerate(fields)) {
+    for(auto [index, field]: std::views::enumerate(fields)) {
         auto type = field->getType();
         bool moves = type->isRValueReferenceType();
         if(!type->isReferenceType()) {

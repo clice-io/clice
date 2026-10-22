@@ -116,7 +116,8 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     auto past_paths = [&](std::uint32_t file) {
         return file >= count;
     };
-    if(llvm::any_of(references, past_paths) || llvm::any_of(instantiations, past_paths)) {
+    if(std::ranges::any_of(references, past_paths) ||
+       std::ranges::any_of(instantiations, past_paths)) {
         LOG_DEBUG("Rejecting TU index: reference file past the path table");
         return {};
     }
@@ -354,21 +355,22 @@ std::optional<std::vector<TUSharedLocal>>
     TUIndex::shared_locals(const llvm::BitVector& held) const {
     std::vector<TUSharedLocal> result;
     bool valid = true;
-    for_each_symbol(
-        [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t> files) {
-            if(identity.scope == SymbolScope::External || files.size() < 2) {
-                return true;
-            }
-            if(llvm::any_of(files, [&](std::uint32_t path_id) { return !held.test(path_id); })) {
-                valid = false;
-                return false;
-            }
-            result.push_back({
-                .symbol = hash,
-                .paths = {files.begin(), files.end()}
-            });
+    for_each_symbol([&](SymbolHash hash,
+                        const SymbolView& identity,
+                        llvm::ArrayRef<std::uint32_t> files) {
+        if(identity.scope == SymbolScope::External || files.size() < 2) {
             return true;
+        }
+        if(std::ranges::any_of(files, [&](std::uint32_t path_id) { return !held.test(path_id); })) {
+            valid = false;
+            return false;
+        }
+        result.push_back({
+            .symbol = hash,
+            .paths = {files.begin(), files.end()}
         });
+        return true;
+    });
     if(!valid) {
         return std::nullopt;
     }

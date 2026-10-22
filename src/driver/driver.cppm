@@ -384,7 +384,7 @@ inline int run_subcommands(kota::deco::cli::SubCommander& commander,
                            Errors errors = Errors::Text) {
     namespace text = kota::deco::cli::text;
     if(!args.empty() && args.front().starts_with("-") &&
-       !llvm::is_contained(kota::deco::decl::help_names, args.front())) {
+       !std::ranges::contains(kota::deco::decl::help_names, args.front())) {
         return usage_error(
             errors,
             text::render_diagnostic(
@@ -429,13 +429,13 @@ inline CommandHandler with_operations(std::string_view overview,
     return [commander, main = std::move(*main), names = std::move(names), main_targets](
                std::span<std::string> args) mutable {
         if(!args.empty() && !args.front().starts_with("-") &&
-           (!main_targets || llvm::is_contained(names, args.front()))) {
+           (!main_targets || std::ranges::contains(names, args.front()))) {
             return (*commander)(args);
         }
         auto code = main(args);
         // Arguments that do not parse fail before --help is seen.
-        if(code == 0 && llvm::any_of(args, [](std::string_view arg) {
-               return llvm::is_contained(kota::deco::decl::help_names, arg);
+        if(code == 0 && std::ranges::any_of(args, [](std::string_view arg) {
+               return std::ranges::contains(kota::deco::decl::help_names, arg);
            })) {
             driver::println();
             print_usage(*commander);

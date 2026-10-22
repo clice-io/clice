@@ -203,6 +203,7 @@ Domain words with one meaning each — use them only in that meaning:
 
 - Use C++20/23 APIs whenever possible. Do NOT use `<iostream>` facilities (`std::cout`, `std::cin`, `std::cerr`, etc.). Also do NOT use C-style I/O (`printf`, `fprintf`, etc.).
 - Prefer `std::ranges` / `std::views` APIs over raw loops and traditional `<algorithm>` calls.
+- Range helpers come from the standard library, never LLVM's `STLExtras`: `std::ranges::contains` not `llvm::is_contained` (a set or map uses its own `.contains()`), `std::ranges::any_of` / `find_if` / `sort` not `llvm::`'s, `std::views::enumerate` / `zip` / `reverse` / `transform` not `llvm::enumerate` / `zip` / `reverse` / `map_range`. Only `llvm::concat` (C++26 in the standard) and `llvm::interleave` stay.
 - Prefer LLVM's efficient data structures (e.g., `llvm::SmallVector`, `llvm::DenseMap`, `llvm::StringMap`, `llvm::StringRef`) over their `std` counterparts when appropriate.
 
 ## Parameter Passing Preferences

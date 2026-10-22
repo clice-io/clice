@@ -265,8 +265,9 @@ struct PlannedRename {
 
     /// Whether anything keeps the edits from being written.
     bool blocked() const {
-        return plan.blocked() ||
-               llvm::any_of(result.renames, [](const RenameEntry& entry) { return entry.error; });
+        return plan.blocked() || std::ranges::any_of(result.renames, [](const RenameEntry& entry) {
+                   return entry.error.has_value();
+               });
     }
 };
 

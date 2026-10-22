@@ -130,7 +130,7 @@ GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) 
     // `include` beside the libraries of GCC's own library directory, which
     // LIBRARY_PATH lists after any multilib variant (thumb/v7e-m+fp/hard/).
     for(std::size_t i = 0; i < output.search_dirs.size() && !output.private_dir; i += 1) {
-        if(llvm::is_contained(library_path, lexical(output.search_dirs[i].path))) {
+        if(std::ranges::contains(library_path, lexical(output.search_dirs[i].path))) {
             output.private_dir = i;
         }
     }

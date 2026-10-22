@@ -145,9 +145,11 @@ CallGraph
     CallGraph graph;
     if(options.callers) {
         auto info = index.symbol_info(root, anchor);
-        bool value = info && llvm::is_contained(
-                                 {SymbolKind::Variable, SymbolKind::Field, SymbolKind::EnumMember},
-                                 info->kind);
+        bool value =
+            info && std::ranges::contains(std::array<SymbolKind, 3>{SymbolKind::Variable,
+                                                                    SymbolKind::Field,
+                                                                    SymbolKind::EnumMember},
+                                          info->kind);
         if(value) {
             // A function's local has no caller but that function.
             if(info->kind != SymbolKind::Variable || info->scope != SymbolScope::FunctionLocal) {
@@ -175,7 +177,7 @@ CallGraph
                             // one macro invocation spells share the
                             // invocation's site, so the qualified one hides
                             // the other and the override loses this caller.
-                            if(llvm::none_of(direct, [&](const Site& site) {
+                            if(std::ranges::none_of(direct, [&](const Site& site) {
                                    return covers(call, site);
                                })) {
                                 by_caller[caller].push_back(std::move(call));

@@ -226,7 +226,7 @@ LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spe
     if(it == aliases.end()) {
         return nullptr;
     }
-    auto alias = llvm::find_if(it->second, [&](const AliasDocument& document) {
+    auto alias = std::ranges::find_if(it->second, [&](const AliasDocument& document) {
         return document.spelling == spelling;
     });
     return alias != it->second.end() ? &*alias : nullptr;
@@ -382,7 +382,7 @@ void LSPClient::register_lifecycle() {
            params.capabilities.text_document->hover.has_value() &&
            params.capabilities.text_document->hover->content_format.has_value()) {
             auto& formats = *params.capabilities.text_document->hover->content_format;
-            auto preferred = llvm::find_if(formats, [](const protocol::MarkupKind& kind) {
+            auto preferred = std::ranges::find_if(formats, [](const protocol::MarkupKind& kind) {
                 return kind == protocol::MarkupKind::Markdown ||
                        kind == protocol::MarkupKind::PlainText;
             });
@@ -417,10 +417,10 @@ void LSPClient::register_lifecycle() {
                 .snippets = item.snippet_support,
                 .insert_replace = item.insert_replace_support,
                 .markdown = item.documentation_format &&
-                            llvm::any_of(*item.documentation_format,
-                                         [](const std::string& kind) {
-                                             return kind == protocol::MarkupKind::Markdown;
-                                         }),
+                            std::ranges::any_of(*item.documentation_format,
+                                                [](const std::string& kind) {
+                                                    return kind == protocol::MarkupKind::Markdown;
+                                                }),
             };
         }
 
@@ -1268,7 +1268,8 @@ void LSPClient::register_extensions() {
             return resolve_uri(*uri).project;
         }
         auto& projects = this->server.projects;
-        auto it = llvm::find_if(projects, [](auto& project) { return !project->root.empty(); });
+        auto it =
+            std::ranges::find_if(projects, [](auto& project) { return !project->root.empty(); });
         return it != projects.end() ? *it : projects.front();
     };
 
@@ -1328,8 +1329,8 @@ void LSPClient::register_extensions() {
                 co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidParams,
                                                      R"(loop must be "cdb" or "workspace")"});
             }
-            if(llvm::none_of(srv.projects,
-                             [](auto& project) { return project->tracker != nullptr; })) {
+            if(std::ranges::none_of(srv.projects,
+                                    [](auto& project) { return project->tracker != nullptr; })) {
                 co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
                                                      "No workspace is loaded"});
             }
@@ -1363,7 +1364,7 @@ void LSPClient::register_extensions() {
                 }
                 result.unsaved = result.unsaved || has_unsaved_state(project->project);
             }
-            llvm::sort(result.failed);
+            std::ranges::sort(result.failed);
             result.pending = srv.pending_work(this->peer);
             co_return to_raw(result);
         });
@@ -1485,8 +1486,9 @@ void LSPClient::register_extensions() {
 
                 stats.header_contexts +=
                     static_cast<std::uint32_t>(served->contexts.header_contexts.size());
-                stats.synthesized_contexts += static_cast<std::uint32_t>(llvm::count_if(
-                    llvm::make_second_range(served->contexts.header_contexts),
+                stats.synthesized_contexts += static_cast<std::uint32_t>(std::ranges::count_if(
+                    std::views::transform(served->contexts.header_contexts,
+                                          [](auto& entry) -> auto& { return entry.second; }),
                     [](const HeaderContext& context) { return context.synthesized != nullptr; }));
                 stats.sessions += static_cast<std::uint32_t>(served->sessions.sessions.size());
                 stats.import_scans += served->sched.pcm.import_scans;

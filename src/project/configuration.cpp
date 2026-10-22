@@ -37,7 +37,7 @@ llvm::StringRef fallback_configuration(const Config& config) {
         return {};
     }
     llvm::StringRef preferred = config.default_configuration;
-    return llvm::is_contained(tags, preferred) ? preferred : tags.front();
+    return std::ranges::contains(tags, preferred) ? preferred : tags.front();
 }
 
 std::string read_selection(llvm::StringRef cache_dir) {
@@ -79,7 +79,7 @@ std::expected<void, std::error_code> write_selection(llvm::StringRef cache_dir,
 }
 
 bool declares_configuration(const Config& config, llvm::StringRef name) {
-    return llvm::is_contained(config.configurations(), name);
+    return std::ranges::contains(config.configurations(), name);
 }
 
 std::expected<void, std::string> check_requested_configuration(const Config& config,
@@ -105,7 +105,7 @@ std::string resolve_configuration(const Config& config, llvm::StringRef requeste
     }
     auto fallback = fallback_configuration(config);
     if(!requested.empty()) {
-        if(llvm::is_contained(tags, requested)) {
+        if(std::ranges::contains(tags, requested)) {
             LOG_INFO("Active configuration: {} (--configuration)", requested);
             return requested.str();
         }
@@ -114,7 +114,7 @@ std::string resolve_configuration(const Config& config, llvm::StringRef requeste
                      llvm::join(tags, ", "));
     }
     if(auto selected = read_selection(config.project.cache_dir); !selected.empty()) {
-        if(llvm::is_contained(tags, llvm::StringRef(selected))) {
+        if(std::ranges::contains(tags, llvm::StringRef(selected))) {
             LOG_INFO("Active configuration: {} (selected)", selected);
             return selected;
         }

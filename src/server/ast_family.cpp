@@ -193,7 +193,8 @@ static void note_provider_choices(std::vector<feature::FileDiagnostic>& diagnost
                                   const Project& project,
                                   const Session& session) {
     auto& graph = project.dep_graph;
-    for(auto [dep, offset]: llvm::zip_equal(imports.declared, imports.offsets)) {
+    assert(std::ranges::size(imports.declared) == std::ranges::size(imports.offsets));
+    for(auto [dep, offset]: std::views::zip(imports.declared, imports.offsets)) {
         if(PCMFamily::is_unresolved(dep)) {
             continue;
         }
@@ -275,7 +276,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     std::string pcm_keys;
     llvm::SmallVector<Fid> modules;
     bool imported = false;
-    for(auto [dep, offset]: llvm::zip_equal(imports.declared, imports.offsets)) {
+    assert(std::ranges::size(imports.declared) == std::ranges::size(imports.offsets));
+    for(auto [dep, offset]: std::views::zip(imports.declared, imports.offsets)) {
         if(offset != 0 && offset >= bound) {
             continue;
         }
@@ -904,7 +906,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // resolve again: under it, another host may come first.
         llvm::SmallVector<Fid, 2> retried;
         while(resolution.tree_wanted.valid() &&
-              !llvm::is_contained(retried, resolution.tree_wanted)) {
+              !std::ranges::contains(retried, resolution.tree_wanted)) {
             auto host = resolution.tree_wanted;
             retried.push_back(host);
             if(!enterings(project, host, path_id)) {
@@ -1378,7 +1380,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
         entry.projection = std::move(next);
         if(tidy_config) {
-            llvm::append_range(result.value().deps, tidy_config->files);
+            result.value().deps.append_range(tidy_config->files);
         }
         if(tidy_attempt) {
             session->quarantine->on_success(tidy_kind);

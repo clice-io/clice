@@ -503,7 +503,7 @@ ZEST_CASE(LocalHitsNameFile) {
     for(auto& hit: built.search(*SymbolQuery::parse("helper"), 10, {}).hits) {
         hits.emplace_back(corpus.name_of(hit.hash), hit.file.str());
     }
-    llvm::sort(hits);
+    std::ranges::sort(hits);
     ZEXPECT(hits == (std::vector<std::pair<std::string, std::string>>{
                         {"helper",     ""            },
                         {"helper",     "/w/src/b.cpp"},

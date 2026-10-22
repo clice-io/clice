@@ -17,7 +17,7 @@ namespace {
 /// `void f(), g();` declares two functions in one declaration: the text
 /// belongs to both, so neither can be rewritten on its own.
 bool shares_declaration(const clang::FunctionDecl* decl) {
-    return llvm::any_of(decl->getDeclContext()->decls(), [&](const clang::Decl* sibling) {
+    return std::ranges::any_of(decl->getDeclContext()->decls(), [&](const clang::Decl* sibling) {
         return sibling != decl && !sibling->isImplicit() &&
                sibling->getBeginLoc() == decl->getBeginLoc();
     });
@@ -445,7 +445,7 @@ private:
                             {},
                             decl->getDeclContext());
         if(spelled) {
-            for(auto offset: llvm::reverse(parameter_names(*spelled))) {
+            for(auto offset: std::views::reverse(parameter_names(*spelled))) {
                 spelled->insert(offset, "::");
             }
         }
@@ -560,7 +560,7 @@ private:
             ++last;
         }
         std::string text;
-        for(const auto& token: llvm::make_range(first, std::next(last))) {
+        for(const auto& token: std::ranges::subrange(first, std::next(last))) {
             if(is_specifier(token.kind) && !declaration_only(token.kind)) {
                 text += token.text(source);
                 text += ' ';
@@ -631,7 +631,7 @@ const clang::CXXRecordDecl* outermost_record(const clang::CXXRecordDecl* record)
 std::optional<std::uint32_t> semicolon_after(CompilationUnit& unit, clang::SourceLocation end) {
     auto& sm = unit.context().getSourceManager();
     auto tokens = unit.focus_file().tokens().expanded();
-    auto token = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
+    auto token = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
         return !sm.isBeforeInTranslationUnit(end, token.location());
     });
     while(token != tokens.end() && token->kind() == clang::tok::kw___attribute) {

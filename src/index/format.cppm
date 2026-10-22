@@ -827,7 +827,8 @@ struct FieldBytes {
     llvm::SmallVector<std::pair<std::string, std::uint64_t>> fields;
 
     void add(llvm::StringRef name, std::uint64_t bytes) {
-        auto it = llvm::find_if(fields, [&](const auto& field) { return field.first == name; });
+        auto it =
+            std::ranges::find_if(fields, [&](const auto& field) { return field.first == name; });
         if(it == fields.end()) {
             fields.emplace_back(name.str(), bytes);
         } else {

@@ -110,7 +110,7 @@ LocalSourceRange comment_text(llvm::StringRef content, LocalSourceRange comment)
     constexpr llvm::StringLiteral markers[] =
         {"///<", "//!<", "/**<", "/*!<", "///", "//!", "/**", "/*!", "//", "/*"};
     auto text = content.slice(comment.begin, comment.end);
-    std::size_t begin = llvm::find_if(markers, [&](llvm::StringRef marker) {
+    std::size_t begin = std::ranges::find_if(markers, [&](llvm::StringRef marker) {
                             return text.starts_with(marker);
                         })->size();
     std::size_t end = text.size();
@@ -124,12 +124,12 @@ LocalSourceRange comment_text(llvm::StringRef content, LocalSourceRange comment)
 
 bool quoted(TokenKind kind) {
     return clang::tok::isStringLiteral(kind) || kind == clang::tok::header_name ||
-           llvm::is_contained({clang::tok::char_constant,
-                               clang::tok::wide_char_constant,
-                               clang::tok::utf8_char_constant,
-                               clang::tok::utf16_char_constant,
-                               clang::tok::utf32_char_constant},
-                              kind);
+           std::ranges::contains(std::array{clang::tok::char_constant,
+                                            clang::tok::wide_char_constant,
+                                            clang::tok::utf8_char_constant,
+                                            clang::tok::utf16_char_constant,
+                                            clang::tok::utf32_char_constant},
+                                 kind);
 }
 
 /// The characters between a literal's quotes: past an encoding prefix and
@@ -610,7 +610,7 @@ bool ends_statement(const SelectionTree::Node& node) {
     } else if(const auto* attributed = llvm::dyn_cast<clang::AttributedStmt>(owner)) {
         bodies = {attributed->getSubStmt()};
     }
-    return llvm::is_contained(bodies, statement);
+    return std::ranges::contains(bodies, statement);
 }
 
 /// The angle brackets of the explicit template arguments a name carries
@@ -711,7 +711,8 @@ void add_function(CompilationUnit& unit,
             // A type's location leaves out the qualifiers written before it
             // (`const std::string& name()` starts at `std`).
             for(const auto* token = token_before(tokens, begin);
-                token && llvm::is_contained({"const", "volatile"}, token->text(content));
+                token &&
+                std::ranges::contains(std::array{"const", "volatile"}, token->text(content));
                 token = token_before(tokens, begin)) {
                 begin = token->range.begin;
             }
@@ -769,7 +770,8 @@ std::optional<clang::SourceRange> case_section(const SelectionTree::Node& node) 
         return std::nullopt;
     }
     llvm::ArrayRef<clang::Stmt*> statements(body->body_begin(), body->body_end());
-    auto first = static_cast<std::size_t>(llvm::find(statements, statement) - statements.begin());
+    auto first =
+        static_cast<std::size_t>(std::ranges::find(statements, statement) - statements.begin());
     while(first > 0 && !is_label(statements[first])) {
         first -= 1;
     }
@@ -900,7 +902,7 @@ auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
                                  const PositionMap& map,
                                  PositionEncoding encoding) -> protocol::SelectionRange {
     std::unique_ptr<protocol::SelectionRange> parent;
-    for(const auto& range: llvm::reverse(ranges)) {
+    for(const auto& range: std::views::reverse(ranges)) {
         auto node = std::make_unique<protocol::SelectionRange>();
         node->range = *map.range(range, encoding);
         node->parent = std::move(parent);

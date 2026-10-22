@@ -97,7 +97,7 @@ void for_each_version(Manifest& manifest, Visit&& visit) {
     for(auto& node: manifest.nodes) {
         visit(node.file);
     }
-    for(auto& version: llvm::make_first_range(manifest.contributions)) {
+    for(auto& version: std::views::keys(manifest.contributions)) {
         visit(version.raw);
     }
     for(auto& version: manifest.absent) {

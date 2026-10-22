@@ -26,7 +26,7 @@ bool admits(llvm::ArrayRef<protocol::CodeActionKind> only, llvm::StringRef kind)
     if(only.empty()) {
         return true;
     }
-    return llvm::any_of(only, [&](const protocol::CodeActionKind& wanted) {
+    return std::ranges::any_of(only, [&](const protocol::CodeActionKind& wanted) {
         llvm::StringRef prefix = wanted;
         return kind == prefix || (kind.starts_with(prefix) && kind[prefix.size()] == '.');
     });
@@ -91,9 +91,10 @@ std::optional<std::string> include_spelling(CanonicalRef header,
     for(auto& dir: search.dirs) {
         dirs.push_back(CanonicalPath(Spelling::absolute(dir.path)));
     }
-    for(auto [index, dir]: llvm::enumerate(dirs)) {
+    for(auto [index, dir]: std::views::enumerate(dirs)) {
         if(auto relative = below(dir)) {
-            candidates.push_back({*relative, index >= search.angled_start_idx});
+            candidates.push_back(
+                {*relative, static_cast<std::size_t>(index) >= search.angled_start_idx});
         }
     }
     std::ranges::stable_sort(candidates, {}, [](const Candidate& candidate) {
@@ -118,8 +119,9 @@ bool internal_header(llvm::StringRef spelling) {
         return false;
     }
     auto name = spelling.drop_front().drop_back();
-    return llvm::any_of(
-        llvm::make_range(llvm::sys::path::begin(name), llvm::sys::path::end(name)),
+    return std::any_of(
+        llvm::sys::path::begin(name),
+        llvm::sys::path::end(name),
         [](llvm::StringRef part) { return part == "bits" || part.starts_with("__"); });
 }
 
@@ -152,7 +154,7 @@ std::optional<std::string> Features::include_for(const feature::ScopeCandidate& 
     }
     for(const auto& site: query.sites(candidate.symbol, file, RelationKind::Declaration)) {
         if(site.file.valid() && is_header_path(site.path) &&
-           !llvm::is_contained(headers, site.file)) {
+           !std::ranges::contains(headers, site.file)) {
             headers.push_back(site.file);
         }
     }
@@ -177,8 +179,8 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                           kota::cancellation_token token) {
     auto& session = ticket.session;
     std::vector<protocol::CodeAction> out;
-    if(llvm::none_of(feature::code_action_kinds,
-                     [&](std::string_view kind) { return admits(only, kind); })) {
+    if(std::ranges::none_of(feature::code_action_kinds,
+                            [&](std::string_view kind) { return admits(only, kind); })) {
         co_return out;
     }
     // Code actions are AST products with no index projection; a session
@@ -257,7 +259,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                     return true;
                 }
                 auto chain = query.container_chain(hash, source->file);
-                if(llvm::none_of(chain, [&](const index::SymbolInfo& container) {
+                if(std::ranges::none_of(chain, [&](const index::SymbolInfo& container) {
                        return container.hash == request.container;
                    })) {
                     return true;

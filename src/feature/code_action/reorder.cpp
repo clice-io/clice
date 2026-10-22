@@ -154,8 +154,8 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     LocalSourceRange lines{begin, line_end(content, range->end - 1)};
 
     using enum LexicalInfo::Directive::Kind;
-    if(llvm::any_of(unit.focus_file().lexical().directives, [&](const auto& directive) {
-           return llvm::is_contained({If, Else, EndIf}, directive.kind) &&
+    if(std::ranges::any_of(unit.focus_file().lexical().directives, [&](const auto& directive) {
+           return std::ranges::contains(std::array{If, Else, EndIf}, directive.kind) &&
                   directive.range.begin >= lines.begin && directive.range.begin < lines.end;
        })) {
         return std::nullopt;
@@ -279,8 +279,9 @@ std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot>
         }
         auto include = directive.range;
         if(include.begin <= region.begin || include.begin >= region.end ||
-           llvm::any_of(slots,
-                        [&](const Slot& slot) { return slot.range.contains(include.begin); })) {
+           std::ranges::any_of(slots, [&](const Slot& slot) {
+               return slot.range.contains(include.begin);
+           })) {
             continue;
         }
         for(const auto& slot: slots) {
@@ -321,7 +322,7 @@ std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot>
 /// it.
 std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot> slots) {
     std::ranges::sort(slots, {}, [](const Slot& slot) { return slot.range.begin; });
-    for(auto [previous, slot]: llvm::zip(slots, llvm::drop_begin(slots))) {
+    for(auto [previous, slot]: std::views::zip(slots, std::views::drop(slots, 1))) {
         if(slot.range.begin < previous.range.end) {
             return {};
         }
@@ -329,8 +330,8 @@ std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot
     llvm::MapVector<std::pair<const clang::DeclContext*, std::optional<std::uint32_t>>,
                     llvm::SmallVector<std::size_t>>
         blocks;
-    for(auto [index, slot]: llvm::enumerate(slots)) {
-        blocks[{slot.block, slot.branch}].push_back(index);
+    for(auto [index, slot]: std::views::enumerate(slots)) {
+        blocks[{slot.block, slot.branch}].push_back(static_cast<std::size_t>(index));
     }
 
     // The slot whose text moves into each slot, and where each slot's text
@@ -340,7 +341,7 @@ std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot
     std::vector<bool> pinned(slots.size(), false);
     // Orders each block's unpinned slots by rank; whether any text moves.
     auto assign = [&] {
-        for(const auto& members: llvm::make_second_range(blocks)) {
+        for(const auto& members: std::views::values(blocks)) {
             llvm::SmallVector<std::size_t> movable;
             for(auto index: members) {
                 if(pinned[index]) {
@@ -351,14 +352,14 @@ std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot
             }
             auto ordered = movable;
             std::ranges::sort(ordered, {}, [&](std::size_t index) { return slots[index].rank; });
-            for(auto [position, text]: llvm::zip(movable, ordered)) {
+            for(auto [position, text]: std::views::zip(movable, ordered)) {
                 source[position] = text;
             }
         }
         bool moves = false;
-        for(auto [position, text]: llvm::enumerate(source)) {
-            target[text] = position;
-            moves |= position != text;
+        for(auto [position, text]: std::views::enumerate(source)) {
+            target[text] = static_cast<std::size_t>(position);
+            moves |= static_cast<std::size_t>(position) != text;
         }
         return moves;
     };
@@ -404,8 +405,8 @@ std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot
 
     auto content = unit.focus_file().content();
     std::vector<TextReplacement> edits;
-    for(auto [position, text]: llvm::enumerate(source)) {
-        if(position == text) {
+    for(auto [position, text]: std::views::enumerate(source)) {
+        if(static_cast<std::size_t>(position) == text) {
             continue;
         }
         auto range = slots[text].range;

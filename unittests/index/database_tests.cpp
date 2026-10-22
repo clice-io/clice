@@ -318,7 +318,7 @@ void swap_page_keys(llvm::StringRef file, char prefix) {
             pages.emplace_back(bytes.substr(node + 8, u16(node + 6)), page);
         }
     }
-    llvm::sort(pages);
+    std::ranges::sort(pages);
     require(pages.size() > 1, "too few leaf pages of the kind");
     auto pointers = pages[1].second + 16;
     auto first = bytes.begin() + static_cast<std::ptrdiff_t>(pointers);

@@ -638,7 +638,7 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
                          : CanonicalPath(Spelling::absolute(project.config.project.cache_dir));
     std::vector<CanonicalPath> skipped_dirs;
     auto skip = [&](CanonicalPath dir) {
-        if(!llvm::is_contained(skipped_dirs, dir)) {
+        if(!std::ranges::contains(skipped_dirs, dir)) {
             skipped_dirs.push_back(std::move(dir));
         }
     };
@@ -679,7 +679,7 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
         if(!formats(path) || !build.formattable(path) ||
            (unit.contains(fid) ? !workspace_file(root, cache_dir, path)
                                : project.dep_graph.get_includers(fid).empty() ||
-                                     llvm::any_of(skipped_dirs, [&](auto& dir) {
+                                     std::ranges::any_of(skipped_dirs, [&](auto& dir) {
                                          return path::under(path, dir);
                                      }))) {
             continue;
@@ -829,7 +829,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             }
         }
         for(auto& file: project_files(project, load.members)) {
-            if(!directories.empty() && llvm::none_of(directories, [&](auto& directory) {
+            if(!directories.empty() && std::ranges::none_of(directories, [&](auto& directory) {
                    return path::under(file.path, directory);
                })) {
                 continue;
@@ -870,7 +870,8 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     }
 
     llvm::SetVector<llvm::StringRef> errors;
-    for(auto [file, format]: llvm::zip_equal(files, formats)) {
+    assert(std::ranges::size(files) == std::ranges::size(formats));
+    for(auto [file, format]: std::views::zip(files, formats)) {
         result.output += format.violations;
         if(!format.error.empty()) {
             errors.insert(format.error);

@@ -56,7 +56,7 @@ void merge() {
         auto path = entry.getKey().str();
         ZASSERT(!static_cast<bool>(vfs::write(path, entry.second.content)));
         marked[path] = entry.second.nameless_offsets;
-        if(!llvm::is_contained(scope, path)) {
+        if(!std::ranges::contains(scope, path)) {
             scope.push_back(path);
         }
     }

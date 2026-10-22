@@ -340,7 +340,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             files.push_back(file);
             continue;
         }
-        auto includes_rewritten = llvm::any_of(info.includes, [&](std::uint32_t included) {
+        auto includes_rewritten = std::ranges::any_of(info.includes, [&](std::uint32_t included) {
             return rewriter.rewritten(included) && rewriter.header(included);
         });
         if(!includes_rewritten || units[file].kind == Unit::Kind::Fragment) {
@@ -492,7 +492,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             if(action == Action::Import) {
                 draft.modules.insert(partition.modules[partition.module_of[named]]);
             } else if(action == Action::Keep && rewriter.textual(named) &&
-                      !llvm::is_contained(info.includes, named)) {
+                      !std::ranges::contains(info.includes, named)) {
                 draft.needed.insert(named);
             }
         }
@@ -501,7 +501,8 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         for(auto defining: units[file].macros) {
             if(rewriter.rewritten(defining) && rewriter.header(defining)) {
                 draft.macro_headers.insert(defining);
-            } else if(rewriter.textual(defining) && !llvm::is_contained(info.includes, defining)) {
+            } else if(rewriter.textual(defining) &&
+                      !std::ranges::contains(info.includes, defining)) {
                 draft.needed.insert(defining);
             }
         }
@@ -527,7 +528,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 pending.push_back(next);
                 if(units[next].kind == Unit::Kind::Internal) {
                     for(auto header: drafts.at(next).textual) {
-                        if(!llvm::is_contained(facts.files[file].includes, header)) {
+                        if(!std::ranges::contains(facts.files[file].includes, header)) {
                             draft.needed.insert(header);
                         }
                     }
@@ -577,7 +578,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             lines.emplace_back();
         }
         lines.push_back(std::format(R"(#include "{}")", prelude.str()));
-        llvm::append_range(lines, draft.fragment);
+        lines.append_range(draft.fragment);
         for(auto needed: draft.needed) {
             lines.push_back(std::format("#include {}", rewriter.spelling(needed, file)));
         }
@@ -586,7 +587,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             macro_headers.insert(defining);
             macro_includes.insert(macro_include(defining, file));
         }
-        llvm::append_range(lines, macro_includes);
+        lines.append_range(macro_includes);
 
         auto interface = module_unit && units[file].kind == Unit::Kind::Interface;
         if(module_unit) {
@@ -619,7 +620,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             lines.push_back("export {");
         }
         auto verbatim = lines.size();
-        llvm::append_range(lines, draft.body);
+        lines.append_range(draft.body);
         if(interface) {
             lines.push_back("}");
         }
@@ -648,7 +649,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             entry.sources.push_back(path);
         }
         for(auto& imported: draft.modules) {
-            if(!llvm::is_contained(entry.imports, imported)) {
+            if(!std::ranges::contains(entry.imports, imported)) {
                 entry.imports.push_back(imported);
             }
         }

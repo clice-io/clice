@@ -42,7 +42,7 @@ bool defines_specialization(CompilationUnit& unit, llvm::StringRef name) {
     auto found = unit.tu()->lookup(&unit.context().Idents.get(name));
     auto* pattern = llvm::dyn_cast<clang::FunctionTemplateDecl>(found.front());
     ZASSERT(pattern);
-    ZASSERT(llvm::range_size(pattern->specializations()) == 1U);
+    ZASSERT(std::ranges::distance(pattern->specializations()) == 1U);
     return (*pattern->specializations().begin())->isDefined();
 }
 
@@ -147,7 +147,8 @@ ZEST_CASE(OverlayNamesRedirectedFile) {
     ZASSERT(built->completed());
     ZASSERT(built->diagnostics().empty());
     auto real = CanonicalPath(Spelling::absolute(tmp.path("real/config.h"))).str();
-    ZEXPECT(llvm::any_of(built->deps(), [&](const DepFile& dep) { return dep.path == real; }));
+    ZEXPECT(
+        std::ranges::any_of(built->deps(), [&](const DepFile& dep) { return dep.path == real; }));
 }
 
 ZEST_CASE(StopCompilation) {

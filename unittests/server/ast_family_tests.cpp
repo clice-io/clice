@@ -553,7 +553,8 @@ ZEST_CASE(DiamondDepsDeduplicated) {
     ZASSERT(entry != stack.project.pcm_builds.end());
     auto base = stack.project.file_table.intern(Spelling::absolute(tmp.path("base.cppm")));
     auto& deps = entry->second.deps;
-    ZEXPECT(llvm::count_if(deps, [&](const DepState& dep) { return dep.path_id == base; }) == 1);
+    ZEXPECT(std::ranges::count_if(deps, [&](const DepState& dep) { return dep.path_id == base; }) ==
+            1);
 }
 
 ZEST_CASE(ImportScanPerUnit) {

@@ -53,7 +53,7 @@ struct QualifiedName {
 /// another kind, or it holds a `<`: the text alone cannot tell a less-than
 /// from a template argument list, whose commas separate no arguments.
 std::optional<std::size_t> call_arguments(llvm::ArrayRef<Token> tokens) {
-    auto code = llvm::make_filter_range(tokens, [](const Token& token) {
+    auto code = std::views::filter(tokens, [](const Token& token) {
         return token.kind != clang::tok::comment;
     });
     if(code.begin() == code.end() || code.begin()->kind != clang::tok::l_paren) {
@@ -200,7 +200,8 @@ std::optional<std::uint32_t> fragment_end(const LexicalInfo& lexical) {
     }
     auto rest = llvm::ArrayRef(lexical.tokens)
                     .drop_front(lexical.token_at(lexical.modules.front().keyword.end));
-    return llvm::find_if(rest, [](const Token& token) { return token.is_eod(); })->range.begin;
+    return std::ranges::find_if(rest, [](const Token& token) { return token.is_eod(); })
+        ->range.begin;
 }
 
 /// Where the code of the file starts: its first token that is neither a
@@ -258,12 +259,12 @@ IncludeInsertion include_insertion(CompilationUnit& unit) {
     }
     auto& guard = lexical.include_guard;
     auto code = code_begin(content, lexical);
-    for(auto [index, directive]: llvm::enumerate(lexical.directives)) {
+    for(auto [index, directive]: std::views::enumerate(lexical.directives)) {
         if(directive.range.begin >= code) {
             break;
         }
         auto anchor = line_end(content, directive.range.end);
-        if(guard && index == guard->definition) {
+        if(guard && static_cast<std::size_t>(index) == guard->definition) {
             levels[1].prologue = anchor;
         } else if(directive.depth < levels.size() && directive.kind == Kind::Include) {
             levels[directive.depth].include = anchor;
@@ -274,7 +275,7 @@ IncludeInsertion include_insertion(CompilationUnit& unit) {
     // A line starting with `module` declares one only in a module unit; a
     // header compiled in its includer's context is none, whatever the
     // includer is.
-    bool declares_module = llvm::any_of(lexical.modules, [](const auto& module) {
+    bool declares_module = std::ranges::any_of(lexical.modules, [](const auto& module) {
         return module.kind == LexicalInfo::ModuleDeclaration::Kind::Declaration;
     });
     if(declares_module && !fragment && unit.is_named_module()) {
@@ -359,7 +360,7 @@ void add_include(CompilationUnit& unit, LocalSourceRange selection, std::vector<
         return;
     }
     auto focus = unit.focus_file();
-    bool unresolved = llvm::any_of(unit.diagnostics(), [&](const Diagnostic& diagnostic) {
+    bool unresolved = std::ranges::any_of(unit.diagnostics(), [&](const Diagnostic& diagnostic) {
         return focus.contains(diagnostic.fid) && diagnostic.range.valid() &&
                unresolved_name(diagnostic.id.value) && diagnostic.range.intersects(name->range);
     });

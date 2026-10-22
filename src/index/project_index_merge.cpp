@@ -89,7 +89,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         // one membership test of the file's record is the whole check —
         // the shard is not read.
         if(auto* record = file_record(global_id);
-           record && llvm::is_contained(record->stored, blob_hash)) {
+           record && std::ranges::contains(record->stored, blob_hash)) {
             if(!record_consumed(local_id, record->generation)) {
                 return std::unexpected(MergeError::Invalid);
             }
@@ -201,10 +201,10 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
             if(!record_consumed(local_id, fresh->content_hash())) {
                 return std::unexpected(MergeError::Invalid);
             }
-            llvm::append_range(used, fresh->resolutions());
+            used.append_range(fresh->resolutions());
         }
-        llvm::sort(used);
-        used.erase(llvm::unique(used), used.end());
+        std::ranges::sort(used);
+        used.erase(std::ranges::unique(used).begin(), used.end());
         std::optional<AddedUse> added;
         if(!used.empty()) {
             added = AddedUse{.use = use_hash(used), .resolutions = used};
@@ -234,10 +234,11 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // resolutions it uses, and what it reads through the precompiled header
     // or its modules, whose own units wrote the entries there.
     llvm::BitVector held(view.path_count());
-    for(auto local_id: llvm::make_first_range(section_contributions)) {
+    for(auto local_id: std::views::keys(section_contributions)) {
         held.set(local_id);
     }
-    for(auto local_id: llvm::make_first_range(llvm::make_second_range(unit_uses))) {
+    for(auto local_id:
+        std::views::transform(unit_uses, [](auto& entry) { return entry.second.first; })) {
         held.set(local_id);
     }
     llvm::DenseSet<Fid> read_precompiled;
@@ -309,7 +310,8 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         }
         manifest.shared_locals.push_back(std::move(entry));
     }
-    for(auto [local_id, use]: llvm::make_second_range(unit_uses)) {
+    for(auto [local_id, use]:
+        std::views::transform(unit_uses, [](auto& entry) -> auto& { return entry.second; })) {
         manifest.instantiations.push_back({.file = version_of[local_id], .use = use});
     }
 
@@ -370,7 +372,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     for(auto path_id: apply_manifest(tu_path_id, std::move(manifest))) {
         report.add_index_changed(path_id);
     }
-    for(auto path_id: llvm::make_first_range(instantiation_replacements)) {
+    for(auto path_id: std::views::keys(instantiation_replacements)) {
         refresh_live(path_id);
     }
 
@@ -407,7 +409,7 @@ std::vector<std::uint64_t> ProjectIndex::known_variants(Fid tu,
                                                         llvm::DenseSet<Fid> include_closure) const {
     auto& expected = include_closure;
     if(auto last = manifest(tu)) {
-        for(auto version: llvm::make_first_range(last->contributions)) {
+        for(auto version: std::views::keys(last->contributions)) {
             expected.insert(files.version(version).fid);
         }
     }
@@ -415,11 +417,11 @@ std::vector<std::uint64_t> ProjectIndex::known_variants(Fid tu,
     std::vector<std::uint64_t> known;
     for(auto file: expected) {
         if(auto* record = file_record(file)) {
-            llvm::append_range(known, record->stored);
+            known.append_range(record->stored);
         }
     }
-    llvm::sort(known);
-    known.erase(llvm::unique(known), known.end());
+    std::ranges::sort(known);
+    known.erase(std::ranges::unique(known).begin(), known.end());
     return known;
 }
 
@@ -427,7 +429,7 @@ std::vector<std::uint64_t>
     ProjectIndex::known_instantiations(Fid tu, llvm::DenseSet<Fid> include_closure) const {
     auto& expected = include_closure;
     if(auto last = manifest(tu)) {
-        for(auto version: llvm::make_first_range(last->contributions)) {
+        for(auto version: std::views::keys(last->contributions)) {
             expected.insert(files.version(version).fid);
         }
     }
@@ -456,8 +458,8 @@ std::vector<std::uint64_t>
             return true;
         });
     }
-    llvm::sort(known);
-    known.erase(llvm::unique(known), known.end());
+    std::ranges::sort(known);
+    known.erase(std::ranges::unique(known).begin(), known.end());
     return known;
 }
 
@@ -521,11 +523,11 @@ bool ProjectIndex::needs_reindex(Fid file) {
             return true;
         }
     }
-    if(llvm::any_of(manifest.imports,
-                    [&](VersionID version) { return file_version_stale(version); })) {
+    if(std::ranges::any_of(manifest.imports,
+                           [&](VersionID version) { return file_version_stale(version); })) {
         return true;
     }
-    return llvm::any_of(manifest.absent, [&](VersionID version) {
+    return std::ranges::any_of(manifest.absent, [&](VersionID version) {
         return files.disk.present(files.version(version).fid);
     });
 }

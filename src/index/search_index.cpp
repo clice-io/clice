@@ -289,10 +289,11 @@ std::vector<std::byte> build_search_blob(const SearchSnapshot& snapshot) {
         }
     }
     blob.token_keys.reserve(postings.size());
-    for(auto token: llvm::make_first_range(postings)) {
+    for(auto token:
+        std::views::transform(postings, [](auto& entry) -> auto& { return entry.first; })) {
         blob.token_keys.push_back(token);
     }
-    llvm::sort(blob.token_keys);
+    std::ranges::sort(blob.token_keys);
     for(auto token: blob.token_keys) {
         append_postings(blob.token_postings, blob.token_ends, postings.find(token)->second, count);
     }
@@ -307,10 +308,11 @@ std::vector<std::byte> build_search_blob(const SearchSnapshot& snapshot) {
             children[parent].add(id);
         }
     }
-    for(auto container: llvm::make_first_range(children)) {
+    for(auto container:
+        std::views::transform(children, [](auto& entry) -> auto& { return entry.first; })) {
         blob.container_entries.push_back(container);
     }
-    llvm::sort(blob.container_entries);
+    std::ranges::sort(blob.container_entries);
     for(auto container: blob.container_entries) {
         append_postings(blob.children_postings,
                         blob.children_ends,
@@ -448,7 +450,7 @@ std::optional<NameRank>
     if(!short_tokens.empty()) {
         llvm::SmallVector<NameToken, 64> tokens;
         name_tokens(name, tokens);
-        if(!llvm::all_of(short_tokens, [&](NameToken token) {
+        if(!std::ranges::all_of(short_tokens, [&](NameToken token) {
                return std::ranges::binary_search(tokens, token);
            })) {
             return std::nullopt;
@@ -652,11 +654,11 @@ struct SearchIndex::View {
         }
         // From the rarest on: each intersection is bounded by the
         // smallest operand so far.
-        llvm::sort(lists, [](const Bitmap* lhs, const Bitmap* rhs) {
+        std::ranges::sort(lists, [](const Bitmap* lhs, const Bitmap* rhs) {
             return lhs->cardinality() < rhs->cardinality();
         });
         Bitmap result = *lists.front();
-        for(auto* list: llvm::drop_begin(lists)) {
+        for(auto* list: std::views::drop(lists, 1)) {
             result &= *list;
             if(result.isEmpty()) {
                 break;
@@ -733,8 +735,8 @@ std::expected<void, llvm::StringRef> SearchIndex::View::bind(const Root& root) {
         return std::unexpected("file columns do not line up");
     }
     if(!sparse_ok(columns->local_entries, columns->local_paths.size(), count) ||
-       llvm::any_of(columns->local_paths,
-                    [&](std::uint32_t path) { return path >= columns->paths.size(); })) {
+       std::ranges::any_of(columns->local_paths,
+                           [&](std::uint32_t path) { return path >= columns->paths.size(); })) {
         return std::unexpected("local columns do not line up");
     }
     return {};
@@ -820,7 +822,7 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
         for(std::uint32_t i = 0; i < index.columns->paths.size(); i += 1) {
             llvm::SmallString<256> buffer;
             auto file = path::local(llvm::StringRef(index.columns->paths[i]), workspace, buffer);
-            if(llvm::any_of(query.paths, [&](const std::string& wanted) {
+            if(std::ranges::any_of(query.paths, [&](const std::string& wanted) {
                    return path_matches(wanted, file);
                })) {
                 allowed |= index.file(i);
@@ -943,8 +945,8 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query,
                 scan(everything(), false);
                 break;
             }
-            llvm::sort(tokens);
-            tokens.erase(llvm::unique(tokens), tokens.end());
+            std::ranges::sort(tokens);
+            tokens.erase(std::ranges::unique(tokens).begin(), tokens.end());
             scan(index.intersection(tokens).value_or(Bitmap{}) | index.long_names(), false);
             break;
         }

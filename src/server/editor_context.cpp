@@ -157,7 +157,7 @@ Resolution EditorContext::resolve_command(Fid path_id,
 llvm::SmallVector<Fid> EditorContext::chain_dependents(Fid path_id) const {
     llvm::SmallVector<Fid> result;
     for(auto& [header_id, context]: header_contexts) {
-        if(llvm::is_contained(context.chain, path_id)) {
+        if(std::ranges::contains(context.chain, path_id)) {
             result.push_back(header_id);
         }
     }

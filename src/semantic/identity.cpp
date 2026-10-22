@@ -150,7 +150,7 @@ const clang::DeclContext* context_of(const clang::Decl* decl) {
         return context;
     }
     for(auto* redecl: deduced->redecls()) {
-        if(!llvm::is_contained(redecl->getTemplateParameters()->asArray(), decl)) {
+        if(!std::ranges::contains(redecl->getTemplateParameters()->asArray(), decl)) {
             continue;
         }
         if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(redecl->getTemplatedDecl())) {

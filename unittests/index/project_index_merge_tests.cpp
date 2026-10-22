@@ -265,8 +265,8 @@ ZEST_CASE(KnownVariantsFromManifest) {
     auto a_id = project.file_table.intern(Spelling::absolute(a.tu_path));
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
     std::vector<std::uint64_t> expected = project.index.shard(header_id)->variants();
-    llvm::append_range(expected, project.index.shard(a_id)->variants());
-    llvm::sort(expected);
+    expected.append_range(project.index.shard(a_id)->variants());
+    std::ranges::sort(expected);
     ZEXPECT(project.index.known_variants(a_id, project.dep_graph.include_closure(a_id)) ==
             expected);
 
@@ -539,7 +539,7 @@ ZEST_CASE(AbsentSpellingsOnePlace) {
     auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto manifest = *f.project.index.manifest(tu);
     auto place = f.project.file_table.intern(Spelling::absolute(tmp.path("real/gen.h")));
-    ZASSERT(llvm::count_if(manifest.absent, [&](VersionID version) {
+    ZASSERT(std::ranges::count_if(manifest.absent, [&](VersionID version) {
                 return f.project.file_table.version(version).fid == place;
             }) == 1);
 }
@@ -840,7 +840,7 @@ void a() {}
     f.project.index.for_each_file_of_local(*print, id("a.h"), [&](Fid file) {
         reached.push_back(file);
     });
-    ZEXPECT(llvm::is_contained(reached, id("box.h")));
+    ZEXPECT(std::ranges::contains(reached, id("box.h")));
 }
 
 ZEST_CASE(GoneKeyReruns) {
