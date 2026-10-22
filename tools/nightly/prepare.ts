@@ -11,9 +11,7 @@ import { runProcess } from "../client/process.ts";
 import { REPO_ROOT } from "../repo.ts";
 import { currentPlatform, type Platform, type Project, type Step } from "./projects.ts";
 
-/// Run a command with its output streamed through, resolving once it
-/// exits 0 and rejecting with its exit otherwise.
-export function stream(command: string, args: readonly string[], cwd: string): Promise<void> {
+function stream(command: string, args: readonly string[], cwd: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const child = spawn(command, args, { cwd, stdio: ["ignore", "inherit", "inherit"] });
         child.on("error", reject);
@@ -30,7 +28,7 @@ export function stream(command: string, args: readonly string[], cwd: string): P
 
 /// Where the project is checked out: clice itself is the repository the
 /// run belongs to, every other project a directory of its own in `dir`.
-export function checkoutOf(project: Project, dir: string): string {
+function checkoutOf(project: Project, dir: string): string {
     return project.repository === undefined ? REPO_ROOT : path.join(dir, project.name);
 }
 
@@ -160,7 +158,6 @@ async function run(step: Step, target: string): Promise<void> {
 /// on the same directory skips straight to the index.
 const PREPARED = ".nightly/prepared";
 
-/// Check the project out into `dir` and prepare it; returns the checkout.
 export async function prepare(project: Project, dir: string): Promise<string> {
     const target = checkoutOf(project, dir);
     const kept = await checkout(project, target);

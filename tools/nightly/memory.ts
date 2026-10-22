@@ -55,7 +55,6 @@ function tree(root: number): number[] {
     return out;
 }
 
-/// Look at the tree under `root` every second until stop() is called.
 export function watchMemory(root: number): { stop: () => PeakMemory } {
     const peak: PeakMemory = { root: 0, child: 0, total: 0 };
     const look = () => {

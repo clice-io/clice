@@ -70,13 +70,15 @@ describe("rootRelative", () => {
     test("a path holding spaces is read one directory at a time", () => {
         const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "clice-rel-")));
         try {
+            fs.mkdirSync(path.join(root, "my", "sub"), { recursive: true });
             fs.mkdirSync(path.join(root, "my dir", "sub"), { recursive: true });
             fs.writeFileSync(path.join(root, "my dir", "sub", "a b.h"), "");
-            fs.writeFileSync(path.join(root, "my dir", "sub", "a b.hpp"), "");
             const text = `${root}\\my dir\\sub\\a b.h:3:1: note, and ${root}\\gone\\x.h`;
             expect(rootRelative(text, root, "\\", root)).toBe(
                 "${WS}/my dir/sub/a b.h:3:1: note, and ${WS}/gone\\x.h",
             );
+            const json = `"${root}\\\\my dir\\\\sub\\\\a b.h"`;
+            expect(rootRelative(json, root, "\\\\", root)).toBe('"${WS}/my dir/sub/a b.h"');
         } finally {
             fs.rmSync(root, { recursive: true });
         }

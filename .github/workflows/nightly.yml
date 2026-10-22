@@ -232,8 +232,8 @@ jobs:
 
   # The real projects over the nightly's commit, with the programs its main
   # run built (nightly-projects.yml): a stable release tags a nightly whose
-  # round passed. Dispatched, not called, so the round keeps a run history
-  # of its own, which each round compares its numbers with.
+  # round shows no new failure. Dispatched, not called, so the round keeps a
+  # run history of its own, which each round compares its numbers with.
   projects:
     needs: prepare
     if: needs.prepare.outputs.publish == 'true'

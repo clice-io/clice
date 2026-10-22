@@ -205,6 +205,8 @@ describe("sweep", () => {
         expect(
             acceptedDifference("hover", "  int *p = nullptr;\n", "  int *p = 0;\n"),
         ).toBeUndefined();
+        expect(acceptedDifference("hover", "  int n = 16;\n", "  int n = 32;\n")).toBeUndefined();
+        expect(acceptedDifference("hover", "  int n = FOO;\n", "  int n = BAR;\n")).toBeUndefined();
         expect(
             acceptedDifference(
                 "completion",
@@ -296,7 +298,7 @@ describe("report", () => {
             kind: "crash" as const,
             file,
             request: "hover p0",
-            detail: "clice inspect exited SIGKILL",
+            detail: "clice inspect crashed (SIGKILL)",
             repro: `run ${file}`,
         });
         const text = report({
@@ -313,7 +315,7 @@ describe("report", () => {
         });
         expect(text).toContain("## Crashes (3)");
         expect(text).toContain("### a.c, hover p0 and 2 more\n\n- b.c, hover p0\n- c.c, hover p0");
-        expect(text.match(/exited SIGKILL/g)).toHaveLength(1);
+        expect(text.match(/crashed \(SIGKILL\)/g)).toHaveLength(1);
         expect(text).toContain("run a.c");
         expect(text).not.toContain("run b.c");
     });

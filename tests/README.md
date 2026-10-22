@@ -464,8 +464,9 @@ an exemption naming nothing uncovered fails too.
   that does not finish, an anomaly in clice's logs, a request either answers
   with an error, a unit clice fails or reports errors on that the compiler
   compiles (or that the compiler cannot check), and a place where inspect and
-  the server answer differently; a unit the compiler rejects too is listed, and
-  so is a difference a case pins as accepted.
+  the server answer differently, and on an error of the runner itself; a unit
+  the compiler rejects too is listed, and so is a difference a case pins as
+  accepted.
   Counts, sizes, memory and time are recorded beside the previous round's,
   never gated. Every failure names the command that reproduces it:
   `node tools/nightly/run.ts <job> --dir <dir>` prepares the project in

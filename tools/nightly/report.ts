@@ -1,6 +1,7 @@
 /// A job's results as a person reads them: what failed, each with the
 /// command that reproduces it, and the numbers beside the previous night's.
 
+import { fence } from "../testing/docs/pages.ts";
 import type { PeakMemory, Resident } from "./memory.ts";
 import type { Failure, Results } from "./nightly.ts";
 
@@ -10,6 +11,7 @@ const KINDS: Record<Failure["kind"], string> = {
     hang: "Hangs",
     unfinished: "Runs of clice index that did not finish",
     index: "Units that failed to index, which the compiler compiles",
+    memory: "Units too large to index on the runner",
     compile: "Units clice reports errors on, which the compiler compiles",
     disagree: "Places where inspect and the server answer differently",
     inspect: "Requests clice inspect failed",
@@ -78,17 +80,13 @@ function numbers(results: Results): Map<string, string> {
     return new Map(rows);
 }
 
-/// The first `limit` items, and an ellipsis for the rest.
 function listed(items: readonly string[], limit: number): string[] {
     return [...items.slice(0, limit), ...(items.length > limit ? ["- ..."] : [])];
 }
 
-/// A code block of the text's first lines, its fence longer than any run
-/// of backticks inside (a hover's code blocks).
-function fence(text: string): string {
-    const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
-    const ticks = "`".repeat(Math.max(3, longest + 1));
-    return [ticks, text.split("\n").slice(0, 60).join("\n"), ticks].join("\n");
+/// A code block of the text's first lines.
+function codeBlock(text: string): string {
+    return fence(text.split("\n").slice(0, 60).join("\n"), "").join("\n");
 }
 
 export function report(now: Results, before?: Results): string {
@@ -139,7 +137,7 @@ export function report(now: Results, before?: Results): string {
                     ),
                 );
             }
-            lines.push("", fence(detail), "", "Reproduce:", "", fence(first.repro));
+            lines.push("", codeBlock(detail), "", "Reproduce:", "", codeBlock(first.repro));
         }
     }
     const section = (title: string, count: number, body: string[]) => {
@@ -170,6 +168,8 @@ export function report(now: Results, before?: Results): string {
             (unit) => `- \`${unit.unit}\`: ${unit.output.split("\n")[0] ?? ""}`,
         ),
     );
-    section("Error lines in clice's logs", now.logErrors.length, [fence(now.logErrors.join("\n"))]);
+    section("Error lines in clice's logs", now.logErrors.length, [
+        codeBlock(now.logErrors.join("\n")),
+    ]);
     return `${lines.join("\n")}\n`;
 }

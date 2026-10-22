@@ -12,7 +12,7 @@ export const SANITIZER_MARKERS = [
     "runtime error:",
 ] as const;
 
-const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
+export const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
 
 /// The environment servers under test run in: every freshness answer given
 /// without a look at the disk is checked against one, a contradiction

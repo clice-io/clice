@@ -97,20 +97,37 @@ export const REQUESTS: Request[] = [
 
 const SOURCE = /\.(c|cc|cpp|cxx|c\+\+|cppm|ixx|cu)$/;
 
+/// A value as a declaration's `=` shows it: a macro's name or a number.
+const SHOWN_VALUE = / = ([A-Z_][A-Z0-9_]*|[0-9][0-9A-Fa-fxX.]*[uUlL]*)(?=[,);\n])/;
+
+/// Whether two answers differ only where one shows a macro and the other
+/// the number it expands to.
+function macroOrNumber(left: string, right: string): boolean {
+    // Split by a pattern with a group: the text between at even indices,
+    // the values at odd ones.
+    const split = (shown: string) => shown.split(new RegExp(SHOWN_VALUE, "g"));
+    const [a, b] = [split(left), split(right)];
+    const isName = (value: string | undefined) => /^[A-Z_]/.test(value ?? "");
+    return (
+        a.length === b.length &&
+        a.every((part, i) => part === b[i] || (i % 2 === 1 && isName(part) !== isName(b[i])))
+    );
+}
+
 /// The differences between inspect and the server the project accepts, each
-/// pinned by a case: two answers equal once `same` rewrites both show one.
-const ACCEPTED: { case: string; requests: Request[]; same: (shown: string) => string }[] = [
+/// pinned by a case.
+const ACCEPTED: {
+    case: string;
+    requests: Request[];
+    same: (inspect: string, server: string) => boolean;
+}[] = [
     {
         // Under a preamble a value written as a macro (a default argument,
         // an initializer) can print as the number it expands to: a clang
         // SourceManager bug.
         case: "completion/member_access/20_macro_default_arguments",
         requests: ["completion", "hover"],
-        same: (shown) =>
-            shown.replaceAll(
-                / = (?:[A-Z_][A-Z0-9_]*|[0-9][0-9A-Fa-fxX.]*[uUlL]*)(?=[,);\n])/g,
-                " = ...",
-            ),
+        same: macroOrNumber,
     },
 ];
 
@@ -122,8 +139,7 @@ export function acceptedDifference(
     server: string,
 ): string | undefined {
     return ACCEPTED.find(
-        (accepted) =>
-            accepted.requests.includes(request) && accepted.same(inspect) === accepted.same(server),
+        (accepted) => accepted.requests.includes(request) && accepted.same(inspect, server),
     )?.case;
 }
 
@@ -303,7 +319,7 @@ async function answer(client: Client, ask: Ask, keep: Keep): Promise<Answer> {
         const message = error instanceof Error ? error.message : String(error);
         const stopped = message.includes("timed out after")
             ? "hang"
-            : message.startsWith("clice inspect exited SIG")
+            : message.startsWith("clice inspect crashed")
               ? "crash"
               : undefined;
         return {
@@ -388,6 +404,7 @@ async function sweepFile(
         run.failures.push({ kind, file, request: ask.request, label: ask.label, detail });
     const cutoff = options.deadline + FINISH_MS;
     const cut = new Set<"inspect" | "server">();
+    let inspectFailed: string | undefined;
 
     const inspected = (async () => {
         const answers = new Map<string, Answer>();
@@ -430,8 +447,16 @@ async function sweepFile(
                 answers.set(ask.label, await answer(clientOf(ask), ask, "compared"));
             }
             // A file importing a module through a header compiles with
-            // errors alone, which every answer of it shows.
-            errors = await atPoints.compileErrors().catch((error: unknown) => [String(error)]);
+            // errors alone, or not at all, which every answer of it shows: the
+            // server's alone. Any other failure of the run is inspect's.
+            errors = await atPoints.compileErrors().catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                if (message.includes("clice inspect failed (compile_error)")) {
+                    return [message];
+                }
+                inspectFailed = message;
+                return [];
+            });
         } finally {
             for (const client of [atPoints, atMembers, atCalls]) {
                 client.close();
@@ -478,6 +503,9 @@ async function sweepFile(
         return answers;
     })();
     const [{ answers: fromInspect, errors }, fromServer] = await Promise.all([inspected, served]);
+    if (inspectFailed !== undefined) {
+        fail("inspect", opened, inspectFailed);
+    }
     if (cut.size > 0) {
         run.cut.push(file);
     }

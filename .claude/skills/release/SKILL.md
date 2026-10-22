@@ -43,8 +43,8 @@ prunes odd-minor pre-releases older than 30 days or beyond the newest 25
 newest stable one), sparing the release `mason-org/mason-registry` pins in
 `packages/clice/package.yaml` — Mason's Renovate bumps that pin only to
 stable releases. Promotion fails loudly
-if no packaged green run exists. A published nightly then dispatches
-`nightly-projects.yml` with the CI run it promoted: the real-project round
+if no packaged green run exists. Once tagged, a nightly also dispatches
+`nightly-projects.yml` with the CI run it promotes: the real-project round
 (`tests/README.md`) over that commit with that run's programs, a report
 only. A failed nightly just means no nightly
 that day — fix main and rerun via dispatch, with the maintainer's
@@ -77,8 +77,8 @@ logs to releases by the commit hash; the release notes state the hash.
 Every step that tags or publishes needs the maintainer's explicit approval first.
 
 1. Freeze: stop merging features; the last nightlies of the freeze are the RCs.
-2. When a nightly is judged good — its real-project round green, but for
-   failures on open issues — tag its commit: `git tag v0.2.0 <commit> && git push origin v0.2.0`.
+2. When a nightly is judged good — its real-project round shows no new
+   failure, only those of open issues — tag its commit: `git tag v0.2.0 <commit> && git push origin v0.2.0`.
    The tag push runs the release path of `main.yml`, which promotes the
    already-tested packages from that commit's green CI run and publishes the
    extensions (Marketplace and Open VSX, without the pre-release flag). The promote path

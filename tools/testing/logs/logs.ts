@@ -11,13 +11,13 @@ export interface LogLine {
 }
 
 /// A log line's level, from the `[level]` field after its timestamp.
-export function levelOf(text: string): string | undefined {
+function levelOf(text: string): string | undefined {
     return /^\[[^\]]*\] \[(\w+)\]/.exec(text)?.[1];
 }
 
-export function readLogs(workspace: string): LogLine[] {
+export function readLogs(workspace: string, files = logFiles(workspace)): LogLine[] {
     const lines: LogLine[] = [];
-    for (const file of logFiles(workspace)) {
+    for (const file of files) {
         for (const text of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
             if (text !== "") {
                 lines.push({ file: path.basename(file), text });

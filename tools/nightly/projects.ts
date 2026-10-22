@@ -19,7 +19,6 @@ export type Step = string[] | { generated: string };
 export const PLATFORMS = ["linux", "macos", "windows"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
-/// The platform this process runs on.
 export function currentPlatform(): Platform {
     switch (process.platform) {
         case "linux":

@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type * as proto from "vscode-languageserver-protocol";
-import { runProcess } from "../../client/process.ts";
+import { ending, runProcess } from "../../client/process.ts";
 import { cliceExecutable } from "../../client/session.ts";
 import { serverEnv } from "../../process_gate.ts";
 import { locate, type Anchor, type MarkerAnchor } from "../cases/anchors.ts";
@@ -664,8 +664,7 @@ export class Inspect extends Client {
             timeout: 300_000,
         });
         if (result.status !== 0) {
-            const how = result.error?.message ?? `exited ${String(result.status ?? result.signal)}`;
-            throw new Error(`clice inspect ${how}:\n${result.stderr}`);
+            throw new Error(`clice inspect ${ending(result)}:\n${result.stderr}`);
         }
         const entry = Object.values((JSON.parse(result.stdout) as Output).files)[0];
         if (entry === undefined) {

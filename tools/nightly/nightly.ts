@@ -8,8 +8,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { entrySource, type DatabaseEntry } from "../compat/database.ts";
 import { REPO_ROOT } from "../repo.ts";
-import { logFiles } from "../process_gate.ts";
-import { levelOf } from "../testing/logs/logs.ts";
+import { ANOMALY_PATTERN, logFiles } from "../process_gate.ts";
+import { readLogs, undeclaredErrors } from "../testing/logs/logs.ts";
 import { CRASHED_IN } from "../testing/server/serve.ts";
 import { confirm } from "./confirm.ts";
 import { includedHeaders, inJob, inside, jobDatabase } from "./database.ts";
@@ -41,6 +41,7 @@ export interface Failure {
         | "hang"
         | "unfinished"
         | "index"
+        | "memory"
         | "compile"
         | "disagree"
         | "inspect"
@@ -122,14 +123,10 @@ function scanLogs(
     results: Results,
     options: NightlyOptions,
 ): void {
-    const lines = logFiles(checkout)
-        .filter((file) => !earlier.has(file))
-        .flatMap((file) =>
-            fs
-                .readFileSync(file, "utf8")
-                .split(/\r?\n/)
-                .map((text) => ({ file: path.basename(file), text })),
-        );
+    const lines = readLogs(
+        checkout,
+        logFiles(checkout).filter((file) => !earlier.has(file)),
+    );
     for (const line of lines) {
         const crashed = CRASHED_IN.exec(line.text);
         if (crashed !== null) {
@@ -145,16 +142,19 @@ function scanLogs(
                         : `--steps sweep --file ${inside(checkout, crashed[2] ?? "") ?? ""}`,
                 ),
             });
-        } else if (/\[anomaly:\w+\]/.test(line.text)) {
+        } else if (ANOMALY_PATTERN.test(line.text)) {
             results.failures.push({
                 kind: "anomaly",
                 detail: `${line.file}: ${line.text}`,
                 repro: rerun(options, ""),
             });
-        } else if (levelOf(line.text) === "error" || levelOf(line.text) === "critical") {
-            results.logErrors.push(`${line.file}: ${line.text}`);
         }
     }
+    results.logErrors.push(
+        ...undeclaredErrors(lines, [CRASHED_IN, ANOMALY_PATTERN]).map(
+            (line) => `${line.file}: ${line.text}`,
+        ),
+    );
 }
 
 /// A failure for each unit clice failed or reported errors on that the
@@ -234,10 +234,15 @@ async function indexStep(
             repro: again,
         });
         return;
-    } else if (!report.completed || report.unsaved) {
+    } else if (!report.completed || report.unsaved || report.damaged) {
+        const why = !report.completed
+            ? "ended before its run finished"
+            : report.unsaved
+              ? "could not save the index"
+              : "found the index database damaged and discarded it";
         results.failures.push({
             kind: "unfinished",
-            detail: `clice index ${report.completed ? "could not save the index" : "ended before its run finished"} (exit ${String(run.status)}):\n${run.stderr}`,
+            detail: `clice index ${why} (exit ${String(run.status)}):\n${run.stderr}`,
             repro: again,
         });
     }
@@ -255,6 +260,14 @@ async function indexStep(
         compiledWithErrors: report.compiledWithErrors.length,
         failed: report.failed.length,
     };
+    for (const { unit, memory } of report.tooBig ?? []) {
+        results.failures.push({
+            kind: "memory",
+            file: inside(checkout, unit) ?? unit,
+            detail: `its worker reached ${String(Math.round(memory / 1024 ** 2))} MB, alone on the runner`,
+            repro: again,
+        });
+    }
     await judgeUnits(
         [
             ...report.failed.map((unit) => ({ unit, repro: again })),

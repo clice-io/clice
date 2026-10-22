@@ -3,13 +3,13 @@ name: nightly-projects
 # A nightly's clice over real projects (tests/nightly/projects.json,
 # tests/README.md "Outside the topics"): nightly.yml dispatches a round with
 # the main CI run whose packages it promoted, and the round tests that run's
-# commit with the programs the run built; a dispatch by hand names any CI
-# run. Each project, or each part of one too large for a runner, is
-# prepared, indexed from a cold cache and asked the features on sampled
-# files. What fails a job is in tests/README.md; the job summary lists each
+# commit with the programs the run built; a dispatch by hand names a CI run
+# that built them in the last three days, while its build-* artifacts live.
+# Each project, or each part of one too large for a runner, is prepared,
+# indexed from a cold cache and asked the features on sampled files. What fails a job is in tests/README.md; the job summary lists each
 # failure with the command that reproduces it, beside the previous round's
 # numbers. The round only reports: nothing waits on it but a stable
-# release, which tags a nightly whose round passed.
+# release, which tags a nightly whose round shows no new failure.
 on:
   workflow_dispatch:
     inputs:
@@ -18,9 +18,9 @@ on:
         required: true
 
 # A dispatch on a branch replaces the branch's round still going; main's
-# rounds all finish.
+# rounds, one per nightly, all run.
 concurrency:
-  group: nightly-projects-${{ github.ref }}
+  group: nightly-projects-${{ github.ref == 'refs/heads/main' && inputs.run || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
@@ -127,15 +127,17 @@ jobs:
           sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
 
       # The newest finished round on main that holds this job's results:
-      # what this round's numbers stand beside. None on the first round.
+      # what this round's numbers stand beside. None for a job no round ran.
       - name: Fetch the previous round's results
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           for run in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow nightly-projects.yml \
             --branch main --status completed --limit 7 --json databaseId --jq '.[].databaseId'); do
-            gh run download "$run" --repo "$GITHUB_REPOSITORY" -n "nightly-${{ matrix.artifact }}" \
-              -D "$RUNNER_TEMP/previous" && break
+            if gh run download "$run" --repo "$GITHUB_REPOSITORY" -n "nightly-${{ matrix.artifact }}" \
+              -D "$RUNNER_TEMP/previous"; then
+              break
+            fi
           done
 
       # In a scope holding all but 2 GB of the machine: a clice that

@@ -5,8 +5,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { DatabaseEntry } from "../compat/database.ts";
-import { runProcess } from "../client/process.ts";
+import { entrySource, type DatabaseEntry } from "../compat/database.ts";
+import { crashed, ending, runProcess } from "../client/process.ts";
 import { syntaxOnly } from "./database.ts";
 
 export interface CompilerCheck {
@@ -47,7 +47,7 @@ export async function confirm<T extends { unit: string; host?: string | undefine
     const real = (file: string) => (fs.existsSync(file) ? fs.realpathSync.native(file) : file);
     const byUnit = new Map<string, DatabaseEntry>();
     for (const entry of entries) {
-        const source = real(path.resolve(entry.directory, entry.file));
+        const source = real(entrySource(entry));
         if (!byUnit.has(source)) {
             byUnit.set(source, entry);
         }
@@ -71,8 +71,8 @@ export async function confirm<T extends { unit: string; host?: string | undefine
             cwd: entry.directory,
             timeout: COMPILE_MS,
         });
-        if (result.error !== undefined) {
-            return { outcome: "unchecked", output: result.error.message };
+        if (result.error !== undefined || crashed(result)) {
+            return { outcome: "unchecked", output: `the compiler ${ending(result)}` };
         }
         // A database command does not say where the build put the modules a
         // unit imports (CMake passes them in a module map at build time).

@@ -4,7 +4,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { runProcess } from "../client/process.ts";
+import { ending, runProcess } from "../client/process.ts";
 import { cliceExecutable } from "../client/session.ts";
 import {
     entryArguments,
@@ -16,10 +16,6 @@ import type { Job } from "./projects.ts";
 
 /// Where a job's own database goes, checkout-relative.
 const JOB_DATABASE = ".nightly/compile_commands.json";
-
-export function readEntries(file: string): DatabaseEntry[] {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as DatabaseEntry[];
-}
 
 /// The parts whose longest prefix holds `file`: a part may take a
 /// directory from inside another's, as a subproject its generated sources.
@@ -60,7 +56,9 @@ export function inJob(job: Job, checkout: string, file: string): boolean {
 
 /// The job's units, and the database clice reads them from in place.
 export function jobDatabase(job: Job, checkout: string): DatabaseEntry[] {
-    const entries = readEntries(path.join(checkout, job.project.database));
+    const entries = JSON.parse(
+        fs.readFileSync(path.join(checkout, job.project.database), "utf8"),
+    ) as DatabaseEntry[];
     const { parts } = job.project;
     if (parts === undefined && job.project.database === "compile_commands.json") {
         return entries;
@@ -88,20 +86,20 @@ export function inside(checkout: string, file: string): string | null {
         : relative.split(path.sep).join("/");
 }
 
+/// Hang detection: the bound only a scan that hangs reaches.
+const SCAN_MS = 30 * 60_000;
+
 /// The checkout-relative files inside `checkout` the units include
 /// themselves, as clice's scan resolves them: the headers a reader of
 /// those units opens, each with the first unit including it.
 export async function includedHeaders(checkout: string): Promise<Map<string, string>> {
-    const scanned = await runProcess(cliceExecutable(), [
-        "scan",
-        "--json",
-        "--workspace",
-        checkout,
-    ]);
+    const scanned = await runProcess(
+        cliceExecutable(),
+        ["scan", "--json", "--workspace", checkout],
+        { timeout: SCAN_MS },
+    );
     if (scanned.status !== 0) {
-        throw new Error(
-            `clice scan ${checkout}: ${scanned.error?.message ?? `exit ${String(scanned.status ?? scanned.signal)}`}\n${scanned.stderr}`,
-        );
+        throw new Error(`clice scan ${checkout} ${ending(scanned)}:\n${scanned.stderr}`);
     }
     const { files } = JSON.parse(scanned.stdout) as {
         files: { path: string; source: boolean; includes: string[] }[];

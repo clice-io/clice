@@ -14,7 +14,8 @@ contract**: topics, inputs and markers, the two kinds of test (`answers`,
 `test`), the clients, outputs and how they render, docs, waiting and
 teardown. Read it before writing a case; this skill adds only the workflow,
 the hard rules and the pitfalls. The framework is `tools/testing/`
-(`@clice/tools/testing`). `tests/` keeps the compat and Zed suites.
+(`@clice/tools/testing`). `tests/` keeps the compat, Zed and real-project
+(`tests/nightly`) suites.
 
 ## Workflow
 
@@ -156,7 +157,7 @@ and pin each difference that matters in a case.
 - Naming: no abbreviated file names, no decorative section comments. New
   modules join the subsystem directory they belong to (`tools/testing`,
   `tools/client`, `tools/docs`, `tools/protocol`, `tools/compat`,
-  `tools/bench`); a new directory needs a new subsystem, not a new file.
+  `tools/bench`, `tools/nightly`); a new directory needs a new subsystem, not a new file.
   Framework and domain logic live in `tools/`; test directories keep only
   what must be there (package.json, tsconfig, thin vitest glue).
 - The tools' own tests sit beside the code they test as `*.test.ts`;

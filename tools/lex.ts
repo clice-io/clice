@@ -93,7 +93,8 @@ export function lex(text: string): Token[] {
         while (k < n && text[k] !== quote && text[k] !== "\n") {
             k += text[k] === "\\" ? 2 : 1;
         }
-        return Math.min(n, k + 1);
+        // An unterminated literal ends before the line does.
+        return text[k] === quote ? k + 1 : Math.min(n, k);
     };
     const suffix = (k: number): number => {
         while (k < n && isIdentChar(code(k))) {

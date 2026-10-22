@@ -14,11 +14,14 @@ import { watchMemory, type PeakMemory } from "./memory.ts";
 export interface IndexReport {
     completed?: boolean;
     unsaved: boolean;
+    damaged?: boolean;
     indexedTus: number;
     shardCount: number;
     shardBytes: number;
     symbolCount: number;
     failed: string[];
+    /// The units whose worker ran out of memory alone, at `memory` bytes.
+    tooBig?: { unit: string; memory: number }[];
     compiledWithErrors: {
         unit: string;
         errors: { file: string; line: number; column: number; message: string }[];
@@ -52,8 +55,7 @@ const HANG_MS = 30 * 60_000;
 /// six hours: the slowest part takes under two.
 const INDEX_MS = 3 * 60 * 60_000;
 
-/// What a cache directory holds, in bytes.
-export function directoryBytes(dir: string): number {
+function directoryBytes(dir: string): number {
     if (!fs.existsSync(dir)) {
         return 0;
     }
