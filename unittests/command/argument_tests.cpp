@@ -276,6 +276,9 @@ ZEST_CASE(DriverKeepsAlias) {
     }
     std::vector<std::string> unaliased = {"-G", "8"};
     ZEXPECT(render({"-msmall-data-limit=8"}, NVCC) == unaliased);
+    /// A second prefix of an option names no alias.
+    std::vector<std::string> standard = {"-std=c++20"};
+    ZEXPECT(render({"--std=c++20"}, GCC) == standard);
 };
 
 };  // ZEST_SUITE(Argument)
