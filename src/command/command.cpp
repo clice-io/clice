@@ -1069,8 +1069,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                 // MSYS2, maps a drive's paths alike but lacks the compiler.
                 std::vector<std::string> written = {dir_ref.str()};
                 auto tokens = command ? tokenize_sh_command(*command, saver) : args;
-                if(!tokens.empty() && is_posix_path(tokens.front())) {
-                    written.emplace_back(tokens.front());
+                auto compiler = wrapper_prefix_len(tokens);
+                if(compiler < tokens.size() && is_posix_path(tokens[compiler])) {
+                    written.emplace_back(tokens[compiler]);
                 }
                 auto [found] = kota::run(find_mount_table({}, std::move(written)));
                 if(!*found) {
