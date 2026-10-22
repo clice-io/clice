@@ -267,11 +267,17 @@ export const SCENARIOS: Scenario[] = [
         `${MSYS2_CLANG}/clang.exe`,
         `${MSYS2_CLANG}/clang++.exe`,
     ),
-    cmakePosix("cygwin cmake ninja gcc", CYGWIN),
+    {
+        ...cmakePosix("cygwin cmake ninja gcc", CYGWIN),
+        files: { "src/main.cpp": {}, "src/util.c": { recorded: [["/usr/bin/cc"]] } },
+    },
     // CMake forces the PCH's header in by its POSIX path.
     {
         ...cmakePosix("cygwin cmake ninja gcc precompiled headers", CYGWIN, "-DCOMPAT_PCH=ON"),
-        files: { "src/main.cpp": { recorded: [["-Winvalid-pch"]] }, "src/util.c": {} },
+        files: {
+            "src/main.cpp": { recorded: [["-Winvalid-pch"]] },
+            "src/util.c": { recorded: [["/usr/bin/cc"]] },
+        },
     },
     cmakePosix("msys2 cmake ninja gcc", MSYS2),
     {

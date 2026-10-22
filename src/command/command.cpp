@@ -2,6 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
+#include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
 
 module clice;
@@ -11,6 +12,7 @@ import :command.cygwin;
 import :command.nvcc;
 import :command.search_config;
 import :command.toolchain;
+import :support.anomaly;
 import :support.logging;
 import :support.shell;
 import :vfs.file_system;
@@ -977,8 +979,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
     // A database written inside Cygwin or MSYS2 (CMake run from their shell)
     // spells its paths POSIX-style: the mount table of the runtime on PATH,
-    // read at the first such entry, maps the entries so spelled.
-    std::optional<std::expected<MountTable, std::string>> table;
+    // found at the first such entry, maps the entries so spelled.
+    std::optional<MountTable> table;
     auto unmount = llvm::make_scope_exit([&] { mounts = nullptr; });
 
     llvm::StringMap<Spelling> working_dirs;
@@ -1062,27 +1064,32 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         mounts = nullptr;
         if(is_posix_path(dir_ref)) {
             if(!table) {
-                std::vector<std::string> written = {dir_ref.str()};
-                if(llvm::StringRef file(file_sv.data(), file_sv.size()); is_posix_path(file)) {
-                    written.push_back(file.str());
+                // Two runtimes of one kind map a drive's paths alike; only
+                // the one that wrote the database holds its compiler.
+                auto tokens = command ? tokenize_sh_command(*command, saver) : args;
+                llvm::StringRef compiler = tokens.empty() ? "" : tokens.front();
+                std::vector<std::string> written = {compiler.str()};
+                if(!is_posix_path(compiler)) {
+                    written = {dir_ref.str()};
+                    if(is_posix_path(file_ref)) {
+                        written.push_back(file_ref.str());
+                    }
                 }
                 auto [found] = kota::run(find_mount_table({}, std::move(written)));
-                table = std::move(*found);
-                if(!*table) {
-                    LOG_ERROR(
-                        "Compilation database {} spells its paths POSIX-style ({}) and they "
+                if(!*found) {
+                    LOG_GUIDANCE(
+                        "Compilation database {} spells its paths POSIX-style ({}), and they "
                         "cannot be mapped: {}. Put the bin directory of the Cygwin or MSYS2 "
-                        "that wrote it on clice's PATH; until then its entries so spelled are "
-                        "skipped.",
+                        "that wrote it on clice's PATH (in VS Code, clice.serverEnv); one "
+                        "written outside them names its directories with a drive.",
                         path,
                         dir_ref,
-                        table->error());
+                        found->error());
+                    return std::nullopt;
                 }
+                table = std::move(**found);
             }
-            if(!*table) {
-                continue;
-            }
-            mounts = &**table;
+            mounts = &*table;
         }
 
         // A relative `directory` anchors to the CDB file's own location —

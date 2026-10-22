@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.cygwin;
 import :command.driver_report;
 import :vfs.path;
 
@@ -110,7 +111,7 @@ DriverReport parse_driver_report(llvm::StringRef out, llvm::StringRef err) {
             report.target = line.trim().str();
         } else if(line.consume_front("LIBRARY_PATH=")) {
             // A Cygwin or MSYS2 GCC lists POSIX paths, separated POSIX-style.
-            char separator = line.starts_with("/") ? ':' : path::list_separator;
+            char separator = is_posix_path(line) ? ':' : path::list_separator;
             llvm::SmallVector<llvm::StringRef> dirs;
             line.split(dirs, separator, -1, false);
             for(auto dir: dirs) {

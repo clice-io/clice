@@ -38,13 +38,16 @@ std::string MountTable::to_windows(llvm::StringRef posix) const {
     llvm::sys::path::remove_dots(folded, /*remove_dot_dot=*/true, llvm::sys::path::Style::posix);
     for(auto& [point, directory]: mounts) {
         llvm::StringRef rest = folded;
-        if(!rest.consume_front(point) || !(point == "/" || rest.empty() || rest.starts_with("/"))) {
+        // A drive mounts as `C:`, at a point the runtime matches in either
+        // case (`/c`, `/C`), and names its root only as `C:/`.
+        bool drive = directory.size() == 2 && directory[1] == ':';
+        if(!(drive ? rest.consume_front_insensitive(point) : rest.consume_front(point)) ||
+           !(point == "/" || rest.empty() || rest.starts_with("/"))) {
             continue;
         }
         rest = rest.ltrim('/');
         std::string windows = directory;
-        // A drive mounts as `C:`, which names its root only as `C:/`.
-        if(!rest.empty() || windows.ends_with(":")) {
+        if(!rest.empty() || drive) {
             if(!windows.ends_with("/")) {
                 windows += '/';
             }

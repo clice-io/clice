@@ -8,6 +8,7 @@ module clice;
 
 import :command.argument_parser;
 import :command.command;
+import :command.cygwin;
 import :command.toolchain;
 import :config.config;
 import :driver.driver;
@@ -66,7 +67,8 @@ struct WrittenEntry {
     kota::ipc::protocol::optional<kota::codec::RawValue> output;
 
     /// The command as clice reads it: the `arguments` when they are an
-    /// array, else the `command` split as the host's shell splits it.
+    /// array, else the `command` split as the host's shell splits it, or
+    /// as sh does in a database written inside Cygwin or MSYS2.
     std::vector<std::string> argv() const {
         std::vector<std::string> argv;
         if(arguments && kota::codec::json::from_string(arguments->data, argv)) {
@@ -78,7 +80,8 @@ struct WrittenEntry {
         }
         llvm::BumpPtrAllocator allocator;
         llvm::StringSaver saver(allocator);
-        auto tokens = tokenize_command(text, saver);
+        auto tokens = is_posix_path(directory) ? tokenize_sh_command(text, saver)
+                                               : tokenize_command(text, saver);
         return {tokens.begin(), tokens.end()};
     }
 };
@@ -412,7 +415,11 @@ int convert_database(Workspace& workspace, const Spelling& path) {
         LOG_ERROR("{}", written.error());
         return 1;
     }
-    if(!cdb.load_source(source) || !written->loaded_by(cdb, source)) {
+    if(!cdb.load_source(source)) {
+        LOG_ERROR("{} cannot be loaded; the error above says why", database);
+        return 1;
+    }
+    if(!written->loaded_by(cdb, source)) {
         LOG_ERROR("{} changed while it was read; run the command again", database);
         return 1;
     }
@@ -445,10 +452,18 @@ int convert_database(Workspace& workspace, const Spelling& path) {
             converted.push_back(std::move(value));
             continue;
         }
-        entry.directory = Spelling(entry.directory, base).str();
-        // So is the command of one clice does not compile, another
-        // language's source.
-        if(auto ref = refs.find(index); ref != refs.end()) {
+        auto ref = refs.find(index);
+        if(!is_posix_path(entry.directory)) {
+            entry.directory = Spelling(entry.directory, base).str();
+        } else if(ref != refs.end()) {
+            // A database written inside Cygwin or MSYS2 converts to the
+            // Windows paths clice read it as.
+            entry.directory = cdb.config(ref->second.config).directory;
+            entry.file = files.resolve(ref->second.file).str();
+        }
+        // The command of one clice does not compile, another language's
+        // source, is left as it is too.
+        if(ref != refs.end()) {
             auto rendered = render_command(cdb, ref->second);
             if(rendered.error) {
                 unresolved += 1;

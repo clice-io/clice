@@ -367,8 +367,9 @@ public:
     /// and configs survive (path ids stay stable across reloads).
     ///
     /// Parsing is atomic at the top level: if the file cannot be read, is
-    /// not valid JSON, or has a root that is not an array, the previously
-    /// loaded entries are kept and nullopt is returned. Individual
+    /// not valid JSON, has a root that is not an array, or spells POSIX
+    /// paths no Cygwin or MSYS2 runtime on PATH maps, the previously loaded
+    /// entries are kept and nullopt is returned. Individual
     /// malformed entries are still skipped — which means a file truncated
     /// mid-array loads as a partial set; the poll-side debounce is
     /// what guards against reading half-written files.

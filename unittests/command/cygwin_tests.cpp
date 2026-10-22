@@ -33,6 +33,8 @@ ZEST_CASE(CygwinMounts) {
     ZEXPECT(table.to_windows("/cygdrive/c/work/proj ü x/src/main.cpp") ==
             "C:/work/proj ü x/src/main.cpp");
     ZEXPECT(table.to_windows("/cygdrive/d") == "D:/");
+    /// The runtime takes a drive's letter in either case.
+    ZEXPECT(table.to_windows("/cygdrive/D/x") == "D:/x");
 }
 
 ZEST_CASE(DotsFoldFirst) {
@@ -52,6 +54,7 @@ C:/msys64/usr/bin on /bin type ntfs (binary,noacl,auto)
 C: on /c type ntfs (binary,noacl,posix=0,user,noumount,auto)
 )");
     ZEXPECT(table.to_windows("/c/proj/a.c") == "C:/proj/a.c");
+    ZEXPECT(table.to_windows("/C/proj/a.c") == "C:/proj/a.c");
     ZEXPECT(table.to_windows("/bin/gcc.exe") == "C:/msys64/usr/bin/gcc.exe");
     ZEXPECT(table.to_windows("/usr/include") == "C:/msys64/usr/include");
     /// A mount point covers its own directory only, not a longer name.
