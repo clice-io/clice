@@ -99,7 +99,8 @@ interface RawSignatureHelp {
               label: string;
               documentation?: string | null;
               parameters?:
-                  { label: string | [number, number]; documentation?: string | null }[] | null;
+                  | { label: string | [number, number]; documentation?: string | null }[]
+                  | null;
               active_parameter?: number | null;
           }[]
         | null;
