@@ -6,6 +6,7 @@ module clice;
 
 import :compile.compilation;
 import :feature.code_action.action;
+import :feature.code_action.code_action;
 import :feature.formatting;
 
 namespace clice::feature::action {

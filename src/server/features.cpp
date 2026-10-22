@@ -646,7 +646,7 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
                                           bool label_parts,
                                           kota::cancellation_token token) {
     auto& session = ticket.session;
-    // Inlay hints are Sema products the index cannot project; a session
+    // Inlay hints are Sema products the index cannot compute; a session
     // the policy keeps un-compiled answers honestly empty. The compile
     // that follows an escalation pushes an inlayHint refresh, so clients
     // re-pull once real hints exist.
