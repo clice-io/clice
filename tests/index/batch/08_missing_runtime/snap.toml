@@ -1,0 +1,10 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = '''
+error: Toolchain query failed: Process ${WS}/gcc.exe ended with exception 0xC0000135 (a DLL it loads is missing: the bin directory of its runtime, Cygwin's or MSYS2's, belongs on clice's PATH, which clice.serverEnv sets in VS Code)
+warning: Toolchain resolve failed for ${WS}/main.cpp: Process ${WS}/gcc.exe ended with exception 0xC0000135 (a DLL it loads is missing: the bin directory of its runtime, Cygwin's or MSYS2's, belongs on clice's PATH, which clice.serverEnv sets in VS Code)
+'''
+exit = 0

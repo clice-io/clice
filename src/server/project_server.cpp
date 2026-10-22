@@ -172,7 +172,7 @@ void ProjectServer::start() {
         if(project.database && !project.database->read_only()) {
             start_control_listener();
         }
-        if(!report.has_commands) {
+        if(!report.has_commands && !found_unreadable_database(project)) {
             LOG_GUIDANCE(
                 "No compile_commands.json found in workspace {} or its direct subdirectories. "
                 "Compile commands will be guessed; see "

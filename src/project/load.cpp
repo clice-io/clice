@@ -215,6 +215,13 @@ std::string deeper_databases_hint(const Project& project) {
         llvm::join(names, ", "));
 }
 
+bool found_unreadable_database(const Project& project) {
+    return llvm::any_of(llvm::seq(project.cdb.source_count()), [&](std::size_t i) {
+        return !project.cdb.loaded(SourceID(i)) &&
+               vfs::exists(project.cdb.source_path(SourceID(i)));
+    });
+}
+
 std::string why_no_members(const Project& project, llvm::StringRef root) {
     std::vector<std::string> empty;
     for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {

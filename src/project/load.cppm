@@ -50,6 +50,10 @@ BuildLoad load_build(Project& project,
 /// declare the build's sources.
 std::string deeper_databases_hint(const Project& project);
 
+/// Whether a database the load found on disk could not be read, which its
+/// load logged the reason for.
+bool found_unreadable_database(const Project& project);
+
 /// Why the build has no member, completing a batch command's "Nothing to
 /// <verb>: ": a database it found that cannot be read, does not exist yet
 /// or lists no file; the rules' default commands claiming no file; else
