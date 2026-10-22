@@ -1081,7 +1081,8 @@ auto code_actions(CompilationUnit& unit, LocalSourceRange selection) -> std::vec
     action::expand_macro(unit, selection, out);
     action::format_actions(unit, out, before);
     assert(std::ranges::all_of(out, [](const CodeAction& action) {
-        return std::ranges::contains(code_action_kinds, action.kind);
+        return std::ranges::any_of(code_action_kinds,
+                                   [&](llvm::StringRef kind) { return kind == action.kind; });
     }));
     return out;
 }
