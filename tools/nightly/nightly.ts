@@ -295,7 +295,7 @@ async function sweepStep(
     // A machine asking fewer files at once samples fewer: a sweep takes the
     // same time everywhere.
     const sample = Math.ceil((job.project.sample * CONCURRENCY) / 3);
-    const hosts = await includedHeaders(checkout);
+    const hosts = await includedHeaders(checkout, options.clice);
     // A unit that another unit includes too (CPython includes .c files) is
     // asked of both clients and checked as itself.
     for (const unit of units) {

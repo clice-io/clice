@@ -91,8 +91,13 @@ const SCAN_MS = 30 * 60_000;
 
 /// The checkout-relative files inside `checkout` the units include
 /// themselves, as clice's scan resolves them: the headers a reader of
-/// those units opens, each with the first unit including it.
-export async function includedHeaders(checkout: string): Promise<Map<string, string>> {
+/// those units opens, each with the first unit including it. The headers
+/// of the clice under test are the compiler's, not the project's: its
+/// resource directory lies in the checkout when clice is the project.
+export async function includedHeaders(
+    checkout: string,
+    clice: string,
+): Promise<Map<string, string>> {
     const scanned = await runProcess(
         cliceExecutable(),
         ["scan", "--json", "--workspace", checkout],
@@ -104,11 +109,12 @@ export async function includedHeaders(checkout: string): Promise<Map<string, str
     const { files } = JSON.parse(scanned.stdout) as {
         files: { path: string; source: boolean; includes: string[] }[];
     };
+    const programs = path.dirname(path.dirname(fs.realpathSync(clice)));
     const headers = new Map<string, string>();
     for (const unit of files.filter((file) => file.source)) {
         for (const included of unit.includes) {
             const header = inside(checkout, included);
-            if (header !== null && !headers.has(header)) {
+            if (header !== null && inside(programs, included) === null && !headers.has(header)) {
                 headers.set(header, unit.path);
             }
         }
