@@ -82,6 +82,25 @@ function xclang(target: string): Scenario {
     };
 }
 
+/// zig's own targets, an architecture, an OS and a libc with its version,
+/// whose headers zig sets up itself.
+function zigTarget(target: string): Scenario {
+    const flags = `-target ${target}`;
+    return {
+        name: `cmake ninja zig ${target}`,
+        platforms: ["linux"],
+        requires: ["cmake", "ninja", "zig"],
+        build: cmake(
+            "Ninja",
+            "zig;cc",
+            "zig;c++",
+            `-DCMAKE_C_FLAGS=${flags}`,
+            `-DCMAKE_CXX_FLAGS=${flags}`,
+        ),
+        files: BOTH,
+    };
+}
+
 /// The NDK the runner images ship.
 const NDK = process.env["ANDROID_NDK_LATEST_HOME"] ?? process.env["ANDROID_NDK_HOME"] ?? "";
 
@@ -400,6 +419,29 @@ export const SCENARIOS: Scenario[] = [
         },
     },
     {
+        // GCC knows these by names clang's own differ from
+        // (-faligned-allocation, -ftrigraphs, -flto=full), which GCC
+        // rejects: the query gives them as the build writes them.
+        name: "make bear gcc aliases",
+        platforms: ["linux"],
+        requires: ["bear", "make", GCC, GXX],
+        build: [
+            [
+                "bear",
+                "--",
+                "make",
+                `CC=${GCC}`,
+                `CXX=${GXX}`,
+                "CXXFLAGS=-std=gnu++14 -faligned-new -flto=auto",
+                "CFLAGS=-std=gnu11 -trigraphs -flto",
+            ],
+        ],
+        files: {
+            "src/main.cpp": { recorded: [["-faligned-new"], ["-flto=auto"]] },
+            "src/util.c": { recorded: [["-trigraphs"], ["-flto"]] },
+        },
+    },
+    {
         // Semantic flags an external clang turns into frontend options come
         // back from the query instead of being dropped with the toolchain's.
         name: "make bear clang flags",
@@ -439,6 +481,7 @@ export const SCENARIOS: Scenario[] = [
         build: cmake("Ninja", "zig;cc", "zig;c++"),
         files: BOTH,
     },
+    ...["x86_64-linux-musl", "aarch64-linux-gnu.2.28", "riscv64-linux-musl"].map(zigTarget),
     {
         name: "emcmake emscripten",
         platforms: ["linux"],
@@ -536,5 +579,24 @@ export const SCENARIOS: Scenario[] = [
             ],
         ],
         files: { "src/util.c": {} },
+    },
+    {
+        // A build for WCH's RISC-V chips as MounRiver writes one, less WCH's
+        // own `_xw` extension: clang knows -msmall-data-limit= as -G, which
+        // RISC-V GCC rejects.
+        name: "make bear riscv embedded",
+        platforms: ["linux"],
+        requires: ["bear", "make", "/usr/bin/riscv64-unknown-elf-gcc"],
+        build: [
+            [
+                "bear",
+                "--",
+                "make",
+                "build/util.o",
+                "CC=/usr/bin/riscv64-unknown-elf-gcc",
+                "CFLAGS=--specs=picolibc.specs -march=rv32imc_zba_zbb_zbc_zbs -mabi=ilp32 -mcmodel=medany -msmall-data-limit=8 -mno-save-restore -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -g -std=gnu99",
+            ],
+        ],
+        files: { "src/util.c": { recorded: [["-msmall-data-limit=8"]] } },
     },
 ];

@@ -31,7 +31,7 @@ error: The compiler could not be queried, so the command is clice's own reading 
 exit = 1
 
 [sysroot."$ clice command convert -- missing-clang++ -fsanitize-ignorelist=ignore.txt --config=x.cfg --sysroot sdk main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} -fsanitize-ignorelist=${WS}/ignore.txt --config=x.cfg --sysroot=${WS}/sdk ${WS}/main.cpp"
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -fsanitize-ignorelist=${WS}/ignore.txt --config=x.cfg --sysroot ${WS}/sdk ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The compiler could not be queried, so the command is clice's own reading of it

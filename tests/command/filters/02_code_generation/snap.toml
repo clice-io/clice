@@ -7,7 +7,7 @@ error: The compiler could not be queried, so the command is clice's own reading 
 exit = 1
 
 [lto."$ clice command convert -- missing-clang++ -flto main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} -flto=full ${WS}/main.cpp"
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -flto ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The compiler could not be queried, so the command is clice's own reading of it
@@ -23,7 +23,7 @@ error: The compiler could not be queried, so the command is clice's own reading 
 exit = 1
 
 [lto."$ clice command convert -- missing-clang++ -flto=auto main.cpp"]
-stdout = "missing-clang++ -resource-dir ${RESOURCE} -flto=full ${WS}/main.cpp"
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -flto=auto ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The compiler could not be queried, so the command is clice's own reading of it
@@ -31,7 +31,7 @@ error: The compiler could not be queried, so the command is clice's own reading 
 exit = 1
 
 [lto."$ clice command convert -- missing-g++ -flto=jobserver main.cpp"]
-stdout = "missing-g++ -resource-dir ${RESOURCE} -flto=full ${WS}/main.cpp"
+stdout = "missing-g++ -resource-dir ${RESOURCE} -flto=jobserver ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
 error: The compiler could not be queried, so the command is clice's own reading of it
