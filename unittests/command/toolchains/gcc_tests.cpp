@@ -8,6 +8,7 @@ import :command.table;
 import :command.toolchains.gcc;
 import :unittests.utils;
 import :unittests.utils.toolchain_fixture;
+import :vfs.file_system;
 import :vfs.path;
 
 namespace clice::testing {
@@ -289,18 +290,51 @@ ZEST_CASE(GCCTargetNames, skip = Windows) {
     ZEXPECT(!contains(x86, "clice-future-cpu"));
 }
 
-ZEST_CASE(GCCSeesBareLTO, skip = Windows) {
-    /// clang spells LTO -flto=full, which GCC rejects.
-    auto driver = fake_driver("g++", R"(case " $* " in
-*" -flto=full "*)
-  echo "cc1plus: error: unrecognized argument to '-flto=' option: 'full'" >&2
-  exit 1 ;;
-esac
-echo 'Target: x86_64-linux-gnu' >&2
-echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet query.cpp -flto -dM' >&2
-)");
-    auto ref = add("a.cpp", {driver.c_str(), "-flto=auto", "-c"});
+ZEST_CASE(GCCSeesItsOwnSpellings, skip = Windows) {
+    /// clang reads these as aliases of options GCC spells otherwise or not
+    /// at all (`-G 8`, `-flto=full`, `-ftrigraphs`), which GCC rejects.
+    auto args = tmp.path("args");
+    auto driver = fake_driver("riscv32-unknown-elf-gcc",
+                              std::format(R"(printf '%s\n' "$@" > '{}'
+echo 'Target: riscv32-unknown-elf' >&2
+echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' >&2
+)",
+                                          args));
+    std::vector<const char*> written = {"-msmall-data-limit=8", "-flto=auto", "-trigraphs"};
+    auto command = written;
+    command.insert(command.begin(), driver.c_str());
+    command.push_back("-c");
+    auto ref = add("a.c", command);
     ZEXPECT(f.toolchain.resolve(ref.command, ref.input).has_value());
+
+    auto passed = vfs::read(args);
+    ZASSERT(passed);
+    llvm::SmallVector<llvm::StringRef> lines;
+    (*passed)->getBuffer().split(lines, '\n', -1, false);
+    for(llvm::StringRef arg: written) {
+        ZEXPECT(contains(lines, arg));
+    }
+    ZEXPECT(!contains(lines, "-G"));
+
+    /// Two spellings of one option are two queries: GCC may take one alone.
+    auto clang_spelling = add("b.c", {driver.c_str(), "-G", "8", "-c"});
+    auto gcc_spelling = add("c.c", {driver.c_str(), "-msmall-data-limit=8", "-c"});
+    ZEXPECT(f.key(clang_spelling) != f.key(gcc_spelling));
+}
+
+ZEST_CASE(GCCErrorReported, skip = Windows) {
+    /// GCC rejects an option before `-v` prints its version, the last line.
+    auto driver = fake_driver("riscv32-unknown-elf-gcc", R"(echo 'Using built-in specs.' >&2
+echo "riscv32-unknown-elf-gcc: error: unrecognized command-line option '-mclice-future'" >&2
+echo 'Target: riscv32-unknown-elf' >&2
+echo 'gcc version 15.2.0 (g5115c7e44-dirty)' >&2
+exit 1
+)");
+    auto ref = add("a.c", {driver.c_str(), "-c"});
+    auto resolved = f.toolchain.resolve(ref.command, ref.input);
+    ZASSERT(!resolved);
+    ZEXPECT(llvm::StringRef(resolved.error()).contains("'-mclice-future'"));
+    ZEXPECT(!llvm::StringRef(resolved.error()).contains("gcc version"));
 }
 
 ZEST_CASE(GCCFailureRejected, skip = Windows) {
@@ -309,6 +343,7 @@ ZEST_CASE(GCCFailureRejected, skip = Windows) {
     auto driver = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2
 echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet -imacros missing.h query.cpp -dM' >&2
 echo 'cc1plus: fatal error: missing.h: No such file or directory' >&2
+echo 'compilation terminated.' >&2
 exit 1
 )");
     auto ref = add("a.cpp", {driver.c_str(), "-c"});

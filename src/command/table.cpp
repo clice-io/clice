@@ -95,7 +95,7 @@ LocalArg CommandTable::local_arg(
                 .cls = ArgClass::Unknown,
                 .spelling = strings.save(tokens[index]).data()};
     }
-    LocalArg local{.opt_id = parsed->id};
+    LocalArg local{.opt_id = parsed->id, .alias = written_alias(*parsed)};
     for(llvm::StringRef value: parsed->values) {
         local.values.push_back(strings.save(value).data());
     }
@@ -272,6 +272,13 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
     argv.push_back(command.driver);
     if(command.subcommand) {
         argv.push_back(command.subcommand);
+    }
+
+    // clang reads a target off its program's name in its main alone, never
+    // when its library builds the invocation; the command's own --target
+    // comes later and wins.
+    if(auto target = name_target(command.driver); !target.empty()) {
+        argv.push_back(intern("--target=" + target).data());
     }
 
     // Inject our resource dir if the command names none, so the embedded

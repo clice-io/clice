@@ -218,6 +218,7 @@ struct DenseMapInfo<clice::Command> {
             hash = llvm::hash_combine(hash,
                                       arg.opt_id,
                                       static_cast<unsigned>(arg.cls),
+                                      arg.alias,
                                       arg.spelling,
                                       llvm::hash_combine_range(arg.values));
         }

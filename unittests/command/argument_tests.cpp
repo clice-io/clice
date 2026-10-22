@@ -164,6 +164,58 @@ ZEST_CASE(DriverFamily) {
     ZEXPECT(driver_family("zig.exe") == Zig);
 };
 
+ZEST_CASE(NameTarget) {
+    ZEXPECT(name_target("riscv32-wch-elf-gcc") == "riscv32-wch-elf");
+    ZEXPECT(name_target("/opt/arm/bin/arm-none-eabi-g++") == "arm-none-eabi");
+    ZEXPECT(name_target("gcc").empty());
+    ZEXPECT(name_target("clang++").empty());
+    /// A prefix naming no architecture is no target.
+    ZEXPECT(name_target("ccache-gcc").empty());
+};
+
+ZEST_CASE(NameTargetWindows, skip = !Windows) {
+    /// A database written on Windows may name the driver this way.
+    ZEXPECT(name_target(R"(C:/MounRiver/toolchain/gcc15/bin\riscv32-wch-elf-gcc.EXE)") ==
+            "riscv32-wch-elf");
+};
+
+ZEST_CASE(DriverKeepsAlias) {
+    /// GCC spells its own way options clang knows as aliases: clang's own
+    /// names reach a clang only.
+    auto render = [](std::vector<std::string> args, CompilerFamily family) {
+        std::vector<std::string> rendered;
+        for(auto& parsed: option::table().parse(args)) {
+            ZASSERT(parsed.has_value());
+            std::vector<std::string> values(parsed->values.begin(), parsed->values.end());
+            std::vector<const char*> pointers;
+            for(auto& value: values) {
+                pointers.push_back(value.c_str());
+            }
+            Arg arg{.opt_id = parsed->id, .alias = written_alias(*parsed), .values = pointers};
+            render_driver_arg(arg, family, [&](std::string_view fragment) {
+                rendered.emplace_back(fragment);
+            });
+        }
+        return rendered;
+    };
+    using enum CompilerFamily;
+    for(std::vector<std::string> args: {
+            std::vector<std::string>{"-msmall-data-limit=8"},
+            {"-flto"},
+            {"-flto=auto"},
+            {"-trigraphs"},
+            {"-marm"},
+            {"-mmacosx-version-min=11.0"},
+            {"--sysroot", "/opt/sysroot"},
+            {"-G", "8"},
+            {"-std=c++20"}
+    }) {
+        ZEXPECT(render(args, GCC) == args);
+    }
+    std::vector<std::string> unaliased = {"-G", "8"};
+    ZEXPECT(render({"-msmall-data-limit=8"}, NVCC) == unaliased);
+};
+
 };  // ZEST_SUITE(Argument)
 
 ZEST_SUITE(Canonicalize) {

@@ -58,6 +58,11 @@ enum class CompilerFamily : std::uint8_t {
 
 CompilerFamily driver_family(llvm::StringRef driver);
 
+/// The target a driver's name sets, as clang reads the name of its own
+/// program (`riscv32-wch-elf-gcc.exe` compiles for riscv32-wch-elf); empty
+/// when the name has no prefix naming an architecture.
+std::string name_target(llvm::StringRef driver);
+
 /// cl and clang-cl, which spell options and split command lines their own
 /// way.
 constexpr bool cl_mode(CompilerFamily family) {
@@ -109,6 +114,10 @@ struct Arg {
     std::uint32_t opt_id = 0;
     ArgClass cls = ArgClass::Semantic;
 
+    /// The alias of the option the command wrote (`-msmall-data-limit=` for
+    /// -G), 0 when it wrote the option's own name.
+    std::uint16_t alias = 0;
+
     /// Interned verbatim token, only for ArgClass::Unknown (nullptr otherwise).
     const char* spelling = nullptr;
 
@@ -117,8 +126,8 @@ struct Arg {
     llvm::ArrayRef<const char*> values;
 
     friend bool operator==(const Arg& lhs, const Arg& rhs) {
-        return lhs.opt_id == rhs.opt_id && lhs.cls == rhs.cls && lhs.spelling == rhs.spelling &&
-               lhs.values == rhs.values;
+        return lhs.opt_id == rhs.opt_id && lhs.cls == rhs.cls && lhs.alias == rhs.alias &&
+               lhs.spelling == rhs.spelling && lhs.values == rhs.values;
     }
 };
 
@@ -127,11 +136,16 @@ struct Arg {
 struct LocalArg {
     std::uint32_t opt_id = 0;
     ArgClass cls = ArgClass::Semantic;
+    std::uint16_t alias = 0;
     const char* spelling = nullptr;
     llvm::SmallVector<const char*, 2> values;
 
     Arg view() const {
-        return {.opt_id = opt_id, .cls = cls, .spelling = spelling, .values = values};
+        return {.opt_id = opt_id,
+                .cls = cls,
+                .alias = alias,
+                .spelling = spelling,
+                .values = values};
     }
 };
 
@@ -177,12 +191,18 @@ bool is_diagnostics_option(unsigned id);
 /// input slot.
 void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb);
 
-/// Render one argument for the command's own driver. A cl-mode driver
-/// reads a `-` spelling as its own option where one exists (`-Wall` is
-/// `/Wall`, -Weverything) and drops the GCC-style ones it lacks, so an
-/// argument the parse unaliased out of a cl spelling (`/W3` is -Wall, `/J`
-/// -funsigned-char) is spelled through a cl alias of its option, else
-/// through `/clang:`.
+/// The alias of `parsed`'s option that the command wrote, 0 when it wrote
+/// the option's own name: the parse resolves an alias to its option.
+std::uint16_t written_alias(const kota::option::ParsedArg& parsed);
+
+/// Render one argument for the command's own driver. A GCC-style driver
+/// gets an option as the command wrote it, which another compiler may know
+/// by that name alone: GCC's `-msmall-data-limit=8` is clang's `-G 8`,
+/// which RISC-V GCC rejects. A cl-mode driver reads a `-` spelling as its
+/// own option where one exists (`-Wall` is `/Wall`, -Weverything) and
+/// drops the GCC-style ones it lacks, so an argument the parse unaliased
+/// out of a cl spelling (`/W3` is -Wall, `/J` -funsigned-char) is spelled
+/// through a cl alias of its option, else through `/clang:`.
 void render_driver_arg(const Arg& arg,
                        CompilerFamily family,
                        llvm::function_ref<void(std::string_view)> cb);

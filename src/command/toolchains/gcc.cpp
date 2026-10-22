@@ -174,10 +174,23 @@ kota::task<std::expected<GCCStyleOutput, std::string>>
     }
     auto parsed = parse_gcc_style_output(output->out, output->err);
     if(parsed.clang_job.empty() && !output->failure.empty()) {
-        auto last_line = llvm::StringRef(output->err).rtrim();
-        last_line = last_line.substr(last_line.rfind('\n') + 1);
-        auto error = last_line.empty() ? output->failure
-                                       : std::format("{}: {}", output->failure, last_line.str());
+        // The version GCC prints last says nothing: its errors come before
+        // it (an unknown option), or before "compilation terminated.".
+        llvm::SmallVector<llvm::StringRef> lines;
+        llvm::StringRef(output->err).split(lines, '\n', -1, false);
+        std::string reported;
+        for(auto line: lines) {
+            line = line.trim();
+            if(line.contains(" error: ")) {
+                reported += reported.empty() ? "" : "; ";
+                reported += line;
+            }
+        }
+        if(reported.empty() && !lines.empty()) {
+            reported = lines.back().trim();
+        }
+        auto error =
+            reported.empty() ? output->failure : std::format("{}: {}", output->failure, reported);
 #ifdef _WIN32
         // Windows looks for a program's DLLs on PATH: without its runtime's
         // directory there, a Cygwin or MSYS2 driver cannot start (exception

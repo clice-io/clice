@@ -173,6 +173,15 @@ ZEST_CASE(FailedQueryRetries, skip = Windows) {
     ZEXPECT(f.toolchain.query_count() == std::size_t(2));
 }
 
+ZEST_CASE(FailedQueryTargetFromName) {
+    // Without the compiler's answer, clang's own driver reads the command
+    // for the target the compiler's name sets, as for an unqueried one.
+    auto ref = add("a.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-mcmodel=medany", "-c"});
+    ZEXPECT(!f.toolchain.resolve(ref.command, ref.input));
+    auto argv = f.toolchain.render(ref, f.db.spelling(ref.file));
+    ZEXPECT(contains(argv, "--target=riscv32-wch-elf"));
+}
+
 ZEST_CASE(WarmPartialFailure, skip = Windows) {
     auto driver = fake_clang(clang_job);
     auto good = add("a.cpp", {driver.c_str()});

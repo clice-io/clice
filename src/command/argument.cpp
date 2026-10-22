@@ -159,6 +159,16 @@ CompilerFamily driver_family(llvm::StringRef driver) {
     return try_get(name);
 }
 
+std::string name_target(llvm::StringRef driver) {
+    auto name = clang::driver::ToolChain::getTargetAndModeFromProgramName(driver);
+    // clang takes the prefix only when a backend it links knows it, and
+    // clice links none: any prefix naming an architecture is a target.
+    if(llvm::Triple(name.TargetPrefix).getArch() == llvm::Triple::UnknownArch) {
+        return {};
+    }
+    return name.TargetPrefix;
+}
+
 unsigned family_visibility(CompilerFamily family) {
     /// Flang's own options shadow clang's: -Wextra and -Wconversion have
     /// flang-only spellings that flang ignores, matched before -W<warning>.
@@ -410,6 +420,36 @@ bool is_diagnostics_option(unsigned id) {
     return false;
 }
 
+std::uint16_t written_alias(const kota::option::ParsedArg& parsed) {
+    auto& options = option::table().option_infos;
+    const static auto aliases = [&] {
+        llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint16_t, 2>> aliases;
+        for(auto& option: options) {
+            if(option.alias_id) {
+                aliases[option.alias_id].push_back(option.id);
+            }
+        }
+        return aliases;
+    }();
+    auto it = aliases.find(parsed.id);
+    if(it == aliases.end()) {
+        return 0;
+    }
+    auto written = [&](std::uint32_t id) {
+        auto& option = options[id - 1];
+        return std::ranges::any_of(option.prefixes, [&](std::string_view prefix) {
+            return parsed.spelling.size() == prefix.size() + option.name().size() &&
+                   parsed.spelling.starts_with(prefix) && parsed.spelling.ends_with(option.name());
+        });
+    };
+    if(written(parsed.id)) {
+        return 0;
+    }
+    auto alias = std::ranges::find_if(it->second, written);
+    assert(alias != it->second.end() && "the parse matched the option or an alias of it");
+    return *alias;
+}
+
 void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
     if(arg.opt_id == option::OPT_UNKNOWN) {
         cb(arg.spelling);
@@ -429,11 +469,50 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
     option::table().render(parsed, forward);
 }
 
+/// Render `arg` through the alias the command wrote.
+static void render_alias(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
+    auto alias = option::table().option(arg.alias);
+    std::string name(alias->prefixed_name());
+    // A flag alias implies its values (`-flto` is -flto=full).
+    if(alias->kind() == kota::option::Kind::Flag) {
+        cb(name);
+        return;
+    }
+    switch(alias->render_style()) {
+        case kota::option::RenderStyle::Joined:
+            cb(name + arg.values[0]);
+            for(const char* value: arg.values.drop_front()) {
+                cb(value);
+            }
+            return;
+        case kota::option::RenderStyle::Separate:
+            cb(name);
+            for(const char* value: arg.values) {
+                cb(value);
+            }
+            return;
+        case kota::option::RenderStyle::CommaJoined:
+            for(auto [i, value]: std::views::enumerate(arg.values)) {
+                name += i == 0 ? "" : ",";
+                name += value;
+            }
+            cb(name);
+            return;
+        case kota::option::RenderStyle::Values: std::unreachable();
+    }
+}
+
 void render_driver_arg(const Arg& arg,
                        CompilerFamily family,
                        llvm::function_ref<void(std::string_view)> cb) {
     if(!cl_mode(family)) {
-        render_arg(arg, cb);
+        // nvcc's arguments are clice's translation of its command, which
+        // its query reads by clang's names.
+        if(arg.alias && family != CompilerFamily::NVCC) {
+            render_alias(arg, cb);
+        } else {
+            render_arg(arg, cb);
+        }
         return;
     }
 

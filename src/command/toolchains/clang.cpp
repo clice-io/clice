@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.argument;
 import :command.toolchains.clang;
 import :vfs.file_system;
 
@@ -116,11 +117,8 @@ std::expected<Job, std::string> ask_clang_for(std::vector<std::string> args,
                                               llvm::StringRef cwd) {
     args.erase(args.begin() + 1, args.begin() + driver_tokens);
     std::vector<std::string> mode;
-    auto name = clang::driver::ToolChain::getTargetAndModeFromProgramName(args[0]);
-    // clang takes the prefix only when a backend it links knows it, and
-    // clice links none: any prefix naming an architecture is a target.
-    if(llvm::Triple(name.TargetPrefix).getArch() != llvm::Triple::UnknownArch) {
-        mode.push_back("--target=" + name.TargetPrefix);
+    if(auto target = name_target(args[0]); !target.empty()) {
+        mode.push_back("--target=" + target);
     }
     return ask_clang(args, mode, cwd);
 }

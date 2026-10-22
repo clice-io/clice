@@ -231,6 +231,7 @@ CommandID
         into.push_back({
             .opt_id = arg.opt_id,
             .cls = arg.cls,
+            .alias = arg.alias,
             .spelling = arg.spelling,
             .values = {arg.values.begin(), arg.values.end()}
         });
