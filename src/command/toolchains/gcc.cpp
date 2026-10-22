@@ -118,18 +118,32 @@ llvm::StringRef unversioned(llvm::StringRef extension) {
     return name;
 }
 
+/// Whether LLVM reads `isa` as clang's driver does: a profile
+/// (`rva22u64`) as well as extensions.
+bool parses(llvm::StringRef isa) {
+    auto info = llvm::RISCVISAInfo::parseArchString(isa, /*EnableExperimentalExtension=*/false);
+    if(!info) {
+        llvm::consumeError(info.takeError());
+        return false;
+    }
+    return true;
+}
+
 /// A RISC-V ISA string as clang can read it. clang drops a whole string
 /// naming an extension LLVM does not know (a vendor's, WCH's `xw`), a
 /// version of one it does not know (older GCCs' `i2p0`, where LLVM's I is
 /// 2.1), or an extension LLVM has only as experimental (GCC 15's
 /// `zicfilp`), and every feature macro of the rest with it. The second
-/// takes the version LLVM knows, the others go.
+/// takes the version LLVM knows, the others go; a string LLVM reads stays.
 std::string riscv_isa_for_clang(llvm::StringRef isa) {
+    if(parses(isa)) {
+        return isa.str();
+    }
     auto usable = [](llvm::StringRef extension) {
         auto feature = llvm::RISCVISAInfo::getTargetFeatureForExtension(extension);
         return !feature.empty() && !llvm::StringRef(feature).starts_with("experimental-");
     };
-    auto readable = [&](llvm::StringRef extension) -> std::optional<llvm::StringRef> {
+    auto known = [&](llvm::StringRef extension) -> std::optional<llvm::StringRef> {
         if(usable(extension)) {
             return extension;
         }
@@ -143,15 +157,26 @@ std::string riscv_isa_for_clang(llvm::StringRef isa) {
         return std::nullopt;
     };
 
-    auto width = isa.find_first_not_of("rv0123456789");
-    auto result = isa.take_front(width).str();
-    auto extensions = riscv_extensions(isa.drop_front(width));
-    for(auto [i, extension]: std::views::enumerate(extensions)) {
-        // The base (`i`, `e`, `g`, which LLVM has as no extension of its
-        // own) stays, without a version LLVM does not know.
-        if(i == 0) {
-            result += readable(extension).value_or(unversioned(extension));
-        } else if(auto name = readable(extension)) {
+    // The first part stays when LLVM reads it (`rv32imc`, a profile);
+    // else its width does, and its base (`i`, `e`, `g`, which LLVM has as
+    // no extension of its own) without a version LLVM does not know.
+    auto [first, rest] = isa.split('_');
+    std::string result;
+    llvm::SmallVector<llvm::StringRef> extensions;
+    if(parses(first)) {
+        result = first.str();
+        extensions = riscv_extensions(rest);
+    } else {
+        auto width = first.find_first_not_of("rv0123456789");
+        result = first.take_front(width).str();
+        extensions = riscv_extensions(isa.drop_front(width));
+        if(!extensions.empty()) {
+            result += known(extensions.front()).value_or(unversioned(extensions.front()));
+            extensions.erase(extensions.begin());
+        }
+    }
+    for(auto extension: extensions) {
+        if(auto name = known(extension)) {
             result += '_';
             result += *name;
         } else {

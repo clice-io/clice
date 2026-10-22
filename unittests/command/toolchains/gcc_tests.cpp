@@ -332,6 +332,12 @@ ZEST_CASE(GCCTargetNames, skip = Windows) {
     ZEXPECT(adjacent(thead, "-target-feature", "+v"));
     ZEXPECT(adjacent(thead, "-target-feature", "+d"));
     ZEXPECT(!contains(thead, "+experimental-zicfilp"));
+    /// A profile, which LLVM reads as it stands, with a vendor's extension
+    /// or without.
+    auto profile = render("riscv64-unknown-linux-gnu", "-march=rva22u64 -mabi=lp64d");
+    ZEXPECT(adjacent(profile, "-target-feature", "+zba"));
+    auto vendor = render("riscv64-linux-gnu", "-march=rva22u64_xw -mabi=lp64d");
+    ZEXPECT(adjacent(vendor, "-target-feature", "+zba"));
 }
 
 ZEST_CASE(GCCSeesWrittenAliases, skip = Windows) {
