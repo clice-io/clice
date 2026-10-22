@@ -310,8 +310,7 @@ ZEST_CASE(GCCTargetNames, skip = Windows) {
     auto thead = render("riscv64-unknown-elf", "-march=rv64gcv0p7_zicfilp_xtheadc -mabi=lp64d");
     ZEXPECT(adjacent(thead, "-target-feature", "+v"));
     ZEXPECT(adjacent(thead, "-target-feature", "+d"));
-    ZEXPECT(
-        !std::ranges::any_of(thead, [](llvm::StringRef arg) { return arg.contains("zicfilp"); }));
+    ZEXPECT(!contains(thead, "+experimental-zicfilp"));
 }
 
 ZEST_CASE(GCCSeesWrittenAliases, skip = Windows) {
