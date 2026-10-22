@@ -39,6 +39,13 @@ ZEST_CASE(ClangJobMultiCall) {
     ZEXPECT(job == expected);
 }
 
+ZEST_CASE(NamesStandard) {
+    /// `--std` takes its value apart as GCC writes it; `--stdlib` names none.
+    ZEXPECT(names_standard({"g++", "-std=c++20"}));
+    ZEXPECT(names_standard({"g++", "--std", "c++0x"}));
+    ZEXPECT(!names_standard({"clang++", "--stdlib", "libc++"}));
+}
+
 ZEST_CASE(UnqueriedRunsNothing, skip = Windows) {
     // Neither resolve() nor warm() runs the driver: clang's own builds the
     // job. Queried, the same command runs it.

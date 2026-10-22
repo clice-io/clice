@@ -99,7 +99,9 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
 }
 
 bool names_standard(llvm::ArrayRef<std::string> args) {
-    return std::ranges::any_of(args, [](llvm::StringRef arg) { return arg.starts_with("-std="); });
+    return std::ranges::any_of(args, [](llvm::StringRef arg) {
+        return arg.starts_with("-std=") || arg == "--std";
+    });
 }
 
 std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,

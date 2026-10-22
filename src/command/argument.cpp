@@ -498,16 +498,17 @@ static void render_alias(const Arg& arg, llvm::function_ref<void(std::string_vie
     }
 }
 
-bool keeps_alias(CompilerFamily family) {
+bool keeps_alias(const Arg& arg, CompilerFamily family) {
     // nvcc's arguments are clice's translation of its command, which its
     // query reads by clang's names.
-    return !cl_mode(family) && family != CompilerFamily::NVCC;
+    return arg.alias && !cl_mode(family) && family != CompilerFamily::NVCC &&
+           option::table().option(arg.alias)->has_visibility_flag(family_visibility(family));
 }
 
 void render_driver_arg(const Arg& arg,
                        CompilerFamily family,
                        llvm::function_ref<void(std::string_view)> cb) {
-    if(arg.alias && keeps_alias(family)) {
+    if(keeps_alias(arg, family)) {
         render_alias(arg, cb);
         return;
     }

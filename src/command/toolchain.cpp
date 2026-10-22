@@ -214,8 +214,7 @@ Toolchain::QueryKey Toolchain::query_key(CommandID id, InputKind input) {
         if(!in_query_view(arg, command.family)) {
             continue;
         }
-        bool written = arg.alias && keeps_alias(command.family);
-        out.key += std::to_string(written ? arg.alias : arg.opt_id);
+        out.key += std::to_string(keeps_alias(arg, command.family) ? arg.alias : arg.opt_id);
         out.key += '\0';
         /// All unknown options share one id; their identity is the spelling
         /// (the NVCC translation carries `-ccbin=<path>` through here, and

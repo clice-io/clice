@@ -98,6 +98,26 @@ ZEST_CASE(RuleDriverModeFamily) {
             CompilerFamily::ClangCL);
 };
 
+ZEST_CASE(RuleLeavesClSpellings) {
+    /// A cl spelling the command's parse read stays clang's to spell once a
+    /// rule takes the command out of cl mode.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    database.add_command("/fake", "a.cpp", "clang++ --driver-mode=cl /DFOO a.cpp"sv);
+    auto& entry = database.candidate_entries(fake("a.cpp")).front();
+    std::vector<CommandEdit> removed = {
+        {.kind = CommandEdit::Kind::Remove, .flags = {"--driver-mode=cl"}}
+    };
+    CommandRef ref{entry.file,
+                   apply_edits(commands, file_table, entry.command, {.edits = removed}),
+                   commands.input_kind(entry.command, "a.cpp"),
+                   CommandSource::CDBExact};
+    auto argv = commands.render_driver(ref, database.spelling(ref.file));
+    ZEXPECT(std::ranges::contains(argv, "-D"sv) || std::ranges::contains(argv, "-DFOO"sv));
+    ZEXPECT(!std::ranges::contains(argv, "/D"sv));
+};
+
 ZEST_CASE(PrependAfterBinary) {
     llvm::SmallVector args = {"clang++", "-DA", "main.cpp"};
 
