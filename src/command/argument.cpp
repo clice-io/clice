@@ -422,19 +422,6 @@ bool is_diagnostics_option(unsigned id) {
 
 std::uint16_t written_alias(const kota::option::ParsedArg& parsed) {
     auto& options = option::table().option_infos;
-    const static auto aliases = [&] {
-        llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint16_t, 2>> aliases;
-        for(auto& option: options) {
-            if(option.alias_id) {
-                aliases[option.alias_id].push_back(option.id);
-            }
-        }
-        return aliases;
-    }();
-    auto it = aliases.find(parsed.id);
-    if(it == aliases.end()) {
-        return 0;
-    }
     auto written = [&](std::uint32_t id) {
         auto& option = options[id - 1];
         return std::ranges::any_of(option.prefixes, [&](std::string_view prefix) {
@@ -445,8 +432,18 @@ std::uint16_t written_alias(const kota::option::ParsedArg& parsed) {
     if(written(parsed.id)) {
         return 0;
     }
-    auto alias = std::ranges::find_if(it->second, written);
-    assert(alias != it->second.end() && "the parse matched the option or an alias of it");
+    const static auto aliases = [&] {
+        llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint16_t, 2>> aliases;
+        for(auto& option: options) {
+            if(option.alias_id) {
+                aliases[option.alias_id].push_back(option.id);
+            }
+        }
+        return aliases;
+    }();
+    auto& candidates = aliases.find(parsed.id)->second;
+    auto alias = std::ranges::find_if(candidates, written);
+    assert(alias != candidates.end() && "the parse matched the option or an alias of it");
     return *alias;
 }
 

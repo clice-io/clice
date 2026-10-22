@@ -333,8 +333,11 @@ exit 1
     auto ref = add("a.c", {driver.c_str(), "-c"});
     auto resolved = f.toolchain.resolve(ref.command, ref.input);
     ZASSERT(!resolved);
-    ZEXPECT(llvm::StringRef(resolved.error()).contains("'-mclice-future'"));
-    ZEXPECT(!llvm::StringRef(resolved.error()).contains("gcc version"));
+    llvm::StringRef error = resolved.error();
+    ZEXPECT(error.contains("error: unrecognized command-line option '-mclice-future'"));
+    ZEXPECT(!error.contains("gcc version"));
+    /// The command it ran, to run again by hand.
+    ZEXPECT(error.contains(driver + " -E -dM -v "));
 }
 
 ZEST_CASE(GCCFailureRejected, skip = Windows) {

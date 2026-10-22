@@ -9,6 +9,7 @@ import :command.table;
 import :command.toolchains.clang;
 import :command.toolchains.gcc;
 import :support.process;
+import :support.shell;
 import :vfs.cygwin;
 import :vfs.path;
 
@@ -168,6 +169,7 @@ kota::task<std::expected<GCCStyleOutput, std::string>>
     std::vector<std::string> argv(args.begin(), args.begin() + driver_tokens);
     argv.insert(argv.end(), {"-E", "-dM", "-v"});
     argv.insert(argv.end(), args.begin() + driver_tokens, args.end());
+    auto command = join_command(argv);
     auto output = co_await execute(std::move(argv), std::move(cwd));
     if(!output) {
         co_return std::unexpected(std::move(output.error()));
@@ -189,8 +191,10 @@ kota::task<std::expected<GCCStyleOutput, std::string>>
         if(reported.empty() && !lines.empty()) {
             reported = lines.back().trim();
         }
-        auto error =
-            reported.empty() ? output->failure : std::format("{}: {}", output->failure, reported);
+        auto error = std::format("{}: {} (the query ran: {})",
+                                 output->failure,
+                                 reported.empty() ? "no output" : reported,
+                                 command);
 #ifdef _WIN32
         // Windows looks for a program's DLLs on PATH: without its runtime's
         // directory there, a Cygwin or MSYS2 driver cannot start (exception
