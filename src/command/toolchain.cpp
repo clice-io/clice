@@ -606,16 +606,20 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
     }
 #ifdef _WIN32
     // Cygwin and MSYS2 tools, and a Cygwin symlink's target, name programs
-    // without the `.exe` Windows adds when it starts one.
+    // without the `.exe` Windows adds when it starts one (`gcc-12.2.0`).
     auto with_exe = [](llvm::SmallString<128>& program) {
-        if(!vfs::exists(program) && path::extension(program).empty() &&
+        if(!vfs::exists(program) && !program.str().ends_with_insensitive(".exe") &&
            vfs::exists(program.str().str() + ".exe")) {
             program += ".exe";
         }
     };
     with_exe(found);
-    if(auto target = read_cygwin_symlink(found)) {
-        if(is_posix_path(*target)) {
+    // A link may name another (clang++ -> clang -> clang-15), and a chain
+    // that loops ends at the bound.
+    int links = 0;
+    while(auto target = read_cygwin_symlink(found)) {
+        links += 1;
+        if(is_posix_path(*target) || links > 16) {
             return std::unexpected(
                 std::format("Driver {} is a Cygwin symlink to {}: name the program it links to",
                             found.str(),

@@ -135,7 +135,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 6. 将每个选项解析、分类一次并存入结构化配置，同时以 `directory` 为基准将相对包含路径转换为绝对路径
 7. 对相同配置进行去重，使其共享 `ConfigID`
 
-在 Cygwin 或 MSYS2 内部写出的数据库（由在它们的 shell 中运行的 CMake 或类似的工具写出）按 POSIX 风格书写路径：`/cygdrive/c/proj` 或 `/c/proj`，编译器则写作 `/usr/bin/c++.exe`。在 Windows 上，`PATH` 中排在最前的 Cygwin 或 MSYS2 运行时用它的挂载表（mount table）把这些路径映射为 Windows 路径，包括条目的目录和文件、它的编译器，以及它的路径选项的值。如果 `PATH` 中没有这样的运行时，或者其挂载表把条目的目录映射到一个不存在的目录（说明数据库由另一个运行时写出），以这种方式书写的条目会被跳过，并有一条错误指明该数据库。
+在 Cygwin 或 MSYS2 内部写出的数据库（由在它们的 shell 中运行的 CMake 或类似的工具写出）按 POSIX 风格书写路径：`/cygdrive/c/proj` 或 `/c/proj`，编译器则写作 `/usr/bin/c++.exe`。在 Windows 上，写出这些路径的 Cygwin 或 MSYS2 运行时用它的挂载表（mount table）把它们映射为 Windows 路径，包括条目的目录和文件、它的编译器，以及它的路径选项的值。这个运行时是 `PATH` 上第一个能把首个此类条目的目录或文件映射到实际存在的路径的运行时；换成别的运行时，挂载表会把它们映射到别处。如果没有一个运行时做得到，以这种方式书写的条目会被跳过，并有一条错误指明该数据库。
 
 解析过程还会识别 CMake 直接传给 cc1 的预编译头文件：翻译单元的 `-Xclang -include-pch -Xclang <pchfile>`，以及构建该 PCH 的条目中的 `-Xclang -emit-pch`，都会成为结构化选项，任何编译都不会把它们渲染到命令中。磁盘上的 PCH 可能出自其他编译器，因此 clice 会用写出它的那个条目的命令自行构建一份（在 CMake 中即 `cmake_pch.hxx.cxx` 的条目；GCC 在强制包含的头文件旁写出的 `.gch` 同样能用来找到该条目），读取该 PCH 的每个翻译单元都改为加载 clice 构建的版本：打开文件的 Preamble PCH 以链式 PCH 的方式接在它之后，后台索引也在它之上解析。PCH 所含的头文件单独打开时，编译不使用该 PCH：否则 PCH 中的头文件保护会跳过该头文件自身的正文。与编译借以进入头文件的其他强制包含一样，PCH 所代表的那个强制包含的头文件也会从命令中去掉（见[编译上下文](compilation-context.md#automatic-self-containedness-detection)）。
 
@@ -150,7 +150,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 询问时带着命令自身的标志，所以驱动程序回答的就是这条命令，而 GCC 只在这次编译成功时才会给出回答：关闭某项默认设置的标志（`-fno-stack-protector`）、`--sysroot` 或 `--specs` 文件都会体现在回答中。clang 不认识的 CPU 和 ABI 名称（GCC 的 `-mtune=intel`、Darwin 上的 `-mabi=lp64`）会从 cc1 命令中去掉，GCC 的双核写法 `-mcpu=cortex-a72.cortex-a53` 只保留第一个核。通用构建（`-arch arm64 -arch x86_64`）按其中第一个架构读取。
 
-**Cygwin 和 MSYS2 编译器**：Windows 上的这类编译器（Cygwin 和 MSYS2 自带的 GCC，以及基于 Cygwin 构建的工具链，例如 Andes 的 RISC-V GCC）像任何 GCC 风格的驱动程序一样作答，只是给出的是 POSIX 路径（`/usr/include`、`/cygdrive/c/...`），clice 的 clang 无法打开。这些路径由驱动程序加载的运行时用其挂载表映射——该运行时是驱动程序旁边的 `cygwin1.dll` 或 `msys-2.0.dll`，没有时取 `PATH` 中排在最前的那个——每次探测都从该运行时自己的 `mount` 读取挂载表。假定一套映射会出错：Cygwin 把 `/usr/lib` 挂载在 `<root>/lib`，MSYS2 把驱动器挂载在 `/c` 这样的路径上，用户的 `/etc/fstab` 还会加上自己的挂载。驱动程序本身按 Cygwin 的方式查找：名称可以不带 `.exe`，也可以经由 Cygwin 的符号链接找到（CMake 记录的是 `/usr/bin/cc`，它是指向 `gcc.exe` 的链接）。这样的编译器只有在其运行时的 `bin` 目录位于 `PATH` 中时才能启动；否则查询会失败，错误信息会说明这一点，[编辑器设置](../guide/editors.md#compiler-environment)介绍了如何在各个编辑器中设置它。
+**Cygwin 和 MSYS2 编译器**：Windows 上的这类编译器（Cygwin 和 MSYS2 自带的 GCC，以及基于 Cygwin 构建的工具链，例如 Andes 的 RISC-V GCC）像任何 GCC 风格的驱动程序一样作答，只是给出的是 POSIX 路径（`/usr/include`、`/cygdrive/c/...`），clice 的 clang 无法打开。这些路径由驱动程序加载的运行时用其挂载表映射，每次探测都从该运行时自己的 `mount` 读取挂载表。在驱动程序旁边和 `PATH` 上的运行时（`cygwin1.dll`、`msys-2.0.dll`）中，按 Windows 查找程序 DLL 的顺序，取第一个能把驱动程序所跑作业的程序映射到实际存在的文件的那个：只取第一个运行时的话，若 Git for Windows 的 MSYS2 在 `PATH` 上排在工具链所加载的、位于其外的 Cygwin 之前，就会选错。假定一套映射会出错：Cygwin 把 `/usr/lib` 挂载在 `<root>/lib`，MSYS2 把驱动器挂载在 `/c` 这样的路径上，用户的 `/etc/fstab` 还会加上自己的挂载。驱动程序本身按 Cygwin 的方式查找：名称可以不带 `.exe`，也可以经由 Cygwin 的符号链接找到（CMake 记录的是 `/usr/bin/cc`，它是指向 `gcc.exe` 的链接）。这样的编译器只有在其运行时的 `bin` 目录位于 `PATH` 中时才能启动；否则查询会失败，错误信息会说明这一点，[编辑器设置](../guide/editors.md#compiler-environment)介绍了如何在各个编辑器中设置它。
 
 **MSVC / ClangCL**：先让 cl 或 clang-cl 预处理（`/EP`）一个写着 `_MSVC_LANG` 和 `_MSC_FULL_VER` 的文件，只问一次。由此得知它编译所用的 C++ 标准，因为 `/std:c++latest` 的含义随版本而变；还得知 cl 的版本，因为 clang 自己的探测会取已安装的最新工具集。随后由处于 MSVC 兼容模式（`--driver-mode=cl`）的 Clang 驱动构建 cc1 命令，使用这个标准，并把 cl 的版本作为 `-fms-compatibility-version`。clang-cl 的版本则是同一套探测从它的参数所选的工具集（`/winsysroot`）中得出的版本。cl 只会收到命令里的 `/std:`：其余参数是按 clang 的 cl 模式写的，cl 会拒绝；命令用 clang 写法设定的标准或版本（例如规则追加的 `-std=c++23`）仍以 clang 的读法为准。
 
