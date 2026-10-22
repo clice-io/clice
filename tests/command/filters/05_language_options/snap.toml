@@ -1,0 +1,56 @@
+[kept."$ clice command convert -- missing-clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -std=c++20 -fno-exceptions -fno-rtti -pedantic ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+[kept."$ clice command convert -- missing-clang++ -std=c++20 -Wall -Werror main.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -std=c++20 -Wall -Werror ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+["own macros"."$ clice command convert compile_commands.json"]
+stdout = '''
+[
+  {
+    "directory": "${WS}",
+    "file": "a.cpp",
+    "arguments": [
+      "missing-clang++",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "-Wall",
+      "-D",
+      "A=1",
+      "-D",
+      "FOO",
+      "${WS}/a.cpp"
+    ]
+  },
+  {
+    "directory": "${WS}",
+    "file": "b.cpp",
+    "arguments": [
+      "missing-clang++",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "-Wall",
+      "-D",
+      "B=2",
+      "${WS}/b.cpp"
+    ]
+  }
+]
+'''
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: 2 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+'''
+exit = 1

@@ -1,0 +1,40 @@
+[
+  {
+    "file": "no_dir.cpp",
+    "arguments": ["missing-clang++", "no_dir.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "arguments": ["missing-clang++", "no_file.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "no_args.cpp"
+  },
+  {
+    "directory": "${WS}",
+    "file": "good.cpp",
+    "arguments": ["missing-clang++", "-std=c++20", "good.cpp"]
+  },
+  42,
+  {
+    "directory": "${WS}",
+    "file": "also_good.cpp",
+    "command": "missing-clang++ -Wall also_good.cpp"
+  },
+  {
+    "directory": "${WS}",
+    "file": "empty.cpp",
+    "command": ""
+  },
+  {
+    "directory": "${WS}",
+    "file": "spaces.cpp",
+    "command": "   "
+  },
+  {
+    "directory": "${WS}",
+    "file": "ok.cpp",
+    "command": "missing-clang++ -std=c++20 ok.cpp"
+  }
+]

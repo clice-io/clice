@@ -68,33 +68,6 @@ ZEST_CASE(CxxDriverCInputs) {
     ZEXPECT(kind("e.c") == "c++");
 };
 
-ZEST_CASE(ClAliasesRender) {
-    /// cl spellings unalias to options a cl-mode driver reads as another
-    /// (`-Wall` is its /Wall) or not at all: a cl alias spells them in
-    /// place, `/clang:` (appended last by the driver) only when none does.
-    FileTable file_table;
-    CommandTable commands;
-    CompilationDatabase database{file_table, commands};
-    database.add_command("/fake",
-                         "/fake/a.cpp",
-                         "cl.exe /W3 -Wno-unused-variable /J /Zp4 /Iinc /FIpre.h /std:c++17 /c "
-                         "/fake/a.cpp"sv);
-
-    auto argv = print_argv(render_entry(database, "/fake/a.cpp"));
-    ZEXPECT(llvm::StringRef(argv).contains("/W1 -Wno-unused-variable"));
-    ZEXPECT(llvm::StringRef(argv).contains("/J"));
-    ZEXPECT(llvm::StringRef(argv).contains("/Zp4"));
-    ZEXPECT(llvm::StringRef(argv).contains("/FIpre.h"));
-    ZEXPECT(llvm::StringRef(argv).contains("-I /fake/inc"));
-    ZEXPECT(llvm::StringRef(argv).contains("/std:c++17"));
-    ZEXPECT(!llvm::StringRef(argv).contains("/clang:"));
-
-    /// GCC-style, with no cl spelling at all.
-    database.add_command("/fake", "/fake/b.cpp", "cl.exe -std=c++20 /c /fake/b.cpp"sv);
-    ZEXPECT(llvm::StringRef(print_argv(render_entry(database, "/fake/b.cpp")))
-                .contains("/clang:-std=c++20"));
-};
-
 ZEST_CASE(IdentityHashes) {
     FileTable file_table;
     CommandTable commands;

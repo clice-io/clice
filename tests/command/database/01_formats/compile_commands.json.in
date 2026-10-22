@@ -1,0 +1,17 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "a.cpp",
+    "arguments": ["missing-clang++", "-std=c++20", "a.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "b.cpp",
+    "command": "missing-clang++ -std=c++23 b.cpp"
+  },
+  {
+    "directory": "${WS}",
+    "file": "quoted.cpp",
+    "command": "missing-clang++ -std=c++20 \"-DMSG=hello world\" -I\"${WS}/path with spaces\" quoted.cpp"
+  }
+]

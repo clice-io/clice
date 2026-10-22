@@ -21,77 +21,9 @@ using namespace std::literals;
 
 ZEST_SUITE(Edit) {
 
-ZEST_CASE(RemoveAppend) {
-    llvm::SmallVector args = {
-        "clang++",
-        "--output=main.o",
-        "-D",
-        "A",
-        "-D",
-        "B=0",
-        "main.cpp",
-    };
-
-    FileTable file_table;
-    CommandTable commands;
-    CompilationDatabase database{file_table, commands};
-    database.add_command("/fake", "main.cpp", args);
-    auto main = fake("main.cpp");
-
-    std::vector<CommandEdit> edits;
-    CommandEdits options{.edits = edits};
-    auto remove_only = [&](std::vector<std::string> flags) {
-        edits = {
-            {CommandEdit::Kind::Remove, std::move(flags)}
-        };
-        options.edits = edits;
-    };
-
-    remove_only({"-DA"});
-    ZEXPECT(print_argv(render_entry(database, main, options)) ==
-            std::format("clang++ -D B=0 {}", main));
-
-    remove_only({"-D", "A"});
-    ZEXPECT(print_argv(render_entry(database, main, options)) ==
-            std::format("clang++ -D B=0 {}", main));
-
-    remove_only({"-DA", "-D", "B=0"});
-    ZEXPECT(print_argv(render_entry(database, main, options)) == std::format("clang++ {}", main));
-
-    remove_only({"-D*"});
-    ZEXPECT(print_argv(render_entry(database, main, options)) == std::format("clang++ {}", main));
-
-    remove_only({"-D", "*"});
-    ZEXPECT(print_argv(render_entry(database, main, options)) == std::format("clang++ {}", main));
-
-    edits = {
-        {CommandEdit::Kind::Append, {"-D", "C"}}
-    };
-    options.edits = edits;
-    ZEXPECT(print_argv(render_entry(database, main, options)) ==
-            std::format("clang++ -D A -D B=0 -D C {}", main));
-};
-
-ZEST_CASE(AppendUnknownValue) {
-    /// An appended option the table does not know keeps its separate value:
-    /// an edit cannot name the entry input, so an input-classified token is
-    /// really the option's value.
-    FileTable file_table;
-    CommandTable commands;
-    CompilationDatabase database{file_table, commands};
-    database.add_command("/fake", "main.cpp", "clang++ main.cpp"sv);
-
-    std::vector<CommandEdit> edits = {
-        {CommandEdit::Kind::Append, {"-fnot-a-real-flag", "value"}}
-    };
-    CommandEdits options{.edits = edits};
-    ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
-            std::format("clang++ -fnot-a-real-flag value {}", fake("main.cpp")));
-};
-
 ZEST_CASE(AppendBeforeSlot) {
     /// Appends go before the input slot, so an appended selector governs
-    /// the input; the CDB's selector after it still governs none.
+    /// the input.
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
@@ -100,52 +32,11 @@ ZEST_CASE(AppendBeforeSlot) {
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Append, {"-x", "c++"}}
     };
-    CommandEdits options{.edits = edits};
-
-    ZEXPECT(print_argv(render_entry(database, fake("a.c"), options)) ==
-            std::format("clang -x c -x c++ {} -x none", fake("a.c")));
-
     auto applied = apply_edits(commands,
                                file_table,
                                database.candidate_entries(fake("a.c")).front().command,
-                               options);
+                               {.edits = edits});
     ZEXPECT(llvm::StringRef(commands.input_kind(applied, "a.c").value) == "c++");
-};
-
-ZEST_CASE(AppendAfterInputFlags) {
-    /// An append overrides a flag the CDB writes after its input.
-    FileTable file_table;
-    CommandTable commands;
-    CompilationDatabase database{file_table, commands};
-    database.add_command("/fake", "a.c", "clang -c a.c -std=c11"sv);
-
-    std::vector<CommandEdit> edits = {
-        {CommandEdit::Kind::Append, {"-std=c17"}}
-    };
-    CommandEdits options{.edits = edits};
-    ZEXPECT(print_argv(render_entry(database, fake("a.c"), options)) ==
-            std::format("clang -std=c11 -std=c17 {}", fake("a.c")));
-};
-
-ZEST_CASE(RemoveEveryValue) {
-    /// A flag written without its value, last in the list, or with `*` for
-    /// it, removes every value; a `*` joined to the name removes every flag
-    /// of that prefix and kind, so the preprocessor's -Wp stays. One that
-    /// takes several values removes nothing until they are written.
-    FileTable file_table;
-    CommandTable commands;
-    CompilationDatabase database{file_table, commands};
-    database.add_command(
-        "/fake",
-        "a.c",
-        "clang -include pre.h -Iinc -Wall -Wextra -Wno-unused -Wp,-DKEPT -DKEEP a.c"sv);
-
-    std::vector<CommandEdit> edits = {
-        {CommandEdit::Kind::Remove, {"-I*", "-W*", "-include"}},
-        {CommandEdit::Kind::Remove, {"-sectcreate"}           },
-    };
-    ZEXPECT(print_argv(render_entry(database, fake("a.c"), {.edits = edits})) ==
-            std::format("clang -Wp,-DKEPT -D KEEP {}", fake("a.c")));
 };
 
 ZEST_CASE(SelectorHistoryRestored) {
@@ -222,50 +113,6 @@ ZEST_CASE(PrependAfterBinary) {
     // on collision. (Defines render canonicalized, as two tokens.)
     ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
             std::format("clang++ -std=c++17 -D B -D A {}", fake("main.cpp")));
-};
-
-ZEST_CASE(LaterRemoveCancelsAppend) {
-    /// Edits apply in rule order: a later remove reaches what an earlier
-    /// rule appended, by option semantics (spelling-independent).
-    FileTable file_table;
-    CommandTable commands;
-    CompilationDatabase database{file_table, commands};
-    database.add_command("/fake", "main.cpp", "clang++ main.cpp"sv);
-    std::vector<CommandEdit> edits = {
-        {CommandEdit::Kind::Append, {"-DFOO=1", "-DBAR"}},
-        {CommandEdit::Kind::Remove, {"-D", "FOO=1"}     },
-    };
-    CommandEdits options{.edits = edits};
-    ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
-            std::format("clang++ -D BAR {}", fake("main.cpp")));
-
-    /// The other way round the append wins: nothing before it to cancel.
-    std::vector<CommandEdit> reversed = {
-        {CommandEdit::Kind::Remove, {"-DFOO=1"}},
-        {CommandEdit::Kind::Append, {"-DFOO=1"}},
-    };
-    options.edits = reversed;
-    ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
-            std::format("clang++ -D FOO=1 {}", fake("main.cpp")));
-};
-
-ZEST_CASE(RemoveIncludeWildcard) {
-    /// `*` removes every value of a path option instead of naming a file
-    /// in the rule's directory.
-    FileTable file_table;
-    CommandTable commands;
-    CompilationDatabase database{file_table, commands};
-    database.add_command("/fake", "main.cpp", "clang++ -Iinc -I/opt/include main.cpp"sv);
-    for(auto flags: {
-            std::vector<std::string>{"-I*"},
-            std::vector<std::string>{"-I", "*"}
-    }) {
-        std::vector<CommandEdit> edits = {
-            {CommandEdit::Kind::Remove, flags, Spelling::absolute("/config")}
-        };
-        ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), {.edits = edits})) ==
-                std::format("clang++ {}", fake("main.cpp")));
-    }
 };
 
 ZEST_CASE(RuleAnchorKeysMemo) {

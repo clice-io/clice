@@ -1,0 +1,23 @@
+[launchers."$ clice command convert -- ccache missing-clang++ -std=c++20 main.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -std=c++20 ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+[launchers."$ clice command convert -- ccache --set-config cache_dir=/tmp/cc missing-clang++ -std=c++20 main.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -std=c++20 ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+[launchers."$ clice command convert -- CCACHE.EXE missing-clang++ -std=c++20 main.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -std=c++20 ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1

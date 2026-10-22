@@ -2,6 +2,6 @@
   {
     "directory": ".",
     "file": "../main.cpp",
-    "arguments": ["missing-cc", "-c", "../main.cpp"]
+    "arguments": ["missing-cc", "-Iinclude", "-c", "../main.cpp"]
   }
 ]

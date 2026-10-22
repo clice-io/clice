@@ -1,0 +1,17 @@
+[
+  {
+    "directory": "${WS}/project/build",
+    "file": "src/main.cpp",
+    "arguments": ["missing-clang++", "-std=c++20", "src/main.cpp"]
+  },
+  {
+    "directory": "${WS}/other/build",
+    "file": "src/main.cpp",
+    "arguments": ["missing-clang++", "-std=c++17", "src/main.cpp"]
+  },
+  {
+    "directory": "${WS}/project/gen",
+    "file": "../src/./main.cpp",
+    "arguments": ["missing-clang++", "-std=c++23", "../src/./main.cpp"]
+  }
+]

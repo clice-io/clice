@@ -1,0 +1,15 @@
+[[rules]]
+patterns = ["defined.cpp"]
+append = ["-D", "C"]
+
+[[rules]]
+patterns = ["unknown.cpp"]
+append = ["-fnot-a-real-flag", "value"]
+
+[[rules]]
+patterns = ["selector.c"]
+append = ["-x", "c++"]
+
+[[rules]]
+patterns = ["after.c"]
+append = ["-std=c17"]

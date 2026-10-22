@@ -53,6 +53,8 @@ stdout = '''
       "missing-cc",
       "-resource-dir",
       "${RESOURCE}",
+      "-I",
+      "${WS}/build/include",
       "-D",
       "FROM_RULE",
       "${WS}/build/../main.cpp"

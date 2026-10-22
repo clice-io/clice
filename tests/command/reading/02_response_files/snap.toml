@@ -1,0 +1,15 @@
+[expanded."$ clice command convert -- missing-clang++ @flags.rsp main.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -std=c++23 -D FROM_RSP=1 ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+[expanded."$ clice command convert -- missing-clang++ @mode.rsp main.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} --driver-mode=cl /TP ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1

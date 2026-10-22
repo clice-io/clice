@@ -1,0 +1,77 @@
+[test."$ clice command convert compile_commands.json"]
+stdout = '''
+[
+  {
+    "file": "no_dir.cpp",
+    "arguments": [
+      "missing-clang++",
+      "no_dir.cpp"
+    ]
+  },
+  {
+    "directory": "${WS}",
+    "arguments": [
+      "missing-clang++",
+      "no_file.cpp"
+    ]
+  },
+  {
+    "directory": "${WS}",
+    "file": "no_args.cpp"
+  },
+  {
+    "directory": "${WS}",
+    "file": "good.cpp",
+    "arguments": [
+      "missing-clang++",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "${WS}/good.cpp"
+    ]
+  },
+  42,
+  {
+    "directory": "${WS}",
+    "file": "also_good.cpp",
+    "arguments": [
+      "missing-clang++",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-Wall",
+      "${WS}/also_good.cpp"
+    ]
+  },
+  {
+    "directory": "${WS}",
+    "file": "empty.cpp",
+    "command": ""
+  },
+  {
+    "directory": "${WS}",
+    "file": "spaces.cpp",
+    "command": "   "
+  },
+  {
+    "directory": "${WS}",
+    "file": "ok.cpp",
+    "arguments": [
+      "missing-clang++",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "${WS}/ok.cpp"
+    ]
+  }
+]
+'''
+stderr = '''
+error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 0: 'directory' key is missing.
+error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 1: 'file' key is missing.
+error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 2: neither 'arguments' nor 'command' key is present.
+error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 4: item is not an object.
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: 3 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+'''
+exit = 1

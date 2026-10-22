@@ -1,0 +1,46 @@
+[test."$ clice command convert compile_commands.json"]
+stdout = '''
+[
+  {
+    "directory": "${WS}",
+    "file": "kernels.cuh",
+    "arguments": [
+      "nvcc-missing",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-x",
+      "cuda",
+      "${WS}/kernels.cuh"
+    ]
+  },
+  {
+    "directory": "${WS}",
+    "file": "app.rc",
+    "command": "rc /fo app.res app.rc"
+  },
+  {
+    "directory": "${WS}",
+    "file": "a.ixx",
+    "arguments": [
+      "missing-clang++",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "-x",
+      "c++-module",
+      "${WS}/a.ixx"
+    ]
+  },
+  {
+    "directory": "${WS}",
+    "file": "b.ixx",
+    "command": "missing-clang++ -std=c++20 -c b.ixx"
+  }
+]
+'''
+stderr = '''
+error: Toolchain query failed: Cannot find driver: nvcc-missing
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: 2 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+'''
+exit = 1

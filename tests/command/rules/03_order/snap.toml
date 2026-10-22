@@ -1,0 +1,15 @@
+[test."$ clice command convert -- missing-clang++ later.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -D BAR ${WS}/later.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+[test."$ clice command convert -- missing-clang++ earlier.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -D FOO=1 ${WS}/earlier.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1

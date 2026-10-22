@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "alpha.c",
+    "command": "cl-missing.exe /Tcalpha.c /Tpbeta.c /c"
+  },
+  {
+    "directory": "${WS}",
+    "file": "beta.c",
+    "command": "cl-missing.exe /Tcalpha.c /Tpbeta.c /c"
+  }
+]

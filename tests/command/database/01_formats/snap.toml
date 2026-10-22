@@ -1,0 +1,48 @@
+[test."$ clice command convert compile_commands.json"]
+stdout = '''
+[
+  {
+    "directory": "${WS}",
+    "file": "a.cpp",
+    "arguments": [
+      "missing-clang++",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "${WS}/a.cpp"
+    ]
+  },
+  {
+    "directory": "${WS}",
+    "file": "b.cpp",
+    "arguments": [
+      "missing-clang++",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++23",
+      "${WS}/b.cpp"
+    ]
+  },
+  {
+    "directory": "${WS}",
+    "file": "quoted.cpp",
+    "arguments": [
+      "missing-clang++",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-std=c++20",
+      "-D",
+      "MSG=hello world",
+      "-I",
+      "${WS}/path with spaces",
+      "${WS}/quoted.cpp"
+    ]
+  }
+]
+'''
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: 3 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+'''
+exit = 1

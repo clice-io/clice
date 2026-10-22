@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "a.cpp",
+    "arguments": ["missing-clang++", "-std=c++20", "-Wall", "-DA=1", "-DFOO", "a.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "b.cpp",
+    "arguments": ["missing-clang++", "-std=c++20", "-Wall", "-DB=2", "b.cpp"]
+  }
+]

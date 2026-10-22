@@ -1,0 +1,35 @@
+[[rules]]
+patterns = ["joined.cpp"]
+remove = ["-DA"]
+
+[[rules]]
+patterns = ["separate.cpp"]
+remove = ["-D", "A"]
+
+[[rules]]
+patterns = ["both.cpp"]
+remove = ["-DA", "-D", "B=0"]
+
+[[rules]]
+patterns = ["wildcard_joined.cpp"]
+remove = ["-D*"]
+
+[[rules]]
+patterns = ["wildcard_separate.cpp"]
+remove = ["-D", "*"]
+
+[[rules]]
+patterns = ["every.c"]
+remove = ["-I*", "-W*", "-include"]
+
+[[rules]]
+patterns = ["every.c"]
+remove = ["-sectcreate"]
+
+[[rules]]
+patterns = ["includes_joined.cpp"]
+remove = ["-I*"]
+
+[[rules]]
+patterns = ["includes_separate.cpp"]
+remove = ["-I", "*"]

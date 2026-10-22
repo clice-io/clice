@@ -1,0 +1,31 @@
+[test."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 defined.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -D A -D B=0 -D C ${WS}/defined.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+[test."$ clice command convert -- missing-clang++ unknown.cpp"]
+stdout = "missing-clang++ -resource-dir ${RESOURCE} -fnot-a-real-flag value ${WS}/unknown.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+[test."$ clice command convert -- missing-clang -x c selector.c -x none"]
+stdout = "missing-clang -resource-dir ${RESOURCE} -x c -x c++ ${WS}/selector.c -x none"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1
+
+[test."$ clice command convert -- missing-clang -c after.c -std=c11"]
+stdout = "missing-clang -resource-dir ${RESOURCE} -std=c11 -std=c17 ${WS}/after.c"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang
+error: The compiler could not be queried, so the command is clice's own reading of it
+'''
+exit = 1

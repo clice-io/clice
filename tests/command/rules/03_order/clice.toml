@@ -1,0 +1,15 @@
+[[rules]]
+patterns = ["later.cpp"]
+append = ["-DFOO=1", "-DBAR"]
+
+[[rules]]
+patterns = ["later.cpp"]
+remove = ["-D", "FOO=1"]
+
+[[rules]]
+patterns = ["earlier.cpp"]
+remove = ["-DFOO=1"]
+
+[[rules]]
+patterns = ["earlier.cpp"]
+append = ["-DFOO=1"]
