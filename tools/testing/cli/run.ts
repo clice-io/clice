@@ -86,15 +86,16 @@ function resourceless(text: string): string {
 }
 
 /// A command's output as it reads on every host and every run: portable, a
-/// session's log directory `${SESSION}`, times of day, durations and sizes
-/// elided.
+/// session's log directory `${SESSION}`, the toolchain query's temporary
+/// input `${QUERY_INPUT}`, times of day, durations and sizes elided.
 export function normalize(text: string, root: string): string {
     return portable(text, root)
         .replace(/\b\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_\d+\b/g, "${SESSION}")
         .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\b/g, "#time")
         .replace(/\b\d+(\.\d+)?(ms|s)\b/g, "#$2")
         .replace(/\b\d+(\.\d+)? (B|KB|MB|GB)\b/g, "# $2")
-        .replace(/\(pid \d+\)/g, "(pid #)");
+        .replace(/\(pid \d+\)/g, "(pid #)")
+        .replace(/\S*query-toolchain-\S+/g, "${QUERY_INPUT}");
 }
 
 let version: string | undefined;

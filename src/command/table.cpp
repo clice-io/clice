@@ -2,11 +2,14 @@ module;
 
 #include "modules/prelude.h"
 
+#include "support/logging.macros.h"
+
 module clice;
 
 import :command.argument;
 import :command.file_kind;
 import :command.table;
+import :support.logging;
 import :vfs.path;
 
 namespace clice {
@@ -278,6 +281,9 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
     // when its library builds the invocation; the command's own --target
     // comes later and wins.
     if(auto target = name_target(command.driver); !target.empty()) {
+        LOG_INFO("clang reads the command of {} for {}, the target its name sets",
+                 command.driver,
+                 target);
         argv.push_back(intern("--target=" + target).data());
     }
 

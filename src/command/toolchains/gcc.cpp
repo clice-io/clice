@@ -2,12 +2,15 @@ module;
 
 #include "modules/prelude.h"
 
+#include "support/logging.macros.h"
+
 module clice;
 
 import :command.argument;
 import :command.table;
 import :command.toolchains.clang;
 import :command.toolchains.gcc;
+import :support.logging;
 import :support.process;
 import :support.shell;
 import :vfs.cygwin;
@@ -68,16 +71,43 @@ kota::task<std::expected<GCCStyleOutput, std::string>> translate_posix_paths(GCC
     co_return output;
 }
 
-/// GCC's two-core tuning form, `-mcpu=cortex-a72.cortex-a53`, as the first
-/// core alone: clang knows no such name, and the first core's architecture
-/// is the code's. The features after the cores keep their dots
-/// (`-mcpu=cortex-m7+nofp.dp`).
-std::string first_core(llvm::StringRef arg) {
-    if(!arg.starts_with("-mcpu=")) {
+/// An option of GCC's as clang's driver takes it:
+///
+///   - GCC's two-core tuning form, `-mcpu=cortex-a72.cortex-a53`, as the
+///     first core alone: clang knows no such name, and the first core's
+///     architecture is the code's. The features after the cores keep their
+///     dots (`-mcpu=cortex-m7+nofp.dp`).
+///   - A RISC-V ISA string without the extensions LLVM does not know (a
+///     vendor's, WCH's `_xw`): clang drops a whole string naming one, and
+///     every feature macro of the rest with it.
+std::string for_clang(llvm::StringRef arg, const llvm::Triple& target) {
+    if(arg.starts_with("-mcpu=")) {
+        auto features = arg.find('+');
+        auto first = (arg.substr(0, features).split('.').first + arg.substr(features)).str();
+        if(first != arg) {
+            LOG_INFO("clang reads {} as {}, its first core", arg, first);
+        }
+        return first;
+    }
+    llvm::StringRef isa = arg;
+    if(!target.isRISCV() || !isa.consume_front("-march=")) {
         return arg.str();
     }
-    auto features = arg.find('+');
-    return (arg.substr(0, features).split('.').first + arg.substr(features)).str();
+    llvm::SmallVector<llvm::StringRef> extensions;
+    isa.split(extensions, '_');
+    auto known = "-march=" + extensions[0].str();
+    for(auto extension: extensions | std::views::drop(1)) {
+        if(llvm::RISCVISAInfo::isSupportedExtension(extension) ||
+           llvm::RISCVISAInfo::isSupportedExtensionWithVersion(extension)) {
+            known += '_';
+            known += extension;
+        } else {
+            LOG_WARN("LLVM knows no RISC-V extension {}: clang reads -march={} without it",
+                     extension,
+                     isa);
+        }
+    }
+    return known;
 }
 
 }  // namespace
@@ -191,10 +221,8 @@ kota::task<std::expected<GCCStyleOutput, std::string>>
         if(reported.empty() && !lines.empty()) {
             reported = lines.back().trim();
         }
-        auto error = std::format("{}: {} (the query ran: {})",
-                                 output->failure,
-                                 reported.empty() ? "no output" : reported,
-                                 command);
+        auto error =
+            reported.empty() ? output->failure : std::format("{}: {}", output->failure, reported);
 #ifdef _WIN32
         // Windows looks for a program's DLLs on PATH: without its runtime's
         // directory there, a Cygwin or MSYS2 driver cannot start (exception
@@ -206,7 +234,7 @@ kota::task<std::expected<GCCStyleOutput, std::string>>
                 "MSYS2's, belongs on clice's PATH, which clice.serverEnv sets in VS Code)";
         }
 #endif
-        co_return std::unexpected(std::move(error));
+        co_return std::unexpected(std::format("{}; the query ran: {}", error, command));
     }
     co_return co_await translate_posix_paths(std::move(parsed), args[0]);
 }
@@ -221,13 +249,14 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                                            resource_dir().str()};
     auto parse_options =
         kota::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
+    llvm::Triple target(output.target);
     for(auto& parsed: option::table().parse(output.gcc_options, parse_options)) {
         if(parsed && parsed->id != option::OPT_UNKNOWN) {
-            clang_args.push_back(first_core(output.gcc_options[parsed->index]));
+            clang_args.push_back(for_clang(output.gcc_options[parsed->index], target));
         }
     }
     for(llvm::StringRef arg: args.drop_front()) {
-        clang_args.push_back(first_core(arg));
+        clang_args.push_back(for_clang(arg, target));
     }
 
     auto job = query_driver(clang_args, cwd);

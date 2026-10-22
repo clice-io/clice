@@ -2,10 +2,13 @@ module;
 
 #include "modules/prelude.h"
 
+#include "support/logging.macros.h"
+
 module clice;
 
 import :command.argument;
 import :command.toolchains.clang;
+import :support.logging;
 import :vfs.file_system;
 
 namespace clice {
@@ -118,6 +121,7 @@ std::expected<Job, std::string> ask_clang_for(std::vector<std::string> args,
     args.erase(args.begin() + 1, args.begin() + driver_tokens);
     std::vector<std::string> mode;
     if(auto target = name_target(args[0]); !target.empty()) {
+        LOG_INFO("clang reads the command of {} for {}, the target its name sets", args[0], target);
         mode.push_back("--target=" + target);
     }
     return ask_clang(args, mode, cwd);

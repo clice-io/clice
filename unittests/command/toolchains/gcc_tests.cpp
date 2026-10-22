@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.edit;
 import :command.table;
 import :command.toolchains.gcc;
 import :unittests.utils;
@@ -288,6 +289,15 @@ ZEST_CASE(GCCTargetNames, skip = Windows) {
     /// A CPU newer than clang's target table.
     auto x86 = render("x86_64-linux-gnu", "-march=clice-future-cpu");
     ZEXPECT(!contains(x86, "clice-future-cpu"));
+    /// A vendor's RISC-V extension LLVM does not know goes, and the rest
+    /// stay: as a command writes them, and as GCC's job versions them.
+    auto wch = render("riscv32-wch-elf", "-march=rv32imc_zba_zbb_zbc_zbs_xw -mabi=ilp32");
+    ZEXPECT(adjacent(wch, "-target-feature", "+m"));
+    ZEXPECT(adjacent(wch, "-target-feature", "+zba"));
+    auto andes = render("riscv32-elf",
+                        "-march=rv32imc_xandes -march=rv32i2p0_m2p0_c2p0_xandes5p0 -mabi=ilp32");
+    ZEXPECT(adjacent(andes, "-target-feature", "+m"));
+    ZEXPECT(adjacent(andes, "-target-feature", "+c"));
 }
 
 ZEST_CASE(GCCSeesWrittenAliases, skip = Windows) {
@@ -315,6 +325,17 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
         ZEXPECT(contains(lines, arg));
     }
     ZEXPECT(!contains(lines, "-G"));
+
+    /// A rule's edit keeps what the command wrote.
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Append, {"-fno-common"}}
+    };
+    auto edited = ref;
+    edited.command = apply_edits(f.commands, f.file_table, ref.command, {.edits = edits});
+    ZEXPECT(f.toolchain.resolve(edited.command, edited.input).has_value());
+    passed = vfs::read(args);
+    ZASSERT(passed);
+    ZEXPECT((*passed)->getBuffer().contains("-msmall-data-limit=8\n"));
 
     /// Two names of one option are two queries: GCC may take one alone.
     auto clang_name = add("b.c", {driver.c_str(), "-G", "8", "-c"});

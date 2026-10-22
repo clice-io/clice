@@ -7079,6 +7079,7 @@ using ::llvm::PrettyStackTraceEntry;
 using ::llvm::PrettyStackTraceFormat;
 using ::llvm::PrettyStackTraceProgram;
 using ::llvm::PrettyStackTraceString;
+using ::llvm::RISCVISAInfo;
 using ::llvm::RTTIExtends;
 using ::llvm::RTTIRoot;
 using ::llvm::RefCountedBase;
@@ -7783,6 +7784,13 @@ using enum ::llvm::PICLevel::Level;
 export namespace llvm::PIELevel {
 using ::llvm::PIELevel::Level;
 using enum ::llvm::PIELevel::Level;
+}
+
+export namespace llvm::RISCVISAUtils {
+using ::llvm::RISCVISAUtils::ExtensionComparator;
+using ::llvm::RISCVISAUtils::ExtensionVersion;
+using ::llvm::RISCVISAUtils::OrderedExtensionMap;
+using ::llvm::RISCVISAUtils::compareExtension;
 }
 
 export namespace llvm::Reloc {

@@ -148,6 +148,7 @@ import std.compat;
 #include "llvm/Support/thread.h"
 #include "llvm/Support/xxhash.h"
 #include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/RISCVISAInfo.h"
 #include "llvm/TargetParser/Triple.h"
 #include "roaring/roaring.hh"
 #include "lmdb.h"
