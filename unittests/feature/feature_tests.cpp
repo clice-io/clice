@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.protocol;
 import :unittests.utils;
 import :vfs.file_table;
 

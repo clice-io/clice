@@ -6,7 +6,7 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.formatting;
 import :support.logging;
 import :vfs.file_system;
 

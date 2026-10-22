@@ -7,7 +7,8 @@ module;
 module clice;
 
 import :compile.diagnostic;
-import :feature.feature;
+import :feature.diagnostics;
+import :feature.protocol;
 import :project.command_resolver;
 import :project.configuration;
 import :project.hosting;

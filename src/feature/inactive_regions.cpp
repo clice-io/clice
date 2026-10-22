@@ -5,7 +5,7 @@ module;
 module clice;
 
 import :compile.directive;
-import :feature.feature;
+import :feature.inactive_regions;
 import :support.text;
 import :syntax.lexical_scan;
 

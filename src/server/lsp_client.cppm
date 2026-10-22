@@ -4,7 +4,11 @@ module;
 
 module clice:server.lsp_client;
 
-import :feature.feature;
+import :feature.code_completion;
+import :feature.diagnostics;
+import :feature.document_symbols;
+import :feature.folding_ranges;
+import :feature.semantic_tokens;
 import :server.master_server;
 import :server.project_server;
 import :server.session;

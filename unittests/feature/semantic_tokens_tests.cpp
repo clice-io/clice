@@ -9,7 +9,7 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.semantic_tokens;
 import :semantic.token_class;
 import :unittests.utils;
 import :unittests.utils.tester;

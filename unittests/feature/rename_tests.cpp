@@ -4,8 +4,8 @@ module;
 
 module clice;
 
+import :feature.rename;
 import :index.query;
-import :index.rename;
 import :index.search;
 import :index.symbol_query;
 import :unittests.utils.merge_unit;
@@ -19,7 +19,7 @@ import :vfs.file_table;
 namespace clice::testing {
 namespace {
 
-using index::RenamePlan;
+using feature::RenamePlan;
 
 ZEST_SUITE(Rename, Tester) {
 
@@ -75,13 +75,13 @@ void write(llvm::StringRef name, llvm::StringRef content) {
 /// The disk's files scanned for the names of the renames planned, each
 /// read once.
 llvm::StringSet<> names;
-llvm::StringMap<std::optional<index::ScannedText>> scanned;
+llvm::StringMap<std::optional<feature::ScannedText>> scanned;
 
-const index::ScannedText* read(llvm::StringRef path) {
+const feature::ScannedText* read(llvm::StringRef path) {
     auto [it, inserted] = scanned.try_emplace(path);
     if(inserted) {
         if(auto text = vfs::read(path)) {
-            it->second = index::scan_text((*text)->getBuffer().str(), names);
+            it->second = feature::scan_text((*text)->getBuffer().str(), names);
         }
     }
     return it->second ? &*it->second : nullptr;
@@ -91,52 +91,52 @@ bool editable(llvm::StringRef path) {
     return !foreign.contains(path);
 }
 
-RenamePlan plan(const index::RenameTarget& target, llvm::StringRef new_name) {
+RenamePlan plan(const feature::RenameTarget& target, llvm::StringRef new_name) {
     names = {target.symbol.symbol.name, new_name};
     scanned.clear();
-    return index::plan_rename(query,
-                              project.file_table,
-                              target,
-                              new_name,
-                              {.files = scope,
-                               .editable = [&](llvm::StringRef path) { return editable(path); },
-                               .read = [&](llvm::StringRef path) { return read(path); },
-                               .units_pending = units_pending});
+    return feature::plan_rename(query,
+                                project.file_table,
+                                target,
+                                new_name,
+                                {.files = scope,
+                                 .editable = [&](llvm::StringRef path) { return editable(path); },
+                                 .read = [&](llvm::StringRef path) { return read(path); },
+                                 .units_pending = units_pending});
 }
 
 /// The rename target of the one symbol the query `name` finds.
-index::RenameTarget target(llvm::StringRef name) {
+feature::RenameTarget target(llvm::StringRef name) {
     auto hits = index::locate(query, *index::SymbolQuery::parse(name));
     ZASSERT(hits.size() == 1U);
-    auto found = index::rename_target(query, hits.front());
+    auto found = feature::rename_target(query, hits.front());
     ZASSERT(found);
     return std::move(*found);
 }
 
 /// Plan the renames together, as a batch.
-index::BatchPlan batch(std::vector<index::Renaming> renamings) {
+feature::BatchPlan batch(std::vector<feature::Renaming> renamings) {
     names.clear();
     scanned.clear();
     for(auto& [target, new_name]: renamings) {
         names.insert(target.symbol.symbol.name);
         names.insert(new_name);
     }
-    return index::plan_renames(query,
-                               project.file_table,
-                               renamings,
-                               {.files = scope,
-                                .editable = [&](llvm::StringRef path) { return editable(path); },
-                                .read = [&](llvm::StringRef path) { return read(path); },
-                                .units_pending = units_pending});
+    return feature::plan_renames(query,
+                                 project.file_table,
+                                 renamings,
+                                 {.files = scope,
+                                  .editable = [&](llvm::StringRef path) { return editable(path); },
+                                  .read = [&](llvm::StringRef path) { return read(path); },
+                                  .units_pending = units_pending});
 }
 
 /// The text of `path` with the batch's edits applied.
-std::string applied(const index::BatchPlan& plan, llvm::StringRef path) {
+std::string applied(const feature::BatchPlan& plan, llvm::StringRef path) {
     auto text = vfs::read(path);
     ZASSERT(text);
     auto file = project.file_table.find(Spelling::absolute(path));
     ZASSERT(file);
-    auto renamed = index::apply_renames((*text)->getBuffer(), plan, *file);
+    auto renamed = feature::apply_renames((*text)->getBuffer(), plan, *file);
     ZASSERT(renamed);
     return std::move(*renamed);
 }
@@ -148,19 +148,19 @@ std::expected<RenamePlan, std::string> rename(llvm::StringRef name, llvm::String
         return std::unexpected(
             std::format("{} symbols match `{}`", hits.size(), std::string_view(name)));
     }
-    auto target = index::rename_target(query, hits.front());
+    auto target = feature::rename_target(query, hits.front());
     if(!target) {
         return std::unexpected(target.error());
     }
     return plan(*target, new_name);
 }
 
-std::expected<index::CursorRename, std::string> cursor(llvm::StringRef at) {
+std::expected<feature::CursorRename, std::string> cursor(llvm::StringRef at) {
     auto found = query.symbol_at(focus_id, point(at));
     if(!found) {
         return std::unexpected("no symbol at the mark");
     }
-    return index::rename_at(query, *found);
+    return feature::rename_at(query, *found);
 }
 
 /// Rename the symbol under the focus file's mark `at`.
@@ -888,10 +888,10 @@ ZEST_CASE(ApplyRewritesTokens) {
     )");
 
     // The text moved on: a token no longer spells the old name.
-    ZEXPECT(!index::apply_renames("int x;", renamed, focus_id).has_value());
+    ZEXPECT(!feature::apply_renames("int x;", renamed, focus_id).has_value());
     auto longer = sources.all_files[file("a.cpp")].content;
     longer.insert(renamed.edits.front().edit.site.range.end, "d");
-    ZEXPECT(!index::apply_renames(longer, renamed, focus_id).has_value());
+    ZEXPECT(!feature::apply_renames(longer, renamed, focus_id).has_value());
 }
 
 ZEST_CASE(DollarNames) {

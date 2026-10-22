@@ -7,7 +7,7 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.hover;
 import :unittests.utils;
 import :unittests.utils.tester;
 

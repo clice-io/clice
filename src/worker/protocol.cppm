@@ -6,7 +6,15 @@ module clice:worker.protocol;
 
 import :compile.compilation;
 import :config.config;
-import :feature.feature;
+import :feature.code_action.code_action;
+import :feature.code_completion;
+import :feature.diagnostics;
+import :feature.document_symbols;
+import :feature.folding_ranges;
+import :feature.hover;
+import :feature.inlay_hints;
+import :feature.selection_ranges;
+import :feature.semantic_tokens;
 import :index.symbol;
 import :syntax.header_context;
 import :syntax.token;

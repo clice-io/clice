@@ -5,11 +5,13 @@ module;
 module clice;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.folding_ranges;
+import :feature.index_entries;
 import :semantic.decls;
 import :semantic.semantics;
 import :support.text;
 import :syntax.lexical_scan;
+import :syntax.source_text;
 import :syntax.token;
 
 namespace clice::feature {
@@ -970,6 +972,118 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
         result.push_back(std::move(range));
     }
     return result;
+}
+
+auto index_folding_ranges(SourceText& source,
+                          llvm::ArrayRef<IndexDecl> decls,
+                          IndexSymbolResolver resolve) -> std::vector<FoldingRange> {
+    // The braces outside comments, literals and directive lines, and the
+    // conditional levels: a branch switch or #endif observing a brace depth
+    // other than its #if's means the branches unbalance braces — any raw
+    // pairing is then wrong for some variant, and folds touching the region
+    // are suppressed below.
+    struct CondLevel {
+        std::uint32_t begin;
+        std::int32_t depth;
+    };
+
+    auto content = source.text();
+    const auto& lexical = source.lexical();
+    auto braces = code_braces(lexical);
+    std::vector<LocalSourceRange> ambiguous;
+    std::vector<std::uint32_t> block_directives;
+    {
+        using enum LexicalInfo::Directive::Kind;
+        std::vector<CondLevel> levels;
+        std::int32_t depth = 0;
+        auto brace = braces.begin();
+        auto advance_to = [&](std::uint32_t offset) {
+            for(; brace != braces.end() && brace->range.begin < offset; ++brace) {
+                depth += brace->open ? 1 : -1;
+            }
+        };
+        for(const auto& directive: lexical.directives) {
+            advance_to(directive.range.begin);
+            if(directive.block()) {
+                block_directives.push_back(directive.range.begin);
+            }
+            if(directive.kind == If) {
+                levels.push_back({directive.range.begin, depth});
+            } else if(directive.kind == Else || directive.kind == EndIf) {
+                if(!levels.empty() && depth != levels.back().depth) {
+                    ambiguous.push_back(
+                        {levels.back().begin, lexical.words(directive).front().range.end});
+                    levels.back().depth = depth;
+                }
+                if(directive.kind == EndIf && !levels.empty()) {
+                    levels.pop_back();
+                }
+            }
+        }
+        advance_to(static_cast<std::uint32_t>(content.size()));
+        for(const auto& level: levels) {
+            if(depth != level.depth) {
+                ambiguous.push_back({level.begin, static_cast<std::uint32_t>(content.size())});
+            }
+        }
+    }
+
+    std::vector<FoldingRange> ranges;
+    for(const auto& decl: decls) {
+        if(!decl.definition || !decl.extent.valid() || decl.extent.begin >= decl.extent.end) {
+            continue;
+        }
+        if(std::ranges::any_of(ambiguous, [&](const LocalSourceRange& region) {
+               return region.begin < decl.extent.end && decl.extent.begin < region.end;
+           })) {
+            continue;
+        }
+
+        // The block keeps the name and signature visible like the AST
+        // folds do.
+        auto group = last_brace_group(braces, decl.extent);
+        if(!group) {
+            continue;
+        }
+
+        // Single-line ranges are not worth folding — and the AST builder
+        // drops them too, so the index's folds stay a subset.
+        if(!content.substr(group->begin, group->length()).contains('\n')) {
+            continue;
+        }
+
+        // A symbol the resolver cannot name still folds, just without a
+        // kind.
+        std::optional<protocol::FoldingRangeKind> kind;
+        if(auto info = resolve(decl.symbol)) {
+            kind = declaration_fold_kind(info->kind);
+        }
+
+        // Only a declaration's own block folds from its head; an
+        // initializer's or a lambda's folds at its brace, as on the AST.
+        ranges.push_back({
+            .range = *group,
+            .kind = kind,
+            .collapsed_text = "{...}",
+            .lines = kind ? declaration_lines(content, *group, decl.range.begin, block_directives)
+                          : std::nullopt,
+            .closer = group->end - 1,
+        });
+    }
+
+    // One fold per range, the declaration's own where several entries share
+    // its braces (`typedef struct {...} T;`, the struct's and the alias's).
+    std::ranges::sort(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
+        return std::tuple(lhs.range.begin, lhs.range.end, !lhs.kind, lhs.kind) <
+               std::tuple(rhs.range.begin, rhs.range.end, !rhs.kind, rhs.kind);
+    });
+    auto duplicates =
+        std::ranges::unique(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
+            return lhs.range == rhs.range;
+        });
+    ranges.erase(duplicates.begin(), duplicates.end());
+
+    return ranges;
 }
 
 }  // namespace clice::feature

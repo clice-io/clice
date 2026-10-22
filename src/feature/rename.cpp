@@ -4,15 +4,15 @@ module;
 
 module clice;
 
-import :index.hierarchy;
-import :index.rename;
+import :feature.hierarchy;
+import :feature.rename;
 import :index.search;
 import :index.site;
 import :index.symbol_query;
 import :syntax.lexer;
 import :syntax.source_text;
 
-namespace clice::index {
+namespace clice::feature {
 
 namespace {
 
@@ -34,17 +34,17 @@ llvm::SmallVector<std::uint32_t, 1>
 
 /// The site of the `length` bytes at `offset` in `text`, for a token no
 /// relation spans.
-Site token_site(SourceText& text,
-                Fid file,
-                llvm::StringRef path,
-                std::uint32_t offset,
-                std::uint32_t length) {
-    return *site_of(file, path, text.positions(), {offset, offset + length});
+index::Site token_site(SourceText& text,
+                       Fid file,
+                       llvm::StringRef path,
+                       std::uint32_t offset,
+                       std::uint32_t length) {
+    return *index::site_of(file, path, text.positions(), {offset, offset + length});
 }
 
 /// The line holding `offset`, trimmed, for a preview.
 std::string preview_line(SourceText& text, std::uint32_t offset) {
-    return line_at(text.positions(), offset).trim().str();
+    return index::line_at(text.positions(), offset).trim().str();
 }
 
 bool class_like(SymbolKind kind) {
@@ -77,15 +77,16 @@ bool function_like(SymbolKind kind) {
     return kind == SymbolKind::Function || kind == SymbolKind::Method;
 }
 
-std::string where(const Site& site) {
+std::string where(const index::Site& site) {
     return std::format("{}:{}", site.path, site.begin.line + 1);
 }
 
 /// Every symbol named `name` exactly, however many.
-std::vector<IndexQuery::Located> all_named(const IndexQuery& query, llvm::StringRef name) {
-    SymbolQuery exact{.mode = SymbolQuery::Mode::Exact, .pattern = name.str()};
+std::vector<index::IndexQuery::Located> all_named(const index::IndexQuery& query,
+                                                  llvm::StringRef name) {
+    index::SymbolQuery exact{.mode = index::SymbolQuery::Mode::Exact, .pattern = name.str()};
     for(std::uint32_t limit = 256;; limit *= 4) {
-        auto hits = search(query, exact, limit);
+        auto hits = index::search(query, exact, limit);
         if(hits.size() < limit) {
             return hits;
         }
@@ -104,8 +105,8 @@ const clang::LangOptions& c() {
 /// The class template a deduction guide deduces: the one template in the
 /// guide's scope of the name its declaration spells (the symbol is listed
 /// under a label).
-std::optional<IndexQuery::Located> guided_template(const IndexQuery& query,
-                                                   const IndexQuery::Located& guide) {
+std::optional<index::IndexQuery::Located> guided_template(const index::IndexQuery& query,
+                                                          const index::IndexQuery::Located& guide) {
     auto text = query.serving_text(guide.site.file);
     if(!text) {
         return std::nullopt;
@@ -113,7 +114,7 @@ std::optional<IndexQuery::Located> guided_template(const IndexQuery& query,
     auto spelled = llvm::StringRef(*text).slice(guide.site.range.begin, guide.site.range.end);
     for(auto& hit: all_named(query, spelled)) {
         if(class_like(hit.symbol.kind) && hit.symbol.parent == guide.symbol.parent &&
-           has_flag(hit.symbol.flags, SymbolFlags::Template)) {
+           index::has_flag(hit.symbol.flags, index::SymbolFlags::Template)) {
             return hit;
         }
     }
@@ -178,8 +179,8 @@ std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& 
     return scanned;
 }
 
-std::expected<RenameTarget, std::string> rename_target(const IndexQuery& serving,
-                                                       const IndexQuery::Located& named) {
+std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& serving,
+                                                       const index::IndexQuery::Located& named) {
     auto query = serving.written_only();
     auto& symbol = named.symbol;
     if(symbol.kind == SymbolKind::Macro) {
@@ -188,15 +189,15 @@ std::expected<RenameTarget, std::string> rename_target(const IndexQuery& serving
     if(!renamable(symbol.kind)) {
         return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
     }
-    if(has_flag(symbol.flags, SymbolFlags::Unnamed)) {
+    if(index::has_flag(symbol.flags, index::SymbolFlags::Unnamed)) {
         return std::unexpected(std::format("{} has no name to rename", symbol.name));
     }
 
     auto root = named;
-    switch(name_form(symbol.flags)) {
-        case NameForm::Identifier: break;
-        case NameForm::Constructor:
-        case NameForm::Destructor: {
+    switch(index::name_form(symbol.flags)) {
+        case index::NameForm::Identifier: break;
+        case index::NameForm::Constructor:
+        case index::NameForm::Destructor: {
             auto owner = query.resolve(symbol.parent, named.site.file);
             if(!owner) {
                 return std::unexpected(
@@ -205,7 +206,7 @@ std::expected<RenameTarget, std::string> rename_target(const IndexQuery& serving
             root = std::move(*owner);
             break;
         }
-        case NameForm::Other: {
+        case index::NameForm::Other: {
             auto deduced = guided_template(query, named);
             if(!deduced) {
                 return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
@@ -213,32 +214,32 @@ std::expected<RenameTarget, std::string> rename_target(const IndexQuery& serving
             root = std::move(*deduced);
             break;
         }
-        case NameForm::Conversion:
-        case NameForm::Operator:
-        case NameForm::Literal: {
+        case index::NameForm::Conversion:
+        case index::NameForm::Operator:
+        case index::NameForm::Literal: {
             return std::unexpected(
                 std::format("`{}` is named by the language, not by an identifier", symbol.name));
         }
     }
-    if(has_flag(root.symbol.flags, SymbolFlags::Specialization)) {
+    if(index::has_flag(root.symbol.flags, index::SymbolFlags::Specialization)) {
         auto primaries =
             query.located_targets(root.symbol.hash, root.site.file, RelationKind::Primary);
         if(!primaries.empty()) {
             root = std::move(primaries.front());
         }
     }
-    if(has_flag(root.symbol.flags, SymbolFlags::SystemHeader)) {
+    if(index::has_flag(root.symbol.flags, index::SymbolFlags::SystemHeader)) {
         return std::unexpected(
             std::format("`{}` is declared in a system header", root.symbol.display_name()));
     }
-    if(has_flag(root.symbol.flags, SymbolFlags::SpelledInMacro)) {
+    if(index::has_flag(root.symbol.flags, index::SymbolFlags::SpelledInMacro)) {
         return std::unexpected(std::format("every declaration of `{}` is spelled by a macro",
                                            root.symbol.display_name()));
     }
 
     RenameTarget target{.symbol = root};
-    llvm::DenseSet<SymbolHash> seen;
-    std::vector<IndexQuery::Located> pending{root};
+    llvm::DenseSet<index::SymbolHash> seen;
+    std::vector<index::IndexQuery::Located> pending{root};
     while(!pending.empty()) {
         auto next = std::move(pending.back());
         pending.pop_back();
@@ -253,7 +254,7 @@ std::expected<RenameTarget, std::string> rename_target(const IndexQuery& serving
             follow(RelationKind::Constructor);
             follow(RelationKind::Destructor);
         } else if(next.symbol.kind == SymbolKind::Method &&
-                  name_form(next.symbol.flags) == NameForm::Identifier) {
+                  index::name_form(next.symbol.flags) == index::NameForm::Identifier) {
             // A destructor overriding another names its own class.
             follow(RelationKind::Interface);
             follow(RelationKind::Implementation);
@@ -263,8 +264,8 @@ std::expected<RenameTarget, std::string> rename_target(const IndexQuery& serving
     return target;
 }
 
-std::expected<CursorRename, std::string> rename_at(const IndexQuery& serving,
-                                                   const IndexQuery::Cursor& resolved) {
+std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serving,
+                                                   const index::IndexQuery::Cursor& resolved) {
     auto query = serving.written_only();
     // A name only instantiations resolve (`value.print()` in a template)
     // spells no symbol of its own.
@@ -308,7 +309,7 @@ std::expected<CursorRename, std::string> rename_at(const IndexQuery& serving,
     return CursorRename{.target = std::move(*found), .token = std::move(token)};
 }
 
-RenamePlan plan_rename(const IndexQuery& serving,
+RenamePlan plan_rename(const index::IndexQuery& serving,
                        FileTable& files,
                        const RenameTarget& target,
                        llvm::StringRef new_name,
@@ -325,14 +326,15 @@ RenamePlan plan_rename(const IndexQuery& serving,
         plan.conflicts.push_back(std::move(*invalid));
         return plan;
     }
-    llvm::DenseSet<SymbolHash> group;
+    llvm::DenseSet<index::SymbolHash> group;
     for(auto& member: target.group) {
         group.insert(member.symbol.hash);
     }
     // A deduction guide relates to nothing and has no definition to find
     // it by: the scan meets each one where it spells the template's name.
-    bool guided = class_like(root.kind) && has_flag(root.flags, SymbolFlags::Template);
-    auto renames = [&](SymbolHash symbol, Fid file) {
+    bool guided =
+        class_like(root.kind) && index::has_flag(root.flags, index::SymbolFlags::Template);
+    auto renames = [&](index::SymbolHash symbol, Fid file) {
         if(group.contains(symbol)) {
             return true;
         }
@@ -340,11 +342,12 @@ RenamePlan plan_rename(const IndexQuery& serving,
             return false;
         }
         auto info = query.symbol_info(symbol, file);
-        return info && name_form(info->flags) == NameForm::Other && info->parent == root.parent;
+        return info && index::name_form(info->flags) == index::NameForm::Other &&
+               info->parent == root.parent;
     };
     // Another rename of the batch giving a symbol the same name changes its
     // tokens alike: a token it shares with this rename's is no obstacle.
-    auto renamed_alike = [&](SymbolHash symbol) {
+    auto renamed_alike = [&](index::SymbolHash symbol) {
         auto other = batch.renamed.find(symbol);
         return other != batch.renamed.end() && other->second == new_name;
     };
@@ -372,7 +375,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
     // variant of a shared header compiled under other definitions, or an
     // overload a dependent call leaves open. Changing the token changes
     // its use as well.
-    auto shared_with = [&](Fid file, std::uint32_t offset) -> std::optional<SymbolHash> {
+    auto shared_with = [&](Fid file, std::uint32_t offset) -> std::optional<index::SymbolHash> {
         auto cursor = query.symbol_at(file, offset);
         if(!cursor) {
             return std::nullopt;
@@ -392,7 +395,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
     llvm::StringSet<> stale;
     std::map<std::pair<Fid, std::uint32_t>, RenameEdit> edits;
     std::set<std::pair<Fid, std::uint32_t>> held;
-    auto add_edit = [&](Fid file, const Site& near, std::uint32_t offset, bool heuristic) {
+    auto add_edit = [&](Fid file, const index::Site& near, std::uint32_t offset, bool heuristic) {
         auto& text = text_of(file);
         if(auto other = shared_with(file, offset)) {
             if(!held.insert({file, offset}).second) {
@@ -500,7 +503,8 @@ RenamePlan plan_rename(const IndexQuery& serving,
         // A local or a parameter is out of another file's reach but through
         // a macro it defines, and a file no indexed unit includes defines
         // none for it.
-        bool foreign = root.scope == SymbolScope::FunctionLocal && file != target.symbol.site.file;
+        bool foreign =
+            root.scope == index::SymbolScope::FunctionLocal && file != target.symbol.site.file;
         if(indexed ? *served.text != current->text
                    : query.indexes(file) || (!foreign && scope.units_pending)) {
             stale.insert(display);
@@ -531,8 +535,9 @@ RenamePlan plan_rename(const IndexQuery& serving,
             }
             if(auto cursor = query.symbol_at(file, offset);
                cursor && cursor->site.range.contains(offset)) {
-                if(std::ranges::any_of(cursor->symbols,
-                                       [&](SymbolHash symbol) { return renames(symbol, file); })) {
+                if(std::ranges::any_of(cursor->symbols, [&](index::SymbolHash symbol) {
+                       return renames(symbol, file);
+                   })) {
                     add_edit(file, cursor->site, offset, false);
                 }
                 continue;
@@ -556,9 +561,9 @@ RenamePlan plan_rename(const IndexQuery& serving,
     // declaration in the same scope, a member of a class above or below —
     // among the symbols bearing it once the batch is done: those named so
     // that no rename of the batch renames, and those its renames name so.
-    llvm::SmallVector<IndexQuery::Located> named;
-    llvm::DenseSet<SymbolHash> listed;
-    auto list = [&](IndexQuery::Located hit) {
+    llvm::SmallVector<index::IndexQuery::Located> named;
+    llvm::DenseSet<index::SymbolHash> listed;
+    auto list = [&](index::IndexQuery::Located hit) {
         if(!batch.renamed.contains(hit.symbol.hash)) {
             named.push_back(std::move(hit));
         }
@@ -573,7 +578,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
         if(!source) {
             continue;
         }
-        source->shard->for_each_relation([&](SymbolHash hash, const Relation&) {
+        source->shard->for_each_relation([&](index::SymbolHash hash, const index::Relation&) {
             if(!listed.insert(hash).second) {
                 return true;
             }
@@ -595,9 +600,9 @@ RenamePlan plan_rename(const IndexQuery& serving,
 
     // The scope a name is looked up in: an unscoped enumerator's is its
     // enum's.
-    auto scope_of = [&](const SymbolInfo& symbol, Fid anchor) {
+    auto scope_of = [&](const index::SymbolInfo& symbol, Fid anchor) {
         if(symbol.kind == SymbolKind::EnumMember &&
-           has_flag(symbol.flags, SymbolFlags::Completable)) {
+           index::has_flag(symbol.flags, index::SymbolFlags::Completable)) {
             if(auto owner = query.symbol_info(symbol.parent, anchor)) {
                 return owner->parent;
             }
@@ -609,7 +614,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
 
     // The classes above and below the scope: a member of one hides or is
     // hidden by the renamed member, where a sibling's never meets it.
-    llvm::DenseSet<SymbolHash> hierarchy;
+    llvm::DenseSet<index::SymbolHash> hierarchy;
     auto parent = query.symbol_info(home, anchor);
     if(parent && class_like(parent->kind)) {
         auto renamed = batch.renamed.find(home);
@@ -620,7 +625,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
         if(auto located = query.resolve(home, anchor)) {
             hierarchy.insert(located->symbol.hash);
             for(bool up: {true, false}) {
-                std::vector<IndexQuery::Located> pending{*located};
+                std::vector<index::IndexQuery::Located> pending{*located};
                 while(!pending.empty()) {
                     auto next = std::move(pending.back());
                     pending.pop_back();
@@ -638,7 +643,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
     // A function's parameters and locals belong to the declaration whose
     // name precedes them most closely in their file: another declaration's
     // never meet the renamed symbol.
-    auto declaration_of = [&](const Site& site) {
+    auto declaration_of = [&](const index::Site& site) {
         std::optional<std::uint32_t> nearest;
         for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
             for(auto& declared: query.sites(home, site.file, kind)) {
@@ -752,7 +757,7 @@ RenamePlan plan_rename(const IndexQuery& serving,
     return plan;
 }
 
-BatchPlan plan_renames(const IndexQuery& query,
+BatchPlan plan_renames(const index::IndexQuery& query,
                        FileTable& files,
                        llvm::ArrayRef<Renaming> renamings,
                        const RenameScope& scope) {
@@ -859,4 +864,4 @@ std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& 
     return result;
 }
 
-}  // namespace clice::index
+}  // namespace clice::feature

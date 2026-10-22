@@ -10,7 +10,12 @@ module clice;
 
 import :compile.compilation;
 import :compile.diagnostic;
-import :feature.feature;
+import :feature.code_completion;
+import :feature.diagnostics;
+import :feature.document_links;
+import :feature.formatting;
+import :feature.inactive_regions;
+import :feature.signature_help;
 import :index.include_tree;
 import :index.indexer;
 import :index.tu_index;

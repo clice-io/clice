@@ -5,7 +5,7 @@ module;
 module clice;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.inlay_hints;
 import :index.indexer;
 import :index.symbol;
 import :index.tu_index;

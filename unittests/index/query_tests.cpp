@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :index.navigation;
+import :feature.navigation;
 import :index.symbol;
 import :semantic.symbol;
 import :unittests.utils.index_query_tester;
@@ -98,7 +98,7 @@ ZEST_CASE(ShardServesOpenSession) {
 
     auto cursor = query.symbol_at(focus_id, point("use"));
     ZASSERT(cursor);
-    auto sites = index::definition(query, *cursor);
+    auto sites = feature::definition(query, *cursor);
     ZASSERT(!sites.empty());
     ZASSERT(sites.front().path.ends_with("header.h"));
 }

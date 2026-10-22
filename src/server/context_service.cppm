@@ -4,7 +4,7 @@ module;
 
 module clice:server.context_service;
 
-import :feature.feature;
+import :feature.diagnostics;
 import :server.ast_family;
 import :server.editor_context;
 import :server.extension;

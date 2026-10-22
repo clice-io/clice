@@ -4,9 +4,9 @@ module;
 
 module clice;
 
-import :feature.feature;
-import :unittests.utils.temp_dir;
+import :feature.formatting;
 import :unittests.utils;
+import :unittests.utils.temp_dir;
 
 namespace clice::testing {
 

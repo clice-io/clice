@@ -4,24 +4,26 @@ module;
 
 module clice;
 
-import :index.hierarchy;
+import :feature.document_symbols;
+import :feature.hierarchy;
+import :feature.protocol;
 import :index.query;
 
-namespace clice::index {
+namespace clice::feature {
 
 namespace {
 
 /// A function some source defines: its definition's extent and its name.
 struct DefinedFunction {
-    SymbolHash hash;
+    index::SymbolHash hash;
     LocalSourceRange extent;
     LocalSourceRange name;
 };
 
 /// The innermost of the functions whose definition holds `range` outside
 /// their name.
-std::optional<SymbolHash> innermost_function(llvm::ArrayRef<DefinedFunction> functions,
-                                             LocalSourceRange range) {
+std::optional<index::SymbolHash> innermost_function(llvm::ArrayRef<DefinedFunction> functions,
+                                                    LocalSourceRange range) {
     const DefinedFunction* innermost = nullptr;
     for(const auto& function: functions) {
         if(function.extent.contains(range) && !function.name.contains(range) &&
@@ -35,19 +37,19 @@ std::optional<SymbolHash> innermost_function(llvm::ArrayRef<DefinedFunction> fun
     return innermost->hash;
 }
 
-void collect_by_target(const IndexQuery& index,
-                       SymbolHash hash,
+void collect_by_target(const index::IndexQuery& index,
+                       index::SymbolHash hash,
                        Fid anchor,
                        RelationKind kind,
-                       llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) {
+                       llvm::DenseMap<index::SymbolHash, std::vector<index::Site>>& by_target) {
     // The focus-file preamble entry cannot contribute: the preamble region
     // holds only preprocessor directives, never call or type relations.
     index.for_each_relation(hash,
                             anchor,
                             kind,
-                            IndexQuery::Order::DiskFirst,
+                            index::IndexQuery::Order::DiskFirst,
                             {.preamble = false},
-                            [&](const IndexSource& source, const Relation& relation) {
+                            [&](const index::IndexSource& source, const index::Relation& relation) {
                                 if(auto site = source.site(relation.range)) {
                                     by_target[relation.target].push_back(*site);
                                 }
@@ -55,8 +57,9 @@ void collect_by_target(const IndexQuery& index,
                             });
 }
 
-std::vector<CallEdge> located_edges(const IndexQuery& index,
-                                    llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) {
+std::vector<CallEdge>
+    located_edges(const index::IndexQuery& index,
+                  llvm::DenseMap<index::SymbolHash, std::vector<index::Site>>& by_target) {
     std::vector<CallEdge> result;
     result.reserve(by_target.size());
     for(auto& [target, sites]: by_target) {
@@ -66,19 +69,21 @@ std::vector<CallEdge> located_edges(const IndexQuery& index,
         }
         // A relation present in both a shard and an overlay arrives twice;
         // hierarchy items must not repeat call sites.
-        dedup_sites(sites);
+        index::dedup_sites(sites);
         result.push_back({.symbol = std::move(*located), .sites = std::move(sites)});
     }
     return result;
 }
 
-std::vector<DefinedFunction> defined_functions(const IndexQuery& index, const IndexSource& source) {
+std::vector<DefinedFunction> defined_functions(const index::IndexQuery& index,
+                                               const index::IndexSource& source) {
     std::vector<DefinedFunction> functions;
-    source.shard->for_each_relation([&](SymbolHash symbol, const Relation& defined) {
+    source.shard->for_each_relation([&](index::SymbolHash symbol, const index::Relation& defined) {
         if(defined.kind != RelationKind::Definition || !defined.extent().contains(defined.range)) {
             return true;
         }
-        if(auto info = index.symbol_info(symbol, source.file); info && is_function(info->kind)) {
+        if(auto info = index.symbol_info(symbol, source.file);
+           info && index::is_function(info->kind)) {
             functions.push_back({
                 .hash = symbol,
                 .extent = defined.extent(),
@@ -90,11 +95,13 @@ std::vector<DefinedFunction> defined_functions(const IndexQuery& index, const In
     return functions;
 }
 
-std::vector<CallEdge> referencing_functions(const IndexQuery& index, SymbolHash hash, Fid anchor) {
+std::vector<CallEdge> referencing_functions(const index::IndexQuery& index,
+                                            index::SymbolHash hash,
+                                            Fid anchor) {
     // Each file's function definitions, by their extents.
-    llvm::DenseMap<const Shard*, std::vector<DefinedFunction>> functions;
-    llvm::DenseMap<SymbolHash, std::vector<Site>> by_function;
-    auto visit = [&](const IndexSource& source, const Relation& relation) {
+    llvm::DenseMap<const index::Shard*, std::vector<DefinedFunction>> functions;
+    llvm::DenseMap<index::SymbolHash, std::vector<index::Site>> by_function;
+    auto visit = [&](const index::IndexSource& source, const index::Relation& relation) {
         // An overlay's header entries come without a shard to look in.
         if(!source.shard) {
             return true;
@@ -114,7 +121,7 @@ std::vector<CallEdge> referencing_functions(const IndexQuery& index, SymbolHash 
         index.for_each_relation(hash,
                                 anchor,
                                 kind,
-                                IndexQuery::Order::DiskFirst,
+                                index::IndexQuery::Order::DiskFirst,
                                 {.preamble = false},
                                 visit);
     }
@@ -123,7 +130,8 @@ std::vector<CallEdge> referencing_functions(const IndexQuery& index, SymbolHash 
 
 }  // namespace
 
-std::vector<std::string> enclosing_functions(const IndexQuery& index, llvm::ArrayRef<Site> sites) {
+std::vector<std::string> enclosing_functions(const index::IndexQuery& index,
+                                             llvm::ArrayRef<index::Site> sites) {
     llvm::DenseMap<Fid, std::vector<DefinedFunction>> functions;
     std::vector<std::string> names;
     names.reserve(sites.size());
@@ -140,8 +148,10 @@ std::vector<std::string> enclosing_functions(const IndexQuery& index, llvm::Arra
     return names;
 }
 
-CallGraph
-    call_graph(const IndexQuery& index, SymbolHash root, Fid anchor, CallGraphOptions options) {
+CallGraph call_graph(const index::IndexQuery& index,
+                     index::SymbolHash root,
+                     Fid anchor,
+                     CallGraphOptions options) {
     CallGraph graph;
     if(options.callers) {
         auto info = index.symbol_info(root, anchor);
@@ -152,17 +162,18 @@ CallGraph
                                           info->kind);
         if(value) {
             // A function's local has no caller but that function.
-            if(info->kind != SymbolKind::Variable || info->scope != SymbolScope::FunctionLocal) {
+            if(info->kind != SymbolKind::Variable ||
+               info->scope != index::SymbolScope::FunctionLocal) {
                 graph.callers = referencing_functions(index, root, anchor);
             }
         } else {
-            llvm::DenseMap<SymbolHash, std::vector<Site>> by_caller;
+            llvm::DenseMap<index::SymbolHash, std::vector<index::Site>> by_caller;
             collect_by_target(index, root, anchor, RelationKind::Caller, by_caller);
             // A call through a method the root overrides may dispatch to it,
             // save one naming that method by qualification.
-            if(info && is_function(info->kind)) {
+            if(info && index::is_function(info->kind)) {
                 for(auto base: index.transitive_targets(root, anchor, RelationKind::Interface)) {
-                    llvm::DenseMap<SymbolHash, std::vector<Site>> through_base;
+                    llvm::DenseMap<index::SymbolHash, std::vector<index::Site>> through_base;
                     collect_by_target(index,
                                       base.symbol,
                                       base.anchor,
@@ -177,8 +188,8 @@ CallGraph
                             // one macro invocation spells share the
                             // invocation's site, so the qualified one hides
                             // the other and the override loses this caller.
-                            if(std::ranges::none_of(direct, [&](const Site& site) {
-                                   return covers(call, site);
+                            if(std::ranges::none_of(direct, [&](const index::Site& site) {
+                                   return index::covers(call, site);
                                })) {
                                 by_caller[caller].push_back(std::move(call));
                             }
@@ -190,15 +201,15 @@ CallGraph
         }
     }
     if(options.callees) {
-        llvm::DenseMap<SymbolHash, std::vector<Site>> by_callee;
+        llvm::DenseMap<index::SymbolHash, std::vector<index::Site>> by_callee;
         collect_by_target(index, root, anchor, RelationKind::Callee, by_callee);
         graph.callees = located_edges(index, by_callee);
     }
     return graph;
 }
 
-TypeHierarchy type_hierarchy(const IndexQuery& index,
-                             SymbolHash root,
+TypeHierarchy type_hierarchy(const index::IndexQuery& index,
+                             index::SymbolHash root,
                              Fid anchor,
                              TypeHierarchyOptions options) {
     TypeHierarchy hierarchy;
@@ -211,4 +222,36 @@ TypeHierarchy type_hierarchy(const IndexQuery& index,
     return hierarchy;
 }
 
-}  // namespace clice::index
+template <typename Item>
+static Item hierarchy_item(const index::SymbolInfo& symbol,
+                           const index::Site& site,
+                           const index::Site& extent,
+                           llvm::StringRef qualified) {
+    Item item;
+    item.name = symbol.display_name();
+    if(auto detail = qualified.str() + symbol.signature; detail != item.name) {
+        item.detail = std::move(detail);
+    }
+    item.kind = to_protocol_symbol_kind(symbol.kind);
+    item.uri = to_uri(site.path);
+    item.range = to_range(extent);
+    item.selection_range = to_range(site);
+    item.data = protocol::LSPAny(std::format("{}", symbol.hash));
+    return item;
+}
+
+protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolInfo& symbol,
+                                                const index::Site& site,
+                                                const index::Site& extent,
+                                                llvm::StringRef qualified) {
+    return hierarchy_item<protocol::CallHierarchyItem>(symbol, site, extent, qualified);
+}
+
+protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolInfo& symbol,
+                                                const index::Site& site,
+                                                const index::Site& extent,
+                                                llvm::StringRef qualified) {
+    return hierarchy_item<protocol::TypeHierarchyItem>(symbol, site, extent, qualified);
+}
+
+}  // namespace clice::feature

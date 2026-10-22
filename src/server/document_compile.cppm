@@ -4,7 +4,7 @@ module;
 
 module clice:server.document_compile;
 
-import :feature.feature;
+import :feature.diagnostics;
 import :index.tu_index;
 import :project.project;
 import :vfs.file_table;

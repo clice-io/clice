@@ -5,7 +5,10 @@ module;
 module clice;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.document_symbols;
+import :feature.inactive_regions;
+import :feature.index_entries;
+import :index.symbol;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.identity;
@@ -1036,6 +1039,94 @@ auto document_symbols_to_information(llvm::ArrayRef<DocumentSymbol> symbols,
     };
     flatten(symbols, nullptr);
     return result;
+}
+
+auto index_document_symbols(SourceText& source,
+                            const IndexEntries& entries,
+                            IndexSymbolResolver resolve,
+                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+    // A name the text writes is where an occurrence of its symbol starts.
+    llvm::DenseSet<std::pair<std::uint32_t, index::SymbolHash>> written;
+    for(const auto& occurrence: entries.occurrences) {
+        written.insert({occurrence.range.begin, occurrence.target});
+    }
+
+    std::vector<OutlineEntry> declarations;
+    std::vector<std::uint32_t> macro_names;
+    llvm::DenseSet<std::uint32_t> module_names;
+    auto add = [&](const IndexDecl& decl) {
+        if(!decl.extent.valid() || decl.extent.begin >= decl.extent.end) {
+            return;
+        }
+        auto info = resolve(decl.symbol);
+        if(!info) {
+            return;
+        }
+        if(info->kind == SymbolKind::Macro) {
+            macro_names.push_back(decl.range.begin);
+            return;
+        }
+        if(info->kind == SymbolKind::Module) {
+            module_names.insert(decl.range.begin);
+            return;
+        }
+        auto flag = [&](index::SymbolFlags bit) {
+            return index::has_flag(info->flags, bit);
+        };
+        bool unnamed = flag(index::SymbolFlags::Unnamed);
+        if(!outline_lists(info->kind, unnamed, flag(index::SymbolFlags::TemplateParameter))) {
+            return;
+        }
+        declarations.push_back({
+            .name = std::move(info->name),
+            .kind = info->kind,
+            .range = decl.extent,
+            .selection_range = decl.range,
+            .deprecated = flag(index::SymbolFlags::Deprecated),
+            .entity = decl.symbol,
+            .parent = info->parent,
+            .definition = decl.definition,
+            .unnamed = unnamed,
+            .from_macro = !written.contains({decl.range.begin, decl.symbol}),
+        });
+    };
+    for(const auto& decl: entries.decls) {
+        add(decl);
+    }
+    for(const auto& decl: entries.instantiations) {
+        add(decl);
+    }
+
+    // The `#define`s the preprocessor read, the ones whose macro the index
+    // knows.
+    std::ranges::sort(macro_names);
+    const auto& lexical = source.lexical();
+    std::vector<LexicalInfo::Directive> macros;
+    std::vector<LexicalInfo::Directive> marks;
+    for(const auto& directive: lexical.directives) {
+        // FIXME: a mark inside an inactive branch (`#if 0`) lists too and sections
+        // the declarations after it: the index stores no inactive regions.
+        if(directive.kind == LexicalInfo::Directive::Kind::PragmaMark) {
+            marks.push_back(directive);
+        }
+        if(directive.kind != LexicalInfo::Directive::Kind::Define) {
+            continue;
+        }
+        auto name = std::ranges::lower_bound(macro_names, directive.range.begin);
+        if(name != macro_names.end() && *name < directive.range.end) {
+            macros.push_back(directive);
+        }
+    }
+    // The module declarations the compile took for one: a raw scan also
+    // reads C code such as `module AP_MODULE_DECLARE_DATA example = {`.
+    std::vector<LexicalInfo::ModuleDeclaration> modules;
+    for(const auto& module: lexical.modules) {
+        if(module.kind == LexicalInfo::ModuleDeclaration::Kind::Declaration &&
+           module_names.contains(module.name_range().begin)) {
+            modules.push_back(module);
+        }
+    }
+    return outline(std::move(declarations), source, macros, modules, marks, options);
 }
 
 }  // namespace clice::feature

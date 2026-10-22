@@ -11,7 +11,7 @@ import :command.database;
 import :command.file_kind;
 import :compile.tidy;
 import :config.config;
-import :feature.feature;
+import :feature.formatting;
 import :index.project_index;
 import :index.shard;
 import :project.build;

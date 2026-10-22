@@ -12,11 +12,21 @@ import :compile.compilation;
 import :compile.tidy;
 import :config.config;
 import :driver.driver;
-import :feature.feature;
+import :feature.code_action.code_action;
+import :feature.code_completion;
+import :feature.document_links;
+import :feature.document_symbols;
+import :feature.folding_ranges;
+import :feature.formatting;
+import :feature.hover;
 import :feature.index_check;
+import :feature.inlay_hints;
+import :feature.navigation;
+import :feature.selection_ranges;
+import :feature.semantic_tokens;
+import :feature.signature_help;
 import :index.indexer;
 import :index.instantiation_shard;
-import :index.navigation;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
@@ -405,17 +415,18 @@ std::optional<kota::codec::RawValue> run_document_highlight(const FeatureParams&
         index::add_resolved(*instantiations.front(), offset, named);
     }
     if(!named) {
-        return to_raw_json(std::vector<index::Highlight>{});
+        return to_raw_json(std::vector<feature::Highlight>{});
     }
-    return to_raw_json(index::highlights({&shard},
-                                         instantiations,
-                                         named->symbols,
-                                         [&](index::SymbolHash hash) -> std::optional<SymbolKind> {
-                                             if(auto symbol = tu.find_symbol(hash)) {
-                                                 return symbol->kind;
-                                             }
-                                             return std::nullopt;
-                                         }));
+    return to_raw_json(
+        feature::highlights({&shard},
+                            instantiations,
+                            named->symbols,
+                            [&](index::SymbolHash hash) -> std::optional<SymbolKind> {
+                                if(auto symbol = tu.find_symbol(hash)) {
+                                    return symbol->kind;
+                                }
+                                return std::nullopt;
+                            }));
 }
 
 constexpr FeatureSpec document_symbols_check{.name = "document-symbols",

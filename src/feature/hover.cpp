@@ -5,7 +5,9 @@ module;
 module clice;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.documentation;
+import :feature.hover;
+import :index.symbol;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
@@ -15,6 +17,7 @@ import :semantic.symbol;
 import :semantic.types;
 import :support.text;
 import :syntax.documentation;
+import :syntax.lexer;
 import :syntax.lexical_scan;
 
 namespace clice::feature {
@@ -2019,6 +2022,101 @@ auto hover(CompilationUnit& unit,
     }
 
     return to_protocol_hover(*info, kind, unit.focus_file().positions(), encoding);
+}
+
+/// The text of a definition before the body its extent ends with, or
+/// nullopt when the extent ends otherwise (`= default`, an initializer).
+static std::optional<llvm::StringRef> before_body(const std::string& text) {
+    // FIXME: a function-try-block's last brace group is its last handler:
+    // the card keeps the body and the `catch (...)` heads.
+    auto braces = code_braces(lexical_scan(text, dialect_of()));
+    auto written = llvm::StringRef(text).rtrim();
+    auto body = last_brace_group(braces, {0, static_cast<std::uint32_t>(written.size())});
+    if(!body || body->end != written.size()) {
+        return std::nullopt;
+    }
+    return written.take_front(body->begin).rtrim();
+}
+
+auto index_hover(const index::SymbolInfo& info,
+                 llvm::ArrayRef<index::SymbolInfo> scopes,
+                 llvm::StringRef definition_text,
+                 Documentation documentation) -> HoverInfo {
+    HoverInfo hover;
+    hover.name = info.display_name();
+    hover.kind = info.kind;
+    /// The parent chain skips anonymous namespaces, which the card names as
+    /// the AST card does: a namespace path as `(anonymous)`, the scope of a
+    /// class or function as clang prints it.
+    auto anonymous = [](const index::SymbolInfo& symbol) {
+        return index::has_flag(symbol.flags, index::SymbolFlags::AnonymousNamespace);
+    };
+    if(anonymous(info)) {
+        hover.scope_kind = "namespace";
+    } else if(!scopes.empty()) {
+        hover.scope_kind = kind_noun(scopes.back().kind).str();
+    }
+    llvm::StringRef unnamed =
+        hover.scope_kind == "namespace" ? "(anonymous)" : "(anonymous namespace)";
+    llvm::SmallVector<std::string> names;
+    for(const auto& scope: scopes) {
+        if(anonymous(scope)) {
+            names.push_back(unnamed.str());
+        }
+        names.push_back(scope.display_name());
+    }
+    if(anonymous(info)) {
+        names.push_back(unnamed.str());
+    }
+    hover.scope = llvm::join(names, "::");
+    hover.documentation = std::move(documentation);
+    /// The index keeps that a symbol is deprecated, not the message.
+    if(index::has_flag(info.flags, index::SymbolFlags::Deprecated)) {
+        hover.deprecation.emplace();
+    }
+    if(definition_text.empty()) {
+        return hover;
+    }
+
+    // The stored extent is the whole written definition; the AST card
+    // prints a declaration — a function without its body, a namespace with
+    // an empty one, a macro with its `#define`. A type's members are left
+    // out: the AST card's member summary needs the AST.
+    hover.definition = definition_text.str();
+    switch(info.kind) {
+        case SymbolKind::Function:
+        case SymbolKind::Method:
+        case SymbolKind::Operator: {
+            if(auto head = before_body(hover.definition)) {
+                hover.definition = head->str();
+            }
+            break;
+        }
+        case SymbolKind::Namespace: {
+            if(auto head = before_body(hover.definition)) {
+                hover.definition = head->str() + " {}";
+            }
+            break;
+        }
+        case SymbolKind::Class:
+        case SymbolKind::Struct:
+        case SymbolKind::Union:
+        case SymbolKind::Enum: {
+            if(auto head = before_body(hover.definition)) {
+                hover.definition = head->str() + " { ... }";
+            }
+            break;
+        }
+        case SymbolKind::Macro: {
+            hover.definition.insert(0, "#define ");
+            break;
+        }
+        default: break;
+    }
+    if(index::has_flag(info.flags, index::SymbolFlags::Exported)) {
+        hover.definition.insert(0, "export ");
+    }
+    return hover;
 }
 
 }  // namespace clice::feature

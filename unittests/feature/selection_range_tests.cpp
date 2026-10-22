@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.selection_ranges;
 import :syntax.lexer;
 import :syntax.source_text;
 import :unittests.utils;

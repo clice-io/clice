@@ -533,4 +533,45 @@ std::optional<LocalSourceRange> BracketPairs::visit(const Token& token, bool ski
     return std::nullopt;
 }
 
+std::vector<Brace> code_braces(const LexicalInfo& lexical) {
+    std::vector<Brace> braces;
+    auto directive = lexical.directives.begin();
+    for(std::uint32_t index = 0; index < lexical.tokens.size(); index += 1) {
+        if(directive != lexical.directives.end() && index == directive->first) {
+            index = directive->last;
+            ++directive;
+            continue;
+        }
+        const auto& token = lexical.tokens[index];
+        if(token.kind == clang::tok::l_brace || token.kind == clang::tok::r_brace) {
+            braces.push_back({token.range, token.kind == clang::tok::l_brace});
+        }
+    }
+    return braces;
+}
+
+std::optional<LocalSourceRange> last_brace_group(llvm::ArrayRef<Brace> braces,
+                                                 LocalSourceRange extent) {
+    auto begin = std::ranges::lower_bound(braces, extent.begin, {}, [](const Brace& b) {
+        return b.range.begin;
+    });
+    std::optional<LocalSourceRange> group;
+    std::int32_t depth = 0;
+    std::uint32_t open_begin = 0;
+    for(auto it = begin; it != braces.end() && it->range.end <= extent.end; ++it) {
+        if(it->open) {
+            if(depth == 0) {
+                open_begin = it->range.begin;
+            }
+            depth += 1;
+        } else if(depth > 0) {
+            depth -= 1;
+            if(depth == 0) {
+                group = LocalSourceRange{open_begin, it->range.end};
+            }
+        }
+    }
+    return group;
+}
+
 }  // namespace clice

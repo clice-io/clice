@@ -4,7 +4,7 @@ module;
 
 module clice:server.master_server;
 
-import :feature.feature;
+import :feature.semantic_tokens;
 import :sched.index.pump;
 import :server.extension;
 import :server.project_server;

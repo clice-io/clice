@@ -4,22 +4,27 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.document_links;
+import :feature.document_symbols;
+import :feature.folding_ranges;
+import :feature.hover;
+import :feature.index_entries;
 import :feature.semantic_token_stream;
+import :feature.semantic_tokens;
 import :index.indexer;
 import :index.tu_index;
 import :semantic.token_class;
 import :support.bytes;
 import :syntax.lexer;
 import :syntax.source_text;
-import :unittests.utils.tester;
 import :unittests.utils;
+import :unittests.utils.tester;
 
 namespace clice::testing {
 
 namespace {
 
-ZEST_SUITE(index_projection, Tester) {
+ZEST_SUITE(FromIndex, Tester) {
 
 /// The compiled unit's TU index and the focus file's entries, extracted the
 /// way the router's index slice does it in production.
@@ -52,13 +57,13 @@ auto resolver() {
     };
 }
 
-/// The outline the index projects from the unit's own entries.
-auto projected_outline() -> std::vector<feature::DocumentSymbol> {
+/// The outline the index computes from the unit's own entries.
+auto index_outline() -> std::vector<feature::DocumentSymbol> {
     SourceText text(unit->focus_file().content(), unit->lang_options());
     return feature::index_document_symbols(text, entries, resolver(), {});
 }
 
-/// The projected tokens of the compiled unit equal what the AST knows
+/// The tokens the index computes for the compiled unit equal what the AST knows
 /// that the index records too, modifiers included; both under the
 /// Tester's C++20.
 void expect_tokens_match_ast() {
@@ -66,23 +71,23 @@ void expect_tokens_match_ast() {
     auto ast =
         feature::semantic_token_stream(source, feature::semantic_token_facts(*unit, {}, true), {});
     SourceText served(source.text(), dialect_of("main.cpp", false, "c++20"));
-    auto projected = feature::index_semantic_tokens(served, entries, resolver(), {});
+    auto from_index = feature::index_semantic_tokens(served, entries, resolver(), {});
 
-    ZASSERT(projected.size() == ast.size());
+    ZASSERT(from_index.size() == ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {
-        ZASSERT(projected[i].range.begin == ast[i].range.begin);
-        ZASSERT(projected[i].range.end == ast[i].range.end);
-        ZASSERT(projected[i].kind == ast[i].kind);
-        ZASSERT(projected[i].modifiers == ast[i].modifiers);
+        ZASSERT(from_index[i].range.begin == ast[i].range.begin);
+        ZASSERT(from_index[i].range.end == ast[i].range.end);
+        ZASSERT(from_index[i].kind == ast[i].kind);
+        ZASSERT(from_index[i].modifiers == ast[i].modifiers);
     }
 }
 
-/// The tokens the index projects from synthetic entries, each symbol of
+/// The tokens the index computes from synthetic entries, each symbol of
 /// the token kind `kinds` gives it.
-auto project(llvm::StringRef content,
-             const clang::LangOptions& lang_opts,
-             feature::IndexEntries synthetic,
-             llvm::ArrayRef<SemanticTokenKind> kinds) -> std::vector<feature::SemanticToken> {
+auto tokens_from(llvm::StringRef content,
+                 const clang::LangOptions& lang_opts,
+                 feature::IndexEntries synthetic,
+                 llvm::ArrayRef<SemanticTokenKind> kinds) -> std::vector<feature::SemanticToken> {
     SourceText text(content, lang_opts);
     return feature::index_semantic_tokens(
         text,
@@ -197,15 +202,15 @@ export int entry();
     extract_entries();
 
     auto ast = feature::document_symbols(*unit, {});
-    auto projected = projected_outline();
+    auto from_index = index_outline();
     ZASSERT(ast.size() == std::size_t(2));
     ZASSERT(ast[0].name == "demo.core");
     ZASSERT(ast[0].kind.value_of() == SymbolKind(SymbolKind::Module).value_of());
-    ZASSERT(projected.size() == ast.size());
+    ZASSERT(from_index.size() == ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {
-        ZASSERT(projected[i].name == ast[i].name);
-        ZASSERT(projected[i].kind.value_of() == ast[i].kind.value_of());
-        ZASSERT(projected[i].selection_range == ast[i].selection_range);
+        ZASSERT(from_index[i].name == ast[i].name);
+        ZASSERT(from_index[i].kind.value_of() == ast[i].kind.value_of());
+        ZASSERT(from_index[i].selection_range == ast[i].selection_range);
     }
 }
 
@@ -256,7 +261,7 @@ enum class Color {
     extract_entries();
 
     auto ast = feature::document_symbols(*unit, {});
-    auto projected = projected_outline();
+    auto from_index = index_outline();
 
     auto compare = [](auto& self,
                       const std::vector<feature::DocumentSymbol>& lhs,
@@ -271,7 +276,7 @@ enum class Color {
             self(self, lhs[i].children, rhs[i].children);
         }
     };
-    compare(compare, projected, ast);
+    compare(compare, from_index, ast);
 }
 
 ZEST_CASE(FoldsSubsetOfAst) {
@@ -299,10 +304,10 @@ int compute() {
 
     auto ast = feature::folding_ranges(*unit);
     SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
-    auto projected = feature::index_folding_ranges(text, entries.decls, resolver());
+    auto from_index = feature::index_folding_ranges(text, entries.decls, resolver());
 
-    ZASSERT(!projected.empty());
-    for(auto& fold: projected) {
+    ZASSERT(!from_index.empty());
+    for(auto& fold: from_index) {
         bool known = std::ranges::any_of(ast, [&](const feature::FoldingRange& twin) {
             return twin.range == fold.range;
         });
@@ -312,7 +317,7 @@ int compute() {
     // The constructor's fold anchors at its body, not the member
     // initializer's braces.
     auto body = unit->focus_file().content().find("{\n        value += 1;");
-    bool anchored = std::ranges::any_of(projected, [&](const feature::FoldingRange& fold) {
+    bool anchored = std::ranges::any_of(from_index, [&](const feature::FoldingRange& fold) {
         return fold.range.begin == body;
     });
     ZASSERT(anchored);
@@ -345,10 +350,10 @@ typedef struct {
 
     auto ast = feature::folding_ranges(*unit);
     SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
-    auto projected = feature::index_folding_ranges(text, entries.decls, resolver());
+    auto from_index = feature::index_folding_ranges(text, entries.decls, resolver());
 
-    ZASSERT(projected.size() == std::size_t(3));
-    for(auto& fold: projected) {
+    ZASSERT(from_index.size() == std::size_t(3));
+    for(auto& fold: from_index) {
         auto twin = std::ranges::find_if(ast, [&](const feature::FoldingRange& candidate) {
             return candidate.range == fold.range;
         });
@@ -357,8 +362,8 @@ typedef struct {
         ZASSERT(fold.lines == twin->lines);
         ZASSERT(fold.closer == twin->closer);
     }
-    ZASSERT(projected[0].lines);
-    ZASSERT(projected[1].lines);
+    ZASSERT(from_index[0].lines);
+    ZASSERT(from_index[1].lines);
 }
 
 ZEST_CASE(InitializerFoldsAtBrace) {
@@ -373,9 +378,9 @@ int values[] =
     extract_entries();
 
     SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
-    auto projected = feature::index_folding_ranges(text, entries.decls, resolver());
-    ZASSERT(projected.size() == std::size_t(1));
-    ZASSERT(!projected[0].lines.has_value());
+    auto from_index = feature::index_folding_ranges(text, entries.decls, resolver());
+    ZASSERT(from_index.size() == std::size_t(1));
+    ZASSERT(!from_index[0].lines.has_value());
 }
 
 ZEST_CASE(ConditionalBracesSuppressFold) {
@@ -420,7 +425,7 @@ void g() {
 
 ZEST_CASE(MergedKindsConflict) {
     llvm::StringRef content = "value;\n";
-    auto tokens = project(
+    auto tokens = tokens_from(
         content,
         dialect_of("main.cpp", false),
         {
@@ -436,7 +441,7 @@ ZEST_CASE(ModuleNameComponents) {
     // name; every identifier component must classify, as on the AST path
     // (separators stay unpainted).
     llvm::StringRef content = "export module demo.core;\nimport foo:part;\n";
-    auto tokens = project(
+    auto tokens = tokens_from(
         content,
         dialect_of("main.cppm", false),
         {
@@ -475,11 +480,11 @@ ZEST_CASE(CDialectKeywords) {
         .decls = {{.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true}},
     };
     auto c_tokens =
-        project(content, dialect_of("header.h", true), entries, {SemanticTokenKind::Variable});
+        tokens_from(content, dialect_of("header.h", true), entries, {SemanticTokenKind::Variable});
     ZASSERT(kind_at(c_tokens, 4) == SemanticTokenKind::Variable);
 
     auto cpp_tokens =
-        project(content, dialect_of("header.h", false), entries, {SemanticTokenKind::Variable});
+        tokens_from(content, dialect_of("header.h", false), entries, {SemanticTokenKind::Variable});
     ZASSERT(kind_at(cpp_tokens, 4) == SemanticTokenKind::Keyword);
 }
 
@@ -487,7 +492,7 @@ ZEST_CASE(DriverDefaultKeywords) {
     // The driver turns on `char8_t` from C++20 and the GNU keywords in GNU
     // modes; the language defaults alone leave both off.
     llvm::StringRef content = "char8_t c;\ntypeof(c) d;\n";
-    auto tokens = project(content, dialect_of("main.cpp", false, "gnu++20"), {}, {});
+    auto tokens = tokens_from(content, dialect_of("main.cpp", false, "gnu++20"), {}, {});
     ZASSERT(kind_at(tokens, 0) == SemanticTokenKind::Primitive);
     ZASSERT(kind_at(tokens, 11) == SemanticTokenKind::Keyword);
 }
@@ -495,7 +500,7 @@ ZEST_CASE(DriverDefaultKeywords) {
 ZEST_CASE(ModuleKeywordsNeedModules) {
     // Before C++20 a line-leading `module` is a plain name.
     llvm::StringRef content = "module m;\n";
-    auto tokens = project(content, dialect_of("main.cpp", false, "c++17"), {}, {});
+    auto tokens = tokens_from(content, dialect_of("main.cpp", false, "c++17"), {}, {});
     ZASSERT(std::ranges::none_of(tokens, [](const feature::SemanticToken& token) {
         return token.kind == SemanticTokenKind::Keyword;
     }));
@@ -511,15 +516,15 @@ ZEST_CASE(StandardFromCommand) {
     };
     auto kinds = {SemanticTokenKind::Variable};
 
-    auto cxx17 = project(content, dialect_of("main.cpp", false, "c++17"), entries, kinds);
+    auto cxx17 = tokens_from(content, dialect_of("main.cpp", false, "c++17"), entries, kinds);
     ZASSERT(kind_at(cxx17, 4) == SemanticTokenKind::Variable);
 
-    auto cxx20 = project(content, dialect_of("main.cpp", false, "c++20"), entries, kinds);
+    auto cxx20 = tokens_from(content, dialect_of("main.cpp", false, "c++20"), entries, kinds);
     ZASSERT(kind_at(cxx20, 4) == SemanticTokenKind::Keyword);
 
     // No -std in the command means the entries were indexed under the
     // driver's default dialect (C++17 today); the fallback matches it.
-    auto fallback = project(content, dialect_of("main.cpp", false), entries, kinds);
+    auto fallback = tokens_from(content, dialect_of("main.cpp", false), entries, kinds);
     ZASSERT(kind_at(fallback, 4) == SemanticTokenKind::Variable);
 }
 
@@ -528,7 +533,7 @@ ZEST_CASE(LinksFromEdges) {
 #include "skipped.h"
 #include <second>
 )cpp";
-    std::vector<feature::IndexIncludeEdge> edges = {
+    std::vector<index::IncludeEdge> edges = {
         {.line = 1, .target = "/tmp/first.h"       },
         {.line = 3, .target = "/usr/include/second"},
     };
@@ -564,7 +569,7 @@ ZEST_CASE(HoverDefinitionShape) {
             "export int entry()");
 }
 
-};  // ZEST_SUITE(index_projection)
+};  // ZEST_SUITE(FromIndex)
 
 }  // namespace
 

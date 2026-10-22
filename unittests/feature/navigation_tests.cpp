@@ -4,13 +4,13 @@ module;
 
 module clice;
 
-import :index.navigation;
+import :feature.navigation;
 import :unittests.utils.index_query_tester;
 
 namespace clice::testing {
 namespace {
 
-ZEST_SUITE(IndexNavigation, IndexQueryTester) {
+ZEST_SUITE(Navigation, IndexQueryTester) {
 
 ZEST_CASE(LocalReferencesClosed) {
     add_focus("main.cpp", R"(
@@ -27,7 +27,7 @@ ZEST_CASE(LocalReferencesClosed) {
     }) {
         auto cursor = query.symbol_at(focus_id, point(marker));
         ZASSERT(cursor);
-        ZEXPECT(index::references(query, *cursor, true).size() == expected);
+        ZEXPECT(feature::references(query, *cursor, true).size() == expected);
     }
 }
 
@@ -43,14 +43,14 @@ ZEST_CASE(HighlightsClosedFile) {
 
     auto cursor = query.symbol_at(focus_id, point("read"));
     ZASSERT(cursor);
-    auto highlights = index::document_highlights(query, *cursor);
+    auto highlights = feature::document_highlights(query, *cursor);
     ZASSERT(highlights.size() == 3U);
     ZEXPECT(highlights[0].site.range == range("decl"));
-    ZEXPECT(highlights[0].kind == index::HighlightKind::Text);
+    ZEXPECT(highlights[0].kind == feature::HighlightKind::Text);
     ZEXPECT(highlights[1].site.range == range("write"));
-    ZEXPECT(highlights[1].kind == index::HighlightKind::Write);
+    ZEXPECT(highlights[1].kind == feature::HighlightKind::Write);
     ZEXPECT(highlights[2].site.range == range("read"));
-    ZEXPECT(highlights[2].kind == index::HighlightKind::Read);
+    ZEXPECT(highlights[2].kind == feature::HighlightKind::Read);
 }
 
 ZEST_CASE(InternalAcrossFiles) {
@@ -69,8 +69,8 @@ ZEST_CASE(InternalAcrossFiles) {
     ZASSERT(from_main);
     ZASSERT(from_header);
     ZASSERT(from_main->symbols == from_header->symbols);
-    ZEXPECT(index::references(query, *from_main, true).size() == 3U);
-    ZEXPECT(index::references(query, *from_header, true).size() == 3U);
+    ZEXPECT(feature::references(query, *from_main, true).size() == 3U);
+    ZEXPECT(feature::references(query, *from_header, true).size() == 3U);
     auto located = query.resolve_at(*from_main);
     ZASSERT(located.size() == 1U);
     ZEXPECT(located.front().site.path.ends_with("header.h"));
@@ -92,7 +92,7 @@ ZEST_CASE(InternalTypeTarget) {
 
     auto cursor = query.symbol_at(focus_id, point("var"));
     ZASSERT(cursor);
-    auto sites = index::type_definition(query, *cursor, cursor->symbols.front());
+    auto sites = feature::type_definition(query, *cursor, cursor->symbols.front());
     ZASSERT(sites.size() == 1U);
     ZEXPECT(sites.front().path.ends_with("header.h"));
 }
@@ -118,7 +118,7 @@ ZEST_CASE(InternalAcrossUnits) {
 
     auto cursor = query.symbol_at(a_id, a_use);
     ZASSERT(cursor);
-    ZEXPECT(index::references(query, *cursor, true).size() == 3U);
+    ZEXPECT(feature::references(query, *cursor, true).size() == 3U);
 }
 
 ZEST_CASE(OverloadSetCursor) {
@@ -132,14 +132,14 @@ ZEST_CASE(OverloadSetCursor) {
     auto cursor = query.symbol_at(focus_id, point("use"));
     ZASSERT(cursor);
     ZASSERT(cursor->symbols.size() == 2U);
-    auto sites = index::definition(query, *cursor);
+    auto sites = feature::definition(query, *cursor);
     ZASSERT(sites.size() == 2U);
     ZEXPECT(sites[0].range.begin == point("int"));
     ZEXPECT(sites[1].range.begin == point("double"));
     ZEXPECT(query.resolve_at(*cursor).size() == 2U);
 }
 
-};  // ZEST_SUITE(IndexNavigation)
+};  // ZEST_SUITE(Navigation)
 
 }  // namespace
 }  // namespace clice::testing

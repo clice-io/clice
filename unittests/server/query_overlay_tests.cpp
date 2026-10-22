@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :index.hierarchy;
+import :feature.hierarchy;
 import :index.indexer;
 import :index.query;
 import :index.shard;
@@ -306,7 +306,7 @@ int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
     merge_disk_index();
 
     auto callers =
-        index::call_graph(index_query, hash_of("callee"), Fid{}, {.callees = false}).callers;
+        feature::call_graph(index_query, hash_of("callee"), Fid{}, {.callees = false}).callers;
     ZASSERT(callers.size() == 2);
     for(auto& edge: callers) {
         ZEXPECT(edge.sites.size() == 1);
@@ -329,14 +329,15 @@ Derived instance;
 
     auto derived = hash_of("Derived");
     auto supertypes =
-        index::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
+        feature::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
     ZASSERT(supertypes.size() == 1);
     ZEXPECT(supertypes[0].symbol.name == "Base");
 
     // Once derived.h is open, its session owns the type relations spelled
     // there; the overlay's disk-snapshot relations must stop contributing.
     session_store.open(project.file_table.intern(Spelling::absolute(header_path("derived.h"))));
-    supertypes = index::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
+    supertypes =
+        feature::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
     ZEXPECT(supertypes.size() == 0);
 }
 

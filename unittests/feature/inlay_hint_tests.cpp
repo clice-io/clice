@@ -9,7 +9,7 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.inlay_hints;
 import :unittests.utils;
 import :unittests.utils.tester;
 

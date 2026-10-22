@@ -36,8 +36,8 @@ Distilled from real correction history — these mistakes keep recurring:
 - `src/syntax/` — lexer, scanner, tokens, include resolution, dependency graph
 - `src/compile/` — compilation: compilation unit, tokens, directives, diagnostics, clang-tidy
 - `src/semantic/` — semantic analysis over the AST: symbol kinds, relations, template resolver, declaration, type and expression helpers; the per-unit semantic map (AST visitor), selection, entity identities and doc comments
-- `src/index/` — symbol indexing: the indexer, the persisted format and its columns, shards, TU indexes and manifests, the project table and index, the database, name search, the queries (search, navigation, hierarchy, text), rename
-- `src/feature/` — LSP features: hover, completion, document links, semantic tokens, etc.
+- `src/index/` — symbol indexing: the indexer, the persisted format and its columns, shards, TU indexes and manifests, the project table and index, the database, name search, and the reads every index-backed feature builds on (`IndexQuery` over all index sources, symbol search, declared text)
+- `src/feature/` — the language features, one interface each with its options, its result type, its answer from one file's AST and, where it has one, from the index: AST only (diagnostics, signature help, selection ranges, formatting), index only (navigation, hierarchy, rename, workspace symbols), both (hover, semantic tokens, folding, outline, document links, completion, code actions, inlay hints); which source answers is the server's call
 - `src/config/` — the `clice.toml` configuration
 - `src/project/` — the loaded project: CDB loading and watching, command resolution, header hosting, the command snapshot and artifact records, saving and loading the project's database
 - `src/worker/` — the stateless and stateful worker processes, their pool and protocol

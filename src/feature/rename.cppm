@@ -8,11 +8,11 @@ module;
 /// checked against the text it indexed, plus a scan of the workspace for
 /// the tokens spelling the old name that the index ties to nothing.
 
-module clice:index.rename;
+module clice:feature.rename;
 
 import :index.query;
 
-namespace clice::index {
+namespace clice::feature {
 
 /// Why `name` cannot name a C or C++ declaration — not an identifier, or a
 /// keyword in either language; nullopt when it can.
@@ -25,28 +25,28 @@ std::optional<std::string> invalid_identifier(llvm::StringRef name);
 /// overrides a virtual function is linked with. A class template's
 /// deduction guides join in plan_rename.
 struct RenameTarget {
-    IndexQuery::Located symbol;
-    std::vector<IndexQuery::Located> group;
+    index::IndexQuery::Located symbol;
+    std::vector<index::IndexQuery::Located> group;
 };
 
 /// The rename target of a located symbol; the error says why the symbol
 /// cannot be renamed (an operator, a macro, a name no source spells).
-std::expected<RenameTarget, std::string> rename_target(const IndexQuery& query,
-                                                       const IndexQuery::Located& named);
+std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& query,
+                                                       const index::IndexQuery::Located& named);
 
 /// The rename an editor starts at a cursor: the target of the symbols
 /// there, and the token at the cursor spelling its name.
 struct CursorRename {
     RenameTarget target;
-    Site token;
+    index::Site token;
 };
 
 /// The rename at a cursor. Its symbols must agree on one target (a class
 /// and the constructor a construction calls do); the error says why they
 /// do not, or why the token there cannot be renamed — it spells no name
 /// of the target, or its file moved on since it was indexed.
-std::expected<CursorRename, std::string> rename_at(const IndexQuery& query,
-                                                   const IndexQuery::Cursor& cursor);
+std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& query,
+                                                   const index::IndexQuery::Cursor& cursor);
 
 /// A file's current text as a rename's scan looks at it: the tokens
 /// spelling each name scanned — a rename's old and new name, or those of
@@ -92,7 +92,7 @@ struct RenameScope {
 
 /// One token the rename replaces.
 struct RenameEdit {
-    Site site;
+    index::Site site;
 
     /// Reached through a name the index resolved heuristically (a
     /// dependent call, a using-declaration of an overload set): changed,
@@ -102,7 +102,7 @@ struct RenameEdit {
 
 /// A token spelling the old name that the rename leaves alone, and why.
 struct RenameNote {
-    Site site;
+    index::Site site;
     std::string reason;
 
     /// The source line it stands on, trimmed.
@@ -137,11 +137,11 @@ struct RenamePlan {
 /// a new name, and the symbols ending with each new name. A rename judges
 /// its new name by the names the whole batch leaves; alone, by today's.
 struct RenameBatch {
-    llvm::DenseMap<SymbolHash, std::string> renamed;
-    llvm::StringMap<std::vector<IndexQuery::Located>> named;
+    llvm::DenseMap<index::SymbolHash, std::string> renamed;
+    llvm::StringMap<std::vector<index::IndexQuery::Located>> named;
 };
 
-RenamePlan plan_rename(const IndexQuery& query,
+RenamePlan plan_rename(const index::IndexQuery& query,
                        FileTable& files,
                        const RenameTarget& target,
                        llvm::StringRef new_name,
@@ -182,7 +182,7 @@ struct BatchPlan {
 /// Plan `renamings` together. `scope.read` scans a file for the old and
 /// new names of all of them; each plan looks only at the files spelling
 /// its own two.
-BatchPlan plan_renames(const IndexQuery& query,
+BatchPlan plan_renames(const index::IndexQuery& query,
                        FileTable& files,
                        llvm::ArrayRef<Renaming> renamings,
                        const RenameScope& scope);
@@ -192,4 +192,4 @@ BatchPlan plan_renames(const IndexQuery& query,
 /// old name — the text moved on since the plan was made.
 std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& batch, Fid file);
 
-}  // namespace clice::index
+}  // namespace clice::feature

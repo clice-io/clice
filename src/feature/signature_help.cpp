@@ -6,7 +6,8 @@ module clice;
 
 import :compile.compilation;
 import :compile.directive;
-import :feature.feature;
+import :feature.documentation;
+import :feature.signature_help;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
@@ -17,6 +18,8 @@ import :syntax.lexer;
 import :syntax.lexical_scan;
 
 namespace clice::feature {
+
+namespace lsp = kota::ipc::lsp;
 
 namespace {
 

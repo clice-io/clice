@@ -7,6 +7,12 @@ module;
 
 module clice;
 
+import :feature.code_action.code_action;
+import :feature.code_completion;
+import :feature.document_symbols;
+import :feature.folding_ranges;
+import :feature.inlay_hints;
+import :feature.semantic_tokens;
 import :server.dispatcher;
 import :server.editor_context;
 import :support.anomaly;

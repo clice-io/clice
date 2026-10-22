@@ -10,7 +10,7 @@ module;
 
 module clice:feature.code_action.action;
 
-import :feature.feature;
+import :feature.code_action.code_action;
 import :semantic.selection;
 import :support.text;
 

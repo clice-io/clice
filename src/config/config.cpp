@@ -8,7 +8,6 @@ module;
 module clice;
 
 import :config.config;
-import :feature.feature;
 import :support.logging;
 import :support.shell;
 import :vfs.file_system;

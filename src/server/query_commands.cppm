@@ -4,8 +4,8 @@ module;
 
 module clice:server.query_commands;
 
+import :feature.rename;
 import :index.query;
-import :index.rename;
 import :server.editor_context;
 
 namespace clice::query {
@@ -261,7 +261,7 @@ struct RenameResult {
 /// come from.
 struct PlannedRename {
     RenameResult result;
-    index::BatchPlan plan;
+    feature::BatchPlan plan;
 
     /// Whether anything keeps the edits from being written.
     bool blocked() const {
@@ -312,11 +312,11 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
                                     llvm::StringRef direction);
 
 /// Whether some unit of the build the index is to hold has no record in
-/// it yet (see index::RenameScope::units_pending).
+/// it yet (see feature::RenameScope::units_pending).
 bool units_pending(Project& project);
 
 /// Plan the renames together against the workspace on disk (see
-/// index::plan_renames), each workspace file read once: what would change,
+/// feature::plan_renames), each workspace file read once: what would change,
 /// what the index cannot guarantee, and what keeps the change from being
 /// safe. Nothing is written. A rename names its symbol by its whole name,
 /// never a pattern; the overloads of one scope that name spells are
@@ -335,7 +335,7 @@ Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQ
 Outcome<std::vector<index::IndexQuery::Located>> named_symbols(Context& ctx,
                                                                index::SymbolQuery locator);
 
-/// What implements the symbol (index::implementation): the
+/// What implements the symbol (feature::implementation): the
 /// classes deriving from a class, the overrides of a function, at any
 /// depth; a function nothing overrides, its definitions.
 Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator);

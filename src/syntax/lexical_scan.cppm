@@ -227,6 +227,22 @@ std::optional<LocalSourceRange> find_directive_argument(const LexicalInfo& info,
                                                         llvm::StringRef content,
                                                         std::uint32_t offset);
 
+/// A brace of the code: `{` when `open`, else `}`.
+struct Brace {
+    LocalSourceRange range;
+    bool open;
+};
+
+/// The braces of the code, those of directive lines left out: a #define
+/// body's brace pairs nothing in the file's own text.
+std::vector<Brace> code_braces(const LexicalInfo& lexical);
+
+/// The last balanced top-level group of `braces` (in source order) inside
+/// `extent`: a function's body rather than a member-initializer's braces,
+/// a tag's brace range, a namespace's block.
+std::optional<LocalSourceRange> last_brace_group(llvm::ArrayRef<Brace> braces,
+                                                 LocalSourceRange extent);
+
 /// Bracket pairs over tokens fed in order. Brackets pair within their
 /// scope — a directive line, a stretch the preprocessor skipped — and
 /// outside any across the file; a closer without an opener of its kind (a

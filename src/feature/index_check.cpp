@@ -5,9 +5,11 @@ module;
 module clice;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.document_symbols;
 import :feature.index_check;
+import :feature.index_entries;
 import :feature.semantic_token_stream;
+import :feature.semantic_tokens;
 import :index.indexer;
 import :index.symbol;
 import :index.tu_index;

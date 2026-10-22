@@ -8,7 +8,8 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.code_action.code_action;
+import :feature.formatting;
 import :unittests.utils;
 import :unittests.utils.tester;
 

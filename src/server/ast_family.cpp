@@ -10,7 +10,7 @@ module clice;
 import :command.argument;
 import :compile.diagnostic;
 import :compile.tidy;
-import :feature.feature;
+import :feature.diagnostics;
 import :index.tu_index;
 import :sched.families.build_common;
 import :server.ast_family;

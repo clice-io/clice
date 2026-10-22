@@ -5,7 +5,7 @@ module;
 module clice:feature.semantic_token_stream;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.semantic_tokens;
 import :semantic.token_class;
 import :syntax.source_text;
 

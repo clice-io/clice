@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.inactive_regions;
 import :unittests.utils;
 import :unittests.utils.tester;
 

@@ -5,7 +5,7 @@ module;
 module clice;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.documentation;
 import :index.query;
 import :index.text;
 import :semantic.display;

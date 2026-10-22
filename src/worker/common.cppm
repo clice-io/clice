@@ -7,7 +7,7 @@ module;
 module clice:worker.common;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.diagnostics;
 import :support.bytes;
 import :support.timer;
 import :vfs.file_system;

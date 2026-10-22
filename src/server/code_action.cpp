@@ -5,6 +5,10 @@ module;
 module clice;
 
 import :command.file_kind;
+import :feature.code_action.code_action;
+import :feature.code_completion;
+import :feature.formatting;
+import :feature.protocol;
 import :index.search;
 import :index.shard;
 import :index.symbol_query;

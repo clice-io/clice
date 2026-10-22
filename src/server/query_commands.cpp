@@ -5,9 +5,12 @@ module;
 module clice;
 
 import :command.file_kind;
-import :feature.feature;
-import :index.hierarchy;
-import :index.navigation;
+import :feature.document_symbols;
+import :feature.documentation;
+import :feature.hierarchy;
+import :feature.index_entries;
+import :feature.navigation;
+import :feature.rename;
 import :index.project_index;
 import :index.search;
 import :index.shard;
@@ -228,7 +231,7 @@ bool one_overload_set(llvm::ArrayRef<const index::IndexQuery::Located*> symbols)
 /// The rename target of the symbols a locator names: one symbol's, or,
 /// for a name the overloads of one scope spell, all of theirs — renamed
 /// together, a call a template leaves open between them stays theirs.
-Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
+Outcome<feature::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
     if(!hold_to_whole_name(locator)) {
         return std::unexpected("a rename names its symbol by its whole name, not by a pattern");
     }
@@ -237,9 +240,9 @@ Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator)
     if(!candidates) {
         return std::unexpected(candidates.error());
     }
-    std::vector<index::RenameTarget> targets;
+    std::vector<feature::RenameTarget> targets;
     for(auto& candidate: *candidates) {
-        auto target = index::rename_target(ctx.query, candidate);
+        auto target = feature::rename_target(ctx.query, candidate);
         if(!target) {
             if(candidates->size() == 1) {
                 return std::unexpected(target.error());
@@ -247,7 +250,7 @@ Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator)
             return ambiguous(ctx, *candidates);
         }
         auto root = target->symbol.symbol.hash;
-        if(std::ranges::none_of(targets, [&](const index::RenameTarget& known) {
+        if(std::ranges::none_of(targets, [&](const feature::RenameTarget& known) {
                return known.symbol.symbol.hash == root;
            })) {
             targets.push_back(std::move(*target));
@@ -316,7 +319,7 @@ std::string via_of(index::SiteOrigin origin) {
     std::unreachable();
 }
 
-std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::CallEdge> edges) {
+std::vector<GraphEntry> graph_entries(llvm::ArrayRef<feature::CallEdge> edges) {
     std::vector<GraphEntry> entries;
     entries.reserve(edges.size());
     for(auto& edge: edges) {
@@ -610,9 +613,9 @@ Outcome<ReferencesResult> references(Context& ctx,
         .symbol = symbol_of(*resolved),
     };
     index::IndexQuery::Cursor cursor{.symbols = {resolved->symbol.hash}, .site = resolved->site};
-    auto sites = index::references(ctx.query, cursor, include_declaration);
+    auto sites = feature::references(ctx.query, cursor, include_declaration);
     auto contexts = index::context_lines(ctx.query, sites);
-    auto functions = index::enclosing_functions(ctx.query, sites);
+    auto functions = feature::enclosing_functions(ctx.query, sites);
     assert(std::ranges::size(sites) == std::ranges::size(contexts) &&
            std::ranges::size(sites) == std::ranges::size(functions));
     for(auto [site, context, function]: std::views::zip(sites, contexts, functions)) {
@@ -641,7 +644,7 @@ bool units_pending(Project& project) {
 PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
     PlannedRename planned;
     auto& result = planned.result;
-    std::vector<index::Renaming> renamings;
+    std::vector<feature::Renaming> renamings;
     // The answer's entry of each renaming.
     std::vector<std::size_t> entries;
     llvm::StringSet<> names;
@@ -677,14 +680,14 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
     }
     std::vector<std::string> sources;
     llvm::StringSet<> walked;
-    llvm::StringMap<index::ScannedText> scanned;
-    auto scan = [&](llvm::StringRef path) -> const index::ScannedText* {
+    llvm::StringMap<feature::ScannedText> scanned;
+    auto scan = [&](llvm::StringRef path) -> const feature::ScannedText* {
         walked.insert(path);
         auto text = vfs::read(path);
         if(!text) {
             return nullptr;
         }
-        auto spelled = index::scan_text((*text)->getBuffer().str(), names);
+        auto spelled = feature::scan_text((*text)->getBuffer().str(), names);
         return spelled ? &scanned.try_emplace(path, std::move(*spelled)).first->second : nullptr;
     };
     for(auto& source: workspace_sources(root, cache_dir)) {
@@ -693,20 +696,20 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
     auto editable = [&](llvm::StringRef path) {
         return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
     };
-    auto read = [&](llvm::StringRef path) -> const index::ScannedText* {
+    auto read = [&](llvm::StringRef path) -> const feature::ScannedText* {
         if(auto found = scanned.find(path); found != scanned.end()) {
             return &found->second;
         }
         // An edited file the walk's suffixes left out.
         return walked.contains(path) ? nullptr : scan(path);
     };
-    planned.plan = index::plan_renames(ctx.query,
-                                       ctx.project.file_table,
-                                       renamings,
-                                       {.files = sources,
-                                        .editable = editable,
-                                        .read = read,
-                                        .units_pending = units_pending(ctx.project)});
+    planned.plan = feature::plan_renames(ctx.query,
+                                         ctx.project.file_table,
+                                         renamings,
+                                         {.files = sources,
+                                          .editable = editable,
+                                          .read = read,
+                                          .units_pending = units_pending(ctx.project)});
 
     auto& plans = planned.plan.plans;
     std::set<std::string> stale;
@@ -769,10 +772,10 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
         return std::unexpected(resolved.error());
     }
     auto graph =
-        index::call_graph(ctx.query,
-                          resolved->symbol.hash,
-                          resolved->site.file,
-                          {.callers = direction != "callees", .callees = direction != "callers"});
+        feature::call_graph(ctx.query,
+                            resolved->symbol.hash,
+                            resolved->site.file,
+                            {.callers = direction != "callees", .callees = direction != "callers"});
     return CallGraphResult{
         .root = graph_entry<GraphEntry>(*resolved),
         .callers = graph_entries(graph.callers),
@@ -823,7 +826,7 @@ Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery lo
     return ImplementationResult{
         .root = graph_entry<GraphEntry>(*resolved),
         .implementations = graph_entries(
-            index::implementation(ctx.query, resolved->symbol.hash, resolved->site.file)),
+            feature::implementation(ctx.query, resolved->symbol.hash, resolved->site.file)),
     };
 }
 
@@ -840,7 +843,7 @@ Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto hierarchy = index::type_hierarchy(
+    auto hierarchy = feature::type_hierarchy(
         ctx.query,
         resolved->symbol.hash,
         resolved->site.file,

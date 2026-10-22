@@ -6,7 +6,7 @@ module clice;
 
 import :compile.compilation;
 import :compile.diagnostic;
-import :feature.feature;
+import :feature.diagnostics;
 import :unittests.utils;
 
 namespace clice::testing {

@@ -5,14 +5,15 @@ module;
 module clice;
 
 import :feature.code_action.action;
-import :feature.feature;
+import :feature.code_completion;
+import :feature.documentation;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
 import :support.fuzzy_matcher;
 import :support.markup;
-import :syntax.documentation;
 import :syntax.completion;
+import :syntax.documentation;
 import :syntax.lexer;
 
 namespace clice::feature {

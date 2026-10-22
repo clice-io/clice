@@ -4,7 +4,8 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.diagnostics;
+import :feature.protocol;
 
 namespace clice::feature {
 

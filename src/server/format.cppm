@@ -4,7 +4,7 @@ module;
 
 module clice:server.format;
 
-import :feature.feature;
+import :feature.diagnostics;
 import :server.document_compile;
 import :server.session;
 

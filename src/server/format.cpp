@@ -5,7 +5,7 @@ module;
 module clice;
 
 import :compile.diagnostic;
-import :feature.feature;
+import :feature.diagnostics;
 import :server.format;
 
 namespace clice {

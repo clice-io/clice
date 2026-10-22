@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.document_links;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 import :unittests.utils;

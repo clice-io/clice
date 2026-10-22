@@ -5,7 +5,12 @@ module;
 module clice:server.features;
 
 import :command.search_config;
-import :feature.feature;
+import :feature.code_completion;
+import :feature.diagnostics;
+import :feature.document_symbols;
+import :feature.folding_ranges;
+import :feature.hover;
+import :feature.semantic_tokens;
 import :index.query;
 import :project.project;
 import :sched.index.pump;
@@ -206,7 +211,7 @@ public:
     RawResult type_hierarchy_supertypes(Fid path_id, const protocol::TypeHierarchyItem& item);
     RawResult type_hierarchy_subtypes(Fid path_id, const protocol::TypeHierarchyItem& item);
 
-    /// Rename from this project's index (see index/rename.cppm), never a
+    /// Rename from this project's index (see feature/rename.cppm), never a
     /// recompile. prepare_rename answers the name token at the position,
     /// or an error saying why the symbol there cannot be renamed.
     RawResult prepare_rename(Ticket ticket, Fid path_id, const protocol::Position& position);

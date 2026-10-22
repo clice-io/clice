@@ -9,6 +9,8 @@ module;
 module clice;
 
 import :config.config;
+import :feature.protocol;
+import :feature.semantic_tokens;
 import :sched.graph;
 import :server.features;
 import :server.lsp_client;

@@ -5,9 +5,23 @@ module;
 module clice;
 
 import :command.search_config;
-import :index.hierarchy;
-import :index.navigation;
-import :index.rename;
+import :feature.code_action.code_action;
+import :feature.code_completion;
+import :feature.diagnostics;
+import :feature.document_links;
+import :feature.document_symbols;
+import :feature.documentation;
+import :feature.folding_ranges;
+import :feature.hierarchy;
+import :feature.hover;
+import :feature.index_entries;
+import :feature.inlay_hints;
+import :feature.navigation;
+import :feature.protocol;
+import :feature.rename;
+import :feature.selection_ranges;
+import :feature.semantic_tokens;
+import :feature.workspace_symbols;
 import :index.search;
 import :index.text;
 import :sched.index.pump;
@@ -16,7 +30,6 @@ import :server.ast_family;
 import :server.editor_context;
 import :server.features;
 import :server.format;
-import :server.lsp_projection;
 import :server.query_commands;
 import :support.text;
 import :syntax.completion;
@@ -45,6 +58,12 @@ const static index::DocumentLink* link_at(llvm::ArrayRef<index::DocumentLink> li
         return link.range.contains(offset);
     });
     return it != links.end() ? &*it : nullptr;
+}
+
+/// Whether a worker's raw reply is the JSON null — the only inspection
+/// ever made of a reply that is otherwise passed through untouched.
+static bool is_null(const serde_raw& raw) {
+    return raw.data == "null";
 }
 
 /// Error response for feature requests on files with no open session.
@@ -391,22 +410,23 @@ Features::RawResult Features::definition(Ticket ticket,
             auto defined = gather(symbol,
                                   path_id,
                                   [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                      return index::definition_sites(from, named, path_id);
+                                      return feature::definition_sites(from, named, path_id);
                                   });
             if(defined.empty() || std::ranges::any_of(defined, [&](const index::Site& site) {
                    return index::covers(site, cursor->site);
                })) {
-                defined = gather(
-                    symbol,
-                    path_id,
-                    [&](const index::IndexQuery& from, index::SymbolHash named) {
-                        return index::definition(from, {.symbols = {named}, .site = cursor->site});
-                    });
+                defined = gather(symbol,
+                                 path_id,
+                                 [&](const index::IndexQuery& from, index::SymbolHash named) {
+                                     return feature::definition(
+                                         from,
+                                         {.symbols = {named}, .site = cursor->site});
+                                 });
             }
             result.append_range(std::move(defined));
         }
         index::dedup_sites(result);
-        return to_lsp::locations(result);
+        return feature::to_locations(result);
     };
     if(auto result = index_definition(); !result.empty()) {
         co_return to_raw(result);
@@ -539,7 +559,7 @@ Features::RawResult Features::hover(Ticket ticket,
     }
 
     auto raw = co_await dispatcher.hover(ticket, position, std::move(token), markup);
-    if(raw.has_value() && to_lsp::is_null(raw.value()) && ast.compiles.current(path_id)) {
+    if(raw.has_value() && is_null(raw.value()) && ast.compiles.current(path_id)) {
         // The preamble region is the one place a null from the AST is not
         // authoritative — it is compiled into the PCH and invisible to
         // the worker (a `#define` there has no node). The index card
@@ -674,7 +694,7 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
                        return std::vector<index::Site>{};
                    });
         if(!sites.empty()) {
-            it->second = to_lsp::location(sites.front());
+            it->second = feature::to_location(sites.front());
         }
         return it->second;
     };
@@ -1017,7 +1037,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     vfs::Scope scope(project.file_table.dirs);
     feature::IncludeInsertion insertion{.opens_fragment = result.include->opens_fragment};
     std::erase_if(list.items, [&](protocol::CompletionItem& item) {
-        auto symbol = to_lsp::data_symbol(item.data);
+        auto symbol = feature::data_symbol(item.data);
         if(!symbol) {
             return false;
         }
@@ -1142,9 +1162,9 @@ Features::RawResult Features::references(Ticket ticket,
     auto sites = gather(cursor->symbols,
                         path_id,
                         [&](const index::IndexQuery& from, index::SymbolHash named) {
-                            return index::references(from,
-                                                     {.symbols = {named}, .site = cursor->site},
-                                                     include_declaration);
+                            return feature::references(from,
+                                                       {.symbols = {named}, .site = cursor->site},
+                                                       include_declaration);
                         });
     if(std::uint32_t limit = project.config.references.limit.value;
        limit != 0 && sites.size() > limit) {
@@ -1153,7 +1173,7 @@ Features::RawResult Features::references(Ticket ticket,
         });
         sites.erase(sites.begin() + limit, sites.end());
     }
-    co_return to_raw(to_lsp::locations(sites));
+    co_return to_raw(feature::to_locations(sites));
 }
 
 Features::RawResult Features::document_highlight(Ticket ticket,
@@ -1168,7 +1188,8 @@ Features::RawResult Features::document_highlight(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::document_highlights(index::document_highlights(query, *cursor)));
+    co_return to_raw(
+        feature::document_highlights_to_protocol(feature::document_highlights(query, *cursor)));
 }
 
 static kota::ipc::Error rename_refused(std::string message) {
@@ -1216,12 +1237,12 @@ Features::RawResult Features::prepare_rename(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"null"};
     }
-    auto renamed = index::rename_at(query, *cursor);
+    auto renamed = feature::rename_at(query, *cursor);
     if(!renamed) {
         co_await kota::fail(rename_refused(std::move(renamed.error())));
     }
     co_return to_raw(protocol::PrepareRenamePlaceholder{
-        .range = to_lsp::range(renamed->token),
+        .range = feature::to_range(renamed->token),
         .placeholder = renamed->target.symbol.symbol.name,
     });
 }
@@ -1247,7 +1268,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
     if(!cursor) {
         co_return std::nullopt;
     }
-    auto at = index::rename_at(query, *cursor);
+    auto at = feature::rename_at(query, *cursor);
     if(!at) {
         co_await kota::fail(rename_refused(std::move(at.error())));
     }
@@ -1256,7 +1277,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
     // spelling a name come back with their text.
     struct Scanned {
         std::vector<std::string> files;
-        llvm::StringMap<index::ScannedText> texts;
+        llvm::StringMap<feature::ScannedText> texts;
     };
 
     CanonicalPath cache_dir;
@@ -1269,7 +1290,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         for(auto& source: workspace_sources(root, cache_dir)) {
             auto path = source.str();
             if(auto text = vfs::read(path)) {
-                if(auto spelled = index::scan_text((*text)->getBuffer().str(), names)) {
+                if(auto spelled = feature::scan_text((*text)->getBuffer().str(), names)) {
                     result.texts.try_emplace(path, std::move(*spelled));
                 }
             }
@@ -1287,7 +1308,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         co_await kota::fail(content_modified());
     }
     auto old_name = std::move(at->target.symbol.symbol.name);
-    at = index::rename_at(query, *cursor);
+    at = feature::rename_at(query, *cursor);
     if(!at) {
         co_await kota::fail(rename_refused(std::move(at.error())));
     }
@@ -1305,8 +1326,8 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
     };
     // Open buffers, and edited files the walk's suffixes left out, are
     // scanned on first read.
-    llvm::StringMap<std::optional<index::ScannedText>> late;
-    auto read = [&](llvm::StringRef path) -> const index::ScannedText* {
+    llvm::StringMap<std::optional<feature::ScannedText>> late;
+    auto read = [&](llvm::StringRef path) -> const feature::ScannedText* {
         auto file = project.file_table.find(Spelling::absolute(path));
         auto document = file ? sessions.find(*file) : nullptr;
         if(!document) {
@@ -1320,21 +1341,21 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         auto [it, inserted] = late.try_emplace(path);
         if(inserted) {
             if(document) {
-                it->second = index::scan_text(document->text().str(), names);
+                it->second = feature::scan_text(document->text().str(), names);
             } else if(auto text = vfs::read(path)) {
-                it->second = index::scan_text((*text)->getBuffer().str(), names);
+                it->second = feature::scan_text((*text)->getBuffer().str(), names);
             }
         }
         return it->second ? &*it->second : nullptr;
     };
-    auto plan = index::plan_rename(query,
-                                   project.file_table,
-                                   at->target,
-                                   new_name,
-                                   {.files = scanned.files,
-                                    .editable = editable,
-                                    .read = read,
-                                    .units_pending = clice::query::units_pending(project)});
+    auto plan = feature::plan_rename(query,
+                                     project.file_table,
+                                     at->target,
+                                     new_name,
+                                     {.files = scanned.files,
+                                      .editable = editable,
+                                      .read = read,
+                                      .units_pending = clice::query::units_pending(project)});
     if(plan.blocked()) {
         auto reasons = plan.conflicts;
         if(!plan.stale.empty()) {
@@ -1365,7 +1386,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
             change = &std::get<protocol::TextDocumentEdit>(changes.emplace_back(std::move(next)));
         }
         change->edits.emplace_back(protocol::TextEdit{
-            .range = to_lsp::range(edit.site),
+            .range = feature::to_range(edit.site),
             .new_text = new_name,
         });
         if(edit.heuristic) {
@@ -1504,15 +1525,15 @@ static bool same_entity(const index::IndexQuery::Located& lhs,
 /// Fold one project's graph neighbours into `into`: the sites it may
 /// answer for (`keep`), one neighbour per symbol, a neighbour left with
 /// no site dropped.
-static void merge_edges(std::vector<index::CallEdge>& into,
-                        std::vector<index::CallEdge> edges,
+static void merge_edges(std::vector<feature::CallEdge>& into,
+                        std::vector<feature::CallEdge> edges,
                         llvm::function_ref<bool(Fid)> keep) {
     for(auto& edge: edges) {
         std::erase_if(edge.sites, [&](const index::Site& site) { return !keep(site.file); });
         if(edge.sites.empty()) {
             continue;
         }
-        auto known = std::ranges::find_if(into, [&](const index::CallEdge& other) {
+        auto known = std::ranges::find_if(into, [&](const feature::CallEdge& other) {
             return same_entity(other.symbol, edge.symbol);
         });
         if(known == into.end()) {
@@ -1550,11 +1571,11 @@ Features::RawResult Features::declaration(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::locations(
+    co_return to_raw(feature::to_locations(
         gather(cursor->symbols,
                path_id,
                [&](const index::IndexQuery& from, index::SymbolHash named) {
-                   return index::declaration(from, {.symbols = {named}, .site = cursor->site});
+                   return feature::declaration(from, {.symbols = {named}, .site = cursor->site});
                })));
 }
 
@@ -1571,11 +1592,11 @@ Features::RawResult Features::type_definition(Ticket ticket,
         co_return serde_raw{"[]"};
     }
     co_return to_raw(
-        to_lsp::locations(gather(cursor->symbols,
-                                 path_id,
-                                 [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                     return index::type_definition(from, *cursor, named);
-                                 })));
+        feature::to_locations(gather(cursor->symbols,
+                                     path_id,
+                                     [&](const index::IndexQuery& from, index::SymbolHash named) {
+                                         return feature::type_definition(from, *cursor, named);
+                                     })));
 }
 
 Features::RawResult Features::implementation(Ticket ticket,
@@ -1595,7 +1616,7 @@ Features::RawResult Features::implementation(Ticket ticket,
         // What a name may mean — a dependent name's resolution, an overload
         // set's candidates, a using-declaration's targets — implements it,
         // as an override implements a virtual function.
-        if(index::names_weakly(query, *cursor, symbol)) {
+        if(feature::names_weakly(query, *cursor, symbol)) {
             sites.append_range(
                 gather(symbol,
                        path_id,
@@ -1606,7 +1627,7 @@ Features::RawResult Features::implementation(Ticket ticket,
         sites.append_range(
             gather(symbol, path_id, [&](const index::IndexQuery& from, index::SymbolHash named) {
                 std::vector<index::Site> placed;
-                for(auto& located: index::implementation(from, named, path_id)) {
+                for(auto& located: feature::implementation(from, named, path_id)) {
                     placed.push_back(std::move(located.site));
                 }
                 return placed;
@@ -1617,7 +1638,7 @@ Features::RawResult Features::implementation(Ticket ticket,
     // on it, there is nowhere to go.
     std::erase_if(sites,
                   [&](const index::Site& site) { return index::covers(site, cursor->site); });
-    co_return to_raw(to_lsp::locations(sites));
+    co_return to_raw(feature::to_locations(sites));
 }
 
 Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
@@ -1645,7 +1666,7 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
                      (kind == SymbolKind::Variable &&
                       located.symbol.scope != index::SymbolScope::FunctionLocal);
         if(function || value) {
-            items.push_back(to_lsp::call_hierarchy_item(
+            items.push_back(feature::call_hierarchy_item(
                 located.symbol,
                 located.site,
                 located.extent,
@@ -1664,7 +1685,7 @@ static std::optional<index::SymbolHash>
                 Fid path_id,
                 std::optional<index::IndexQuery::Cursor> at_range,
                 const std::optional<protocol::LSPAny>& data) {
-    if(auto hash = to_lsp::data_symbol(data); hash && query.symbol_info(*hash, path_id)) {
+    if(auto hash = feature::data_symbol(data); hash && query.symbol_info(*hash, path_id)) {
         return hash;
     }
     if(at_range) {
@@ -1680,11 +1701,11 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
     if(!symbol)
         co_await kota::fail(item_not_resolved("call hierarchy"));
 
-    std::vector<index::CallEdge> callers;
+    std::vector<feature::CallEdge> callers;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
         merge_edges(callers,
-                    index::call_graph(*from, named, path_id, {.callees = false}).callers,
+                    feature::call_graph(*from, named, path_id, {.callees = false}).callers,
                     [&](Fid file) { return answers_for(*from, file, asked); });
     }
     // TODO: callers are not capped: a function as common as llvm::errs() answers
@@ -1692,12 +1713,12 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
     // follow `[references] limit`.
     std::vector<protocol::CallHierarchyIncomingCall> results;
     for(auto& edge: callers) {
-        results.push_back({to_lsp::call_hierarchy_item(
+        results.push_back({feature::call_hierarchy_item(
                                edge.symbol.symbol,
                                edge.symbol.site,
                                edge.symbol.extent,
                                qualified_name(edge.symbol.symbol.hash, edge.symbol.site.file)),
-                           to_lsp::ranges(edge.sites)});
+                           feature::to_ranges(edge.sites)});
     }
     co_return to_raw(results);
 }
@@ -1709,21 +1730,21 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
     if(!symbol)
         co_await kota::fail(item_not_resolved("call hierarchy"));
 
-    std::vector<index::CallEdge> callees;
+    std::vector<feature::CallEdge> callees;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
         merge_edges(callees,
-                    index::call_graph(*from, named, path_id, {.callers = false}).callees,
+                    feature::call_graph(*from, named, path_id, {.callers = false}).callees,
                     [&](Fid file) { return answers_for(*from, file, asked); });
     }
     std::vector<protocol::CallHierarchyOutgoingCall> results;
     for(auto& edge: callees) {
-        results.push_back({to_lsp::call_hierarchy_item(
+        results.push_back({feature::call_hierarchy_item(
                                edge.symbol.symbol,
                                edge.symbol.site,
                                edge.symbol.extent,
                                qualified_name(edge.symbol.symbol.hash, edge.symbol.site.file)),
-                           to_lsp::ranges(edge.sites)});
+                           feature::to_ranges(edge.sites)});
     }
     co_return to_raw(results);
 }
@@ -1745,7 +1766,7 @@ Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
            kind == SymbolKind::Union) {
-            items.push_back(to_lsp::type_hierarchy_item(
+            items.push_back(feature::type_hierarchy_item(
                 located.symbol,
                 located.site,
                 located.extent,
@@ -1763,10 +1784,10 @@ static std::vector<protocol::TypeHierarchyItem>
     std::vector<protocol::TypeHierarchyItem> results;
     for(auto& located: types) {
         results.push_back(
-            to_lsp::type_hierarchy_item(located.symbol,
-                                        located.site,
-                                        located.extent,
-                                        qualified_name(located.symbol.hash, located.site.file)));
+            feature::type_hierarchy_item(located.symbol,
+                                         located.site,
+                                         located.extent,
+                                         qualified_name(located.symbol.hash, located.site.file)));
     }
     return results;
 }
@@ -1780,9 +1801,10 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
     std::vector<index::IndexQuery::Located> supertypes;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
-        merge_located(supertypes,
-                      index::type_hierarchy(*from, named, path_id, {.subtypes = false}).supertypes,
-                      [&](Fid file) { return answers_for(*from, file, asked); });
+        merge_located(
+            supertypes,
+            feature::type_hierarchy(*from, named, path_id, {.subtypes = false}).supertypes,
+            [&](Fid file) { return answers_for(*from, file, asked); });
     }
     co_return to_raw(type_items(supertypes, [&](index::SymbolHash hash, Fid anchor) {
         return qualified_name(hash, anchor);
@@ -1798,9 +1820,10 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
     std::vector<index::IndexQuery::Located> subtypes;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
-        merge_located(subtypes,
-                      index::type_hierarchy(*from, named, path_id, {.supertypes = false}).subtypes,
-                      [&](Fid file) { return answers_for(*from, file, asked); });
+        merge_located(
+            subtypes,
+            feature::type_hierarchy(*from, named, path_id, {.supertypes = false}).subtypes,
+            [&](Fid file) { return answers_for(*from, file, asked); });
     }
     co_return to_raw(type_items(subtypes, [&](index::SymbolHash hash, Fid anchor) {
         return qualified_name(hash, anchor);
@@ -1825,7 +1848,7 @@ std::vector<Features::WorkspaceSymbol> Features::workspace_symbol(llvm::StringRe
             continue;
         }
         auto container = query.container_name(located.symbol.hash, located.site.file);
-        auto info = to_lsp::symbol_information(located.symbol, located.site, container);
+        auto info = feature::symbol_information(located.symbol, located.site, container);
         if(qualified && !container.empty()) {
             info.name = container + "::" + info.name;
         }

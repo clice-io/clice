@@ -9,7 +9,16 @@ module;
 module clice;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.code_action.code_action;
+import :feature.diagnostics;
+import :feature.document_links;
+import :feature.document_symbols;
+import :feature.folding_ranges;
+import :feature.hover;
+import :feature.inactive_regions;
+import :feature.inlay_hints;
+import :feature.selection_ranges;
+import :feature.semantic_tokens;
 import :index.indexer;
 import :index.tu_index;
 import :support.logging;

@@ -4,8 +4,11 @@ module;
 
 module clice;
 
-import :feature.feature;
+import :feature.document_links;
+import :index.symbol;
+import :index.tu_manifest;
 import :syntax.lexical_scan;
+import :syntax.source_text;
 
 namespace clice::feature {
 
@@ -83,6 +86,36 @@ auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
     // Directives are collected grouped by kind; the reply promises
     // document order.
     std::ranges::sort(links, {}, [](const index::DocumentLink& link) { return link.range.begin; });
+
+    return links;
+}
+
+auto index_document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges)
+    -> std::vector<index::DocumentLink> {
+    auto positions = source.positions();
+
+    std::vector<index::DocumentLink> links;
+    for(const auto& edge: edges) {
+        auto line = edge.line == 0 ? std::nullopt : positions.line_bounds(edge.line - 1);
+        if(!line) {
+            continue;
+        }
+        auto range = find_directive_argument(source.lexical(), source.text(), line->begin);
+        if(!range) {
+            continue;
+        }
+        links.push_back({.range = *range, .target = edge.target});
+    }
+
+    std::ranges::sort(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
+        return std::tie(lhs.range.begin, lhs.target) < std::tie(rhs.range.begin, rhs.target);
+    });
+    auto duplicates =
+        std::ranges::unique(links,
+                            [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
+                                return lhs.range == rhs.range && lhs.target == rhs.target;
+                            });
+    links.erase(duplicates.begin(), duplicates.end());
 
     return links;
 }

@@ -9,7 +9,10 @@ module;
 module clice;
 
 import :command.file_kind;
-import :feature.feature;
+import :feature.code_action.code_action;
+import :feature.diagnostics;
+import :feature.protocol;
+import :feature.semantic_tokens;
 import :index.project_index;
 import :index.shard;
 import :project.save;

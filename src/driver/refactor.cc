@@ -6,6 +6,7 @@ module clice;
 
 import :config.config;
 import :driver.driver;
+import :feature.rename;
 import :index.symbol_query;
 import :project.configuration;
 import :project.open_index;
@@ -117,7 +118,7 @@ std::expected<std::vector<query::RenameRequest>, std::string>
 /// stops the whole rename, never half of it. Files are rewritten in
 /// place, keeping their permissions, owner and links, each only while its
 /// status still is the one taken before it was read.
-std::expected<void, std::string> apply(FileTable& files, const index::BatchPlan& plan) {
+std::expected<void, std::string> apply(FileTable& files, const feature::BatchPlan& plan) {
     struct Rewrite {
         std::string path;
         vfs::Stamp stamp;
@@ -141,7 +142,7 @@ std::expected<void, std::string> apply(FileTable& files, const index::BatchPlan&
         }
         auto content = (*bytes)->getBuffer();
         auto text = vfs::without_bom(content);
-        auto renamed = index::apply_renames(text, plan, file);
+        auto renamed = feature::apply_renames(text, plan, file);
         if(!renamed) {
             return std::unexpected(
                 std::format("{} changed since it was indexed; run with --fresh", site.path));

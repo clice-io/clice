@@ -4,7 +4,14 @@ module;
 
 module clice:config.config;
 
-import :feature.feature;
+import :feature.code_completion;
+import :feature.diagnostics;
+import :feature.document_symbols;
+import :feature.documentation;
+import :feature.hover;
+import :feature.inlay_hints;
+import :feature.semantic_tokens;
+import :feature.signature_help;
 
 namespace clice {
 
@@ -403,6 +410,11 @@ struct Config {
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [tracker] section: background polling of files.")
     <TrackerConfig> tracker;
+
+    // The feature sections are the features' own options: `defaulted =
+    // true` lets a decode leave unmentioned fields at their initializers, so
+    // those are the single source of every default and a config source only
+    // ever overlays what it names.
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [diagnostics] section: diagnostic options.")

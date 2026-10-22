@@ -5,7 +5,8 @@ module;
 module clice:feature.index_check;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.document_symbols;
+import :feature.semantic_tokens;
 
 /// Where what the index computes of a file — its semantic tokens, its
 /// outline — differs from what its AST gives: the server answers from the

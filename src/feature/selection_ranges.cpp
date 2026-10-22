@@ -5,7 +5,7 @@ module;
 module clice;
 
 import :compile.compilation;
-import :feature.feature;
+import :feature.selection_ranges;
 import :semantic.decls;
 import :semantic.documentation;
 import :semantic.selection;

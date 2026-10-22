@@ -5,7 +5,7 @@ module;
 /// The questions an editor asks at a cursor: where a symbol is defined and
 /// declared, its references, highlights, type definition and implementations.
 
-module clice:index.navigation;
+module clice:feature.navigation;
 
 import :index.instantiation_shard;
 import :index.query;
@@ -14,7 +14,9 @@ import :index.site;
 import :index.symbol;
 import :semantic.symbol;
 
-namespace clice::index {
+namespace clice::feature {
+
+namespace protocol = kota::ipc::protocol;
 
 /// How the code at a highlighted name accesses its symbol.
 enum class HighlightKind : std::uint8_t {
@@ -40,15 +42,17 @@ struct Highlight {
 /// share a range. A class's name also highlights where its constructors
 /// are declared. `kind_of` is a symbol's kind, when known.
 std::vector<Highlight>
-    highlights(llvm::ArrayRef<const Shard*> shards,
-               llvm::ArrayRef<const InstantiationShard*> instantiations,
-               llvm::ArrayRef<SymbolHash> symbols,
-               llvm::function_ref<std::optional<SymbolKind>(SymbolHash)> kind_of);
+    highlights(llvm::ArrayRef<const index::Shard*> shards,
+               llvm::ArrayRef<const index::InstantiationShard*> instantiations,
+               llvm::ArrayRef<index::SymbolHash> symbols,
+               llvm::function_ref<std::optional<SymbolKind>(index::SymbolHash)> kind_of);
 
 /// The definitions go-to-definition lists for a symbol: all of them,
 /// but of a namespace, which each of its blocks defines, the canonical
 /// one.
-std::vector<Site> definition_sites(const IndexQuery& index, SymbolHash hash, Fid anchor);
+std::vector<index::Site> definition_sites(const index::IndexQuery& index,
+                                          index::SymbolHash hash,
+                                          Fid anchor);
 
 /// Go-to-definition from a cursor: the definition sites (at its own
 /// declaration, a virtual function nothing defines is defined by its
@@ -59,13 +63,15 @@ std::vector<Site> definition_sites(const IndexQuery& index, SymbolHash hash, Fid
 /// declaration sites alternate; a namespace's blocks never do. The
 /// cursor's own site drops out unless it is the only site the symbol
 /// has.
-std::vector<Site> definition(const IndexQuery& index, const IndexQuery::Cursor& cursor);
+std::vector<index::Site> definition(const index::IndexQuery& index,
+                                    const index::IndexQuery::Cursor& cursor);
 
 /// The mirror half of definition's alternation: declarations plus the
 /// definition, minus the site the cursor stands on. At a function
 /// defined with no declaration of its own, the declarations an edit to
 /// one side may have parted from it (mismatched_declarations).
-std::vector<Site> declaration(const IndexQuery& index, const IndexQuery::Cursor& cursor);
+std::vector<index::Site> declaration(const index::IndexQuery& index,
+                                     const index::IndexQuery::Cursor& cursor);
 
 /// The references of the symbol under the cursor, weak ones included (a
 /// template's call through an overload set or a dependent name, which
@@ -75,20 +81,23 @@ std::vector<Site> declaration(const IndexQuery& index, const IndexQuery::Cursor&
 /// references of the methods it overrides, a call through which may
 /// dispatch to it, but not one naming that method by qualification
 /// (`Base::f()`); a class's the names of its constructors.
-std::vector<Site> references(const IndexQuery& index,
-                             const IndexQuery::Cursor& cursor,
-                             bool include_declaration);
+std::vector<index::Site> references(const index::IndexQuery& index,
+                                    const index::IndexQuery::Cursor& cursor,
+                                    bool include_declaration);
 
 struct PlacedHighlight {
-    Site site;
+    index::Site site;
     HighlightKind kind;
 };
 
 /// The highlights of the symbols under the cursor in the cursor's own
 /// file, from the index serving it — a session's preamble region
 /// included.
-std::vector<PlacedHighlight> document_highlights(const IndexQuery& index,
-                                                 const IndexQuery::Cursor& cursor);
+std::vector<PlacedHighlight> document_highlights(const index::IndexQuery& index,
+                                                 const index::IndexQuery::Cursor& cursor);
+
+std::vector<protocol::DocumentHighlight>
+    document_highlights_to_protocol(llvm::ArrayRef<PlacedHighlight> highlights);
 
 /// Go-to-type-definition of a cursor's symbol: the declarations its
 /// type names — at a name of a member of a template's specialization,
@@ -97,21 +106,23 @@ std::vector<PlacedHighlight> document_highlights(const IndexQuery& index,
 /// type itself; elsewhere the type it is declared with (the relations
 /// without a range). An alias leads on to the type it names. The
 /// cursor's own site drops out unless it is the only one.
-std::vector<Site> type_definition(const IndexQuery& index,
-                                  const IndexQuery::Cursor& cursor,
-                                  SymbolHash symbol);
+std::vector<index::Site> type_definition(const index::IndexQuery& index,
+                                         const index::IndexQuery::Cursor& cursor,
+                                         index::SymbolHash symbol);
 
 /// Whether the name at the cursor may mean `symbol` without naming it
 /// for certain — a dependent name, an overload set's candidate, a
 /// using-declaration's target: a WeakReference relation at the
 /// cursor's name in the index serving its file.
-bool names_weakly(const IndexQuery& index, const IndexQuery::Cursor& cursor, SymbolHash symbol);
+bool names_weakly(const index::IndexQuery& index,
+                  const index::IndexQuery::Cursor& cursor,
+                  index::SymbolHash symbol);
 
 /// What implements the symbol, each at its canonical site: the types
 /// deriving from a class-like symbol, the overrides of a function, at
 /// any depth; for a function nothing overrides, its definitions.
-std::vector<IndexQuery::Located> implementation(const IndexQuery& index,
-                                                SymbolHash hash,
-                                                Fid anchor);
+std::vector<index::IndexQuery::Located> implementation(const index::IndexQuery& index,
+                                                       index::SymbolHash hash,
+                                                       Fid anchor);
 
-}  // namespace clice::index
+}  // namespace clice::feature
