@@ -214,9 +214,7 @@ echo '#define __riscv_xlen 32'
 ZEST_CASE(NoCompilerJob, skip = Windows) {
     /// A driver that is neither GCC nor clang (Intel's icc).
     auto ref = add("a.cpp", {fake_driver("icc", "").c_str()});
-    auto resolved = f.toolchain.resolve(ref.command, ref.input);
-    ZASSERT(!resolved);
-    ZEXPECT(llvm::StringRef(resolved.error()).contains("runs no compiler job"));
+    ZEXPECT(llvm::StringRef(f.failure(ref)).contains("runs no compiler job"));
 }
 
 ZEST_CASE(ClangJobKeepsStandard, skip = Windows) {
@@ -404,9 +402,8 @@ echo 'gcc version 15.2.0 (g5115c7e44-dirty)' >&2
 exit 1
 )");
     auto ref = add("a.c", {driver.c_str(), "-c"});
-    auto resolved = f.toolchain.resolve(ref.command, ref.input);
-    ZASSERT(!resolved);
-    llvm::StringRef error = resolved.error();
+    auto failure = f.failure(ref);
+    llvm::StringRef error = failure;
     ZEXPECT(error.contains("error: unrecognized command-line option '-mclice-future'"));
     ZEXPECT(!error.contains("gcc version"));
 }
@@ -421,9 +418,7 @@ echo 'compilation terminated.' >&2
 exit 1
 )");
     auto ref = add("a.cpp", {driver.c_str(), "-c"});
-    auto resolved = f.toolchain.resolve(ref.command, ref.input);
-    ZASSERT(!resolved);
-    ZEXPECT(llvm::StringRef(resolved.error()).contains("missing.h"));
+    ZEXPECT(llvm::StringRef(f.failure(ref)).contains("missing.h"));
 }
 
 };  // ZEST_SUITE(GCCTests)

@@ -33,6 +33,10 @@ struct CompileOutput {
     /// rebuild (Resolution::unmatched_host), as shown; empty otherwise.
     std::string unmatched_host;
 
+    /// Why the compiler could not be queried (Resolution::query_failure);
+    /// empty when it could.
+    std::string query_failure;
+
     /// The compile failed before parsing: its diagnostics say why, and
     /// nothing else came of it.
     bool failed = false;

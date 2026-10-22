@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :command.argument;
+import :command.edit;
 import :command.search_config;
 import :command.table;
 import :command.toolchain;
@@ -462,7 +463,7 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID i
 
     auto admission = admit_query(id, input);
     if(admission.kind == QueryAdmission::Kind::CoolingDown) {
-        return std::unexpected(std::move(admission.error));
+        return read_unqueried(id, input, std::move(admission.error));
     }
     if(admission.kind == QueryAdmission::Kind::Ready) {
         LOG_WARN("Toolchain query miss: driver={} kind={}", commands.get(id).driver, input.value);
@@ -471,13 +472,45 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID i
         auto& result = *ended;
         commit_query(admission.key, result);
         if(!result) {
-            return std::unexpected(std::move(result.error()));
+            if(commands.get(id).query_toolchain) {
+                LOG_WARN(
+                    "The compiler {} could not be queried: {}; clang's own driver reads its "
+                    "command",
+                    commands.get(id).driver,
+                    result.error());
+            }
+            return read_unqueried(id, input, std::move(result.error()));
         }
     }
 
     auto resolved_id = synthesize(id, queries.find(admission.key)->second);
     synth_cache.try_emplace(synth_key, resolved_id);
     return resolved_id;
+}
+
+std::expected<Toolchain::ResolvedID, std::string> Toolchain::read_unqueried(CommandID id,
+                                                                            InputKind input,
+                                                                            std::string failure) {
+    // Not cached under the command itself: a failure is retried once its
+    // cooldown passes.
+    if(!commands.get(id).query_toolchain) {
+        return std::unexpected(std::move(failure));
+    }
+    auto resolved = resolve(apply_edits(commands, files, id, {.query_toolchain = false}), input);
+    if(!resolved) {
+        return std::unexpected(
+            std::format("{}; clang's own driver cannot read the command either: {}",
+                        failure,
+                        resolved.error()));
+    }
+    return resolved;
+}
+
+std::optional<std::string> Toolchain::query_failure(CommandID id, InputKind input) {
+    if(auto it = failed.find(query_key(id, input).key); it != failed.end()) {
+        return it->second.first;
+    }
+    return std::nullopt;
 }
 
 void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {

@@ -44,6 +44,19 @@ static feature::FileDiagnostic make_unmatched_context_diagnostic(llvm::StringRef
     return diagnostic;
 }
 
+/// File-top warning saying the compiler could not be queried, so clang's
+/// own driver read the command: what the compiler sets up itself (system
+/// headers, macros, the default standard) is clang's idea of it.
+static feature::FileDiagnostic make_query_failure_diagnostic(llvm::StringRef failure) {
+    auto diagnostic = feature::file_warning(std::format(
+        "The compiler of this file's compile command could not be queried ({}), so clang read "
+        "the command on its own: system headers, predefined macros and the default standard "
+        "may differ from the compiler's.",
+        failure));
+    diagnostic.code = "toolchain-query-failed";
+    return diagnostic;
+}
+
 std::vector<feature::FileDiagnostic>
     format_diagnostics(const CompileOutput& output, const feature::DiagnosticsOptions& options) {
     // Of the diagnostics moved from other files to one spot, the first
@@ -72,6 +85,10 @@ std::vector<feature::FileDiagnostic>
     if(!output.unmatched_host.empty()) {
         diagnostics.insert(diagnostics.begin(),
                            make_unmatched_context_diagnostic(output.unmatched_host));
+    }
+    if(!output.query_failure.empty()) {
+        diagnostics.insert(diagnostics.begin(),
+                           make_query_failure_diagnostic(output.query_failure));
     }
 
     return diagnostics;

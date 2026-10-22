@@ -47,8 +47,15 @@ public:
     ~Toolchain();
 
     /// Resolve a command for one input language. Blocks on a driver spawn on
-    /// query miss; hits are lookups.
+    /// query miss; hits are lookups. A compiler that cannot be queried is
+    /// read as a rule's `query_toolchain = false` reads it, by clang's own
+    /// driver (query_failure says why); an error only when that driver
+    /// cannot read the command either.
     std::expected<ResolvedID, std::string> resolve(CommandID id, InputKind input);
+
+    /// Why the compiler of a command could not be queried for one input
+    /// language, when it could not.
+    std::optional<std::string> query_failure(CommandID id, InputKind input);
 
     const Resolved& resolved(ResolvedID id) const {
         return resolved_configs[id];
@@ -62,14 +69,14 @@ public:
     /// Render the full compile argv for a ref, naming the input `path`:
     /// resolve the command through the toolchain (query cached; may spawn
     /// the driver once per unique toolchain key) and render at cc1 level;
-    /// on query failure degrade to the driver-level render.
+    /// when even clang's own driver cannot read the command, degrade to
+    /// the driver-level render.
     std::vector<const char*> render(const CommandRef& ref,
                                     llvm::StringRef path,
                                     const RenderOptions& opts = {});
 
     /// Header search configuration of a ref, extracted from the resolved
-    /// (cc1) command when the toolchain query succeeds — memoized — else
-    /// from the driver-level command.
+    /// (cc1) command — memoized — else from the driver-level command.
     SearchConfig search_config(const CommandRef& ref);
 
     bool has_cache() const {
@@ -135,6 +142,13 @@ private:
 
     /// The frontend with the command's own user content re-attached.
     ResolvedID synthesize(CommandID id, const Frontend& query);
+
+    /// The command read by clang's own driver in place of a compiler that
+    /// could not be queried (`failure` says why), as a rule's
+    /// `query_toolchain = false` reads it.
+    std::expected<ResolvedID, std::string> read_unqueried(CommandID id,
+                                                          InputKind input,
+                                                          std::string failure);
 
     /// What the query caches say about a (command, input) key: a live
     /// query, a failure still cooling down, or the query to run. A

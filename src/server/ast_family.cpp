@@ -1254,6 +1254,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                     .version = setup_fail ? std::optional(session->version) : std::nullopt,
                     .source = source,
                     .diagnostics = std::move(result.value().diagnostics),
+                    .query_failure = resolution.query_failure.value_or(""),
                     .failed = setup_fail,
                 });
             co_return RoundOutcome::Failed;
@@ -1366,6 +1367,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             .unmatched_host = resolution.unmatched_host.valid()
                                   ? project.file_table.display(resolution.unmatched_host)
                                   : std::string(),
+            .query_failure = resolution.query_failure.value_or(""),
         };
 
         auto& entry = compiles.entries[path_id];

@@ -63,7 +63,7 @@ ZEST_CASE(UnqueriedRunsNothing, skip = Windows) {
     ZEXPECT(adjacent(argv, "-resource-dir", resource_dir()));
     ZEXPECT(!vfs::exists(ran));
 
-    ZEXPECT(!f.toolchain.resolve(ref.command, ref.input));
+    ZEXPECT(llvm::StringRef(f.failure(ref)).contains("runs no compiler job"));
     ZEXPECT(vfs::exists(ran));
 }
 

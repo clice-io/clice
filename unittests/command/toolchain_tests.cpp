@@ -155,15 +155,11 @@ ZEST_CASE(FailedQueryCooldown, skip = Windows) {
     auto driver = fake_driver("clang", "exit 1\n");
     auto ref = add("a.cpp", {driver.c_str()});
 
-    auto first = f.toolchain.resolve(ref.command, ref.input);
-    ZASSERT(!first.has_value());
-    ZEXPECT(f.toolchain.query_count() == std::size_t(0));
+    auto first = f.failure(ref);
     ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
 
     ZASSERT(!vfs::remove(driver));
-    auto second = f.toolchain.resolve(ref.command, ref.input);
-    ZASSERT(!second.has_value());
-    ZEXPECT(second.error() == first.error());
+    ZEXPECT(f.failure(ref) == first);
 }
 
 ZEST_CASE(FailedQueryRetries, skip = Windows) {
@@ -184,20 +180,16 @@ ZEST_CASE(FailedQueryRetries, skip = Windows) {
     ZEXPECT(f.toolchain.query_count() == std::size_t(2));
 }
 
-ZEST_CASE(FallbackTargetFromName) {
-    // Without the compiler's answer, clang's own driver reads the command
-    // for the target the compiler's name sets, as for an unqueried one.
-    auto ref = add("a.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-mcmodel=medany", "-c"});
-    ZEXPECT(!f.toolchain.resolve(ref.command, ref.input));
-    auto argv = f.toolchain.render(ref, f.db.spelling(ref.file));
-    ZEXPECT(contains(argv, "--target=riscv32-wch-elf"));
-
-    /// A target the command names is the one.
-    auto own = add("b.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-target", "riscv64-unknown-elf"});
-    ZEXPECT(!f.toolchain.resolve(own.command, own.input));
-    argv = f.toolchain.render(own, f.db.spelling(own.file));
-    ZEXPECT(!contains(argv, "--target=riscv32-wch-elf"));
-    ZEXPECT(adjacent(argv, "-target", "riscv64-unknown-elf"));
+ZEST_CASE(FailedQueryUnqueried) {
+    // A compiler that cannot be queried is read as an unqueried one is: by
+    // clang's own driver, for the target its name sets, without the CPU
+    // and ABI names clang's target does not know (arm64 Linux builds GCC
+    // with -mabi=lp64).
+    auto ref = add("a.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mabi=lp64", "-c"});
+    ZEXPECT(llvm::StringRef(f.failure(ref)).contains("not found"));
+    auto argv = f.resolve(ref);
+    ZEXPECT(adjacent(argv, "-triple", "aarch64-unknown-linux-gnu"));
+    ZEXPECT(!contains(argv, "lp64"));
 }
 
 ZEST_CASE(WarmPartialFailure, skip = Windows) {
@@ -213,7 +205,7 @@ ZEST_CASE(WarmPartialFailure, skip = Windows) {
     ZEXPECT(f.toolchain.query_count() == std::size_t(1));
     ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
     ZEXPECT(f.toolchain.resolve(good.command, good.input).has_value());
-    ZEXPECT(!f.toolchain.resolve(bad.command, bad.input).has_value());
+    ZEXPECT(llvm::StringRef(f.failure(bad)).contains("clice-nonexistent-driver"));
     ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
 }
 

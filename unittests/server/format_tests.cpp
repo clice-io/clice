@@ -29,6 +29,21 @@ ZEST_CASE(UnmatchedContextWarns) {
     ZEXPECT(format_diagnostics({.source = CommandSource::IncludeGraph}, {}).empty());
 };
 
+ZEST_CASE(QueryFailureWarns) {
+    /// A compile whose compiler could not be queried says so at its top,
+    /// with the query's error.
+    auto diagnostics = format_diagnostics(
+        {
+            .source = CommandSource::CDBExact,
+            .query_failure = "Driver riscv32-wch-elf-gcc not found or not executable",
+        },
+        {});
+    ZASSERT(diagnostics.size() == 1u);
+    ZEXPECT(diagnostics[0].code == "toolchain-query-failed");
+    ZEXPECT(llvm::StringRef(diagnostics[0].message).contains("riscv32-wch-elf-gcc not found"));
+    ZEXPECT(diagnostics[0].range.start.line == 0u);
+};
+
 };  // ZEST_SUITE(Format)
 
 }  // namespace
