@@ -36,7 +36,7 @@ PCHFamily::Request PCHFamily::precompiled_header(const CommandRef& unit) {
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
     Request request{.file = std::string(project.file_table.resolve(unit.file)),
-                    .directory = project.cdb.config(unit.config).directory,
+                    .directory = project.cdb.config(unit.command).directory,
                     .whole_file = true};
     auto argv = project.cdb.render(unit);
     request.arguments.assign(argv.begin(), argv.end());

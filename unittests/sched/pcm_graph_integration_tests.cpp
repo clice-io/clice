@@ -103,13 +103,13 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
         }
         auto& entry = candidates.front();
         CommandRef ref{entry.file,
-                       entry.config,
-                       cdb.input_kind(entry.config, file_path),
+                       entry.command,
+                       cdb.input_kind(entry.command, file_path),
                        CommandSource::CDBExact};
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
-        cp.input.directory = cdb.config(entry.config).directory;
+        cp.input.directory = cdb.config(entry.command).directory;
         auto arguments = cdb.render(ref);
         cp.input.arguments.assign(arguments.begin(), arguments.end());
 
@@ -147,11 +147,11 @@ ResolveFn make_resolver(CompilationDatabase& cdb, DependencyGraph& graph) {
         }
         auto& entry = candidates.front();
         CommandRef ref{entry.file,
-                       entry.config,
-                       cdb.input_kind(entry.config, file_path),
+                       entry.command,
+                       cdb.input_kind(entry.command, file_path),
                        CommandSource::CDBExact};
 
-        auto scan_result = scan_precise(cdb.render(ref), cdb.config(entry.config).directory);
+        auto scan_result = scan_precise(cdb.render(ref), cdb.config(entry.command).directory);
 
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
@@ -1128,13 +1128,13 @@ ZEST_CASE(module_implementation_unit) {
         ZASSERT(!candidates.empty());
         auto& impl_entry = candidates.front();
         CommandRef impl_ref{impl_entry.file,
-                            impl_entry.config,
-                            env.cdb.input_kind(impl_entry.config, impl_path),
+                            impl_entry.command,
+                            env.cdb.input_kind(impl_entry.command, impl_path),
                             CommandSource::CDBExact};
 
         CompilationParams cp;
         cp.kind = CompilationKind::Content;
-        cp.input.directory = env.cdb.config(impl_entry.config).directory;
+        cp.input.directory = env.cdb.config(impl_entry.command).directory;
         auto arguments = env.cdb.render(impl_ref);
         cp.input.arguments.assign(arguments.begin(), arguments.end());
         // Pass the built PCM so clang can resolve `module Greeter;`.

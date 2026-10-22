@@ -10,8 +10,8 @@ import :compile.compilation;
 import :syntax.header_context;
 import :syntax.preamble;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 import :vfs.path;
 
 namespace clice::testing {
@@ -26,10 +26,10 @@ std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
     cdb.add_command(tmp.root.str(), path, std::format("clang++ -std=c++20 {}", path));
     auto& entry = cdb.candidate_entries(path).front();
     CommandRef ref{entry.file,
-                   entry.config,
-                   cdb.input_kind(entry.config, path),
+                   entry.command,
+                   cdb.input_kind(entry.command, path),
                    CommandSource::CDBExact};
-    ZEXPECT(cdb.toolchain().resolve(ref.config, ref.input));
+    ZEXPECT(cdb.toolchain().resolve(ref.command, ref.input));
     auto argv = cdb.render(ref);
     return std::vector<std::string>(argv.begin(), argv.end());
 }

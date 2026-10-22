@@ -15,7 +15,7 @@ namespace clice {
 /// covers, that command (Default); for a provisional member, the command it
 /// borrows (Inferred).
 struct Candidate {
-    ConfigID config;
+    CommandID command;
     CommandSource source;
 };
 
@@ -30,7 +30,7 @@ struct Edits {
         return edits.empty() && query_toolchain;
     }
 
-    CommandOptions options(llvm::ArrayRef<std::string> extra_prepend = {},
+    CommandEdits options(llvm::ArrayRef<std::string> extra_prepend = {},
                            llvm::ArrayRef<std::string> extra_append = {}) const {
         return {.edits = edits,
                 .extra_prepend = extra_prepend,
@@ -112,14 +112,14 @@ public:
     /// (CommandSource::Fallback): the driver follows the language clang
     /// assigns to the file's extension, an ambiguous `.h` and an extension
     /// clang does not know counting as C++.
-    ConfigID builtin(CanonicalRef path);
+    CommandID builtin(CanonicalRef path);
 
     /// Apply the edits of `paths` (and a run's extras) to `base`: the
     /// effective command of `file`, whose language is derived from the
     /// edited command and `language_path` (the file itself, or the host a
     /// header borrows from).
     CommandRef resolve(Fid file,
-                       ConfigID base,
+                       CommandID base,
                        CommandSource source,
                        llvm::ArrayRef<CanonicalRef> paths,
                        llvm::StringRef language_path,
@@ -160,13 +160,13 @@ public:
 
     /// Set the command a recorded file borrows as a provisional member,
     /// nullopt while it is none; returns the one it borrowed before.
-    std::optional<ConfigID> borrow(Fid file, std::optional<ConfigID> command);
+    std::optional<CommandID> borrow(Fid file, std::optional<CommandID> command);
 
     /// The command `file` borrows from `lender` compiling under `command`:
     /// the edits of the rules matching the lender but not the file applied,
     /// so rendering it as the file's own command, which applies the file's
     /// rules, edits it for both, each rule once.
-    ConfigID lend(ConfigID command, CanonicalRef lender, CanonicalRef file);
+    CommandID lend(CommandID command, CanonicalRef lender, CanonicalRef file);
 
     /// The directories the default-command rules cover sources under, none
     /// inside another, and the cache directory a walk of them skips.
@@ -216,7 +216,7 @@ public:
     /// extras: built under other flags, it would hold other code than that
     /// command parses. Nullopt when the build writes none of them, and for
     /// a command writing a precompiled header itself.
-    std::optional<CommandRef> pch_unit(ConfigID config,
+    std::optional<CommandRef> pch_unit(CommandID config,
                                        llvm::ArrayRef<CanonicalRef> paths,
                                        llvm::ArrayRef<std::string> extra_prepend = {},
                                        llvm::ArrayRef<std::string> extra_append = {});
@@ -259,12 +259,12 @@ private:
 
     /// The rule's default command interned; nullopt when it is not a
     /// compile command.
-    std::optional<ConfigID> command_of(const CompiledRule& rule);
+    std::optional<CommandID> command_of(const CompiledRule& rule);
 
     /// The interned default command of the first matching active rule
     /// declaring one; nullopt when no rule does or its command is not a
     /// compile command.
-    std::optional<ConfigID> default_command(CanonicalRef path);
+    std::optional<CommandID> default_command(CanonicalRef path);
 
     /// Whether a default command compiles `path` as a unit: a C-family
     /// source by suffix (never a header), or a file a rule singles out by
@@ -288,7 +288,7 @@ private:
     std::optional<std::vector<Fid>> covered_sources;
     llvm::DenseSet<Fid> records;
     std::uint64_t records_generation = 0;
-    llvm::DenseMap<Fid, ConfigID> provisional;
+    llvm::DenseMap<Fid, CommandID> provisional;
 
     /// declared_source's answers, valid while the database holds
     /// `declared_source_count` sources.

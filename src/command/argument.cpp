@@ -4,9 +4,7 @@ module;
 
 module clice;
 
-import :command.argument_parser;
-import :command.command;
-import :command.toolchain;
+import :command.argument;
 
 namespace clice {
 
@@ -116,6 +114,63 @@ const eo::OptTable& table() {
 }  // namespace option
 
 using namespace option;
+
+CompilerFamily driver_family(llvm::StringRef driver) {
+    auto try_get = [](llvm::StringRef name) {
+        if(name == "cl")
+            return CompilerFamily::MSVC;
+        if(name == "nvcc")
+            return CompilerFamily::NVCC;
+        if(name.ends_with("clang-cl"))
+            return CompilerFamily::ClangCL;
+        if(name.ends_with("clang") || name.ends_with("clang++"))
+            return CompilerFamily::Clang;
+        // Intel must precede GCC: `icc` would otherwise match ends_with("cc").
+        if(name.contains("icpc") || name.contains("icc") || name.contains("dpcpp") ||
+           name.contains("icx"))
+            return CompilerFamily::Intel;
+        if(name.ends_with("cc") || name.ends_with("c++") || name.ends_with("gcc") ||
+           name.ends_with("g++"))
+            return CompilerFamily::GCC;
+        if(name.ends_with("zig"))
+            return CompilerFamily::Zig;
+        return CompilerFamily::Unknown;
+    };
+
+    /// Windows resolves executable names case-insensitively, and CDBs record
+    /// spellings like CL.exe or Clang-Cl.EXE — match lowercased.
+    std::string lowered = llvm::sys::path::filename(driver).lower();
+    llvm::StringRef name = lowered;
+    if(auto f = try_get(name); f != CompilerFamily::Unknown)
+        return f;
+
+    // Stripping the executable suffix: clang++.exe -> clang++
+    name.consume_back(".exe");
+    if(auto f = try_get(name); f != CompilerFamily::Unknown)
+        return f;
+
+    // Stripping any trailing version number: clang++3.5 -> clang++
+    name = name.rtrim("0123456789.-");
+    if(auto f = try_get(name); f != CompilerFamily::Unknown)
+        return f;
+
+    // Stripping trailing -component: clang++-tot -> clang++
+    name = name.slice(0, name.rfind('-'));
+    return try_get(name);
+}
+
+unsigned family_visibility(CompilerFamily family) {
+    /// Flang's own options shadow clang's: -Wextra and -Wconversion have
+    /// flang-only spellings that flang ignores, matched before -W<warning>.
+    auto flang = static_cast<unsigned>(option::FlangOption | option::FC1Option);
+    /// Exclude the slash-prefixed CL and DXC options otherwise (/D and /I
+    /// carry both bits), to prevent /U, /D, /I from matching Unix absolute
+    /// paths like /Users/... .
+    if(cl_mode(family)) {
+        return ~flang;
+    }
+    return ~(flang | option::CLOption | option::DXCOption);
+}
 
 bool is_discarded_option(unsigned id) {
     /// Options the driver accepts and ignores (gcc compat knobs, e.g. the
@@ -248,16 +303,61 @@ bool is_xclang_option(unsigned id) {
     return id == OPT_Xclang;
 }
 
-llvm::StringRef resource_dir() {
-    static std::string dir = [] {
-        static int anchor;
-        auto exe = llvm::sys::fs::getMainExecutable("", &anchor);
-        if(exe.empty()) {
-            return std::string{};
+/// Whether `args` hold dependency file options alone. The preprocessor's -MD
+/// and -MMD take the file they write as their argument, which the table
+/// reads as an input.
+static bool dependency_options(llvm::ArrayRef<const char*> args) {
+    auto options = kota::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
+    bool file_next = false;
+    for(auto& parsed: option::table().parse(args, options)) {
+        if(!parsed) {
+            return false;
         }
-        return clang::GetResourcesPath(exe);
-    }();
-    return dir;
+        if(file_next && parsed->id == option::OPT_INPUT) {
+            file_next = false;
+            continue;
+        }
+        if(auto opt = option::table().option(parsed->id);
+           !opt || !opt->matches(option::OPT_M_Group)) {
+            return false;
+        }
+        file_next = parsed->id == option::OPT_MD || parsed->id == option::OPT_MMD;
+    }
+    return true;
+}
+
+ArgClass classify_option(unsigned id, llvm::ArrayRef<const char*> values) {
+    /// -fmodule-file has two shapes: `name=path` names a prebuilt module
+    /// (clice builds its own PCMs — irrelevant), a bare path is a header
+    /// unit that stays part of the frontend semantics.
+    if(id == option::OPT_fmodule_file) {
+        bool named = values.size() == 1 && llvm::StringRef(values[0]).contains('=');
+        return named ? ArgClass::Discarded : ArgClass::Semantic;
+    }
+    /// Kbuild hands the preprocessor `-Wp,-MMD,<depfile>` in every command:
+    /// it goes as `-MMD -MF <depfile>` does, or each command would key a
+    /// probe of its own.
+    if(id == option::OPT_Wp_COMMA && dependency_options(values)) {
+        return ArgClass::Discarded;
+    }
+    /// g++ takes an LTO job count (-flto=8), which clang rejects.
+    if(id == option::OPT_flto_EQ && values.size() == 1 &&
+       !llvm::is_contained({"full", "thin", "none"}, llvm::StringRef(values[0]))) {
+        return ArgClass::Discarded;
+    }
+    if(is_discarded_option(id)) {
+        return ArgClass::Discarded;
+    }
+    if(is_codegen_option(id)) {
+        return ArgClass::Codegen;
+    }
+    if(is_user_content_option(id)) {
+        return ArgClass::UserContent;
+    }
+    if(is_diagnostics_option(id)) {
+        return ArgClass::Diagnostics;
+    }
+    return ArgClass::Semantic;
 }
 
 bool is_codegen_option(unsigned id) {
@@ -310,6 +410,84 @@ bool is_diagnostics_option(unsigned id) {
     return false;
 }
 
+void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
+    if(arg.opt_id == option::OPT_UNKNOWN) {
+        cb(arg.spelling);
+        for(const char* value: arg.values) {
+            cb(value);
+        }
+        return;
+    }
+    kota::option::ParsedArg parsed;
+    parsed.id = arg.opt_id;
+    for(const char* value: arg.values) {
+        parsed.add_value(value);
+    }
+    auto forward = [&](std::string_view fragment) {
+        cb(fragment);
+    };
+    option::table().render(parsed, forward);
+}
+
+void render_driver_arg(const Arg& arg,
+                       CompilerFamily family,
+                       llvm::function_ref<void(std::string_view)> cb) {
+    if(!cl_mode(family)) {
+        render_arg(arg, cb);
+        return;
+    }
+
+    auto reads_back = [&](std::vector<std::string>& fragments) {
+        auto parse_options = kota::option::ParseOptions{.visibility = option::CLOption};
+        std::size_t count = 0;
+        bool same = true;
+        for(auto& parsed: option::table().parse(fragments, parse_options)) {
+            count += 1;
+            same = same && parsed && parsed->id == arg.opt_id &&
+                   llvm::equal(parsed->values,
+                               arg.values,
+                               [](std::string_view lhs, const char* rhs) { return lhs == rhs; });
+        }
+        return same && count == 1;
+    };
+    auto emit = [&](llvm::ArrayRef<std::string> fragments) {
+        for(auto& fragment: fragments) {
+            cb(fragment);
+        }
+    };
+
+    std::vector<std::string> fragments;
+    render_arg(arg, [&](std::string_view fragment) { fragments.emplace_back(fragment); });
+    if(reads_back(fragments)) {
+        emit(fragments);
+        return;
+    }
+
+    // A cl spelling of the option keeps its place among the arguments,
+    // where order decides (`/W3 -Wno-unused-variable`).
+    for(auto& option: option::table().option_infos) {
+        if(option.alias_id != arg.opt_id || !(option.visibility & option::CLOption)) {
+            continue;
+        }
+        std::vector<std::string> spelled{std::string(option.prefixed_name)};
+        if(option.kind != kota::option::Kind::Flag) {
+            if(arg.values.size() != 1) {
+                continue;
+            }
+            spelled[0] += arg.values[0];
+        }
+        if(reads_back(spelled)) {
+            emit(spelled);
+            return;
+        }
+    }
+
+    // The driver appends `/clang:` arguments after all others.
+    for(auto& fragment: fragments) {
+        cb("/clang:" + fragment);
+    }
+}
+
 std::string canonicalize(llvm::ArrayRef<std::string> args) {
     std::string buf;
     if(args.empty()) {
@@ -327,7 +505,7 @@ std::string canonicalize(llvm::ArrayRef<std::string> args) {
     std::vector<std::string> parse_args(args.begin() + 1, args.end());
     auto options = kota::option::ParseOptions{
         .dash_dash_parsing = true,
-        .visibility = family_visibility(Toolchain::driver_family(args[0]))};
+        .visibility = family_visibility(driver_family(args[0]))};
     for(auto& result: option::table().parse(parse_args, options)) {
         /// Unparseable and unknown arguments are kept verbatim: dropping an
         /// option we don't understand could merge keys that must differ.
@@ -341,60 +519,6 @@ std::string canonicalize(llvm::ArrayRef<std::string> args) {
     }
 
     return buf;
-}
-
-std::string print_argv(llvm::ArrayRef<const char*> args) {
-    // Bytes past ASCII are UTF-8 and print as they are.
-    auto control = [](char c) {
-        return static_cast<unsigned char>(c) < 0x20 || c == 0x7f;
-    };
-    std::string buf;
-    llvm::raw_string_ostream os(buf);
-    bool sep = false;
-    for(llvm::StringRef arg: args) {
-        if(sep)
-            os << ' ';
-        sep = true;
-        if(!llvm::any_of(arg, control) && arg.find_first_of(R"( "\)") == llvm::StringRef::npos) {
-            os << arg;
-            continue;
-        }
-        os << '"';
-        for(char c: arg) {
-            if(c == '"' || c == '\\') {
-                os << '\\' << c;
-            } else if(control(c)) {
-                os << llvm::format(R"(\x%02X)", static_cast<unsigned char>(c));
-            } else {
-                os << c;
-            }
-        }
-        os << '"';
-    }
-    return std::move(os.str());
-}
-
-bool is_c_family_type(clang::driver::types::ID type) {
-    namespace types = clang::driver::types;
-    return types::isAcceptedByClang(type) && type != types::TY_Asm && !types::isLLVMIR(type) &&
-           !llvm::is_contained(
-               {types::TY_AST, types::TY_ModuleFile, types::TY_PCH, types::TY_API_INFO},
-               type);
-}
-
-bool is_c_family_file(llvm::StringRef filename) {
-    namespace types = clang::driver::types;
-    auto ext = llvm::sys::path::extension(filename);
-    if(ext.empty()) {
-        return false;
-    }
-    /// CUDA's header convention is missing from clang's extension table
-    /// (classifying one needs -x cuda), but it is C-family.
-    if(ext == ".cuh") {
-        return true;
-    }
-    /// Drop the leading dot: ".cpp" -> "cpp".
-    return is_c_family_type(types::lookupTypeForExtension(ext.drop_front()));
 }
 
 }  // namespace clice

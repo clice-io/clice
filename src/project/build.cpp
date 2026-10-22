@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.file_kind;
 import :project.build;
 import :project.configuration;
 import :vfs.file_system;
@@ -142,13 +143,13 @@ llvm::SmallVector<CompilationEntry, 2> Build::entries(Fid file) const {
 llvm::SmallVector<Candidate, 2> Build::commands(Fid file) {
     llvm::SmallVector<Candidate, 2> result;
     for(auto& entry: entries(file)) {
-        result.push_back({.config = entry.config, .source = CommandSource::CDBExact});
+        result.push_back({.command = entry.command, .source = CommandSource::CDBExact});
     }
     if(result.empty()) {
         if(auto id = default_command(files.resolve(file))) {
-            result.push_back({.config = *id, .source = CommandSource::Default});
+            result.push_back({.command = *id, .source = CommandSource::Default});
         } else if(auto it = provisional.find(file); it != provisional.end()) {
-            result.push_back({.config = it->second, .source = CommandSource::Inferred});
+            result.push_back({.command = it->second, .source = CommandSource::Inferred});
         }
     }
     return result;
@@ -196,7 +197,7 @@ const CompiledRule* Build::default_rule(CanonicalRef path) const {
     return nullptr;
 }
 
-std::optional<ConfigID> Build::command_of(const CompiledRule& rule) {
+std::optional<CommandID> Build::command_of(const CompiledRule& rule) {
     llvm::SmallVector<const char*, 16> argv;
     for(auto& arg: rule.default_command) {
         argv.push_back(arg.c_str());
@@ -204,12 +205,12 @@ std::optional<ConfigID> Build::command_of(const CompiledRule& rule) {
     return cdb.intern_command(rule.directory, argv);
 }
 
-std::optional<ConfigID> Build::default_command(CanonicalRef path) {
+std::optional<CommandID> Build::default_command(CanonicalRef path) {
     auto* rule = default_rule(path);
     return rule ? command_of(*rule) : std::nullopt;
 }
 
-ConfigID Build::builtin(CanonicalRef path) {
+CommandID Build::builtin(CanonicalRef path) {
     // Every C++ spelling (.cc, .cxx, .C, .hh) gets clang++, and so do the
     // ambiguous .h and a name clang has no language for (`Widget`, a `.tcc`
     // body), which only an include ever reads; C and Objective-C get clang.
@@ -236,14 +237,14 @@ ConfigID Build::builtin(CanonicalRef path) {
 }
 
 CommandRef Build::resolve(Fid file,
-                          ConfigID base,
+                          CommandID base,
                           CommandSource source,
                           llvm::ArrayRef<CanonicalRef> paths,
                           llvm::StringRef language_path,
                           llvm::ArrayRef<std::string> extra_prepend,
                           llvm::ArrayRef<std::string> extra_append) {
     auto edit = edits(paths);
-    auto applied = cdb.apply_rules(base, edit.options(extra_prepend, extra_append));
+    auto applied = cdb.apply_edits(base, edit.options(extra_prepend, extra_append));
     return {file, applied, cdb.input_kind(applied, language_path), source};
 }
 
@@ -308,11 +309,11 @@ llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {
         // Two databases listing the file with the same command make one
         // unit: the scan would only read it twice.
         auto first = result.size();
-        for(auto& command: commands(member)) {
-            auto unit = resolve(member, command.config, command.source, path, path);
+        for(auto& candidate: commands(member)) {
+            auto unit = resolve(member, candidate.command, candidate.source, path, path);
             bool seen = llvm::any_of(llvm::ArrayRef(result).drop_front(first),
                                      [&](const CommandRef& other) {
-                                         return other.config == unit.config &&
+                                         return other.command == unit.command &&
                                                 other.input.value == unit.input.value;
                                      });
             if(!seen) {
@@ -361,9 +362,9 @@ void Build::forget(Fid file) {
     provisional.erase(file);
 }
 
-std::optional<ConfigID> Build::borrow(Fid file, std::optional<ConfigID> command) {
+std::optional<CommandID> Build::borrow(Fid file, std::optional<CommandID> command) {
     assert(records.contains(file) && "only a recorded file borrows");
-    std::optional<ConfigID> before;
+    std::optional<CommandID> before;
     if(auto it = provisional.find(file); it != provisional.end()) {
         before = it->second;
     }
@@ -375,12 +376,12 @@ std::optional<ConfigID> Build::borrow(Fid file, std::optional<ConfigID> command)
     return before;
 }
 
-ConfigID Build::lend(ConfigID command, CanonicalRef lender, CanonicalRef file) {
+CommandID Build::lend(CommandID command, CanonicalRef lender, CanonicalRef file) {
     auto own = matching(file);
     auto matched = matching(lender);
     llvm::erase_if(matched,
                    [&](const CompiledRule* rule) { return llvm::is_contained(own, rule); });
-    return cdb.apply_rules(command, edits_of(matched).options());
+    return cdb.apply_edits(command, edits_of(matched).options());
 }
 
 llvm::SmallVector<Fid> Build::refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked) {
@@ -442,7 +443,7 @@ bool Build::declared(Fid file) {
     return default_command(path).has_value() && default_source(path);
 }
 
-std::optional<CommandRef> Build::pch_unit(ConfigID config,
+std::optional<CommandRef> Build::pch_unit(CommandID config,
                                           llvm::ArrayRef<CanonicalRef> paths,
                                           llvm::ArrayRef<std::string> extra_prepend,
                                           llvm::ArrayRef<std::string> extra_append) {
@@ -460,7 +461,7 @@ std::optional<CommandRef> Build::pch_unit(ConfigID config,
             });
             if(active) {
                 return resolve(writer.file,
-                               writer.config,
+                               writer.command,
                                CommandSource::CDBExact,
                                paths,
                                files.resolve(writer.file),

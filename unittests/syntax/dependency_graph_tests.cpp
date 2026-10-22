@@ -400,7 +400,7 @@ export module m;
         std::vector<CommandEdit> edits = {
             {CommandEdit::Kind::Append, {append.begin(), append.end()}},
         };
-        auto applied = cdb.apply_rules(entry.config, {.edits = edits});
+        auto applied = cdb.apply_edits(entry.command, {.edits = edits});
         units.push_back({entry.file,
                          applied,
                          cdb.input_kind(applied, cdb.files().resolve(entry.file)),
@@ -443,8 +443,8 @@ export module m1;
     ZASSERT(candidates.size() == 2u);
     llvm::SmallVector<CommandRef> v2_units = {
         {file,
-         candidates[1].config,
-         cdb.input_kind(candidates[1].config, tmp.path("src/m.cppm")),
+         candidates[1].command,
+         cdb.input_kind(candidates[1].command, tmp.path("src/m.cppm")),
          CommandSource::CDBExact}
     };
     DependencyGraph graph_v2;

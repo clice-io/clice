@@ -6,13 +6,13 @@ module;
 
 module clice;
 
-import :command.argument_parser;
-import :command.cygwin;
+import :command.argument;
 import :command.driver_report;
 import :command.nvcc;
 import :command.toolchain;
 import :support.logging;
 import :support.process;
+import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -438,8 +438,8 @@ kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string>
     if(!host) {
         co_return std::unexpected(std::move(host.error()));
     }
-    auto host_family = Toolchain::driver_family(*host);
-    if(host_family == CompilerFamily::MSVC || host_family == CompilerFamily::ClangCL) {
+    auto host_family = driver_family(*host);
+    if(cl_mode(host_family)) {
         co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", *host));
     }
     /// nvcc hands its host compiler a CUDA input as C++. The host's headers
@@ -668,7 +668,7 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
 
     std::size_t driver_tokens = spec.family == CompilerFamily::Zig ? 2 : 1;
     std::expected<Job, std::string> job;
-    bool cl = spec.family == CompilerFamily::MSVC || spec.family == CompilerFamily::ClangCL;
+    bool cl = cl_mode(spec.family);
     if(!spec.query_toolchain) {
         job = cl ? ask_clang(args, {"--driver-mode=cl"}, spec.cwd)
                  : ask_clang_for(std::move(args), driver_tokens, spec.cwd);
@@ -797,56 +797,24 @@ bool in_probe_view(const Arg& arg, CompilerFamily family) {
 
 }  // namespace
 
+llvm::StringRef resource_dir() {
+    static std::string dir = [] {
+        static int anchor;
+        auto exe = llvm::sys::fs::getMainExecutable("", &anchor);
+        if(exe.empty()) {
+            return std::string{};
+        }
+        return clang::GetResourcesPath(exe);
+    }();
+    return dir;
+}
+
 Toolchain::Toolchain(CompilationDatabase& db, std::chrono::steady_clock::duration failed_retry) :
     db(db), failed_retry(failed_retry) {}
 
 Toolchain::~Toolchain() = default;
 
-CompilerFamily Toolchain::driver_family(llvm::StringRef driver) {
-    auto try_get = [](llvm::StringRef name) {
-        if(name == "cl")
-            return CompilerFamily::MSVC;
-        if(name == "nvcc")
-            return CompilerFamily::NVCC;
-        if(name.ends_with("clang-cl"))
-            return CompilerFamily::ClangCL;
-        if(name.ends_with("clang") || name.ends_with("clang++"))
-            return CompilerFamily::Clang;
-        // Intel must precede GCC: `icc` would otherwise match ends_with("cc").
-        if(name.contains("icpc") || name.contains("icc") || name.contains("dpcpp") ||
-           name.contains("icx"))
-            return CompilerFamily::Intel;
-        if(name.ends_with("cc") || name.ends_with("c++") || name.ends_with("gcc") ||
-           name.ends_with("g++"))
-            return CompilerFamily::GCC;
-        if(name.ends_with("zig"))
-            return CompilerFamily::Zig;
-        return CompilerFamily::Unknown;
-    };
-
-    /// Windows resolves executable names case-insensitively, and CDBs record
-    /// spellings like CL.exe or Clang-Cl.EXE — match lowercased.
-    std::string lowered = llvm::sys::path::filename(driver).lower();
-    llvm::StringRef name = lowered;
-    if(auto f = try_get(name); f != CompilerFamily::Unknown)
-        return f;
-
-    // Stripping the executable suffix: clang++.exe -> clang++
-    name.consume_back(".exe");
-    if(auto f = try_get(name); f != CompilerFamily::Unknown)
-        return f;
-
-    // Stripping any trailing version number: clang++3.5 -> clang++
-    name = name.rtrim("0123456789.-");
-    if(auto f = try_get(name); f != CompilerFamily::Unknown)
-        return f;
-
-    // Stripping trailing -component: clang++-tot -> clang++
-    name = name.slice(0, name.rfind('-'));
-    return try_get(name);
-}
-
-Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
+Toolchain::ProbeKey Toolchain::probe_key(CommandID id, InputKind input) {
     auto& config = db.config(id);
     ProbeKey out;
 
@@ -922,7 +890,7 @@ Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
     return out;
 }
 
-Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config) {
+Toolchain::ProbeArgv Toolchain::probe_argv(const Command& config) {
     ProbeArgv out;
     out.argv.push_back(config.driver);
     if(config.subcommand) {
@@ -1050,7 +1018,7 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
     return result;
 }
 
-Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, const Frontend& probe) {
+Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& probe) {
     auto& config = db.config(id);
 
     /// The PCM clice builds is the BMI the importers of the real build read:
@@ -1108,7 +1076,7 @@ struct Toolchain::ProbeAdmission {
     std::string error;
 };
 
-Toolchain::ProbeAdmission Toolchain::admit_probe(ConfigID id, InputKind input) {
+Toolchain::ProbeAdmission Toolchain::admit_probe(CommandID id, InputKind input) {
     auto pk = probe_key(id, input);
     ProbeAdmission admission{.kind = ProbeAdmission::Kind::Hit, .key = std::move(pk.key)};
     if(probes.contains(admission.key)) {
@@ -1147,7 +1115,7 @@ void Toolchain::commit_probe(llvm::StringRef key,
     probes.try_emplace(key, frontend(*job));
 }
 
-std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(ConfigID id, InputKind input) {
+std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID id, InputKind input) {
     auto synth_key = std::pair{static_cast<std::uint32_t>(id), input.value};
     if(auto it = synth_cache.find(synth_key); it != synth_cache.end()) {
         return it->second;
@@ -1173,7 +1141,7 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(ConfigID id
     return resolved_id;
 }
 
-void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
+void Toolchain::warm(llvm::ArrayRef<std::pair<CommandID, InputKind>> pairs) {
     struct Pending {
         std::string key;
         QuerySpec spec;

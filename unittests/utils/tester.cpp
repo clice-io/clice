@@ -305,8 +305,8 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     auto entry = database.add_command(TestVFS::root(), src_path, command);
     assert(entry && "no entry after add_command");
     CommandRef ref{entry->file,
-                   entry->config,
-                   database.input_kind(entry->config, src_path),
+                   entry->command,
+                   database.input_kind(entry->command, src_path),
                    CommandSource::CDBExact};
     auto rendered = database.render(ref);
     params.input.arguments.assign(rendered.begin(), rendered.end());

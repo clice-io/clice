@@ -6,13 +6,14 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.file_kind;
 import :command.invocation;
 import :compile.compilation;
 import :compile.diagnostic;
 import :compile.tidy;
 import :compile.tokens;
 import :support.logging;
+import :support.shell;
 import :syntax.header_context;
 import :syntax.position;
 import :syntax.preamble;

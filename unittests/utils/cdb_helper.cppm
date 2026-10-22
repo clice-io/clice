@@ -79,13 +79,13 @@ inline bool has_arg(llvm::ArrayRef<const char*> argv, llvm::StringRef needle) {
 /// fails readably instead of the front() of an empty list crashing.
 inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
                                              llvm::StringRef file,
-                                             const CommandOptions& options = {}) {
+                                             const CommandEdits& options = {}) {
     auto candidates = cdb.candidate_entries(file);
     if(candidates.empty()) {
         return {};
     }
     auto& entry = candidates.front();
-    auto applied = cdb.apply_rules(entry.config, options);
+    auto applied = cdb.apply_edits(entry.command, options);
     CommandRef ref{entry.file, applied, cdb.input_kind(applied, file), CommandSource::CDBExact};
     auto argv = cdb.render_driver(ref);
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
@@ -103,8 +103,8 @@ inline ScanReport scan_all(CompilationDatabase& cdb, DependencyGraph& graph) {
     llvm::SmallVector<CommandRef> units;
     for(auto& entry: cdb.entries()) {
         units.push_back({entry.file,
-                         entry.config,
-                         cdb.input_kind(entry.config, cdb.files().resolve(entry.file)),
+                         entry.command,
+                         cdb.input_kind(entry.command, cdb.files().resolve(entry.file)),
                          CommandSource::CDBExact});
     }
     return scan_dependency_graph(cdb, graph, units);

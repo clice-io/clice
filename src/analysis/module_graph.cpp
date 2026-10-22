@@ -6,7 +6,7 @@ module clice;
 
 import :analysis.module_graph;
 import :analysis.text;
-import :command.command;
+import :command.file_kind;
 import :config.config;
 import :index.project_index;
 import :index.query;

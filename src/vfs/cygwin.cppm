@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:command.cygwin;
+module clice:vfs.cygwin;
 
 namespace clice {
 

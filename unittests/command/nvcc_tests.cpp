@@ -291,7 +291,7 @@ ZEST_CASE(OptionsFileExpanded) {
     auto flags = [&](llvm::StringRef command) {
         auto entry = db.add_command(tmp.root, "kern.cu", command);
         std::vector<std::string> rendered;
-        for(llvm::StringRef flag: db.render_full(entry->config)) {
+        for(llvm::StringRef flag: db.render_full(entry->command)) {
             rendered.push_back(flag.str());
         }
         return rendered;
@@ -323,7 +323,7 @@ ZEST_CASE(OptionsFileMarkSkipped) {
     CompilationDatabase db{file_table};
     auto entry = db.add_command(tmp.root, "kern.cu", "nvcc --options-file marked.rsp -c kern.cu"sv);
     ZASSERT(entry);
-    ZEXPECT(std::ranges::contains(db.render_full(entry->config), llvm::StringRef("MARKED=1")));
+    ZEXPECT(std::ranges::contains(db.render_full(entry->command), llvm::StringRef("MARKED=1")));
 }
 
 ZEST_CASE(StdNormalized) {
@@ -528,7 +528,7 @@ ZEST_CASE(CcbinAffectsKey) {
 
     auto key_of = [&](llvm::StringRef file) {
         auto& entry = db.candidate_entries(file).front();
-        return db.toolchain().probe_key_for(entry.config, db.input_kind(entry.config, file));
+        return db.toolchain().probe_key_for(entry.command, db.input_kind(entry.command, file));
     };
     ZEXPECT(key_of("/tmp/a.cu") != key_of("/tmp/b.cu"));
     ZEXPECT(key_of("/tmp/a.cu") == key_of("/tmp/a.cu"));
@@ -553,7 +553,7 @@ ZEST_CASE(DatabaseTranslatesNVCC) {
 
     // Probe tokens (-ccbin, ...) are unknown-class: visible in the full
     // view and the probe, never in the compile render.
-    auto flags = db.render_full(db.candidate_entries("/tmp/kern.cu").front().config);
+    auto flags = db.render_full(db.candidate_entries("/tmp/kern.cu").front().command);
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -591,10 +591,10 @@ ZEST_CASE(RuleFlagsTranslated) {
         {CommandEdit::Kind::Append,
          {"--extended-lambda", "--generate-code=arch=compute_90a,code=sm_90a"}},
     };
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
 
     auto flags = db.render_full(
-        db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options));
+        db.apply_edits(db.candidate_entries("/tmp/kern.cu").front().command, options));
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -622,8 +622,8 @@ ZEST_CASE(RuleOptionsFileExpanded) {
          {"--options-file", "opts.rsp"},
          Spelling::absolute(tmp.path("rules"))},
     };
-    CommandOptions options{.edits = edits};
-    auto flags = db.render_full(db.apply_rules(entry->config, options));
+    CommandEdits options{.edits = edits};
+    auto flags = db.render_full(db.apply_edits(entry->command, options));
     ZEXPECT(std::ranges::contains(flags, llvm::StringRef("FROM_RULE=1")));
     ZEXPECT(!std::ranges::contains(flags, llvm::StringRef("--options-file")));
     auto ccbin = "-ccbin=" + path::join(Spelling::absolute(tmp.path("rules")).str(), "tc/g++");
@@ -642,7 +642,7 @@ ZEST_CASE(AppendOverridesBase) {
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Append, {"-rdc=false", "--default-stream=legacy", "-arch=sm_80"}},
     };
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
 
     auto flags = render_entry(db, "/tmp/kern.cu", options);
     auto count = std::ptrdiff_t(flags.size());
@@ -692,7 +692,7 @@ ZEST_CASE(ExtrasStayClangDialect) {
     // A lint plan's extra args are clang args by definition (clang-tidy
     // semantics): on an NVCC entry they join the translated command
     // verbatim, never through the nvcc rule translation.
-    CommandOptions options;
+    CommandEdits options;
     llvm::SmallVector<std::string> prepend = {"-fno-gpu-rdc"};
     llvm::SmallVector<std::string> append = {"-fgpu-rdc"};
     options.extra_prepend = prepend;
@@ -717,7 +717,7 @@ ZEST_CASE(GencodeAppendAccumulates) {
         std::vector<CommandEdit> edits = {
             {CommandEdit::Kind::Append, std::move(append)}
         };
-        CommandOptions options{.edits = edits};
+        CommandEdits options{.edits = edits};
         std::vector<std::string> result;
         for(llvm::StringRef flag: render_entry(db, "/tmp/kern.cu", options)) {
             if(flag.contains("arch")) {
@@ -797,8 +797,8 @@ ZEST_CASE(WildcardRemoveClearsArch) {
     std::vector<const char*> native = {"nvcc", "-arch=native", "-c", "/tmp/native.cu"};
     db.add_command("/tmp", "/tmp/native.cu", native);
 
-    auto arch_flags = [&](llvm::StringRef file, const CommandOptions& options) {
-        auto applied = db.apply_rules(db.candidate_entries(file).front().config, options);
+    auto arch_flags = [&](llvm::StringRef file, const CommandEdits& options) {
+        auto applied = db.apply_edits(db.candidate_entries(file).front().command, options);
         std::vector<std::string> result;
         for(llvm::StringRef flag: db.render_full(applied)) {
             if(flag.contains("arch")) {
@@ -817,7 +817,7 @@ ZEST_CASE(WildcardRemoveClearsArch) {
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Remove, {"--generate-code=*"}}
     };
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
     ZEXPECT(arch_flags("/tmp/kern.cu", options).empty());
 
     edits = {
@@ -851,12 +851,12 @@ ZEST_CASE(RemoveMatchesUnknownSpelling) {
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Remove, {"--allow-unsupported-compiler"}},
     };
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
 
     // Probe flags all parse as the shared unknown id; removal keys on the
     // spelling, so the other probe tokens survive.
     auto flags = db.render_full(
-        db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options));
+        db.apply_edits(db.candidate_entries("/tmp/kern.cu").front().command, options));
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -883,10 +883,10 @@ ZEST_CASE(RemoveListAlternatives) {
         {CommandEdit::Kind::Remove,
          {"-ccbin=/usr/bin/g++-13", "-ccbin=/usr/bin/g++-12", "--default-stream=per-thread"}},
     };
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
 
     auto flags = db.render_full(
-        db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options));
+        db.apply_edits(db.candidate_entries("/tmp/kern.cu").front().command, options));
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -905,8 +905,8 @@ ZEST_CASE(WildcardRemovesProbeValue) {
         std::vector<CommandEdit> edits = {
             {CommandEdit::Kind::Remove, std::move(remove)}
         };
-        CommandOptions options{.edits = edits};
-        auto applied = db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options);
+        CommandEdits options{.edits = edits};
+        auto applied = db.apply_edits(db.candidate_entries("/tmp/kern.cu").front().command, options);
         std::vector<std::string> result;
         for(llvm::StringRef flag: db.render_full(applied)) {
             if(is_nvcc_probe_flag(flag)) {

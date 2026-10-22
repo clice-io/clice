@@ -603,7 +603,7 @@ struct FileScanner {
         auto [it, inserted] = forced_cache.try_emplace(group);
         if(inserted) {
             auto& search = search_of(group);
-            llvm::StringRef directory = cdb.config(graph.group(group).config).directory;
+            llvm::StringRef directory = cdb.config(graph.group(group).command).directory;
             for(auto& name: search.config.forced_includes) {
                 if(auto found = resolve_forced_include(name, directory, search.resolved, scope)) {
                     it->second.push_back({
@@ -638,9 +638,9 @@ struct FileScanner {
                 }
                 auto& group = graph.group(context.group);
                 auto rendered =
-                    cdb.render({path_id, group.config, group.input, CommandSource::CDBExact});
+                    cdb.render({path_id, group.command, group.input, CommandSource::CDBExact});
                 auto declared = scan_module_decl(rendered,
-                                                 cdb.config(group.config).directory,
+                                                 cdb.config(group.command).directory,
                                                  observed->content->getBuffer());
                 return {declared.provided_module().str(), declared.is_internal_partition()};
             }
@@ -786,7 +786,7 @@ struct FullScan {
         llvm::DenseMap<std::pair<std::uint64_t, const char*>, std::uint32_t> group_ids;
         for(auto& unit: units) {
             auto [it, inserted] =
-                group_ids.try_emplace({cdb.entry_hash(unit.config), unit.input.value});
+                group_ids.try_emplace({cdb.command_hash(unit.command), unit.input.value});
             if(inserted) {
                 it->second = graph.add_group(unit);
             }

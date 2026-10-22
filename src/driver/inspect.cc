@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :command.command;
+import :command.file_kind;
 import :compile.compilation;
 import :compile.tidy;
 import :config.config;
@@ -601,7 +602,7 @@ std::string build_pch(Project& project,
     auto unit = clice::compile({
         .kind = CompilationKind::PrecompiledHeader,
         .input = {.arguments = {argv.begin(), argv.end()},
-                  .directory = project.cdb.config(writer.config).directory,
+                  .directory = project.cdb.config(writer.command).directory,
                   .workspace = workspace.str()},
         .output_file = *output,
     });

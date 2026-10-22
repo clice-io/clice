@@ -93,7 +93,7 @@ llvm::SmallVector<Candidate, 2> host_commands(Project& project, Fid header, Fid 
 /// A unit and the one of its base commands that another file borrows.
 struct Lender {
     Fid unit;
-    ConfigID config;
+    CommandID command;
 };
 
 /// The commands the build's units can lend — every command of every

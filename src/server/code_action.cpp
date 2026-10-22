@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.file_kind;
 import :index.search;
 import :index.shard;
 import :index.symbol_query;

@@ -44,7 +44,7 @@ struct CommandRequest {
 /// Pick the candidate matching a pinned command (multi-configuration files
 /// and hosts), defaulting to the build's first command. `paths` are the
 /// files whose edits the published hash was computed with.
-Candidate pick_pinned_config(Project& project,
+Candidate pick_pinned_command(Project& project,
                              Fid file,
                              llvm::ArrayRef<Candidate> candidates,
                              llvm::ArrayRef<CanonicalRef> paths,
@@ -58,7 +58,7 @@ Candidate pick_pinned_config(Project& project,
 CommandRef lent_command(Project& project,
                         Fid header,
                         Fid host,
-                        ConfigID command,
+                        CommandID command,
                         llvm::ArrayRef<std::string> extra_prepend = {},
                         llvm::ArrayRef<std::string> extra_append = {});
 

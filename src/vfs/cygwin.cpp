@@ -4,8 +4,8 @@ module;
 
 module clice;
 
-import :command.cygwin;
 import :support.process;
+import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.path;
 

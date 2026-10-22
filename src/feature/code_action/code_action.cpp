@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.file_kind;
 import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.display;

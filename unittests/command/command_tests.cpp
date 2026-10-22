@@ -7,8 +7,9 @@ module;
 
 module clice;
 
-import :command.argument_parser;
+import :command.argument;
 import :command.command;
+import :command.toolchain;
 import :project.build;
 import :support.shell;
 import :unittests.utils.cdb_helper;
@@ -45,12 +46,12 @@ ZEST_SUITE(Command) {
 /// command, resource dir stripped like render_entry.
 std::vector<const char*> render_fallback(CompilationDatabase& db,
                                          llvm::StringRef file,
-                                         const CommandOptions& options = {}) {
+                                         const CommandEdits& options = {}) {
     Config config;
     config.finalize(CanonicalPath());
     Build build{config, db, db.files()};
     auto source = CommandSource::Fallback;
-    auto applied = db.apply_rules(build.builtin(CanonicalPath(Spelling::absolute(file))), options);
+    auto applied = db.apply_edits(build.builtin(CanonicalPath(Spelling::absolute(file))), options);
     CommandRef ref{db.files().intern(Spelling::absolute(file)),
                    applied,
                    db.input_kind(applied, file),
@@ -107,9 +108,9 @@ ZEST_CASE(ConfigDedup) {
     database.add_command("/fake", "test3.cpp", "clang++ -std=c++23 -DA test3.cpp"sv);
 
     /// Same flags dedupe to one config; a user-content difference splits.
-    auto config1 = database.candidate_entries(fake("test.cpp")).front().config;
-    auto config2 = database.candidate_entries(fake("test2.cpp")).front().config;
-    auto config3 = database.candidate_entries(fake("test3.cpp")).front().config;
+    auto config1 = database.candidate_entries(fake("test.cpp")).front().command;
+    auto config2 = database.candidate_entries(fake("test2.cpp")).front().command;
+    auto config3 = database.candidate_entries(fake("test3.cpp")).front().command;
     ZEXPECT(config1 == config2);
     ZEXPECT(config1 != config3);
 
@@ -138,7 +139,7 @@ ZEST_CASE(RemoveAppend) {
     auto main = fake("main.cpp");
 
     std::vector<CommandEdit> edits;
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
     auto remove_only = [&](std::vector<std::string> flags) {
         edits = {
             {CommandEdit::Kind::Remove, std::move(flags)}
@@ -182,7 +183,7 @@ ZEST_CASE(AppendUnknownValue) {
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Append, {"-fnot-a-real-flag", "value"}}
     };
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
     ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
             std::format("clang++ -fnot-a-real-flag value {}", fake("main.cpp")));
 };
@@ -197,13 +198,13 @@ ZEST_CASE(AppendBeforeSlot) {
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Append, {"-x", "c++"}}
     };
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
 
     ZEXPECT(print_argv(render_entry(database, fake("a.c"), options)) ==
             std::format("clang -x c -x c++ {} -x none", fake("a.c")));
 
     auto applied =
-        database.apply_rules(database.candidate_entries(fake("a.c")).front().config, options);
+        database.apply_edits(database.candidate_entries(fake("a.c")).front().command, options);
     ZEXPECT(llvm::StringRef(database.input_kind(applied, "a.c").value) == "c++");
 };
 
@@ -216,7 +217,7 @@ ZEST_CASE(AppendAfterInputFlags) {
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Append, {"-std=c17"}}
     };
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
     ZEXPECT(print_argv(render_entry(database, fake("a.c"), options)) ==
             std::format("clang -std=c11 -std=c17 {}", fake("a.c")));
 };
@@ -247,14 +248,14 @@ ZEST_CASE(SelectorHistoryRestored) {
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.c", "clang -x cuda -x c++ a.c"sv);
 
-    auto base = database.candidate_entries(fake("a.c")).front().config;
+    auto base = database.candidate_entries(fake("a.c")).front().command;
     ZEXPECT(llvm::StringRef(database.input_kind(base, "a.c").value) == "c++");
 
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Remove, {"-x", "c++"}}
     };
-    CommandOptions options{.edits = edits};
-    auto applied = database.apply_rules(base, options);
+    CommandEdits options{.edits = edits};
+    auto applied = database.apply_edits(base, options);
     ZEXPECT(llvm::StringRef(database.input_kind(applied, "a.c").value) == "cuda");
 };
 
@@ -265,19 +266,19 @@ ZEST_CASE(SelectorPositional) {
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.cu", "clang -x c++ a.cu -x c"sv);
 
-    auto base = database.candidate_entries(fake("a.cu")).front().config;
+    auto base = database.candidate_entries(fake("a.cu")).front().command;
     ZEXPECT(llvm::StringRef(database.input_kind(base, "a.cu").value) == "c++");
 
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Remove, {"-x", "c++"}}
     };
-    CommandOptions options{.edits = edits};
-    auto applied = database.apply_rules(base, options);
+    CommandEdits options{.edits = edits};
+    auto applied = database.apply_edits(base, options);
     ZEXPECT(llvm::StringRef(database.input_kind(applied, "a.cu").value) == "cuda");
 
     /// -x none resets the state; the extension decides again.
     database.add_command("/fake", "b.c", "clang -x c++ -x none b.c"sv);
-    auto reset = database.candidate_entries(fake("b.c")).front().config;
+    auto reset = database.candidate_entries(fake("b.c")).front().command;
     ZEXPECT(llvm::StringRef(database.input_kind(reset, "b.c").value) == "c");
 };
 
@@ -293,7 +294,7 @@ ZEST_CASE(CxxDriverCInputs) {
     database.add_command("/fake", "e.c", "clang --driver-mode=g++ -c e.c"sv);
 
     auto kind = [&](llvm::StringRef file) {
-        auto config = database.candidate_entries(fake(file)).front().config;
+        auto config = database.candidate_entries(fake(file)).front().command;
         return llvm::StringRef(database.input_kind(config, file).value);
     };
     ZEXPECT(kind("a.c") == "c++");
@@ -312,8 +313,8 @@ ZEST_CASE(PerFileClSelectors) {
     database.add_command("/fake", "/fake/alpha.c", "cl /Tc/fake/alpha.c /Tp/fake/beta.c /c"sv);
     database.add_command("/fake", "/fake/beta.c", "cl /Tc/fake/alpha.c /Tp/fake/beta.c /c"sv);
 
-    auto alpha = database.candidate_entries("/fake/alpha.c").front().config;
-    auto beta = database.candidate_entries("/fake/beta.c").front().config;
+    auto alpha = database.candidate_entries("/fake/alpha.c").front().command;
+    auto beta = database.candidate_entries("/fake/beta.c").front().command;
     ZEXPECT(alpha != beta);
 
     ZEXPECT(llvm::StringRef(database.input_kind(alpha, "/fake/alpha.c").value) == "c");
@@ -364,7 +365,7 @@ ZEST_CASE(IdentityHashes) {
     database.add_command("/fake", "g.cpp", "clang++ -std=c++20 -g a.cpp"sv);
 
     auto hash_of = [&](llvm::StringRef file) {
-        return database.entry_hash(database.candidate_entries(fake(file)).front().config);
+        return database.command_hash(database.candidate_entries(fake(file)).front().command);
     };
 
     /// Same command, different file: one config, one identity.
@@ -385,7 +386,7 @@ ZEST_CASE(IdentityHashes) {
     ZEXPECT(hash_of("p1.cpp") != hash_of("p2.cpp"));
 
     ZEXPECT(
-        database.entry_hash_hex(database.candidate_entries(fake("a.cpp")).front().config).size() ==
+        database.command_hash_hex(database.candidate_entries(fake("a.cpp")).front().command).size() ==
         16U);
 };
 
@@ -395,16 +396,16 @@ ZEST_CASE(RuleUnknownFlagIdentity) {
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.cpp", "clang++ -std=c++20 a.cpp"sv);
-    auto base = database.candidate_entries(fake("a.cpp")).front().config;
+    auto base = database.candidate_entries(fake("a.cpp")).front().command;
     auto hash_with = [&](std::string flag) {
         std::vector<CommandEdit> edits = {
             {CommandEdit::Kind::Append, {std::move(flag)}}
         };
-        return database.entry_hash(database.apply_rules(base, {.edits = edits}));
+        return database.command_hash(database.apply_edits(base, {.edits = edits}));
     };
 
     ZEXPECT(hash_with("--clice-unknown-one") != hash_with("--clice-unknown-two"));
-    ZEXPECT(hash_with("--clice-unknown-one") != database.entry_hash(base));
+    ZEXPECT(hash_with("--clice-unknown-one") != database.command_hash(base));
 };
 
 ZEST_CASE(WrapperStripped) {
@@ -416,9 +417,9 @@ ZEST_CASE(WrapperStripped) {
     /// The wrapper is stripped and takes no part in the config identity.
     auto& a = database.candidate_entries(fake("a.cpp")).front();
     auto& b = database.candidate_entries(fake("b.cpp")).front();
-    ZEXPECT(a.config == b.config);
+    ZEXPECT(a.command == b.command);
 
-    ZEXPECT(llvm::StringRef(database.config(a.config).driver) == "clang++");
+    ZEXPECT(llvm::StringRef(database.config(a.command).driver) == "clang++");
     EXPECT_NOT_CONTAINS(print_argv(render_entry(database, fake("a.cpp"))), "ccache");
 };
 
@@ -434,8 +435,8 @@ ZEST_CASE(WrapperValueOptions) {
 
     auto& a = database.candidate_entries(fake("a.cpp")).front();
     auto& b = database.candidate_entries(fake("b.cpp")).front();
-    ZEXPECT(a.config == b.config);
-    ZEXPECT(llvm::StringRef(database.config(a.config).driver) == "clang++");
+    ZEXPECT(a.command == b.command);
+    ZEXPECT(llvm::StringRef(database.config(a.command).driver) == "clang++");
 };
 
 ZEST_CASE(WrapperCaseInsensitive) {
@@ -445,7 +446,7 @@ ZEST_CASE(WrapperCaseInsensitive) {
     database.add_command("/fake", "a.cpp", "CCACHE.EXE clang++ -std=c++20 a.cpp"sv);
 
     auto& a = database.candidate_entries(fake("a.cpp")).front();
-    ZEXPECT(llvm::StringRef(database.config(a.config).driver) == "clang++");
+    ZEXPECT(llvm::StringRef(database.config(a.command).driver) == "clang++");
 };
 
 ZEST_CASE(InputKindNoExtension) {
@@ -456,7 +457,7 @@ ZEST_CASE(InputKindNoExtension) {
     database.add_command("/fake", "noext", "clang++ -std=c++20 noext"sv);
 
     auto& entry = database.candidate_entries(fake("noext")).front();
-    auto kind = database.input_kind(entry.config, "noext");
+    auto kind = database.input_kind(entry.command, "noext");
     ZASSERT(kind.value != nullptr);
     ZEXPECT(llvm::StringRef(kind.value).empty());
 };
@@ -586,18 +587,18 @@ ZEST_CASE(RuleDriverModeFamily) {
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.cpp", "clang++ --driver-mode=cl a.cpp"sv);
-    auto base = database.candidate_entries(fake("a.cpp")).front().config;
+    auto base = database.candidate_entries(fake("a.cpp")).front().command;
     ZEXPECT(database.config(base).family == CompilerFamily::ClangCL);
 
     std::vector<CommandEdit> removed = {
         {CommandEdit::Kind::Remove, {"--driver-mode=cl"}}
     };
-    ZEXPECT(database.config(database.apply_rules(base, {.edits = removed})).family !=
+    ZEXPECT(database.config(database.apply_edits(base, {.edits = removed})).family !=
             CompilerFamily::ClangCL);
     std::vector<CommandEdit> overridden = {
         {CommandEdit::Kind::Append, {"--driver-mode=g++"}}
     };
-    ZEXPECT(database.config(database.apply_rules(base, {.edits = overridden})).family !=
+    ZEXPECT(database.config(database.apply_edits(base, {.edits = overridden})).family !=
             CompilerFamily::ClangCL);
 };
 
@@ -608,7 +609,7 @@ ZEST_CASE(PrependAfterBinary) {
     CompilationDatabase database{file_table};
     database.add_command("/fake", "main.cpp", args);
 
-    CommandOptions options;
+    CommandEdits options;
     llvm::SmallVector<std::string> prepend = {"-std=c++17", "-DB"};
     options.extra_prepend = prepend;
     // Prepends sit ahead of the command's own flags, so the command wins
@@ -668,7 +669,7 @@ ZEST_CASE(FallbackAppliesAppend) {
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Append, {"-I/opt/include"}}
     };
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
 
     auto argv = print_argv(render_fallback(database, fake("unknown.cpp"), options));
     EXPECT_CONTAINS(argv, "-std=c++20");
@@ -689,7 +690,7 @@ ZEST_CASE(LaterRemoveCancelsAppend) {
         {CommandEdit::Kind::Append, {"-DFOO=1", "-DBAR"}},
         {CommandEdit::Kind::Remove, {"-D", "FOO=1"}     },
     };
-    CommandOptions options{.edits = edits};
+    CommandEdits options{.edits = edits};
     ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
             std::format("clang++ -D BAR {}", fake("main.cpp")));
 
@@ -738,7 +739,7 @@ ZEST_CASE(RuleAnchorKeysMemo) {
 };
 
 ZEST_CASE(InternedCommand) {
-    /// A hand-written command normalizes like an entry: one ConfigID per
+    /// A hand-written command normalizes like an entry: one CommandID per
     /// (directory, spelling), the string and argv forms meeting on it, the
     /// input slot synthesized at the end.
     FileTable file_table;
@@ -781,7 +782,7 @@ ZEST_CASE(MultiCommand) {
     /// Both commands are present, in file order.
     bool has_17 = false, has_20 = false;
     for(auto& entry: candidates) {
-        auto argv = print_argv(database.render_full(entry.config));
+        auto argv = print_argv(database.render_full(entry.command));
         if(llvm::StringRef(argv).contains("-std=c++17"))
             has_17 = true;
         if(llvm::StringRef(argv).contains("-std=c++20"))
@@ -875,7 +876,7 @@ ZEST_CASE(CodegenFilter) {
 
     /// They survive in the full build.
     auto full = print_argv(
-        database.render_full(database.candidate_entries(fake("main.cpp")).front().config));
+        database.render_full(database.candidate_entries(fake("main.cpp")).front().command));
     EXPECT_CONTAINS(full, "-fno-omit-frame-pointer");
     EXPECT_CONTAINS(full, "-fdata-sections");
 };
@@ -997,7 +998,7 @@ ZEST_CASE(WorkingDirectoryAnchorsIncludes) {
     ZEXPECT(has_arg(render_entry(database, "/project/main.cpp"), "/project/build/include"));
     /// The directory itself is anchored too, so no reader depends on
     /// where it runs.
-    auto config = database.candidate_entries("/project/main.cpp").front().config;
+    auto config = database.candidate_entries("/project/main.cpp").front().command;
     auto working = llvm::find_if(database.config(config).args, [](const Arg& arg) {
         return arg.opt_id == option::OPT_working_directory;
     });
@@ -1019,7 +1020,7 @@ ZEST_CASE(WorkingDirectoryPCHOutput) {
     database.add_command("/project",
                          "/project/main.cpp",
                          "clang++ -Xclang -include-pch -Xclang build/app.pch main.cpp"sv);
-    auto main = database.candidate_entries("/project/main.cpp").front().config;
+    auto main = database.candidate_entries("/project/main.cpp").front().command;
     auto inputs = database.pch_inputs(main);
     ZASSERT(inputs.size() == 1U);
     auto pch = file_table.find(inputs.front());
@@ -1029,7 +1030,7 @@ ZEST_CASE(WorkingDirectoryPCHOutput) {
     database.add_command("/project",
                          "/project/tool.cpp",
                          "clang++ -working-directory build -include app /project/tool.cpp"sv);
-    auto tool = database.candidate_entries("/project/tool.cpp").front().config;
+    auto tool = database.candidate_entries("/project/tool.cpp").front().command;
     ZEXPECT(llvm::any_of(database.pch_inputs(tool),
                          [&](const Spelling& input) { return file_table.find(input) == pch; }));
 };
@@ -1045,7 +1046,7 @@ ZEST_CASE(BareFileValueAnchored) {
                          "main.cpp",
                          "clang++ -fsanitize-ignorelist=ignore.txt --config=x.cfg --sysroot sdk "
                          "main.cpp"sv);
-    auto config = database.candidate_entries("/project/main.cpp").front().config;
+    auto config = database.candidate_entries("/project/main.cpp").front().command;
     llvm::SmallVector<std::string> values;
     for(auto& arg: database.config(config).args) {
         for(llvm::StringRef value: arg.values) {
@@ -1070,7 +1071,7 @@ ZEST_CASE(EntryHashSurvivesMove) {
         auto entry = database.add_command(workspace.root,
                                           workspace.path("main.cpp"),
                                           {driver.c_str(), include.c_str(), "main.cpp"});
-        return database.entry_hash(entry->config);
+        return database.command_hash(entry->command);
     };
     TempDir before;
     TempDir after;
@@ -1103,10 +1104,10 @@ ZEST_CASE(ForcedLanguage) {
     database.add_command("/fake", "a.h", "clang++ -x c++ a.h"sv);
     database.add_command("/fake", "b.cpp", "clang++ b.cpp"sv);
 
-    ZEXPECT(database.forced_language(database.candidate_entries(fake("a.h")).front().config) ==
+    ZEXPECT(database.forced_language(database.candidate_entries(fake("a.h")).front().command) ==
             "c++");
     ZEXPECT(
-        database.forced_language(database.candidate_entries(fake("b.cpp")).front().config).empty());
+        database.forced_language(database.candidate_entries(fake("b.cpp")).front().command).empty());
 };
 
 /// Write JSON to a temp file, load into a CDB, remove the file.
@@ -1158,7 +1159,7 @@ ZEST_CASE(RelativeDirectoryAnchored) {
     auto file = path::join(tmp.root, "build", "main.cpp");
     auto candidates = database.candidate_entries(file);
     ZASSERT(candidates.size() == 1U);
-    ZEXPECT(llvm::StringRef(database.config(candidates.front().config).directory) ==
+    ZEXPECT(llvm::StringRef(database.config(candidates.front().command).directory) ==
             canonical_dir(path::join(tmp.root, "build")));
 };
 
@@ -1182,7 +1183,7 @@ ZEST_CASE(RelativeLoadPathAnchored) {
 
     auto candidates = database.candidate_entries(path::join(tmp.root, "build", "main.cpp"));
     ZASSERT(candidates.size() == 1U);
-    ZEXPECT(llvm::StringRef(database.config(candidates.front().config).directory) ==
+    ZEXPECT(llvm::StringRef(database.config(candidates.front().command).directory) ==
             canonical_dir(path::join(tmp.root, "build")));
 };
 
@@ -1355,8 +1356,8 @@ ZEST_CASE(ResourceDir) {
 
     auto& entry = database.candidate_entries(fake("main.cpp")).front();
     CommandRef ref{entry.file,
-                   entry.config,
-                   database.input_kind(entry.config, "main.cpp"),
+                   entry.command,
+                   database.input_kind(entry.command, "main.cpp"),
                    CommandSource::CDBExact};
     auto argv = database.render_driver(ref);
 
@@ -1376,8 +1377,8 @@ ZEST_CASE(ResourceDir) {
     database2.add_command("/fake", "main.cpp", "clang++ -resource-dir /custom main.cpp"sv);
     auto& entry2 = database2.candidate_entries(fake("main.cpp")).front();
     CommandRef ref2{entry2.file,
-                    entry2.config,
-                    database2.input_kind(entry2.config, "main.cpp"),
+                    entry2.command,
+                    database2.input_kind(entry2.command, "main.cpp"),
                     CommandSource::CDBExact};
     auto argv2 = database2.render_driver(ref2);
     int count = 0;
@@ -1422,7 +1423,7 @@ ZEST_CASE(FixtureLayouts) {
         ZASSERT(load_layout(database, "subdir_cdb", "cmake/compile_commands.json") == 1U);
         auto candidates = database.candidate_entries(source("subdir_cdb"));
         ZASSERT(candidates.size() == 1U);
-        ZEXPECT(llvm::StringRef(database.config(candidates.front().config).directory) ==
+        ZEXPECT(llvm::StringRef(database.config(candidates.front().command).directory) ==
                 canonical_dir(path::join(layouts, "subdir_cdb", "cmake")));
         EXPECT_CONTAINS(print_argv(render_entry(database, source("subdir_cdb"))), "OUT");
     }
@@ -1436,7 +1437,7 @@ ZEST_CASE(FixtureLayouts) {
         ZASSERT(candidates.size() == 2U);
         std::string joined;
         for(auto& entry: candidates) {
-            joined += print_argv(database.render_full(entry.config));
+            joined += print_argv(database.render_full(entry.command));
             joined += ' ';
         }
         EXPECT_CONTAINS(joined, "CONFIG_A");
@@ -1460,7 +1461,7 @@ ZEST_CASE(FixtureLayouts) {
         auto file = source("relative_directory", "src/main.cpp");
         auto candidates = database.candidate_entries(file);
         ZASSERT(candidates.size() == 1U);
-        ZEXPECT(llvm::StringRef(database.config(candidates.front().config).directory) ==
+        ZEXPECT(llvm::StringRef(database.config(candidates.front().command).directory) ==
                 canonical_dir(path::join(layouts, "relative_directory", "src")));
         EXPECT_CONTAINS(print_argv(render_entry(database, file)), "RELATIVE");
     }

@@ -4,98 +4,21 @@ module;
 
 module clice:command.command;
 
-import :command.argument_parser;
-import :command.cygwin;
+import :command.argument;
 import :command.search_config;
 import :support.object_pool;
+import :vfs.cygwin;
 import :vfs.file_table;
 
 namespace clice {
 
 class Toolchain;
 
-enum class CompilerFamily : std::uint8_t {
-    Unknown,
-    GCC,      // Covers gcc, g++, cc, c++, and versioned/arch variants
-    Clang,    // Covers clang, clang++, and versioned variants (excluding clang-cl)
-    MSVC,     // Covers cl
-    ClangCL,  // Covers clang-cl explicitly, and clang --driver-mode=cl
-    NVCC,     // Covers nvcc
-    Intel,    // Covers icc, icpc, icx, dpcpp
-    Zig,      // Covers zig cc / zig c++ (assumed GCC/Clang compatible for query)
-};
-
-/// How an argument participates in compilation semantics. Every parsed
-/// argument is kept in the structured command with a class; renders select
-/// by class instead of re-parsing.
-enum class ArgClass : std::uint8_t {
-    /// Affects frontend semantics (language, target, macros defined by mode).
-    Semantic,
-
-    /// Per-file user content: -I, -D, -U, -include, -isystem, -iquote,
-    /// -idirafter. Excluded from toolchain probes and re-attached after.
-    UserContent,
-
-    /// Diagnostics presentation (-W*, -R*, -pedantic*, -w): affects which
-    /// warnings are emitted but never the token stream.
-    Diagnostics,
-
-    /// Pure backend/linker concerns (-g, -ffunction-sections, ...): kept for the
-    /// Full view, skipped by compile renders and identity hashes.
-    Codegen,
-
-    /// Irrelevant to an LSP (outputs, PCH building, dependency scan, module
-    /// flags we manage ourselves): kept for the Full view only.
-    Discarded,
-
-    /// Unrecognized token, kept verbatim (identity is the spelling). In the
-    /// identity hash — dropping an option we don't understand could merge
-    /// commands that must differ — but never in compile renders; forwarded
-    /// to toolchain probes only for NVCC probe tokens.
-    Unknown,
-
-    /// The input slot: where the source file sat in the original command.
-    /// A pure position marker — it stores no path (the file is the entry's,
-    /// not the config's). Language selectors before it govern the input;
-    /// renders inject the actual file here.
-    Input,
-};
-
-struct Arg {
-    std::uint32_t opt_id = 0;
-    ArgClass cls = ArgClass::Semantic;
-
-    /// Interned verbatim token, only for ArgClass::Unknown (nullptr otherwise).
-    const char* spelling = nullptr;
-
-    /// Interned option values (paths already absolutized for include-path
-    /// options). Elements are pointer-comparable.
-    llvm::ArrayRef<const char*> values;
-
-    friend bool operator==(const Arg& lhs, const Arg& rhs) {
-        return lhs.opt_id == rhs.opt_id && lhs.cls == rhs.cls && lhs.spelling == rhs.spelling &&
-               lhs.values == rhs.values;
-    }
-};
-
-/// An argument on its way into a config: its values are interned, their
-/// array stays local until the config is saved.
-struct LocalArg {
-    std::uint32_t opt_id = 0;
-    ArgClass cls = ArgClass::Semantic;
-    const char* spelling = nullptr;
-    llvm::SmallVector<const char*, 2> values;
-
-    Arg view() const {
-        return {.opt_id = opt_id, .cls = cls, .spelling = spelling, .values = values};
-    }
-};
-
 /// A driver-level compile configuration, parsed and classified once at load.
-/// Deduped via ObjectSet — identity is the ConfigID. Wrapper prefixes
+/// Deduped via ObjectSet — identity is the CommandID. Wrapper prefixes
 /// (ccache etc.) are entry provenance, not part of the config: `ccache
 /// clang++ X` and `clang++ X` dedupe to one config.
-struct CompileConfig {
+struct Command {
     /// Working directory (interned).
     const char* directory = nullptr;
 
@@ -116,43 +39,12 @@ struct CompileConfig {
     /// reads the command, and the compiler never runs.
     bool query_toolchain = true;
 
-    friend bool operator==(const CompileConfig&, const CompileConfig&) = default;
+    friend bool operator==(const Command&, const Command&) = default;
 };
 
-enum class ConfigID : std::uint32_t {};
+enum class CommandID : std::uint32_t {};
 
-constexpr inline ConfigID invalid_config = ConfigID(~0u);
-
-/// The type clang assigns to a file by its extension (Types.def);
-/// TY_INVALID when it has none — `.cuh`, which clang does not list, and
-/// unknown suffixes alike.
-clang::driver::types::ID suffix_type(llvm::StringRef path);
-
-/// The clang language name of a file by its extension ("c++", "cuda",
-/// ...), a C source or header taken as C++ under a C++ driver (`cxx`);
-/// `.cuh`, missing from clang's table, is CUDA; the raw extension itself
-/// when nothing maps it.
-llvm::StringRef extension_language(llvm::StringRef path, bool cxx);
-
-/// Whether the extension names a header — or nothing clang knows, which a
-/// file only ever included usually is: a `.inc` or `.cuh`, the standard
-/// library's extensionless headers.
-bool is_header_path(llvm::StringRef path);
-
-/// Whether the extension names a translation unit of a C-family language:
-/// a source, preprocessed or a module interface, never a header.
-bool is_source_path(llvm::StringRef path);
-
-/// Whether the extension names a file clang knows that is no C-family
-/// code: an assembler source, preprocessed or not, LLVM IR, a module file,
-/// an object file.
-bool is_other_language_path(llvm::StringRef path);
-
-/// Whether the extension marks a fragment only ever included into a
-/// translation unit — a `.def` list, a `.inc`, `.inl`, `.tpp`, `.ipp`,
-/// `.tcc` or `.txx` body — which compiles only under its includer's
-/// context.
-bool is_context_header_path(llvm::StringRef path);
+constexpr inline CommandID invalid_command = CommandID(~0u);
 
 /// A compile_commands.json's bytes as a JSON reader takes them: it refuses
 /// a whole document over one byte that is not UTF-8 (a path or a define in
@@ -197,7 +89,7 @@ enum class CommandSource : std::uint8_t {
 /// borrowing a host command, `input` is the host's.
 struct CommandRef {
     Fid file;
-    ConfigID config = invalid_config;
+    CommandID command = invalid_command;
     InputKind input;
     CommandSource source = CommandSource::Fallback;
 };
@@ -223,7 +115,7 @@ struct CommandEdit {
 /// matching options of the base command and of the appends before it;
 /// appends insert before the input slot so they always take effect for
 /// the compile.
-struct CommandOptions {
+struct CommandEdits {
     llvm::ArrayRef<CommandEdit> edits;
 
     /// Per-run additions in the resolved command's own dialect (a lint
@@ -262,7 +154,7 @@ struct CompilationEntry {
     /// Fid of the source file (shared FileTable).
     Fid file;
 
-    ConfigID config = invalid_config;
+    CommandID command = invalid_command;
 
     SourceID source;
 
@@ -277,27 +169,6 @@ struct CompilationEntry {
     /// `__FILE__` says.
     llvm::StringRef spelling;
 };
-
-/// Render one structured argument back into argv fragments. Unknown args
-/// render as their verbatim spelling; known options render through the
-/// option table (canonical name + render style). Never called on the
-/// input slot.
-void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb);
-
-/// Render one argument for the command's own driver. A cl-mode driver
-/// reads a `-` spelling as its own option where one exists (`-Wall` is
-/// `/Wall`, -Weverything) and drops the GCC-style ones it lacks, so an
-/// argument the parse unaliased out of a cl spelling (`/W3` is -Wall, `/J`
-/// -funsigned-char) is spelled through a cl alias of its option, else
-/// through `/clang:`.
-void render_driver_arg(const Arg& arg,
-                       CompilerFamily family,
-                       llvm::function_ref<void(std::string_view)> cb);
-
-/// The option-table visibility mask of a driver family: CL families see
-/// /U-, /D-style options; the rest exclude them so Unix absolute paths
-/// are not misparsed. None sees flang's.
-unsigned family_visibility(CompilerFamily family);
 
 /// Per-file delta of the build's commands — a compilation database
 /// reload's, and the provisional members' and rule sources' that follow
@@ -335,7 +206,7 @@ public:
     CompilationDatabase(const CompilationDatabase&) = delete;
     CompilationDatabase& operator=(const CompilationDatabase&) = delete;
 
-    /// Where probes of cwd-insensitive configs run, and what entry hashes
+    /// Where probes of cwd-insensitive configs run, and what command hashes
     /// name the paths under relative to (path::portable). Set before load;
     /// empty means the process working directory, and absolute paths.
     void set_workspace_root(CanonicalRef root);
@@ -416,7 +287,7 @@ public:
     /// Reload one source and report the per-file delta of the whole
     /// database against its state before the reload.
     ///
-    /// Entry identity is the entry hash (Frontend view + directory), the
+    /// Entry identity is the command hash (Frontend view + directory), the
     /// same identity the rest of the system uses to pin a CDB entry (e.g.
     /// clice/switchContext). A change confined to codegen-only flags (-g,
     /// -ffunction-sections, ...) is therefore not reported as `changed` — this is
@@ -441,7 +312,7 @@ public:
         return entry_list;
     }
 
-    const CompileConfig& config(ConfigID id) const;
+    const Command& config(CommandID id) const;
 
     /// Apply config-rule edits to a base config, producing a (deduped)
     /// result config. Structured editing on the arg sequence: remove
@@ -449,7 +320,7 @@ public:
     /// commands translate the edits into clang spellings first, the way
     /// the base command itself was translated. Memoized per
     /// (config, rule set).
-    ConfigID apply_rules(ConfigID id, const CommandOptions& options);
+    CommandID apply_edits(CommandID id, const CommandEdits& options);
 
     /// A command written by hand (a rule's default command, the builtin
     /// fallback): normalized once through the entry pipeline with the
@@ -457,32 +328,32 @@ public:
     /// spelling). `directory` is its working directory. Nullopt (logged
     /// once) when the spelling is not a compile command — blank, or a
     /// launcher with nothing to launch.
-    std::optional<ConfigID> intern_command(const Spelling& directory,
+    std::optional<CommandID> intern_command(const Spelling& directory,
                                            llvm::ArrayRef<const char*> arguments);
 
     /// Derive the language of `file` compiled under `id`: walk the
     /// language-selector state machine (-x applies to inputs after it,
     /// -x none resets, /TC and /TP set globally) up to the input slot;
     /// with no governing selector, map the file extension.
-    InputKind input_kind(ConfigID id, llvm::StringRef file);
+    InputKind input_kind(CommandID id, llvm::StringRef file);
 
     /// The selector-forced language of the config's input, empty when the
     /// extension decides (what input_kind() falls back to).
-    llvm::StringRef forced_language(ConfigID id) const;
+    llvm::StringRef forced_language(CommandID id) const;
 
     /// Whether the config's selector forces a C-family language (is_c_family_type).
-    bool forces_c_family(ConfigID id) const;
+    bool forces_c_family(CommandID id) const;
 
     /// The precompiled header the config's command writes: its output, when
     /// it compiles its input as a header (`-x c++-header`) or emits a PCH —
     /// as CMake builds a target's precompiled headers from
     /// `cmake_pch.hxx.cxx`.
-    std::optional<Spelling> pch_output(ConfigID id) const;
+    std::optional<Spelling> pch_output(CommandID id) const;
 
     /// The precompiled headers the config's command may read: its
     /// `-include-pch` file, and beside each header it forces in, the `.pch`
     /// and the `.gch` that clang and GCC load in the header's place.
-    llvm::SmallVector<Spelling, 2> pch_inputs(ConfigID id) const;
+    llvm::SmallVector<Spelling, 2> pch_inputs(CommandID id) const;
 
     /// The entries writing `pch` (pch_output), in storage order.
     llvm::ArrayRef<CompilationEntry> pch_writers(Fid pch) const;
@@ -493,12 +364,12 @@ public:
     /// keeps it. The CDB diff identity, the index snapshot command
     /// identity, and — computed over a rules-applied config — the pin
     /// identity of clice/switchContext.
-    std::uint64_t entry_hash(ConfigID id);
+    std::uint64_t command_hash(CommandID id);
 
-    /// entry_hash formatted as the persistent/protocol form (16 hex chars).
-    std::string entry_hash_hex(ConfigID id);
+    /// command_hash formatted as the persistent/protocol form (16 hex chars).
+    std::string command_hash_hex(CommandID id);
 
-    /// Map each file's path_id to the entry hashes of its entries in storage
+    /// Map each file's path_id to the command hashes of its entries in storage
     /// order (a file may own several entries with different flags; the
     /// first is its default selection) — the identity reload_and_diff()
     /// diffs on and the indexer persists to catch command changes across
@@ -518,7 +389,7 @@ public:
 
     /// Every argument including codegen and discarded ones: the
     /// debug/display form. No file injection.
-    std::vector<const char*> render_full(ConfigID id);
+    std::vector<const char*> render_full(CommandID id);
 
     /// Pre-probe the toolchains of the given refs in parallel (deduped by
     /// toolchain key), so later render() calls hit the cache.
@@ -552,11 +423,11 @@ private:
     /// dedup). `file` is the entry's normalized path used to pick the input
     /// slot among the command's inputs; invalid synthesizes the slot at the
     /// end.
-    std::optional<ConfigID> normalize(const Spelling& directory,
+    std::optional<CommandID> normalize(const Spelling& directory,
                                       Fid file,
                                       llvm::ArrayRef<const char*> arguments);
 
-    std::optional<ConfigID> normalize(const Spelling& directory, Fid file, llvm::StringRef command);
+    std::optional<CommandID> normalize(const Spelling& directory, Fid file, llvm::StringRef command);
 
     /// Expand @file tokens, and an NVCC command's options files, in place,
     /// driver-mode aware (CL commands tokenize with Windows rules).
@@ -575,26 +446,26 @@ private:
                   llvm::ArrayRef<std::string> tokens);
 
     /// Dedup the config; its args are persisted only when it is new.
-    ConfigID save_config(CompileConfig config, llvm::ArrayRef<LocalArg> args);
+    CommandID save_config(Command config, llvm::ArrayRef<LocalArg> args);
 
     llvm::ArrayRef<Arg> persist(llvm::ArrayRef<LocalArg> args);
 
     /// Append the Frontend-view fragments of `id` (the hash input) to out.
-    void render_identity(ConfigID id, std::string& out);
+    void render_identity(CommandID id, std::string& out);
 
     /// Rebuild entry_list from every source's entries, sorted by (file,
     /// source, ordinal).
     void rebuild_entry_list();
 
     std::optional<CompilationEntry> append_test_command(Fid file,
-                                                        std::optional<ConfigID> normalized);
+                                                        std::optional<CommandID> normalized);
 
     std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();
 
     /// Keep all strings (arguments, directories, etc.).
     llvm::UniqueStringSaver strings{*allocator};
 
-    ObjectSet<CompileConfig> configs{allocator.get()};
+    ObjectSet<Command> configs{allocator.get()};
 
     /// The process's file table (borrowed by the project that owns this
     /// database — nested databases share one id space).
@@ -635,10 +506,10 @@ private:
     CanonicalPath workspace_root;
 
     /// Derivation memos, append-only alongside the pools.
-    llvm::DenseMap<std::uint32_t, std::uint64_t> entry_hashes;
+    llvm::DenseMap<std::uint32_t, std::uint64_t> command_hashes;
     llvm::StringMap<std::uint32_t> rule_set_ids;
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> rule_applied;
-    llvm::StringMap<ConfigID> interned_commands;
+    llvm::StringMap<CommandID> interned_commands;
     llvm::DenseMap<std::uint32_t, SearchConfig> search_configs;
 
     std::unique_ptr<Toolchain> chain;
@@ -649,8 +520,8 @@ private:
 namespace llvm {
 
 template <>
-struct DenseMapInfo<clice::CompileConfig> {
-    using T = clice::CompileConfig;
+struct DenseMapInfo<clice::Command> {
+    using T = clice::Command;
 
     static unsigned getHashValue(const T& config) {
         llvm::hash_code hash = llvm::hash_combine(config.directory,

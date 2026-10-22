@@ -4,7 +4,6 @@ module;
 
 module clice;
 
-import :command.argument_parser;
 import :command.command;
 import :command.toolchain;
 import :unittests.utils.temp_dir;
@@ -30,18 +29,18 @@ struct Fixture {
         db.add_command(directory, file, arguments);
         auto& entry = db.candidate_entries(file).front();
         return {entry.file,
-                entry.config,
-                db.input_kind(entry.config, file),
+                entry.command,
+                db.input_kind(entry.command, file),
                 CommandSource::CDBExact};
     }
 
     std::string key(const CommandRef& ref) {
-        return db.toolchain().probe_key_for(ref.config, ref.input);
+        return db.toolchain().probe_key_for(ref.command, ref.input);
     }
 
     /// The command clice compiles `ref` with, resolved through the probe.
     std::vector<const char*> resolve(const CommandRef& ref) {
-        ZASSERT(db.toolchain().resolve(ref.config, ref.input));
+        ZASSERT(db.toolchain().resolve(ref.command, ref.input));
         return db.render(ref);
     }
 };
@@ -107,48 +106,6 @@ bool adjacent(llvm::ArrayRef<const char*> argv, llvm::StringRef first, llvm::Str
 bool contains(llvm::ArrayRef<const char*> argv, llvm::StringRef arg) {
     return std::ranges::contains(argv, arg);
 }
-
-void EXPECT_FAMILY(llvm::StringRef name, CompilerFamily family) {
-    ZASSERT(Toolchain::driver_family(name) == family);
-};
-
-ZEST_CASE(Family) {
-    using enum CompilerFamily;
-
-    EXPECT_FAMILY("gcc", GCC);
-    EXPECT_FAMILY("g++", GCC);
-    EXPECT_FAMILY("cc", GCC);
-    EXPECT_FAMILY("c++", GCC);
-    EXPECT_FAMILY("gcc-13", GCC);
-    EXPECT_FAMILY("g++-13.2", GCC);
-    EXPECT_FAMILY("x86_64-linux-gnu-g++-14", GCC);
-    EXPECT_FAMILY("arm-none-eabi-gcc", GCC);
-
-    EXPECT_FAMILY("clang", Clang);
-    EXPECT_FAMILY("clang++", Clang);
-    EXPECT_FAMILY("clang.exe", Clang);
-    EXPECT_FAMILY("clang++.exe", Clang);
-    EXPECT_FAMILY("clang-20", Clang);
-    EXPECT_FAMILY("clang-20.exe", Clang);
-    EXPECT_FAMILY("clang++-21", Clang);
-    EXPECT_FAMILY("clang-cl", ClangCL);
-    EXPECT_FAMILY("clang-cl-20", ClangCL);
-    EXPECT_FAMILY("clang-cl-20.exe", ClangCL);
-
-    EXPECT_FAMILY("cl.exe", MSVC);
-    /// Windows casing is free-form: CL.exe is how msbuild spells it.
-    EXPECT_FAMILY("CL.exe", MSVC);
-    EXPECT_FAMILY("CL.EXE", MSVC);
-    EXPECT_FAMILY("Clang-Cl.exe", ClangCL);
-    EXPECT_FAMILY("nvcc", NVCC);
-    EXPECT_FAMILY("icx", Intel);
-    EXPECT_FAMILY("icc", Intel);
-    EXPECT_FAMILY("icpc", Intel);
-    EXPECT_FAMILY("dpcpp", Intel);
-
-    EXPECT_FAMILY("zig", Zig);
-    EXPECT_FAMILY("zig.exe", Zig);
-};
 
 ZEST_CASE(InitiallyEmpty) {
     ZEXPECT(!f.db.toolchain().has_cache());
@@ -279,13 +236,13 @@ ZEST_CASE(FailedProbeCooldown, skip = Windows) {
     auto driver = fake_driver("clang", "exit 1\n");
     auto ref = add("a.cpp", {driver.c_str()});
 
-    auto first = f.db.toolchain().resolve(ref.config, ref.input);
+    auto first = f.db.toolchain().resolve(ref.command, ref.input);
     ZASSERT(!first.has_value());
     ZEXPECT(f.db.toolchain().probe_count() == std::size_t(0));
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
 
     ZASSERT(!vfs::remove(driver));
-    auto second = f.db.toolchain().resolve(ref.config, ref.input);
+    auto second = f.db.toolchain().resolve(ref.command, ref.input);
     ZASSERT(!second.has_value());
     ZEXPECT(second.error() == first.error());
 }
@@ -301,7 +258,7 @@ ZEST_CASE(FailedProbeRetries, skip = Windows) {
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(2));
 
     fake_clang(clang_job);
-    ZEXPECT(f.db.toolchain().resolve(a.config, a.input).has_value());
+    ZEXPECT(f.db.toolchain().resolve(a.command, a.input).has_value());
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
     f.db.warm(refs);
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(0));
@@ -311,7 +268,7 @@ ZEST_CASE(FailedProbeRetries, skip = Windows) {
 ZEST_CASE(NoCompilerJob, skip = Windows) {
     /// A driver that is neither GCC nor clang (Intel's icc).
     auto ref = add("a.cpp", {fake_driver("icc", "").c_str()});
-    auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
+    auto resolved = f.db.toolchain().resolve(ref.command, ref.input);
     ZASSERT(!resolved);
     ZEXPECT(llvm::StringRef(resolved.error()).contains("runs no compiler job"));
 }
@@ -328,8 +285,8 @@ ZEST_CASE(WarmPartialFailure, skip = Windows) {
     // so later resolve() calls fail fast without re-probing the driver.
     ZEXPECT(f.db.toolchain().probe_count() == std::size_t(1));
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
-    ZEXPECT(f.db.toolchain().resolve(good.config, good.input).has_value());
-    ZEXPECT(!f.db.toolchain().resolve(bad.config, bad.input).has_value());
+    ZEXPECT(f.db.toolchain().resolve(good.command, good.input).has_value());
+    ZEXPECT(!f.db.toolchain().resolve(bad.command, bad.input).has_value());
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
 }
 
@@ -345,7 +302,7 @@ ZEST_CASE(WarmDedupesProbes, skip = Windows) {
 
     // With the driver gone, only the probe cache can still resolve.
     ZASSERT(!vfs::remove(driver));
-    ZEXPECT(f.db.toolchain().resolve(a.config, a.input).has_value());
+    ZEXPECT(f.db.toolchain().resolve(a.command, a.input).has_value());
 }
 
 ZEST_CASE(WarmBoundsDrivers, skip = Windows) {
@@ -662,7 +619,7 @@ echo 'Target: x86_64-linux-gnu' >&2
 echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet probe.cpp -flto -dM' >&2
 )");
     auto ref = add("a.cpp", {driver.c_str(), "-flto=auto", "-c"});
-    ZEXPECT(f.db.toolchain().resolve(ref.config, ref.input).has_value());
+    ZEXPECT(f.db.toolchain().resolve(ref.command, ref.input).has_value());
 }
 
 ZEST_CASE(GCCFailureRejected, skip = Windows) {
@@ -674,7 +631,7 @@ echo 'cc1plus: fatal error: missing.h: No such file or directory' >&2
 exit 1
 )");
     auto ref = add("a.cpp", {driver.c_str(), "-c"});
-    auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
+    auto resolved = f.db.toolchain().resolve(ref.command, ref.input);
     ZASSERT(!resolved);
     ZEXPECT(llvm::StringRef(resolved.error()).contains("missing.h"));
 }
@@ -716,7 +673,7 @@ ZEST_CASE(NVCCUnknownHost, skip = Windows) {
     /// A host compiler that is neither GCC nor clang.
     auto nvcc = fake_nvcc(fake_driver("icpc", ""));
     auto ref = add("a.cpp", {nvcc.c_str(), "-c"});
-    auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
+    auto resolved = f.db.toolchain().resolve(ref.command, ref.input);
     ZASSERT(!resolved);
     ZEXPECT(llvm::StringRef(resolved.error()).starts_with("Unsupported nvcc host compiler"));
 }
@@ -724,7 +681,7 @@ ZEST_CASE(NVCCUnknownHost, skip = Windows) {
 /// `ref` under a rule turning the toolchain query off.
 CommandRef unqueried(const CommandRef& ref) {
     return {ref.file,
-            f.db.apply_rules(ref.config, {.query_toolchain = false}),
+            f.db.apply_edits(ref.command, {.query_toolchain = false}),
             ref.input,
             ref.source};
 }
@@ -737,7 +694,7 @@ ZEST_CASE(UnqueriedRunsNothing, skip = Windows) {
     auto ref = add("a.cpp", {driver.c_str(), "-std=c++17"});
     auto off = unqueried(ref);
     ZEXPECT(f.key(off) != f.key(ref));
-    ZEXPECT(f.db.entry_hash(off.config) != f.db.entry_hash(ref.config));
+    ZEXPECT(f.db.command_hash(off.command) != f.db.command_hash(ref.command));
 
     llvm::SmallVector<CommandRef> refs = {off};
     f.db.warm(refs);
@@ -746,7 +703,7 @@ ZEST_CASE(UnqueriedRunsNothing, skip = Windows) {
     ZEXPECT(adjacent(argv, "-resource-dir", resource_dir()));
     ZEXPECT(!vfs::exists(ran));
 
-    ZEXPECT(!f.db.toolchain().resolve(ref.config, ref.input));
+    ZEXPECT(!f.db.toolchain().resolve(ref.command, ref.input));
     ZEXPECT(vfs::exists(ran));
 }
 
@@ -763,7 +720,7 @@ ZEST_CASE(NoJobSaysWhy) {
     // A command clang's driver builds no job for names the driver's reason.
     auto argv0 = tmp.path("g++");
     auto ref = unqueried(add("a.cpp", {argv0.c_str(), "-x", "bogus"}));
-    auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
+    auto resolved = f.db.toolchain().resolve(ref.command, ref.input);
     ZASSERT(!resolved);
     ZEXPECT(llvm::StringRef(resolved.error()).contains("language not recognized: 'bogus'"));
 }

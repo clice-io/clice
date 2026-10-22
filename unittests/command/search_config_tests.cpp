@@ -22,7 +22,7 @@ SearchConfig extract(llvm::ArrayRef<const char*> args, llvm::StringRef directory
     CompilationDatabase db{file_table};
     db.add_command(directory, "main.cpp", args);
     auto& entry = db.candidate_entries(path::join(directory, "main.cpp")).front();
-    return extract_search_config(db.config(entry.config).args, directory);
+    return extract_search_config(db.config(entry.command).args, directory);
 }
 
 /// A search directory as extraction spells it: absolute, canonically.

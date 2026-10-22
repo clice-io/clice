@@ -4,9 +4,9 @@ module;
 
 module clice;
 
-import :command.cygwin;
-import :unittests.utils;
 import :unittests.utils.temp_dir;
+import :unittests.utils;
+import :vfs.cygwin;
 
 namespace clice::testing {
 namespace {

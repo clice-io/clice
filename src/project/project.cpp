@@ -82,10 +82,10 @@ CDBDiff Project::refresh_provisional() {
         // context, as the part of a unity build does.
         auto hosted = llvm::any_of(dep_graph.find_host_sources(file),
                                    [&](Fid root) { return root != file && build.declared(root); });
-        std::optional<ConfigID> command;
+        std::optional<CommandID> command;
         if(!hosted) {
             if(auto lender = command_lender(*this, file)) {
-                command = build.lend(lender->config,
+                command = build.lend(lender->command,
                                      file_table.resolve(lender->unit),
                                      file_table.resolve(file));
             }

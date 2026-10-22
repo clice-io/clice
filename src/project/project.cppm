@@ -46,7 +46,7 @@ struct HeaderContext {
     /// hosts); empty = the first entry.
     std::string host_command_hash;
 
-    /// Base entry hash of that entry (before rules): stays unique when
+    /// Base command hash of that entry (before rules): stays unique when
     /// rules collapse two candidates' applied hashes onto one value.
     std::string host_base_hash;
 
@@ -93,7 +93,7 @@ struct Selection {
 
     std::string command_hash;  ///< Pinned CDB entry (rules applied); empty = none.
 
-    /// Base entry hash of the pinned entry, resolved at pin time. The
+    /// Base command hash of the pinned entry, resolved at pin time. The
     /// applied hash is the protocol identity; the base disambiguates
     /// candidates whose applied hashes collapse under the current rules.
     std::string base_hash;

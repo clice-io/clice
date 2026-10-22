@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.file_kind;
 import :feature.feature;
 import :index.hierarchy;
 import :index.navigation;

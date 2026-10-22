@@ -7,51 +7,20 @@ module;
 
 module clice;
 
+import :command.argument;
 import :command.command;
-import :command.cygwin;
+import :command.file_kind;
 import :command.nvcc;
 import :command.search_config;
 import :command.toolchain;
 import :support.anomaly;
 import :support.logging;
 import :support.shell;
+import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
-
-clang::driver::types::ID suffix_type(llvm::StringRef path) {
-    namespace types = clang::driver::types;
-    auto ext = path::extension(path);
-    ext.consume_front(".");
-    return ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
-}
-
-llvm::StringRef extension_language(llvm::StringRef path, bool cxx) {
-    namespace types = clang::driver::types;
-    auto type = suffix_type(path);
-    if(type == types::TY_INVALID) {
-        auto ext = path::extension(path);
-        ext.consume_front(".");
-        return ext == "cuh" ? "cuda" : ext;
-    }
-    return types::getTypeName(cxx ? types::lookupCXXTypeForCType(type) : type);
-}
-
-bool is_header_path(llvm::StringRef path) {
-    namespace types = clang::driver::types;
-    auto type = suffix_type(path);
-    return type == types::TY_INVALID || types::onlyPrecompileType(type);
-}
-
-bool is_source_path(llvm::StringRef path) {
-    return !is_header_path(path) && clang::driver::types::isDerivedFromC(suffix_type(path));
-}
-
-bool is_other_language_path(llvm::StringRef path) {
-    auto type = suffix_type(path);
-    return type != clang::driver::types::TY_INVALID && !is_c_family_type(type);
-}
 
 std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
     if(llvm::json::isUTF8(bytes)) {
@@ -60,17 +29,11 @@ std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
     return llvm::json::fixUTF8(bytes);
 }
 
-bool is_context_header_path(llvm::StringRef path) {
-    return path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
-           path.ends_with(".tpp") || path.ends_with(".ipp") || path.ends_with(".tcc") ||
-           path.ends_with(".txx");
-}
-
 namespace {
 
 namespace ranges = std::ranges;
 
-/// Version salt of the persistent command identity: entry hashes change
+/// Version salt of the persistent command identity: command hashes change
 /// wholesale on schema changes even when old and new renders happen to
 /// produce the same bytes.
 constexpr llvm::StringRef identity_salt = "clice-cmd-v9";
@@ -102,29 +65,6 @@ llvm::StringRef anchored(unsigned id,
     return strings.save(spelled(value, anchor, mounts).str());
 }
 
-/// Whether `args` hold dependency file options alone. The preprocessor's -MD
-/// and -MMD take the file they write as their argument, which the table
-/// reads as an input.
-bool dependency_options(llvm::ArrayRef<const char*> args) {
-    auto options = kota::option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
-    bool file_next = false;
-    for(auto& parsed: option::table().parse(args, options)) {
-        if(!parsed) {
-            return false;
-        }
-        if(file_next && parsed->id == option::OPT_INPUT) {
-            file_next = false;
-            continue;
-        }
-        if(auto opt = option::table().option(parsed->id);
-           !opt || !opt->matches(option::OPT_M_Group)) {
-            return false;
-        }
-        file_next = parsed->id == option::OPT_MD || parsed->id == option::OPT_MMD;
-    }
-    return true;
-}
-
 /// Whether clang knows the warning option `-W<value>`, read the way its
 /// frontend reads one (clang/lib/Basic/Warnings.cpp): a warning group,
 /// negated or not, or one of the forms that name none.
@@ -148,40 +88,6 @@ bool clang_warning(llvm::StringRef value) {
                ((value.consume_front("=") || value.consume_front("-")) && group(value));
     }
     return group(value);
-}
-
-ArgClass classify(unsigned id, llvm::ArrayRef<const char*> values) {
-    /// -fmodule-file has two shapes: `name=path` names a prebuilt module
-    /// (clice builds its own PCMs — irrelevant), a bare path is a header
-    /// unit that stays part of the frontend semantics.
-    if(id == option::OPT_fmodule_file) {
-        bool named = values.size() == 1 && llvm::StringRef(values[0]).contains('=');
-        return named ? ArgClass::Discarded : ArgClass::Semantic;
-    }
-    /// Kbuild hands the preprocessor `-Wp,-MMD,<depfile>` in every command:
-    /// it goes as `-MMD -MF <depfile>` does, or each command would key a
-    /// probe of its own.
-    if(id == option::OPT_Wp_COMMA && dependency_options(values)) {
-        return ArgClass::Discarded;
-    }
-    /// g++ takes an LTO job count (-flto=8), which clang rejects.
-    if(id == option::OPT_flto_EQ && values.size() == 1 &&
-       !llvm::is_contained({"full", "thin", "none"}, llvm::StringRef(values[0]))) {
-        return ArgClass::Discarded;
-    }
-    if(is_discarded_option(id)) {
-        return ArgClass::Discarded;
-    }
-    if(is_codegen_option(id)) {
-        return ArgClass::Codegen;
-    }
-    if(is_user_content_option(id)) {
-        return ArgClass::UserContent;
-    }
-    if(is_diagnostics_option(id)) {
-        return ArgClass::Diagnostics;
-    }
-    return ArgClass::Semantic;
 }
 
 /// clang's own extension→language mapping (Types.def), the prediction of
@@ -287,97 +193,6 @@ std::size_t wrapper_prefix_len(llvm::ArrayRef<const char*> argv) {
 
 }  // namespace
 
-void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
-    if(arg.opt_id == option::OPT_UNKNOWN) {
-        cb(arg.spelling);
-        for(const char* value: arg.values) {
-            cb(value);
-        }
-        return;
-    }
-    kota::option::ParsedArg parsed;
-    parsed.id = arg.opt_id;
-    for(const char* value: arg.values) {
-        parsed.add_value(value);
-    }
-    auto forward = [&](std::string_view fragment) {
-        cb(fragment);
-    };
-    option::table().render(parsed, forward);
-}
-
-void render_driver_arg(const Arg& arg,
-                       CompilerFamily family,
-                       llvm::function_ref<void(std::string_view)> cb) {
-    if(family != CompilerFamily::MSVC && family != CompilerFamily::ClangCL) {
-        render_arg(arg, cb);
-        return;
-    }
-
-    auto reads_back = [&](std::vector<std::string>& fragments) {
-        auto parse_options = kota::option::ParseOptions{.visibility = option::CLOption};
-        std::size_t count = 0;
-        bool same = true;
-        for(auto& parsed: option::table().parse(fragments, parse_options)) {
-            count += 1;
-            same = same && parsed && parsed->id == arg.opt_id &&
-                   llvm::equal(parsed->values,
-                               arg.values,
-                               [](std::string_view lhs, const char* rhs) { return lhs == rhs; });
-        }
-        return same && count == 1;
-    };
-    auto emit = [&](llvm::ArrayRef<std::string> fragments) {
-        for(auto& fragment: fragments) {
-            cb(fragment);
-        }
-    };
-
-    std::vector<std::string> fragments;
-    render_arg(arg, [&](std::string_view fragment) { fragments.emplace_back(fragment); });
-    if(reads_back(fragments)) {
-        emit(fragments);
-        return;
-    }
-
-    // A cl spelling of the option keeps its place among the arguments,
-    // where order decides (`/W3 -Wno-unused-variable`).
-    for(auto& option: option::table().option_infos) {
-        if(option.alias_id != arg.opt_id || !(option.visibility & option::CLOption)) {
-            continue;
-        }
-        std::vector<std::string> spelled{std::string(option.prefixed_name)};
-        if(option.kind != kota::option::Kind::Flag) {
-            if(arg.values.size() != 1) {
-                continue;
-            }
-            spelled[0] += arg.values[0];
-        }
-        if(reads_back(spelled)) {
-            emit(spelled);
-            return;
-        }
-    }
-
-    // The driver appends `/clang:` arguments after all others.
-    for(auto& fragment: fragments) {
-        cb("/clang:" + fragment);
-    }
-}
-
-unsigned family_visibility(CompilerFamily family) {
-    /// Flang's own options shadow clang's: -Wextra and -Wconversion have
-    /// flang-only spellings that flang ignores, matched before -W<warning>.
-    auto flang = static_cast<unsigned>(option::FlangOption | option::FC1Option);
-    /// Exclude the slash-prefixed CL and DXC options otherwise (/D and /I
-    /// carry both bits), to prevent /U, /D, /I from matching Unix absolute
-    /// paths like /Users/... .
-    if(family == CompilerFamily::MSVC || family == CompilerFamily::ClangCL) {
-        return ~flang;
-    }
-    return ~(flang | option::CLOption | option::DXCOption);
-}
-
 CompilationDatabase::CompilationDatabase(FileTable& files) :
     file_table(files), chain(std::make_unique<Toolchain>(*this)) {}
 
@@ -387,7 +202,7 @@ void CompilationDatabase::set_workspace_root(CanonicalRef root) {
     workspace_root = root;
 }
 
-const CompileConfig& CompilationDatabase::config(ConfigID id) const {
+const Command& CompilationDatabase::config(CommandID id) const {
     return *configs.get(static_cast<std::uint32_t>(id));
 }
 
@@ -404,11 +219,11 @@ LocalArg CompilationDatabase::local_arg(
     for(llvm::StringRef value: parsed->values) {
         local.values.push_back(strings.save(value).data());
     }
-    local.cls = classify(local.opt_id, local.values);
+    local.cls = classify_option(local.opt_id, local.values);
     return local;
 }
 
-ConfigID CompilationDatabase::save_config(CompileConfig config, llvm::ArrayRef<LocalArg> args) {
+CommandID CompilationDatabase::save_config(Command config, llvm::ArrayRef<LocalArg> args) {
     llvm::SmallVector<Arg, 32> view;
     for(auto& arg: args) {
         view.push_back(arg.view());
@@ -419,7 +234,7 @@ ConfigID CompilationDatabase::save_config(CompileConfig config, llvm::ArrayRef<L
     if(stored->args.data() == view.data()) {
         stored->args = persist(args);
     }
-    return ConfigID(id);
+    return CommandID(id);
 }
 
 llvm::ArrayRef<Arg> CompilationDatabase::persist(llvm::ArrayRef<LocalArg> args) {
@@ -431,7 +246,7 @@ llvm::ArrayRef<Arg> CompilationDatabase::persist(llvm::ArrayRef<LocalArg> args) 
     return {persisted, args.size()};
 }
 
-std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory,
+std::optional<CommandID> CompilationDatabase::normalize(const Spelling& directory,
                                                        Fid file,
                                                        llvm::ArrayRef<const char*> arguments) {
     if(arguments.empty()) {
@@ -449,7 +264,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
         arguments = arguments.drop_front(wrapper_len);
     }
 
-    CompileConfig config;
+    Command config;
     config.directory = strings.save(directory.str()).data();
     llvm::StringRef driver = arguments[0];
     config.driver =
@@ -457,7 +272,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
             .data();
     arguments = arguments.drop_front();
 
-    config.family = Toolchain::driver_family(config.driver);
+    config.family = driver_family(config.driver);
 
     /// zig cc / zig c++: the two tokens together are the driver identity.
     if(config.family == CompilerFamily::Zig && !arguments.empty() &&
@@ -472,7 +287,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
         for(llvm::StringRef token: argv) {
             if(token.consume_front("--driver-mode=")) {
                 config.family = token == "cl" ? CompilerFamily::ClangCL
-                                              : Toolchain::driver_family(config.driver);
+                                              : driver_family(config.driver);
             }
         }
     };
@@ -656,7 +471,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
     return save_config(config, args);
 }
 
-std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory,
+std::optional<CommandID> CompilationDatabase::normalize(const Spelling& directory,
                                                        Fid file,
                                                        llvm::StringRef command) {
     llvm::BumpPtrAllocator local;
@@ -712,7 +527,7 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
         }
 
         llvm::SmallVector<const char*, 32> inner;
-        if(family == CompilerFamily::MSVC || family == CompilerFamily::ClangCL) {
+        if(cl_mode(family)) {
             llvm::cl::TokenizeWindowsCommandLineFull(text, saver, inner);
         } else {
             llvm::cl::TokenizeGNUCommandLine(text, saver, inner);
@@ -749,7 +564,7 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
     tokens = std::move(expanded);
 }
 
-void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
+void CompilationDatabase::render_identity(CommandID id, std::string& out) {
     auto& cfg = config(id);
     auto append = [&](std::string_view fragment) {
         out += fragment;
@@ -800,8 +615,8 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
     }
 }
 
-std::uint64_t CompilationDatabase::entry_hash(ConfigID id) {
-    auto [it, inserted] = entry_hashes.try_emplace(static_cast<std::uint32_t>(id), 0);
+std::uint64_t CompilationDatabase::command_hash(CommandID id) {
+    auto [it, inserted] = command_hashes.try_emplace(static_cast<std::uint32_t>(id), 0);
     if(!inserted) {
         return it->second;
     }
@@ -816,8 +631,8 @@ std::uint64_t CompilationDatabase::entry_hash(ConfigID id) {
     return it->second;
 }
 
-std::string CompilationDatabase::entry_hash_hex(ConfigID id) {
-    return std::format("{:016x}", entry_hash(id));
+std::string CompilationDatabase::command_hash_hex(CommandID id) {
+    return std::format("{:016x}", command_hash(id));
 }
 
 void CompilationDatabase::rebuild_entry_list() {
@@ -831,7 +646,7 @@ void CompilationDatabase::rebuild_entry_list() {
 
     writers.clear();
     for(auto& entry: entry_list) {
-        if(auto output = pch_output(entry.config)) {
+        if(auto output = pch_output(entry.command)) {
             writers[file_table.intern(*output)].push_back(entry);
         }
     }
@@ -1123,7 +938,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
         new_entries.push_back({.file = path_id,
-                               .config = *normalized,
+                               .command = *normalized,
                                .source = id,
                                .ordinal = index,
                                .spelling = spelling});
@@ -1157,7 +972,7 @@ llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>
     CompilationDatabase::command_hash_snapshot() {
     llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>> snapshot;
     for(auto& entry: entry_list) {
-        snapshot[entry.file].push_back(entry_hash_hex(entry.config));
+        snapshot[entry.file].push_back(command_hash_hex(entry.command));
     }
     return snapshot;
 }
@@ -1216,7 +1031,7 @@ bool CompilationDatabase::has_entry(llvm::StringRef file) {
     return !candidate_entries(file).empty();
 }
 
-llvm::StringRef CompilationDatabase::forced_language(ConfigID id) const {
+llvm::StringRef CompilationDatabase::forced_language(CommandID id) const {
     return language_state_at_slot(config(id).args);
 }
 
@@ -1224,7 +1039,7 @@ llvm::StringRef CompilationDatabase::forced_language(ConfigID id) const {
 /// under any version or target affix (`x86_64-linux-gnu-g++-13`), and
 /// `zig c++` — unless a `--driver-mode=`, the last one winning, says
 /// otherwise.
-static bool cxx_driver(const CompileConfig& config) {
+static bool cxx_driver(const Command& config) {
     if(config.subcommand) {
         return llvm::StringRef(config.subcommand) == "c++";
     }
@@ -1239,7 +1054,7 @@ static bool cxx_driver(const CompileConfig& config) {
     return name.rtrim("0123456789.-").ends_with("++");
 }
 
-std::optional<Spelling> CompilationDatabase::pch_output(ConfigID id) const {
+std::optional<Spelling> CompilationDatabase::pch_output(CommandID id) const {
     namespace types = clang::driver::types;
     auto type = types::lookupTypeForTypeSpecifier(forced_language(id).str().c_str());
     bool emits = type != types::TY_INVALID && types::onlyPrecompileType(type);
@@ -1257,7 +1072,7 @@ std::optional<Spelling> CompilationDatabase::pch_output(ConfigID id) const {
     return Spelling::absolute(output);
 }
 
-llvm::SmallVector<Spelling, 2> CompilationDatabase::pch_inputs(ConfigID id) const {
+llvm::SmallVector<Spelling, 2> CompilationDatabase::pch_inputs(CommandID id) const {
     auto& args = config(id).args;
     auto directory = Spelling::absolute(config(id).directory);
     for(auto& arg: args) {
@@ -1287,12 +1102,12 @@ llvm::ArrayRef<CompilationEntry> CompilationDatabase::pch_writers(Fid pch) const
                                : llvm::ArrayRef<CompilationEntry>();
 }
 
-bool CompilationDatabase::forces_c_family(ConfigID id) const {
+bool CompilationDatabase::forces_c_family(CommandID id) const {
     namespace types = clang::driver::types;
     return is_c_family_type(types::lookupTypeForTypeSpecifier(forced_language(id).str().c_str()));
 }
 
-InputKind CompilationDatabase::input_kind(ConfigID id, llvm::StringRef file) {
+InputKind CompilationDatabase::input_kind(CommandID id, llvm::StringRef file) {
     auto state = language_state_at_slot(config(id).args);
     /// With no mapping the raw extension keys the probe (the driver sees a
     /// temp file with the same extension, exactly as confused as it would
@@ -1301,7 +1116,7 @@ InputKind CompilationDatabase::input_kind(ConfigID id, llvm::StringRef file) {
     return {strings.save(language).data()};
 }
 
-ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& options) {
+CommandID CompilationDatabase::apply_edits(CommandID id, const CommandEdits& options) {
     if(options.empty()) {
         return id;
     }
@@ -1330,7 +1145,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     auto [memo, inserted] =
         rule_applied.try_emplace({static_cast<std::uint32_t>(id), rule_set_id}, 0);
     if(!inserted) {
-        return ConfigID(memo->second);
+        return CommandID(memo->second);
     }
 
     const auto& cfg = config(id);
@@ -1473,7 +1288,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         auto& remove = wanted.option;
         // Among options of the remove's kind: `-W*` takes every warning,
         // not the preprocessor's `-Wp,-D...`.
-        if(wanted.prefix && arg.cls == classify(remove.id, {})) {
+        if(wanted.prefix && arg.cls == classify_option(remove.id, {})) {
             // As the argument renders: its option's name, with the value
             // joined to it when the option joins one (`-Wno-unused`).
             Arg view;
@@ -1607,7 +1422,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     // A rule may take `--driver-mode=cl` out of a command, or put it in:
     // the family follows the edited command's last driver mode, as it
     // follows the loaded one's.
-    edited_config.family = Toolchain::driver_family(cfg.driver);
+    edited_config.family = driver_family(cfg.driver);
     for(auto& local: llvm::reverse(edited)) {
         if(local.opt_id == option::OPT_driver_mode && local.values.size() == 1) {
             if(llvm::StringRef(local.values[0]) == "cl") {
@@ -1622,14 +1437,14 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     return result_id;
 }
 
-std::optional<ConfigID> CompilationDatabase::intern_command(const Spelling& directory,
+std::optional<CommandID> CompilationDatabase::intern_command(const Spelling& directory,
                                                             llvm::ArrayRef<const char*> arguments) {
     std::string key = directory.str();
     for(const char* argument: arguments) {
         key += '\0';
         key += argument;
     }
-    auto [it, inserted] = interned_commands.try_emplace(key, invalid_config);
+    auto [it, inserted] = interned_commands.try_emplace(key, invalid_command);
     if(inserted) {
         if(auto normalized = normalize(directory, Fid{}, arguments)) {
             it->second = *normalized;
@@ -1637,7 +1452,7 @@ std::optional<ConfigID> CompilationDatabase::intern_command(const Spelling& dire
             LOG_WARN("Not a compile command: {}", print_argv(arguments));
         }
     }
-    if(it->second == invalid_config) {
+    if(it->second == invalid_command) {
         return std::nullopt;
     }
     return it->second;
@@ -1645,7 +1460,7 @@ std::optional<ConfigID> CompilationDatabase::intern_command(const Spelling& dire
 
 std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& ref,
                                                             const RenderOptions& opts) {
-    auto& cfg = config(ref.config);
+    auto& cfg = config(ref.command);
     auto source = input_path(ref.file);
 
     std::vector<const char*> argv;
@@ -1699,8 +1514,7 @@ std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& re
                     ext.consume_front(".");
                     auto driver_lang = driver_language_for_extension(ext);
                     if(driver_lang != llvm::StringRef(ref.input.value)) {
-                        if(cfg.family == CompilerFamily::MSVC ||
-                           cfg.family == CompilerFamily::ClangCL) {
+                        if(cl_mode(cfg.family)) {
                             if(llvm::StringRef(ref.input.value) == "c++") {
                                 emit("/TP");
                             } else if(llvm::StringRef(ref.input.value) == "c") {
@@ -1741,7 +1555,7 @@ llvm::StringRef CompilationDatabase::input_path(Fid file) const {
 
 std::vector<const char*> CompilationDatabase::render(const CommandRef& ref,
                                                      const RenderOptions& opts) {
-    auto resolved = chain->resolve(ref.config, ref.input);
+    auto resolved = chain->resolve(ref.command, ref.input);
     if(!resolved) {
         LOG_WARN("Toolchain resolve failed for {}: {}",
                  file_table.resolve(ref.file),
@@ -1788,7 +1602,7 @@ std::vector<const char*> CompilationDatabase::render(const CommandRef& ref,
     return argv;
 }
 
-std::vector<const char*> CompilationDatabase::render_full(ConfigID id) {
+std::vector<const char*> CompilationDatabase::render_full(CommandID id) {
     auto& cfg = config(id);
     std::vector<const char*> argv;
     argv.reserve(cfg.args.size() + 2);
@@ -1809,19 +1623,19 @@ std::vector<const char*> CompilationDatabase::render_full(ConfigID id) {
 }
 
 void CompilationDatabase::warm(llvm::ArrayRef<CommandRef> refs) {
-    llvm::SmallVector<std::pair<ConfigID, InputKind>> pairs;
+    llvm::SmallVector<std::pair<CommandID, InputKind>> pairs;
     pairs.reserve(refs.size());
     for(auto& ref: refs) {
-        pairs.push_back({ref.config, ref.input});
+        pairs.push_back({ref.command, ref.input});
     }
     chain->warm(pairs);
 }
 
 SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
-    llvm::StringRef directory = config(ref.config).directory;
-    auto resolved = chain->resolve(ref.config, ref.input);
+    llvm::StringRef directory = config(ref.command).directory;
+    auto resolved = chain->resolve(ref.command, ref.input);
     if(!resolved) {
-        return extract_search_config(config(ref.config).args, directory);
+        return extract_search_config(config(ref.command).args, directory);
     }
     auto [it, inserted] = search_configs.try_emplace(*resolved);
     if(inserted) {
@@ -1830,7 +1644,7 @@ SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
         // passes it on: clang-cl's /imsvc reaches cc1 as -internal-isystem.
         llvm::StringSet<> named;
         auto base = Spelling::absolute(directory);
-        for(auto& arg: config(ref.config).args) {
+        for(auto& arg: config(ref.command).args) {
             for(auto& value: arg.values) {
                 named.insert(Spelling(value, base).str());
             }
@@ -1846,7 +1660,7 @@ SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
 }
 
 std::optional<CompilationEntry>
-    CompilationDatabase::append_test_command(Fid file, std::optional<ConfigID> normalized) {
+    CompilationDatabase::append_test_command(Fid file, std::optional<CommandID> normalized) {
     if(!normalized) {
         return std::nullopt;
     }
@@ -1861,7 +1675,7 @@ std::optional<CompilationEntry>
     auto id = SourceID(anonymous - source_files.begin());
     auto& source = *anonymous;
     CompilationEntry entry{.file = file,
-                           .config = *normalized,
+                           .command = *normalized,
                            .source = id,
                            .ordinal = static_cast<std::uint32_t>(source.entries.size())};
     source.entries.push_back(entry);

@@ -58,7 +58,7 @@ struct Layout {
         auto ref =
             commands.empty()
                 ? build.resolve(id, build.builtin(file), CommandSource::Fallback, file, file)
-                : build.resolve(id, commands.front().config, commands.front().source, file, file);
+                : build.resolve(id, commands.front().command, commands.front().source, file, file);
         return cdb.render_driver(ref);
     }
 
@@ -266,7 +266,7 @@ ZEST_CASE(PatternRootsEnumerate) {
     ZEXPECT(build.commands(files.intern(Spelling::absolute(tmp.path("other/skip.cpp")))).empty());
     auto util = build.commands(files.intern(Spelling::absolute(tmp.path("lib/util.cpp"))));
     ZASSERT(util.size() == 1U);
-    ZEXPECT(has_arg(cdb.render_full(util.front().config), "LIB"));
+    ZEXPECT(has_arg(cdb.render_full(util.front().command), "LIB"));
 };
 
 ZEST_CASE(EditHashKeepsAnchor) {
@@ -424,7 +424,7 @@ ZEST_CASE(InvalidDefaultCommandIgnored) {
     ZEXPECT(build.commands(main).empty());
     ZEXPECT(build.members().size() == 1U);
     ZEXPECT(build.builtin(CanonicalPath(Spelling::absolute(tmp.path("main.cpp")))) !=
-            invalid_config);
+            invalid_command);
 };
 
 ZEST_CASE(UnmatchableRuleDeclaresNothing) {
@@ -718,7 +718,7 @@ ZEST_CASE(InactiveConfigurationExcluded) {
     auto main = files.intern(Spelling::absolute(tmp.path("main.cpp")));
     auto candidates = build.entries(main);
     ZASSERT(candidates.size() == 1U);
-    ZEXPECT(has_arg(cdb.render_full(candidates.front().config), "RELEASE"));
+    ZEXPECT(has_arg(cdb.render_full(candidates.front().command), "RELEASE"));
     ZEXPECT(build.edits(CanonicalPath(Spelling::absolute(tmp.path("main.cpp")))).empty());
 };
 
@@ -819,19 +819,19 @@ ZEST_CASE(RuleTurnsQueryOff) {
     auto command = std::format("clang++ {}", vendor.str());
     auto entry = *cdb.add_command(tmp.root.str(), vendor.str(), llvm::StringRef(command));
     auto unqueried =
-        build.resolve(entry.file, entry.config, CommandSource::CDBExact, vendor_file, vendor_file);
+        build.resolve(entry.file, entry.command, CommandSource::CDBExact, vendor_file, vendor_file);
     auto queried = build.resolve(files.intern(own_file),
-                                 entry.config,
+                                 entry.command,
                                  CommandSource::Inferred,
                                  own_file,
                                  own_file);
-    ZEXPECT(!cdb.config(unqueried.config).query_toolchain);
-    ZEXPECT(cdb.config(queried.config).query_toolchain);
+    ZEXPECT(!cdb.config(unqueried.command).query_toolchain);
+    ZEXPECT(cdb.config(queried.command).query_toolchain);
 
-    auto lent = build.lend(entry.config, vendor_file, own_file);
+    auto lent = build.lend(entry.command, vendor_file, own_file);
     auto borrowed =
         build.resolve(files.intern(own_file), lent, CommandSource::Inferred, own_file, own_file);
-    ZEXPECT(!cdb.config(borrowed.config).query_toolchain);
+    ZEXPECT(!cdb.config(borrowed.command).query_toolchain);
 };
 
 ZEST_CASE(LendMergesRules) {
@@ -855,7 +855,7 @@ ZEST_CASE(LendMergesRules) {
 
     CanonicalPath identity(Spelling::absolute(tmp.path("new/n.cpp")));
     CanonicalRef file = identity;
-    auto lent = build.lend(lender.config, files.resolve(lender.file), file);
+    auto lent = build.lend(lender.command, files.resolve(lender.file), file);
     auto argv = cdb.render_driver(
         build.resolve(files.intern(file), lent, CommandSource::Inferred, file, file));
     auto count = [&](llvm::StringRef macro) {

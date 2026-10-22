@@ -38,6 +38,25 @@ ZEST_CASE(JoinedReadsBack) {
     ZEXPECT(tokenize(join_command(arguments)) == arguments);
 }
 
+ZEST_CASE(PrintArgv) {
+    std::vector<const char*> args = {"clang++", "-std=c++20", "main.cpp"};
+    ZASSERT(print_argv(args) == "clang++ -std=c++20 main.cpp");
+
+    std::vector<const char*> empty = {};
+    ZASSERT(print_argv(empty) == "");
+
+    std::vector<const char*> spaced = {"clang++", "-DFOO=hello world"};
+    auto result = print_argv(spaced);
+    ZEXPECT(llvm::StringRef(result).contains("\""));
+
+    std::vector<const char*> escaped = {"clang++", "-DPATH=C:\\foo"};
+    auto result2 = print_argv(escaped);
+    ZEXPECT(llvm::StringRef(result2).contains("\""));
+
+    std::vector<const char*> unicode = {"clang++", "-I/home/张三/头文件", "-DNAME=a b\tç"};
+    ZEXPECT(print_argv(unicode) == R"(clang++ -I/home/张三/头文件 "-DNAME=a b\x09ç")");
+}
+
 };  // ZEST_SUITE(Shell)
 
 }  // namespace

@@ -8,6 +8,7 @@ module;
 module clice;
 
 import :command.command;
+import :command.file_kind;
 import :compile.tidy;
 import :config.config;
 import :feature.feature;
@@ -656,8 +657,8 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
     }
     for(auto member: members) {
         auto path = files.resolve(member);
-        for(auto& command: build.commands(member)) {
-            auto ref = build.resolve(member, command.config, command.source, path, path);
+        for(auto& candidate: build.commands(member)) {
+            auto ref = build.resolve(member, candidate.command, candidate.source, path, path);
             auto search = project.cdb.search_config(ref);
             for(auto& dir: llvm::ArrayRef(search.dirs).drop_front(search.system_start_idx)) {
                 skip(CanonicalPath(Spelling::absolute(dir.path)));

@@ -235,7 +235,7 @@ ZEST_CASE(HostsMatchLanguage) {
     project.dep_graph.build_reverse_map();
     auto fitting = host_commands(project, dual_hpp, dual);
     ZASSERT(fitting.size() == 1u);
-    ZEXPECT(fitting.front().config == cxx.config);
+    ZEXPECT(fitting.front().command == cxx.command);
     ZEXPECT(ranked_hosts(project, dual_hpp) == llvm::SmallVector<Fid>{dual});
 };
 
@@ -323,7 +323,7 @@ ZEST_CASE(LenderSearchDir) {
     auto lender = command_lender(project, header);
     ZASSERT(lender);
     ZEXPECT(lender->unit == searching.file);
-    ZEXPECT(lender->config == searching.config);
+    ZEXPECT(lender->command == searching.command);
 
     auto source = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.cpp")));
     ZEXPECT(command_lender(project, source)->unit == near.file);

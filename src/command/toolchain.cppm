@@ -8,6 +8,10 @@ import :command.command;
 
 namespace clice {
 
+/// Get the resource directory for clang builtin headers. Computed once
+/// from the current executable path using Driver::GetResourcesPath.
+llvm::StringRef resource_dir();
+
 /// Resolves driver-level configs into full cc1-level configurations by
 /// probing the compiler driver, in two layers:
 ///
@@ -44,7 +48,7 @@ public:
 
     /// Resolve a config for one input language. Blocks on a driver spawn on
     /// probe miss; hits are lookups.
-    std::expected<ResolvedID, std::string> resolve(ConfigID id, InputKind input);
+    std::expected<ResolvedID, std::string> resolve(CommandID id, InputKind input);
 
     const Resolved& resolved(ResolvedID id) const {
         return resolved_configs[id];
@@ -53,15 +57,13 @@ public:
     /// Pre-probe in parallel, deduplicated by probe key, running as many
     /// drivers at once as the process has CPUs. Blocks until all unique
     /// probes complete.
-    void warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs);
+    void warm(llvm::ArrayRef<std::pair<CommandID, InputKind>> pairs);
 
     bool has_cache() const {
         return !probes.empty();
     }
 
-    static CompilerFamily driver_family(llvm::StringRef driver);
-
-    std::string probe_key_for(ConfigID id, InputKind input) {
+    std::string probe_key_for(CommandID id, InputKind input) {
         return probe_key(id, input).key;
     }
 
@@ -83,7 +85,7 @@ private:
         bool cwd_sensitive = false;
     };
 
-    ProbeKey probe_key(ConfigID id, InputKind input);
+    ProbeKey probe_key(CommandID id, InputKind input);
 
     /// The probe argv: driver (+ subcommand) + non-user-content args, with
     /// the input slot position recorded for the temp-file insertion.
@@ -92,7 +94,7 @@ private:
         std::size_t slot = 0;
     };
 
-    ProbeArgv probe_argv(const CompileConfig& config);
+    ProbeArgv probe_argv(const Command& config);
 
     /// What a probe's job sets up, shared by every config of its key.
     struct Frontend {
@@ -119,13 +121,13 @@ private:
     Frontend frontend(llvm::ArrayRef<std::string> job);
 
     /// The frontend with the config's own user content re-attached.
-    ResolvedID synthesize(ConfigID id, const Frontend& probe);
+    ResolvedID synthesize(CommandID id, const Frontend& probe);
 
     /// What the probe caches say about a (config, input) key: a live
     /// probe, a failure still cooling down, or the query to run. A
     /// cooled-down failure is dropped on the way, so the query retries.
     struct ProbeAdmission;
-    ProbeAdmission admit_probe(ConfigID id, InputKind input);
+    ProbeAdmission admit_probe(CommandID id, InputKind input);
 
     /// Commits a query's outcome: the job's frontend into the probe cache, a
     /// failure into the negative cache with its time.

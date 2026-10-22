@@ -4,8 +4,8 @@ module;
 
 module clice;
 
-import :command.argument_parser;
 import :server.editor_context;
+import :support.shell;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -126,12 +126,12 @@ ZEST_CASE(PinSteersEditorOnly) {
     ZASSERT(candidates.size() == 2u);
     // Pin the non-default candidate (candidate order is content-decided,
     // so the defines are read back rather than assumed).
-    auto define_of = [&](ConfigID config) -> llvm::StringRef {
+    auto define_of = [&](CommandID config) -> llvm::StringRef {
         auto argv = print_argv(project.cdb.render_full(config));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
-    auto pinned = candidates.back().config;
-    resolver.selections[file] = Selection{Fid{}, std::nullopt, project.cdb.entry_hash_hex(pinned)};
+    auto pinned = candidates.back().command;
+    resolver.selections[file] = Selection{Fid{}, std::nullopt, project.cdb.command_hash_hex(pinned)};
 
     // An editor resolution honors the pinned CDB entry...
     std::string directory;
@@ -142,7 +142,7 @@ ZEST_CASE(PinSteersEditorOnly) {
     // ...but background indexing must never see user choices.
     arguments.clear();
     commands.resolve_command(file, directory, arguments);
-    ZASSERT(llvm::is_contained(arguments, define_of(candidates.front().config)));
+    ZASSERT(llvm::is_contained(arguments, define_of(candidates.front().command)));
 }
 
 ZEST_CASE(PinBaseSurvivesRules) {
@@ -164,16 +164,16 @@ ZEST_CASE(PinBaseSurvivesRules) {
     auto file = project.file_table.intern(Spelling::absolute(path));
     auto candidates = project.cdb.candidate_entries(path);
     ZASSERT(candidates.size() == 2u);
-    auto define_of = [&](ConfigID config) -> llvm::StringRef {
+    auto define_of = [&](CommandID config) -> llvm::StringRef {
         auto argv = print_argv(project.cdb.render_full(config));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
-    auto pinned = candidates.back().config;
+    auto pinned = candidates.back().command;
 
     // A pin whose applied hash went stale (a rule edit since it was saved)
     // but whose base identity is recorded still selects its candidate...
     resolver.selections[file] =
-        Selection{Fid{}, std::nullopt, "0123456789abcdef", project.cdb.entry_hash_hex(pinned)};
+        Selection{Fid{}, std::nullopt, "0123456789abcdef", project.cdb.command_hash_hex(pinned)};
     std::string directory;
     std::vector<std::string> arguments;
     resolver.resolve_command(file, directory, arguments);
@@ -183,7 +183,7 @@ ZEST_CASE(PinBaseSurvivesRules) {
     resolver.selections[file] = Selection{Fid{}, std::nullopt, "0123456789abcdef", ""};
     arguments.clear();
     resolver.resolve_command(file, directory, arguments);
-    ZASSERT(llvm::is_contained(arguments, define_of(candidates.front().config)));
+    ZASSERT(llvm::is_contained(arguments, define_of(candidates.front().command)));
 }
 
 ZEST_CASE(ValidateKeepsValidChoice) {

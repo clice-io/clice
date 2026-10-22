@@ -9,8 +9,7 @@ module;
 
 module clice:unittests.server.worker_test_helpers;
 
-import :command.argument_parser;
-import :command.command;
+import :command.toolchain;
 import :unittests.utils.temp_dir;
 import :worker.probe;
 import :worker.protocol;

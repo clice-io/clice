@@ -6,9 +6,9 @@ module;
 
 module clice;
 
-import :command.argument_parser;
+import :command.argument;
 import :command.command;
-import :command.cygwin;
+import :command.file_kind;
 import :command.toolchain;
 import :config.config;
 import :driver.driver;
@@ -17,6 +17,7 @@ import :project.load;
 import :project.open_index;
 import :project.project;
 import :support.shell;
+import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
@@ -188,7 +189,7 @@ struct Rendered {
 };
 
 Rendered render_command(CompilationDatabase& cdb, const CommandRef& ref) {
-    auto resolved = cdb.toolchain().resolve(ref.config, ref.input);
+    auto resolved = cdb.toolchain().resolve(ref.command, ref.input);
     auto argv = resolved ? cdb.render(ref) : cdb.render_driver(ref);
     Rendered rendered{
         .arguments = {argv.begin(), argv.end()}
@@ -265,7 +266,7 @@ int run_file(const FileOptions& opts) {
     llvm::SmallVector<CommandRef> refs;
     for(auto& entry: entries) {
         refs.push_back(
-            project.build.resolve(file, entry.config, CommandSource::CDBExact, identity, identity));
+            project.build.resolve(file, entry.command, CommandSource::CDBExact, identity, identity));
     }
     project.cdb.warm(refs);
     FileCommands commands{.file = files.display(file)};
@@ -277,7 +278,7 @@ int run_file(const FileOptions& opts) {
             return 1;
         }
         auto rendered = render_command(project.cdb, ref);
-        auto directory = Spelling::absolute(project.cdb.config(ref.config).directory);
+        auto directory = Spelling::absolute(project.cdb.config(ref.command).directory);
         commands.commands.push_back({
             .database = files.display(CanonicalPath(database)),
             .entry = std::move(*written),
@@ -302,7 +303,7 @@ llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command
                                              const Spelling& directory) {
     auto family = llvm::is_contained(command, "--driver-mode=cl")
                       ? CompilerFamily::ClangCL
-                      : Toolchain::driver_family(command.front());
+                      : driver_family(command.front());
     std::vector<std::string> args(command.begin() + 1, command.end());
     auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
                                               .visibility = family_visibility(family)};
@@ -372,7 +373,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
     }
     CanonicalRef identity = project.file_table.resolve(entry->file);
     auto ref = project.build.resolve(entry->file,
-                                     entry->config,
+                                     entry->command,
                                      CommandSource::CDBExact,
                                      identity,
                                      identity);
@@ -429,7 +430,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
     for(auto& entry: cdb.entries()) {
         CanonicalRef identity = files.resolve(entry.file);
         auto ref = project.build.resolve(entry.file,
-                                         entry.config,
+                                         entry.command,
                                          CommandSource::CDBExact,
                                          identity,
                                          identity);
@@ -458,7 +459,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
         } else if(ref != refs.end()) {
             // A database written inside Cygwin or MSYS2 converts to the
             // Windows paths clice read it as.
-            entry.directory = cdb.config(ref->second.config).directory;
+            entry.directory = cdb.config(ref->second.command).directory;
             entry.file = files.resolve(ref->second.file).str();
         }
         // The command of one clice does not compile, another language's

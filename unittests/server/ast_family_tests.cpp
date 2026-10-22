@@ -34,7 +34,7 @@ struct ASTFamilyFixture {
                                        const std::vector<std::string>& arguments) {
         auto& project = ast.project;
         Resolution resolution{
-            .ref = {.config = project.build.builtin(project.file_table.resolve(session->path_id))},
+            .ref = {.command = project.build.builtin(project.file_table.resolve(session->path_id))},
         };
         auto key = co_await ast.ensure_pch(session,
                                            session->text(),

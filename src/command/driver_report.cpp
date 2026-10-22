@@ -4,8 +4,8 @@ module;
 
 module clice;
 
-import :command.cygwin;
 import :command.driver_report;
+import :vfs.cygwin;
 import :vfs.path;
 
 namespace clice {

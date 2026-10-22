@@ -4,8 +4,7 @@ module;
 
 module clice;
 
-import :command.argument_parser;
-import :command.command;
+import :command.argument;
 import :command.search_config;
 import :vfs.path;
 

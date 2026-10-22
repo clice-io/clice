@@ -6,7 +6,6 @@ module;
 
 module clice;
 
-import :command.argument_parser;
 import :compile.diagnostic;
 import :feature.feature;
 import :project.command_resolver;
@@ -47,8 +46,8 @@ std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagn
 
 /// The flags a context's label tells a command by: each -D, -O, -std and
 /// -g, a separate value joined to its -D or -O.
-static llvm::SmallVector<std::string> state_flags(Project& ws, ConfigID config) {
-    auto argv = ws.cdb.render_full(config);
+static llvm::SmallVector<std::string> state_flags(Project& ws, CommandID command) {
+    auto argv = ws.cdb.render_full(command);
     llvm::SmallVector<std::string> flags;
     for(std::size_t j = 0; j < argv.size(); j += 1) {
         llvm::StringRef a(argv[j]);
@@ -64,18 +63,18 @@ static llvm::SmallVector<std::string> state_flags(Project& ws, ConfigID config) 
     return flags;
 }
 
-/// What sets the command `config` apart from the others in `group`, the
+/// What sets the command `command` apart from the others in `group`, the
 /// commands the listing offers side by side: those of its flags some other
 /// command lacks, or all of them when it stands alone.
-static std::string flags_label(Project& ws, ConfigID config, llvm::ArrayRef<ConfigID> group) {
+static std::string flags_label(Project& ws, CommandID command, llvm::ArrayRef<CommandID> group) {
     llvm::SmallVector<llvm::SmallVector<std::string>> others;
     for(auto other: group) {
-        if(other != config) {
+        if(other != command) {
             others.push_back(state_flags(ws, other));
         }
     }
     std::string label;
-    for(auto& flag: state_flags(ws, config)) {
+    for(auto& flag: state_flags(ws, command)) {
         if(!others.empty() &&
            llvm::all_of(others, [&](auto& flags) { return llvm::is_contained(flags, flag); })) {
             continue;
@@ -89,29 +88,29 @@ static std::string flags_label(Project& ws, ConfigID config, llvm::ArrayRef<Conf
 }
 
 /// The command the file's own entry `entry` compiles it as.
-static ConfigID own_config(Project& ws, Fid path_id, ConfigID entry) {
+static CommandID own_command(Project& ws, Fid path_id, CommandID entry) {
     auto path = ws.file_table.resolve(path_id);
-    return ws.build.resolve(path_id, entry, CommandSource::CDBExact, path, path).config;
+    return ws.build.resolve(path_id, entry, CommandSource::CDBExact, path, path).command;
 }
 
 /// The commands the file's own `entries` compile it as, one per entry.
-static llvm::SmallVector<ConfigID, 2> own_configs(Project& ws, Fid path_id, const auto& entries) {
-    llvm::SmallVector<ConfigID, 2> configs;
+static llvm::SmallVector<CommandID, 2> own_commands(Project& ws, Fid path_id, const auto& entries) {
+    llvm::SmallVector<CommandID, 2> commands;
     for(auto& entry: entries) {
-        configs.push_back(own_config(ws, path_id, entry.config));
+        commands.push_back(own_command(ws, path_id, entry.command));
     }
-    return configs;
+    return commands;
 }
 
 /// The commands `host` lends the header `path_id`, one per command of the
 /// host's.
-static llvm::SmallVector<ConfigID, 2>
-    lent_configs(Project& ws, Fid path_id, Fid host, llvm::ArrayRef<Candidate> commands) {
-    llvm::SmallVector<ConfigID, 2> configs;
-    for(auto& entry: commands) {
-        configs.push_back(lent_command(ws, path_id, host, entry.config).config);
+static llvm::SmallVector<CommandID, 2>
+    lent_commands(Project& ws, Fid path_id, Fid host, llvm::ArrayRef<Candidate> commands) {
+    llvm::SmallVector<CommandID, 2> lent;
+    for(auto& candidate: commands) {
+        lent.push_back(lent_command(ws, path_id, host, candidate.command).command);
     }
-    return configs;
+    return lent;
 }
 
 /// The listing's item for `host` lending the command `applied`, one of the
@@ -120,8 +119,8 @@ static llvm::SmallVector<ConfigID, 2>
 /// the header at when it does at more than one.
 static ext::ContextItem host_item(Project& ws,
                                   Fid host,
-                                  ConfigID applied,
-                                  llvm::ArrayRef<ConfigID> lent,
+                                  CommandID applied,
+                                  llvm::ArrayRef<CommandID> lent,
                                   std::optional<std::uint32_t> occurrence) {
     auto shown = ws.file_table.display(host);
     ext::ContextItem item;
@@ -130,7 +129,7 @@ static ext::ContextItem host_item(Project& ws,
         if(auto desc = flags_label(ws, applied, lent); !desc.empty()) {
             item.label = std::format("{} [{}]", item.label, desc);
         }
-        item.command_hash = ws.cdb.entry_hash_hex(applied);
+        item.command_hash = ws.cdb.command_hash_hex(applied);
     }
     if(occurrence) {
         item.label = std::format("{} (#{})", item.label, *occurrence + 1);
@@ -144,7 +143,7 @@ static ext::ContextItem host_item(Project& ws,
 /// The listing's item for the file's own entry `index` of `own`, the
 /// commands its entries compile it as.
 static ext::ContextItem
-    own_item(Project& ws, Fid path_id, std::size_t index, llvm::ArrayRef<ConfigID> own) {
+    own_item(Project& ws, Fid path_id, std::size_t index, llvm::ArrayRef<CommandID> own) {
     auto applied = own[index];
     auto desc = flags_label(ws, applied, own);
     ext::ContextItem item;
@@ -152,7 +151,7 @@ static ext::ContextItem
     item.description =
         ws.file_table.display(CanonicalPath(Spelling::absolute(ws.cdb.config(applied).directory)));
     item.uri = feature::to_uri(ws.file_table.display(path_id));
-    item.command_hash = ws.cdb.entry_hash_hex(applied);
+    item.command_hash = ws.cdb.command_hash_hex(applied);
     return item;
 }
 
@@ -167,7 +166,7 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     // needs includer context gets a different synthesized prefix per
     // host, and an un-trialed header may turn out the same way, so
     // every host stays a distinct context for both.
-    llvm::StringSet<> seen_configs;
+    llvm::StringSet<> seen_commands;
     bool dedup_hosts = editor.commands.header_mode(path_id) == HeaderMode::SelfContained;
 
     for(auto host_id: ranked_hosts(ws, path_id)) {
@@ -179,9 +178,9 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
         if(occurrences == 0) {
             continue;
         }
-        auto lent = lent_configs(ws, path_id, host_id, host_commands(ws, path_id, host_id));
+        auto lent = lent_commands(ws, path_id, host_id, host_commands(ws, path_id, host_id));
         for(auto applied: lent) {
-            if(dedup_hosts && !seen_configs.insert(ws.cdb.entry_hash_hex(applied)).second) {
+            if(dedup_hosts && !seen_commands.insert(ws.cdb.command_hash_hex(applied)).second) {
                 continue;
             }
             if(occurrences == 1) {
@@ -199,9 +198,9 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     // switchContext would then reject. Offered even when hosts
     // exist, so a host override can be switched back to the file's
     // own command.
-    auto own = own_configs(ws, path_id, ws.build.entries(path_id));
+    auto own = own_commands(ws, path_id, ws.build.entries(path_id));
     for(std::size_t i = 0; i < own.size(); i += 1) {
-        if(seen_configs.insert(ws.cdb.entry_hash_hex(own[i])).second) {
+        if(seen_commands.insert(ws.cdb.command_hash_hex(own[i])).second) {
             all_items.push_back(own_item(ws, path_id, i, own));
         }
     }
@@ -230,8 +229,8 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
             result.context =
                 host_item(ws,
                           host,
-                          applied->config,
-                          lent_configs(ws, path_id, host, host_commands(ws, path_id, host)),
+                          applied->command,
+                          lent_commands(ws, path_id, host, host_commands(ws, path_id, host)),
                           several ? std::optional(occurrence) : std::nullopt);
         };
     auto own = [&](llvm::StringRef hash, llvm::StringRef base) {
@@ -239,12 +238,12 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
         if(commands.empty()) {
             return;
         }
-        auto entry = pick_pinned_config(ws, path_id, commands, path, path, hash, base);
+        auto entry = pick_pinned_command(ws, path_id, commands, path, path, hash, base);
         auto index = llvm::find_if(
                          commands,
-                         [&](const Candidate& command) { return command.config == entry.config; }) -
+                         [&](const Candidate& candidate) { return candidate.command == entry.command; }) -
                      commands.begin();
-        result.context = own_item(ws, path_id, index, own_configs(ws, path_id, commands));
+        result.context = own_item(ws, path_id, index, own_commands(ws, path_id, commands));
     };
 
     // The choice, else what resolve_command picks: the file's own command
@@ -283,14 +282,14 @@ kota::task<ext::SwitchContextResult>
     auto path_id = session.path_id;
     ext::SwitchContextResult result;
 
-    // The base entry hash of the one of `commands` listed as `listed(entry)`
+    // The base command hash of the one of `commands` listed as `listed(entry)`
     // under the picked hash: the identity that stays unique when rules
     // collapse two applied hashes onto one value. The caller offered only
     // listed items.
     auto base_of = [&](llvm::ArrayRef<Candidate> commands, auto listed) -> std::string {
         for(auto& entry: commands) {
-            if(ws.cdb.entry_hash_hex(listed(entry)) == *params.command_hash) {
-                return ws.cdb.entry_hash_hex(entry.config);
+            if(ws.cdb.command_hash_hex(listed(entry)) == *params.command_hash) {
+                return ws.cdb.command_hash_hex(entry.command);
             }
         }
         std::unreachable();
@@ -302,7 +301,7 @@ kota::task<ext::SwitchContextResult>
     if(context_path_id == path_id) {
         saved.command_hash = *params.command_hash;
         saved.base_hash = base_of(ws.build.commands(path_id), [&](const Candidate& entry) {
-            return own_config(ws, path_id, entry.config);
+            return own_command(ws, path_id, entry.command);
         });
     } else {
         saved.host_path_id = context_path_id;
@@ -311,7 +310,7 @@ kota::task<ext::SwitchContextResult>
             saved.command_hash = *params.command_hash;
             saved.base_hash =
                 base_of(host_commands(ws, path_id, context_path_id), [&](const Candidate& entry) {
-                    return lent_command(ws, path_id, context_path_id, entry.config).config;
+                    return lent_command(ws, path_id, context_path_id, entry.command).command;
                 });
         }
     }

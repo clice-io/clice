@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.file_kind;
 import :index.project_index;
 import :index.tu_manifest;
 import :project.hosting;
@@ -23,9 +24,9 @@ types::ID language_of(const CommandRef& command) {
     return types::lookupTypeForTypeSpecifier(command.input.value);
 }
 
-CommandRef effective(Project& project, Fid unit, const Candidate& command) {
+CommandRef effective(Project& project, Fid unit, const Candidate& candidate) {
     auto path = project.file_table.resolve(unit);
-    return project.build.resolve(unit, command.config, command.source, path, path);
+    return project.build.resolve(unit, candidate.command, candidate.source, path, path);
 }
 
 /// Whether `type` is C++ or a C++ module unit: the two share flags, so
@@ -210,14 +211,14 @@ const LenderIndex& lender_index(Project& project) {
         // A member a rule covers with a default command that is no compile
         // command has none; a provisional member's is borrowed, and never
         // lent on.
-        for(auto& command: project.build.commands(member)) {
-            if(command.source == CommandSource::Inferred) {
+        for(auto& candidate: project.build.commands(member)) {
+            if(candidate.source == CommandSource::Inferred) {
                 continue;
             }
-            auto ref = effective(project, member, command);
+            auto ref = effective(project, member, candidate);
             auto position = static_cast<std::uint32_t>(index.commands.size());
             index.commands.push_back({
-                .lender = {.unit = member, .config = command.config},
+                .lender = {.unit = member, .command = candidate.command},
                 .language = language_of(ref),
             });
             for(auto& search_dir: project.cdb.search_config(ref).dirs) {

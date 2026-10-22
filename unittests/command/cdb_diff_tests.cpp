@@ -4,8 +4,8 @@ module;
 
 module clice;
 
-import :command.argument_parser;
 import :command.command;
+import :support.shell;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -278,7 +278,7 @@ ZEST_CASE(CorruptKeepsEntries) {
     auto file = path::join(tmp.root.str(), "a.cpp");
     auto candidates = cdb.candidate_entries(file);
     ZASSERT(candidates.size() == 1U);
-    ZEXPECT(llvm::StringRef(print_argv(cdb.render_full(candidates.front().config)))
+    ZEXPECT(llvm::StringRef(print_argv(cdb.render_full(candidates.front().command)))
                 .contains("-std=c++20"));
 };
 
