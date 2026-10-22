@@ -10,6 +10,7 @@ module clice;
 import :feature.hover;
 import :index.symbol;
 import :semantic.symbol;
+import :syntax.position;
 import :unittests.utils;
 import :unittests.utils.tester;
 

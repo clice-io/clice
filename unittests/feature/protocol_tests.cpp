@@ -7,6 +7,8 @@ module clice;
 import :feature.protocol;
 import :unittests.utils;
 import :vfs.file_table;
+import :vfs.ids;
+import :vfs.path;
 
 namespace clice::testing {
 
