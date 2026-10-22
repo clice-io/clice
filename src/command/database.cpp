@@ -22,6 +22,56 @@ namespace clice {
 
 namespace ranges = std::ranges;
 
+namespace {
+
+/// The registered path of a source: the database file (a path without the
+/// .json extension names a directory, existing or not, holding
+/// compile_commands.json) in the identity of the directory holding it —
+/// every spelling of that directory finds the same source, while a
+/// database file symlinked elsewhere is still read through the link. So
+/// is a directory that is itself a symlink (build -> out/debug): switching
+/// the link switches the database.
+Spelling source_key(const Spelling& path) {
+    auto file =
+        path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
+    auto directory = file.parent();
+    if(vfs::is_symlink(directory.str())) {
+        return Spelling(
+            path::filename(file.str()),
+            Spelling(path::filename(directory.str()), Spelling(CanonicalPath(directory.parent()))));
+    }
+    return Spelling(path::filename(file.str()), Spelling(CanonicalPath(directory)));
+}
+
+/// The per-file delta between two command hash snapshots.
+CDBDiff diff_snapshots(const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>& before,
+                       const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>& after) {
+    CDBDiff diff;
+
+    for(auto& bucket: after) {
+        auto it = before.find(bucket.first);
+        if(it == before.end()) {
+            diff.added.push_back(bucket.first);
+        } else if(it->second != bucket.second) {
+            diff.changed.push_back(bucket.first);
+        }
+    }
+
+    for(auto& bucket: before) {
+        if(!after.contains(bucket.first)) {
+            diff.removed.push_back(bucket.first);
+        }
+    }
+
+    ranges::sort(diff.added);
+    ranges::sort(diff.removed);
+    ranges::sort(diff.changed);
+
+    return diff;
+}
+
+}  // namespace
+
 std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
     if(llvm::json::isUTF8(bytes)) {
         return std::nullopt;
@@ -47,25 +97,6 @@ void CompilationDatabase::rebuild_entry_list() {
             writers[file_table.intern(*output)].push_back(entry);
         }
     }
-}
-
-/// The registered path of a source: the database file (a path without the
-/// .json extension names a directory, existing or not, holding
-/// compile_commands.json) in the identity of the directory holding it —
-/// every spelling of that directory finds the same source, while a
-/// database file symlinked elsewhere is still read through the link. So
-/// is a directory that is itself a symlink (build -> out/debug): switching
-/// the link switches the database.
-static Spelling source_key(const Spelling& path) {
-    auto file =
-        path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
-    auto directory = file.parent();
-    if(vfs::is_symlink(directory.str())) {
-        return Spelling(
-            path::filename(file.str()),
-            Spelling(path::filename(directory.str()), Spelling(CanonicalPath(directory.parent()))));
-    }
-    return Spelling(path::filename(file.str()), Spelling(CanonicalPath(directory)));
 }
 
 SourceID CompilationDatabase::add_source(const Spelling& path) {
@@ -105,9 +136,6 @@ std::optional<SourceID> CompilationDatabase::find_same_file(const Spelling& path
 llvm::StringRef CompilationDatabase::source_path(SourceID id) const {
     return source_files[static_cast<std::size_t>(id)].path;
 }
-
-static CDBDiff diff_snapshots(const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>& before,
-                              const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>& after);
 
 CDBDiff CompilationDatabase::unload_source(SourceID id) {
     auto before = command_hash_snapshot();
@@ -370,33 +398,6 @@ llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>
         snapshot[entry.file].push_back(command_table.command_hash_hex(entry.command));
     }
     return snapshot;
-}
-
-/// The per-file delta between two command hash snapshots.
-static CDBDiff diff_snapshots(const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>& before,
-                              const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>& after) {
-    CDBDiff diff;
-
-    for(auto& bucket: after) {
-        auto it = before.find(bucket.first);
-        if(it == before.end()) {
-            diff.added.push_back(bucket.first);
-        } else if(it->second != bucket.second) {
-            diff.changed.push_back(bucket.first);
-        }
-    }
-
-    for(auto& bucket: before) {
-        if(!after.contains(bucket.first)) {
-            diff.removed.push_back(bucket.first);
-        }
-    }
-
-    ranges::sort(diff.added);
-    ranges::sort(diff.removed);
-    ranges::sort(diff.changed);
-
-    return diff;
 }
 
 std::optional<CDBDiff> CompilationDatabase::reload_and_diff(SourceID id) {

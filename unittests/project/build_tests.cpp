@@ -28,8 +28,6 @@ namespace {
 
 using namespace std::literals;
 
-#define EXPECT_CONTAINS(haystack, needle) ZEXPECT(llvm::StringRef(haystack).contains(needle))
-
 /// One of the layouts written to a temporary directory: its clice.toml
 /// loaded the way the server loads it, every declared source loaded.
 struct Layout {
@@ -985,12 +983,12 @@ ZEST_CASE(FallbackAppliesAppend) {
     CommandEdits options{.edits = edits};
 
     auto argv = print_argv(render_fallback(database, fake("unknown.cpp"), options));
-    EXPECT_CONTAINS(argv, "-std=c++20");
-    EXPECT_CONTAINS(argv, "/opt/include");
+    ZEXPECT(llvm::StringRef(argv).contains("-std=c++20"));
+    ZEXPECT(llvm::StringRef(argv).contains("/opt/include"));
 
     /// The plain-clang branch applies them too.
-    EXPECT_CONTAINS(print_argv(render_fallback(database, fake("unknown.c"), options)),
-                    "/opt/include");
+    ZEXPECT(llvm::StringRef(print_argv(render_fallback(database, fake("unknown.c"), options)))
+                .contains("/opt/include"));
 };
 
 };  // ZEST_SUITE(Build)

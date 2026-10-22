@@ -8,7 +8,8 @@ module clice;
 
 import :command.argument;
 import :command.normalize;
-import :command.nvcc;
+import :command.toolchains.gcc;
+import :command.toolchains.nvcc;
 import :command.table;
 import :support.logging;
 import :support.shell;
@@ -19,31 +20,6 @@ import :vfs.path;
 namespace clice {
 
 namespace {
-
-/// Whether clang knows the warning option `-W<value>`, read the way its
-/// frontend reads one (clang/lib/Basic/Warnings.cpp): a warning group,
-/// negated or not, or one of the forms that name none.
-bool clang_warning(llvm::StringRef value) {
-    auto group = [](llvm::StringRef name) {
-        return clang::DiagnosticIDs::getGroupForWarningOption(name).has_value();
-    };
-    if(value == "format=0") {
-        return true;
-    }
-    value.consume_front("no-");
-    if(value == "system-headers" || value == "everything") {
-        return true;
-    }
-    if(value.consume_front("error")) {
-        return value.empty() || value == "-implicit-function-declaration" ||
-               (value.consume_front("=") && (value.empty() || group(value)));
-    }
-    if(value.consume_front("fatal-errors")) {
-        return value.empty() ||
-               ((value.consume_front("=") || value.consume_front("-")) && group(value));
-    }
-    return group(value);
-}
 
 bool is_wrapper_name(llvm::StringRef filename) {
     /// Windows tools emit spellings like CCACHE.EXE — match lowercased.
@@ -235,7 +211,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
 
         /// The entry's own input token becomes the slot, preserving its
         /// position (language selectors before it govern it). Other inputs
-        /// — nvcc probe leftovers aside, a multi-input command — drop,
+        /// — nvcc query leftovers aside, a multi-input command — drop,
         /// paired with their per-file selectors. Input args carry their
         /// token as the spelling.
         ///
@@ -309,7 +285,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         }
 
         /// Path values absolutize where the compile runs, so the command
-        /// keeps meaning when consumed away from it: the toolchain probe
+        /// keeps meaning when consumed away from it: the toolchain query
         /// runs elsewhere.
         // The working directory itself is relative to the entry's.
         bool working = id == option::OPT_working_directory;

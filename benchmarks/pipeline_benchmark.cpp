@@ -29,7 +29,9 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.database;
+import :command.table;
+import :command.toolchain;
 import :compile.compilation;
 import :feature.feature;
 import :index.indexer;
@@ -440,7 +442,9 @@ extern "C++" int main(int argc, const char** argv) {
     }
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     auto count = cdb.load(*opts.cdb_path);
     if(!count) {
         std::println(stderr, "Error: failed to load {}", *opts.cdb_path);
@@ -500,10 +504,10 @@ extern "C++" int main(int argc, const char** argv) {
         }
         auto& entry = candidates.front();
         CommandRef ref{entry.file,
-                       entry.config,
-                       cdb.input_kind(entry.config, file),
+                       entry.command,
+                       commands.input_kind(entry.command, file),
                        CommandSource::CDBExact};
-        auto arguments = cdb.render(ref);
+        auto arguments = toolchain.render(ref, cdb.spelling(ref.file));
 
         auto file_result = profile_file(file, arguments, runs, opts.time_trace_dir.value_or(""));
         print_file(file_result);

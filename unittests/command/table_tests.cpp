@@ -19,9 +19,6 @@ namespace {
 
 using namespace std::literals;
 
-#define EXPECT_CONTAINS(haystack, needle) ZEXPECT(llvm::StringRef(haystack).contains(needle))
-#define EXPECT_NOT_CONTAINS(haystack, needle) ZEXPECT(!llvm::StringRef(haystack).contains(needle))
-
 ZEST_SUITE(CommandTable) {
 
 ZEST_CASE(SelectorPositional) {
@@ -61,8 +58,8 @@ ZEST_CASE(CxxDriverCInputs) {
     database.add_command("/fake", "e.c", "clang --driver-mode=g++ -c e.c"sv);
 
     auto kind = [&](llvm::StringRef file) {
-        auto config = database.candidate_entries(fake(file)).front().command;
-        return llvm::StringRef(commands.input_kind(config, file).value);
+        auto command = database.candidate_entries(fake(file)).front().command;
+        return llvm::StringRef(commands.input_kind(command, file).value);
     };
     ZEXPECT(kind("a.c") == "c++");
     ZEXPECT(kind("b.h") == "c++-header");
@@ -84,17 +81,18 @@ ZEST_CASE(ClAliasesRender) {
                          "/fake/a.cpp"sv);
 
     auto argv = print_argv(render_entry(database, "/fake/a.cpp"));
-    EXPECT_CONTAINS(argv, "/W1 -Wno-unused-variable");
-    EXPECT_CONTAINS(argv, "/J");
-    EXPECT_CONTAINS(argv, "/Zp4");
-    EXPECT_CONTAINS(argv, "/FIpre.h");
-    EXPECT_CONTAINS(argv, "-I /fake/inc");
-    EXPECT_CONTAINS(argv, "/std:c++17");
-    EXPECT_NOT_CONTAINS(argv, "/clang:");
+    ZEXPECT(llvm::StringRef(argv).contains("/W1 -Wno-unused-variable"));
+    ZEXPECT(llvm::StringRef(argv).contains("/J"));
+    ZEXPECT(llvm::StringRef(argv).contains("/Zp4"));
+    ZEXPECT(llvm::StringRef(argv).contains("/FIpre.h"));
+    ZEXPECT(llvm::StringRef(argv).contains("-I /fake/inc"));
+    ZEXPECT(llvm::StringRef(argv).contains("/std:c++17"));
+    ZEXPECT(!llvm::StringRef(argv).contains("/clang:"));
 
     /// GCC-style, with no cl spelling at all.
     database.add_command("/fake", "/fake/b.cpp", "cl.exe -std=c++20 /c /fake/b.cpp"sv);
-    EXPECT_CONTAINS(print_argv(render_entry(database, "/fake/b.cpp")), "/clang:-std=c++20");
+    ZEXPECT(llvm::StringRef(print_argv(render_entry(database, "/fake/b.cpp")))
+                .contains("/clang:-std=c++20"));
 };
 
 ZEST_CASE(IdentityHashes) {
@@ -112,7 +110,7 @@ ZEST_CASE(IdentityHashes) {
         return commands.command_hash(database.candidate_entries(fake(file)).front().command);
     };
 
-    /// Same command, different file: one config, one identity.
+    /// Same command, different file: one command, one identity.
     ZEXPECT(hash_of("a.cpp") == hash_of("b.cpp"));
     /// A semantic flag difference changes the identity.
     ZEXPECT(hash_of("a.cpp") != hash_of("c.cpp"));

@@ -9,40 +9,13 @@ module clice;
 import :command.argument;
 import :command.edit;
 import :command.normalize;
-import :command.nvcc;
+import :command.toolchains.nvcc;
 import :command.table;
 import :support.logging;
 
 namespace clice {
 
 namespace ranges = std::ranges;
-
-/// An appended -gencode adds its architecture next to the base's, the way
-/// nvcc itself accumulates them — resolve the arch flags to the newest.
-static void collapse_gpu_arch_args(std::vector<LocalArg>& args) {
-    llvm::SmallVector<std::pair<ArchFlagKind, llvm::StringRef>> sequence;
-    llvm::SmallVector<std::size_t> positions;
-    for(std::size_t i = 0; i < args.size(); i += 1) {
-        auto& arg = args[i];
-        std::optional<ArchFlagKind> kind;
-        switch(arg.opt_id) {
-            case option::OPT_offload_arch_EQ: kind = ArchFlagKind::OffloadArch; break;
-            case option::OPT_no_offload_arch_EQ: kind = ArchFlagKind::NoOffloadArch; break;
-        }
-        if(kind && arg.values.size() == 1) {
-            sequence.push_back({*kind, arg.values[0]});
-            positions.push_back(i);
-        }
-    }
-
-    auto dropped = collapse_gpu_archs(sequence);
-    if(!dropped) {
-        return;
-    }
-    for(auto index: *dropped | std::views::reverse) {
-        args.erase(args.begin() + positions[index]);
-    }
-}
 
 std::string CommandEdits::key() const {
     std::string key;
@@ -74,33 +47,7 @@ CommandID
     const auto& base = commands.get(id);
     bool is_nvcc = base.family == CompilerFamily::NVCC;
 
-    /// Rule flags for an NVCC entry arrive in the same nvcc spellings as
-    /// the command they edit — rewrite them like the command itself.
-    /// Appends translate as one command edit, so an appended default state
-    /// (`-rdc=false` over an rdc base) cancels the base's translated state
-    /// instead of vanishing. Relative paths in the flags, and in the files
-    /// they name, are relative to the rule's `anchor`.
-    auto translate_rule_flags =
-        [&](llvm::ArrayRef<std::string> rule_flags, const Spelling& anchor, bool edit) {
-            std::vector<std::string> flags(rule_flags.begin(), rule_flags.end());
-            if(flags.empty() || !is_nvcc) {
-                return flags;
-            }
-            llvm::BumpPtrAllocator allocator;
-            llvm::StringSaver saver(allocator);
-            llvm::SmallVector<const char*, 32> argv = {base.driver};
-            for(auto& flag: flags) {
-                argv.push_back(flag.c_str());
-            }
-            Normalizer{.commands = commands, .files = files}.expand_response_files(argv,
-                                                                                   anchor,
-                                                                                   base.family,
-                                                                                   saver);
-            auto translated = translate_nvcc_command(argv, anchor.str(), edit);
-            flags.assign(std::make_move_iterator(translated.begin() + 1),
-                         std::make_move_iterator(translated.end()));
-            return flags;
-        };
+    Normalizer normalizer{.commands = commands, .files = files};
 
     auto remove_parse_options =
         kota::option::ParseOptions{.visibility = family_visibility(base.family)};
@@ -118,59 +65,9 @@ CommandID
     /// every match below.
     std::deque<std::vector<std::string>> remove_storage;
     auto parse_removes = [&](llvm::ArrayRef<std::string> flags, const Spelling& anchor) {
-        std::vector<std::string> remove_source(flags.begin(), flags.end());
-        if(is_nvcc) {
-            /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
-            /// clear whichever form the translated base carries: numeric archs
-            /// become `--cuda-gpu-arch=`, non-numeric selections persist as
-            /// `-arch=` probe tokens — rewrite to both wildcards.
-            for(std::size_t i = 0; i < remove_source.size(); i += 1) {
-                llvm::StringRef flag = remove_source[i];
-                for(llvm::StringRef spelling:
-                    {"-arch", "--gpu-architecture", "-gencode", "--generate-code"}) {
-                    bool joined =
-                        flag.starts_with(spelling) && flag.substr(spelling.size()) == "=*";
-                    bool separate = flag == spelling && i + 1 < remove_source.size() &&
-                                    remove_source[i + 1] == "*";
-                    if(!joined && !separate) {
-                        continue;
-                    }
-                    if(separate) {
-                        remove_source.erase(remove_source.begin() + i + 1);
-                    }
-                    remove_source[i] = "--cuda-gpu-arch=*";
-                    remove_source.insert(remove_source.begin() + i + 1, "-arch=*");
-                    i += 1;
-                    break;
-                }
-            }
-        }
-        /// Remove patterns are an independent list, not one command: translated
-        /// whole, nvcc's last-wins would swallow every alternative value of a
-        /// stateful option but the last. Each pattern translates alone —
-        /// standalone, so it reproduces exactly the flags the base translation
-        /// emitted — pairing a separate value token (never dash-led) with its
-        /// spelling.
-        auto& remove_flags = remove_storage.emplace_back();
-        if(is_nvcc) {
-            for(std::size_t i = 0; i < remove_source.size(); i += 1) {
-                std::size_t count = 1;
-                if(llvm::StringRef(remove_source[i]).starts_with("-") &&
-                   i + 1 < remove_source.size() &&
-                   !llvm::StringRef(remove_source[i + 1]).starts_with("-")) {
-                    count = 2;
-                }
-                auto pattern = translate_rule_flags(llvm::ArrayRef(remove_source).slice(i, count),
-                                                    anchor,
-                                                    /*edit=*/false);
-                remove_flags.insert(remove_flags.end(),
-                                    std::make_move_iterator(pattern.begin()),
-                                    std::make_move_iterator(pattern.end()));
-                i += count - 1;
-            }
-        } else {
-            remove_flags = std::move(remove_source);
-        }
+        auto& remove_flags = remove_storage.emplace_back(
+            is_nvcc ? translate_nvcc_removes(normalizer, base.driver, flags, anchor)
+                    : std::vector<std::string>(flags.begin(), flags.end()));
         std::vector<RemovePattern> removes;
         auto add = [&](const kota::option::ParsedArg& parsed, llvm::StringRef written) {
             auto& remove = removes.emplace_back(RemovePattern{
@@ -237,7 +134,7 @@ CommandID
             return false;
         }
         /// All unknown options share one id; their identity is the
-        /// spelling (NVCC probe flags persist as unknown tokens). A
+        /// spelling (NVCC query flags persist as unknown tokens). A
         /// trailing `=*` wildcards the value part, mirroring the
         /// known-option value wildcard below.
         if(arg.opt_id == option::OPT_UNKNOWN) {
@@ -289,9 +186,13 @@ CommandID
             });
             remove_args.insert(remove_args.end(), removes.begin(), removes.end());
         } else {
-            parse_edit(translate_rule_flags(edit.flags, edit.directory, /*edit=*/true),
-                       edit.directory,
-                       append_args);
+            auto flags = is_nvcc ? translate_nvcc_flags(normalizer,
+                                                        base.driver,
+                                                        edit.flags,
+                                                        edit.directory,
+                                                        /*edit=*/true)
+                                 : edit.flags;
+            parse_edit(flags, edit.directory, append_args);
         }
     }
     auto entry_directory = Spelling::absolute(base.directory);

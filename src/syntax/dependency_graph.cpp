@@ -785,8 +785,8 @@ struct FullScan {
         // One scan group per unique (command identity, input language) —
         // the SearchConfig granularity: different -I sets resolve
         // differently, and the same flags compiled as C and C++ pull
-        // different implicit include sets. The identity is the entry
-        // hash, not the config: a config keeps the per-file flags the
+        // different implicit include sets. The identity is the command
+        // hash, not the command: a command keeps the per-file flags the
         // compile drops (-o), which would give every unit its own group.
         llvm::MapVector<Fid, llvm::SmallVector<ScanContext, 1>> unit_contexts;
         llvm::DenseMap<std::pair<std::uint64_t, const char*>, std::uint32_t> group_ids;
@@ -806,10 +806,10 @@ struct FullScan {
             contexts.push_back(context);
         }
 
-        // Pre-warm the toolchain cache: probes key by non-user-content
+        // Pre-warm the toolchain cache: queries key by non-user-content
         // flags, so groups differing only in -D/-I collapse to the same
-        // probe — N groups often yield just 1-2 subprocess calls. They
-        // run before the units' reads: probe processes competing with the
+        // query — N groups often yield just 1-2 subprocess calls. They
+        // run before the units' reads: query processes competing with the
         // reads for cores cost more than the overlap saves.
         toolchain.warm(graph.groups());
 

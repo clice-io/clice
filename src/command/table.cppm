@@ -76,7 +76,7 @@ enum class CommandSource : std::uint8_t {
 };
 
 /// A resolved command selection for one file: the final (rules-applied)
-/// command plus the language the toolchain layer probes with. For a header
+/// command plus the language the toolchain layer queries with. For a header
 /// borrowing a host command, `input` is the host's.
 struct CommandRef {
     Fid file;
@@ -102,7 +102,7 @@ llvm::StringRef resource_dir();
 /// Every command clice knows, as the FileTable holds every file: each
 /// structured command stored once, its strings interned (pointer-comparable)
 /// and kept, together with what derives from one command alone — its
-/// language, the precompiled headers it writes and reads, its identity hash
+/// language, the precompiled headers it writes and reads, its command hash
 /// and its driver-level renders. Append-only: ids and pointers stay valid
 /// for the table's lifetime.
 class CommandTable {
@@ -112,7 +112,7 @@ public:
     CommandTable(const CommandTable&) = delete;
     CommandTable& operator=(const CommandTable&) = delete;
 
-    /// Where probes of cwd-insensitive commands run, and what command hashes
+    /// Where queries of cwd-insensitive commands run, and what command hashes
     /// name the paths under relative to (path::portable). Set before load;
     /// empty means the process working directory, and absolute paths.
     void set_workspace_root(CanonicalRef path);
@@ -173,8 +173,8 @@ public:
     /// command_hash formatted as the persistent/protocol form (16 hex chars).
     std::string command_hash_hex(CommandID id);
 
-    /// Driver-level render (no toolchain probe), naming the input `path`:
-    /// the probe-failure degradation path, and the base of display forms.
+    /// Driver-level render (no toolchain query), naming the input `path`:
+    /// the query-failure degradation path, and the base of display forms.
     std::vector<const char*> render_driver(const CommandRef& ref,
                                            llvm::StringRef path,
                                            const RenderOptions& opts = {});

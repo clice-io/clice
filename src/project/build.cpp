@@ -483,14 +483,14 @@ bool Build::declared(Fid file) {
     return default_command(path).has_value() && default_source(path);
 }
 
-std::optional<CommandRef> Build::pch_unit(CommandID config,
+std::optional<CommandRef> Build::pch_unit(CommandID command,
                                           llvm::ArrayRef<CanonicalRef> paths,
                                           llvm::ArrayRef<std::string> extra_prepend,
                                           llvm::ArrayRef<std::string> extra_append) {
-    if(command_table.pch_output(config)) {
+    if(command_table.pch_output(command)) {
         return std::nullopt;
     }
-    for(auto& input: command_table.pch_inputs(config)) {
+    for(auto& input: command_table.pch_inputs(command)) {
         auto pch = files.find(input);
         if(!pch) {
             continue;

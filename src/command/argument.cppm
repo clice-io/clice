@@ -77,7 +77,7 @@ enum class ArgClass : std::uint8_t {
     Semantic,
 
     /// Per-file user content: -I, -D, -U, -include, -isystem, -iquote,
-    /// -idirafter. Excluded from toolchain probes and re-attached after.
+    /// -idirafter. Excluded from toolchain queries and re-attached after.
     UserContent,
 
     /// Diagnostics presentation (-W*, -R*, -pedantic*, -w): affects which
@@ -85,7 +85,7 @@ enum class ArgClass : std::uint8_t {
     Diagnostics,
 
     /// Pure backend/linker concerns (-g, -ffunction-sections, ...): kept for the
-    /// Full view, skipped by compile renders and identity hashes.
+    /// Full view, skipped by compile renders and command hashes.
     Codegen,
 
     /// Irrelevant to an LSP (outputs, PCH building, dependency scan, module
@@ -93,14 +93,14 @@ enum class ArgClass : std::uint8_t {
     Discarded,
 
     /// Unrecognized token, kept verbatim (identity is the spelling). In the
-    /// identity hash — dropping an option we don't understand could merge
+    /// command hash — dropping an option we don't understand could merge
     /// commands that must differ — but never in compile renders; forwarded
-    /// to toolchain probes only for NVCC probe tokens.
+    /// to toolchain queries only for NVCC query tokens.
     Unknown,
 
     /// The input slot: where the source file sat in the original command.
     /// A pure position marker — it stores no path (the file is the entry's,
-    /// not the config's). Language selectors before it govern the input;
+    /// not the command's). Language selectors before it govern the input;
     /// renders inject the actual file here.
     Input,
 };
@@ -122,8 +122,8 @@ struct Arg {
     }
 };
 
-/// An argument on its way into a config: its values are interned, their
-/// array stays local until the config is saved.
+/// An argument on its way into a command: its values are interned, their
+/// array stays local until the command is saved.
 struct LocalArg {
     std::uint32_t opt_id = 0;
     ArgClass cls = ArgClass::Semantic;

@@ -19,9 +19,6 @@ namespace {
 
 using namespace std::literals;
 
-#define EXPECT_CONTAINS(haystack, needle) ZEXPECT(llvm::StringRef(haystack).contains(needle))
-#define EXPECT_NOT_CONTAINS(haystack, needle) ZEXPECT(!llvm::StringRef(haystack).contains(needle))
-
 ZEST_SUITE(Edit) {
 
 ZEST_CASE(RemoveAppend) {
@@ -171,7 +168,7 @@ ZEST_CASE(SelectorHistoryRestored) {
 
 ZEST_CASE(RuleUnknownFlagIdentity) {
     /// A flag a rule appends that the option table does not know keeps its
-    /// spelling, and the identity hashes that spelling.
+    /// spelling, and the command hash covers that spelling.
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
@@ -287,8 +284,10 @@ ZEST_CASE(RuleAnchorKeysMemo) {
         auto edits = edits_at(directory);
         return print_argv(render_entry(database, fake("main.cpp"), {.edits = edits}));
     };
-    EXPECT_CONTAINS(render("/one"), Spelling("inc", Spelling::absolute("/one")).str());
-    EXPECT_CONTAINS(render("/two"), Spelling("inc", Spelling::absolute("/two")).str());
+    ZEXPECT(llvm::StringRef(render("/one"))
+                .contains(Spelling("inc", Spelling::absolute("/one")).str()));
+    ZEXPECT(llvm::StringRef(render("/two"))
+                .contains(Spelling("inc", Spelling::absolute("/two")).str()));
 
     auto one = edits_at("/one");
     auto two = edits_at("/two");

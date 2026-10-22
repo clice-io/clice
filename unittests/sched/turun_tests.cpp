@@ -41,7 +41,7 @@ ZEST_CASE(ModuleLintScanParity) {
                   {tmp.root, tmp.path("m.cppm"), {}},
                   {tmp.root, tmp.path("n.cppm"), {}},
     }));
-    scan_all(f.project.cdb, f.project.dep_graph);
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);
@@ -107,7 +107,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
                   {tmp.root, tmp.path("a.cpp"), {}},
                   {tmp.root, tmp.path("b.cpp"), {}},
     }));
-    scan_all(f.project.cdb, f.project.dep_graph);
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
     auto a = index_file(tmp, tmp.path("a.cpp"));
@@ -162,7 +162,7 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
                   {tmp.root, tmp.path("detail.cpp"), {}},
                   {tmp.root, tmp.path("impl.cpp"),   {}},
     }));
-    scan_all(f.project.cdb, f.project.dep_graph);
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);

@@ -86,7 +86,7 @@ ZEST_CASE(NewProviderDirtiesImporters) {
               build_cdb_json({
                   {tmp.root, tmp.path("m.cppm"), {}}
     }));
-    scan_all(project.cdb, project.dep_graph);
+    scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
     tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
     auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cppm")));
@@ -394,7 +394,7 @@ ZEST_CASE(BatchSeesEarlierEdges) {
                   {tmp.root, tmp.path("a.cpp"), {}},
                   {tmp.root, tmp.path("b.cpp"), {}},
     }));
-    scan_all(project.cdb, project.dep_graph);
+    scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
     auto known = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
@@ -459,7 +459,7 @@ ZEST_CASE(RescanKeepsGuardedProvider) {
               build_cdb_json({
                   {tmp.root, tmp.path("m.cpp"), {"-std=c++20"}}
     }));
-    scan_all(project.cdb, project.dep_graph);
+    scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
     auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cpp")));
     ZASSERT(project.dep_graph.module_of(iface) == "m");

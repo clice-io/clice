@@ -70,8 +70,8 @@ std::unique_ptr<clang::CompilerInvocation>
     for(auto& argument: input.arguments) {
         arguments.push_back(argument.c_str());
     }
-    // A driver command (what a failed toolchain probe falls back to) gets
-    // the flag the probe gives every cc1 command, see ask_clang in toolchain.cpp.
+    // A driver command (what a failed toolchain query falls back to) gets
+    // the flag the query gives every cc1 command, see ask_clang in toolchains/clang.cpp.
     if(arguments.size() < 2 || llvm::StringRef(arguments[1]) != "-cc1") {
         arguments.insert(arguments.begin() + 1, "-fno-delayed-template-parsing");
     }

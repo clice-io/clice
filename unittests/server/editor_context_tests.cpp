@@ -127,8 +127,8 @@ ZEST_CASE(PinSteersEditorOnly) {
     ZASSERT(candidates.size() == 2u);
     // Pin the non-default candidate (candidate order is content-decided,
     // so the defines are read back rather than assumed).
-    auto define_of = [&](CommandID config) -> llvm::StringRef {
-        auto argv = print_argv(project.commands.render_full(config));
+    auto define_of = [&](CommandID command) -> llvm::StringRef {
+        auto argv = print_argv(project.commands.render_full(command));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
     auto pinned = candidates.back().command;
@@ -166,8 +166,8 @@ ZEST_CASE(PinBaseSurvivesRules) {
     auto file = project.file_table.intern(Spelling::absolute(path));
     auto candidates = project.cdb.candidate_entries(path);
     ZASSERT(candidates.size() == 2u);
-    auto define_of = [&](CommandID config) -> llvm::StringRef {
-        auto argv = print_argv(project.commands.render_full(config));
+    auto define_of = [&](CommandID command) -> llvm::StringRef {
+        auto argv = print_argv(project.commands.render_full(command));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
     auto pinned = candidates.back().command;

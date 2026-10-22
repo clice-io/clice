@@ -6,11 +6,12 @@ module clice;
 
 import :command.database;
 import :command.edit;
-import :command.nvcc;
 import :command.table;
 import :command.toolchain;
+import :command.toolchains.nvcc;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
+import :unittests.utils.toolchain_fixture;
 import :unittests.utils;
 import :vfs.path;
 
@@ -95,7 +96,7 @@ ZEST_CASE(ArchGencodeUnion) {
 }
 
 ZEST_CASE(SpecialArchCarried) {
-    // Non-numeric selections only nvcc can resolve persist as probe tokens
+    // Non-numeric selections only nvcc can resolve persist as query tokens
     // for the dryrun instead of vanishing into no architecture at all.
     for(auto arguments: {
             std::vector<const char*>{"nvcc", "-arch=native"},
@@ -106,7 +107,7 @@ ZEST_CASE(SpecialArchCarried) {
         ZEXPECT(contains(args, "-arch=native"));
         ZEXPECT(!contains(args, "native"));
     }
-    ZEXPECT(is_nvcc_probe_flag("-arch=native"));
+    ZEXPECT(is_nvcc_query_flag("-arch=native"));
     ZEXPECT(contains(translate({"nvcc", "-arch=all"}), "-arch=all"));
 
     // -arch stays last-wins across numeric and special values.
@@ -136,7 +137,7 @@ ZEST_CASE(CcbinBecomesToken) {
     }
 }
 
-ZEST_CASE(ProbeFlagsCarried) {
+ZEST_CASE(QueryFlagsCarried) {
     // Toolchain-selecting options become normalized verbatim tokens; a
     // relative -ccbin anchors to the compile directory like nvcc would.
     auto args = translate(
@@ -148,9 +149,9 @@ ZEST_CASE(ProbeFlagsCarried) {
                                llvm::StringRef("--target-directory=sbsa-linux"),
                                llvm::StringRef(anchored)}) {
         ZEXPECT(contains(args, flag));
-        ZEXPECT(is_nvcc_probe_flag(flag));
+        ZEXPECT(is_nvcc_query_flag(flag));
     }
-    ZEXPECT(!is_nvcc_probe_flag("-I/base"));
+    ZEXPECT(!is_nvcc_query_flag("-I/base"));
 
     // A bare name resolves on PATH like nvcc would — never anchored — while
     // dot-relative values are directory-relative.
@@ -473,7 +474,7 @@ ZEST_CASE(DryrunParsed) {
     ZEXPECT(std::ranges::contains(info->device_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
     ZEXPECT(!std::ranges::contains(info->host_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
 
-    // A probe carrying -arch=all runs one cicc per architecture; the newest
+    // A query carrying -arch=all runs one cicc per architecture; the newest
     // wins regardless of emission order.
     constexpr llvm::StringRef multi = R"(#$ g++ -E -x c++ "/tmp/a.cu" -o "/tmp/a.ii"
 #$ cicc --c++17 -arch compute_90 "/tmp/a.cpp1.ii" -o "/tmp/a.ptx"
@@ -524,8 +525,8 @@ ZEST_CASE(DryrunTopFallback) {
 }
 
 ZEST_CASE(CcbinAffectsKey) {
-    /// -ccbin persists as an unknown probe token; two commands differing
-    /// only in host compiler must not share a probe.
+    /// -ccbin persists as an unknown query token; two commands differing
+    /// only in host compiler must not share a query.
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase db{file_table, commands};
@@ -535,7 +536,7 @@ ZEST_CASE(CcbinAffectsKey) {
 
     auto key_of = [&](llvm::StringRef file) {
         auto& entry = db.candidate_entries(file).front();
-        return toolchain.probe_key_for(entry.command, commands.input_kind(entry.command, file));
+        return toolchain.query_key_for(entry.command, commands.input_kind(entry.command, file));
     };
     ZEXPECT(key_of("/tmp/a.cu") != key_of("/tmp/b.cu"));
     ZEXPECT(key_of("/tmp/a.cu") == key_of("/tmp/a.cu"));
@@ -559,8 +560,8 @@ ZEST_CASE(DatabaseTranslatesNVCC) {
                                           "kern.cu.o"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
-    // Probe tokens (-ccbin, ...) are unknown-class: visible in the full
-    // view and the probe, never in the compile render.
+    // Query tokens (-ccbin, ...) are unknown-class: visible in the full
+    // view and the query, never in the compile render.
     auto flags = commands.render_full(db.candidate_entries("/tmp/kern.cu").front().command);
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
@@ -831,7 +832,7 @@ ZEST_CASE(WildcardRemoveClearsArch) {
     ZEXPECT(std::ranges::contains(arch_flags("/tmp/native.cu", {}), "-arch=native"));
 
     // The wildcard must clear whichever form the base carries: numeric archs
-    // translate to --offload-arch, non-numeric ones persist as probe tokens.
+    // translate to --offload-arch, non-numeric ones persist as query tokens.
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Remove, {"--generate-code=*"}}
     };
@@ -872,8 +873,8 @@ ZEST_CASE(RemoveMatchesUnknownSpelling) {
     };
     CommandEdits options{.edits = edits};
 
-    // Probe flags all parse as the shared unknown id; removal keys on the
-    // spelling, so the other probe tokens survive.
+    // Query flags all parse as the shared unknown id; removal keys on the
+    // spelling, so the other query tokens survive.
     auto flags =
         commands.render_full(apply_edits(commands,
                                          file_table,
@@ -920,7 +921,7 @@ ZEST_CASE(RemoveListAlternatives) {
     ZEXPECT(!has("CUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
 }
 
-ZEST_CASE(WildcardRemovesProbeValue) {
+ZEST_CASE(WildcardRemovesQueryValue) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase db{file_table, commands};
@@ -928,7 +929,7 @@ ZEST_CASE(WildcardRemovesProbeValue) {
         {"nvcc", "-ccbin=/usr/bin/g++-12", "-target-dir", "sbsa-linux", "-c", "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
-    auto probe_flags = [&](std::vector<std::string> remove) {
+    auto query_flags = [&](std::vector<std::string> remove) {
         std::vector<CommandEdit> edits = {
             {CommandEdit::Kind::Remove, std::move(remove)}
         };
@@ -939,25 +940,80 @@ ZEST_CASE(WildcardRemovesProbeValue) {
                                    options);
         std::vector<std::string> result;
         for(llvm::StringRef flag: commands.render_full(applied)) {
-            if(is_nvcc_probe_flag(flag)) {
+            if(is_nvcc_query_flag(flag)) {
                 result.push_back(flag.str());
             }
         }
         return result;
     };
 
-    // A probe token's identity is its whole spelling; `=*` wildcards the
+    // A query token's identity is its whole spelling; `=*` wildcards the
     // value so the rule clears the concrete host compiler it never spelled.
     std::vector<std::string> ccbin = {"-ccbin=*"};
     std::vector<std::string> target_only = {"--target-directory=sbsa-linux"};
-    ZEXPECT(probe_flags(ccbin) == target_only);
+    ZEXPECT(query_flags(ccbin) == target_only);
 
     std::vector<std::string> target = {"--target-directory=*"};
     std::vector<std::string> ccbin_only = {"-ccbin=/usr/bin/g++-12"};
-    ZEXPECT(probe_flags(target) == ccbin_only);
+    ZEXPECT(query_flags(target) == ccbin_only);
 }
 
 };  // ZEST_SUITE(NVCCTests)
+
+ZEST_SUITE(NVCCToolchainTests, ToolchainFixture) {
+
+ZEST_CASE(NVCCHostLanguage, skip = Windows) {
+    /// nvcc runs its host compiler in the input's language: GCC's C++
+    /// driver adds _GNU_SOURCE, its C driver does not.
+    auto host = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2
+case " $* " in
+*" c++ "*) echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet -D_GNU_SOURCE query.cpp -dM' >&2 ;;
+*) echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1 -E -quiet query.c -dM' >&2 ;;
+esac
+)");
+    auto nvcc = fake_nvcc(host);
+    ZEXPECT(adjacent(f.resolve(add("a.cpp", {nvcc.c_str(), "-c"})), "-D", "_GNU_SOURCE"));
+    ZEXPECT(!adjacent(f.resolve(add("b.c", {nvcc.c_str(), "-c"})), "-D", "_GNU_SOURCE"));
+}
+
+ZEST_CASE(NVCCHostSysroot, skip = Windows) {
+    /// A cross host compiler's headers come from the sysroot the command
+    /// hands it.
+    auto host = fake_driver("aarch64-linux-gnu-g++", R"(for arg in "$@"; do
+  case "$arg" in --sysroot=*) root="${arg#--sysroot=}" ;; esac
+done
+echo 'Target: aarch64-linux-gnu' >&2
+echo ' /usr/libexec/gcc/aarch64-linux-gnu/13/cc1plus -E -quiet query.cpp -dM' >&2
+echo '#include <...> search starts here:' >&2
+echo " $root/usr/include" >&2
+echo 'End of search list.' >&2
+)");
+    auto nvcc = fake_nvcc(host);
+    auto sysroot = tmp.path("rootfs");
+    auto flag = "--sysroot=" + sysroot;
+    auto argv = f.resolve(add("a.cpp", {nvcc.c_str(), "-Xcompiler", flag.c_str(), "-c"}));
+    ZEXPECT(adjacent(argv, "-internal-isystem", sysroot + "/usr/include"));
+}
+
+ZEST_CASE(NVCCUnknownHost, skip = Windows) {
+    /// A host compiler that is neither GCC nor clang.
+    auto nvcc = fake_nvcc(fake_driver("icpc", ""));
+    auto ref = add("a.cpp", {nvcc.c_str(), "-c"});
+    auto resolved = f.toolchain.resolve(ref.command, ref.input);
+    ZASSERT(!resolved);
+    ZEXPECT(llvm::StringRef(resolved.error()).starts_with("Unsupported nvcc host compiler"));
+}
+
+ZEST_CASE(UnqueriedNVCC) {
+    // clang's own CUDA support reads an nvcc that is not here on the device
+    // side, as for an nvcc clice runs; the tokens only nvcc's dryrun reads
+    // are unknown to clang and leave its first job, the device one, alone.
+    auto nvcc = tmp.path("nvcc");
+    auto argv = f.resolve(unqueried(add("a.cu", {nvcc.c_str(), "-ccbin", "g++", "-c"})));
+    ZEXPECT(contains(argv, "-fcuda-is-device"));
+}
+
+};  // ZEST_SUITE(NVCCToolchainTests)
 
 }  // namespace
 }  // namespace clice::testing

@@ -20,9 +20,6 @@ namespace {
 
 using namespace std::literals;
 
-#define EXPECT_CONTAINS(haystack, needle) ZEXPECT(llvm::StringRef(haystack).contains(needle))
-#define EXPECT_NOT_CONTAINS(haystack, needle) ZEXPECT(!llvm::StringRef(haystack).contains(needle))
-
 ZEST_SUITE(Normalize) {
 
 /// `result` spells the rendered input `{}`.
@@ -68,12 +65,12 @@ ZEST_CASE(CommandDedup) {
     database.add_command("/fake", "test2.cpp", "clang++ -std=c++23 test2.cpp"sv);
     database.add_command("/fake", "test3.cpp", "clang++ -std=c++23 -DA test3.cpp"sv);
 
-    /// Same flags dedupe to one config; a user-content difference splits.
-    auto config1 = database.candidate_entries(fake("test.cpp")).front().command;
-    auto config2 = database.candidate_entries(fake("test2.cpp")).front().command;
-    auto config3 = database.candidate_entries(fake("test3.cpp")).front().command;
-    ZEXPECT(config1 == config2);
-    ZEXPECT(config1 != config3);
+    /// Same flags dedupe to one command; a user-content difference splits.
+    auto command1 = database.candidate_entries(fake("test.cpp")).front().command;
+    auto command2 = database.candidate_entries(fake("test2.cpp")).front().command;
+    auto command3 = database.candidate_entries(fake("test3.cpp")).front().command;
+    ZEXPECT(command1 == command2);
+    ZEXPECT(command1 != command3);
 
     auto argv1 = render_entry(database, fake("test.cpp"));
     ZASSERT(argv1.size() == 3U);
@@ -101,12 +98,12 @@ ZEST_CASE(PerFileClSelectors) {
     ZEXPECT(llvm::StringRef(commands.input_kind(beta, "/fake/beta.c").value) == "c++");
 
     auto beta_argv = print_argv(render_entry(database, "/fake/beta.c"));
-    EXPECT_CONTAINS(beta_argv, "/TP");
-    EXPECT_NOT_CONTAINS(beta_argv, "alpha.c");
+    ZEXPECT(llvm::StringRef(beta_argv).contains("/TP"));
+    ZEXPECT(!llvm::StringRef(beta_argv).contains("alpha.c"));
 
     auto alpha_argv = print_argv(render_entry(database, "/fake/alpha.c"));
-    EXPECT_CONTAINS(alpha_argv, "/TC");
-    EXPECT_NOT_CONTAINS(alpha_argv, "beta.c");
+    ZEXPECT(llvm::StringRef(alpha_argv).contains("/TC"));
+    ZEXPECT(!llvm::StringRef(alpha_argv).contains("beta.c"));
 };
 
 ZEST_CASE(WrapperStripped) {
@@ -116,13 +113,13 @@ ZEST_CASE(WrapperStripped) {
     database.add_command("/fake", "a.cpp", "ccache clang++ -std=c++20 a.cpp"sv);
     database.add_command("/fake", "b.cpp", "clang++ -std=c++20 b.cpp"sv);
 
-    /// The wrapper is stripped and takes no part in the config identity.
+    /// The wrapper is stripped and takes no part in the command identity.
     auto& a = database.candidate_entries(fake("a.cpp")).front();
     auto& b = database.candidate_entries(fake("b.cpp")).front();
     ZEXPECT(a.command == b.command);
 
     ZEXPECT(llvm::StringRef(commands.get(a.command).driver) == "clang++");
-    EXPECT_NOT_CONTAINS(print_argv(render_entry(database, fake("a.cpp"))), "ccache");
+    ZEXPECT(!llvm::StringRef(print_argv(render_entry(database, fake("a.cpp")))).contains("ccache"));
 };
 
 ZEST_CASE(WrapperValueOptions) {
@@ -162,9 +159,9 @@ ZEST_CASE(ResponseFileExpansion) {
     database.add_command(tmp.root.str(), "main.cpp", "clang++ @flags.rsp main.cpp"sv);
 
     auto argv = print_argv(render_entry(database, tmp.path("main.cpp")));
-    EXPECT_CONTAINS(argv, "-std=c++23");
-    EXPECT_CONTAINS(argv, "FROM_RSP=1");
-    EXPECT_NOT_CONTAINS(argv, "@");
+    ZEXPECT(llvm::StringRef(argv).contains("-std=c++23"));
+    ZEXPECT(llvm::StringRef(argv).contains("FROM_RSP=1"));
+    ZEXPECT(!llvm::StringRef(argv).contains("@"));
 };
 
 ZEST_CASE(DriverModeFromRsp) {
@@ -177,7 +174,8 @@ ZEST_CASE(DriverModeFromRsp) {
     CompilationDatabase database{file_table, commands};
     database.add_command(tmp.root.str(), "main.cpp", "clang++ @flags.rsp main.cpp"sv);
 
-    EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("main.cpp"))), "/TP");
+    ZEXPECT(
+        llvm::StringRef(print_argv(render_entry(database, tmp.path("main.cpp")))).contains("/TP"));
 };
 
 ZEST_CASE(InternedCommand) {
@@ -225,22 +223,22 @@ ZEST_CASE(CodegenFilter) {
 
     auto argv = print_argv(render_entry(database, fake("main.cpp")));
 
-    EXPECT_CONTAINS(argv, "-std=c++20");
+    ZEXPECT(llvm::StringRef(argv).contains("-std=c++20"));
     /// They define __PIC__ and __SSP_STRONG__.
-    EXPECT_CONTAINS(argv, "-fPIC");
-    EXPECT_CONTAINS(argv, "-fstack-protector-strong");
+    ZEXPECT(llvm::StringRef(argv).contains("-fPIC"));
+    ZEXPECT(llvm::StringRef(argv).contains("-fstack-protector-strong"));
 
-    EXPECT_NOT_CONTAINS(argv, "-fno-omit-frame-pointer");
-    EXPECT_NOT_CONTAINS(argv, "-fdata-sections");
-    EXPECT_NOT_CONTAINS(argv, "-ffunction-sections");
-    EXPECT_NOT_CONTAINS(argv, "-fcolor-diagnostics");
-    EXPECT_NOT_CONTAINS(argv, "-g");
+    ZEXPECT(!llvm::StringRef(argv).contains("-fno-omit-frame-pointer"));
+    ZEXPECT(!llvm::StringRef(argv).contains("-fdata-sections"));
+    ZEXPECT(!llvm::StringRef(argv).contains("-ffunction-sections"));
+    ZEXPECT(!llvm::StringRef(argv).contains("-fcolor-diagnostics"));
+    ZEXPECT(!llvm::StringRef(argv).contains("-g"));
 
     /// They survive in the full build.
     auto full = print_argv(
         commands.render_full(database.candidate_entries(fake("main.cpp")).front().command));
-    EXPECT_CONTAINS(full, "-fno-omit-frame-pointer");
-    EXPECT_CONTAINS(full, "-fdata-sections");
+    ZEXPECT(llvm::StringRef(full).contains("-fno-omit-frame-pointer"));
+    ZEXPECT(llvm::StringRef(full).contains("-fdata-sections"));
 };
 
 ZEST_CASE(FlangOnlyWarnings) {
@@ -280,11 +278,11 @@ ZEST_CASE(DependencyScanFilter) {
 
     auto argv = print_argv(render_entry(database, fake("main.cpp")));
 
-    EXPECT_CONTAINS(argv, "-std=c++20");
-    EXPECT_NOT_CONTAINS(argv, "-MD");
-    EXPECT_NOT_CONTAINS(argv, "-MF");
-    EXPECT_NOT_CONTAINS(argv, "-MT");
-    EXPECT_NOT_CONTAINS(argv, "main.d");
+    ZEXPECT(llvm::StringRef(argv).contains("-std=c++20"));
+    ZEXPECT(!llvm::StringRef(argv).contains("-MD"));
+    ZEXPECT(!llvm::StringRef(argv).contains("-MF"));
+    ZEXPECT(!llvm::StringRef(argv).contains("-MT"));
+    ZEXPECT(!llvm::StringRef(argv).contains("main.d"));
 };
 
 ZEST_CASE(PreprocessorDependencyFilter) {
@@ -318,17 +316,17 @@ ZEST_CASE(UserContentClassification) {
     auto a_argv = print_argv(render_entry(database, fake("a.cpp")));
     auto b_argv = print_argv(render_entry(database, fake("b.cpp")));
 
-    EXPECT_CONTAINS(a_argv, "-std=c++20");
-    EXPECT_CONTAINS(a_argv, "-Wall");
-    EXPECT_CONTAINS(b_argv, "-std=c++20");
-    EXPECT_CONTAINS(b_argv, "-Wall");
+    ZEXPECT(llvm::StringRef(a_argv).contains("-std=c++20"));
+    ZEXPECT(llvm::StringRef(a_argv).contains("-Wall"));
+    ZEXPECT(llvm::StringRef(b_argv).contains("-std=c++20"));
+    ZEXPECT(llvm::StringRef(b_argv).contains("-Wall"));
 
-    EXPECT_CONTAINS(a_argv, "A=1");
-    EXPECT_CONTAINS(a_argv, "FOO");
-    EXPECT_CONTAINS(b_argv, "B=2");
+    ZEXPECT(llvm::StringRef(a_argv).contains("A=1"));
+    ZEXPECT(llvm::StringRef(a_argv).contains("FOO"));
+    ZEXPECT(llvm::StringRef(b_argv).contains("B=2"));
 
-    EXPECT_NOT_CONTAINS(a_argv, "B=2");
-    EXPECT_NOT_CONTAINS(b_argv, "A=1");
+    ZEXPECT(!llvm::StringRef(a_argv).contains("B=2"));
+    ZEXPECT(!llvm::StringRef(b_argv).contains("A=1"));
 };
 
 ZEST_CASE(IncludePathAbsolutize) {
@@ -365,18 +363,18 @@ ZEST_CASE(WorkingDirectoryAnchorsIncludes) {
     ZEXPECT(has_arg(render_entry(database, "/project/main.cpp"), "/project/build/include"));
     /// The directory itself is anchored too, so no reader depends on
     /// where it runs.
-    auto config = database.candidate_entries("/project/main.cpp").front().command;
-    auto working = llvm::find_if(commands.get(config).args, [](const Arg& arg) {
+    auto command = database.candidate_entries("/project/main.cpp").front().command;
+    auto working = llvm::find_if(commands.get(command).args, [](const Arg& arg) {
         return arg.opt_id == option::OPT_working_directory;
     });
-    ZASSERT(working != commands.get(config).args.end());
+    ZASSERT(working != commands.get(command).args.end());
     auto value = path::convert_to_slash(working->values[0]);
     ZEXPECT((path::is_rooted(value) && llvm::StringRef(value).ends_with("/project/build")));
 };
 
 ZEST_CASE(BareFileValueAnchored) {
     /// A file an option reads is relative to the entry directory with or
-    /// without a separator; the toolchain probe runs elsewhere. A bare
+    /// without a separator; the toolchain query runs elsewhere. A bare
     /// `--config` name is clang's to search in its configuration
     /// directories.
     FileTable file_table;
@@ -386,9 +384,9 @@ ZEST_CASE(BareFileValueAnchored) {
                          "main.cpp",
                          "clang++ -fsanitize-ignorelist=ignore.txt --config=x.cfg --sysroot sdk "
                          "main.cpp"sv);
-    auto config = database.candidate_entries("/project/main.cpp").front().command;
+    auto command = database.candidate_entries("/project/main.cpp").front().command;
     llvm::SmallVector<std::string> values;
-    for(auto& arg: commands.get(config).args) {
+    for(auto& arg: commands.get(command).args) {
         for(llvm::StringRef value: arg.values) {
             values.push_back(path::convert_to_slash(value));
         }

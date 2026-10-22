@@ -196,7 +196,7 @@ private:
     llvm::DenseSet<Fid> import_candidates;
     llvm::DenseMap<Fid, std::uint64_t> scanned_directives;
 
-    /// (fid, CommandID) -> directly included files.
+    /// (fid, scan group) -> directly included files.
     llvm::DenseMap<std::pair<Fid, std::uint32_t>, llvm::SmallVector<IncludeEdge>> includes;
 
     /// Track which files have any include entries (for file_count).

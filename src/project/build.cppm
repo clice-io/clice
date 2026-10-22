@@ -208,8 +208,8 @@ public:
     /// or a default-command rule covers it and it is a source.
     bool declared(Fid file);
 
-    /// The command of the entry writing the precompiled header `config`'s
-    /// command reads (CommandTable::pch_inputs) — the
+    /// The command of the entry writing the precompiled header `command`
+    /// reads (CommandTable::pch_inputs) — the
     /// `cmake_pch.hxx.cxx` entry of a CMake target with precompiled
     /// headers; of the configurations writing one each from that file, the
     /// one writing this very PCH. The PCH on disk may come from another
@@ -218,7 +218,7 @@ public:
     /// extras: built under other flags, it would hold other code than that
     /// command parses. Nullopt when the build writes none of them, and for
     /// a command writing a precompiled header itself.
-    std::optional<CommandRef> pch_unit(CommandID config,
+    std::optional<CommandRef> pch_unit(CommandID command,
                                        llvm::ArrayRef<CanonicalRef> paths,
                                        llvm::ArrayRef<std::string> extra_prepend = {},
                                        llvm::ArrayRef<std::string> extra_append = {});
@@ -314,8 +314,10 @@ private:
     /// spelling that is not a compile command.
     llvm::StringMap<CommandID> interned;
 
-    /// apply's results by (command, the id of the edits' key).
+    /// The ids of the edits' keys apply has seen.
     llvm::StringMap<std::uint32_t> edit_keys;
+
+    /// apply's results by (command, the id of the edits' key).
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, CommandID> edited;
 };
 

@@ -45,6 +45,25 @@ llvm::StringRef language_state_at_slot(llvm::ArrayRef<Arg> args) {
     return cl_state.empty() ? x_state : cl_state;
 }
 
+/// Whether the driver compiles C inputs as C++, as `g++` and `clang++` do
+/// under any version or target affix (`x86_64-linux-gnu-g++-13`), and
+/// `zig c++` — unless a `--driver-mode=`, the last one winning, says
+/// otherwise.
+bool cxx_driver(const Command& command) {
+    if(command.subcommand) {
+        return llvm::StringRef(command.subcommand) == "c++";
+    }
+    for(auto& arg: llvm::reverse(command.args)) {
+        if(arg.opt_id == option::OPT_driver_mode && arg.values.size() == 1) {
+            return llvm::StringRef(arg.values[0]) == "g++";
+        }
+    }
+    std::string lowered = path::filename(command.driver).lower();
+    llvm::StringRef name = lowered;
+    name.consume_back(".exe");
+    return name.rtrim("0123456789.-").ends_with("++");
+}
+
 }  // namespace
 
 llvm::StringRef resource_dir() {
@@ -186,25 +205,6 @@ llvm::StringRef CommandTable::forced_language(CommandID id) const {
     return language_state_at_slot(get(id).args);
 }
 
-/// Whether the driver compiles C inputs as C++, as `g++` and `clang++` do
-/// under any version or target affix (`x86_64-linux-gnu-g++-13`), and
-/// `zig c++` — unless a `--driver-mode=`, the last one winning, says
-/// otherwise.
-static bool cxx_driver(const Command& command) {
-    if(command.subcommand) {
-        return llvm::StringRef(command.subcommand) == "c++";
-    }
-    for(auto& arg: llvm::reverse(command.args)) {
-        if(arg.opt_id == option::OPT_driver_mode && arg.values.size() == 1) {
-            return llvm::StringRef(arg.values[0]) == "g++";
-        }
-    }
-    std::string lowered = path::filename(command.driver).lower();
-    llvm::StringRef name = lowered;
-    name.consume_back(".exe");
-    return name.rtrim("0123456789.-").ends_with("++");
-}
-
 std::optional<Spelling> CommandTable::pch_output(CommandID id) const {
     namespace types = clang::driver::types;
     auto type = types::lookupTypeForTypeSpecifier(forced_language(id).str().c_str());
@@ -254,7 +254,7 @@ bool CommandTable::forces_c_family(CommandID id) const {
 
 InputKind CommandTable::input_kind(CommandID id, llvm::StringRef file) {
     auto state = language_state_at_slot(get(id).args);
-    /// With no mapping the raw extension keys the probe (the driver sees a
+    /// With no mapping the raw extension keys the query (the driver sees a
     /// temp file with the same extension, exactly as confused as it would
     /// be by the real file).
     auto language = state.empty() ? extension_language(file, cxx_driver(get(id))) : state;

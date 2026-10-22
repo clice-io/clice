@@ -2,7 +2,12 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:command.nvcc;
+module clice:command.toolchains.nvcc;
+
+import :command.argument;
+import :command.normalize;
+import :command.toolchains.clang;
+import :vfs.path;
 
 namespace clice {
 
@@ -12,9 +17,9 @@ namespace clice {
 /// option table has no spelling for them, so the translation re-emits them
 /// as normalized verbatim tokens. They survive CDB classification into the
 /// canonical command — keying the toolchain cache — and the NVCC query
-/// forwards them to its `nvcc --dryrun` probe so the probe runs against the
+/// forwards them to its `nvcc --dryrun` query so the query runs against the
 /// build's real toolchain.
-bool is_nvcc_probe_flag(llvm::StringRef arg);
+bool is_nvcc_query_flag(llvm::StringRef arg);
 
 /// The files an nvcc options-file argument at `arguments[i]` names —
 /// `-optf` or `--options-file`, its value separate or after `=`, a
@@ -36,7 +41,7 @@ std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<const
 ///   entries are ptxas targets that never set `__CUDA_ARCH__`. The newest
 ///   wins; at equal number 'a' > 'f' > plain ('a' unlocks e.g. Hopper
 ///   GMMA/TMA). A non-numeric `-arch` value (`native`, `all`, ...)
-///   persists as an `-arch=<value>` probe token instead — the dryrun
+///   persists as an `-arch=<value>` query token instead — the dryrun
 ///   resolves it to a concrete architecture.
 /// - Preprocessor options split their comma-separated values, short
 ///   spellings included: `-Ia,b` names two directories, `-DA=1,B=2` two
@@ -91,7 +96,7 @@ std::optional<llvm::SmallVector<std::size_t>>
 /// prints the whole compilation pipeline (host preprocess, cudafe++, device
 /// preprocess, cicc, ...) without executing it — CMake detects CUDA
 /// toolchains from the same output.
-struct NVCCDryrunInfo {
+struct NVCCDryrun {
     /// The toolkit root (`TOP=` line, else derived from
     /// `NVVMIR_LIBRARY_DIR=`), valid for clang's `--cuda-path`; empty when
     /// the dryrun names neither. Deriving it from the nvcc binary's location
@@ -128,6 +133,38 @@ struct NVCCDryrunInfo {
     std::vector<std::string> device_defines;
 };
 
-std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef output);
+std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output);
+
+/// nvcc: its dryrun names the toolkit root, the host compiler and the
+/// macros nvcc injects — none of which clang can derive on its own. The
+/// host compiler is then asked as a GCC-style driver is, in the input's
+/// language and with the command's sysroot, and clang's own driver builds
+/// the job, in CUDA mode for a CUDA input.
+kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
+                                                     llvm::StringRef input,
+                                                     llvm::StringRef kind,
+                                                     std::string cwd);
+
+/// A rule's flags for an NVCC command, in the same nvcc spellings as the
+/// command they edit, rewritten like the command itself: the options files
+/// they name spliced in, then translated (translate_nvcc_command, `edit`
+/// as there). Relative paths in the flags, and in the files they name, are
+/// relative to the rule's `anchor`.
+std::vector<std::string> translate_nvcc_flags(Normalizer& normalizer,
+                                              const char* driver,
+                                              llvm::ArrayRef<std::string> flags,
+                                              const Spelling& anchor,
+                                              bool edit);
+
+/// A rule's remove list for an NVCC command, as the flags of the
+/// translated base it names.
+std::vector<std::string> translate_nvcc_removes(Normalizer& normalizer,
+                                                const char* driver,
+                                                llvm::ArrayRef<std::string> flags,
+                                                const Spelling& anchor);
+
+/// An appended -gencode adds its architecture next to the base's, the way
+/// nvcc itself accumulates them — resolve the arch flags to the newest.
+void collapse_gpu_arch_args(std::vector<LocalArg>& args);
 
 }  // namespace clice

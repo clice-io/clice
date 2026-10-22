@@ -112,7 +112,7 @@ inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
 
 /// Scan every entry of the database under its own command: the shape of a
 /// test that owns no configuration.
-inline ScanReport scan_all(CompilationDatabase& cdb, DependencyGraph& graph) {
+inline ScanReport scan_all(CompilationDatabase& cdb, Toolchain& toolchain, DependencyGraph& graph) {
     llvm::SmallVector<CommandRef> units;
     for(auto& entry: cdb.entries()) {
         units.push_back({entry.file,
@@ -120,7 +120,6 @@ inline ScanReport scan_all(CompilationDatabase& cdb, DependencyGraph& graph) {
                          cdb.commands().input_kind(entry.command, cdb.files().resolve(entry.file)),
                          CommandSource::CDBExact});
     }
-    Toolchain toolchain{cdb.commands(), cdb.files()};
     return scan_dependency_graph(cdb, toolchain, graph, units);
 }
 

@@ -118,7 +118,7 @@ workarounds for them do not belong in clice's Bazel files.
 - **The toolchain query finds no clang job in the driver's `-v` output.**
   xclang's tools are one multi-call `llvm` binary: the job reads
   `"…/bin/llvm" "clang" "-cc1" …`, and `parse_clang_job` skips the tool
-  name before `-cc1`. Check: `DriverReportTests.ClangJobMultiCall`.
+  name before `-cc1`. Check: `ClangTests.ClangJobMultiCall`.
 - **A `g++` command, queried through the in-process driver, gets libc++'s
   headers** (no `<print>`). xclang 23.1.2.1 built clang with
   `CLANG_DEFAULT_CXX_STDLIB=libc++` (and the runtime and linker defaults),
@@ -147,7 +147,7 @@ workarounds for them do not belong in clice's Bazel files.
   `createOrDie`; clice's resource directory ships `include/` alone. clice
   rewrites only the resource dir itself and `include/` under it; every other
   path the driver derived from its resource dir stays external
-  (`src/command/toolchain.cpp`). Check: `ResolveKeepsExternalIgnorelist`, the
+  (`src/command/toolchain.cpp`). Check: `ToolchainTests.ResourceDirBecomesOurs`, the
   case `tests/compile/flags/03_sanitizers`.
 - **A clang assertion aborts a Debug run** (`Qualifier must be dependent`,
   say) where RelWithDebInfo passes. Only the ASan libclang has assertions on:

@@ -638,7 +638,7 @@ void b() { Box<B>{}.show(); }
                   {tmp.root, tmp.path("a2.cpp"), {}},
                   {tmp.root, tmp.path("b.cpp"),  {}},
     }));
-    scan_all(f.project.cdb, f.project.dep_graph);
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
     open_store(tmp, f.project);
 }
