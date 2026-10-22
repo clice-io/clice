@@ -135,7 +135,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 6. 将每个选项解析、分类一次并存入结构化配置，同时以 `directory` 为基准将相对包含路径转换为绝对路径
 7. 对相同配置进行去重，使其共享 `ConfigID`
 
-在 Cygwin 或 MSYS2 内部写出的数据库（由在它们的 shell 中运行的 CMake 或类似的工具写出）按 POSIX 风格书写路径：`/cygdrive/c/proj` 或 `/c/proj`，编译器则写作 `/usr/bin/c++.exe`。在 Windows 上，写出这些路径的 Cygwin 或 MSYS2 运行时用它的挂载表（mount table）把它们映射为 Windows 路径，包括条目的目录和文件、它的编译器，以及它的路径选项的值。这个运行时是 `PATH` 上第一个满足以下条件的运行时：它的挂载表能把首个此类条目的编译器映射到实际存在的程序；编译器不按这种风格书写时，则是能把该条目的目录或文件映射到实际存在的路径。Git for Windows 的 MSYS2 和独立安装的 MSYS2 对 `/c/proj` 的映射相同，但只有写出该数据库的那一个里有它的 `/usr/bin/c++.exe`。这种数据库的 `command` 字符串按 sh 的规则拆分。如果 `PATH` 上没有运行时能映射该数据库，clice 不读取它，并提示用户把正确的运行时加入其中。
+在 Cygwin 或 MSYS2 内部写出的数据库（由在它们的 shell 中运行的 CMake 或类似的工具写出）按 POSIX 风格书写路径：`/cygdrive/c/proj` 或 `/c/proj`，编译器则写作 `/usr/bin/c++.exe`。在 Windows 上，写出这些路径的 Cygwin 或 MSYS2 运行时用它的挂载表（mount table）把它们映射为 Windows 路径，包括条目的目录和文件、它的编译器，以及它的路径选项的值。这个运行时是 `PATH` 上第一个满足以下条件的运行时：它的挂载表能把首个此类条目的目录映射到实际存在的文件，该条目的编译器若也按这种风格书写，同样要映射到实际存在的文件。其他运行时的挂载表会把该目录映射到各自的根目录之下；Git for Windows 的 MSYS2 对盘符路径的映射虽与独立安装的 MSYS2 相同，却没有后者的 `/usr/bin/c++.exe`。这种数据库的 `command` 字符串按 sh 的规则拆分。如果 `PATH` 上没有运行时能映射该数据库，clice 不读取它，并提示用户把正确的运行时加入其中。
 
 解析过程还会识别 CMake 直接传给 cc1 的预编译头文件：翻译单元的 `-Xclang -include-pch -Xclang <pchfile>`，以及构建该 PCH 的条目中的 `-Xclang -emit-pch`，都会成为结构化选项，任何编译都不会把它们渲染到命令中。磁盘上的 PCH 可能出自其他编译器，因此 clice 会用写出它的那个条目的命令自行构建一份（在 CMake 中即 `cmake_pch.hxx.cxx` 的条目；GCC 在强制包含的头文件旁写出的 `.gch` 同样能用来找到该条目），读取该 PCH 的每个翻译单元都改为加载 clice 构建的版本：打开文件的 Preamble PCH 以链式 PCH 的方式接在它之后，后台索引也在它之上解析。PCH 所含的头文件单独打开时，编译不使用该 PCH：否则 PCH 中的头文件保护会跳过该头文件自身的正文。与编译借以进入头文件的其他强制包含一样，PCH 所代表的那个强制包含的头文件也会从命令中去掉（见[编译上下文](compilation-context.md#automatic-self-containedness-detection)）。
 
