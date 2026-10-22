@@ -278,9 +278,11 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
     }
 
     // clang reads a target off its program's name in its main alone, never
-    // when its library builds the invocation; the command's own --target
-    // comes later and wins.
-    if(auto target = name_target(command.driver); !target.empty()) {
+    // when its library builds the invocation.
+    bool names_target = ranges::any_of(command.args, [](const Arg& arg) {
+        return arg.opt_id == option::OPT_target;
+    });
+    if(auto target = name_target(command.driver); !target.empty() && !names_target) {
         LOG_INFO("clang reads the command of {} for {}, the target its name sets",
                  command.driver,
                  target);

@@ -181,14 +181,12 @@ ZEST_CASE(FallbackTargetFromName) {
     auto argv = f.toolchain.render(ref, f.db.spelling(ref.file));
     ZEXPECT(contains(argv, "--target=riscv32-wch-elf"));
 
-    /// The command's own target comes after it, and wins.
-    auto own = add("b.c", {tmp.c_path("riscv32-wch-elf-gcc"), "--target=riscv64-unknown-elf"});
+    /// A target the command names is the one.
+    auto own = add("b.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-target", "riscv64-unknown-elf"});
     ZEXPECT(!f.toolchain.resolve(own.command, own.input));
     argv = f.toolchain.render(own, f.db.spelling(own.file));
-    auto position = [&](llvm::StringRef arg) {
-        return std::ranges::find(argv, arg) - argv.begin();
-    };
-    ZEXPECT(position("--target=riscv32-wch-elf") < position("--target=riscv64-unknown-elf"));
+    ZEXPECT(!contains(argv, "--target=riscv32-wch-elf"));
+    ZEXPECT(adjacent(argv, "-target", "riscv64-unknown-elf"));
 }
 
 ZEST_CASE(WarmPartialFailure, skip = Windows) {

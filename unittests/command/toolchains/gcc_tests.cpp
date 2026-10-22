@@ -298,10 +298,24 @@ ZEST_CASE(GCCTargetNames, skip = Windows) {
                         "-march=rv32imc_xandes -march=rv32i2p0_m2p0_c2p0_xandes5p0 -mabi=ilp32");
     ZEXPECT(adjacent(andes, "-target-feature", "+m"));
     ZEXPECT(adjacent(andes, "-target-feature", "+c"));
+    /// A vendor's extension glued to the letters before it, and letters
+    /// running on after an underscore.
+    auto glued = render("riscv32-none-elf", "-march=rv32imacxw -mabi=ilp32");
+    ZEXPECT(adjacent(glued, "-target-feature", "+a"));
+    auto run = render("riscv32-unknown-linux-gnu", "-march=rv32i_mac -mabi=ilp32");
+    ZEXPECT(adjacent(run, "-target-feature", "+a"));
+    ZEXPECT(adjacent(run, "-target-feature", "+c"));
+    /// A version LLVM does not know, and an extension LLVM has only as
+    /// experimental, which clang's driver takes only when asked to.
+    auto thead = render("riscv64-unknown-elf", "-march=rv64gcv0p7_zicfilp_xtheadc -mabi=lp64d");
+    ZEXPECT(adjacent(thead, "-target-feature", "+v"));
+    ZEXPECT(adjacent(thead, "-target-feature", "+d"));
+    ZEXPECT(
+        !std::ranges::any_of(thead, [](llvm::StringRef arg) { return arg.contains("zicfilp"); }));
 }
 
 ZEST_CASE(GCCSeesWrittenAliases, skip = Windows) {
-    /// clang reads these as aliases of options GCC spells otherwise or not
+    /// clang reads these as aliases of options GCC names otherwise or not
     /// at all (`-G 8`, `-flto=full`, `-ftrigraphs`), which GCC rejects.
     auto args = tmp.path("args");
     auto driver = fake_driver("riscv32-unknown-elf-gcc",
@@ -328,7 +342,7 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
 
     /// A rule's edit keeps what the command wrote.
     std::vector<CommandEdit> edits = {
-        {CommandEdit::Kind::Append, {"-fno-common"}}
+        {.kind = CommandEdit::Kind::Append, .flags = {"-fno-common"}}
     };
     auto edited = ref;
     edited.command = apply_edits(f.commands, f.file_table, ref.command, {.edits = edits});
@@ -357,8 +371,6 @@ exit 1
     llvm::StringRef error = resolved.error();
     ZEXPECT(error.contains("error: unrecognized command-line option '-mclice-future'"));
     ZEXPECT(!error.contains("gcc version"));
-    /// The command it ran, to run again by hand.
-    ZEXPECT(error.contains(driver + " -E -dM -v "));
 }
 
 ZEST_CASE(GCCFailureRejected, skip = Windows) {

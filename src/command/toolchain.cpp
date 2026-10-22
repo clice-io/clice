@@ -335,10 +335,10 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
     std::vector<LocalArg> staged;
     for(auto& arg: kept) {
         if(target && !known_name(arg)) {
-            LOG_WARN("clang's target {} knows no {} {}: its default stands in",
+            LOG_INFO("clang's target {} knows no CPU or ABI named {} ({}): its default stands in",
                      triple,
-                     option::table().option(arg.id)->prefixed_name(),
-                     arg.values[0]);
+                     arg.values[0],
+                     option::table().option(arg.id)->prefixed_name());
             continue;
         }
         auto local = commands.local_arg(arg, tokens);

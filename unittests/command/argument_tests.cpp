@@ -216,7 +216,7 @@ ZEST_CASE(EveryAliasRendersBack) {
             }
             return arg;
         };
-        // The parse may read the spelling as a longer option: not one a
+        // The parse may read the name as a longer option's: not one a
         // command writes through this alias.
         auto first = read(written);
         if(!first || first->alias != option.id) {
@@ -242,7 +242,7 @@ ZEST_CASE(EveryAliasRendersBack) {
 };
 
 ZEST_CASE(DriverKeepsAlias) {
-    /// GCC spells its own way options clang knows as aliases: clang's own
+    /// GCC names its own way options clang knows as aliases: clang's own
     /// names reach a clang only.
     auto render = [](std::vector<std::string> args, CompilerFamily family) {
         std::vector<std::string> rendered;
