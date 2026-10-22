@@ -11,7 +11,6 @@ const KINDS: Record<Failure["kind"], string> = {
     hang: "Hangs",
     unfinished: "Runs of clice index that did not finish",
     index: "Units that failed to index, which the compiler compiles",
-    memory: "Units too large to index on the runner",
     compile: "Units clice reports errors on, which the compiler compiles",
     disagree: "Places where inspect and the server answer differently",
     inspect: "Requests clice inspect failed",
@@ -160,6 +159,12 @@ export function report(now: Results, before?: Results): string {
         "Differences the project accepts, each pinned by a case",
         now.accepted.length,
         now.accepted.map((each) => `- ${each.file}, ${each.label}: tests/${each.case}`),
+    );
+    const tooLarge = now.tooLarge ?? [];
+    section(
+        "Units whose worker ran out of memory alone, left out of the index",
+        tooLarge.length,
+        tooLarge.map((unit) => `- ${unit.unit}: ${String(unit.megabytes)} MB`),
     );
     section(
         "Units the compiler rejects too",

@@ -465,8 +465,8 @@ an exemption naming nothing uncovered fails too.
   with an error, a unit clice fails or reports errors on that the compiler
   compiles (or that the compiler cannot check), and a place where inspect and
   the server answer differently, and on an error of the runner itself; a unit
-  the compiler rejects too is listed, and so is a difference a case pins as
-  accepted.
+  the compiler rejects too is listed, and so are a difference a case pins as
+  accepted and a unit whose compile alone outgrew the runner's memory.
   Counts, sizes, memory and time are recorded beside the previous round's,
   never gated. Every failure names the command that reproduces it:
   `node tools/nightly/run.ts <job> --dir <dir>` prepares the project in
