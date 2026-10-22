@@ -144,10 +144,11 @@ defending against ghosts.
   `FoldingRangeCollector` in `folding_ranges.cpp` is `Builder`, `ScanOptions`
   in `scan.cc` is `Options`. A type that is the file's subject itself keeps
   its name (`Indexer` in `indexer.cpp`).
-- **Role words**: the type producing the file's answer is a `Builder`; a
-  visitor looking for nodes is a `<What>Finder` (`PackForwardFinder`); a
+- **Nothing is a `Collector`**: the type producing the file's answer is a
+  `Builder`; a visitor gathering nodes is a `<What>Finder`
+  (`PackForwardFinder`), or is named by what it gathers (`SpelledNames`); a
   clang callback that only records what clang reports is a `<What>Recorder`
-  (`CompilationUnit::DiagnosticRecorder`). Nothing is a `Collector`.
+  (`CompilationUnit::DiagnosticRecorder`).
 - Doc comments on declarations use `///`; the bar for when to write a
   comment at all is in CLAUDE.md.
 
@@ -162,23 +163,23 @@ has to correct is the wrong name.
 
 These were renamed out of the codebase; don't bring them back:
 
-| Avoid                              | Say instead                                                                                                                               |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| row / rows                         | an index record: `occurrence` / `relation`, else `entry`; a file's whole index data: `index` / `shard` / `variant`; a source line: `line` |
-| verdict                            | `result` / `decision` / `outcome`, whichever the site is                                                                                  |
-| claim                              | one word per site: `take`, `acquire`, `reserve`, `cover`, `report`                                                                        |
-| envelope                           | what it is: `TUIndexBlob`, the TU index, a container, a header                                                                            |
-| ledger                             | `table` / `list`                                                                                                                          |
-| wire (the serialized form)         | `serialized` / `encoded`; "in the protocol" for IPC                                                                                       |
-| settle                             | `finish` / `become idle`                                                                                                                  |
-| flavor                             | `kind` / `variant`                                                                                                                        |
-| land / landing (a result arriving) | `commit` / `merge` / `finish`                                                                                                             |
-| sweep                              | `pass` / `run` / `scan`; for cleanup, `remove`                                                                                            |
-| tier (an encoding choice)          | `encoding` (`MaskEncoding`); the search ranking's `NameRank::tier` stays                                                                  |
-| surface (verb), vouch for          | `report` / `show`, `guarantee` / `confirm`                                                                                                |
-| stamp outside `vfs`                | `version` / `generation`                                                                                                                  |
-| collector                          | `Builder` / `<What>Finder` / `<What>Recorder` (see Naming Conventions)                                                                    |
-| projection                         | what it is: the compile result (`CompileResult`), a result computed from the index (`index_semantic_tokens`), the LSP form                |
+| Avoid                              | Say instead                                                                                                                                                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| row / rows                         | an index record: `occurrence` / `relation`, else `entry`; a file's whole index data: `index` / `shard` / `variant`; a source line: `line`                                                                                             |
+| verdict                            | `result` / `decision` / `outcome`, whichever the site is                                                                                                                                                                              |
+| claim                              | one word per site: `take`, `acquire`, `reserve`, `cover`, `report`                                                                                                                                                                    |
+| envelope                           | what it is: `TUIndexBlob`, the TU index, a container, a header                                                                                                                                                                        |
+| ledger                             | `table` / `list`                                                                                                                                                                                                                      |
+| wire (the serialized form)         | `serialized` / `encoded`; "in the protocol" for IPC                                                                                                                                                                                   |
+| settle                             | `finish` / `become idle`                                                                                                                                                                                                              |
+| flavor                             | `kind` / `variant`                                                                                                                                                                                                                    |
+| land / landing (a result arriving) | `commit` / `merge` / `finish`                                                                                                                                                                                                         |
+| sweep                              | `pass` / `run` / `scan`; for cleanup, `remove`                                                                                                                                                                                        |
+| tier (an encoding choice)          | `encoding` (`MaskEncoding`); the search ranking's `NameRank::tier` stays                                                                                                                                                              |
+| surface (verb), vouch for          | `report` / `show`, `guarantee` / `confirm`                                                                                                                                                                                            |
+| stamp outside `vfs`                | `version` / `generation`                                                                                                                                                                                                              |
+| collector                          | `Builder` / `<What>Finder` / `<What>Recorder` (see Naming Conventions)                                                                                                                                                                |
+| projection                         | what it is: a document's latest compile (`DocumentCompile`), a result computed from the index (`index_semantic_tokens`), the LSP form; only the indexer's step from the semantic map to entries is a projection (`project_semantics`) |
 
 Domain words with one meaning each — use them only in that meaning:
 

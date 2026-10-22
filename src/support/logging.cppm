@@ -68,7 +68,7 @@ import :support.format;
 /// pcm, index_ms/teardown_ms for a turun),
 /// "index_query" (master-side index lookups: kind=relations|search),
 /// "index_detail" (inside one index pass: op=build splits the semantics
-/// table from turning it into entries, instantiations, finishing and the encoding of
+/// table from projection, instantiations, finishing and the encoding of
 /// the shards and the TU index, op=preamble the document links and the
 /// pch.idx index). Use stable key=value pairs and
 /// `_ms` suffixes for durations — scripts aggregate these lines

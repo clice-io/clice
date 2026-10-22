@@ -39,7 +39,7 @@ index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kin
     // what the other units do in the file serves while the buffer is the
     // text they read.
     if(kind == index::IndexSource::Kind::SessionShard) {
-        auto& state = *results.result(file)->index;
+        auto& state = *compiles.latest(file)->index;
         if(auto section = state.instantiation_section_of(state.path_count() - 1)) {
             source.instantiations.push_back(&state.instantiation_shard(*section));
         }
@@ -53,14 +53,14 @@ index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kin
 }
 
 const index::Shard* ServerLiveSources::session_shard(Fid file, const Session& session) const {
-    auto compiled = results.result(file);
+    auto compiled = compiles.latest(file);
     if(!compiled || !compiled->index || !compiled->index->loaded()) {
         return nullptr;
     }
     // A shard compiled from exactly the buffer's bytes describes it however
     // its dependencies moved since (the shard's DepsOnly contract).
     auto& shard = compiled->file_shard();
-    if(results.current(file) || shard.matches_content(session.text().size(), session.hash)) {
+    if(compiles.current(file) || shard.matches_content(session.text().size(), session.hash)) {
         return &shard;
     }
     return nullptr;
@@ -93,12 +93,12 @@ void ServerLiveSources::for_each_session(
 void ServerLiveSources::for_each_session_index(
     llvm::function_ref<bool(const index::TUIndex&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
-        return !session_shard(file, session) || visit(*results.result(file)->index);
+        return !session_shard(file, session) || visit(*compiles.latest(file)->index);
     });
 }
 
 std::shared_ptr<index::TUIndex> ServerLiveSources::overlay_of(Fid file) const {
-    auto compiled = results.result(file);
+    auto compiled = compiles.latest(file);
     if(!compiled || !compiled->pch_key) {
         return nullptr;
     }
@@ -146,7 +146,7 @@ void ServerLiveSources::for_each_overlay(
         return state ? visit(*state) : true;
     };
     sessions.for_each([&](Fid file, const Session&) -> bool {
-        auto compiled = results.result(file);
+        auto compiled = compiles.latest(file);
         if(!compiled || !compiled->pch_key) {
             return true;
         }

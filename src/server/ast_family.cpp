@@ -393,28 +393,28 @@ void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
     }
     // A barred compile leaves no AST behind the old diagnostics: they go,
     // and the note says why.
-    auto previous = results.result(session->path_id);
+    auto previous = compiles.latest(session->path_id);
     if(previous && previous->output.has_value() &&
        (kind == evidence_kind(EvidenceKind::Compile) || kind == evidence_kind(EvidenceKind::PCH))) {
-        results.set_output(session->path_id,
-                           CompileOutput{
-                               .version = std::nullopt,
-                               .source = previous->output->source,
-                               .diagnostics = {},
-                           });
+        compiles.set_output(session->path_id,
+                            CompileOutput{
+                                .version = std::nullopt,
+                                .source = previous->output->source,
+                                .diagnostics = {},
+                            });
     }
     republish(session);
 }
 
 void ASTFamily::republish(const std::shared_ptr<Session>& session) {
-    if(auto previous = results.result(session->path_id);
+    if(auto previous = compiles.latest(session->path_id);
        !previous || !previous->output.has_value()) {
-        results.set_output(session->path_id,
-                           CompileOutput{
-                               .version = std::nullopt,
-                               .source = CommandSource::CDBExact,
-                               .diagnostics = {},
-                           });
+        compiles.set_output(session->path_id,
+                            CompileOutput{
+                                .version = std::nullopt,
+                                .source = CommandSource::CDBExact,
+                                .diagnostics = {},
+                            });
     }
     on_output.emit(session);
 }
@@ -438,7 +438,7 @@ void ASTFamily::saved(Session& session) {
     // would provide, or saving a buffer whose compile has not finished yet,
     // runs it again.
     if(contexts.commands.header_mode(session.path_id) == HeaderMode::SelfContained) {
-        if(auto compiled = results.result_at(session.path_id, session.version);
+        if(auto compiled = compiles.latest_at(session.path_id, session.version);
            !compiled || missing_context_errors(compiled->output->diagnostics) > 0) {
             contexts.commands.forget_self_contained(session.path_id);
             session.trial_done = false;
@@ -474,7 +474,7 @@ void ASTFamily::saved(Session& session) {
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
-    if(auto compiled = results.result(session.path_id)) {
+    if(auto compiled = compiles.latest(session.path_id)) {
         if(compiled->failed_pch_key) {
             retry |= pch.forget_failure(*compiled->failed_pch_key);
         } else if(compiled->pch_key && kept_errors(pch.preamble_state(*compiled->pch_key))) {
@@ -488,12 +488,12 @@ void ASTFamily::saved(Session& session) {
 }
 
 void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileOutput output) {
-    results.set_output(session->path_id, std::move(output));
+    compiles.set_output(session->path_id, std::move(output));
     on_output.emit(session);
 }
 
 void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit) const {
-    if(auto it = results.entries.find(path_id); it != results.entries.end() && it->second.deps) {
+    if(auto it = compiles.entries.find(path_id); it != compiles.entries.end() && it->second.deps) {
         visit(*it->second.deps);
     }
     // Chain files of a header context are embedded in the synthesized
@@ -501,7 +501,7 @@ void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapsh
     if(auto* header_context = contexts.header_context(path_id)) {
         visit(header_context->deps);
     }
-    if(auto compiled = results.result(path_id); compiled && compiled->pch_key) {
+    if(auto compiled = compiles.latest(path_id); compiled && compiled->pch_key) {
         if(auto it = project.pch_cache.find(*compiled->pch_key); it != project.pch_cache.end()) {
             visit(it->second.deps);
         }
@@ -534,7 +534,7 @@ void ASTFamily::closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files) const {
 }
 
 void ASTFamily::touch(Fid path_id) {
-    auto& entry = results.entries[path_id];
+    auto& entry = compiles.entries[path_id];
     entry.current = false;
     entry.epoch += 1;
 }
@@ -559,7 +559,7 @@ void ASTFamily::invalidate(Fid path_id) {
 
 void ASTFamily::drop(Fid path_id) {
     graph.update(node(path_id));
-    results.entries.erase(path_id);
+    compiles.entries.erase(path_id);
     pcm.forget_buffer(path_id);
 }
 
@@ -570,14 +570,14 @@ void ASTFamily::switch_identity(Session& session) {
     session.generation += 1;
     session.trial_done = false;
     session.quarantine->on_change(Quarantine::Clock::now());
-    auto& entry = results.entries[session.path_id];
-    if(entry.result) {
+    auto& entry = compiles.entries[session.path_id];
+    if(entry.latest) {
         // The TU index describes the buffer under the old identity, though
         // it compiled the same bytes.
-        auto next = CompileResult(*entry.result);
+        auto next = DocumentCompile(*entry.latest);
         next.pch_key.reset();
         next.index.reset();
-        entry.result = std::make_shared<const CompileResult>(std::move(next));
+        entry.latest = std::make_shared<const DocumentCompile>(std::move(next));
     }
     entry.deps.reset();
     supersede(session.path_id);
@@ -617,7 +617,7 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
               path_id,
               session->version,
               session->generation,
-              results.current(path_id));
+              compiles.current(path_id));
 
     // A closed session never compiles again, and the join below cannot
     // tell: its generation stopped moving at the close.
@@ -633,11 +633,11 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
         co_return false;
     }
 
-    // The result's current flag alone cannot clear this fast path: another
+    // The latest compile's current flag alone cannot clear this fast path: another
     // consumer's PCH staleness discovery dirties this node through the
-    // graph cascade without touching the result table, and a PCH
+    // graph cascade without touching the compile table, and a PCH
     // rebuilt before the next request would read fresh again here.
-    if(results.current(path_id) && !graph.is_dirty(node(path_id))) {
+    if(compiles.current(path_id) && !graph.is_dirty(node(path_id))) {
         if(!is_stale(*session)) {
             co_return true;
         }
@@ -1242,7 +1242,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             LOG_WARN("Compile produced no result for {} (status={})",
                      file_path,
                      static_cast<int>(result.value().status));
-            // The compile result stays non-current: the next request
+            // The latest compile stays non-current: the next request
             // recompiles instead of trusting the phantom product. What is
             // published is the honest gap: why the compile failed before
             // parsing, of this text, else versionless empty diagnostics
@@ -1260,7 +1260,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         // A probe invalidated mid-flight is discarded whole: its result is
-        // a conditional write like the compile result's current flag (dispatch
+        // a conditional write like the latest compile's current flag (dispatch
         // reset trial_done and the header mode for the recompile to
         // re-earn), and its diagnostics come from a compile deliberately
         // run without includer context — they are never published,
@@ -1315,7 +1315,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // The commit: build the whole package off to the side, then
         // install it with no suspension before the outcome becomes
         // visible (contract 16) — a joiner must never see Success before
-        // the compile result describes the buffer it compiled. A Lost
+        // the latest compile describes the buffer it compiled. A Lost
         // invalidation mid-flight (ctx no longer current, generation
         // unchanged) commits the same package as bounded staleness —
         // recorded, published, but not current — and reports Stale so
@@ -1333,7 +1333,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         auto& index_data = result.value().tu_index_data;
-        auto next = std::make_shared<CompileResult>();
+        auto next = std::make_shared<DocumentCompile>();
         next->pch_key = consumed_pch;
         next->failed_pch_key = failed_pch;
         // The AST and the file index commit together — that pairing is
@@ -1368,16 +1368,16 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                   : std::string(),
         };
 
-        auto& entry = results.entries[path_id];
+        auto& entry = compiles.entries[path_id];
         // A document moving off a preamble it failed on releases that
         // failure: only the preamble's consumers would ever retry it.
         // FIXME: released even while another open document still fails on that
         // preamble: its next compile runs the failing build once more.
-        if(entry.result && entry.result->failed_pch_key &&
-           entry.result->failed_pch_key != failed_pch) {
-            pch.forget_failure(*entry.result->failed_pch_key);
+        if(entry.latest && entry.latest->failed_pch_key &&
+           entry.latest->failed_pch_key != failed_pch) {
+            pch.forget_failure(*entry.latest->failed_pch_key);
         }
-        entry.result = std::move(next);
+        entry.latest = std::move(next);
         if(tidy_config) {
             result.value().deps.append_range(tidy_config->files);
         }
@@ -1417,7 +1417,8 @@ kota::task<std::optional<std::string>>
                           const PCMFamily::ModuleDeps& imports) {
     auto path_id = session->path_id;
     auto license = [&] {
-        return session->generation == license_generation && results.epoch(path_id) == license_epoch;
+        return session->generation == license_generation &&
+               compiles.epoch(path_id) == license_epoch;
     };
 
     // The precompiled header the build declares for the command, as a
@@ -1442,7 +1443,7 @@ kota::task<std::optional<std::string>>
     switch(plan.decision) {
         case PCHPlan::Decision::None:
             if(license()) {
-                results.set_pch_key(path_id, base);
+                compiles.set_pch_key(path_id, base);
                 session->quarantine->on_success(evidence_kind(EvidenceKind::PCH));
             }
             co_return base;
@@ -1474,7 +1475,7 @@ kota::task<std::optional<std::string>>
     // wash belongs to this request anymore. The request itself still
     // compiles against the artifact: it was planned from the text it sends.
     if(license()) {
-        results.set_pch_key(path_id, pch_key);
+        compiles.set_pch_key(path_id, pch_key);
         // Adopting a proven-good artifact clears the session's PCH record as
         // surely as building one — but only its own; every consumer clears
         // for itself.
@@ -1492,7 +1493,7 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     auto* synthesized = resolution.synthesized.get();
     auto& session = ticket.session;
     auto path_id = session->path_id;
-    auto license_epoch = results.epoch(path_id);
+    auto license_epoch = compiles.epoch(path_id);
 
     // The scan runs under the request's command with the text the dispatch
     // will compile, so an unsaved `import m;` builds its PCM before the parse

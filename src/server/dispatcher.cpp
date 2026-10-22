@@ -82,7 +82,7 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
                    result.error().code != worker::dispatch_errc::document_unloaded) {
                     co_return std::move(result);
                 }
-                // The worker evicted the document behind a compile result that
+                // The worker evicted the document behind a compile that
                 // still reads current: its eviction notice crossed a compile
                 // of the document still finishing, which the master took for
                 // the one that would put it back, or another document's

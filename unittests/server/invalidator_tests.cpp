@@ -717,7 +717,7 @@ ZEST_CASE(AppearedHeaderCascades) {
     ContextChoices blob;
     EditorContext resolver(project, commands, blob);
     Harness ph(project, resolver, store);
-    ph.ast.results.entries[open].deps = DepsSnapshot{
+    ph.ast.compiles.entries[open].deps = DepsSnapshot{
         DepState{.path_id = header, .missing = true}
     };
     Invalidator invalidator(project, store, resolver, ph.ast, ph.pcm);
@@ -1275,10 +1275,10 @@ ZEST_CASE(RemovedEdgeDropsChoice) {
     auto generation = session->generation;
 
     Harness harness(project, resolver, store);
-    harness.ast.results.entries[header].current = true;
+    harness.ast.compiles.entries[header].current = true;
     ZASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
     ZASSERT(!resolver.header_contexts.contains(header));
-    ZASSERT(!harness.ast.results.current(header));
+    ZASSERT(!harness.ast.compiles.current(header));
     ZASSERT(!session->trial_done);
     ZASSERT(session->generation == generation + 1);
     ZASSERT(!resolver.selections.contains(header));

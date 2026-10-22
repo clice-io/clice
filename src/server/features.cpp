@@ -63,7 +63,7 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
 constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
 
 bool Features::ast_answerable(const Session& session) const {
-    return ast.results.index_current(session.path_id) && !ASTFamily::compile_barred(session);
+    return ast.compiles.index_current(session.path_id) && !ASTFamily::compile_barred(session);
 }
 
 kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
@@ -78,8 +78,9 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
             co_return Route::Ast;
         }
         // An oversized buffer is not worth a synchronous main-thread lex;
-        // the full-lex index results follow the investment policy instead of
-        // the index slice. Index-backed answers serve at any size.
+        // the features computed from the index by lexing the whole buffer
+        // follow the investment policy instead. Answers that only look the
+        // index up serve at any size.
         bool capped = options.full_lex && session.text().size() > full_lex_cap;
         if(!capped) {
             // The session's own index when current (the quarantine fallback
@@ -98,7 +99,7 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
                 // pending build: this request still pulls the compile it
                 // would otherwise have waited on, just without blocking.
                 if(session.serving == ServingMode::Escalated &&
-                   !ast.results.current(session.path_id)) {
+                   !ast.compiles.current(session.path_id)) {
                     ast.request_compile(ticket.session);
                 }
                 if(source) {
@@ -339,7 +340,7 @@ std::vector<feature::FileDiagnostic> Features::finished_diagnostics(const Sessio
     }
     // A compile that failed or is barred left an output of an older
     // buffer, whose ranges a versionless report would place on this one.
-    if(auto compiled = ast.results.result_at(session.path_id, session.version)) {
+    if(auto compiled = ast.compiles.latest_at(session.path_id, session.version)) {
         diagnostics = format_diagnostics(*compiled->output, project.config.diagnostics);
     }
     append_crash_notes(session, diagnostics);
@@ -358,14 +359,14 @@ Features::RawResult Features::definition(Ticket ticket,
     }
 
     // Preamble include lines first: they have no symbol occurrence in
-    // the index and are invisible to the worker's AST. A compile result
-    // still not current after the awaited compile means the world was re-dirtied
+    // the index and are invisible to the worker's AST. A latest compile
+    // still not current after the awaited one means the world was re-dirtied
     // mid-flight (the round committed as bounded staleness): the cached
     // links may describe a pre-edit preamble — skip, and let the index and
     // worker paths below answer.
     auto offset =
         session ? session->positions().offset(position, PositionEncoding::UTF16) : std::nullopt;
-    if(offset && ast.results.current(path_id)) {
+    if(offset && ast.compiles.current(path_id)) {
         auto links = find_preamble_links(*session);
         if(auto* link = link_at(links, *offset)) {
             co_return to_raw(directive_definition(*link));
@@ -459,9 +460,9 @@ Features::RawResult Features::definition(Ticket ticket,
     }
 
     // The buffer compiled since the first lookup: retry against the refreshed
-    // compile result, but only when the compile actually completed — a failed
-    // compile leaves the result non-current and the caches stale.
-    if(ast.results.current(path_id)) {
+    // compile, but only when the compile actually completed — a failed
+    // compile leaves the latest one non-current and the caches stale.
+    if(ast.compiles.current(path_id)) {
         if(auto retry = index_definition(); !retry.empty()) {
             co_return to_raw(retry);
         }
@@ -538,14 +539,14 @@ Features::RawResult Features::hover(Ticket ticket,
     }
 
     auto raw = co_await dispatcher.hover(ticket, position, std::move(token), markup);
-    if(raw.has_value() && to_lsp::is_null(raw.value()) && ast.results.current(path_id)) {
+    if(raw.has_value() && to_lsp::is_null(raw.value()) && ast.compiles.current(path_id)) {
         // The preamble region is the one place a null from the AST is not
         // authoritative — it is compiled into the PCH and invisible to
         // the worker (a `#define` there has no node). The index card
         // fills that gap, and only that gap: past the bound the AST saw
         // the code and declined on purpose (a lambda's auto parameter
         // must not hover, and the index would happily name it `auto:1`).
-        auto compiled = ast.results.result(path_id);
+        auto compiled = ast.compiles.latest(path_id);
         if(compiled && compiled->pch_key) {
             if(auto it = project.pch_cache.find(*compiled->pch_key);
                it != project.pch_cache.end()) {

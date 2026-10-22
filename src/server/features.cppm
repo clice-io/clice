@@ -290,10 +290,10 @@ private:
     };
 
     struct RouteOptions {
-        /// The index result raw-lexes the whole buffer (semantic tokens,
-        /// folds, the outline): it follows the investment policy once the buffer is
-        /// oversized, while index- and cursor-backed answers serve at any
-        /// size.
+        /// The feature's answer from the index raw-lexes the whole buffer
+        /// (semantic tokens, folds, the outline): it follows the investment
+        /// policy once the buffer is oversized, while answers that only look
+        /// the index up serve at any size.
         bool full_lex = false;
         /// The feature has no refresh request, so an empty reply to a cold
         /// document would be cached by the client for good — no signal

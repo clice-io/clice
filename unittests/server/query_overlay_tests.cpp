@@ -16,7 +16,7 @@ import :sched.families.pcm;
 import :sched.families.turun;
 import :sched.graph;
 import :sched.index.pump;
-import :server.compile_result;
+import :server.document_compile;
 import :server.live_sources;
 import :server.session_store;
 import :support.bytes;
@@ -42,12 +42,12 @@ WorkerPool pool{loop};
 CommandResolver resolver{project};
 TaskGraph graph;
 PCMFamily pcm{graph, project, resolver, pool};
-CompileResults results;
+DocumentCompiles compiles;
 
 PCHFamily pch{graph, project, pool};
 TURunFamily turun{graph, project, resolver, pcm, pch, pool};
 IndexPump indexer{loop, project, resolver, turun, pool};
-ServerLiveSources live{project, pch, session_store, results};
+ServerLiveSources live{project, pch, session_store, compiles};
 index::FreshnessGate gate{project.file_table};
 index::IndexQuery index_query{project.index, project.file_table, &gate, &live};
 index::IndexQuery disk_query{project.index, project.file_table, &gate, nullptr};
@@ -88,12 +88,12 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     ZASSERT(it != sources.all_files.end());
     session->set_text(it->second.content);
 
-    auto& entry = results.entries[path_id];
-    auto compiled = std::make_shared<CompileResult>();
+    auto& entry = compiles.entries[path_id];
+    auto compiled = std::make_shared<DocumentCompile>();
     compiled->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit)))));
     compiled->pch_key = "key";
-    entry.result = std::move(compiled);
+    entry.latest = std::move(compiled);
     entry.current = true;
 }
 
@@ -146,10 +146,10 @@ index::TUIndex empty_session_index() {
 void install_empty_index(std::source_location location = std::source_location::current()) {
     auto index = std::make_shared<index::TUIndex>(empty_session_index());
     ZASSERT(index->loaded());
-    auto& entry = results.entries[session->path_id];
-    auto next = CompileResult(*entry.result);
+    auto& entry = compiles.entries[session->path_id];
+    auto next = DocumentCompile(*entry.latest);
     next.index = std::move(index);
-    entry.result = std::make_shared<const CompileResult>(std::move(next));
+    entry.latest = std::make_shared<const DocumentCompile>(std::move(next));
 }
 
 /// The symbol under a marker in the open session, through the query's
@@ -504,10 +504,10 @@ int main() { return 0; }
     auto other_path = std::string(llvm::sys::path::parent_path(focus_path)) + "/other.cpp";
     auto other = session_store.open(project.file_table.intern(Spelling::absolute(other_path)));
     other->set_text(session->text().str());
-    auto& other_entry = results.entries[other->path_id];
-    auto other_compiled = std::make_shared<CompileResult>();
+    auto& other_entry = compiles.entries[other->path_id];
+    auto other_compiled = std::make_shared<DocumentCompile>();
     other_compiled->pch_key = "key";
-    other_entry.result = std::move(other_compiled);
+    other_entry.latest = std::move(other_compiled);
     other_entry.current = true;
 
     auto locations = relations("macro", RelationKind::Reference);
@@ -525,7 +525,7 @@ int main() { return 0; }
     // Body edits dirty the session but never move preamble entries: as long
     // as the buffer still starts with the blob's preamble text, the
     // entry keeps serving — the prefix comparison is the freshness check.
-    results.entries[session->path_id].current = false;
+    compiles.entries[session->path_id].current = false;
     session->set_text(session->text().str() + "int more;\n");
     ZEXPECT(index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
 }

@@ -94,7 +94,7 @@ ZEST_CASE(ShardServesOpenSession) {
     // compile it: freshness clause 4 serves it from its shard.
     auto session = store.open(focus_id);
     store.apply_open(*session, unit->focus_file().content().str(), 1);
-    ZASSERT(!results.index_current(session->path_id));
+    ZASSERT(!compiles.index_current(session->path_id));
 
     auto cursor = query.symbol_at(focus_id, point("use"));
     ZASSERT(cursor);

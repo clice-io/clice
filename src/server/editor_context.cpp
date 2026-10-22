@@ -24,7 +24,7 @@ namespace {
 /// and are re-interned at load. The structs mirror the on-disk JSON layout
 /// field for field — changing them changes the format.
 
-struct CacheContextEntry {
+struct Entry {
     std::uint32_t file;  // index into the paths table
     std::uint32_t host;  // index into the paths table; ~0u = none
     std::uint32_t occurrence;
@@ -32,9 +32,9 @@ struct CacheContextEntry {
     std::string base_hash;
 };
 
-struct ContextsData {
+struct Blob {
     std::vector<std::string> paths;
-    std::vector<CacheContextEntry> contexts;
+    std::vector<Entry> contexts;
 };
 
 /// The command a file compiles with — among a multi-configuration
@@ -174,7 +174,7 @@ void EditorContext::mark_dirty() {
 }
 
 std::string EditorContext::serialize() const {
-    ContextsData data;
+    Blob data;
     llvm::StringMap<std::uint32_t> index_map;
     auto intern = [&](Fid fid) -> std::uint32_t {
         auto path = project.index.portable(project.file_table.resolve(fid));
@@ -187,7 +187,7 @@ std::string EditorContext::serialize() const {
     };
 
     for(auto& [path_id, saved]: selections) {
-        CacheContextEntry entry;
+        Entry entry;
         entry.file = intern(path_id);
         entry.host = saved.host_path_id.valid() ? intern(saved.host_path_id) : ~0u;
         entry.occurrence = saved.occurrence.value_or(~0u);
@@ -208,7 +208,7 @@ void EditorContext::load() {
     if(blob.bytes.empty()) {
         return;
     }
-    ContextsData data;
+    Blob data;
     if(!kota::codec::json::from_string(blob.bytes, data)) {
         LOG_WARN("Failed to parse the context choices");
         return;

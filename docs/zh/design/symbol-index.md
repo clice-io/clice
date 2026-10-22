@@ -69,7 +69,7 @@ ProjectIndex   Global directory: external symbols + which TUs contributed which 
 Shard          Per-file variant storage (exact positions and relations), loaded on demand
 Instantiations Per-file storage of what instantiations and macro expansions resolve
     ↑ overlay
-Live index     The index of the open buffer's latest compile, held in its compile result
+Live index     The index of the open buffer's latest compile
 ```
 
 **TUIndex** 是编译翻译单元时产生的原始索引数据，由编译期间构建的统一语义映射投影生成。由于一次编译涉及焦点文件及其包含的所有头文件，`TUIndex` 内部会为每个文件维护一组独立的条目。它还包含一份符号表以及本次编译的包含树：每进入一个文件就有一个节点，记录该文件、包含它的节点以及包含指令所在的行。符号表不收录文件局部符号——函数内的局部符号、模板的参数——但另一个文件涉及的少数几个除外——通过实例化、宏展开，或函数返回的局部类：其余的只有所在文件会涉及，描述它们的也正是该文件的条目。`TUIndex` 是临时数据，合并到持久化索引后即被丢弃。
@@ -80,7 +80,7 @@ Live index     The index of the open buffer's latest compile, held in its compil
 
 文件的**实例化记录（Instantiations）**保存的是：每个已索引翻译单元的模板实例化和宏展开在该文件文本中解析出、而其分片悬而未决的内容（见下文）。它们与分片存放在一起，对应分片的同一内容版本。
 
-打开文件的**实时索引（live index）**来自其最近一次内存编译，由文档已发布的编译结果持有。它绝不会写入全局状态——只在查询时作为叠加层，使结果反映用户实际编辑的缓冲区内容。
+打开文件的**实时索引（live index）**来自其最近一次内存编译，由文档最近一次编译持有。它绝不会写入全局状态——只在查询时作为叠加层，使结果反映用户实际编辑的缓冲区内容。
 
 ### 符号表分层
 

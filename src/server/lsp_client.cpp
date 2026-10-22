@@ -281,7 +281,7 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     params.version = alias.buffer.version;
     if(diverged) {
         params.diagnostics = to_client({feature::file_warning(divergence_message(alias))});
-    } else if(auto compiled = project.ast.results.result_at(owner->path_id, owner->version)) {
+    } else if(auto compiled = project.ast.compiles.latest_at(owner->path_id, owner->version)) {
         auto diagnostics =
             format_diagnostics(*compiled->output, project.project.config.diagnostics);
         append_crash_notes(*owner, diagnostics);
@@ -289,7 +289,7 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     } else if(!flipped) {
         // Shared once the owner's compile caught up with the text; until
         // then only a divergence warning is taken down.
-        // FIXME: a crashed compile leaves no compile result at the owner's version, so
+        // FIXME: a crashed compile leaves no compile at the owner's version, so
         // a push client gets nothing at the alias URI, the crash note included.
         return;
     }
@@ -541,8 +541,8 @@ void LSPClient::register_lifecycle() {
         // pushes fresh results instead.
         for(auto& project: srv.projects) {
             project->sessions.for_each([&](Fid path_id, const Session& session) {
-                auto& results = project->ast.results;
-                if(results.current(path_id) && results.result_at(path_id, session.version)) {
+                auto& compiles = project->ast.compiles;
+                if(compiles.current(path_id) && compiles.latest_at(path_id, session.version)) {
                     this->push_output(*project, session);
                 }
                 return true;
@@ -1566,11 +1566,11 @@ void LSPClient::publish_config_diagnostics() {
 void LSPClient::push_output(ProjectServer& project, const Session& session) {
     // Held back until the handshake completes (the LSP spec forbids
     // publishDiagnostics before the initialize response); the output stays
-    // materialized in the compile result and the initialized handler replays it.
+    // materialized in the latest compile and the initialized handler replays it.
     if(!client_ready) {
         return;
     }
-    auto compiled = project.ast.results.result(session.path_id);
+    auto compiled = project.ast.compiles.latest(session.path_id);
     if(!compiled || !compiled->output.has_value()) {
         return;
     }

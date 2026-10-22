@@ -130,7 +130,7 @@ LSP 功能的具体实现。每个功能接收 `CompilationUnit`，返回对应�
 **文档状态** — 文档状态与失效机制。
 
 - `Session` / `SessionStore`：记录每个打开文件的缓冲区权威状态——内容、文档版本、代次和服务状态——在 didOpen 时创建，在 didClose 时销毁。编译产物不存放在这里
-- `CompileResult` / `CompileResults`：每个文档最近一次编译所发布的产物（功能结果、PCH 键、依赖快照）——一种不可变的读取模型，每次发布时都会整体替换
+- `DocumentCompile` / `DocumentCompiles`：每个文档最近一次编译所发布的产物（功能结果、PCH 键、依赖快照）——一种不可变的读取模型，每次发布时都会整体替换
 - `EditorContext`：命令解析中属于编辑器的一侧——用户的上下文选择，以及为打开文件解析出的头文件上下文——叠加在项目的 `CommandResolver` 之上，仅用于面向编辑器的编译
 - `Invalidator`：失效引擎——归并文件事件（磁盘内容变化与文件删除、编译数据库重新加载、worker 崩溃），生成一组去重的失效操作
 - `FileTracker`：通过 stat 轮询发现编辑器之外发生的变化（重新生成 `compile_commands.json`、`git checkout`），并将事件送入 `Invalidator`：它包括对项目编译数据库的监视，以及经由文件表进行的一轮扫描，覆盖磁盘上的文件和查找失败的 include 曾经查找过的位置

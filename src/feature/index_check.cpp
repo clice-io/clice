@@ -58,7 +58,7 @@ auto check_semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& o
                      legend);
     UnitIndex unit_index(unit);
     SourceText served(content, unit.lang_options());
-    auto projected = named_tokens(
+    auto from_index = named_tokens(
         index_semantic_tokens(served, unit_index.entries(), unit_index.resolver(), options),
         legend);
 
@@ -71,14 +71,14 @@ auto check_semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& o
     };
 
     std::map<std::uint32_t, const NamedToken*> by_begin;
-    for(const auto& token: projected) {
+    for(const auto& token: from_index) {
         by_begin.emplace(token.range.begin, &token);
     }
 
     const auto& map = unit.focus_file().positions();
     TokenCheck check{
         .ast = static_cast<std::uint32_t>(ast.size()),
-        .index = static_cast<std::uint32_t>(projected.size()),
+        .index = static_cast<std::uint32_t>(from_index.size()),
     };
     auto report = [&](const NamedToken& token,
                       llvm::StringRef field,
@@ -128,7 +128,7 @@ auto check_document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions&
     auto ast = document_symbols(unit, options);
     UnitIndex unit_index(unit);
     SourceText served(unit.focus_file().content(), unit.lang_options());
-    auto projected =
+    auto from_index =
         index_document_symbols(served, unit_index.entries(), unit_index.resolver(), options);
 
     struct Flat {
@@ -149,7 +149,7 @@ auto check_document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions&
     std::vector<Flat> left;
     std::vector<Flat> right;
     flatten(ast, -1, left);
-    flatten(projected, -1, right);
+    flatten(from_index, -1, right);
 
     std::multimap<std::pair<std::uint32_t, std::uint32_t>, std::int32_t> by_name_range;
     for(auto [at, flat]: std::views::enumerate(right)) {

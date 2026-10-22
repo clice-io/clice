@@ -69,7 +69,7 @@ ProjectIndex   Global directory: external symbols + which TUs contributed which 
 Shard          Per-file variant storage (exact positions and relations), loaded on demand
 Instantiations Per-file storage of what instantiations and macro expansions resolve
     ↑ overlay
-Live index     The index of the open buffer's latest compile, held in its compile result
+Live index     The index of the open buffer's latest compile
 ```
 
 **TUIndex** is the raw index data produced by compiling a translation unit, projected from the unified semantic map built during the compile. Since a compilation involves the focus file and all included headers, `TUIndex` internally maintains a separate set of entries per file. It also carries a symbol table and the include tree of this compilation: one node per entered file, naming the file, the node that included it and the line of the directive. The symbol table leaves out file-local symbols — a function's locals, a template's parameters — except the few that another file names, through an instantiation, a macro expansion, or a local class a function returns: the rest only their own file names, and that file's entries describe them. `TUIndex` is transient data, discarded after being merged into the persistent indexes.
@@ -80,7 +80,7 @@ Live index     The index of the open buffer's latest compile, held in its compil
 
 **Instantiations** of a file hold what the template instantiations and macro expansions of every indexed translation unit resolve in that file's text and its shard leaves open (see below). They live beside the shard, at its content generation.
 
-An open file's **live index** comes from its most recent in-memory compilation and is owned by the document's published compile result. It is never written to global state — it only overlays queries, so results reflect the buffer the user is actually editing.
+An open file's **live index** comes from its most recent in-memory compilation and is owned by the document's latest compile. It is never written to global state — it only overlays queries, so results reflect the buffer the user is actually editing.
 
 ### Symbol Table Layering
 

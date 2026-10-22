@@ -347,7 +347,7 @@ void ProjectIndex::for_each_file_of_local(SymbolHash hash,
 }
 
 std::vector<IncludeEdge> ProjectIndex::include_edges(Fid file) const {
-    // Every consumer projects the edges onto content the serving shard
+    // Every consumer applies the edges to content the serving shard
     // matches, so a resolution counts only at the shard's content
     // generation — a unit that indexed an older revision would place its
     // lines in text that moved.
