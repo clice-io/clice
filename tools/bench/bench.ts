@@ -48,7 +48,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-import type * as proto from "vscode-languageserver-protocol";
+import * as proto from "vscode-languageserver-protocol";
 import { CliceClient } from "../client/client.ts";
 import { Workspace } from "../client/workspace.ts";
 import { logFiles } from "../process_gate.ts";
@@ -715,8 +715,8 @@ class Run {
 /// (AddressSanitizer.cpp).
 async function shutdownServer(client: CliceClient, server: ServerName): Promise<void> {
     try {
-        await bounded(client.sendRequest("shutdown"), "shutdown");
-        await client.sendNotification("exit");
+        await bounded(client.sendRequest(proto.ShutdownRequest.type), "shutdown");
+        await client.sendNotification(proto.ExitNotification.type);
     } finally {
         client.disposed = true;
         // Hang detection: a server still running a minute after `exit` is
