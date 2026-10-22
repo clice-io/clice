@@ -9,6 +9,8 @@ module clice;
 import :command.argument;
 import :command.driver_report;
 import :command.nvcc;
+import :command.search_config;
+import :command.table;
 import :command.toolchain;
 import :support.logging;
 import :support.process;
@@ -797,34 +799,24 @@ bool in_probe_view(const Arg& arg, CompilerFamily family) {
 
 }  // namespace
 
-llvm::StringRef resource_dir() {
-    static std::string dir = [] {
-        static int anchor;
-        auto exe = llvm::sys::fs::getMainExecutable("", &anchor);
-        if(exe.empty()) {
-            return std::string{};
-        }
-        return clang::GetResourcesPath(exe);
-    }();
-    return dir;
-}
-
-Toolchain::Toolchain(CompilationDatabase& db, std::chrono::steady_clock::duration failed_retry) :
-    db(db), failed_retry(failed_retry) {}
+Toolchain::Toolchain(CommandTable& commands,
+                     FileTable& files,
+                     std::chrono::steady_clock::duration failed_retry) :
+    commands(commands), files(files), failed_retry(failed_retry) {}
 
 Toolchain::~Toolchain() = default;
 
 Toolchain::ProbeKey Toolchain::probe_key(CommandID id, InputKind input) {
-    auto& config = db.config(id);
+    auto& command = commands.get(id);
     ProbeKey out;
 
     /// cwd-insensitivity is an exemption earned by four orthogonal
     /// conditions; any miss keys (and runs) the probe in the entry
     /// directory. The conditions are independent — an absolute driver does
     /// not excuse a relative CPATH.
-    bool known_family = config.family != CompilerFamily::Unknown;
+    bool known_family = command.family != CompilerFamily::Unknown;
 
-    llvm::StringRef driver = config.driver;
+    llvm::StringRef driver = command.driver;
 #ifdef _WIN32
     /// Windows resolves bare names against the current directory first
     /// (plus PATHEXT variants) — never exempt.
@@ -840,8 +832,8 @@ Toolchain::ProbeKey Toolchain::probe_key(CommandID id, InputKind input) {
     /// read (names_path); only an unknown one can still hold a
     /// relative path.
     bool values_clean = true;
-    for(auto& arg: config.args) {
-        if(arg.opt_id != option::OPT_UNKNOWN || !in_probe_view(arg, config.family)) {
+    for(auto& arg: command.args) {
+        if(arg.opt_id != option::OPT_UNKNOWN || !in_probe_view(arg, command.family)) {
             continue;
         }
         llvm::StringRef spelling(arg.spelling);
@@ -858,20 +850,20 @@ Toolchain::ProbeKey Toolchain::probe_key(CommandID id, InputKind input) {
         out.key += '\0';
     };
 
-    append(config.driver);
-    if(config.subcommand) {
-        append(config.subcommand);
+    append(command.driver);
+    if(command.subcommand) {
+        append(command.subcommand);
     }
     append(input.value ? input.value : "");
-    if(!config.query_toolchain) {
+    if(!command.query_toolchain) {
         append("\x01unqueried");
     }
     if(out.cwd_sensitive) {
-        append(config.directory);
+        append(command.directory);
     }
 
-    for(auto& arg: config.args) {
-        if(!in_probe_view(arg, config.family)) {
+    for(auto& arg: command.args) {
+        if(!in_probe_view(arg, command.family)) {
             continue;
         }
         out.key += std::to_string(arg.opt_id);
@@ -890,24 +882,24 @@ Toolchain::ProbeKey Toolchain::probe_key(CommandID id, InputKind input) {
     return out;
 }
 
-Toolchain::ProbeArgv Toolchain::probe_argv(const Command& config) {
+Toolchain::ProbeArgv Toolchain::probe_argv(const Command& command) {
     ProbeArgv out;
-    out.argv.push_back(config.driver);
-    if(config.subcommand) {
-        out.argv.push_back(config.subcommand);
+    out.argv.push_back(command.driver);
+    if(command.subcommand) {
+        out.argv.push_back(command.subcommand);
     }
 
     auto emit = [&](llvm::StringRef fragment) {
-        out.argv.push_back(db.strings.save(fragment).data());
+        out.argv.push_back(commands.intern(fragment).data());
     };
 
     out.slot = out.argv.size();
-    for(auto& arg: config.args) {
+    for(auto& arg: command.args) {
         if(arg.cls == ArgClass::Input) {
             out.slot = out.argv.size();
             continue;
         }
-        if(!in_probe_view(arg, config.family)) {
+        if(!in_probe_view(arg, command.family)) {
             continue;
         }
         if(arg.opt_id == option::OPT_UNKNOWN) {
@@ -921,7 +913,7 @@ Toolchain::ProbeArgv Toolchain::probe_argv(const Command& config) {
             out.argv.push_back("-flto");
             continue;
         }
-        render_driver_arg(arg, config.family, emit);
+        render_driver_arg(arg, command.family, emit);
     }
 
     return out;
@@ -994,8 +986,8 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
         }
     };
 
-    Frontend result{.driver = db.strings.save(job[0]).data(),
-                    .job_resource_dir = db.strings.save(job_resource_dir)};
+    Frontend result{.driver = commands.intern(job[0]).data(),
+                    .job_resource_dir = commands.intern(job_resource_dir)};
     result.own_resource_dir =
         llvm::Triple(triple).isWindowsGNUEnvironment() && vfs::is_directory(job_resource_dir);
     std::vector<LocalArg> staged;
@@ -1003,23 +995,23 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
         if(target && !known_name(arg)) {
             continue;
         }
-        auto local = db.local_arg(arg, tokens);
+        auto local = commands.local_arg(arg, tokens);
         if(!result.own_resource_dir) {
             for(auto& value: local.values) {
                 if(auto ours = ours_for(local.opt_id, value, job_resource_dir)) {
-                    value = db.strings.save(*ours).data();
+                    value = commands.intern(*ours).data();
                 }
             }
         }
         staged.push_back(std::move(local));
     }
     staged.push_back({.opt_id = option::OPT_fsyntax_only, .cls = ArgClass::Semantic});
-    result.args = db.persist(staged);
+    result.args = commands.persist(staged);
     return result;
 }
 
 Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& probe) {
-    auto& config = db.config(id);
+    auto& command = commands.get(id);
 
     /// The PCM clice builds is the BMI the importers of the real build read:
     /// a reduced one drops what the global module fragment declares and the
@@ -1027,7 +1019,7 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& probe)
     /// writes a full BMI to -o whatever the driver asks for, and a reduced
     /// one only to a module output the command names.
     auto has = [&](unsigned id) {
-        return ranges::any_of(config.args, [&](const Arg& arg) { return arg.opt_id == id; });
+        return ranges::any_of(command.args, [&](const Arg& arg) { return arg.opt_id == id; });
     };
     bool full_bmi = has(option::OPT__precompile) && !has(option::OPT_fmodule_output) &&
                     !has(option::OPT_fmodule_output_EQ);
@@ -1046,8 +1038,8 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& probe)
             staged.push_back(local(arg));
         }
     }
-    /// The config's own user content never fed the probe.
-    for(auto& arg: config.args) {
+    /// The command's own user content never fed the probe.
+    for(auto& arg: command.args) {
         if(arg.cls != ArgClass::UserContent) {
             continue;
         }
@@ -1055,13 +1047,13 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& probe)
         if(!probe.own_resource_dir) {
             for(auto& value: staged_arg.values) {
                 if(auto ours = ours_for(arg.opt_id, value, probe.job_resource_dir)) {
-                    value = db.strings.save(*ours).data();
+                    value = commands.intern(*ours).data();
                 }
             }
         }
     }
 
-    resolved_configs.push_back({.driver = probe.driver, .args = db.persist(staged)});
+    resolved_configs.push_back({.driver = probe.driver, .args = commands.persist(staged)});
     return static_cast<ResolvedID>(resolved_configs.size() - 1);
 }
 
@@ -1093,16 +1085,16 @@ Toolchain::ProbeAdmission Toolchain::admit_probe(CommandID id, InputKind input) 
         failed.erase(failed_it);
     }
 
-    auto& config = db.config(id);
-    auto argv = probe_argv(config);
+    auto& command = commands.get(id);
+    auto argv = probe_argv(command);
     admission.kind = ProbeAdmission::Kind::Ready;
     admission.spec.argv = std::move(argv.argv);
     admission.spec.slot = argv.slot;
     admission.spec.kind = input.value;
-    admission.spec.family = config.family;
-    admission.spec.query_toolchain = config.query_toolchain;
-    admission.spec.cwd =
-        probe_cwd(pk.cwd_sensitive ? config.directory : llvm::StringRef(db.workspace_root));
+    admission.spec.family = command.family;
+    admission.spec.query_toolchain = command.query_toolchain;
+    admission.spec.cwd = probe_cwd(pk.cwd_sensitive ? command.directory
+                                                    : llvm::StringRef(commands.workspace_root()));
     return admission;
 }
 
@@ -1115,7 +1107,8 @@ void Toolchain::commit_probe(llvm::StringRef key,
     probes.try_emplace(key, frontend(*job));
 }
 
-std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID id, InputKind input) {
+std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID id,
+                                                                     InputKind input) {
     auto synth_key = std::pair{static_cast<std::uint32_t>(id), input.value};
     if(auto it = synth_cache.find(synth_key); it != synth_cache.end()) {
         return it->second;
@@ -1126,7 +1119,7 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID i
         return std::unexpected(std::move(admission.error));
     }
     if(admission.kind == ProbeAdmission::Kind::Ready) {
-        LOG_WARN("Toolchain probe miss: driver={} kind={}", db.config(id).driver, input.value);
+        LOG_WARN("Toolchain probe miss: driver={} kind={}", commands.get(id).driver, input.value);
 
         auto [ended] = kota::run(query_one(admission.spec));
         auto& result = *ended;
@@ -1141,7 +1134,7 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(CommandID i
     return resolved_id;
 }
 
-void Toolchain::warm(llvm::ArrayRef<std::pair<CommandID, InputKind>> pairs) {
+void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     struct Pending {
         std::string key;
         QuerySpec spec;
@@ -1150,8 +1143,8 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<CommandID, InputKind>> pairs) {
     llvm::StringMap<bool> seen;
     std::vector<Pending> pending;
 
-    for(auto& [id, input]: pairs) {
-        auto admission = admit_probe(id, input);
+    for(auto& ref: refs) {
+        auto admission = admit_probe(ref.command, ref.input);
         if(admission.kind != ProbeAdmission::Kind::Ready ||
            !seen.try_emplace(admission.key, true).second) {
             continue;
@@ -1206,6 +1199,85 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<CommandID, InputKind>> pairs) {
     }
 
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
+}
+
+std::vector<const char*> Toolchain::render(const CommandRef& ref,
+                                           llvm::StringRef path,
+                                           const RenderOptions& opts) {
+    auto resolved_id = resolve(ref.command, ref.input);
+    if(!resolved_id) {
+        LOG_WARN("Toolchain resolve failed for {}: {}",
+                 files.resolve(ref.file),
+                 resolved_id.error());
+        return commands.render_driver(ref, path, opts);
+    }
+
+    auto& rc = resolved(*resolved_id);
+    auto source = commands.intern(path);
+
+    std::vector<const char*> argv;
+    argv.reserve(rc.args.size() + 8);
+    argv.push_back(rc.driver);
+    argv.push_back("-cc1");
+    argv.push_back("-main-file-name");
+    // path::filename returns a suffix of the interned path (a pointer
+    // into the same buffer), so .data() is null-terminated.
+    argv.push_back(path::filename(source).data());
+
+    auto emit = [&](llvm::StringRef fragment) {
+        argv.push_back(commands.intern(fragment).data());
+    };
+
+    std::size_t last_user_content = argv.size();
+    std::size_t includes = 0;
+    for(auto& arg: rc.args) {
+        if(arg.opt_id == option::OPT_include) {
+            includes += 1;
+            if(includes > opts.kept_includes) {
+                continue;
+            }
+        }
+        render_arg(arg, emit);
+        if(arg.cls == ArgClass::UserContent) {
+            last_user_content = argv.size();
+        }
+    }
+
+    if(opts.preamble) {
+        argv.insert(argv.begin() + last_user_content, {"-include", opts.preamble});
+    }
+
+    argv.push_back(source.data());
+    return argv;
+}
+
+SearchConfig Toolchain::search_config(const CommandRef& ref) {
+    auto& command = commands.get(ref.command);
+    llvm::StringRef directory = command.directory;
+    auto resolved_id = resolve(ref.command, ref.input);
+    if(!resolved_id) {
+        return extract_search_config(command.args, directory);
+    }
+    auto [it, inserted] = search_configs.try_emplace(*resolved_id);
+    if(inserted) {
+        it->second = extract_search_config(resolved(*resolved_id).args, directory);
+        // A directory the command names is the user's, however the driver
+        // passes it on: clang-cl's /imsvc reaches cc1 as -internal-isystem.
+        llvm::StringSet<> named;
+        auto base = Spelling::absolute(directory);
+        for(auto& arg: command.args) {
+            for(auto& value: arg.values) {
+                named.insert(Spelling(value, base).str());
+            }
+        }
+        for(auto& dir: it->second.dirs) {
+            dir.driver = dir.driver && !named.contains(dir.path);
+            if(dir.driver) {
+                files.disk.add_package(CanonicalPath(Spelling::absolute(dir.path)).str());
+            }
+        }
+    }
+    return it->second;
 }
 
 }  // namespace clice

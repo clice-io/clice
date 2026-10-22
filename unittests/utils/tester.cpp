@@ -16,6 +16,7 @@ module;
 
 module clice;
 
+import :command.table;
 import :support.logging;
 import :syntax.preamble;
 import :syntax.scan;
@@ -306,9 +307,9 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     assert(entry && "no entry after add_command");
     CommandRef ref{entry->file,
                    entry->command,
-                   database.input_kind(entry->command, src_path),
+                   commands.input_kind(entry->command, src_path),
                    CommandSource::CDBExact};
-    auto rendered = database.render(ref);
+    auto rendered = toolchain.render(ref, database.spelling(ref.file));
     params.input.arguments.assign(rendered.begin(), rendered.end());
 
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(

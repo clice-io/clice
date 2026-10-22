@@ -221,7 +221,7 @@ const LenderIndex& lender_index(Project& project) {
                 .lender = {.unit = member, .command = candidate.command},
                 .language = language_of(ref),
             });
-            for(auto& search_dir: project.cdb.search_config(ref).dirs) {
+            for(auto& search_dir: project.toolchain.search_config(ref).dirs) {
                 auto [it, inserted] = identities.try_emplace(search_dir.path);
                 if(inserted) {
                     it->second = CanonicalPath(Spelling::absolute(search_dir.path));

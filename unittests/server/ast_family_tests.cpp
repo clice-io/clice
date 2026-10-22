@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.table;
 import :feature.feature;
 import :sched.families.pch;
 import :sched.families.pcm;

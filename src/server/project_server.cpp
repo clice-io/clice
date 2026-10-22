@@ -8,8 +8,8 @@ module;
 
 module clice;
 
-import :command.command;
 import :command.file_kind;
+import :command.table;
 import :index.project_index;
 import :index.writer_lock;
 import :project.build;

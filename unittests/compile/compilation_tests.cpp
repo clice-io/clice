@@ -4,7 +4,8 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.database;
+import :command.table;
 import :command.toolchain;
 import :compile.compilation;
 import :syntax.header_context;
@@ -20,6 +21,7 @@ namespace {
 
 /// The C++20 command of `file` in `tmp`, added to `cdb` and rendered.
 std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
+                                       Toolchain& toolchain,
                                        const TempDir& tmp,
                                        llvm::StringRef file) {
     auto path = tmp.path(file);
@@ -27,10 +29,10 @@ std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
     auto& entry = cdb.candidate_entries(path).front();
     CommandRef ref{entry.file,
                    entry.command,
-                   cdb.input_kind(entry.command, path),
+                   cdb.commands().input_kind(entry.command, path),
                    CommandSource::CDBExact};
-    ZEXPECT(cdb.toolchain().resolve(ref.command, ref.input));
-    auto argv = cdb.render(ref);
+    ZEXPECT(toolchain.resolve(ref.command, ref.input));
+    auto argv = toolchain.render(ref, cdb.spelling(ref.file));
     return std::vector<std::string>(argv.begin(), argv.end());
 }
 
@@ -518,12 +520,14 @@ export int a_value() { return b_value() + 1; }
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
 
     // Build PCM for mod_b.
     CompilationParams params_b;
     params_b.kind = CompilationKind::ModuleInterface;
-    params_b.input.arguments = cxx20_command(cdb, tmp, "mod_b.cppm");
+    params_b.input.arguments = cxx20_command(cdb, toolchain, tmp, "mod_b.cppm");
 
     auto pcm_b_path = artifact("pcm");
     params_b.output_file = pcm_b_path;
@@ -535,7 +539,7 @@ export int a_value() { return b_value() + 1; }
     // Build PCM for mod_a, passing B's PCM.
     CompilationParams params_a;
     params_a.kind = CompilationKind::ModuleInterface;
-    params_a.input.arguments = cxx20_command(cdb, tmp, "mod_a.cppm");
+    params_a.input.arguments = cxx20_command(cdb, toolchain, tmp, "mod_a.cppm");
     params_a.input.pcms.try_emplace("mod_b", pcm_b_path);
 
     auto pcm_a_path = artifact("pcm");
@@ -554,18 +558,20 @@ ZEST_CASE(PCHKeepsModuleImports) {
     tmp.touch("main.cpp", content);
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
 
     CompilationParams module_params;
     module_params.kind = CompilationKind::ModuleInterface;
-    module_params.input.arguments = cxx20_command(cdb, tmp, "b.cppm");
+    module_params.input.arguments = cxx20_command(cdb, toolchain, tmp, "b.cppm");
     auto pcm_path = artifact("pcm");
     module_params.output_file = pcm_path;
     ZASSERT(clice::compile(std::move(module_params))->has_output());
 
     CompilationParams preamble;
     preamble.kind = CompilationKind::Preamble;
-    preamble.input.arguments = cxx20_command(cdb, tmp, "main.cpp");
+    preamble.input.arguments = cxx20_command(cdb, toolchain, tmp, "main.cpp");
     preamble.input.pcms.try_emplace("B", pcm_path);
     auto pch_path = artifact("pch");
     preamble.output_file = pch_path;
@@ -592,10 +598,12 @@ ZEST_CASE(PCHWithoutModule) {
     tmp.touch("main.cpp", content);
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     CompilationParams preamble{
         .kind = CompilationKind::Preamble,
-        .input = {.arguments = cxx20_command(cdb, tmp, "main.cpp")},
+        .input = {.arguments = cxx20_command(cdb, toolchain, tmp, "main.cpp")},
     };
     preamble.input.pcms.try_emplace("B", tmp.path("b.pcm"));
     preamble.input.add_remapped_file(tmp.path("main.cpp"), content, preamble_bound(content));

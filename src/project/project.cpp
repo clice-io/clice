@@ -16,7 +16,7 @@ import :vfs.path;
 namespace clice {
 
 void Project::rescan_disk_file(Fid path_id) {
-    rescan_dependency_graph(cdb, dep_graph, path_id);
+    rescan_dependency_graph(cdb, toolchain, dep_graph, path_id);
     context_epoch += 1;
 }
 
@@ -40,7 +40,7 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
     // incremental or move it off the dispatch path.
     auto scan = [&] {
         dep_graph.reset();
-        scan_dependency_graph(cdb, dep_graph, build.units(build.members()));
+        scan_dependency_graph(cdb, toolchain, dep_graph, build.units(build.members()));
         dep_graph.build_reverse_map();
     };
     scan();

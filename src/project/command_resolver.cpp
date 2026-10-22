@@ -48,10 +48,10 @@ std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced)
     if(!forced.valid()) {
         return std::numeric_limits<std::size_t>::max();
     }
-    auto search = project.cdb.search_config(ref);
+    auto search = project.toolchain.search_config(ref);
     vfs::Scope scope(project.file_table.dirs);
     auto resolved = resolve_search_config(search, scope);
-    llvm::StringRef directory = project.cdb.config(ref.command).directory;
+    llvm::StringRef directory = project.commands.get(ref.command).directory;
     for(std::size_t i = 0; i < search.forced_includes.size(); i += 1) {
         auto header = resolve_forced_include(search.forced_includes[i], directory, resolved, scope);
         if(header && project.file_table.find(Spelling::absolute(header->path)) == forced) {
@@ -64,18 +64,18 @@ std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced)
 }  // namespace
 
 Candidate pick_pinned_command(Project& project,
-                             Fid file,
-                             llvm::ArrayRef<Candidate> candidates,
-                             llvm::ArrayRef<CanonicalRef> paths,
-                             llvm::StringRef language_path,
-                             llvm::StringRef pinned_hash,
-                             llvm::StringRef pinned_base) {
+                              Fid file,
+                              llvm::ArrayRef<Candidate> candidates,
+                              llvm::ArrayRef<CanonicalRef> paths,
+                              llvm::StringRef language_path,
+                              llvm::StringRef pinned_hash,
+                              llvm::StringRef pinned_base) {
     // The base identity resolved at pin time is exact; the applied hash
     // remains as the fallback for pins saved before the base was recorded
     // (and cannot distinguish candidates the rules collapse together).
     if(!pinned_base.empty()) {
         for(auto& entry: candidates) {
-            if(project.cdb.command_hash_hex(entry.command) == pinned_base) {
+            if(project.commands.command_hash_hex(entry.command) == pinned_base) {
                 return entry;
             }
         }
@@ -84,7 +84,7 @@ Candidate pick_pinned_command(Project& project,
         for(auto& entry: candidates) {
             auto ref =
                 project.build.resolve(file, entry.command, entry.source, paths, language_path);
-            if(project.cdb.command_hash_hex(ref.command) == pinned_hash) {
+            if(project.commands.command_hash_hex(ref.command) == pinned_hash) {
                 return entry;
             }
         }
@@ -126,12 +126,12 @@ std::optional<CommandRef> host_command(Project& project,
     auto host_path = project.file_table.resolve(host);
     CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
     auto picked = pick_pinned_command(project,
-                                     header,
-                                     commands,
-                                     edit_paths,
-                                     host_path,
-                                     pinned_hash,
-                                     pinned_base);
+                                      header,
+                                      commands,
+                                      edit_paths,
+                                      host_path,
+                                      pinned_hash,
+                                      pinned_base);
     return lent_command(project, header, host, picked.command, extra_prepend, extra_append);
 }
 
@@ -319,8 +319,8 @@ Resolution CommandResolver::resolve_command(Fid path_id,
             options.preamble = resolution.synthesized->prefix.c_str();
         }
         options.kept_includes = includes_before(project, ref, resolution.forced);
-        directory = project.cdb.config(ref.command).directory;
-        auto argv = project.cdb.render(ref, options);
+        directory = project.commands.get(ref.command).directory;
+        auto argv = project.toolchain.render(ref, project.cdb.spelling(ref.file), options);
         arguments.assign(argv.begin(), argv.end());
         resolution.ref = ref;
         resolution.source = ref.source;
@@ -497,7 +497,7 @@ std::expected<HeaderContext, Fid>
     auto host_path = project.file_table.resolve(host_path_id);
     auto target_path = project.file_table.resolve(chain.back());
 
-    auto search_config = project.cdb.search_config(*host_ref);
+    auto search_config = project.toolchain.search_config(*host_ref);
     vfs::Scope scope(project.file_table.dirs);
     auto resolved_config = resolve_search_config(search_config, scope);
 

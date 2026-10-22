@@ -4,7 +4,10 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.database;
+import :command.edit;
+import :command.table;
+import :command.toolchain;
 import :syntax.dependency_graph;
 import :syntax.scan;
 import :unittests.utils.cdb_helper;
@@ -365,7 +368,8 @@ ZEST_SUITE(ScanDependencyGraph) {
 
 ZEST_CASE(EmptyCDB) {
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     scan_all(cdb, graph);
@@ -386,7 +390,9 @@ export module m;
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     DependencyGraph graph;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/m.cppm"), {}}
@@ -400,13 +406,13 @@ export module m;
         std::vector<CommandEdit> edits = {
             {CommandEdit::Kind::Append, {append.begin(), append.end()}},
         };
-        auto applied = cdb.apply_edits(entry.command, {.edits = edits});
+        auto applied = apply_edits(commands, file_table, entry.command, {.edits = edits});
         units.push_back({entry.file,
                          applied,
-                         cdb.input_kind(applied, cdb.files().resolve(entry.file)),
+                         commands.input_kind(applied, file_table.resolve(entry.file)),
                          CommandSource::CDBExact});
     }
-    scan_dependency_graph(cdb, graph, units);
+    scan_dependency_graph(cdb, toolchain, graph, units);
 
     ZEXPECT(graph.modules().size() == 1u);
     ZEXPECT(graph.lookup_module("m").size() == 1u);
@@ -426,7 +432,9 @@ export module m1;
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     DependencyGraph graph;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/m.cppm"), {}      },
@@ -444,11 +452,11 @@ export module m1;
     llvm::SmallVector<CommandRef> v2_units = {
         {file,
          candidates[1].command,
-         cdb.input_kind(candidates[1].command, tmp.path("src/m.cppm")),
+         commands.input_kind(candidates[1].command, tmp.path("src/m.cppm")),
          CommandSource::CDBExact}
     };
     DependencyGraph graph_v2;
-    scan_dependency_graph(cdb, graph_v2, v2_units);
+    scan_dependency_graph(cdb, toolchain, graph_v2, v2_units);
     ZEXPECT(graph_v2.lookup_module("m1").empty());
     ZEXPECT(graph_v2.lookup_module("m2").size() == 1u);
 
@@ -470,7 +478,8 @@ ZEST_CASE(OutputsShareScanGroup) {
     tmp.touch("src/b.cpp", R"(#include "h.h")");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/a.cpp"), {"-I", tmp.path("inc"), "-o", "a.o"} },
@@ -490,7 +499,8 @@ ZEST_CASE(SingleFileNoIncludes) {
     tmp.touch("src/main.cpp", R"(int main() { return 0; })");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -513,7 +523,8 @@ int main() { return x; }
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -537,7 +548,8 @@ int main() {}
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -564,7 +576,8 @@ void b() {}
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     std::vector<std::string> inc = {"-I", tmp.path("inc")};
@@ -591,7 +604,8 @@ ZEST_CASE(ConditionalIncludes) {
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -607,7 +621,7 @@ ZEST_CASE(ConditionalIncludes) {
     bool found_unconditional = false;
     bool found_conditional = false;
     auto includes =
-        graph.get_includes(cdb.files().intern(Spelling::absolute(tmp.path("src/main.cpp"))), 0);
+        graph.get_includes(file_table.intern(Spelling::absolute(tmp.path("src/main.cpp"))), 0);
     for(auto edge: includes) {
         if(edge.conditional) {
             found_conditional = true;
@@ -627,7 +641,8 @@ export int foo() { return 42; }
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -639,7 +654,7 @@ export int foo() { return 42; }
     auto result = graph.lookup_module("my.module");
     ZASSERT(result.size() == 1u);
 
-    auto path = cdb.files().resolve(result[0]);
+    auto path = file_table.resolve(result[0]);
     ZEXPECT(llvm::sys::fs::equivalent(path, tmp.path("src/mymod.cpp")));
 }
 
@@ -651,7 +666,8 @@ void impl() {}
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -674,7 +690,8 @@ module lib:guarded;
     tmp.touch("src/impl.cpp", "module lib;\nimport :detail;\n");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -688,7 +705,7 @@ module lib:guarded;
 
     auto provider = [&](llvm::StringRef name) -> std::string {
         auto ids = graph.lookup_module(name);
-        return ids.size() == 1 ? cdb.files().resolve(ids[0]).str() : "";
+        return ids.size() == 1 ? file_table.resolve(ids[0]).str() : "";
     };
     ZEXPECT(llvm::sys::fs::equivalent(provider("lib"), tmp.path("src/lib.cppm")));
     ZEXPECT(llvm::sys::fs::equivalent(provider("lib:detail"), tmp.path("src/detail.cppm")));
@@ -720,7 +737,8 @@ int main() {}
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -745,7 +763,8 @@ int main() {}
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -767,7 +786,8 @@ int main() {}
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -792,7 +812,8 @@ import m;
     tmp.touch("src/main.cpp", "int main() {}\n");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
     write_cdb(tmp,
               cdb,
@@ -822,7 +843,8 @@ ZEST_CASE(ForcedIncludeLookupOrder) {
     tmp.touch("src/main.cpp", "int main() {}\n");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
     write_cdb(tmp,
               cdb,
@@ -852,7 +874,9 @@ ZEST_CASE(RescanScansNewHeader) {
     tmp.touch("src/main.cpp", "#include <a.h>\n");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     DependencyGraph graph;
     write_cdb(tmp,
               cdb,
@@ -867,7 +891,7 @@ ZEST_CASE(RescanScansNewHeader) {
     ZEXPECT(!graph.reaches_import(main));
 
     tmp.touch("src/main.cpp", "#include <a.h>\n#include <b.h>\n");
-    rescan_dependency_graph(cdb, graph, main);
+    rescan_dependency_graph(cdb, toolchain, graph, main);
     ZEXPECT(graph.get_all_includes(b) == llvm::SmallVector<Fid>{c});
     ZEXPECT(graph.reaches_import(main));
 }
@@ -880,7 +904,9 @@ ZEST_CASE(RescanLeavesUnreachedOut) {
     tmp.touch("src/scratch.h", "import m;\n");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     DependencyGraph graph;
     write_cdb(tmp,
               cdb,
@@ -891,7 +917,7 @@ ZEST_CASE(RescanLeavesUnreachedOut) {
     graph.build_reverse_map();
     auto scratch = file_table.intern(Spelling::absolute(tmp.path("src/scratch.h")));
 
-    rescan_dependency_graph(cdb, graph, scratch);
+    rescan_dependency_graph(cdb, toolchain, graph, scratch);
     ZEXPECT(!graph.has_import_candidates());
     ZEXPECT(!graph.scanned(scratch, scan_quick("import m;\n").directives_hash));
 }
@@ -901,7 +927,9 @@ ZEST_CASE(RescanTracksPartitionKind) {
     tmp.touch("src/part.cppm", "export module lib:part;\n");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     DependencyGraph graph;
     write_cdb(tmp,
               cdb,
@@ -913,20 +941,20 @@ ZEST_CASE(RescanTracksPartitionKind) {
     ZEXPECT(!graph.internal_partition(part));
 
     tmp.touch("src/part.cppm", "module lib:part;\n");
-    rescan_dependency_graph(cdb, graph, part);
+    rescan_dependency_graph(cdb, toolchain, graph, part);
     ZEXPECT(graph.module_of(part) == "lib:part");
     ZEXPECT(graph.internal_partition(part));
 
     tmp.touch("src/part.cppm", "export module lib:part;\n");
-    rescan_dependency_graph(cdb, graph, part);
+    rescan_dependency_graph(cdb, toolchain, graph, part);
     ZEXPECT(!graph.internal_partition(part));
 
     tmp.touch("src/part.cppm", "module lib:part;\n");
-    rescan_dependency_graph(cdb, graph, part);
+    rescan_dependency_graph(cdb, toolchain, graph, part);
     ZEXPECT(graph.internal_partition(part));
 
     tmp.touch("src/part.cppm", "module lib;\n");
-    rescan_dependency_graph(cdb, graph, part);
+    rescan_dependency_graph(cdb, toolchain, graph, part);
     ZEXPECT(graph.module_of(part).empty());
     ZEXPECT(!graph.internal_partition(part));
 }
@@ -941,7 +969,9 @@ ZEST_CASE(RescanResumesIncludeNext) {
     tmp.touch("src/main.cpp", "#include <x.h>\n");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     DependencyGraph graph;
     write_cdb(tmp,
               cdb,
@@ -957,7 +987,7 @@ ZEST_CASE(RescanResumesIncludeNext) {
     ZASSERT(graph.get_all_includes(wrapper) == llvm::SmallVector<Fid>{next});
 
     tmp.touch("a/x.h", "#include_next <x.h>\n#define CHANGED\n");
-    rescan_dependency_graph(cdb, graph, wrapper);
+    rescan_dependency_graph(cdb, toolchain, graph, wrapper);
     ZEXPECT(graph.get_all_includes(wrapper) == llvm::SmallVector<Fid>{next});
 }
 
@@ -972,7 +1002,9 @@ ZEST_CASE(RescanForcedUnderUnit) {
     tmp.touch("build/near.cpp", "\n");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     DependencyGraph graph;
     write_cdb(tmp,
               cdb,
@@ -989,7 +1021,7 @@ ZEST_CASE(RescanForcedUnderUnit) {
     auto cfg = file_table.intern(Spelling::absolute(tmp.path("a/cfg.h")));
     ZASSERT(graph.get_all_includes(force) == llvm::SmallVector<Fid>{cfg});
     tmp.touch("build/force.h", "#include <cfg.h>\n#define CHANGED\n");
-    rescan_dependency_graph(cdb, graph, force);
+    rescan_dependency_graph(cdb, toolchain, graph, force);
     ZEXPECT(graph.get_all_includes(force) == llvm::SmallVector<Fid>{cfg});
 }
 
@@ -1009,7 +1041,8 @@ void a_impl() {}
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -1038,7 +1071,8 @@ int main() {}
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -1063,7 +1097,8 @@ export int value() { return util; }
 )");
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -1091,7 +1126,8 @@ int main() {}
                            file_mtime_ns(tmp.path("src/main.cpp")) - 10'000'000'000));
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}

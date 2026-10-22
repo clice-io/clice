@@ -4,6 +4,9 @@ module;
 
 module clice;
 
+import :command.database;
+import :command.edit;
+import :command.table;
 import :config.config;
 import :project.build;
 import :support.shell;
@@ -72,7 +75,8 @@ void match_rules(const Config& config,
                  std::vector<std::string>& append,
                  std::vector<std::string>& remove) {
     FileTable files;
-    CompilationDatabase cdb{files};
+    CommandTable commands;
+    CompilationDatabase cdb{files, commands};
     Build build{const_cast<Config&>(config), cdb, files};
     for(auto& edit: build.edits(CanonicalPath(Spelling::absolute(path))).edits) {
         auto& out = edit.kind == CommandEdit::Kind::Remove ? remove : append;
@@ -787,7 +791,8 @@ ZEST_CASE(RuleOrderLaterRemoveWins) {
     // The edits stay in rule order; the remove takes effect against the
     // earlier append when the command is built, and against the base.
     FileTable files;
-    CompilationDatabase cdb{files};
+    CommandTable commands;
+    CompilationDatabase cdb{files, commands};
     cdb.add_command("/src", "/src/a.cpp", std::string_view("clang++ -DFOO a.cpp"));
     Build build{config, cdb, files};
     auto edits = build.edits(CanonicalPath(Spelling::absolute("/src/a.cpp")));

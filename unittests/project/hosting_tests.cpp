@@ -7,6 +7,7 @@ module;
 
 module clice;
 
+import :command.table;
 import :index.project_index;
 import :index.tu_manifest;
 import :project.hosting;

@@ -158,6 +158,7 @@ void time_scans(Loaded first,
         auto& project = *loaded.project;
         project.dep_graph.reset();
         auto rescan = scan_dependency_graph(project.cdb,
+                                            project.toolchain,
                                             project.dep_graph,
                                             project.build.units(loaded.load.members));
         cold.push_back(loaded.load.scan.elapsed_ms);

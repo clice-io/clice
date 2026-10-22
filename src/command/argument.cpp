@@ -503,9 +503,9 @@ std::string canonicalize(llvm::ArrayRef<std::string> args) {
     append(args[0]);
 
     std::vector<std::string> parse_args(args.begin() + 1, args.end());
-    auto options = kota::option::ParseOptions{
-        .dash_dash_parsing = true,
-        .visibility = family_visibility(driver_family(args[0]))};
+    auto options =
+        kota::option::ParseOptions{.dash_dash_parsing = true,
+                                   .visibility = family_visibility(driver_family(args[0]))};
     for(auto& result: option::table().parse(parse_args, options)) {
         /// Unparseable and unknown arguments are kept verbatim: dropping an
         /// option we don't understand could merge keys that must differ.

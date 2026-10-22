@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.table;
 import :server.editor_context;
 import :support.shell;
 import :unittests.utils.cdb_helper;
@@ -127,11 +128,12 @@ ZEST_CASE(PinSteersEditorOnly) {
     // Pin the non-default candidate (candidate order is content-decided,
     // so the defines are read back rather than assumed).
     auto define_of = [&](CommandID config) -> llvm::StringRef {
-        auto argv = print_argv(project.cdb.render_full(config));
+        auto argv = print_argv(project.commands.render_full(config));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
     auto pinned = candidates.back().command;
-    resolver.selections[file] = Selection{Fid{}, std::nullopt, project.cdb.command_hash_hex(pinned)};
+    resolver.selections[file] =
+        Selection{Fid{}, std::nullopt, project.commands.command_hash_hex(pinned)};
 
     // An editor resolution honors the pinned CDB entry...
     std::string directory;
@@ -165,15 +167,17 @@ ZEST_CASE(PinBaseSurvivesRules) {
     auto candidates = project.cdb.candidate_entries(path);
     ZASSERT(candidates.size() == 2u);
     auto define_of = [&](CommandID config) -> llvm::StringRef {
-        auto argv = print_argv(project.cdb.render_full(config));
+        auto argv = print_argv(project.commands.render_full(config));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
     auto pinned = candidates.back().command;
 
     // A pin whose applied hash went stale (a rule edit since it was saved)
     // but whose base identity is recorded still selects its candidate...
-    resolver.selections[file] =
-        Selection{Fid{}, std::nullopt, "0123456789abcdef", project.cdb.command_hash_hex(pinned)};
+    resolver.selections[file] = Selection{Fid{},
+                                          std::nullopt,
+                                          "0123456789abcdef",
+                                          project.commands.command_hash_hex(pinned)};
     std::string directory;
     std::vector<std::string> arguments;
     resolver.resolve_command(file, directory, arguments);

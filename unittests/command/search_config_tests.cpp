@@ -4,8 +4,9 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.database;
 import :command.search_config;
+import :command.table;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 
@@ -19,10 +20,11 @@ ZEST_SUITE(ExtractSearchConfig) {
 /// structured command (the only extraction path).
 SearchConfig extract(llvm::ArrayRef<const char*> args, llvm::StringRef directory) {
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     db.add_command(directory, "main.cpp", args);
     auto& entry = db.candidate_entries(path::join(directory, "main.cpp")).front();
-    return extract_search_config(db.config(entry.command).args, directory);
+    return extract_search_config(commands.get(entry.command).args, directory);
 }
 
 /// A search directory as extraction spells it: absolute, canonically.

@@ -4,8 +4,10 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.database;
+import :command.edit;
 import :command.nvcc;
+import :command.table;
 import :command.toolchain;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
@@ -287,11 +289,12 @@ ZEST_CASE(OptionsFileExpanded) {
     tmp.touch("opts.rsp", "-Igenerated -DAPI=2 -std=c++20\n");
     tmp.touch("second.rsp", "-DFROM_SECOND=2\n");
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     auto flags = [&](llvm::StringRef command) {
         auto entry = db.add_command(tmp.root, "kern.cu", command);
         std::vector<std::string> rendered;
-        for(llvm::StringRef flag: db.render_full(entry->command)) {
+        for(llvm::StringRef flag: commands.render_full(entry->command)) {
             rendered.push_back(flag.str());
         }
         return rendered;
@@ -320,10 +323,12 @@ ZEST_CASE(OptionsFileMarkSkipped) {
     TempDir tmp;
     tmp.touch("marked.rsp", "\xEF\xBB\xBF-DMARKED=1\n");
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     auto entry = db.add_command(tmp.root, "kern.cu", "nvcc --options-file marked.rsp -c kern.cu"sv);
     ZASSERT(entry);
-    ZEXPECT(std::ranges::contains(db.render_full(entry->command), llvm::StringRef("MARKED=1")));
+    ZEXPECT(
+        std::ranges::contains(commands.render_full(entry->command), llvm::StringRef("MARKED=1")));
 }
 
 ZEST_CASE(StdNormalized) {
@@ -522,13 +527,15 @@ ZEST_CASE(CcbinAffectsKey) {
     /// -ccbin persists as an unknown probe token; two commands differing
     /// only in host compiler must not share a probe.
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     db.add_command("/tmp", "/tmp/a.cu", "nvcc -ccbin=/usr/bin/g++-12 -c /tmp/a.cu"sv);
     db.add_command("/tmp", "/tmp/b.cu", "nvcc -ccbin=/usr/bin/g++-13 -c /tmp/b.cu"sv);
 
     auto key_of = [&](llvm::StringRef file) {
         auto& entry = db.candidate_entries(file).front();
-        return db.toolchain().probe_key_for(entry.command, db.input_kind(entry.command, file));
+        return toolchain.probe_key_for(entry.command, commands.input_kind(entry.command, file));
     };
     ZEXPECT(key_of("/tmp/a.cu") != key_of("/tmp/b.cu"));
     ZEXPECT(key_of("/tmp/a.cu") == key_of("/tmp/a.cu"));
@@ -536,7 +543,8 @@ ZEST_CASE(CcbinAffectsKey) {
 
 ZEST_CASE(DatabaseTranslatesNVCC) {
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     std::vector<const char*> arguments = {"nvcc",
                                           "-forward-unknown-to-host-compiler",
                                           "-DMY_FLAG=1",
@@ -553,7 +561,7 @@ ZEST_CASE(DatabaseTranslatesNVCC) {
 
     // Probe tokens (-ccbin, ...) are unknown-class: visible in the full
     // view and the probe, never in the compile render.
-    auto flags = db.render_full(db.candidate_entries("/tmp/kern.cu").front().command);
+    auto flags = commands.render_full(db.candidate_entries("/tmp/kern.cu").front().command);
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -575,7 +583,8 @@ ZEST_CASE(DatabaseTranslatesNVCC) {
 
 ZEST_CASE(RuleFlagsTranslated) {
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     std::vector<const char*> arguments = {"nvcc",
                                           "--generate-code=arch=compute_75,code=sm_75",
                                           "-c",
@@ -593,8 +602,11 @@ ZEST_CASE(RuleFlagsTranslated) {
     };
     CommandEdits options{.edits = edits};
 
-    auto flags = db.render_full(
-        db.apply_edits(db.candidate_entries("/tmp/kern.cu").front().command, options));
+    auto flags =
+        commands.render_full(apply_edits(commands,
+                                         file_table,
+                                         db.candidate_entries("/tmp/kern.cu").front().command,
+                                         options));
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -613,7 +625,8 @@ ZEST_CASE(RuleOptionsFileExpanded) {
     TempDir tmp;
     tmp.touch("rules/opts.rsp", "-DFROM_RULE=1 -ccbin=tc/g++\n");
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     auto entry = db.add_command(tmp.root, "kern.cu", "nvcc -c kern.cu"sv);
     ZASSERT(entry);
 
@@ -623,7 +636,7 @@ ZEST_CASE(RuleOptionsFileExpanded) {
          Spelling::absolute(tmp.path("rules"))},
     };
     CommandEdits options{.edits = edits};
-    auto flags = db.render_full(db.apply_edits(entry->command, options));
+    auto flags = commands.render_full(apply_edits(commands, file_table, entry->command, options));
     ZEXPECT(std::ranges::contains(flags, llvm::StringRef("FROM_RULE=1")));
     ZEXPECT(!std::ranges::contains(flags, llvm::StringRef("--options-file")));
     auto ccbin = "-ccbin=" + path::join(Spelling::absolute(tmp.path("rules")).str(), "tc/g++");
@@ -632,7 +645,8 @@ ZEST_CASE(RuleOptionsFileExpanded) {
 
 ZEST_CASE(AppendOverridesBase) {
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     std::vector<const char*> arguments =
         {"nvcc", "-rdc=true", "-default-stream=per-thread", "-arch=sm_75", "-c", "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
@@ -685,7 +699,8 @@ ZEST_CASE(AppendOverridesBase) {
 
 ZEST_CASE(ExtrasStayClangDialect) {
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     std::vector<const char*> arguments = {"nvcc", "-rdc=true", "-c", "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
@@ -706,7 +721,8 @@ ZEST_CASE(ExtrasStayClangDialect) {
 
 ZEST_CASE(GencodeAppendAccumulates) {
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     std::vector<const char*> arguments = {"nvcc",
                                           "--generate-code=arch=compute_90,code=sm_90",
                                           "-c",
@@ -786,7 +802,8 @@ ZEST_CASE(CollapseHonorsNegatives) {
 
 ZEST_CASE(WildcardRemoveClearsArch) {
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     std::vector<const char*> gencode = {"nvcc",
                                         "--generate-code=arch=compute_75,code=sm_75",
                                         "-c",
@@ -798,9 +815,10 @@ ZEST_CASE(WildcardRemoveClearsArch) {
     db.add_command("/tmp", "/tmp/native.cu", native);
 
     auto arch_flags = [&](llvm::StringRef file, const CommandEdits& options) {
-        auto applied = db.apply_edits(db.candidate_entries(file).front().command, options);
+        auto applied =
+            apply_edits(commands, file_table, db.candidate_entries(file).front().command, options);
         std::vector<std::string> result;
-        for(llvm::StringRef flag: db.render_full(applied)) {
+        for(llvm::StringRef flag: commands.render_full(applied)) {
             if(flag.contains("arch")) {
                 result.push_back(flag.str());
             }
@@ -838,7 +856,8 @@ ZEST_CASE(WildcardRemoveClearsArch) {
 
 ZEST_CASE(RemoveMatchesUnknownSpelling) {
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     std::vector<const char*> arguments = {"nvcc",
                                           "-ccbin=/usr/bin/g++-12",
                                           "-allow-unsupported-compiler",
@@ -855,8 +874,11 @@ ZEST_CASE(RemoveMatchesUnknownSpelling) {
 
     // Probe flags all parse as the shared unknown id; removal keys on the
     // spelling, so the other probe tokens survive.
-    auto flags = db.render_full(
-        db.apply_edits(db.candidate_entries("/tmp/kern.cu").front().command, options));
+    auto flags =
+        commands.render_full(apply_edits(commands,
+                                         file_table,
+                                         db.candidate_entries("/tmp/kern.cu").front().command,
+                                         options));
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -867,7 +889,8 @@ ZEST_CASE(RemoveMatchesUnknownSpelling) {
 
 ZEST_CASE(RemoveListAlternatives) {
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     std::vector<const char*> arguments = {"nvcc",
                                           "-ccbin=/usr/bin/g++-12",
                                           "-default-stream=per-thread",
@@ -885,8 +908,11 @@ ZEST_CASE(RemoveListAlternatives) {
     };
     CommandEdits options{.edits = edits};
 
-    auto flags = db.render_full(
-        db.apply_edits(db.candidate_entries("/tmp/kern.cu").front().command, options));
+    auto flags =
+        commands.render_full(apply_edits(commands,
+                                         file_table,
+                                         db.candidate_entries("/tmp/kern.cu").front().command,
+                                         options));
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -896,7 +922,8 @@ ZEST_CASE(RemoveListAlternatives) {
 
 ZEST_CASE(WildcardRemovesProbeValue) {
     FileTable file_table;
-    CompilationDatabase db{file_table};
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
     std::vector<const char*> arguments =
         {"nvcc", "-ccbin=/usr/bin/g++-12", "-target-dir", "sbsa-linux", "-c", "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
@@ -906,9 +933,12 @@ ZEST_CASE(WildcardRemovesProbeValue) {
             {CommandEdit::Kind::Remove, std::move(remove)}
         };
         CommandEdits options{.edits = edits};
-        auto applied = db.apply_edits(db.candidate_entries("/tmp/kern.cu").front().command, options);
+        auto applied = apply_edits(commands,
+                                   file_table,
+                                   db.candidate_entries("/tmp/kern.cu").front().command,
+                                   options);
         std::vector<std::string> result;
-        for(llvm::StringRef flag: db.render_full(applied)) {
+        for(llvm::StringRef flag: commands.render_full(applied)) {
             if(is_nvcc_probe_flag(flag)) {
                 result.push_back(flag.str());
             }

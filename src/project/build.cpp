@@ -2,11 +2,17 @@ module;
 
 #include "modules/prelude.h"
 
+#include "support/logging.macros.h"
+
 module clice;
 
+import :command.edit;
 import :command.file_kind;
+import :command.normalize;
 import :project.build;
 import :project.configuration;
+import :support.logging;
+import :support.shell;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -197,12 +203,46 @@ const CompiledRule* Build::default_rule(CanonicalRef path) const {
     return nullptr;
 }
 
+std::optional<CommandID> Build::intern(const Spelling& directory,
+                                       llvm::ArrayRef<const char*> arguments) {
+    std::string key = directory.str();
+    for(const char* argument: arguments) {
+        key += '\0';
+        key += argument;
+    }
+    auto [it, inserted] = interned.try_emplace(key, invalid_command);
+    if(inserted) {
+        Normalizer normalizer{.commands = command_table, .files = files};
+        if(auto normalized = normalizer.normalize(directory, Fid{}, arguments)) {
+            it->second = *normalized;
+        } else {
+            LOG_WARN("Not a compile command: {}", print_argv(arguments));
+        }
+    }
+    if(it->second == invalid_command) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
+CommandID Build::apply(CommandID command, const CommandEdits& edits) {
+    if(edits.empty()) {
+        return command;
+    }
+    auto key = edit_keys.try_emplace(edits.key(), edit_keys.size()).first->second;
+    auto [it, inserted] = edited.try_emplace({static_cast<std::uint32_t>(command), key});
+    if(inserted) {
+        it->second = apply_edits(command_table, files, command, edits);
+    }
+    return it->second;
+}
+
 std::optional<CommandID> Build::command_of(const CompiledRule& rule) {
     llvm::SmallVector<const char*, 16> argv;
     for(auto& arg: rule.default_command) {
         argv.push_back(arg.c_str());
     }
-    return cdb.intern_command(rule.directory, argv);
+    return intern(rule.directory, argv);
 }
 
 std::optional<CommandID> Build::default_command(CanonicalRef path) {
@@ -233,7 +273,7 @@ CommandID Build::builtin(CanonicalRef path) {
         arguments = {"clang"};
     }
     // Run from the file's own directory, like a compile nobody wrote down.
-    return *cdb.intern_command(Spelling(path.parent()), arguments);
+    return *intern(Spelling(path.parent()), arguments);
 }
 
 CommandRef Build::resolve(Fid file,
@@ -244,8 +284,8 @@ CommandRef Build::resolve(Fid file,
                           llvm::ArrayRef<std::string> extra_prepend,
                           llvm::ArrayRef<std::string> extra_append) {
     auto edit = edits(paths);
-    auto applied = cdb.apply_edits(base, edit.options(extra_prepend, extra_append));
-    return {file, applied, cdb.input_kind(applied, language_path), source};
+    auto applied = apply(base, edit.options(extra_prepend, extra_append));
+    return {file, applied, command_table.input_kind(applied, language_path), source};
 }
 
 std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
@@ -381,7 +421,7 @@ CommandID Build::lend(CommandID command, CanonicalRef lender, CanonicalRef file)
     auto matched = matching(lender);
     llvm::erase_if(matched,
                    [&](const CompiledRule* rule) { return llvm::is_contained(own, rule); });
-    return cdb.apply_edits(command, edits_of(matched).options());
+    return apply(command, edits_of(matched).options());
 }
 
 llvm::SmallVector<Fid> Build::refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked) {
@@ -427,7 +467,7 @@ bool Build::default_source(CanonicalRef path) {
     if(!command) {
         return false;
     }
-    auto forced = cdb.forced_language(*command);
+    auto forced = command_table.forced_language(*command);
     return !forced.empty() && !forced.ends_with("-header");
 }
 
@@ -447,10 +487,10 @@ std::optional<CommandRef> Build::pch_unit(CommandID config,
                                           llvm::ArrayRef<CanonicalRef> paths,
                                           llvm::ArrayRef<std::string> extra_prepend,
                                           llvm::ArrayRef<std::string> extra_append) {
-    if(cdb.pch_output(config)) {
+    if(command_table.pch_output(config)) {
         return std::nullopt;
     }
-    for(auto& input: cdb.pch_inputs(config)) {
+    for(auto& input: command_table.pch_inputs(config)) {
         auto pch = files.find(input);
         if(!pch) {
             continue;

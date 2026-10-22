@@ -4,7 +4,10 @@ module;
 
 module clice:unittests.utils.cdb_helper;
 
-import :command.command;
+import :command.database;
+import :command.edit;
+import :command.table;
+import :command.toolchain;
 import :syntax.dependency_graph;
 import :unittests.utils.temp_dir;
 import :vfs.path;
@@ -16,6 +19,12 @@ struct CDBEntry {
     std::string file;
     std::vector<std::string> extra_args;
 };
+
+/// A file the tests' hand-added commands compile: they run in /fake, and a
+/// render names the input by its identity.
+inline std::string fake(llvm::StringRef name) {
+    return CanonicalPath(Spelling(name, Spelling::absolute("/fake"))).str();
+}
 
 /// Escape backslashes and quotes for JSON string values.
 inline std::string json_escape(llvm::StringRef s) {
@@ -85,9 +94,13 @@ inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
         return {};
     }
     auto& entry = candidates.front();
-    auto applied = cdb.apply_edits(entry.command, options);
-    CommandRef ref{entry.file, applied, cdb.input_kind(applied, file), CommandSource::CDBExact};
-    auto argv = cdb.render_driver(ref);
+    auto& commands = cdb.commands();
+    auto applied = apply_edits(commands, cdb.files(), entry.command, options);
+    CommandRef ref{entry.file,
+                   applied,
+                   commands.input_kind(applied, file),
+                   CommandSource::CDBExact};
+    auto argv = commands.render_driver(ref, cdb.spelling(ref.file));
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
         if(llvm::StringRef(argv[i]) == "-resource-dir") {
             argv.erase(argv.begin() + i, argv.begin() + i + 2);
@@ -104,10 +117,11 @@ inline ScanReport scan_all(CompilationDatabase& cdb, DependencyGraph& graph) {
     for(auto& entry: cdb.entries()) {
         units.push_back({entry.file,
                          entry.command,
-                         cdb.input_kind(entry.command, cdb.files().resolve(entry.file)),
+                         cdb.commands().input_kind(entry.command, cdb.files().resolve(entry.file)),
                          CommandSource::CDBExact});
     }
-    return scan_dependency_graph(cdb, graph, units);
+    Toolchain toolchain{cdb.commands(), cdb.files()};
+    return scan_dependency_graph(cdb, toolchain, graph, units);
 }
 
 }  // namespace clice::testing

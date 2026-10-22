@@ -251,7 +251,7 @@ void load_sources(Project& project,
                   CanonicalRef root,
                   llvm::StringRef configuration,
                   llvm::ArrayRef<Spelling> nearby) {
-    project.cdb.set_workspace_root(root);
+    project.commands.set_workspace_root(root);
     project.build.reset_active(configuration);
 
     ScopedTimer cdb_timer;
@@ -333,8 +333,10 @@ BuildLoad load_build(Project& project,
         return load;
     }
 
-    auto scan =
-        scan_dependency_graph(project.cdb, project.dep_graph, project.build.units(load.members));
+    auto scan = scan_dependency_graph(project.cdb,
+                                      project.toolchain,
+                                      project.dep_graph,
+                                      project.build.units(load.members));
     project.dep_graph.build_reverse_map();
 
     auto found = scan.includes_resolved + scan.unresolved.size();

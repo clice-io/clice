@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.table;
 import :server.format;
 import :unittests.utils;
 

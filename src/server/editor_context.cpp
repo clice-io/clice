@@ -60,21 +60,21 @@ std::optional<CommandLang> command_lang(Project& project,
         return std::nullopt;
     }
     auto candidate = pick_pinned_command(project,
-                                      file,
-                                      commands,
-                                      paths,
-                                      path,
-                                      pin ? llvm::StringRef(pin->command_hash) : "",
-                                      pin ? llvm::StringRef(pin->base_hash) : "");
+                                         file,
+                                         commands,
+                                         paths,
+                                         path,
+                                         pin ? llvm::StringRef(pin->command_hash) : "",
+                                         pin ? llvm::StringRef(pin->base_hash) : "");
     auto ref = project.build.resolve(file, candidate.command, candidate.source, paths, path);
 
     llvm::StringRef language = ref.input.value;
     CommandLang result{
         .source = candidate.source,
         .is_c = language == "c" || language == "c-header",
-        .language_forced = !project.cdb.forced_language(ref.command).empty(),
+        .language_forced = !project.commands.forced_language(ref.command).empty(),
     };
-    for(auto& arg: project.cdb.config(ref.command).args) {
+    for(auto& arg: project.commands.get(ref.command).args) {
         if(arg.opt_id == option::OPT_std_EQ && arg.values.size() == 1) {
             result.standard = arg.values[0];
         }
@@ -243,11 +243,12 @@ bool EditorContext::pin_alive(Fid entry_file,
     auto entry_path = project.file_table.resolve(entry_file);
     for(auto& entry: project.build.commands(entry_file)) {
         if(!saved.base_hash.empty() &&
-           project.cdb.command_hash_hex(entry.command) == saved.base_hash) {
+           project.commands.command_hash_hex(entry.command) == saved.base_hash) {
             return true;
         }
-        auto ref = project.build.resolve(entry_file, entry.command, entry.source, paths, entry_path);
-        if(project.cdb.command_hash_hex(ref.command) == saved.command_hash) {
+        auto ref =
+            project.build.resolve(entry_file, entry.command, entry.source, paths, entry_path);
+        if(project.commands.command_hash_hex(ref.command) == saved.command_hash) {
             return true;
         }
     }

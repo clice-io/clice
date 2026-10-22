@@ -4,7 +4,7 @@ module;
 
 module clice:project.cdb_watcher;
 
-import :command.command;
+import :command.database;
 import :project.project;
 
 namespace clice {

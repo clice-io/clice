@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.table;
 import :project.command_resolver;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;

@@ -4,7 +4,9 @@ module;
 
 module clice:project.project;
 
-import :command.command;
+import :command.database;
+import :command.table;
+import :command.toolchain;
 import :compile.compilation;
 import :config.config;
 import :index.database;
@@ -250,7 +252,11 @@ struct Project {
     /// it names files by path and re-interns them at load.
     FileTable& file_table;
 
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+
+    Toolchain toolchain{commands, file_table};
+
+    CompilationDatabase cdb{file_table, commands};
 
     /// Which entries and hand-written commands apply to a file under the
     /// active configuration; the only reader of the rules.

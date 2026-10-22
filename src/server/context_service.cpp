@@ -47,7 +47,7 @@ std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagn
 /// The flags a context's label tells a command by: each -D, -O, -std and
 /// -g, a separate value joined to its -D or -O.
 static llvm::SmallVector<std::string> state_flags(Project& ws, CommandID command) {
-    auto argv = ws.cdb.render_full(command);
+    auto argv = ws.commands.render_full(command);
     llvm::SmallVector<std::string> flags;
     for(std::size_t j = 0; j < argv.size(); j += 1) {
         llvm::StringRef a(argv[j]);
@@ -129,7 +129,7 @@ static ext::ContextItem host_item(Project& ws,
         if(auto desc = flags_label(ws, applied, lent); !desc.empty()) {
             item.label = std::format("{} [{}]", item.label, desc);
         }
-        item.command_hash = ws.cdb.command_hash_hex(applied);
+        item.command_hash = ws.commands.command_hash_hex(applied);
     }
     if(occurrence) {
         item.label = std::format("{} (#{})", item.label, *occurrence + 1);
@@ -148,10 +148,10 @@ static ext::ContextItem
     auto desc = flags_label(ws, applied, own);
     ext::ContextItem item;
     item.label = desc.empty() ? std::format("config #{}", index) : desc;
-    item.description =
-        ws.file_table.display(CanonicalPath(Spelling::absolute(ws.cdb.config(applied).directory)));
+    item.description = ws.file_table.display(
+        CanonicalPath(Spelling::absolute(ws.commands.get(applied).directory)));
     item.uri = feature::to_uri(ws.file_table.display(path_id));
-    item.command_hash = ws.cdb.command_hash_hex(applied);
+    item.command_hash = ws.commands.command_hash_hex(applied);
     return item;
 }
 
@@ -180,7 +180,7 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
         }
         auto lent = lent_commands(ws, path_id, host_id, host_commands(ws, path_id, host_id));
         for(auto applied: lent) {
-            if(dedup_hosts && !seen_commands.insert(ws.cdb.command_hash_hex(applied)).second) {
+            if(dedup_hosts && !seen_commands.insert(ws.commands.command_hash_hex(applied)).second) {
                 continue;
             }
             if(occurrences == 1) {
@@ -200,7 +200,7 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     // own command.
     auto own = own_commands(ws, path_id, ws.build.entries(path_id));
     for(std::size_t i = 0; i < own.size(); i += 1) {
-        if(seen_commands.insert(ws.cdb.command_hash_hex(own[i])).second) {
+        if(seen_commands.insert(ws.commands.command_hash_hex(own[i])).second) {
             all_items.push_back(own_item(ws, path_id, i, own));
         }
     }
@@ -239,9 +239,10 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
             return;
         }
         auto entry = pick_pinned_command(ws, path_id, commands, path, path, hash, base);
-        auto index = llvm::find_if(
-                         commands,
-                         [&](const Candidate& candidate) { return candidate.command == entry.command; }) -
+        auto index = llvm::find_if(commands,
+                                   [&](const Candidate& candidate) {
+                                       return candidate.command == entry.command;
+                                   }) -
                      commands.begin();
         result.context = own_item(ws, path_id, index, own_commands(ws, path_id, commands));
     };
@@ -288,8 +289,8 @@ kota::task<ext::SwitchContextResult>
     // listed items.
     auto base_of = [&](llvm::ArrayRef<Candidate> commands, auto listed) -> std::string {
         for(auto& entry: commands) {
-            if(ws.cdb.command_hash_hex(listed(entry)) == *params.command_hash) {
-                return ws.cdb.command_hash_hex(entry.command);
+            if(ws.commands.command_hash_hex(listed(entry)) == *params.command_hash) {
+                return ws.commands.command_hash_hex(entry.command);
             }
         }
         std::unreachable();

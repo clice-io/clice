@@ -28,7 +28,7 @@ std::string selected_hash(Project& project, Fid file) {
     if(commands.empty()) {
         return {};
     }
-    return project.cdb.command_hash_hex(commands.front().command);
+    return project.commands.command_hash_hex(commands.front().command);
 }
 
 /// JSON layout of the persisted command snapshot (blob kind
@@ -95,7 +95,7 @@ CommandSnapshotBlob build_snapshot(Project& project,
         std::vector<std::string> hashes;
         std::vector<std::string> sources;
         for(auto& candidate: candidates) {
-            hashes.push_back(project.cdb.command_hash_hex(candidate.command));
+            hashes.push_back(project.commands.command_hash_hex(candidate.command));
             auto database = project.cdb.source_path(candidate.source);
             // Commands added by hand come from no database a later session
             // could miss.
@@ -110,7 +110,7 @@ CommandSnapshotBlob build_snapshot(Project& project,
         snapshot.entries.push_back({
             .file = project.index.portable(file),
             .hashes = std::move(hashes),
-            .selected = project.cdb.command_hash_hex(candidates.front().command),
+            .selected = project.commands.command_hash_hex(candidates.front().command),
             .sources = std::move(sources),
             .rules = std::move(rules),
         });

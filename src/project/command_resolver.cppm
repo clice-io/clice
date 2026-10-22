@@ -4,7 +4,7 @@ module;
 
 module clice:project.command_resolver;
 
-import :command.command;
+import :command.table;
 import :project.project;
 
 namespace clice {
@@ -45,12 +45,12 @@ struct CommandRequest {
 /// and hosts), defaulting to the build's first command. `paths` are the
 /// files whose edits the published hash was computed with.
 Candidate pick_pinned_command(Project& project,
-                             Fid file,
-                             llvm::ArrayRef<Candidate> candidates,
-                             llvm::ArrayRef<CanonicalRef> paths,
-                             llvm::StringRef language_path,
-                             llvm::StringRef pinned_hash,
-                             llvm::StringRef pinned_base);
+                              Fid file,
+                              llvm::ArrayRef<Candidate> candidates,
+                              llvm::ArrayRef<CanonicalRef> paths,
+                              llvm::StringRef language_path,
+                              llvm::StringRef pinned_hash,
+                              llvm::StringRef pinned_base);
 
 /// `command`, one of `host`'s, as `host` lends it to `header`: edited by
 /// the rules of both files and a run's extras, compiled as the host's

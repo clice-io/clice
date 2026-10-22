@@ -4,7 +4,9 @@ module;
 
 module clice:project.build;
 
-import :command.command;
+import :command.database;
+import :command.edit;
+import :command.table;
 import :config.config;
 import :vfs.file_table;
 
@@ -31,7 +33,7 @@ struct Edits {
     }
 
     CommandEdits options(llvm::ArrayRef<std::string> extra_prepend = {},
-                           llvm::ArrayRef<std::string> extra_append = {}) const {
+                         llvm::ArrayRef<std::string> extra_append = {}) const {
         return {.edits = edits,
                 .extra_prepend = extra_prepend,
                 .extra_append = extra_append,
@@ -48,7 +50,7 @@ struct Edits {
 class Build {
 public:
     Build(Config& config, CompilationDatabase& cdb, FileTable& files) :
-        config(config), cdb(cdb), files(files) {}
+        config(config), cdb(cdb), command_table(cdb.commands()), files(files) {}
 
     /// The configuration tag every tagged rule is checked against; empty
     /// when the rules declare none.
@@ -207,7 +209,7 @@ public:
     bool declared(Fid file);
 
     /// The command of the entry writing the precompiled header `config`'s
-    /// command reads (CompilationDatabase::pch_inputs) — the
+    /// command reads (CommandTable::pch_inputs) — the
     /// `cmake_pch.hxx.cxx` entry of a CMake target with precompiled
     /// headers; of the configurations writing one each from that file, the
     /// one writing this very PCH. The PCH on disk may come from another
@@ -261,6 +263,18 @@ private:
     /// compile command.
     std::optional<CommandID> command_of(const CompiledRule& rule);
 
+    /// A command written by hand (a rule's default command, the builtin
+    /// fallback): normalized once through the entry pipeline with the
+    /// input slot synthesized at the end, memoized per (directory,
+    /// spelling). `directory` is its working directory. Nullopt (logged
+    /// once) when the spelling is not a compile command — blank, or a
+    /// launcher with nothing to launch.
+    std::optional<CommandID> intern(const Spelling& directory,
+                                    llvm::ArrayRef<const char*> arguments);
+
+    /// apply_edits, memoized per (command, edits).
+    CommandID apply(CommandID command, const CommandEdits& edits);
+
     /// The interned default command of the first matching active rule
     /// declaring one; nullopt when no rule does or its command is not a
     /// compile command.
@@ -283,6 +297,7 @@ private:
 
     Config& config;
     CompilationDatabase& cdb;
+    CommandTable& command_table;
     FileTable& files;
     std::string active;
     std::optional<std::vector<Fid>> covered_sources;
@@ -294,6 +309,14 @@ private:
     /// `declared_source_count` sources.
     mutable llvm::StringMap<std::optional<SourceID>> declared_source_ids;
     mutable std::size_t declared_source_count = 0;
+
+    /// intern's commands by (directory, spelling), invalid_command for a
+    /// spelling that is not a compile command.
+    llvm::StringMap<CommandID> interned;
+
+    /// apply's results by (command, the id of the edits' key).
+    llvm::StringMap<std::uint32_t> edit_keys;
+    llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, CommandID> edited;
 };
 
 /// How discovered databases rank among themselves: shallower before

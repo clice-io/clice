@@ -4,32 +4,31 @@ module;
 
 module clice:command.toolchain;
 
-import :command.command;
+import :command.argument;
+import :command.search_config;
+import :command.table;
+import :vfs.file_table;
 
 namespace clice {
 
-/// Get the resource directory for clang builtin headers. Computed once
-/// from the current executable path using Driver::GetResourcesPath.
-llvm::StringRef resource_dir();
-
-/// Resolves driver-level configs into full cc1-level configurations by
+/// Resolves driver-level commands into full cc1-level configurations by
 /// probing the compiler driver, in two layers:
 ///
 ///   - Probe layer: keyed by (driver, input language, the args that may
-///     change the driver's job, and — only for cwd-sensitive configs — the
+///     change the driver's job, and — only for cwd-sensitive commands — the
 ///     directory). One probe per unique key finds the cc1 job the driver
 ///     runs; its frontend (see Frontend) and failures (with a retry
 ///     cooldown) are cached. User-content flags (-I, -D, ...) never affect
 ///     the probe.
 ///
-///   - Synthesis layer: keyed by (config, input). The probe's frontend with
-///     the config's own user content re-attached.
+///   - Synthesis layer: keyed by (command, input). The probe's frontend with
+///     the command's own user content re-attached.
 class Toolchain {
 public:
     using ResolvedID = std::uint32_t;
 
     /// A synthesized full compile configuration, self-contained: rendering
-    /// it needs no trip back to the source config.
+    /// it needs no trip back to the source command.
     struct Resolved {
         /// The compiler binary the probe resolved.
         const char* driver = nullptr;
@@ -42,11 +41,12 @@ public:
     /// once the cooldown passes (cf. BlameBudget), so a transient driver
     /// failure — an upgrade replacing the binary mid-stat, a full tmpfs —
     /// cannot poison the key for the rest of the session.
-    explicit Toolchain(CompilationDatabase& db,
-                       std::chrono::steady_clock::duration failed_retry = std::chrono::seconds(30));
+    Toolchain(CommandTable& commands,
+              FileTable& files,
+              std::chrono::steady_clock::duration failed_retry = std::chrono::seconds(30));
     ~Toolchain();
 
-    /// Resolve a config for one input language. Blocks on a driver spawn on
+    /// Resolve a command for one input language. Blocks on a driver spawn on
     /// probe miss; hits are lookups.
     std::expected<ResolvedID, std::string> resolve(CommandID id, InputKind input);
 
@@ -57,7 +57,20 @@ public:
     /// Pre-probe in parallel, deduplicated by probe key, running as many
     /// drivers at once as the process has CPUs. Blocks until all unique
     /// probes complete.
-    void warm(llvm::ArrayRef<std::pair<CommandID, InputKind>> pairs);
+    void warm(llvm::ArrayRef<CommandRef> refs);
+
+    /// Render the full compile argv for a ref, naming the input `path`:
+    /// resolve the command through the toolchain (probe cached; may spawn
+    /// the driver once per unique toolchain key) and render at cc1 level;
+    /// on probe failure degrade to the driver-level render.
+    std::vector<const char*> render(const CommandRef& ref,
+                                    llvm::StringRef path,
+                                    const RenderOptions& opts = {});
+
+    /// Header search configuration of a ref, extracted from the resolved
+    /// (cc1) command when the toolchain probe succeeds — memoized — else
+    /// from the driver-level command.
+    SearchConfig search_config(const CommandRef& ref);
 
     bool has_cache() const {
         return !probes.empty();
@@ -94,9 +107,9 @@ private:
         std::size_t slot = 0;
     };
 
-    ProbeArgv probe_argv(const Command& config);
+    ProbeArgv probe_argv(const Command& command);
 
-    /// What a probe's job sets up, shared by every config of its key.
+    /// What a probe's job sets up, shared by every command of its key.
     struct Frontend {
         /// The program of the job.
         const char* driver = nullptr;
@@ -120,10 +133,10 @@ private:
     /// know. Another clang's builtin headers become ours.
     Frontend frontend(llvm::ArrayRef<std::string> job);
 
-    /// The frontend with the config's own user content re-attached.
+    /// The frontend with the command's own user content re-attached.
     ResolvedID synthesize(CommandID id, const Frontend& probe);
 
-    /// What the probe caches say about a (config, input) key: a live
+    /// What the probe caches say about a (command, input) key: a live
     /// probe, a failure still cooling down, or the query to run. A
     /// cooled-down failure is dropped on the way, so the query retries.
     struct ProbeAdmission;
@@ -134,7 +147,10 @@ private:
     void commit_probe(llvm::StringRef key,
                       const std::expected<std::vector<std::string>, std::string>& job);
 
-    CompilationDatabase& db;
+private:
+    CommandTable& commands;
+
+    FileTable& files;
 
     /// Probe layer: key → the frontend its job sets up.
     llvm::StringMap<Frontend> probes;
@@ -145,10 +161,12 @@ private:
     /// SystemIncludeExtractor for precedent); expires after `failed_retry`.
     llvm::StringMap<std::pair<std::string, std::chrono::steady_clock::time_point>> failed;
 
-    /// Synthesis layer: (config, input language) → resolved entry.
+    /// Synthesis layer: (command, input language) → resolved entry.
     llvm::DenseMap<std::pair<std::uint32_t, const char*>, ResolvedID> synth_cache;
 
     std::vector<Resolved> resolved_configs;
+
+    llvm::DenseMap<std::uint32_t, SearchConfig> search_configs;
 
     std::chrono::steady_clock::duration failed_retry;
 };
