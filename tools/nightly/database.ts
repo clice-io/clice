@@ -121,7 +121,7 @@ export async function includedHeaders(
         "header",
     ]);
     const reached = new Set(indexed.result.files.map((file) => file.path));
-    const programs = path.dirname(path.dirname(fs.realpathSync(clice)));
+    const resources = path.join(path.dirname(fs.realpathSync(clice)), "..", "lib");
     const headers = new Map<string, string>();
     for (const unit of files.filter((file) => file.source)) {
         for (const included of unit.includes) {
@@ -129,7 +129,7 @@ export async function includedHeaders(
             if (
                 header !== null &&
                 reached.has(included) &&
-                inside(programs, included) === null &&
+                inside(resources, included) === null &&
                 !headers.has(header)
             ) {
                 headers.set(header, unit.path);

@@ -172,6 +172,10 @@ export function watchMemory(root: number): { stop: () => PeakMemory } {
     const { shell, once, loop } = listing();
     const [command = "", ...args] = shell;
     const sampler = spawn(command, [...args, loop(once)], { stdio: ["ignore", "pipe", "ignore"] });
+    // The job goes on without its memory numbers.
+    sampler.on("error", (error) => {
+        console.warn(`cannot sample memory: ${error.message}`);
+    });
     let pending = "";
     let sample: string[] = [];
     sampler.stdout.setEncoding("utf8").on("data", (chunk: string) => {
