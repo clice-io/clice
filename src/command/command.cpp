@@ -82,28 +82,6 @@ Spelling spelled(llvm::StringRef text, const Spelling& base, const MountTable* m
     return Spelling(text, base);
 }
 
-/// The mount table of the Cygwin or MSYS2 runtime on PATH, which must map
-/// a database entry's `directory` or `file` to one that exists: another
-/// runtime's maps them elsewhere.
-std::expected<MountTable, std::string> path_mount_table(llvm::StringRef directory,
-                                                        llvm::StringRef file) {
-    auto runtime = find_runtime({});
-    if(!runtime) {
-        return std::unexpected("PATH holds no Cygwin or MSYS2 runtime");
-    }
-    auto [read] = kota::run(read_mount_table(*runtime));
-    auto& table = *read;
-    auto exists = [&](llvm::StringRef path) {
-        return is_posix_path(path) && vfs::exists(table->to_windows(path));
-    };
-    if(table && !exists(directory) && !exists(file)) {
-        return std::unexpected(std::format("the runtime in {} maps it to {}, which does not exist",
-                                           *runtime,
-                                           table->to_windows(directory)));
-    }
-    return std::move(table);
-}
-
 /// `value` spelled against `anchor` when it names a path (names_path),
 /// else `value` itself.
 llvm::StringRef anchored(unsigned id,
@@ -1084,13 +1062,18 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         mounts = nullptr;
         if(is_posix_path(dir_ref)) {
             if(!table) {
-                table = path_mount_table(dir_ref, {file_sv.data(), file_sv.size()});
+                std::vector<std::string> written = {dir_ref.str()};
+                if(llvm::StringRef file(file_sv.data(), file_sv.size()); is_posix_path(file)) {
+                    written.push_back(file.str());
+                }
+                auto [found] = kota::run(find_mount_table({}, std::move(written)));
+                table = std::move(*found);
                 if(!*table) {
                     LOG_ERROR(
                         "Compilation database {} spells its paths POSIX-style ({}) and they "
                         "cannot be mapped: {}. Put the bin directory of the Cygwin or MSYS2 "
-                        "that wrote it first on clice's PATH; until then its entries so spelled "
-                        "are skipped.",
+                        "that wrote it on clice's PATH; until then its entries so spelled are "
+                        "skipped.",
                         path,
                         dir_ref,
                         table->error());

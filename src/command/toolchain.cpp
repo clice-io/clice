@@ -111,49 +111,23 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
 /// `/usr/include`, which is clang's to resolve, not a runtime's.
 kota::task<std::expected<DriverReport, std::string>> translate_posix_paths(DriverReport report,
                                                                            std::string driver) {
-    if(!is_posix_path(report.clang_job.empty() ? report.gcc_job : report.clang_job.front())) {
+    auto program = report.clang_job.empty() ? report.gcc_job : report.clang_job.front();
+    if(!is_posix_path(program)) {
         co_return report;
     }
-    std::vector<std::string*> paths;
-    for(auto& dir: report.search_dirs) {
-        if(is_posix_path(dir.path)) {
-            paths.push_back(&dir.path);
-        }
-    }
-    auto search_dirs = paths.size();
-    for(auto& token: report.clang_job) {
-        if(is_posix_path(token)) {
-            paths.push_back(&token);
-        }
-    }
-    if(paths.empty()) {
-        co_return report;
-    }
-    auto runtime = find_runtime(driver);
-    if(!runtime) {
-        co_return std::unexpected(std::format(
-            "{} reports POSIX paths ({}), and neither its directory nor PATH holds the Cygwin "
-            "or MSYS2 runtime whose mount table maps them",
-            driver,
-            *paths.front()));
-    }
-    auto table = co_await read_mount_table(*runtime);
+    auto table = co_await find_mount_table(driver, {program});
     if(!table) {
         co_return std::unexpected(
-            std::format("Cannot read the mount table of {}: {}", *runtime, table.error()));
+            std::format("{} reports POSIX paths ({}): {}", driver, program, table.error()));
     }
-    for(std::size_t i = 0; i < paths.size(); i += 1) {
-        auto posix = std::exchange(*paths[i], table->to_windows(*paths[i]));
-        // GCC lists only the directories that exist: one that does not
-        // after the translation is not the runtime the driver loads (an
-        // earlier one on PATH).
-        if(i < search_dirs && !vfs::is_directory(*paths[i])) {
-            co_return std::unexpected(
-                std::format("The mount table of {} maps {} of {} to {}, which does not exist",
-                            *runtime,
-                            posix,
-                            driver,
-                            *paths[i]));
+    for(auto& dir: report.search_dirs) {
+        if(is_posix_path(dir.path)) {
+            dir.path = table->to_windows(dir.path);
+        }
+    }
+    for(auto& token: report.clang_job) {
+        if(is_posix_path(token)) {
+            token = table->to_windows(token);
         }
     }
     co_return report;

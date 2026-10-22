@@ -32,14 +32,16 @@ struct MountTable {
     std::string to_windows(llvm::StringRef posix) const;
 };
 
-/// The directory of the Cygwin or MSYS2 runtime (cygwin1.dll,
-/// msys-2.0.dll) a program at `program` loads, found as Windows finds a
-/// DLL: beside the program, else on PATH. An empty `program` searches PATH
+/// The mount table, read from the runtime's own `mount`, of the Cygwin or
+/// MSYS2 runtime that spelled `written`, POSIX paths of files that exist:
+/// of the runtimes (cygwin1.dll, msys-2.0.dll) beside `program` and on PATH,
+/// in the order Windows looks for a program's DLLs, the first whose table
+/// maps one of them to a file that exists. Taking the first runtime alone
+/// would be wrong where PATH holds two, Git for Windows' MSYS2 ahead of the
+/// Cygwin a toolchain outside it loads. An empty `program` searches PATH
 /// alone.
-std::optional<std::string> find_runtime(llvm::StringRef program);
-
-/// The mount table of the runtime in `runtime`, from its own `mount`.
-kota::task<std::expected<MountTable, std::string>> read_mount_table(std::string runtime);
+kota::task<std::expected<MountTable, std::string>>
+    find_mount_table(std::string program, std::vector<std::string> written);
 
 /// The target of the Cygwin symlink at `path`, a file holding the cookie
 /// `!<symlink>` and the target, which the package installer writes for a

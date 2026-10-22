@@ -56,26 +56,27 @@ std::string MountTable::to_windows(llvm::StringRef posix) const {
     std::unreachable();
 }
 
-std::optional<std::string> find_runtime(llvm::StringRef program) {
-    auto holds_runtime = [](llvm::StringRef dir) {
-        return vfs::exists(path::join(dir, "cygwin1.dll")) ||
-               vfs::exists(path::join(dir, "msys-2.0.dll"));
+namespace {
+
+/// The directories beside `program` and on PATH that hold a Cygwin or MSYS2
+/// runtime, in the order Windows looks for a program's DLLs.
+std::vector<std::string> runtime_dirs(llvm::StringRef program) {
+    std::vector<std::string> dirs;
+    auto add = [&](llvm::StringRef dir) {
+        if(!dir.empty() && (vfs::exists(path::join(dir, "cygwin1.dll")) ||
+                            vfs::exists(path::join(dir, "msys-2.0.dll")))) {
+            dirs.push_back(dir.str());
+        }
     };
-    if(auto beside = path::parent_path(program); !beside.empty() && holds_runtime(beside)) {
-        return beside.str();
-    }
-    auto search = llvm::sys::Process::GetEnv("PATH");
-    if(!search) {
-        return std::nullopt;
-    }
-    llvm::SmallVector<llvm::StringRef> dirs;
-    llvm::StringRef(*search).split(dirs, path::list_separator, -1, false);
-    for(auto dir: dirs) {
-        if(holds_runtime(dir)) {
-            return dir.str();
+    add(path::parent_path(program));
+    if(auto search = llvm::sys::Process::GetEnv("PATH")) {
+        llvm::SmallVector<llvm::StringRef> entries;
+        llvm::StringRef(*search).split(entries, path::list_separator, -1, false);
+        for(auto entry: entries) {
+            add(entry);
         }
     }
-    return std::nullopt;
+    return dirs;
 }
 
 kota::task<std::expected<MountTable, std::string>> read_mount_table(std::string runtime) {
@@ -92,6 +93,37 @@ kota::task<std::expected<MountTable, std::string>> read_mount_table(std::string 
         co_return std::unexpected(std::format("{} lists no root mount", mount));
     }
     co_return table;
+}
+
+}  // namespace
+
+kota::task<std::expected<MountTable, std::string>>
+    find_mount_table(std::string program, std::vector<std::string> written) {
+    std::vector<std::string> misses;
+    for(auto& dir: runtime_dirs(program)) {
+        auto table = co_await read_mount_table(dir);
+        if(!table) {
+            misses.push_back(std::format("{}: {}", dir, table.error()));
+            continue;
+        }
+        for(auto& file: written) {
+            // A program is named as Cygwin names it, without `.exe`.
+            auto windows = table->to_windows(file);
+            if(vfs::exists(windows) || vfs::exists(windows + ".exe")) {
+                co_return std::move(*table);
+            }
+        }
+        misses.push_back(std::format("{} maps it to {}", dir, table->to_windows(written.front())));
+    }
+    if(misses.empty()) {
+        co_return std::unexpected(
+            program.empty()
+                ? "PATH holds no Cygwin or MSYS2 runtime"
+                : std::format("no Cygwin or MSYS2 runtime is beside {} or on PATH", program));
+    }
+    co_return std::unexpected(std::format("no runtime maps {} to a file that exists ({})",
+                                          written.front(),
+                                          llvm::join(misses, "; ")));
 }
 
 std::optional<std::string> read_cygwin_symlink(llvm::StringRef path) {
