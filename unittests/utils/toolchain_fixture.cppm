@@ -126,7 +126,7 @@ inline bool adjacent(llvm::ArrayRef<const char*> argv,
 
 /// Whether `argv`, of `const char*` or of strings, holds `arg`.
 inline bool contains(const auto& argv, llvm::StringRef arg) {
-    return llvm::any_of(argv, [&](llvm::StringRef each) { return each == arg; });
+    return std::ranges::contains(argv, arg);
 }
 
 }  // namespace clice::testing
