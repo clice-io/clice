@@ -179,6 +179,68 @@ ZEST_CASE(NameTargetWindows, skip = !Windows) {
             "riscv32-wch-elf");
 };
 
+ZEST_CASE(EveryAliasRendersBack) {
+    /// Every alias a GCC-style command can write renders back to itself:
+    /// read again, the same option through the same alias, the same values.
+    auto visibility = family_visibility(CompilerFamily::GCC);
+    auto parse_options = kota::option::ParseOptions{.visibility = visibility};
+    llvm::BumpPtrAllocator allocator;
+    llvm::StringSaver strings(allocator);
+    std::size_t checked = 0;
+    for(auto& option: option::table().option_infos) {
+        if(!option.alias_id || !(option.visibility & visibility)) {
+            continue;
+        }
+        std::string name(option.prefixed_name);
+        std::vector<std::string> written;
+        switch(option.kind) {
+            case kota::option::Kind::Flag: written = {name}; break;
+            case kota::option::Kind::Joined: written = {name + "1"}; break;
+            case kota::option::Kind::CommaJoined: written = {name + "a,b"}; break;
+            case kota::option::Kind::Separate:
+            case kota::option::Kind::JoinedOrSeparate: written = {name, "1"}; break;
+            default: continue;
+        }
+        auto read = [&](std::vector<std::string>& args) -> std::optional<Arg> {
+            std::optional<Arg> arg;
+            for(auto& parsed: option::table().parse(args, parse_options)) {
+                if(!parsed || arg) {
+                    return std::nullopt;
+                }
+                arg = Arg{.opt_id = parsed->id, .alias = written_alias(*parsed)};
+                std::vector<const char*> values;
+                for(auto value: parsed->values) {
+                    values.push_back(strings.save(value).data());
+                }
+                arg->values = llvm::ArrayRef(values).copy(allocator);
+            }
+            return arg;
+        };
+        // The parse may read the spelling as a longer option: not one a
+        // command writes through this alias.
+        auto first = read(written);
+        if(!first || first->alias != option.id) {
+            continue;
+        }
+        std::vector<std::string> rendered;
+        render_driver_arg(*first, CompilerFamily::GCC, [&](std::string_view fragment) {
+            rendered.emplace_back(fragment);
+        });
+        auto again = read(rendered);
+        ZEXPECT(again.has_value());
+        if(again) {
+            ZEXPECT(again->opt_id == first->opt_id);
+            ZEXPECT(again->alias == first->alias);
+            ZEXPECT(
+                std::ranges::equal(again->values, first->values, [](const char* l, const char* r) {
+                    return llvm::StringRef(l) == r;
+                }));
+        }
+        checked += 1;
+    }
+    ZEXPECT(checked > 100U);
+};
+
 ZEST_CASE(DriverKeepsAlias) {
     /// GCC spells its own way options clang knows as aliases: clang's own
     /// names reach a clang only.

@@ -71,15 +71,66 @@ kota::task<std::expected<GCCStyleOutput, std::string>> translate_posix_paths(GCC
     co_return output;
 }
 
-/// An option of GCC's as clang's driver takes it:
-///
-///   - GCC's two-core tuning form, `-mcpu=cortex-a72.cortex-a53`, as the
-///     first core alone: clang knows no such name, and the first core's
-///     architecture is the code's. The features after the cores keep their
-///     dots (`-mcpu=cortex-m7+nofp.dp`).
-///   - A RISC-V ISA string without the extensions LLVM does not know (a
-///     vendor's, WCH's `_xw`): clang drops a whole string naming one, and
-///     every feature macro of the rest with it.
+/// An extension of a RISC-V ISA string without the version the string may
+/// give it, `<major>` or `<major>p<minor>` (`i2p0`, `zba1`).
+llvm::StringRef unversioned(llvm::StringRef extension) {
+    constexpr llvm::StringLiteral digits = "0123456789";
+    auto name = extension.rtrim(digits);
+    auto major = name;
+    if(major.consume_back("p") && major.rtrim(digits).size() < major.size()) {
+        return major.rtrim(digits);
+    }
+    return name;
+}
+
+/// A RISC-V ISA string as clang can read it: clang drops a whole string
+/// naming an extension LLVM does not know (a vendor's, WCH's `_xw`) or a
+/// version of one it does not know (older GCCs' `i2p0`, where LLVM's I is
+/// 2.1), and every feature macro of the rest with it. The first goes, the
+/// second takes the version LLVM knows.
+std::string riscv_isa_for_clang(llvm::StringRef isa) {
+    auto known = [&](llvm::StringRef extension) -> std::optional<llvm::StringRef> {
+        if(llvm::RISCVISAInfo::isSupportedExtension(extension) ||
+           llvm::RISCVISAInfo::isSupportedExtensionWithVersion(extension)) {
+            return extension;
+        }
+        auto name = unversioned(extension);
+        if(name.size() < extension.size() && llvm::RISCVISAInfo::isSupportedExtension(name)) {
+            LOG_INFO("LLVM knows no version {} of the RISC-V extension {}: clang reads its own",
+                     extension.drop_front(name.size()),
+                     name);
+            return name;
+        }
+        return std::nullopt;
+    };
+
+    llvm::SmallVector<llvm::StringRef> extensions;
+    isa.split(extensions, '_');
+    // The base names the width and its first extensions (`rv32imc`), or one
+    // extension with its version (`rv32i2p0`).
+    auto base = extensions[0];
+    auto letters = base.find_first_not_of("rv0123456789");
+    auto first = base.substr(letters);
+    auto readable = base.take_front(letters).str();
+    readable += unversioned(first) == first ? first : known(first).value_or(first);
+    for(auto extension: extensions | std::views::drop(1)) {
+        if(auto name = known(extension)) {
+            readable += '_';
+            readable += *name;
+        } else {
+            LOG_WARN("LLVM knows no RISC-V extension {}: clang reads -march={} without it",
+                     extension,
+                     isa);
+        }
+    }
+    return readable;
+}
+
+/// An option of GCC's as clang's driver takes it: GCC's two-core tuning
+/// form, `-mcpu=cortex-a72.cortex-a53`, as the first core alone (clang
+/// knows no such name, and the first core's architecture is the code's;
+/// the features after the cores keep their dots, `-mcpu=cortex-m7+nofp.dp`),
+/// and a RISC-V ISA string as clang can read it.
 std::string for_clang(llvm::StringRef arg, const llvm::Triple& target) {
     if(arg.starts_with("-mcpu=")) {
         auto features = arg.find('+');
@@ -90,24 +141,10 @@ std::string for_clang(llvm::StringRef arg, const llvm::Triple& target) {
         return first;
     }
     llvm::StringRef isa = arg;
-    if(!target.isRISCV() || !isa.consume_front("-march=")) {
-        return arg.str();
+    if(target.isRISCV() && isa.consume_front("-march=")) {
+        return "-march=" + riscv_isa_for_clang(isa);
     }
-    llvm::SmallVector<llvm::StringRef> extensions;
-    isa.split(extensions, '_');
-    auto known = "-march=" + extensions[0].str();
-    for(auto extension: extensions | std::views::drop(1)) {
-        if(llvm::RISCVISAInfo::isSupportedExtension(extension) ||
-           llvm::RISCVISAInfo::isSupportedExtensionWithVersion(extension)) {
-            known += '_';
-            known += extension;
-        } else {
-            LOG_WARN("LLVM knows no RISC-V extension {}: clang reads -march={} without it",
-                     extension,
-                     isa);
-        }
-    }
-    return known;
+    return arg.str();
 }
 
 }  // namespace
