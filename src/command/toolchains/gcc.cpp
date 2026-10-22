@@ -244,6 +244,7 @@ GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) 
 
     llvm::StringRef cplusplus;
     llvm::StringRef stdc_version;
+    llvm::StringRef riscv_xlen;
     bool strict = false;
     bool opencl = false;
     llvm::SmallVector<llvm::StringRef> macros;
@@ -257,6 +258,8 @@ GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) 
             cplusplus = value;
         } else if(name == "__STDC_VERSION__") {
             stdc_version = value;
+        } else if(name == "__riscv_xlen") {
+            riscv_xlen = value;
         } else if(name == "__STRICT_ANSI__") {
             strict = true;
         } else if(name == "__OPENCL_C_VERSION__" || name == "__OPENCL_CPP_VERSION__") {
@@ -266,6 +269,15 @@ GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) 
     }
     if(!opencl) {
         output.standard = standard_from_macros(cplusplus, stdc_version, strict);
+    }
+    llvm::Triple target(output.target);
+    if(target.getArch() == llvm::Triple::UnknownArch && target.getArchName() == "riscv" &&
+       !riscv_xlen.empty()) {
+        target.setArchName(("riscv" + riscv_xlen).str());
+        LOG_INFO("GCC's target {} names no width: clang reads it as {}, as __riscv_xlen says",
+                 output.target,
+                 target.str());
+        output.target = target.str();
     }
     return output;
 }

@@ -31,7 +31,9 @@ struct GCCStyleOutput {
     /// empty when it ran none. The fields up to `private_dir` are GCC's.
     std::string gcc_job;
 
-    /// The target triple, from the `Target:` line.
+    /// The target triple, from the `Target:` line, with the width
+    /// `__riscv_xlen` names when it names a RISC-V target of no width
+    /// (xPack's `riscv-none-elf`), which clang cannot read.
     std::string target;
 
     /// The options GCC's driver passed its cc1 job that reach clang's

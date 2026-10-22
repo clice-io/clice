@@ -190,6 +190,27 @@ ZEST_CASE(StandardFromMacros) {
                 .empty());
 }
 
+ZEST_CASE(RISCVTargetWidth) {
+    /// xPack's and MounRiver's GCCs name a RISC-V target of no width, which
+    /// clang cannot read, nor any -march for it: GCC's macros name the width.
+    auto none = parse_gcc_style_output("#define __riscv_xlen 32\n", "Target: riscv-none-elf\n");
+    ZEXPECT(none.target == "riscv32-none-elf");
+    auto embed = parse_gcc_style_output("#define __riscv_xlen 64", "Target: riscv-none-embed");
+    ZEXPECT(embed.target == "riscv64-none-embed");
+    auto wch = parse_gcc_style_output("#define __riscv_xlen 32", "Target: riscv32-wch-elf");
+    ZEXPECT(wch.target == "riscv32-wch-elf");
+}
+
+ZEST_CASE(RISCVTargetFeatures, skip = Windows) {
+    auto driver = fake_driver("riscv-none-elf-gcc", R"(echo 'Target: riscv-none-elf' >&2
+echo ' /opt/xpack/libexec/gcc/riscv-none-elf/15.2.0/cc1 -E -quiet query.c -march=rv32imac_zicsr -mabi=ilp32 -dM' >&2
+echo '#define __riscv_xlen 32'
+)");
+    auto argv = f.resolve(add("a.c", {driver.c_str(), "-c"}));
+    ZEXPECT(adjacent(argv, "-target-feature", "+a"));
+    ZEXPECT(adjacent(argv, "-target-abi", "ilp32"));
+}
+
 ZEST_CASE(NoCompilerJob, skip = Windows) {
     /// A driver that is neither GCC nor clang (Intel's icc).
     auto ref = add("a.cpp", {fake_driver("icc", "").c_str()});
