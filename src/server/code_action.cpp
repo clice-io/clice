@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.file_kind;
 import :index.search;
 import :index.shard;
 import :index.symbol_query;
@@ -338,7 +338,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         std::string directory;
         std::vector<std::string> arguments;
         auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
-        auto search = project.cdb.search_config(ref);
+        auto search = project.toolchain.search_config(ref);
         vfs::Scope scope(project.file_table.dirs);
         for(const auto& header: headers) {
             auto spelling =

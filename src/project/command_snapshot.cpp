@@ -20,7 +20,7 @@ namespace clice {
 
 namespace {
 
-/// Entry hash of a file's default selection — the candidate-order winner,
+/// Command hash of a file's default selection — the candidate-order winner,
 /// or the default command covering a file without entries; empty when the
 /// build does not compile it.
 std::string selected_hash(Project& project, Fid file) {
@@ -28,7 +28,7 @@ std::string selected_hash(Project& project, Fid file) {
     if(commands.empty()) {
         return {};
     }
-    return project.cdb.entry_hash_hex(commands.front().config);
+    return project.commands.command_hash_hex(commands.front().command);
 }
 
 /// JSON layout of the persisted command snapshot (blob kind
@@ -42,7 +42,7 @@ struct CDBSnapshotEntry {
 
     std::vector<std::string> hashes;
 
-    /// Entry hash of the file's default selection (the candidate-order
+    /// Command hash of the file's default selection (the candidate-order
     /// winner, or the default command covering a file without entries).
     /// The hash multiset alone cannot see an offline flip of the winner —
     /// candidates unchanged, selection changed.
@@ -56,7 +56,7 @@ struct CDBSnapshotEntry {
 
     std::string host;
 
-    /// Entry hash of the host's default selection. A host that is not
+    /// Command hash of the host's default selection. A host that is not
     /// itself indexed (a default-command unit under `index = false`) has
     /// no entry of its own to record its command in.
     std::string host_selected;
@@ -95,7 +95,7 @@ CommandSnapshotBlob build_snapshot(Project& project,
         std::vector<std::string> hashes;
         std::vector<std::string> sources;
         for(auto& candidate: candidates) {
-            hashes.push_back(project.cdb.entry_hash_hex(candidate.config));
+            hashes.push_back(project.commands.command_hash_hex(candidate.command));
             auto database = project.cdb.source_path(candidate.source);
             // Commands added by hand come from no database a later session
             // could miss.
@@ -110,7 +110,7 @@ CommandSnapshotBlob build_snapshot(Project& project,
         snapshot.entries.push_back({
             .file = project.index.portable(file),
             .hashes = std::move(hashes),
-            .selected = project.cdb.entry_hash_hex(candidates.front().config),
+            .selected = project.commands.command_hash_hex(candidates.front().command),
             .sources = std::move(sources),
             .rules = std::move(rules),
         });

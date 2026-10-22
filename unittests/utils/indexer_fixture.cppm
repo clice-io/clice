@@ -4,7 +4,7 @@ module;
 
 module clice:unittests.utils.indexer_fixture;
 
-import :command.argument_parser;
+import :command.table;
 import :compile.compilation;
 import :index.database;
 import :index.indexer;

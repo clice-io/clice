@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :command.table;
 import :feature.feature;
 import :sched.families.pch;
 import :sched.families.pcm;
@@ -34,7 +35,7 @@ struct ASTFamilyFixture {
                                        const std::vector<std::string>& arguments) {
         auto& project = ast.project;
         Resolution resolution{
-            .ref = {.config = project.build.builtin(project.file_table.resolve(session->path_id))},
+            .ref = {.command = project.build.builtin(project.file_table.resolve(session->path_id))},
         };
         auto key = co_await ast.ensure_pch(session,
                                            session->text(),
@@ -450,7 +451,7 @@ ZEST_CASE(BufferImportBuildsPCM) {
                   {tmp.root, tmp.path("m.cppm"), {}},
                   {tmp.root, src,                {}},
     }));
-    scan_all(stack.project.cdb, stack.project.dep_graph);
+    scan_all(stack.project.cdb, stack.project.toolchain, stack.project.dep_graph);
     stack.project.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);
@@ -515,7 +516,7 @@ ZEST_CASE(DiamondDepsDeduplicated) {
                   {tmp.root, tmp.path("top.cppm"),   {}},
                   {tmp.root, src,                    {}},
     }));
-    scan_all(stack.project.cdb, stack.project.dep_graph);
+    scan_all(stack.project.cdb, stack.project.toolchain, stack.project.dep_graph);
     stack.project.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);
@@ -573,7 +574,7 @@ ZEST_CASE(ImportScanPerUnit) {
                   {tmp.root, tmp.path("main.cpp"),  {}},
                   {tmp.root, tmp.path("plain.cpp"), {}},
     }));
-    scan_all(stack.project.cdb, stack.project.dep_graph);
+    scan_all(stack.project.cdb, stack.project.toolchain, stack.project.dep_graph);
     stack.project.dep_graph.build_reverse_map();
     stack.register_pch_store(tmp);
     stack.project.store->register_namespace(
@@ -688,7 +689,7 @@ ZEST_CASE(IncludeImportRecorded) {
               build_cdb_json({
                   {tmp.root, src, {"-include", tmp.path("deps.h")}}
     }));
-    scan_all(stack.project.cdb, stack.project.dep_graph);
+    scan_all(stack.project.cdb, stack.project.toolchain, stack.project.dep_graph);
     stack.project.dep_graph.build_reverse_map();
     auto session = stack.open(src, "int main() { return 0; }\n");
 
@@ -734,7 +735,7 @@ ZEST_CASE(HostImportRecorded) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    scan_all(stack.project.cdb, stack.project.dep_graph);
+    scan_all(stack.project.cdb, stack.project.toolchain, stack.project.dep_graph);
     stack.project.dep_graph.build_reverse_map();
     auto session = stack.open(tmp.path("part.inc"), "int part();\n");
 
@@ -782,7 +783,7 @@ ZEST_CASE(SuffixImportRecorded) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    scan_all(stack.project.cdb, stack.project.dep_graph);
+    scan_all(stack.project.cdb, stack.project.toolchain, stack.project.dep_graph);
     stack.project.dep_graph.build_reverse_map();
     auto session = stack.open(tmp.path("part.inc"), "int part();\n");
 
@@ -829,7 +830,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
               build_cdb_json({
                   {tmp.root, src, {"-include", "force.h"}}
     }));
-    scan_all(stack.project.cdb, stack.project.dep_graph);
+    scan_all(stack.project.cdb, stack.project.toolchain, stack.project.dep_graph);
     stack.project.dep_graph.build_reverse_map();
     auto unit = stack.open(src, "#include \"header.h\"\nint main() { return header(); }\n");
     auto header = stack.open(tmp.path("header.h"), "inline int header() { return FORCED; }\n");

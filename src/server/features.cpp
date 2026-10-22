@@ -890,7 +890,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             // choice, chosen CDB entry) the open buffer compiles under.
             auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
 
-            auto search_config = project.cdb.search_config(ref);
+            auto search_config = project.toolchain.search_config(ref);
             vfs::Scope scope(project.file_table.dirs);
             bool angled = (completing.kind == CompletionName::Kind::IncludeAngled);
             auto candidates = complete_include_path(search_config,
@@ -1011,8 +1011,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     assert(decoded && "the worker encodes the list");
     std::string directory;
     std::vector<std::string> arguments;
-    auto search =
-        project.cdb.search_config(contexts.resolve_command(path_id, directory, arguments).ref);
+    auto search = project.toolchain.search_config(
+        contexts.resolve_command(path_id, directory, arguments).ref);
     vfs::Scope scope(project.file_table.dirs);
     feature::IncludeInsertion insertion{.opens_fragment = result.include->opens_fragment};
     std::erase_if(list.items, [&](protocol::CompletionItem& item) {

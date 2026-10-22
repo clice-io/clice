@@ -65,10 +65,10 @@ ninja = "*"
 xclang = "==23.1.2.9"
 
 # The NVCC toolchain tests drive a real nvcc; cudart is the runtime the
-# probe compiles against and curand is included unconditionally by clang's
+# query compiles against and curand is included unconditionally by clang's
 # CUDA wrapper header. Linux-only: there are no osx packages and the
 # Windows host compiler (cl) is not supported by the query yet. No GPU is
-# needed — compilation and the --dryrun probe are pure CPU.
+# needed — compilation and the --dryrun query are pure CPU.
 [feature.cuda.target.linux-64.dependencies]
 cuda-nvcc = "13.*"
 cuda-cudart-dev = "13.*"

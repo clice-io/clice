@@ -8,8 +8,7 @@ module;
 
 module clice;
 
-import :command.argument_parser;
-import :command.command;
+import :command.file_kind;
 import :feature.feature;
 import :index.project_index;
 import :index.shard;

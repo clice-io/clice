@@ -4,7 +4,13 @@ module;
 
 module clice;
 
-import :command.nvcc;
+import :command.argument;
+import :command.normalize;
+import :command.toolchains.clang;
+import :command.toolchains.gcc;
+import :command.toolchains.nvcc;
+import :support.process;
+import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -119,9 +125,35 @@ void split_list(llvm::StringRef value, llvm::SmallVectorImpl<std::string>& out) 
         out.push_back(std::move(piece));
 }
 
+/// The host compiler nvcc's dryrun names, as a path. The dryrun spells it
+/// the way nvcc resolves it — often a bare name that only exists on nvcc's
+/// own augmented PATH: that PATH, then next to the nvcc binary, then ours.
+std::expected<std::string, std::string> find_nvcc_host(const NVCCDryrun& info,
+                                                       llvm::StringRef nvcc) {
+    auto executable = [](llvm::StringRef file) {
+        return vfs::exists(file) && llvm::sys::fs::can_execute(file);
+    };
+    llvm::StringRef host = info.host_compiler;
+    if(path::is_absolute(host)) {
+        return host.str();
+    }
+    for(auto& dir: info.search_path) {
+        if(auto candidate = path::join(dir, host); executable(candidate)) {
+            return candidate;
+        }
+    }
+    if(auto sibling = path::join(path::parent_path(nvcc), host); executable(sibling)) {
+        return sibling;
+    }
+    if(auto program = llvm::sys::findProgramByName(host)) {
+        return std::move(*program);
+    }
+    return std::unexpected(std::format("Cannot find nvcc host compiler: {}", host));
+}
+
 }  // namespace
 
-bool is_nvcc_probe_flag(llvm::StringRef arg) {
+bool is_nvcc_query_flag(llvm::StringRef arg) {
     return arg.starts_with(ccbin_prefix) || arg == allow_unsupported_flag ||
            arg.starts_with(target_directory_prefix) || arg.starts_with(gpu_arch_prefix);
 }
@@ -456,7 +488,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         result.emplace_back("--cuda-gpu-arch=" + select_gpu_arch(archs));
     } else if(!arch_special.empty()) {
         /// A non-numeric selection (native, all, all-major) only nvcc can
-        /// resolve: it persists as a probe token, the dryrun runs with it,
+        /// resolve: it persists as a query token, the dryrun runs with it,
         /// and its cicc line then names the concrete architecture.
         if(edit)
             result.emplace_back("--no-offload-arch=all");
@@ -535,8 +567,106 @@ std::optional<llvm::SmallVector<std::size_t>>
     return dropped;
 }
 
-std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef output) {
-    NVCCDryrunInfo info;
+std::vector<std::string> translate_nvcc_flags(Normalizer& normalizer,
+                                              const char* driver,
+                                              llvm::ArrayRef<std::string> flags,
+                                              const Spelling& anchor,
+                                              bool edit) {
+    if(flags.empty()) {
+        return {};
+    }
+    llvm::BumpPtrAllocator allocator;
+    llvm::StringSaver saver(allocator);
+    llvm::SmallVector<const char*, 32> argv = {driver};
+    for(auto& flag: flags) {
+        argv.push_back(flag.c_str());
+    }
+    normalizer.expand_response_files(argv, anchor, CompilerFamily::NVCC, saver);
+    auto translated = translate_nvcc_command(argv, anchor.str(), edit);
+    return {std::make_move_iterator(translated.begin() + 1),
+            std::make_move_iterator(translated.end())};
+}
+
+std::vector<std::string> translate_nvcc_removes(Normalizer& normalizer,
+                                                const char* driver,
+                                                llvm::ArrayRef<std::string> flags,
+                                                const Spelling& anchor) {
+    std::vector<std::string> source(flags.begin(), flags.end());
+    /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
+    /// clear whichever form the translated base carries: numeric archs
+    /// become `--cuda-gpu-arch=`, non-numeric selections persist as
+    /// `-arch=` query tokens — rewrite to both wildcards.
+    for(std::size_t i = 0; i < source.size(); i += 1) {
+        llvm::StringRef flag = source[i];
+        for(llvm::StringRef spelling:
+            {"-arch", "--gpu-architecture", "-gencode", "--generate-code"}) {
+            bool joined = flag.starts_with(spelling) && flag.substr(spelling.size()) == "=*";
+            bool separate = flag == spelling && i + 1 < source.size() && source[i + 1] == "*";
+            if(!joined && !separate) {
+                continue;
+            }
+            if(separate) {
+                source.erase(source.begin() + i + 1);
+            }
+            source[i] = "--cuda-gpu-arch=*";
+            source.insert(source.begin() + i + 1, "-arch=*");
+            i += 1;
+            break;
+        }
+    }
+    /// Remove patterns are an independent list, not one command: translated
+    /// whole, nvcc's last-wins would swallow every alternative value of a
+    /// stateful option but the last. Each pattern translates alone —
+    /// standalone, so it reproduces exactly the flags the base translation
+    /// emitted — pairing a separate value token (never dash-led) with its
+    /// spelling.
+    std::vector<std::string> removes;
+    for(std::size_t i = 0; i < source.size(); i += 1) {
+        std::size_t count = 1;
+        if(llvm::StringRef(source[i]).starts_with("-") && i + 1 < source.size() &&
+           !llvm::StringRef(source[i + 1]).starts_with("-")) {
+            count = 2;
+        }
+        auto pattern = translate_nvcc_flags(normalizer,
+                                            driver,
+                                            llvm::ArrayRef(source).slice(i, count),
+                                            anchor,
+                                            /*edit=*/false);
+        removes.insert(removes.end(),
+                       std::make_move_iterator(pattern.begin()),
+                       std::make_move_iterator(pattern.end()));
+        i += count - 1;
+    }
+    return removes;
+}
+
+void collapse_gpu_arch_args(std::vector<LocalArg>& args) {
+    llvm::SmallVector<std::pair<ArchFlagKind, llvm::StringRef>> sequence;
+    llvm::SmallVector<std::size_t> positions;
+    for(std::size_t i = 0; i < args.size(); i += 1) {
+        auto& arg = args[i];
+        std::optional<ArchFlagKind> kind;
+        switch(arg.opt_id) {
+            case option::OPT_offload_arch_EQ: kind = ArchFlagKind::OffloadArch; break;
+            case option::OPT_no_offload_arch_EQ: kind = ArchFlagKind::NoOffloadArch; break;
+        }
+        if(kind && arg.values.size() == 1) {
+            sequence.push_back({*kind, arg.values[0]});
+            positions.push_back(i);
+        }
+    }
+
+    auto dropped = collapse_gpu_archs(sequence);
+    if(!dropped) {
+        return;
+    }
+    for(auto index: *dropped | std::views::reverse) {
+        args.erase(args.begin() + positions[index]);
+    }
+}
+
+std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output) {
+    NVCCDryrun info;
     llvm::StringRef nvvm_dir;
     llvm::SmallVector<ArchToken> cicc_archs;
     llvm::SmallVector<const char*, 64> first_command;
@@ -605,7 +735,7 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
             continue;
         }
 
-        /// A probe carrying `-arch=all` runs one cicc per architecture:
+        /// A query carrying `-arch=all` runs one cicc per architecture:
         /// collect them all and pick by the same newest-wins policy as the
         /// translation.
         if(program == "cicc") {
@@ -660,6 +790,136 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
         return std::unexpected("nvcc dryrun output has no host compile command");
 
     return info;
+}
+
+kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
+                                                     llvm::StringRef input,
+                                                     llvm::StringRef kind,
+                                                     std::string cwd) {
+    /// nvcc only offloads CUDA-language inputs; a host-language entry
+    /// (`nvcc -c foo.cpp`, or an explicit `-x c++`) compiles in a single
+    /// host step. The dryrun query follows the effective language so it
+    /// reports the pipeline the real file gets.
+    bool cuda_input = kind == "cuda";
+    std::vector<std::string> dryrun_args = {args[0], "--dryrun", "-c", input.str()};
+    for(llvm::StringRef arg: args) {
+        if(is_nvcc_query_flag(arg)) {
+            dryrun_args.push_back(arg.str());
+        }
+    }
+    auto dryrun = co_await execute(std::move(dryrun_args), cwd);
+    if(!dryrun) {
+        co_return std::unexpected(std::move(dryrun.error()));
+    }
+    if(!dryrun->failure.empty()) {
+        co_return std::unexpected(std::move(dryrun->failure));
+    }
+    auto info = parse_nvcc_dryrun(dryrun->err);
+    if(!info) {
+        co_return std::unexpected(std::move(info.error()));
+    }
+
+    auto host = find_nvcc_host(*info, args[0]);
+    if(!host) {
+        co_return std::unexpected(std::move(host.error()));
+    }
+    auto host_family = driver_family(*host);
+    if(cl_mode(host_family)) {
+        co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", *host));
+    }
+    /// nvcc hands its host compiler a CUDA input as C++. The host's headers
+    /// follow the sysroot the command gives it (`-Xcompiler --sysroot=<dir>`).
+    std::vector<std::string> host_query = {*host, "-x", cuda_input ? "c++" : kind.str()};
+    for(llvm::StringRef arg: args.drop_front()) {
+        if(arg.starts_with("--sysroot=")) {
+            host_query.push_back(arg.str());
+        }
+    }
+    host_query.push_back(input.str());
+    auto host_output = co_await run_gcc_style(host_query, 1, cwd);
+    if(!host_output) {
+        co_return std::unexpected(std::move(host_output.error()));
+    }
+    if(host_output->clang_job.empty() && host_output->gcc_job.empty()) {
+        co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", *host));
+    }
+
+    std::vector<std::string> cuda_args = {*host, "-fno-delayed-template-parsing"};
+    if(cuda_input) {
+        /// Without a root from the dryrun, clang's own CUDA detection (which
+        /// knows the distro-specific install locations) is the remaining
+        /// chance.
+        if(!info->cuda_path.empty()) {
+            cuda_args.push_back("--cuda-path=" + info->cuda_path);
+        }
+        /// A toolkit newer than the linked clang still parses, modulo
+        /// missing feature macros; without this the version warning would
+        /// land in every file's diagnostics.
+        cuda_args.push_back("--no-cuda-version-check");
+
+        /// Default to the device-side view: reading CUDA code means reading
+        /// the `__CUDA_ARCH__` world — CUTLASS keeps every arch-specific
+        /// path behind it, and the host pass grays them all out.
+        /// `--cuda-host-only` in the command (e.g. a config rule append)
+        /// flips a file to the host view instead; the last selector wins,
+        /// matching the driver's own reading of the forwarded flags.
+        std::optional<bool> selected_host;
+        for(llvm::StringRef arg: args) {
+            /// The structured render spells aliases unaliased:
+            /// --cuda-host-only arrives as --offload-host-only.
+            if(arg == "--offload-host-only") {
+                selected_host = true;
+            } else if(arg == "--offload-device-only") {
+                selected_host = false;
+            }
+        }
+        if(!selected_host) {
+            cuda_args.push_back("--cuda-device-only");
+        }
+        for(auto& define:
+            selected_host.value_or(false) ? info->host_defines : info->device_defines) {
+            cuda_args.push_back("-D" + define);
+        }
+
+        if(!names_standard(args) && !info->cpp_dialect.empty()) {
+            cuda_args.push_back("-std=" + info->cpp_dialect);
+        }
+
+        /// An `-arch=` query token is an explicit selection too: its
+        /// resolution replaces it in place below.
+        bool selects_arch = std::ranges::any_of(args, [](llvm::StringRef arg) {
+            return arg.starts_with("--offload-arch=") || arg.starts_with("-arch=");
+        });
+        if(!selects_arch && !info->default_arch.empty()) {
+            cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
+        }
+    } else {
+        /// The single host step still carries nvcc's identity macros
+        /// (__NVCC__, version macros) — but no CUDA mode.
+        for(auto& define: info->host_defines) {
+            cuda_args.push_back("-D" + define);
+        }
+    }
+
+    for(llvm::StringRef arg: args.drop_front()) {
+        if(is_nvcc_query_flag(arg)) {
+            /// The dryrun's resolution of an `-arch=<special>` token lands
+            /// exactly where the token sat: an edit-appended selection
+            /// carries `--no-offload-arch=all` right before it, and
+            /// inserting the resolution any earlier would put it on the
+            /// cleared side.
+            if(cuda_input && arg.starts_with("-arch=") && !info->default_arch.empty()) {
+                cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
+            }
+            continue;
+        }
+        cuda_args.push_back(arg.str());
+    }
+
+    /// A clang host needs no setup: clang's own driver already defaults to
+    /// the running machine's triple.
+    co_return !host_output->gcc_job.empty() ? query_as_gcc(*host_output, cuda_args, cwd)
+                                            : query_driver(cuda_args, cwd);
 }
 
 }  // namespace clice

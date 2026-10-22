@@ -93,6 +93,29 @@ const MINGW = "C:/mingw64/bin";
 const MSYS2_UCRT = "C:/msys64/ucrt64/bin";
 const MSYS2_CLANG = "C:/msys64/clang64/bin";
 
+/// Cygwin and MSYS2's own tools, whose builds write POSIX paths: Cygwin's
+/// CMake records `/usr/bin/cc`, a Cygwin symlink, for C.
+const CYGWIN = "C:/cygwin64/bin";
+const MSYS2 = "C:/msys64/usr/bin";
+
+/// CMake run inside Cygwin or MSYS2 (`bin`), in a project directory whose
+/// name has spaces and letters past ASCII.
+function cmakePosix(name: string, bin: string, ...extra: string[]): Scenario {
+    return {
+        name,
+        platforms: ["win32"],
+        requires: [`${bin}/cmake.exe`, `${bin}/ninja.exe`, `${bin}/gcc.exe`, `${bin}/g++.exe`],
+        path: [bin],
+        directory: "compat 项目 ü",
+        posix: bin,
+        build: [
+            [`${bin}/cmake.exe`, "-S", ".", "-B", "build", "-G", "Ninja", ...extra],
+            [`${bin}/cmake.exe`, "--build", "build"],
+        ],
+        files: BOTH,
+    };
+}
+
 /// The CUDA toolkit of the pixi `cuda` environment, run without its
 /// activation, so nvcc picks the system GCC as its host compiler.
 const NVCC = path.join(REPO_ROOT, ".pixi", "envs", "cuda", "bin", "nvcc");
@@ -244,6 +267,19 @@ export const SCENARIOS: Scenario[] = [
         `${MSYS2_CLANG}/clang.exe`,
         `${MSYS2_CLANG}/clang++.exe`,
     ),
+    {
+        ...cmakePosix("cygwin cmake ninja gcc", CYGWIN),
+        files: { "src/main.cpp": {}, "src/util.c": { recorded: [["/usr/bin/cc"]] } },
+    },
+    // CMake forces the PCH's header in by its POSIX path.
+    {
+        ...cmakePosix("cygwin cmake ninja gcc precompiled headers", CYGWIN, "-DCOMPAT_PCH=ON"),
+        files: {
+            "src/main.cpp": { recorded: [["-Winvalid-pch"]] },
+            "src/util.c": { recorded: [["/usr/bin/cc"]] },
+        },
+    },
+    cmakePosix("msys2 cmake ninja gcc", MSYS2),
     {
         // Every C++ unit loads the target's PCH, which clice builds itself
         // from cmake_pch.hxx.cxx: CMake's own is clang 17's.

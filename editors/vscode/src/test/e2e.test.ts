@@ -17,7 +17,7 @@ import type {
 
 import { inactiveSpans } from "../feature/inactive";
 import { exited, retire } from "../process";
-import { resolveExecutable } from "../setting";
+import { resolveExecutable, serverEnvironment } from "../setting";
 
 // E2E smoke tests against a real clice binary. The binary path comes from
 // CLICE_EXECUTABLE; without it (plain `npm test`) the suite is skipped.
@@ -150,6 +150,33 @@ suite("executable setting", function () {
         const absolute = path.resolve("opt", "clice");
         assert.strictEqual(resolveExecutable("clice", base), "clice");
         assert.strictEqual(resolveExecutable(absolute, base), absolute);
+    });
+});
+
+suite("server environment setting", function () {
+    test("an override names VS Code's variables", function () {
+        const env = serverEnvironment(
+            { PATH: "/usr/bin", HOME: "/home/me" },
+            { PATH: "/opt/cygwin/bin:${env:PATH}", TMPDIR: "${env:HOME}/tmp${env:UNSET}" },
+            false,
+        );
+        assert.deepStrictEqual(env, {
+            PATH: "/opt/cygwin/bin:/usr/bin",
+            HOME: "/home/me",
+            TMPDIR: "/home/me/tmp",
+        });
+    });
+
+    test("Windows matches names in any case", function () {
+        const env = serverEnvironment(
+            { Path: "C:\\Windows", windir: "C:\\Windows" },
+            { PATH: "C:\\cygwin64\\bin;${env:path}" },
+            true,
+        );
+        assert.deepStrictEqual(env, {
+            PATH: "C:\\cygwin64\\bin;C:\\Windows",
+            windir: "C:\\Windows",
+        });
     });
 });
 

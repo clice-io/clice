@@ -7,6 +7,24 @@ clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-
 - `clice` 可执行文件位于 `PATH` 中（或在下面的代码片段中使用绝对路径）。
 - 你的项目提供 `compile_commands.json`（clice 默认先搜索工作区根目录，再搜索其每个直接子目录）。
 
+## 编译器环境
+
+clice 会询问每条命令的编译器如何编译（它的目标、系统头文件和默认标准），并在编辑器启动 clice 时所用的环境中运行编译器。需要更多环境的编译器，可以通过编辑器中设置 clice 环境的选项获得：例如，Windows 上的 Cygwin 或 MSYS2 编译器需要其运行时的 `bin` 目录位于 `PATH` 中。
+
+- VS Code：`clice.serverEnv`，其值用 `${env:NAME}` 引用 VS Code 自身的环境变量，与 `terminal.integrated.env.*` 的写法相同：
+
+  ```json
+  { "clice.serverEnv": { "PATH": "C:\\cygwin64\\bin;${env:PATH}" } }
+  ```
+
+- Neovim：`cmd_env`：
+
+  ```lua
+  vim.lsp.config('clice', { cmd_env = { PATH = 'C:\\cygwin64\\bin;' .. vim.env.PATH } })
+  ```
+
+- Zed：`lsp.clice.binary.env`，其值按原样使用。
+
 ## 官方插件
 
 ### Visual Studio Code

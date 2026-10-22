@@ -31,8 +31,8 @@ Distilled from real correction history — these mistakes keep recurring:
 `src/` is one C++20 module, `clice`, in layers that import only downward — core (`support` ← `vfs` ← `command` ← `syntax` ← `compile` ← `semantic` ← `index` ← `feature`) ← `config` ← {`project`, `worker`} ← `sched` ← `server`, `project` ← `analysis`, {`analysis`, `server`} ← `driver`. `pixi run check-layers` checks it, as CI does.
 
 - `src/support/` — utilities: logging, JSON, text, processes, fuzzy matching
-- `src/vfs/` — disk access: reads, statuses, writes, directory walks; the file table and its freshness checks; the on-disk cache store
-- `src/command/` — compile commands: compiler argument parsing, the compilation database, toolchain queries, NVCC
+- `src/vfs/` — disk access: reads, statuses, writes, directory walks; the file table and its freshness checks; the on-disk cache store; the Cygwin and MSYS2 mount tables
+- `src/command/` — compile commands: the option table and argument model, file kinds, the command table, normalizing raw commands, the compilation database, rule edits, header search configurations, the clang invocation, the toolchain and its queries, one file per compiler kind under `toolchains/` (GCC-style, cl, nvcc, clang)
 - `src/syntax/` — lexer, scanner, tokens, include resolution, dependency graph
 - `src/compile/` — compilation: compilation unit, tokens, directives, diagnostics, clang-tidy
 - `src/semantic/` — semantic analysis over the AST: symbol kinds, relations, template resolver, declaration, type and expression helpers; the per-unit semantic map (AST visitor), selection, entity identities and doc comments

@@ -4,6 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parse } from "shell-quote";
+import { run } from "./scenario.ts";
 
 export interface DatabaseEntry {
     directory: string;
@@ -86,15 +87,50 @@ export function entryArguments(entry: DatabaseEntry): string[] {
     if (process.platform === "win32") {
         return splitWindows(entry.command ?? "");
     }
-    return parse(entry.command ?? "", (name) => `$${name}`).map((token) => {
+    return shellWords(entry.command ?? "");
+}
+
+function shellWords(command: string): string[] {
+    return parse(command, (name) => `$${name}`).map((token) => {
         if (typeof token === "string") {
             return token;
         }
         if ("op" in token && token.op === "glob") {
             return token.pattern;
         }
-        throw new Error(`shell syntax a compile command cannot carry: ${entry.command}`);
+        throw new Error(`shell syntax a compile command cannot carry: ${command}`);
     });
+}
+
+/// The Windows paths the Cygwin or MSYS2 runtime in `bin` maps `paths` to.
+export async function cygpath(bin: string, paths: string[]): Promise<string[]> {
+    const mapped = await run(path.join(bin, "cygpath.exe"), ["-w", ...paths], { env: process.env });
+    const lines = mapped.stdout.split(/\r?\n/).slice(0, paths.length);
+    if (mapped.status !== 0 || lines.length < paths.length) {
+        throw new Error(
+            `cygpath failed (${mapped.error ?? `exit ${mapped.status}`}): ${mapped.stderr}`,
+        );
+    }
+    return lines;
+}
+
+/// A database written inside Cygwin or MSYS2 as the checks read it: its
+/// directories and files mapped to Windows paths by the runtime in `bin`,
+/// its commands split as sh splits them. The arguments stay as written:
+/// the compiler, which reads them, runs inside that runtime too.
+export async function nativeEntries(
+    entries: DatabaseEntry[],
+    bin: string,
+): Promise<DatabaseEntry[]> {
+    const mapped = await cygpath(
+        bin,
+        entries.flatMap((entry) => [entry.directory, entry.file]),
+    );
+    return entries.map((entry, i) => ({
+        directory: mapped[2 * i] ?? "",
+        file: mapped[2 * i + 1] ?? "",
+        arguments: entry.arguments ?? shellWords(entry.command ?? ""),
+    }));
 }
 
 export function entrySource(entry: DatabaseEntry): string {

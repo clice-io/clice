@@ -8,7 +8,8 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.file_kind;
+import :command.table;
 import :index.project_index;
 import :index.writer_lock;
 import :project.build;
@@ -172,7 +173,7 @@ void ProjectServer::start() {
         if(project.database && !project.database->read_only()) {
             start_control_listener();
         }
-        if(!report.has_commands) {
+        if(!report.has_commands && !found_unreadable_database(project)) {
             LOG_GUIDANCE(
                 "No compile_commands.json found in workspace {} or its direct subdirectories. "
                 "Compile commands will be guessed; see "

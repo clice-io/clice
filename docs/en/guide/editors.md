@@ -7,6 +7,24 @@ All setups assume:
 - The `clice` executable is on your `PATH` (or use an absolute path in the snippets below).
 - Your project provides a `compile_commands.json` (by default clice searches the workspace root, then each of its immediate subdirectories).
 
+## Compiler Environment
+
+clice asks the compiler of each command how it compiles (its target, its system headers, its default standard), and runs it in the environment the editor starts clice with. A compiler that needs more gets it from the editor's setting for clice's environment: a Cygwin or MSYS2 compiler on Windows, for one, needs its runtime's `bin` directory on `PATH`.
+
+- VS Code: `clice.serverEnv`, whose values name VS Code's own variables as `${env:NAME}`, as `terminal.integrated.env.*` does:
+
+  ```json
+  { "clice.serverEnv": { "PATH": "C:\\cygwin64\\bin;${env:PATH}" } }
+  ```
+
+- Neovim: `cmd_env`:
+
+  ```lua
+  vim.lsp.config('clice', { cmd_env = { PATH = 'C:\\cygwin64\\bin;' .. vim.env.PATH } })
+  ```
+
+- Zed: `lsp.clice.binary.env`, whose values are taken as written.
+
 ## Official Plugins
 
 ### Visual Studio Code

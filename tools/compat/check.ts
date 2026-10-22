@@ -11,6 +11,7 @@ import { fileCommands, lint } from "./clice.ts";
 import {
     entryArguments,
     entrySource,
+    nativeEntries,
     readDatabase,
     samePath,
     type DatabaseEntry,
@@ -53,6 +54,12 @@ function databaseEntry(entries: DatabaseEntry[], root: string, file: string): Da
     return entry;
 }
 
+/// The scenario's database as the checks read it.
+async function readEntries(scenario: Scenario, root: string): Promise<DatabaseEntry[]> {
+    const entries = readDatabase(root);
+    return scenario.posix === undefined ? entries : nativeEntries(entries, scenario.posix);
+}
+
 /// What is wrong with clice's reading of a file's database entry and the
 /// command it resolves it to, empty when nothing is.
 async function commandProblems(
@@ -60,13 +67,14 @@ async function commandProblems(
     root: string,
     file: string,
     expectation: FileExpectation,
+    entries: DatabaseEntry[],
     env: NodeJS.ProcessEnv,
 ): Promise<string[]> {
     const [command] = await fileCommands(clice, root, file, env);
     if (command === undefined) {
         throw new Error(`clice command ${file} lists no entry`);
     }
-    const written = entryArguments(databaseEntry(readDatabase(root), root, file));
+    const written = entryArguments(databaseEntry(entries, root, file));
     const { arguments: resolved } = command.resolved;
     const problems: string[] = [];
     if (written.join("\0") !== command.entry.arguments.join("\0")) {
@@ -97,18 +105,24 @@ async function commandProblems(
 /// macro values written beside each source.
 async function withProject(
     scenario: Scenario,
-    body: (ws: Workspace) => Promise<void>,
+    body: (ws: Workspace, entries: DatabaseEntry[]) => Promise<void>,
 ): Promise<void> {
     const missing = missingTools(scenario);
     const env = buildEnv(scenario);
     if (missing.length > 0 || env === null) {
         throw new Error(`missing tools: ${missing.join(", ")}`);
     }
-    const ws = Workspace.tmp();
+    const tmp = Workspace.tmp();
+    const ws = new Workspace(tmp.path(scenario.directory ?? "project"));
     try {
-        fs.cpSync(PROJECT_DIR, ws.root, { recursive: true });
+        // Node 24's fs.cpSync spells a destination past ASCII wrong on
+        // Windows; a rename does not.
+        fs.cpSync(PROJECT_DIR, tmp.path("project"), { recursive: true });
+        if (scenario.directory !== undefined) {
+            fs.renameSync(tmp.path("project"), ws.root);
+        }
         await build(scenario, ws.root, env);
-        const entries = readDatabase(ws.root);
+        const entries = await readEntries(scenario, ws.root);
         const scratch = ws.path(".compat");
         fs.mkdirSync(scratch);
         for (const [file, expectation] of Object.entries(scenario.files)) {
@@ -122,20 +136,20 @@ async function withProject(
                     );
                 }
             }
-            writeExpectations(source, await compilerMacros(entry, scratch, env));
+            writeExpectations(source, await compilerMacros(entry, scratch, env, scenario.posix));
         }
         if (scenario.config !== undefined) {
             ws.write("clice.toml", scenario.config);
         }
-        await body(ws);
+        await body(ws, entries);
     } finally {
-        ws.remove();
+        tmp.remove();
     }
 }
 
 /// Throws with everything clice got wrong about the scenario's build.
 export async function checkScenario(clice: string, scenario: Scenario): Promise<void> {
-    await withProject(scenario, async (ws) => {
+    await withProject(scenario, async (ws, entries) => {
         const env = cliceEnv(scenario);
         const linted = await lint(clice, ws.root, env);
         if (linted.status !== 0 || !linted.report.trimEnd().endsWith(": 0 findings.")) {
@@ -145,7 +159,9 @@ export async function checkScenario(clice: string, scenario: Scenario): Promise<
 
         const problems: string[] = [];
         for (const [file, expectation] of Object.entries(scenario.files)) {
-            problems.push(...(await commandProblems(clice, ws.root, file, expectation, env)));
+            problems.push(
+                ...(await commandProblems(clice, ws.root, file, expectation, entries, env)),
+            );
         }
         if (problems.length > 0) {
             throw new Error(problems.join("\n"));

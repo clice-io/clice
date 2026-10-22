@@ -4,7 +4,9 @@ module;
 
 module clice:syntax.dependency_graph;
 
-import :command.command;
+import :command.database;
+import :command.table;
+import :command.toolchain;
 import :syntax.include_resolver;
 import :syntax.scan;
 import :vfs.file_table;
@@ -194,7 +196,7 @@ private:
     llvm::DenseSet<Fid> import_candidates;
     llvm::DenseMap<Fid, std::uint64_t> scanned_directives;
 
-    /// (fid, ConfigID) -> directly included files.
+    /// (fid, scan group) -> directly included files.
     llvm::DenseMap<std::pair<Fid, std::uint32_t>, llvm::SmallVector<IncludeEdge>> includes;
 
     /// Track which files have any include entries (for file_count).
@@ -265,6 +267,7 @@ struct ScanReport {
 /// local event loop for async I/O (file reads via worker thread pool, stat
 /// calls via libuv). Blocks until the scan is complete.
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
+                                 Toolchain& toolchain,
                                  DependencyGraph& graph,
                                  llvm::ArrayRef<CommandRef> units);
 
@@ -273,6 +276,9 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
 /// it by, its include edges, module declaration and module syntax follow
 /// the new bytes, and files it reaches for the first time are scanned
 /// too. A file the scan never reached stays out of the graph.
-void rescan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph, Fid path_id);
+void rescan_dependency_graph(CompilationDatabase& cdb,
+                             Toolchain& toolchain,
+                             DependencyGraph& graph,
+                             Fid path_id);
 
 }  // namespace clice

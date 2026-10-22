@@ -1,0 +1,64 @@
+["mapped by the runtime"."main.cpp"]
+errors = []
+
+["a command quoted for sh"."main.cpp"]
+errors = []
+
+["a broken runtime ahead"."main.cpp"]
+errors = []
+
+[converted."$ clice command convert compile_commands.json"]
+stdout = '''
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/main.cpp",
+    "arguments": [
+      "${WS}/missing-cc",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-I",
+      "${WS}/inc dir",
+      "-include",
+      "${WS}/inc dir/forced.h",
+      "${WS}/main.cpp"
+    ]
+  }
+]
+'''
+stderr = '''
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+error: 1 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+'''
+exit = 1
+
+["no runtime on PATH"."main.cpp"]
+errors = [
+    {
+        at = '#include ⟦"h.h"⟧',
+        severity = "error",
+        message = "'h.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
+    {
+        at = "int g() { return ⟦f⟧() + FORCED; }",
+        severity = "error",
+        message = "use of undeclared identifier 'f'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+    {
+        at = "int g() { return f() + ⟦FORCED⟧; }",
+        severity = "error",
+        message = "use of undeclared identifier 'FORCED'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]
+
+["no runtime on PATH".guidance]
+value = [
+    "Compilation database ${WS}/compile_commands.json spells its paths POSIX-style (${WS}), and they cannot be mapped: PATH holds no Cygwin or MSYS2 runtime. Put the bin directory of the Cygwin or MSYS2 that wrote it on clice's PATH (in VS Code, clice.serverEnv); one written outside them names its directories with a drive.",
+    "Compilation database ${WS}/compile_commands.json spells its paths POSIX-style (${WS}), and they cannot be mapped: PATH holds no Cygwin or MSYS2 runtime. Put the bin directory of the Cygwin or MSYS2 that wrote it on clice's PATH (in VS Code, clice.serverEnv); one written outside them names its directories with a drive.",
+]

@@ -7,6 +7,7 @@ export interface Setting {
     mode: "pipe" | "socket";
     host: string;
     port: number;
+    env: NodeJS.ProcessEnv;
 }
 
 /// The directory the server starts in and a relative clice.executable
@@ -23,6 +24,39 @@ export function workspaceDirectory(): string | undefined {
 export function resolveExecutable(executable: string, base: string | undefined): string {
     const relative = !path.isAbsolute(executable) && /[\\/]/.test(executable);
     return relative && base ? path.resolve(base, executable) : executable;
+}
+
+/// The value of `name` in `env`, which Windows spells in any case (`Path`).
+export function variable(
+    env: NodeJS.ProcessEnv,
+    name: string,
+    windows = process.platform === "win32",
+): string | undefined {
+    const fold = (key: string) => (windows ? key.toUpperCase() : key);
+    return Object.entries(env).find(([key]) => fold(key) === fold(name))?.[1];
+}
+
+/// The environment the server runs in, and the compilers it asks how they
+/// compile: `base` with `overrides` on top, an override replacing a
+/// variable whatever its case on Windows. A value names `base`'s
+/// variables as `${env:NAME}`, as terminal.integrated.env.* does.
+export function serverEnvironment(
+    base: NodeJS.ProcessEnv,
+    overrides: Record<string, string>,
+    windows = process.platform === "win32",
+): NodeJS.ProcessEnv {
+    const fold = (name: string) => (windows ? name.toUpperCase() : name);
+    const replaced = new Set(Object.keys(overrides).map(fold));
+    const env: NodeJS.ProcessEnv = Object.fromEntries(
+        Object.entries(base).filter(([name]) => !replaced.has(fold(name))),
+    );
+    for (const [name, value] of Object.entries(overrides)) {
+        env[name] = value.replace(
+            /\$\{env:([^}]+)\}/g,
+            (_, other: string) => variable(base, other, windows) ?? "",
+        );
+    }
+    return env;
 }
 
 /// Read every launch-relevant setting fresh. Throws on invalid values; the
@@ -43,10 +77,18 @@ export function getSetting(): Setting {
         throw new Error("socket mode requires clice.host and a clice.port between 1 and 65535");
     }
 
+    const overrides = setting.get<Record<string, unknown>>("serverEnv") ?? {};
+    for (const [name, value] of Object.entries(overrides)) {
+        if (typeof value !== "string") {
+            throw new Error(`clice.serverEnv.${name} must be a string`);
+        }
+    }
+
     return {
         executable: executable ? resolveExecutable(executable, workspaceDirectory()) : undefined,
         mode,
         host,
         port,
+        env: serverEnvironment(process.env, overrides as Record<string, string>),
     };
 }

@@ -1,0 +1,4 @@
+{
+  // The test writes the database, naming a compiler it copies in.
+  "databases": {}
+}

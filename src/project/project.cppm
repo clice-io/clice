@@ -4,7 +4,9 @@ module;
 
 module clice:project.project;
 
-import :command.command;
+import :command.database;
+import :command.table;
+import :command.toolchain;
 import :compile.compilation;
 import :config.config;
 import :index.database;
@@ -46,7 +48,7 @@ struct HeaderContext {
     /// hosts); empty = the first entry.
     std::string host_command_hash;
 
-    /// Base entry hash of that entry (before rules): stays unique when
+    /// Base command hash of that entry (before rules): stays unique when
     /// rules collapse two candidates' applied hashes onto one value.
     std::string host_base_hash;
 
@@ -93,7 +95,7 @@ struct Selection {
 
     std::string command_hash;  ///< Pinned CDB entry (rules applied); empty = none.
 
-    /// Base entry hash of the pinned entry, resolved at pin time. The
+    /// Base command hash of the pinned entry, resolved at pin time. The
     /// applied hash is the protocol identity; the base disambiguates
     /// candidates whose applied hashes collapse under the current rules.
     std::string base_hash;
@@ -250,7 +252,11 @@ struct Project {
     /// it names files by path and re-interns them at load.
     FileTable& file_table;
 
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+
+    Toolchain toolchain{commands, file_table};
+
+    CompilationDatabase cdb{file_table, commands};
 
     /// Which entries and hand-written commands apply to a file under the
     /// active configuration; the only reader of the rules.

@@ -4,7 +4,9 @@ module;
 
 module clice:unittests.utils.tester;
 
-import :command.command;
+import :command.database;
+import :command.table;
+import :command.toolchain;
 import :compile.compilation;
 import :unittests.utils.annotation;
 import :unittests.utils.temp_dir;
@@ -19,7 +21,9 @@ struct Tester {
 
     CompilationParams params;
     FileTable file_table;
-    CompilationDatabase database{file_table};
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     std::unique_ptr<CompilationUnit> unit;
     std::string src_path;
 

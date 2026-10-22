@@ -18,13 +18,13 @@ This command records how the build system invokes the compiler during an actual 
 
 Of these three problems, the first has the greatest impact on user experience: missing implicit information. When the language server cannot correctly obtain system header paths, users see errors on standard library headers -- `#include <vector>` reports "file not found," or GCC built-in type traits are flagged as undeclared identifiers. In clangd's issue tracker, these problems are consistently among the most frequently reported ([clangd#1262](https://github.com/clangd/clangd/issues/1262), [clangd#1691](https://github.com/clangd/clangd/issues/1691)).
 
-clangd's solution is the `--query-driver` flag: users manually specify which compilers need probing, and clangd then queries those compilers for system paths. This approach has two problems. First, it is manual -- users must know which compiler their project uses and correctly configure a glob pattern. Second, the flag is not independently useful -- it relies on existing CDB commands to trigger probing ([clangd#1219](https://github.com/clangd/clangd/issues/1219)). For cross-compilation and embedded development scenarios, users frequently need to debug their configuration repeatedly before clangd correctly identifies the toolchain.
+clangd's solution is the `--query-driver` flag: users manually specify which compilers need querying, and clangd then queries those compilers for system paths. This approach has two problems. First, it is manual -- users must know which compiler their project uses and correctly configure a glob pattern. Second, the flag is not independently useful -- it relies on existing CDB commands to trigger querying ([clangd#1219](https://github.com/clangd/clangd/issues/1219)). For cross-compilation and embedded development scenarios, users frequently need to debug their configuration repeatedly before clangd correctly identifies the toolchain.
 
-clice automates the entire command processing pipeline: after reading commands from the CDB, it automatically identifies the compiler family (GCC, Clang, MSVC, etc.), automatically probes the toolchain, and minimizes startup overhead through multi-level deduplication. Users do not need to manually configure any toolchain-related parameters.
+clice automates the entire command processing pipeline: after reading commands from the CDB, it automatically identifies the compiler family (GCC, Clang, MSVC, etc.), automatically queries the toolchain, and minimizes startup overhead through multi-level deduplication. Users do not need to manually configure any toolchain-related parameters.
 
 ## Design
 
-The core task of command processing is to convert the raw driver commands in the CDB into cc1 arguments consumable by the Clang frontend. This conversion involves four conceptual layers: argument classification, command separation, toolchain probing, and search path extraction.
+The core task of command processing is to convert the raw driver commands in the CDB into cc1 arguments consumable by the Clang frontend. This conversion involves four conceptual layers: argument classification, command separation, toolchain querying, and search path extraction.
 
 ### Argument Classification
 
@@ -32,15 +32,15 @@ When loading the CDB, each compilation option is classified into one of seven ca
 
 - **Discarded**: Options related to build artifacts that the language server does not need. These include output file (`-o`), compile mode (`-c`), dependency scanning (`-M` family), PCH building (`-emit-pch`), options the driver itself would ignore for this input, and options only GCC reads: a warning clang does not know in a GCC command (`-Wlogical-op`) and an LTO job count (`-flto=8`).
 
-- **Codegen**: Options that only affect the code generation backend and do not affect semantic analysis. These include frame pointer (`-fomit-frame-pointer`), unwind tables, function and data sections (`-ffunction-sections`), debug info (`-g` family), etc. They do not change the AST, diagnostic output or toolchain probing results.
+- **Codegen**: Options that only affect the code generation backend and do not affect semantic analysis. These include frame pointer (`-fomit-frame-pointer`), unwind tables, function and data sections (`-ffunction-sections`), debug info (`-g` family), etc. They do not change the AST, diagnostic output or toolchain querying results.
 
   > Note: `-O`, `-fPIC`, `-fstack-protector`, `-fsanitize=` and `-flto` are not in this category despite appearing code-generation-related. `-O` defines the `__OPTIMIZE__` macro, `-fPIC` and `-fstack-protector` define `__PIC__` and `__SSP__`, and `-fsanitize=address` affects `__has_feature(address_sanitizer)`: they alter preprocessor state and are therefore semantic options. `-flto` is one because the driver accepts `-fsanitize=cfi` and `-fwhole-program-vtables` only with it.
 
-- **Diagnostics**: Warning-control options (`-Wall`, `-Wno-*`, `-Werror`). They change which diagnostics are emitted but neither the AST nor toolchain probing results.
+- **Diagnostics**: Warning-control options (`-Wall`, `-Wno-*`, `-Werror`). They change which diagnostics are emitted but neither the AST nor toolchain querying results.
 
-- **User-content**: Options that may differ per file but do not affect toolchain probing results. These include include paths (`-I`, `-isystem`, `-iquote`, `-idirafter`), macro definitions (`-D`, `-U`), and forced includes (`-include`, `-imacros`). Their meaning is "what this particular file additionally needs."
+- **User-content**: Options that may differ per file but do not affect toolchain querying results. These include include paths (`-I`, `-isystem`, `-iquote`, `-idirafter`), macro definitions (`-D`, `-U`), and forced includes (`-include`, `-imacros`). Their meaning is "what this particular file additionally needs."
 
-- **Semantic**: The remaining recognized options -- they affect compilation semantics and play a role in toolchain probing. Examples include `-std=c++20`, `-target`, `-march=`, etc.
+- **Semantic**: The remaining recognized options -- they affect compilation semantics and play a role in toolchain querying. Examples include `-std=c++20`, `-target`, `-march=`, etc.
 
 - **Input**: The source file itself, which occupies an explicit slot in the parsed command rather than being a plain string among others.
 
@@ -50,20 +50,20 @@ Classification is based on Clang's own option table (`OptTable`), using option I
 
 ### Structured Commands
 
-After classification, each command is parsed **once** into a structured configuration (`CompileConfig`): an interned sequence of classified arguments in which the input file occupies an explicit slot. Identical configurations deduplicate to a single instance identified by a stable `ConfigID`; strings are interned for pointer-stable comparison. Everything downstream — toolchain probing, rendering, rules, identity — consumes the structured form; nothing re-parses command strings.
+After classification, each command is parsed **once** into a structured command (`Command`): an interned sequence of classified arguments in which the input file occupies an explicit slot. The `CommandTable` holds every command clice knows — the databases' entries, the hand-written ones and the rules-applied ones — each once, identified by a stable `CommandID`; strings are interned for pointer-stable comparison. Everything downstream — toolchain querying, rendering, rules, identity — consumes the structured form; nothing re-parses command strings.
 
 Two derived views matter:
 
-- **Rendering**: the same structured configuration can be rendered on demand as a driver command line (for probing or for handing agents a runnable command) or combined with probe results into frontend arguments. Rendering normalizes alias spellings, so identity is not disturbed by cosmetic variation in the CDB.
-- **Entry identity**: the frontend-relevant view of the configuration, together with the input's slot position and working directory, is hashed into the entry's **identity hash** — the stable identity used for CDB diffing, index snapshot validation, and pinned context choices.
+- **Rendering**: the same structured command can be rendered on demand as a driver command line (for querying or for handing agents a runnable command) or combined with query results into frontend arguments. Rendering normalizes alias spellings, so identity is not disturbed by cosmetic variation in the CDB.
+- **Command hash**: the frontend-relevant view of the command, together with the input's slot position and working directory, is hashed into its **command hash** — the stable identity used for CDB diffing, index snapshot validation, and pinned context choices.
 
-The classification also buys toolchain probing cache efficiency. Probing requires actually invoking the compiler driver (`g++ -E -dM -v`), which takes from a few milliseconds to a hundred or more. The probing result depends only on the driver and probe-relevant options -- user-content options (`-I`, `-D`) do not affect the system paths or target triple output by the driver. Therefore, regardless of what different `-I` paths files may have, files sharing the probe-relevant view share one probing result. In real projects, tens of thousands of files typically collapse to a few dozen distinct probe keys.
+The classification also buys toolchain querying cache efficiency. Querying requires actually invoking the compiler driver (`g++ -E -dM -v`), which takes from a few milliseconds to a hundred or more. The querying result depends only on the driver and query-relevant options -- user-content options (`-I`, `-D`) do not affect the system paths or target triple output by the driver. Therefore, regardless of what different `-I` paths files may have, files sharing the query-relevant view share one querying result. In real projects, tens of thousands of files typically collapse to a few dozen distinct query keys.
 
 ### Compilation Database
 
-`CompilationDatabase` holds the entries of every loaded **source** — a `compile_commands.json` registered by the configuration or discovered under the workspace. Each source loads, reloads and unloads independently; its entries are parsed and deduplicated into `ConfigID`s and kept in file order, because generators emit a file's several entries in a fixed configuration order. The database stores facts only: it does not decide which of a file's entries wins.
+`CompilationDatabase` holds the entries of every loaded **source** — a `compile_commands.json` registered by the configuration or discovered under the workspace. Each source loads, reloads and unloads independently; its entries are parsed into the `CommandTable` and kept in file order, because generators emit a file's several entries in a fixed configuration order. The database stores facts only: it does not decide which of a file's entries wins.
 
-Commands written by hand — a rule's `default_command`, the builtin fallback — go through the same normalization as an entry (`intern_command`), with the input slot synthesized at the end, so a declared command is probed, edited and rendered exactly like a database entry.
+Commands written by hand — a rule's `default_command`, the builtin fallback — go through the same normalization as an entry (`Normalizer`), with the input slot synthesized at the end, so a declared command is queried, edited and rendered exactly like a database entry.
 
 ### Build
 
@@ -98,15 +98,15 @@ The final command of a file is composed from those layers in a fixed order: the 
 
 Patterns are compiled against absolute paths: a relative pattern is anchored at the configuration file's directory (`..` segments included), or at the workspace root for rules passed through `initializationOptions`; an absolute or `**`-led one matches as written. Rules carrying a `configuration` tag apply only while that tag is active; the distinct tags form the configuration menu, and the active one is resolved at startup from `--configuration`, the persisted selection, or `default_configuration` (see [Compilation Context](compilation-context.md#switching-build-configurations)). When any rule declares a source (a database or a `default_command`), discovery is off: the declaration is the whole intent, and a database sitting at the workspace root is not consulted. Only a configuration declaring no source at all falls back to [discovery](#discovery).
 
-Configuration granularity is preserved throughout the pipeline: search-path extraction for dependency scanning is per effective command (different `-I` sets produce different search configs), while toolchain probing deduplicates further still, since user-content options do not affect probe results.
+Configuration granularity is preserved throughout the pipeline: search-path extraction for dependency scanning is per effective command (different `-I` sets produce different search configs), while toolchain querying deduplicates further still, since user-content options do not affect query results.
 
 ### Toolchain
 
-`Toolchain` converts driver-level commands into cc1 arguments. Its design centers on two core capabilities:
+`Toolchain` converts driver-level commands into cc1 arguments: it queries the driver, in the way the command's compiler family takes (one file per compiler kind under `src/command/toolchains/`), and caches the answers.
 
-**Compiler family identification.** `Toolchain` identifies the compiler family from the executable name -- the `CompilerFamily` enum includes GCC, Clang, MSVC, ClangCL, NVCC, Intel, and Zig. The identification logic handles various naming variants: version suffixes (`clang++-17`), architecture prefixes (`arm-none-eabi-g++`), and Windows `.exe` suffixes. The name decides only what speaks another language: `cl` and `clang-cl`, nvcc, and zig's two-word driver. Whether a GCC-style driver is GCC or clang underneath is told by its own answer to the probe, never by its name: `/usr/bin/c++` is clang on macOS, `emcc` and `zig cc` are clang.
+**Compiler family.** A command's compiler family is read from the executable name when the command is normalized -- the `CompilerFamily` enum includes GCC, Clang, MSVC, ClangCL, NVCC, Intel, and Zig. The identification logic handles various naming variants: version suffixes (`clang++-17`), architecture prefixes (`arm-none-eabi-g++`), and Windows `.exe` suffixes. The name decides only what speaks another language: `cl` and `clang-cl`, nvcc, and zig's two-word driver. Whether a GCC-style driver is GCC or clang underneath is told by its own answer to the query, never by its name: `/usr/bin/c++` is clang on macOS, `emcc` and `zig cc` are clang.
 
-**Caching strategy.** The cache has two layers. The **probe layer** caches the frontend each probe's job sets up, already cleaned of the probe's own input and of what clice's frontend cannot take, keyed by the probe-relevant shape of the command (driver, probe-relevant flags, input kind — `.c` and `.cpp` may trigger different driver rules; the working directory joins the key when the command is sensitive to it). The **synthesis layer** adds each command's own user content to it, per input kind, for command rendering to consume. Failed probes are cached too (negative caching), but transient failures are retried after a cooldown rather than being remembered forever.
+**Caching strategy.** The cache has two layers. The **query layer** caches the frontend each query's job sets up, already cleaned of the query's own input and of what clice's frontend cannot take, keyed by the query-relevant shape of the command (driver, query-relevant flags, input kind — `.c` and `.cpp` may trigger different driver rules; the working directory joins the key when the command is sensitive to it). The **synthesis layer** adds each command's own user content to it, per input kind, for command rendering to consume. Failed queries are cached too (negative caching), but transient failures are retried after a cooldown rather than being remembered forever.
 
 ### Search Paths
 
@@ -132,14 +132,16 @@ CDB loading uses simdjson for streaming JSON parsing, processing entries one by 
 3. Translate NVCC commands into an equivalent clang CUDA invocation
 4. Filter out non-C/C++ files (e.g., `.rc`, `.asm`, `.def`)
 5. Resolve relative file paths to absolute paths
-6. Parse and classify each option once into the structured configuration, absolutizing relative include paths against `directory`
-7. Deduplicate identical configurations into shared `ConfigID`s
+6. Parse and classify each option once into the structured command, absolutizing relative include paths against `directory`
+7. Deduplicate identical commands into shared `CommandID`s
+
+A database written inside Cygwin or MSYS2, by CMake run from their shell or a tool like it, spells its paths POSIX-style: `/cygdrive/c/proj` or `/c/proj`, and `/usr/bin/c++.exe` for the compiler. On Windows, the mount table of the Cygwin or MSYS2 runtime that wrote them maps them to Windows paths: the entry's directory and file, its compiler and the values of its path options. That runtime is the first on `PATH` whose table maps the first such entry's directory, and its compiler when it is spelled so, to files that exist: another runtime's table maps the directory under its own root, and Git for Windows' MSYS2, which maps an MSYS2 installation's drive paths alike, lacks its `/usr/bin/c++.exe`. Its `command` strings split as sh splits them. When no runtime on `PATH` maps the database, it is not read, and the user is told to put the right one there.
 
 The parsing process also recognizes the precompiled headers CMake passes to cc1 directly: a unit's `-Xclang -include-pch -Xclang <pchfile>` and the `-Xclang -emit-pch` of the entry building it become structured options that no compile renders. The PCH on disk may come from another compiler, so clice builds its own from the command of the entry writing it (CMake's `cmake_pch.hxx.cxx`, also found through the `.gch` GCC writes beside a forced header), and every unit reading that PCH loads clice's build instead: the open file's preamble PCH chains onto it, and the background index parses over it. A header the PCH holds, opened on its own, compiles without it: the PCH's guards would skip the header's own text. The forced header the PCH stands for goes from its command too, as any forced include the compile enters a header through does (see [Compilation Context](compilation-context.md#automatic-self-containedness-detection)).
 
-### Toolchain Probing
+### Toolchain Query
 
-Different compiler families use different probing strategies:
+Different compiler families use different querying strategies, each in its own file under `src/command/toolchains/`:
 
 **GCC-style drivers** (gcc, clang, Apple clang, zig, emcc, cross and bare-metal GCC): the driver is asked once to preprocess an empty file of the input's language with the command's own flags, verbosely and printing its macros (`-E -dM -v`). The answer tells everything clice needs:
 
@@ -147,6 +149,8 @@ Different compiler families use different probing strategies:
 - The language standard, read from `__cplusplus` or `__STDC_VERSION__`, which fills in `-std` when the command names none: GCC 15 compiles C as C23, Apple clang C++ as C++14.
 
 Asked with the command's own flags, the driver answers for the command, and a GCC answers only when that compile succeeds: a flag that switches one of its defaults off (`-fno-stack-protector`), a `--sysroot` or a `--specs` file shows in its answer. CPU and ABI names clang does not know (GCC's `-mtune=intel`, `-mabi=lp64` on Darwin) are dropped from the cc1 command, and GCC's two-core form `-mcpu=cortex-a72.cortex-a53` keeps its first core. A universal build (`-arch arm64 -arch x86_64`) is read for its first architecture.
+
+**Cygwin and MSYS2 compilers** on Windows (Cygwin's and MSYS2's own GCC, and toolchains built on Cygwin such as Andes' RISC-V GCC) answer as any GCC-style driver does, but in POSIX paths (`/usr/include`, `/cygdrive/c/...`), which clice's clang cannot open. The mount table of the runtime the driver loads maps them, read from the runtime's own `mount` for each query. Of the runtimes (`cygwin1.dll`, `msys-2.0.dll`) beside the driver and on `PATH`, in the order Windows looks for a program's DLLs, that is the first whose table maps the program of the driver's job to a file that exists: taking the first alone would pick Git for Windows' MSYS2 where it comes ahead on `PATH` of the Cygwin a toolchain outside it loads. An assumed mapping would get them wrong, since Cygwin mounts `/usr/lib` at `<root>/lib`, MSYS2 its drives at `/c`, and a user's `/etc/fstab` adds mounts of its own. The driver itself is found as Cygwin finds it: by a name without `.exe`, and through a Cygwin symlink (CMake records `/usr/bin/cc`, a link to `gcc.exe`). Such a compiler starts only with its runtime's `bin` directory on `PATH`; without it, the query fails with an error that says so, and [Editor Setup](../guide/editors.md#compiler-environment) sets it per editor.
 
 **MSVC / ClangCL**: cl or clang-cl is asked once to preprocess (`/EP`) a file naming `_MSVC_LANG` and `_MSC_FULL_VER`. They tell the C++ standard it compiles in, since what `/std:c++latest` means moves from one version to the next, and cl's version, where clang's own detection would take the newest toolset installed. Clang's driver in MSVC-compatible mode (`--driver-mode=cl`) then builds the cc1 command in that standard, with cl's version as `-fms-compatibility-version`. clang-cl's version is the one that same detection finds from the toolset its flags select (`/winsysroot`). cl hears only the command's `/std:`: the other flags are spelled for clang's cl mode, which cl rejects, and a standard or version the command sets in clang's spelling (a rule appending `-std=c++23`) stays clang's.
 
@@ -156,13 +160,13 @@ Asked with the command's own flags, the driver answers for the command, and a GC
 
 > The external driver's version may be newer than clice's embedded LLVM version, and its cc1 output may contain options that clice does not recognize. During parsing, unknown options are silently dropped to ensure compatibility.
 
-After probing completes, the temporary probe file's path and module-output-related flags (which reference the deleted temp file) are stripped from the results. If clice's resource dir differs from what the probe returned, all related paths are replaced to ensure the frontend uses builtin headers from a matching version; so is any other directory of clang builtin headers a search path names (another clang's `-isystem <clang>/lib/clang/<version>/include`, zig's `lib/include`).
+After querying completes, the temporary query file's path and module-output-related flags (which reference the deleted temp file) are stripped from the results. If clice's resource dir differs from what the query returned, all related paths are replaced to ensure the frontend uses builtin headers from a matching version; so is any other directory of clang builtin headers a search path names (another clang's `-isystem <clang>/lib/clang/<version>/include`, zig's `lib/include`).
 
-**Startup warm-up.** During the dependency scanning phase at server startup, all unique toolchain cache keys are collected and probed in parallel. Pipe draining and process waiting for probe subprocesses also run concurrently to avoid deadlocks from full pipes. Once warm-up completes, all subsequent toolchain queries hit the cache.
+**Startup warm-up.** During the dependency scanning phase at server startup, all unique toolchain cache keys are collected and queried in parallel. Pipe draining and process waiting for query subprocesses also run concurrently to avoid deadlocks from full pipes. Once warm-up completes, all subsequent toolchain queries hit the cache.
 
 ### Search Path Extraction
 
-After toolchain probing yields cc1 arguments, search path extraction iterates through these arguments, routing include path options by type into the four tiers. All paths are resolved to absolute paths and normalized (removing `.` and `..`).
+After toolchain querying yields cc1 arguments, search path extraction iterates through these arguments, routing include path options by type into the four tiers. All paths are resolved to absolute paths and normalized (removing `.` and `..`).
 
 The `-iprefix` / `-iwithprefix` / `-iwithprefixbefore` options must be processed cooperatively in order of appearance: `-iprefix` sets a prefix, subsequent `-iwithprefix` prepends the prefix to its path and places it in the After tier, and `-iwithprefixbefore` places it in the Angled tier.
 
@@ -194,6 +198,10 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
   Compiler driver behavior is affected by the name used to invoke it. For example, `/usr/bin/clang++` is typically a symlink to `/usr/lib/llvm-20/bin/clang`, but invoking it as `clang++` automatically enables C++ mode and links C++ libraries. Using `realpath` to resolve to the actual path before identification would lose the semantic information carried by the invocation name. Similarly, if `arm-none-eabi-g++` were resolved to some generic GCC binary path, the cross-compilation context would be lost.
 
+- **Why are no paths mapped from Windows to POSIX for a Cygwin compiler?**
+
+  The compiler runs only to answer how it compiles, on an empty file of the command's language, and a Cygwin program takes Windows paths as arguments itself. clice compiles with its own clang, which opens the Windows paths the editor names: no path clice hands the compiler, and no diagnostic clice reports, passes through the POSIX side. Only the compiler's answers and a database written inside Cygwin are POSIX, and those are mapped.
+
 - **How are files without a CDB entry handled?**
 
   A header first looks for a source file that includes it through the dependency graph and borrows that file's command (see [Compilation Context](compilation-context.md)). Otherwise the first matching rule with a `default_command` supplies the command — the way to describe a project whose files all share one set of flags, or a scratch directory. A file with none of those borrows a nearby unit's command (see [Inference](#inference)); only one with no compatible unit either gets the builtin command: `clang` or `clang++ -std=c++20` based on the file's language, with the resource dir injected, so basic semantic analysis remains available and a guidance note explains that the command was guessed. Saving such a source in the editor makes it a [provisional member](#provisional-members).
@@ -204,7 +212,9 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
 - **Only the editor's saves add files to the build.** A source that appears on disk any other way — a checkout, a copy in a file manager, a generator — and that no database lists borrows a command for the editor but stays outside the build (not indexed, providing no module, hosting no header) until it is saved in the editor once or a regenerated database lists it. Provisional members are recorded per build configuration.
 
-- **Incomplete support for some compiler families.** A driver that answers the probe with neither a clang job nor a GCC one -- Intel's classic `icc`, other vendors' compilers -- gets clang's own defaults for the running machine, and the toolchain error says so. NVCC has dedicated probing (parsing `nvcc --dryrun` output into a clang CUDA invocation), but only with a GCC or Clang host compiler -- nvcc driving MSVC `cl` is not supported, and multi-architecture commands parse the newest architecture only.
+- **Cygwin symlinks among the headers are not followed.** A header Cygwin installs as a symlink (ncurses' `ncurses.h` in its `/usr/include`) is a file only Cygwin programs follow: clice's clang reads the link itself. Only the driver is followed through such a link.
+
+- **Incomplete support for some compiler families.** A driver that answers the query with neither a clang job nor a GCC one -- Intel's classic `icc`, other vendors' compilers -- gets clang's own defaults for the running machine, and the toolchain error says so. NVCC has dedicated querying (parsing `nvcc --dryrun` output into a clang CUDA invocation), but only with a GCC or Clang host compiler -- nvcc driving MSVC `cl` is not supported, and multi-architecture commands parse the newest architecture only.
 
 - **GCC-only language parses as clang sees it.** Code that only GCC compiles -- GCC-only builtins and extensions, `__float128` on targets where clang lacks it, nested functions -- shows clang's errors, and a CPU name only GCC knows loses the macros of its features. The headers only GCC's private include directory holds (`omp.h`, `quadmath.h`) are not found: that directory comes with GCC's versions of clang's builtin headers.
 
@@ -214,4 +224,4 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
 - **MSVC-style option parsing.** On non-Windows systems, MSVC-style option prefixes (`/U`, `/D`, `/I`) must be handled specially to prevent Unix absolute paths (such as `/Users/...`) from being misparsed as MSVC options. This is currently resolved by dynamically adjusting option visibility based on the driver name, but edge cases may still exist.
 
-- **Only the common compiler launchers are recognized.** ccache, sccache, distcc and icecc are taken off a command with their own options and environment assignments, and the compiler after them is the one clice asks. Any other launcher is taken for the compiler, so family identification and toolchain probing target the wrong binary; strip it from the compilation database.
+- **Only the common compiler launchers are recognized.** ccache, sccache, distcc and icecc are taken off a command with their own options and environment assignments, and the compiler after them is the one clice asks. Any other launcher is taken for the compiler, so family identification and toolchain querying target the wrong binary; strip it from the compilation database.

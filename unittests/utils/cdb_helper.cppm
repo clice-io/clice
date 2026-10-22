@@ -4,7 +4,10 @@ module;
 
 module clice:unittests.utils.cdb_helper;
 
-import :command.command;
+import :command.database;
+import :command.edit;
+import :command.table;
+import :command.toolchain;
 import :syntax.dependency_graph;
 import :unittests.utils.temp_dir;
 import :vfs.path;
@@ -16,6 +19,12 @@ struct CDBEntry {
     std::string file;
     std::vector<std::string> extra_args;
 };
+
+/// A file the tests' hand-added commands compile: they run in /fake, and a
+/// render names the input by its identity.
+inline std::string fake(llvm::StringRef name) {
+    return CanonicalPath(Spelling(name, Spelling::absolute("/fake"))).str();
+}
 
 /// Escape backslashes and quotes for JSON string values.
 inline std::string json_escape(llvm::StringRef s) {
@@ -57,10 +66,11 @@ inline std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
     return json;
 }
 
-/// Write a compile_commands.json into the temp dir and load it into the given CDB.
-inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
+/// Write a compile_commands.json into the temp dir and load it into the
+/// given CDB; the number of entries loaded.
+inline std::size_t write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
     tmp.touch("compile_commands.json", json_content);
-    cdb.load(tmp.path("compile_commands.json"));
+    return cdb.load(tmp.path("compile_commands.json")).value_or(0);
 }
 
 /// Whether one argument contains `needle` once its separators are
@@ -79,15 +89,19 @@ inline bool has_arg(llvm::ArrayRef<const char*> argv, llvm::StringRef needle) {
 /// fails readably instead of the front() of an empty list crashing.
 inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
                                              llvm::StringRef file,
-                                             const CommandOptions& options = {}) {
+                                             const CommandEdits& options = {}) {
     auto candidates = cdb.candidate_entries(file);
     if(candidates.empty()) {
         return {};
     }
     auto& entry = candidates.front();
-    auto applied = cdb.apply_rules(entry.config, options);
-    CommandRef ref{entry.file, applied, cdb.input_kind(applied, file), CommandSource::CDBExact};
-    auto argv = cdb.render_driver(ref);
+    auto& commands = cdb.commands();
+    auto applied = apply_edits(commands, cdb.files(), entry.command, options);
+    CommandRef ref{entry.file,
+                   applied,
+                   commands.input_kind(applied, file),
+                   CommandSource::CDBExact};
+    auto argv = commands.render_driver(ref, cdb.spelling(ref.file));
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
         if(llvm::StringRef(argv[i]) == "-resource-dir") {
             argv.erase(argv.begin() + i, argv.begin() + i + 2);
@@ -99,15 +113,15 @@ inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
 
 /// Scan every entry of the database under its own command: the shape of a
 /// test that owns no configuration.
-inline ScanReport scan_all(CompilationDatabase& cdb, DependencyGraph& graph) {
+inline ScanReport scan_all(CompilationDatabase& cdb, Toolchain& toolchain, DependencyGraph& graph) {
     llvm::SmallVector<CommandRef> units;
     for(auto& entry: cdb.entries()) {
         units.push_back({entry.file,
-                         entry.config,
-                         cdb.input_kind(entry.config, cdb.files().resolve(entry.file)),
+                         entry.command,
+                         cdb.commands().input_kind(entry.command, cdb.files().resolve(entry.file)),
                          CommandSource::CDBExact});
     }
-    return scan_dependency_graph(cdb, graph, units);
+    return scan_dependency_graph(cdb, toolchain, graph, units);
 }
 
 }  // namespace clice::testing

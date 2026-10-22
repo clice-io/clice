@@ -26,7 +26,9 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.database;
+import :command.table;
+import :command.toolchain;
 import :compile.compilation;
 import :index.indexer;
 import :index.symbol;
@@ -1054,7 +1056,9 @@ extern "C++" int main(int argc, const char** argv) {
     clice::logging::stderr_logger("index_stats_benchmark", clice::logging::options);
 
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     auto count = cdb.load(*opts.cdb_path);
     if(!count) {
         std::println(stderr, "Error: failed to load {}", *opts.cdb_path);
@@ -1112,10 +1116,10 @@ extern "C++" int main(int argc, const char** argv) {
     for(auto file: files) {
         for(auto& entry: cdb.candidate_entries(file)) {
             CommandRef ref{entry.file,
-                           entry.config,
-                           cdb.input_kind(entry.config, file),
+                           entry.command,
+                           commands.input_kind(entry.command, file),
                            CommandSource::CDBExact};
-            auto argv = cdb.render(ref);
+            auto argv = toolchain.render(ref, cdb.spelling(ref.file));
             std::string joined;
             for(auto* arg: argv) {
                 joined += arg;

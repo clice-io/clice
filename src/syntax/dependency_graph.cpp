@@ -479,8 +479,8 @@ struct ProvidedModule {
 /// memo live as long as the operation, so they never serve a stale
 /// filesystem.
 struct FileScanner {
-    FileScanner(CompilationDatabase& cdb, DependencyGraph& graph) :
-        cdb(cdb), graph(graph), files(cdb.files()), scope(files.dirs) {}
+    FileScanner(CompilationDatabase& cdb, Toolchain& toolchain, DependencyGraph& graph) :
+        cdb(cdb), toolchain(toolchain), graph(graph), files(cdb.files()), scope(files.dirs) {}
 
     /// Record `path_id`'s scan of the bytes hashing to `hash` under each
     /// of `contexts`, returning the modules its units' commands declare.
@@ -591,7 +591,7 @@ struct FileScanner {
         auto& search = searches[group];
         if(!search) {
             search = std::make_unique<Search>();
-            search->config = cdb.search_config(graph.group(group));
+            search->config = toolchain.search_config(graph.group(group));
             search->resolved = resolve_search_config(search->config, scope);
         }
         return *search;
@@ -603,7 +603,7 @@ struct FileScanner {
         auto [it, inserted] = forced_cache.try_emplace(group);
         if(inserted) {
             auto& search = search_of(group);
-            llvm::StringRef directory = cdb.config(graph.group(group).config).directory;
+            llvm::StringRef directory = cdb.commands().get(graph.group(group).command).directory;
             for(auto& name: search.config.forced_includes) {
                 if(auto found = resolve_forced_include(name, directory, search.resolved, scope)) {
                     it->second.push_back({
@@ -638,9 +638,10 @@ struct FileScanner {
                 }
                 auto& group = graph.group(context.group);
                 auto rendered =
-                    cdb.render({path_id, group.config, group.input, CommandSource::CDBExact});
+                    toolchain.render({path_id, group.command, group.input, CommandSource::CDBExact},
+                                     cdb.spelling(path_id));
                 auto declared = scan_module_decl(rendered,
-                                                 cdb.config(group.config).directory,
+                                                 cdb.commands().get(group.command).directory,
                                                  observed->content->getBuffer());
                 return {declared.provided_module().str(), declared.is_internal_partition()};
             }
@@ -649,6 +650,7 @@ struct FileScanner {
     }
 
     CompilationDatabase& cdb;
+    Toolchain& toolchain;
     DependencyGraph& graph;
     FileTable& files;
     vfs::Scope scope;
@@ -692,8 +694,12 @@ struct FullScan {
         kota::task_group<> reads;
     };
 
-    FullScan(CompilationDatabase& cdb, DependencyGraph& graph, ScanReport& report) :
-        cdb(cdb), graph(graph), files(cdb.files()), report(report), scanner(cdb, graph) {}
+    FullScan(CompilationDatabase& cdb,
+             Toolchain& toolchain,
+             DependencyGraph& graph,
+             ScanReport& report) :
+        cdb(cdb), toolchain(toolchain), graph(graph), files(cdb.files()), report(report),
+        scanner(cdb, toolchain, graph) {}
 
     /// Add `fid`, reached under `contexts`, to `wave`.
     void add(Wave& wave, Fid fid, llvm::ArrayRef<ScanContext> contexts) {
@@ -748,7 +754,7 @@ struct FullScan {
         llvm::StringSet<> unique_dirs;
         ScopedTimer lookup;
         for(auto& group: graph.groups()) {
-            for(auto& dir: cdb.search_config(group).dirs) {
+            for(auto& dir: toolchain.search_config(group).dirs) {
                 unique_dirs.insert(dir.path);
             }
         }
@@ -779,14 +785,14 @@ struct FullScan {
         // One scan group per unique (command identity, input language) —
         // the SearchConfig granularity: different -I sets resolve
         // differently, and the same flags compiled as C and C++ pull
-        // different implicit include sets. The identity is the entry
-        // hash, not the config: a config keeps the per-file flags the
+        // different implicit include sets. The identity is the command
+        // hash, not the command: a command keeps the per-file flags the
         // compile drops (-o), which would give every unit its own group.
         llvm::MapVector<Fid, llvm::SmallVector<ScanContext, 1>> unit_contexts;
         llvm::DenseMap<std::pair<std::uint64_t, const char*>, std::uint32_t> group_ids;
         for(auto& unit: units) {
-            auto [it, inserted] =
-                group_ids.try_emplace({cdb.entry_hash(unit.config), unit.input.value});
+            auto [it, inserted] = group_ids.try_emplace(
+                {cdb.commands().command_hash(unit.command), unit.input.value});
             if(inserted) {
                 it->second = graph.add_group(unit);
             }
@@ -800,12 +806,12 @@ struct FullScan {
             contexts.push_back(context);
         }
 
-        // Pre-warm the toolchain cache: probes key by non-user-content
+        // Pre-warm the toolchain cache: queries key by non-user-content
         // flags, so groups differing only in -D/-I collapse to the same
-        // probe — N groups often yield just 1-2 subprocess calls. They
-        // run before the units' reads: probe processes competing with the
+        // query — N groups often yield just 1-2 subprocess calls. They
+        // run before the units' reads: query processes competing with the
         // reads for cores cost more than the overlap saves.
-        cdb.warm(graph.groups());
+        toolchain.warm(graph.groups());
 
         // A wave's reads write into its scans until they join: it stays
         // put on the heap while the loop hands it on.
@@ -866,6 +872,7 @@ struct FullScan {
     }
 
     CompilationDatabase& cdb;
+    Toolchain& toolchain;
     DependencyGraph& graph;
     FileTable& files;
     ScanReport& report;
@@ -878,6 +885,7 @@ struct FullScan {
 // Public sync entry point
 
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
+                                 Toolchain& toolchain,
                                  DependencyGraph& graph,
                                  llvm::ArrayRef<CommandRef> units) {
     ScanReport report;
@@ -885,14 +893,17 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
         return report;
     }
 
-    FullScan scan(cdb, graph, report);
+    FullScan scan(cdb, toolchain, graph, report);
     kota::run(scan.run(units));
     return report;
 }
 
-void rescan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph, Fid path_id) {
+void rescan_dependency_graph(CompilationDatabase& cdb,
+                             Toolchain& toolchain,
+                             DependencyGraph& graph,
+                             Fid path_id) {
     auto& files = cdb.files();
-    FileScanner scanner(cdb, graph);
+    FileScanner scanner(cdb, toolchain, graph);
     llvm::SmallVector<std::pair<Fid, ScanContext>> reached;
     auto reach = [&](Fid fid, ScanContext context) {
         reached.push_back({fid, context});

@@ -6,7 +6,7 @@ module;
 
 module clice;
 
-import :command.argument_parser;
+import :command.file_kind;
 import :command.search_config;
 import :project.command_resolver;
 import :project.hosting;
@@ -48,10 +48,10 @@ std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced)
     if(!forced.valid()) {
         return std::numeric_limits<std::size_t>::max();
     }
-    auto search = project.cdb.search_config(ref);
+    auto search = project.toolchain.search_config(ref);
     vfs::Scope scope(project.file_table.dirs);
     auto resolved = resolve_search_config(search, scope);
-    llvm::StringRef directory = project.cdb.config(ref.config).directory;
+    llvm::StringRef directory = project.commands.get(ref.command).directory;
     for(std::size_t i = 0; i < search.forced_includes.size(); i += 1) {
         auto header = resolve_forced_include(search.forced_includes[i], directory, resolved, scope);
         if(header && project.file_table.find(Spelling::absolute(header->path)) == forced) {
@@ -63,19 +63,19 @@ std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced)
 
 }  // namespace
 
-Candidate pick_pinned_config(Project& project,
-                             Fid file,
-                             llvm::ArrayRef<Candidate> candidates,
-                             llvm::ArrayRef<CanonicalRef> paths,
-                             llvm::StringRef language_path,
-                             llvm::StringRef pinned_hash,
-                             llvm::StringRef pinned_base) {
+Candidate pick_pinned_command(Project& project,
+                              Fid file,
+                              llvm::ArrayRef<Candidate> candidates,
+                              llvm::ArrayRef<CanonicalRef> paths,
+                              llvm::StringRef language_path,
+                              llvm::StringRef pinned_hash,
+                              llvm::StringRef pinned_base) {
     // The base identity resolved at pin time is exact; the applied hash
     // remains as the fallback for pins saved before the base was recorded
     // (and cannot distinguish candidates the rules collapse together).
     if(!pinned_base.empty()) {
         for(auto& entry: candidates) {
-            if(project.cdb.entry_hash_hex(entry.config) == pinned_base) {
+            if(project.commands.command_hash_hex(entry.command) == pinned_base) {
                 return entry;
             }
         }
@@ -83,8 +83,8 @@ Candidate pick_pinned_config(Project& project,
     if(!pinned_hash.empty()) {
         for(auto& entry: candidates) {
             auto ref =
-                project.build.resolve(file, entry.config, entry.source, paths, language_path);
-            if(project.cdb.entry_hash_hex(ref.config) == pinned_hash) {
+                project.build.resolve(file, entry.command, entry.source, paths, language_path);
+            if(project.commands.command_hash_hex(ref.command) == pinned_hash) {
                 return entry;
             }
         }
@@ -95,7 +95,7 @@ Candidate pick_pinned_config(Project& project,
 CommandRef lent_command(Project& project,
                         Fid header,
                         Fid host,
-                        ConfigID command,
+                        CommandID command,
                         llvm::ArrayRef<std::string> extra_prepend,
                         llvm::ArrayRef<std::string> extra_append) {
     // The header inherits the host's world: the rules matching the host
@@ -125,14 +125,14 @@ std::optional<CommandRef> host_command(Project& project,
     }
     auto host_path = project.file_table.resolve(host);
     CanonicalRef edit_paths[] = {host_path, project.file_table.resolve(header)};
-    auto picked = pick_pinned_config(project,
-                                     header,
-                                     commands,
-                                     edit_paths,
-                                     host_path,
-                                     pinned_hash,
-                                     pinned_base);
-    return lent_command(project, header, host, picked.config, extra_prepend, extra_append);
+    auto picked = pick_pinned_command(project,
+                                      header,
+                                      commands,
+                                      edit_paths,
+                                      host_path,
+                                      pinned_hash,
+                                      pinned_base);
+    return lent_command(project, header, host, picked.command, extra_prepend, extra_append);
 }
 
 HeaderMode CommandResolver::header_mode(Fid path_id) const {
@@ -319,8 +319,8 @@ Resolution CommandResolver::resolve_command(Fid path_id,
             options.preamble = resolution.synthesized->prefix.c_str();
         }
         options.kept_includes = includes_before(project, ref, resolution.forced);
-        directory = project.cdb.config(ref.config).directory;
-        auto argv = project.cdb.render(ref, options);
+        directory = project.commands.get(ref.command).directory;
+        auto argv = project.toolchain.render(ref, project.cdb.spelling(ref.file), options);
         arguments.assign(argv.begin(), argv.end());
         resolution.ref = ref;
         resolution.source = ref.source;
@@ -330,7 +330,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
 
     // `base` with the rule edits of `paths` and the run's extras applied:
     // an entry, a default command, a borrowed or the builtin one alike.
-    auto finish_own = [&](ConfigID base,
+    auto finish_own = [&](CommandID base,
                           CommandSource source,
                           llvm::ArrayRef<CanonicalRef> paths,
                           llvm::StringRef language_path) {
@@ -360,7 +360,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     //    provisional member borrows. A header's default command is only
     //    the last resort below, after host inference.
     //    Multi-config projects honor the user's chosen entry, matched by
-    //    entry hash so the choice survives reordering.
+    //    command hash so the choice survives reordering.
     tried.push_back("cdb");
     auto commands = project.build.commands(path_id);
     if(project.build.unit(path_id)) {
@@ -370,8 +370,8 @@ Resolution CommandResolver::resolve_command(Fid path_id,
             pinned_base = choice->base_hash;
         }
         auto picked =
-            pick_pinned_config(project, path_id, commands, path, path, pinned_hash, pinned_base);
-        return finish_own(picked.config, picked.source, path, path);
+            pick_pinned_command(project, path_id, commands, path, path, pinned_hash, pinned_base);
+        return finish_own(picked.command, picked.source, path, path);
     }
 
     // 3. No CDB entry — try automatic header context resolution.
@@ -386,7 +386,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     //    a unit (a header under a default-command rule).
     if(!commands.empty()) {
         tried.push_back("default");
-        return finish_own(commands.front().config, CommandSource::Default, path, path);
+        return finish_own(commands.front().command, CommandSource::Default, path, path);
     }
 
     // 5. A nearby unit's command, edited for both files as a provisional
@@ -397,7 +397,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     if(auto lender = command_lender(project, path_id)) {
         auto lender_path = project.file_table.resolve(lender->unit);
         LOG_INFO("resolve_command: {} borrows the command of {}", path, lender_path);
-        return finish_own(project.build.lend(lender->config, lender_path, path),
+        return finish_own(project.build.lend(lender->command, lender_path, path),
                           CommandSource::Inferred,
                           path,
                           is_header_path(path) ? lender_path : path);
@@ -416,7 +416,7 @@ std::optional<CommandRef> CommandResolver::pch_unit(Fid path_id,
     if(resolution.host.valid()) {
         paths.push_back(project.file_table.resolve(resolution.host));
     }
-    return project.build.pch_unit(resolution.ref.config,
+    return project.build.pch_unit(resolution.ref.command,
                                   paths,
                                   request.extra_prepend,
                                   request.extra_append);
@@ -497,7 +497,7 @@ std::expected<HeaderContext, Fid>
     auto host_path = project.file_table.resolve(host_path_id);
     auto target_path = project.file_table.resolve(chain.back());
 
-    auto search_config = project.cdb.search_config(*host_ref);
+    auto search_config = project.toolchain.search_config(*host_ref);
     vfs::Scope scope(project.file_table.dirs);
     auto resolved_config = resolve_search_config(search_config, scope);
 

@@ -846,7 +846,7 @@ ZEST_CASE(AnyLookReportsChange) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    scan_all(project.cdb, project.dep_graph);
+    scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));

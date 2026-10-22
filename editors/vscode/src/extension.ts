@@ -14,7 +14,7 @@ import {
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
 import { exitsWithin, retire } from "./process";
-import { getSetting, Setting, workspaceDirectory } from "./setting";
+import { getSetting, Setting, variable, workspaceDirectory } from "./setting";
 import { registerAliasRedirect } from "./feature/aliases";
 import { registerBuildConfiguration } from "./feature/configuration";
 import { registerCompilationContext } from "./feature/context";
@@ -146,7 +146,7 @@ function makeServerOptions(
             );
         }
         refuseWhenDeactivating();
-        child = cp.spawn(executable, ["serve"], { cwd: workspaceDirectory() });
+        child = cp.spawn(executable, ["serve"], { cwd: workspaceDirectory(), env: setting.env });
         child.on("error", (error) => {
             channel.appendLine(`clice spawn failed: ${error.message}`);
         });
@@ -155,13 +155,14 @@ function makeServerOptions(
 }
 
 /// clice.executable may be a bare command name; spawn resolves those
-/// against PATH, so the pre-start validation must look there too.
-function findOnPath(command: string): string | undefined {
+/// against the PATH of the environment it starts the server in, so the
+/// pre-start validation must look there too.
+function findOnPath(command: string, env: NodeJS.ProcessEnv): string | undefined {
     const extensions =
         process.platform === "win32"
-            ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")
+            ? (variable(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";")
             : [];
-    for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    for (const dir of (variable(env, "PATH") ?? "").split(path.delimiter)) {
         if (!dir) {
             continue;
         }
@@ -213,7 +214,7 @@ async function validateSettings(context: ExtensionContext): Promise<string | und
         } catch {
             return `clice executable not found or not executable: ${executable} — check 'clice.executable'.`;
         }
-    } else if (!findOnPath(executable)) {
+    } else if (!findOnPath(executable, setting.env)) {
         return `clice executable not found on PATH: ${executable} — check 'clice.executable'.`;
     }
     return undefined;
@@ -286,7 +287,13 @@ async function onSettingsChanged(
     event: vscode.ConfigurationChangeEvent,
     context: ExtensionContext,
 ) {
-    const launchSettings = ["clice.executable", "clice.mode", "clice.host", "clice.port"];
+    const launchSettings = [
+        "clice.executable",
+        "clice.mode",
+        "clice.host",
+        "clice.port",
+        "clice.serverEnv",
+    ];
     if (!launchSettings.some((setting) => event.affectsConfiguration(setting))) {
         return;
     }

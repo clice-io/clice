@@ -4,7 +4,9 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.database;
+import :command.table;
+import :command.toolchain;
 import :compile.compilation;
 import :sched.graph;
 import :syntax.dependency_graph;
@@ -91,6 +93,7 @@ struct GraphShim {
 /// writes a PCM of its own under `tmp`, as the master names every build's
 /// artifact anew.
 DispatchFn make_dispatch(CompilationDatabase& cdb,
+                         Toolchain& toolchain,
                          DependencyGraph& graph,
                          const TempDir& tmp,
                          std::uint32_t& builds,
@@ -103,14 +106,14 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
         }
         auto& entry = candidates.front();
         CommandRef ref{entry.file,
-                       entry.config,
-                       cdb.input_kind(entry.config, file_path),
+                       entry.command,
+                       cdb.commands().input_kind(entry.command, file_path),
                        CommandSource::CDBExact};
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
-        cp.input.directory = cdb.config(entry.config).directory;
-        auto arguments = cdb.render(ref);
+        cp.input.directory = cdb.commands().get(entry.command).directory;
+        auto arguments = toolchain.render(ref, cdb.spelling(ref.file));
         cp.input.arguments.assign(arguments.begin(), arguments.end());
 
         // Fill ALL available PCM paths (clang needs transitive deps too).
@@ -138,7 +141,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
 }
 
 /// Build a resolve_fn that lazily scans module files for imports.
-ResolveFn make_resolver(CompilationDatabase& cdb, DependencyGraph& graph) {
+ResolveFn make_resolver(CompilationDatabase& cdb, Toolchain& toolchain, DependencyGraph& graph) {
     return [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         auto file_path = cdb.files().resolve(Fid{path_id});
         auto candidates = cdb.candidate_entries(file_path);
@@ -147,11 +150,12 @@ ResolveFn make_resolver(CompilationDatabase& cdb, DependencyGraph& graph) {
         }
         auto& entry = candidates.front();
         CommandRef ref{entry.file,
-                       entry.config,
-                       cdb.input_kind(entry.config, file_path),
+                       entry.command,
+                       cdb.commands().input_kind(entry.command, file_path),
                        CommandSource::CDBExact};
 
-        auto scan_result = scan_precise(cdb.render(ref), cdb.config(entry.config).directory);
+        auto scan_result = scan_precise(toolchain.render(ref, cdb.spelling(ref.file)),
+                                        cdb.commands().get(entry.command).directory);
 
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
@@ -168,14 +172,16 @@ ResolveFn make_resolver(CompilationDatabase& cdb, DependencyGraph& graph) {
 struct ModuleTestEnv {
     TempDir tmp;
     FileTable file_table;
-    CompilationDatabase cdb{file_table};
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
     DependencyGraph graph;
     std::uint32_t pcm_builds = 0;
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 
     void setup(llvm::ArrayRef<CDBEntry> entries, llvm::StringRef json) {
         write_cdb(tmp, cdb, json);
-        scan_all(cdb, graph);
+        scan_all(cdb, toolchain, graph);
     }
 
     std::uint32_t lookup(llvm::StringRef mod_name) {
@@ -190,11 +196,11 @@ ModuleTestEnv env;
 std::optional<GraphShim> cg;
 
 DispatchFn default_dispatch() {
-    return make_dispatch(env.cdb, env.graph, env.tmp, env.pcm_builds, env.pcm_paths);
+    return make_dispatch(env.cdb, env.toolchain, env.graph, env.tmp, env.pcm_builds, env.pcm_paths);
 }
 
 ResolveFn default_resolver() {
-    return make_resolver(env.cdb, env.graph);
+    return make_resolver(env.cdb, env.toolchain, env.graph);
 }
 
 void make_graph(DispatchFn dispatch, ResolveFn resolve) {
@@ -1128,14 +1134,14 @@ ZEST_CASE(module_implementation_unit) {
         ZASSERT(!candidates.empty());
         auto& impl_entry = candidates.front();
         CommandRef impl_ref{impl_entry.file,
-                            impl_entry.config,
-                            env.cdb.input_kind(impl_entry.config, impl_path),
+                            impl_entry.command,
+                            env.cdb.commands().input_kind(impl_entry.command, impl_path),
                             CommandSource::CDBExact};
 
         CompilationParams cp;
         cp.kind = CompilationKind::Content;
-        cp.input.directory = env.cdb.config(impl_entry.config).directory;
-        auto arguments = env.cdb.render(impl_ref);
+        cp.input.directory = env.cdb.commands().get(impl_entry.command).directory;
+        auto arguments = env.toolchain.render(impl_ref, env.cdb.spelling(impl_ref.file));
         cp.input.arguments.assign(arguments.begin(), arguments.end());
         // Pass the built PCM so clang can resolve `module Greeter;`.
         for(auto& [pid, pcm_path]: env.pcm_paths) {

@@ -4,7 +4,9 @@ module;
 
 module clice:project.build;
 
-import :command.command;
+import :command.database;
+import :command.edit;
+import :command.table;
 import :config.config;
 import :vfs.file_table;
 
@@ -15,7 +17,7 @@ namespace clice {
 /// covers, that command (Default); for a provisional member, the command it
 /// borrows (Inferred).
 struct Candidate {
-    ConfigID config;
+    CommandID command;
     CommandSource source;
 };
 
@@ -30,8 +32,8 @@ struct Edits {
         return edits.empty() && query_toolchain;
     }
 
-    CommandOptions options(llvm::ArrayRef<std::string> extra_prepend = {},
-                           llvm::ArrayRef<std::string> extra_append = {}) const {
+    CommandEdits options(llvm::ArrayRef<std::string> extra_prepend = {},
+                         llvm::ArrayRef<std::string> extra_append = {}) const {
         return {.edits = edits,
                 .extra_prepend = extra_prepend,
                 .extra_append = extra_append,
@@ -48,7 +50,7 @@ struct Edits {
 class Build {
 public:
     Build(Config& config, CompilationDatabase& cdb, FileTable& files) :
-        config(config), cdb(cdb), files(files) {}
+        config(config), cdb(cdb), command_table(cdb.commands()), files(files) {}
 
     /// The configuration tag every tagged rule is checked against; empty
     /// when the rules declare none.
@@ -112,14 +114,14 @@ public:
     /// (CommandSource::Fallback): the driver follows the language clang
     /// assigns to the file's extension, an ambiguous `.h` and an extension
     /// clang does not know counting as C++.
-    ConfigID builtin(CanonicalRef path);
+    CommandID builtin(CanonicalRef path);
 
     /// Apply the edits of `paths` (and a run's extras) to `base`: the
     /// effective command of `file`, whose language is derived from the
     /// edited command and `language_path` (the file itself, or the host a
     /// header borrows from).
     CommandRef resolve(Fid file,
-                       ConfigID base,
+                       CommandID base,
                        CommandSource source,
                        llvm::ArrayRef<CanonicalRef> paths,
                        llvm::StringRef language_path,
@@ -160,13 +162,13 @@ public:
 
     /// Set the command a recorded file borrows as a provisional member,
     /// nullopt while it is none; returns the one it borrowed before.
-    std::optional<ConfigID> borrow(Fid file, std::optional<ConfigID> command);
+    std::optional<CommandID> borrow(Fid file, std::optional<CommandID> command);
 
     /// The command `file` borrows from `lender` compiling under `command`:
     /// the edits of the rules matching the lender but not the file applied,
     /// so rendering it as the file's own command, which applies the file's
     /// rules, edits it for both, each rule once.
-    ConfigID lend(ConfigID command, CanonicalRef lender, CanonicalRef file);
+    CommandID lend(CommandID command, CanonicalRef lender, CanonicalRef file);
 
     /// The directories the default-command rules cover sources under, none
     /// inside another, and the cache directory a walk of them skips.
@@ -206,8 +208,8 @@ public:
     /// or a default-command rule covers it and it is a source.
     bool declared(Fid file);
 
-    /// The command of the entry writing the precompiled header `config`'s
-    /// command reads (CompilationDatabase::pch_inputs) — the
+    /// The command of the entry writing the precompiled header `command`
+    /// reads (CommandTable::pch_inputs) — the
     /// `cmake_pch.hxx.cxx` entry of a CMake target with precompiled
     /// headers; of the configurations writing one each from that file, the
     /// one writing this very PCH. The PCH on disk may come from another
@@ -216,7 +218,7 @@ public:
     /// extras: built under other flags, it would hold other code than that
     /// command parses. Nullopt when the build writes none of them, and for
     /// a command writing a precompiled header itself.
-    std::optional<CommandRef> pch_unit(ConfigID config,
+    std::optional<CommandRef> pch_unit(CommandID command,
                                        llvm::ArrayRef<CanonicalRef> paths,
                                        llvm::ArrayRef<std::string> extra_prepend = {},
                                        llvm::ArrayRef<std::string> extra_append = {});
@@ -259,12 +261,24 @@ private:
 
     /// The rule's default command interned; nullopt when it is not a
     /// compile command.
-    std::optional<ConfigID> command_of(const CompiledRule& rule);
+    std::optional<CommandID> command_of(const CompiledRule& rule);
+
+    /// A command written by hand (a rule's default command, the builtin
+    /// fallback): normalized once through the entry pipeline with the
+    /// input slot synthesized at the end, memoized per (directory,
+    /// spelling). `directory` is its working directory. Nullopt (logged
+    /// once) when the spelling is not a compile command — blank, or a
+    /// launcher with nothing to launch.
+    std::optional<CommandID> intern(const Spelling& directory,
+                                    llvm::ArrayRef<const char*> arguments);
+
+    /// apply_edits, memoized per (command, edits).
+    CommandID apply(CommandID command, const CommandEdits& edits);
 
     /// The interned default command of the first matching active rule
     /// declaring one; nullopt when no rule does or its command is not a
     /// compile command.
-    std::optional<ConfigID> default_command(CanonicalRef path);
+    std::optional<CommandID> default_command(CanonicalRef path);
 
     /// Whether a default command compiles `path` as a unit: a C-family
     /// source by suffix (never a header), or a file a rule singles out by
@@ -283,17 +297,28 @@ private:
 
     Config& config;
     CompilationDatabase& cdb;
+    CommandTable& command_table;
     FileTable& files;
     std::string active;
     std::optional<std::vector<Fid>> covered_sources;
     llvm::DenseSet<Fid> records;
     std::uint64_t records_generation = 0;
-    llvm::DenseMap<Fid, ConfigID> provisional;
+    llvm::DenseMap<Fid, CommandID> provisional;
 
     /// declared_source's answers, valid while the database holds
     /// `declared_source_count` sources.
     mutable llvm::StringMap<std::optional<SourceID>> declared_source_ids;
     mutable std::size_t declared_source_count = 0;
+
+    /// intern's commands by (directory, spelling), invalid_command for a
+    /// spelling that is not a compile command.
+    llvm::StringMap<CommandID> interned;
+
+    /// The ids of the edits' keys apply has seen.
+    llvm::StringMap<std::uint32_t> edit_keys;
+
+    /// apply's results by (command, the id of the edits' key).
+    llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, CommandID> edited;
 };
 
 /// How discovered databases rank among themselves: shallower before

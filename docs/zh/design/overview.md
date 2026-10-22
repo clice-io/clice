@@ -37,8 +37,9 @@ clice 是一个全新的 C++ 语言服务器，从架构层面重新设计，旨
 
 从编译数据库（CDB）读取的命令是构建系统生成的原始命令，不能直接交给 Clang 前端——它们可能包含仅用于代码生成的选项、缺少系统头文件搜索路径，或者包含与语言服务器无关的参数。本模块只需解析每条命令一次，即可将其转换为供系统其余部分使用的结构化形式。
 
-- `CompilationDatabase`：加载 `compile_commands.json`，将每个条目解析一次，转换为由稳定 `ConfigID` 标识的、经过驻留和分类的参数结构。在此基础上，它会应用用户配置规则，为没有条目的文件合成备用命令，推导输入语言，计算条目标识哈希，并按需生成 driver 或 `-cc1` 命令行。
-- `Toolchain`：查询系统编译器以获取隐式编译参数（例如系统头文件搜索路径），并采用两层缓存——按 driver 调用形式缓存探测结果，按输入类型缓存合成的选项集。
+- `CommandTable`：clice 知道的每一条命令，各自只解析一次，形成由稳定 `CommandID` 标识的、经过驻留和分类的参数结构，并附带由一条命令推导出的内容：输入语言、写出和读取的预编译头文件、命令哈希，以及 driver 层面的渲染结果。
+- `CompilationDatabase`：加载和重新加载 `compile_commands.json` 文件，并比对其新旧差异；文件中的条目经规范化（`Normalizer`）后存入 `CommandTable`；规则所做的编辑应用在条目的命令之上（`apply_edits`）。
+- `Toolchain`：查询系统编译器以获取隐式编译参数（例如系统头文件搜索路径），并采用两层缓存——按 driver 调用形式缓存查询结果，按输入类型缓存合成的选项集——还负责渲染 `-cc1` 命令行；每种编译器的询问方式（GCC 风格、cl、nvcc、clang 自身的 driver）位于 `src/command/toolchains/` 下。
 - `SearchConfig`：头文件搜索路径的四层模型（Quoted / Angled / System / After），与 Clang 内部的搜索逻辑一致。
 
 详见 [编译命令解析](command-resolve.md)。

@@ -68,7 +68,7 @@ struct SwitchContextParams {
     /// Include occurrence to pin (header contexts, 0-based).
     std::optional<std::uint32_t> occurrence;
 
-    /// Canonical CDB entry hash to pin (source files with multiple
+    /// Command hash of the entry to pin (source files with multiple
     /// compile commands).
     std::optional<std::string> command_hash;
 

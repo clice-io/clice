@@ -7,7 +7,7 @@ module;
 
 module clice;
 
-import :command.argument_parser;
+import :command.argument;
 import :compile.diagnostic;
 import :compile.tidy;
 import :feature.feature;

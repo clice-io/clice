@@ -6,7 +6,8 @@ module;
 
 module clice;
 
-import :command.command;
+import :command.file_kind;
+import :command.table;
 import :compile.compilation;
 import :compile.tidy;
 import :config.config;
@@ -597,11 +598,11 @@ std::string build_pch(Project& project,
         LOG_WARN("cannot create a temporary PCH: {}", output.error().message());
         return {};
     }
-    auto argv = project.cdb.render(writer);
+    auto argv = project.toolchain.render(writer, project.cdb.spelling(writer.file));
     auto unit = clice::compile({
         .kind = CompilationKind::PrecompiledHeader,
         .input = {.arguments = {argv.begin(), argv.end()},
-                  .directory = project.cdb.config(writer.config).directory,
+                  .directory = project.commands.get(writer.command).directory,
                   .workspace = workspace.str()},
         .output_file = *output,
     });
