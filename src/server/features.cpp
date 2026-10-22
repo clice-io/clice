@@ -5,16 +5,13 @@ module;
 module clice;
 
 import :command.search_config;
-import :feature.code_action.code_action;
 import :feature.code_completion;
 import :feature.diagnostics;
 import :feature.document_links;
 import :feature.document_symbols;
-import :feature.documentation;
 import :feature.folding_ranges;
 import :feature.hierarchy;
 import :feature.hover;
-import :feature.index_entries;
 import :feature.inlay_hints;
 import :feature.navigation;
 import :feature.protocol;
@@ -22,8 +19,7 @@ import :feature.rename;
 import :feature.selection_ranges;
 import :feature.semantic_tokens;
 import :feature.workspace_symbols;
-import :index.search;
-import :index.text;
+import :index.peer_queries;
 import :sched.index.pump;
 import :semantic.symbol;
 import :server.ast_family;
@@ -33,9 +29,7 @@ import :server.format;
 import :server.query_commands;
 import :support.text;
 import :syntax.completion;
-import :syntax.include_resolver;
 import :syntax.lexer;
-import :syntax.scan;
 import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_system;
@@ -45,11 +39,6 @@ import :worker.serialize;
 namespace clice {
 
 using serde_raw = kota::codec::RawValue;
-
-/// How the user knows a file a worker names by its identity.
-static std::string shown(FileTable& files, llvm::StringRef identity) {
-    return files.display(files.intern(Spelling::absolute(identity)));
-}
 
 /// The link whose argument covers `offset`.
 const static index::DocumentLink* link_at(llvm::ArrayRef<index::DocumentLink> links,
@@ -185,6 +174,10 @@ std::optional<index::IndexQuery::Cursor>
     return query.symbol_at(path_id, position.line, position.character);
 }
 
+index::PeerQueries Features::peer_queries() const {
+    return {.own = query, .peers = peers, .open_in = open_in};
+}
+
 SourceText& Features::text_of(Session& session) {
     session.source->set_dialect(contexts.dialect(session.path_id));
     return *session.source;
@@ -196,86 +189,12 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
     if(!cursor) {
         return std::nullopt;
     }
-    auto symbol = cursor->symbols.front();
-    auto info = query.symbol_info(symbol, cursor->site.file);
-    if(!info) {
-        return std::nullopt;
-    }
-    if(info->kind == SymbolKind::Module) {
-        return module_hover_card(*cursor, *info);
-    }
-    std::string definition;
-    auto text = index::declared_text(query, symbol, cursor->site.file, RelationKind::Definition);
-    if(!text) {
-        text = index::declared_text(query, symbol, cursor->site.file, RelationKind::Declaration);
-    }
-    if(text) {
-        definition = std::move(text->text);
-    }
-    auto hover = feature::index_hover(
-        *info,
-        query.container_chain(symbol, cursor->site.file),
-        definition,
-        feature::documentation(query, symbol, cursor->site.file, project.config.documentation));
-    hover.symbol_range = cursor->site.range;
-    return hover;
-}
-
-feature::HoverInfo Features::module_hover_card(const index::IndexQuery::Cursor& cursor,
-                                               const index::SymbolInfo& module) {
-    feature::HoverInfo hover;
-    hover.name = module.name;
-    hover.kind = SymbolKind::Module;
-    auto units = gather(module.hash,
-                        cursor.site.file,
-                        [&](const index::IndexQuery& from, index::SymbolHash named) {
-                            return from.sites(named, cursor.site.file, RelationKind::Definition);
-                        });
-    if(!units.empty()) {
-        hover.file = shown(project.file_table, units.front().path);
-    }
-    hover.symbol_range = cursor.site.range;
-    return hover;
+    return feature::index_hover(peer_queries(), *cursor, project.config.documentation);
 }
 
 std::vector<index::DocumentLink> Features::find_preamble_links(const Session& session) {
     auto state = query.preamble_index(session.path_id);
     return state ? state->links() : std::vector<index::DocumentLink>{};
-}
-
-std::vector<protocol::Location> Features::directive_definition(const index::DocumentLink& link) {
-    return {
-        protocol::Location{
-                           .uri = feature::to_uri(shown(project.file_table, link.target)),
-                           .range = protocol::Range{},
-                           }
-    };
-}
-
-std::optional<protocol::Hover> Features::directive_hover(const Session& session,
-                                                         const index::DocumentLink& link,
-                                                         protocol::MarkupKind markup) {
-    if(link.range.end > session.text().size()) {
-        return std::nullopt;
-    }
-    auto name = session.text().substr(link.range.begin, link.range.length()).trim();
-    if(name.size() >= 2 && ((name.front() == '"' && name.back() == '"') ||
-                            (name.front() == '<' && name.back() == '>'))) {
-        name = name.drop_front().drop_back();
-    }
-
-    feature::HoverInfo info;
-    info.name = name.str();
-    info.kind = SymbolKind::Header;
-    info.file = shown(project.file_table, link.target);
-    info.symbol_range = link.range;
-
-    auto hover =
-        feature::to_protocol_hover(info, markup, session.positions(), PositionEncoding::UTF16);
-    if(!hover.range) {
-        return std::nullopt;
-    }
-    return hover;
 }
 
 kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
@@ -292,52 +211,24 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     Features::document_links(Ticket ticket, kota::cancellation_token token) {
     auto& session = ticket.session;
 
-    // Links carry byte offsets; this reply edge converts them.
-    auto convert = [&](llvm::ArrayRef<index::DocumentLink> raw_links,
-                       std::vector<protocol::DocumentLink>& links) {
-        auto map = session->positions();
-        for(const auto& link: raw_links) {
-            auto range = map.range(link.range, PositionEncoding::UTF16);
-            if(!range)
-                continue;
-            protocol::DocumentLink out{.range = *range};
-            auto path = shown(project.file_table, link.target);
-            out.target = feature::to_uri(path);
-            out.tooltip = std::move(path);
-            links.push_back(std::move(out));
-        }
-    };
-
     switch(co_await pick_route(ticket, {.await_cold_attempt = true})) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             // Manifest edges cover the whole document (the background
             // index has no preamble split); guard-skipped lines and
             // __has_include/#embed have no edge and produce no link.
-            // Unlike the entries the other index results serve, the edges are
-            // disk truth: the quarantine fallback (own index current,
-            // buffer edited) must not apply them to a buffer the
-            // manifest never described — an edited directive would get
-            // the old target, confidently wrong.
-            std::vector<protocol::DocumentLink> links;
-            if(query.shard_matching(session->path_id, session->text())) {
-                auto raw =
-                    feature::index_document_links(text_of(*session),
-                                                  query.project().include_edges(session->path_id));
-                convert(raw, links);
-            }
+            auto links = feature::index_document_links(text_of(*session), query, session->path_id);
             session->index_served = true;
-            co_return links;
+            co_return feature::document_links_to_protocol(links,
+                                                          session->positions(),
+                                                          project.file_table);
         }
         case Route::Empty: co_return std::vector<protocol::DocumentLink>{};
         case Route::Ast: break;
     }
 
-    auto result = co_await directive_links(ticket, std::move(token)).or_fail();
-
-    std::vector<protocol::DocumentLink> links;
-    convert(result, links);
-    co_return links;
+    auto links = co_await directive_links(ticket, std::move(token)).or_fail();
+    co_return feature::document_links_to_protocol(links, session->positions(), project.file_table);
 }
 
 kota::task<std::vector<feature::FileDiagnostic>>
@@ -388,7 +279,7 @@ Features::RawResult Features::definition(Ticket ticket,
     if(offset && ast.compiles.current(path_id)) {
         auto links = find_preamble_links(*session);
         if(auto* link = link_at(links, *offset)) {
-            co_return to_raw(directive_definition(*link));
+            co_return to_raw(std::vector{feature::directive_location(project.file_table, *link)});
         }
     }
 
@@ -400,33 +291,7 @@ Features::RawResult Features::definition(Ticket ticket,
         if(!cursor) {
             return {};
         }
-        // Each symbol answers for itself. A definition another project
-        // compiles (a library's source beside the application including
-        // its header) outranks the declarations this project alone can
-        // offer; standing on a definition, or with none anywhere, the
-        // declarations answer too.
-        std::vector<index::Site> result;
-        for(auto symbol: cursor->symbols) {
-            auto defined = gather(symbol,
-                                  path_id,
-                                  [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                      return feature::definition_sites(from, named, path_id);
-                                  });
-            if(defined.empty() || std::ranges::any_of(defined, [&](const index::Site& site) {
-                   return index::covers(site, cursor->site);
-               })) {
-                defined = gather(symbol,
-                                 path_id,
-                                 [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                     return feature::definition(
-                                         from,
-                                         {.symbols = {named}, .site = cursor->site});
-                                 });
-            }
-            result.append_range(std::move(defined));
-        }
-        index::dedup_sites(result);
-        return feature::to_locations(result);
+        return feature::to_locations(feature::definition(peer_queries(), *cursor));
     };
     if(auto result = index_definition(); !result.empty()) {
         co_return to_raw(result);
@@ -448,15 +313,11 @@ Features::RawResult Features::definition(Ticket ticket,
     bool shard_served = serving && serving->kind == index::IndexSource::Kind::Shard;
     if(session->serving == ServingMode::IndexOnly || ASTFamily::compile_barred(*session) ||
        (shard_served && !cursor_at(path_id, position))) {
-        if(!query.shard_matching(session->path_id, session->text())) {
-            co_return serde_raw{"[]"};
-        }
         if(offset) {
-            auto links =
-                feature::index_document_links(text_of(*session),
-                                              query.project().include_edges(session->path_id));
+            auto links = feature::index_document_links(text_of(*session), query, session->path_id);
             if(auto* link = link_at(links, *offset)) {
-                co_return to_raw(directive_definition(*link));
+                co_return to_raw(
+                    std::vector{feature::directive_location(project.file_table, *link)});
             }
         }
         co_return serde_raw{"[]"};
@@ -476,7 +337,7 @@ Features::RawResult Features::definition(Ticket ticket,
     // be replaced by an index answer computed on the newer buffer.
     auto links = co_await directive_links(ticket, std::move(token)).or_fail();
     if(auto* link = offset ? link_at(links, *offset) : nullptr) {
-        co_return to_raw(directive_definition(*link));
+        co_return to_raw(std::vector{feature::directive_location(project.file_table, *link)});
     }
 
     // The buffer compiled since the first lookup: retry against the refreshed
@@ -534,7 +395,7 @@ Features::RawResult Features::hover(Ticket ticket,
     if(auto cursor = cursor_at(path_id, position)) {
         auto info = query.symbol_info(cursor->symbols.front(), cursor->site.file);
         if(info && info->kind == SymbolKind::Module) {
-            co_return index_card(module_hover_card(*cursor, *info));
+            co_return index_card(feature::module_hover(peer_queries(), *cursor, *info));
         }
     }
 
@@ -553,7 +414,11 @@ Features::RawResult Features::hover(Ticket ticket,
     if(on_directive) {
         auto links = co_await directive_links(ticket, token).or_fail();
         if(auto* link = link_at(links, *offset)) {
-            auto hover = directive_hover(*session, *link, markup);
+            auto hover = feature::directive_hover(session->text(),
+                                                  session->positions(),
+                                                  project.file_table,
+                                                  *link,
+                                                  markup);
             co_return hover ? to_raw(*hover) : serde_raw{"null"};
         }
     }
@@ -581,31 +446,6 @@ Features::RawResult Features::hover(Ticket ticket,
     co_return std::move(raw);
 }
 
-void Features::merge_preamble_macros(const Session& session,
-                                     std::vector<feature::SemanticToken>& tokens) {
-    auto state = query.preamble_index(session.path_id);
-    if(!state) {
-        return;
-    }
-    llvm::DenseMap<std::uint32_t, std::uint32_t> modifiers;
-    state->shard_of(state->path_count() - 1)
-        .for_each_occurrence([&](const index::Occurrence& occurrence) {
-            auto symbol = state->find_symbol(occurrence.target);
-            if(symbol && symbol->token_class.kind == SemanticTokenKind::Macro) {
-                modifiers.try_emplace(occurrence.range.begin, symbol->token_class.modifiers);
-            }
-            return true;
-        });
-    for(auto& token: tokens) {
-        if(token.kind != SemanticTokenKind::Macro) {
-            continue;
-        }
-        if(auto it = modifiers.find(token.range.begin); it != modifiers.end()) {
-            token.modifiers |= it->second;
-        }
-    }
-}
-
 Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellation_token token) {
     auto& session = ticket.session;
     std::optional<index::IndexSource> source;
@@ -614,11 +454,10 @@ Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellati
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             session->index_served = true;
-            tokens = feature::index_semantic_tokens(
-                text_of(*session),
-                feature::extract_index_entries(*source->shard),
-                [&](index::SymbolHash hash) { return query.symbol_info(hash, source->file); },
-                project.config.semantic_tokens);
+            tokens = feature::index_semantic_tokens(text_of(*session),
+                                                    query,
+                                                    *source,
+                                                    project.config.semantic_tokens);
             break;
         }
         case Route::Empty: {
@@ -636,7 +475,9 @@ Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellati
         }
     }
     if(tokens) {
-        merge_preamble_macros(*session, *tokens);
+        if(auto preamble = query.preamble_index(session->path_id)) {
+            feature::merge_preamble_macros(*preamble, *tokens);
+        }
     }
     co_return tokens;
 }
@@ -659,49 +500,11 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
         co_return to_raw(
             feature::inlay_hints_to_protocol(hints, session->positions(), PositionEncoding::UTF16));
     }
-    // A reply names the same few types and parameters over and over.
-    llvm::DenseMap<std::pair<index::SymbolHash, Fid>, std::optional<protocol::Location>> located;
-    auto locate = [&](const feature::InlayHintPart& part) -> std::optional<protocol::Location> {
-        if(part.target) {
-            auto position = session->positions().position(*part.target, PositionEncoding::UTF16);
-            if(!position) {
-                return std::nullopt;
-            }
-            return protocol::Location{
-                .uri = feature::to_uri(project.file_table.display(session->path_id)),
-                .range = {*position, *position},
-            };
-        }
-        auto anchor = part.anchor.empty()
-                          ? session->path_id
-                          : project.file_table.intern(Spelling::absolute(part.anchor));
-        auto [it, inserted] = located.try_emplace({part.symbol, anchor});
-        if(!inserted) {
-            return it->second;
-        }
-        // The client runs go-to-definition at the location, so a declaration
-        // when one exists — the definition answers it — else the definition,
-        // which answers itself.
-        auto sites =
-            gather(part.symbol,
-                   anchor,
-                   [&](const index::IndexQuery& from, index::SymbolHash named) {
-                       for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-                           if(auto site = from.first_site(named, anchor, kind)) {
-                               return std::vector{std::move(*site)};
-                           }
-                       }
-                       return std::vector<index::Site>{};
-                   });
-        if(!sites.empty()) {
-            it->second = feature::to_location(sites.front());
-        }
-        return it->second;
-    };
     co_return to_raw(feature::inlay_hints_to_protocol(hints,
                                                       session->positions(),
                                                       PositionEncoding::UTF16,
-                                                      locate));
+                                                      peer_queries(),
+                                                      session->path_id));
 }
 
 Features::RawResult Features::folding_range(Ticket ticket,
@@ -720,11 +523,7 @@ Features::RawResult Features::folding_range(Ticket ticket,
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
-            auto entries = feature::extract_index_entries(*source->shard);
-            auto folds = feature::index_folding_ranges(
-                text_of(*session),
-                entries.decls,
-                [&](index::SymbolHash hash) { return query.symbol_info(hash, source->file); });
+            auto folds = feature::index_folding_ranges(text_of(*session), query, *source);
             session->index_served = true;
             co_return convert(folds);
         }
@@ -767,11 +566,10 @@ Features::RawResult Features::document_symbol(Ticket ticket,
     switch(co_await pick_route(ticket, {.full_lex = true, .await_cold_attempt = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
-            auto symbols = feature::index_document_symbols(
-                text_of(*session),
-                feature::extract_index_entries(*source->shard),
-                [&](index::SymbolHash hash) { return query.symbol_info(hash, source->file); },
-                project.config.document_symbols);
+            auto symbols = feature::index_document_symbols(text_of(*session),
+                                                           query,
+                                                           *source,
+                                                           project.config.document_symbols);
             session->index_served = true;
             co_return convert(symbols);
         }
@@ -910,103 +708,24 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             // Editor use: candidates must come from the same command (host
             // choice, chosen CDB entry) the open buffer compiles under.
             auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
-
-            auto search_config = project.toolchain.search_config(ref);
             vfs::Scope scope(project.file_table.dirs);
-            bool angled = (completing.kind == CompletionName::Kind::IncludeAngled);
-            auto candidates = complete_include_path(search_config,
-                                                    path::parent_path(path),
-                                                    completing.prefix,
-                                                    angled,
-                                                    scope);
-
-            // A directory continues the path, replacing a `/` already
-            // there; a header ends it and closes the directive, replacing
-            // the rest of the path through a closing delimiter already there.
-            llvm::StringRef text = session->text();
-            char closer = angled ? '>' : '"';
-            auto edit = [&](const IncludeCandidate& candidate) {
-                auto end = completing.replace.end;
-                if(candidate.is_directory) {
-                    if(text.substr(end).starts_with("/")) {
-                        end += 1;
-                    }
-                } else if(completing.closed) {
-                    end = static_cast<std::uint32_t>(text.find(closer, end)) + 1;
-                }
-                return protocol::TextEdit{
-                    .range = *map.range({completing.replace.begin, end}, PositionEncoding::UTF16),
-                    .new_text = candidate.name + (candidate.is_directory ? '/' : closer),
-                };
-            };
-            std::vector<protocol::CompletionItem> items;
-            items.reserve(candidates.size());
-            for(auto& c: candidates) {
-                protocol::CompletionItem item;
-                item.label = c.is_directory ? c.name + "/" : c.name;
-                item.kind = protocol::CompletionItemKind::File;
-                item.sort_text = std::format("{:010}", c.order);
-                item.text_edit = edit(c);
-                items.push_back(std::move(item));
-            }
-            co_return to_raw(
-                feature::completion_list(std::move(items), project.config.code_completion.limit));
+            co_return to_raw(feature::include_completion(completing,
+                                                         session->text(),
+                                                         map,
+                                                         path,
+                                                         project.toolchain.search_config(ref),
+                                                         scope,
+                                                         project.config.code_completion.limit));
         }
         if(completing.kind == CompletionName::Kind::Import ||
            completing.kind == CompletionName::Kind::ModuleDeclaration) {
-            std::vector<std::string> module_names;
-            if(completing.kind == CompletionName::Kind::ModuleDeclaration) {
-                module_names = complete_module_declaration(project.dep_graph, completing.prefix);
-            } else {
-                // The module declaration precedes every import, and the
-                // scan stops before the import being typed: the scanner
-                // rejects a buffer with an unclosed directive whole. Its
-                // lexer needs the NUL terminator a copy provides.
-                llvm::StringRef text = session->text();
-                auto declared =
-                    text.take_front(text.rfind('\n', completing.replace.begin) + 1).str();
-                // FIXME: a module declaration inside `#if` scans as none, so the unit's own
-                // module is offered and its partitions are not; an import typed in the global
-                // module fragment, where none may go, is offered names too.
-                module_names = complete_module_import(project.dep_graph,
-                                                      completing.prefix,
-                                                      scan_quick(declared));
-            }
-            // The unit's own partitions first, then the modules whose
-            // interface lies nearest the file: the fewest directories up
-            // from it to one holding the interface.
-            auto directory = path::parent_path(path);
-            auto up_to = [&](Fid provider) {
-                std::uint32_t up = 0;
-                auto interface = llvm::StringRef(project.file_table.resolve(provider));
-                path::walk_ancestors(directory, "", [&](llvm::StringRef dir) {
-                    up += 1;
-                    return !path::under(interface, dir);
-                });
-                return up;
-            };
-            auto distance = [&](llvm::StringRef name) {
-                if(name.starts_with(":")) {
-                    return std::uint32_t(0);
-                }
-                return std::ranges::min(project.dep_graph.lookup_module(name) |
-                                        std::views::transform(up_to));
-            };
-            std::vector<protocol::CompletionItem> items;
-            items.reserve(module_names.size());
-            for(auto& name: module_names) {
-                protocol::CompletionItem item;
-                item.label = name;
-                item.kind = protocol::CompletionItemKind::Module;
-                item.sort_text = std::format("{:05}", distance(name));
-                item.text_edit = protocol::TextEdit{
-                    .range = *map.range(completing.replace, PositionEncoding::UTF16),
-                    .new_text = completing.closed ? name : name + ";",
-                };
-                items.push_back(std::move(item));
-            }
-            co_return to_raw(
-                feature::completion_list(std::move(items), project.config.code_completion.limit));
+            co_return to_raw(feature::module_completion(completing,
+                                                        session->text(),
+                                                        map,
+                                                        path,
+                                                        project.dep_graph,
+                                                        project.file_table,
+                                                        project.config.code_completion.limit));
         }
     }
 
@@ -1014,7 +733,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     bool exhausted = true;
     if(auto prefix = offset ? feature::unqualified_prefix(session->text(), *offset) : std::nullopt;
        prefix && project.config.code_completion.all_scopes) {
-        exhausted = scope_candidates(*prefix, path_id, candidates);
+        exhausted =
+            feature::scope_candidates(query, project.dep_graph, *prefix, path_id, candidates);
     }
     auto result =
         co_await dispatcher
@@ -1024,8 +744,6 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
         co_return std::move(result.list);
     }
 
-    // Items naming what the file does not include yet take the `#include`
-    // of the header declaring it; one whose header is unknown goes.
     protocol::CompletionList list;
     [[maybe_unused]] auto decoded =
         kota::codec::json::from_string<kota::ipc::lsp_config>(result.list.data, list);
@@ -1035,88 +753,14 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     auto search = project.toolchain.search_config(
         contexts.resolve_command(path_id, directory, arguments).ref);
     vfs::Scope scope(project.file_table.dirs);
-    feature::IncludeInsertion insertion{.opens_fragment = result.include->opens_fragment};
-    std::erase_if(list.items, [&](protocol::CompletionItem& item) {
-        auto symbol = feature::data_symbol(item.data);
-        if(!symbol) {
-            return false;
-        }
-        item.data.reset();
-        auto candidate = std::ranges::find_if(candidates, [&](const feature::ScopeCandidate& each) {
-            return each.symbol == *symbol;
-        });
-        assert(candidate != candidates.end() && "the worker names a candidate it was given");
-        auto header = include_for(*candidate, result.include->c, path_id, search, scope);
-        if(!header) {
-            return true;
-        }
-        protocol::TextEdit edit{
-            .range = {result.include->position, result.include->position},
-            .new_text = insertion.text(*header),
-        };
-        item.additional_text_edits = std::vector{std::move(edit)};
-        return false;
-    });
-    auto limited =
-        feature::completion_list(std::move(list.items), project.config.code_completion.limit);
-    limited.is_incomplete = limited.is_incomplete || list.is_incomplete;
-    co_return to_raw(limited);
-}
-
-bool Features::scope_candidates(llvm::StringRef prefix,
-                                Fid file,
-                                std::vector<feature::ScopeCandidate>& candidates) const {
-    auto kind_of = [](SymbolKind kind) {
-        using Kind = protocol::CompletionItemKind;
-        switch(kind) {
-            case SymbolKind::Namespace: return Kind::Module;
-            case SymbolKind::Class:
-            case SymbolKind::Struct:
-            case SymbolKind::Union: return Kind::Class;
-            case SymbolKind::Enum: return Kind::Enum;
-            case SymbolKind::EnumMember: return Kind::EnumMember;
-            case SymbolKind::Function: return Kind::Function;
-            case SymbolKind::Variable: return Kind::Variable;
-            case SymbolKind::Type:
-            case SymbolKind::Concept: return Kind::TypeParameter;
-            default: return Kind::Text;
-        }
-    };
-    auto found = index::completables(query, prefix, file, scope_candidate_limit);
-    for(auto& [symbol, declared]: found.names) {
-        // A macro belongs to no namespace.
-        if(symbol.kind == SymbolKind::Macro) {
-            continue;
-        }
-        feature::ScopeCandidate candidate{
-            .name = symbol.name,
-            .kind = kind_of(symbol.kind),
-            .is_template = index::has_flag(symbol.flags, index::SymbolFlags::Template),
-            .deprecated = index::has_flag(symbol.flags, index::SymbolFlags::Deprecated),
-            .symbol = symbol.hash,
-        };
-        // An enumerator keeps its enumeration in the qualifier: the index
-        // does not tell a scoped one, which needs it, and an unscoped one
-        // takes it as well.
-        auto chain = query.container_chain(symbol.hash, declared);
-        auto namespaces = llvm::ArrayRef(chain);
-        if(!namespaces.empty() && namespaces.back().kind == SymbolKind::Enum) {
-            namespaces = namespaces.drop_back();
-        }
-        if(std::ranges::any_of(namespaces, [](const index::SymbolInfo& container) {
-               return container.kind != SymbolKind::Namespace;
-           })) {
-            continue;
-        }
-        for(auto& container: chain) {
-            candidate.scope.push_back(container.name);
-        }
-        if(declared.valid() && index::has_flag(symbol.flags, index::SymbolFlags::Exported)) {
-            candidate.module = project.dep_graph.module_of(declared).str();
-        }
-        candidates.push_back(std::move(candidate));
-    }
-    return found.exhausted;
+    co_return to_raw(feature::finish_completion(std::move(list),
+                                                *result.include,
+                                                candidates,
+                                                query,
+                                                path_id,
+                                                search,
+                                                scope,
+                                                project.config.code_completion.limit));
 }
 
 Features::RawResult Features::signature_help(std::shared_ptr<Session> session,
@@ -1159,21 +803,11 @@ Features::RawResult Features::references(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    auto sites = gather(cursor->symbols,
-                        path_id,
-                        [&](const index::IndexQuery& from, index::SymbolHash named) {
-                            return feature::references(from,
-                                                       {.symbols = {named}, .site = cursor->site},
-                                                       include_declaration);
-                        });
-    if(std::uint32_t limit = project.config.references.limit.value;
-       limit != 0 && sites.size() > limit) {
-        std::ranges::stable_partition(sites, [&](const index::Site& site) {
-            return site.file == path_id;
-        });
-        sites.erase(sites.begin() + limit, sites.end());
-    }
-    co_return to_raw(feature::to_locations(sites));
+    co_return to_raw(
+        feature::to_locations(feature::references(peer_queries(),
+                                                  *cursor,
+                                                  include_declaration,
+                                                  project.config.references.limit.value)));
 }
 
 Features::RawResult Features::document_highlight(Ticket ticket,
@@ -1205,23 +839,6 @@ static std::optional<kota::ipc::Error> refuse_rootless(const Project& project) {
     return std::nullopt;
 }
 
-/// `title` and up to a handful of `items`, one a line.
-static void list_notice(std::string& notice,
-                        std::string_view title,
-                        llvm::ArrayRef<std::string> items) {
-    constexpr std::size_t shown_items = 5;
-    if(items.empty()) {
-        return;
-    }
-    notice += std::format("{}{}:", notice.empty() ? "" : "\n", title);
-    for(auto& item: items.take_front(shown_items)) {
-        notice += std::format("\n  {}", item);
-    }
-    if(items.size() > shown_items) {
-        notice += std::format("\n  and {} more", items.size() - shown_items);
-    }
-}
-
 Features::RawResult Features::prepare_rename(Ticket ticket,
                                              Fid path_id,
                                              const protocol::Position& position) {
@@ -1247,7 +864,7 @@ Features::RawResult Features::prepare_rename(Ticket ticket,
     });
 }
 
-kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
+kota::task<std::optional<feature::Renamed>, kota::ipc::Error>
     Features::rename(Ticket ticket,
                      Fid path_id,
                      const protocol::Position& position,
@@ -1357,206 +974,12 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
                                       .read = read,
                                       .units_pending = clice::query::units_pending(project)});
     if(plan.blocked()) {
-        auto reasons = plan.conflicts;
-        if(!plan.stale.empty()) {
-            reasons.push_back(std::format(
-                "these files changed since they were indexed, or were never indexed: {}",
-                llvm::join(plan.stale, ", ")));
-        }
-        co_await kota::fail(rename_refused(
-            std::format("cannot rename `{}`: {}", plan.old_name, llvm::join(reasons, "; "))));
+        co_await kota::fail(rename_refused(feature::refusal(plan)));
     }
-
-    Renamed renamed;
-    using DocumentChange = protocol::variant<protocol::TextDocumentEdit,
-                                             protocol::CreateFile,
-                                             protocol::RenameFile,
-                                             protocol::DeleteFile>;
-    std::vector<DocumentChange> changes;
-    protocol::TextDocumentEdit* change = nullptr;
-    std::vector<std::string> heuristic;
-    for(auto& edit: plan.edits) {
-        if(!change || change->text_document.uri != feature::to_uri(edit.site.path)) {
-            auto document = sessions.find(edit.site.file);
-            protocol::TextDocumentEdit next{
-                .text_document = {.uri = feature::to_uri(edit.site.path),
-                                  .version =
-                                      document ? std::optional(document->version) : std::nullopt},
-            };
-            change = &std::get<protocol::TextDocumentEdit>(changes.emplace_back(std::move(next)));
-        }
-        change->edits.emplace_back(protocol::TextEdit{
-            .range = feature::to_range(edit.site),
-            .new_text = new_name,
-        });
-        if(edit.heuristic) {
-            heuristic.push_back(std::format("{}:{}", edit.site.path, edit.site.begin.line + 1));
-        }
-    }
-    renamed.edit.document_changes = std::move(changes);
-
-    list_notice(renamed.notice, std::format("Renaming `{}`", plan.old_name), plan.warnings);
-    std::vector<std::string> left;
-    for(auto& note: plan.unconfirmed) {
-        left.push_back(std::format("{}:{}: {} ({})",
-                                   note.site.path,
-                                   note.site.begin.line + 1,
-                                   note.line,
-                                   note.reason));
-    }
-    list_notice(renamed.notice, std::format("Spellings of `{}` left alone", plan.old_name), left);
-    list_notice(renamed.notice, "Renamed through a heuristic resolution", heuristic);
-    co_return renamed;
-}
-
-llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol, Fid anchor) {
-    llvm::SmallVector<Source> relevant;
-    auto others = peers();
-    if(others.empty()) {
-        return relevant;
-    }
-    // A peer knows the same entity when it declares it in a file this
-    // project declares it in: an unrelated project reusing the name (the
-    // same symbol id) declares it elsewhere.
-    auto declared = [&](const index::IndexQuery& from, index::SymbolHash hash) {
-        std::vector<index::Site> sites;
-        for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-            sites.append_range(from.sites(hash, anchor, kind));
-        }
-        return sites;
-    };
-    auto own = declared(query, symbol);
-    auto info = query.symbol_info(symbol, anchor);
-    llvm::SmallVector<Fid> files{anchor};
-    for(auto& site: own) {
-        files.push_back(site.file);
-    }
-    for(auto* peer: others) {
-        if(std::ranges::any_of(declared(*peer, symbol), [&](const index::Site& site) {
-               return std::ranges::contains(files, site.file);
-           })) {
-            relevant.push_back({peer, symbol});
-            continue;
-        }
-        // The same name at the same place: a file compiled under other
-        // flags can hold another declaration there.
-        auto same_name = [&](const index::Site& site) -> std::optional<index::SymbolHash> {
-            auto cursor = peer->symbol_at(site.file, site.range.begin);
-            if(!info || !cursor || !index::covers(site, cursor->site)) {
-                return std::nullopt;
-            }
-            for(auto candidate: cursor->symbols) {
-                auto named = peer->symbol_info(candidate, site.file);
-                if(named && named->name == info->name && named->kind == info->kind) {
-                    return candidate;
-                }
-            }
-            return std::nullopt;
-        };
-        for(auto& site: own) {
-            if(auto named = same_name(site)) {
-                relevant.push_back({peer, *named});
-                break;
-            }
-        }
-    }
-    return relevant;
-}
-
-llvm::SmallVector<Features::Source> Features::sources(index::SymbolHash symbol, Fid anchor) {
-    llvm::SmallVector<Source> all{
-        {&query, symbol}
-    };
-    all.append(peers_of(symbol, anchor));
-    return all;
-}
-
-std::string Features::qualified_name(index::SymbolHash symbol, Fid anchor) {
-    if(auto name = query.qualified_name(symbol, anchor); !name.empty()) {
-        return name;
-    }
-    for(auto* peer: peers()) {
-        if(auto name = peer->qualified_name(symbol, anchor); !name.empty()) {
-            return name;
-        }
-    }
-    return {};
-}
-
-bool Features::answers_for(const index::IndexQuery& from,
-                           Fid file,
-                           llvm::ArrayRef<Source> asked) const {
-    auto* serving = open_in(file);
-    return !serving || serving == &from || std::ranges::none_of(asked, [&](const Source& source) {
-        return source.query == serving;
+    co_return feature::rename_to_protocol(plan, new_name, [&](Fid file) -> std::optional<int> {
+        auto document = sessions.find(file);
+        return document ? std::optional(document->version) : std::nullopt;
     });
-}
-
-std::vector<index::Site> Features::gather(
-    llvm::ArrayRef<index::SymbolHash> symbols,
-    Fid anchor,
-    llvm::function_ref<std::vector<index::Site>(const index::IndexQuery&, index::SymbolHash)> ask) {
-    std::vector<index::Site> sites;
-    for(auto symbol: symbols) {
-        auto asked = sources(symbol, anchor);
-        for(auto& [from, named]: asked) {
-            for(auto& site: ask(*from, named)) {
-                if(answers_for(*from, site.file, asked)) {
-                    sites.push_back(std::move(site));
-                }
-            }
-        }
-    }
-    index::dedup_sites(sites);
-    return sites;
-}
-
-/// Whether two projects' answers name one entity: the same id, or the
-/// same name declared at the same place — an id hashing its file differs
-/// between a project compiling the file from inside its root and one
-/// compiling it from outside (Features::Source).
-static bool same_entity(const index::IndexQuery::Located& lhs,
-                        const index::IndexQuery::Located& rhs) {
-    return lhs.symbol.hash == rhs.symbol.hash ||
-           (lhs.symbol.name == rhs.symbol.name && lhs.site.file == rhs.site.file &&
-            lhs.site.range == rhs.site.range);
-}
-
-/// Fold one project's graph neighbours into `into`: the sites it may
-/// answer for (`keep`), one neighbour per symbol, a neighbour left with
-/// no site dropped.
-static void merge_edges(std::vector<feature::CallEdge>& into,
-                        std::vector<feature::CallEdge> edges,
-                        llvm::function_ref<bool(Fid)> keep) {
-    for(auto& edge: edges) {
-        std::erase_if(edge.sites, [&](const index::Site& site) { return !keep(site.file); });
-        if(edge.sites.empty()) {
-            continue;
-        }
-        auto known = std::ranges::find_if(into, [&](const feature::CallEdge& other) {
-            return same_entity(other.symbol, edge.symbol);
-        });
-        if(known == into.end()) {
-            into.push_back(std::move(edge));
-        } else {
-            known->sites.append_range(edge.sites);
-            index::dedup_sites(known->sites);
-        }
-    }
-}
-
-/// The same for a type hierarchy's neighbours, placed at one site each.
-static void merge_located(std::vector<index::IndexQuery::Located>& into,
-                          std::vector<index::IndexQuery::Located> located,
-                          llvm::function_ref<bool(Fid)> keep) {
-    for(auto& one: located) {
-        if(keep(one.site.file) &&
-           std::ranges::none_of(into, [&](const index::IndexQuery::Located& other) {
-               return same_entity(other, one);
-           })) {
-            into.push_back(std::move(one));
-        }
-    }
 }
 
 Features::RawResult Features::declaration(Ticket ticket,
@@ -1571,12 +994,7 @@ Features::RawResult Features::declaration(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(feature::to_locations(
-        gather(cursor->symbols,
-               path_id,
-               [&](const index::IndexQuery& from, index::SymbolHash named) {
-                   return feature::declaration(from, {.symbols = {named}, .site = cursor->site});
-               })));
+    co_return to_raw(feature::to_locations(feature::declaration(peer_queries(), *cursor)));
 }
 
 Features::RawResult Features::type_definition(Ticket ticket,
@@ -1591,12 +1009,7 @@ Features::RawResult Features::type_definition(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(
-        feature::to_locations(gather(cursor->symbols,
-                                     path_id,
-                                     [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                         return feature::type_definition(from, *cursor, named);
-                                     })));
+    co_return to_raw(feature::to_locations(feature::type_definition(peer_queries(), *cursor)));
 }
 
 Features::RawResult Features::implementation(Ticket ticket,
@@ -1611,34 +1024,7 @@ Features::RawResult Features::implementation(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    std::vector<index::Site> sites;
-    for(auto symbol: cursor->symbols) {
-        // What a name may mean — a dependent name's resolution, an overload
-        // set's candidates, a using-declaration's targets — implements it,
-        // as an override implements a virtual function.
-        if(feature::names_weakly(query, *cursor, symbol)) {
-            sites.append_range(
-                gather(symbol,
-                       path_id,
-                       [&](const index::IndexQuery& from, index::SymbolHash named) {
-                           return from.sites(named, path_id, RelationKind::Definition);
-                       }));
-        }
-        sites.append_range(
-            gather(symbol, path_id, [&](const index::IndexQuery& from, index::SymbolHash named) {
-                std::vector<index::Site> placed;
-                for(auto& located: feature::implementation(from, named, path_id)) {
-                    placed.push_back(std::move(located.site));
-                }
-                return placed;
-            }));
-    }
-    index::dedup_sites(sites);
-    // A function nothing overrides answers with its definition: standing
-    // on it, there is nowhere to go.
-    std::erase_if(sites,
-                  [&](const index::Site& site) { return index::covers(site, cursor->site); });
-    co_return to_raw(feature::to_locations(sites));
+    co_return to_raw(feature::to_locations(feature::implementation(peer_queries(), *cursor)));
 }
 
 Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
@@ -1652,101 +1038,32 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
     auto cursor = cursor_at(path_id, position);
     if(!cursor)
         co_return serde_raw{"null"};
-    // The item stands for the symbol, not the cursor: anchored at the
-    // symbol's canonical site, expanding from a use renders the same root
-    // as expanding from the declaration. A symbol no source places (an
-    // implicitly declared `operator delete`) has no item.
-    // A function's local has no caller but that function: it gets no item.
-    std::vector<protocol::CallHierarchyItem> items;
-    for(auto& located: query.resolve_at(*cursor)) {
-        auto kind = located.symbol.kind;
-        bool function = kind == SymbolKind::Function || kind == SymbolKind::Method ||
-                        kind == SymbolKind::Operator;
-        bool value = kind == SymbolKind::Field || kind == SymbolKind::EnumMember ||
-                     (kind == SymbolKind::Variable &&
-                      located.symbol.scope != index::SymbolScope::FunctionLocal);
-        if(function || value) {
-            items.push_back(feature::call_hierarchy_item(
-                located.symbol,
-                located.site,
-                located.extent,
-                qualified_name(located.symbol.hash, located.site.file)));
-        }
-    }
+    auto items = feature::call_hierarchy_items(peer_queries(), *cursor);
     if(items.empty())
         co_return serde_raw{"null"};
     co_return to_raw(items);
 }
 
-/// The symbol a hierarchy item stands for: its handle when intact, else
-/// the symbol at the item's recorded range in the file's serving source.
-static std::optional<index::SymbolHash>
-    item_symbol(const index::IndexQuery& query,
-                Fid path_id,
-                std::optional<index::IndexQuery::Cursor> at_range,
-                const std::optional<protocol::LSPAny>& data) {
-    if(auto hash = feature::data_symbol(data); hash && query.symbol_info(*hash, path_id)) {
-        return hash;
-    }
-    if(at_range) {
-        return at_range->symbols.front();
-    }
-    return std::nullopt;
-}
-
 Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
                                                       const protocol::CallHierarchyItem& item) {
-    auto symbol =
-        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
+    auto symbol = feature::item_symbol(query,
+                                       path_id,
+                                       cursor_at(path_id, item.selection_range.start),
+                                       item.data);
     if(!symbol)
         co_await kota::fail(item_not_resolved("call hierarchy"));
-
-    std::vector<feature::CallEdge> callers;
-    auto asked = sources(*symbol, path_id);
-    for(auto& [from, named]: asked) {
-        merge_edges(callers,
-                    feature::call_graph(*from, named, path_id, {.callees = false}).callers,
-                    [&](Fid file) { return answers_for(*from, file, asked); });
-    }
-    // TODO: callers are not capped: a function as common as llvm::errs() answers
-    // thousands, each with its call ranges and a qualified name; a cap would
-    // follow `[references] limit`.
-    std::vector<protocol::CallHierarchyIncomingCall> results;
-    for(auto& edge: callers) {
-        results.push_back({feature::call_hierarchy_item(
-                               edge.symbol.symbol,
-                               edge.symbol.site,
-                               edge.symbol.extent,
-                               qualified_name(edge.symbol.symbol.hash, edge.symbol.site.file)),
-                           feature::to_ranges(edge.sites)});
-    }
-    co_return to_raw(results);
+    co_return to_raw(feature::incoming_calls(peer_queries(), *symbol, path_id));
 }
 
 Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
                                                       const protocol::CallHierarchyItem& item) {
-    auto symbol =
-        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
+    auto symbol = feature::item_symbol(query,
+                                       path_id,
+                                       cursor_at(path_id, item.selection_range.start),
+                                       item.data);
     if(!symbol)
         co_await kota::fail(item_not_resolved("call hierarchy"));
-
-    std::vector<feature::CallEdge> callees;
-    auto asked = sources(*symbol, path_id);
-    for(auto& [from, named]: asked) {
-        merge_edges(callees,
-                    feature::call_graph(*from, named, path_id, {.callers = false}).callees,
-                    [&](Fid file) { return answers_for(*from, file, asked); });
-    }
-    std::vector<protocol::CallHierarchyOutgoingCall> results;
-    for(auto& edge: callees) {
-        results.push_back({feature::call_hierarchy_item(
-                               edge.symbol.symbol,
-                               edge.symbol.site,
-                               edge.symbol.extent,
-                               qualified_name(edge.symbol.symbol.hash, edge.symbol.site.file)),
-                           feature::to_ranges(edge.sites)});
-    }
-    co_return to_raw(results);
+    co_return to_raw(feature::outgoing_calls(peer_queries(), *symbol, path_id));
 }
 
 Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
@@ -1760,106 +1077,38 @@ Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
     auto cursor = cursor_at(path_id, position);
     if(!cursor)
         co_return serde_raw{"null"};
-    // Anchored at the canonical site, like the call hierarchy item.
-    std::vector<protocol::TypeHierarchyItem> items;
-    for(auto& located: query.resolve_at(*cursor)) {
-        auto kind = located.symbol.kind;
-        if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
-           kind == SymbolKind::Union) {
-            items.push_back(feature::type_hierarchy_item(
-                located.symbol,
-                located.site,
-                located.extent,
-                qualified_name(located.symbol.hash, located.site.file)));
-        }
-    }
+    auto items = feature::type_hierarchy_items(peer_queries(), *cursor);
     if(items.empty())
         co_return serde_raw{"null"};
     co_return to_raw(items);
 }
 
-static std::vector<protocol::TypeHierarchyItem>
-    type_items(llvm::ArrayRef<index::IndexQuery::Located> types,
-               llvm::function_ref<std::string(index::SymbolHash, Fid)> qualified_name) {
-    std::vector<protocol::TypeHierarchyItem> results;
-    for(auto& located: types) {
-        results.push_back(
-            feature::type_hierarchy_item(located.symbol,
-                                         located.site,
-                                         located.extent,
-                                         qualified_name(located.symbol.hash, located.site.file)));
-    }
-    return results;
-}
-
 Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
                                                         const protocol::TypeHierarchyItem& item) {
-    auto symbol =
-        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
+    auto symbol = feature::item_symbol(query,
+                                       path_id,
+                                       cursor_at(path_id, item.selection_range.start),
+                                       item.data);
     if(!symbol)
         co_await kota::fail(item_not_resolved("type hierarchy"));
-    std::vector<index::IndexQuery::Located> supertypes;
-    auto asked = sources(*symbol, path_id);
-    for(auto& [from, named]: asked) {
-        merge_located(
-            supertypes,
-            feature::type_hierarchy(*from, named, path_id, {.subtypes = false}).supertypes,
-            [&](Fid file) { return answers_for(*from, file, asked); });
-    }
-    co_return to_raw(type_items(supertypes, [&](index::SymbolHash hash, Fid anchor) {
-        return qualified_name(hash, anchor);
-    }));
+    co_return to_raw(feature::supertypes(peer_queries(), *symbol, path_id));
 }
 
 Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
                                                       const protocol::TypeHierarchyItem& item) {
-    auto symbol =
-        item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
+    auto symbol = feature::item_symbol(query,
+                                       path_id,
+                                       cursor_at(path_id, item.selection_range.start),
+                                       item.data);
     if(!symbol)
         co_await kota::fail(item_not_resolved("type hierarchy"));
-    std::vector<index::IndexQuery::Located> subtypes;
-    auto asked = sources(*symbol, path_id);
-    for(auto& [from, named]: asked) {
-        merge_located(
-            subtypes,
-            feature::type_hierarchy(*from, named, path_id, {.supertypes = false}).subtypes,
-            [&](Fid file) { return answers_for(*from, file, asked); });
-    }
-    co_return to_raw(type_items(subtypes, [&](index::SymbolHash hash, Fid anchor) {
-        return qualified_name(hash, anchor);
-    }));
+    co_return to_raw(feature::subtypes(peer_queries(), *symbol, path_id));
 }
 
-std::vector<Features::WorkspaceSymbol> Features::workspace_symbol(llvm::StringRef text) {
-    std::vector<WorkspaceSymbol> results;
-    auto parsed = index::SymbolQuery::parse(text);
-    if(!parsed) {
-        return results;
-    }
-    parsed->resolve_paths(Spelling(project.config.workspace_root));
-    // Some clients (VS Code) filter the replies against the query text
-    // again, where a bare name would fail a qualified query: those
-    // replies carry the qualified name.
-    bool qualified = parsed->absolute || !parsed->scope.empty();
-    for(auto& located: index::search(query, *parsed, workspace_symbol_limit)) {
-        // Every project answers workspace/symbol (MasterServer): an open
-        // file only from the project serving its buffer.
-        if(auto* serving = open_in(located.site.file); serving && serving != &query) {
-            continue;
-        }
-        auto container = query.container_name(located.symbol.hash, located.site.file);
-        auto info = feature::symbol_information(located.symbol, located.site, container);
-        if(qualified && !container.empty()) {
-            info.name = container + "::" + info.name;
-        }
-        auto source = query.serving(located.site.file);
-        results.push_back({
-            .info = std::move(info),
-            .file = project.index.portable(project.file_table.resolve(located.site.file)),
-            .content = source ? source->shard->content_hash() : 0,
-        });
-    }
-    return results;
+std::vector<feature::WorkspaceSymbol> Features::workspace_symbol(llvm::StringRef text) {
+    return feature::workspace_symbols(peer_queries(),
+                                      text,
+                                      Spelling(project.config.workspace_root));
 }
 
 }  // namespace clice

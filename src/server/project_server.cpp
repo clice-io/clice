@@ -94,10 +94,9 @@ void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init
     project.config =
         Config::load_from_workspace(root, &config_issues, &config_path, /*finalized=*/false);
     for(auto& issue: config_issues) {
-        LOG_GUIDANCE(
-            "Configuration problem in {}: {}",
-            project.file_table.display(project.file_table.intern(Spelling::absolute(issue.file))),
-            issue.message);
+        LOG_GUIDANCE("Configuration problem in {}: {}",
+                     project.file_table.display_identity(issue.file),
+                     issue.message);
     }
     std::string own_cache_dir = project.config.project.cache_dir;
     if(init_options) {

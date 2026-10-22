@@ -6,6 +6,8 @@ module clice:feature.semantic_tokens;
 
 import :compile.compilation;
 import :feature.index_entries;
+import :index.query;
+import :index.tu_index;
 import :semantic.token_class;
 import :syntax.position;
 import :syntax.source_text;
@@ -132,5 +134,18 @@ auto index_semantic_tokens(SourceText& source,
                            const IndexEntries& entries,
                            IndexSymbolResolver resolve,
                            const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
+
+/// The same from the index serving the file, `source`'s text the one it
+/// indexed or a buffer byte-identical to it.
+auto index_semantic_tokens(SourceText& source,
+                           const index::IndexQuery& query,
+                           const index::IndexSource& index,
+                           const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
+
+/// Adds to the macros the preamble region names the modifiers their
+/// definitions give, which only the PCH's index (`preamble`) knows: neither
+/// the worker's AST nor the per-edit index covers the directives the
+/// preamble ran.
+void merge_preamble_macros(const index::TUIndex& preamble, std::vector<SemanticToken>& tokens);
 
 }  // namespace clice::feature

@@ -8,6 +8,7 @@ module;
 module clice:feature.navigation;
 
 import :index.instantiation_shard;
+import :index.peer_queries;
 import :index.query;
 import :index.shard;
 import :index.site;
@@ -124,5 +125,38 @@ bool names_weakly(const index::IndexQuery& index,
 std::vector<index::IndexQuery::Located> implementation(const index::IndexQuery& index,
                                                        index::SymbolHash hash,
                                                        Fid anchor);
+
+/// The same answers asked of every project knowing each symbol under the
+/// cursor (index::PeerQueries).
+
+/// Go-to-definition: each symbol answers for itself. A definition another
+/// project compiles (a library's source beside the application including
+/// its header) outranks the declarations this project alone can offer;
+/// standing on a definition, or with none anywhere, the declarations
+/// answer too (definition's alternation).
+std::vector<index::Site> definition(const index::PeerQueries& queries,
+                                    const index::IndexQuery::Cursor& cursor);
+
+/// At most `limit` references (0 for no limit), those in the cursor's file
+/// first when they are cut.
+std::vector<index::Site> references(const index::PeerQueries& queries,
+                                    const index::IndexQuery::Cursor& cursor,
+                                    bool include_declaration,
+                                    std::uint32_t limit);
+
+std::vector<index::Site> declaration(const index::PeerQueries& queries,
+                                     const index::IndexQuery::Cursor& cursor);
+
+std::vector<index::Site> type_definition(const index::PeerQueries& queries,
+                                         const index::IndexQuery::Cursor& cursor);
+
+/// What implements the symbols, and what a name may mean
+/// without naming it for certain (names_weakly) — a dependent name's
+/// resolution, an overload set's candidates, a using-declaration's
+/// targets — as an override implements a virtual function. The cursor's
+/// own site drops out: standing on a function nothing overrides, there is
+/// nowhere to go.
+std::vector<index::Site> implementation(const index::PeerQueries& queries,
+                                        const index::IndexQuery::Cursor& cursor);
 
 }  // namespace clice::feature

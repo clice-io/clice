@@ -4,9 +4,16 @@ module;
 
 module clice:feature.code_completion;
 
+import :command.search_config;
 import :compile.compilation;
 import :feature.documentation;
+import :index.query;
+import :syntax.completion;
+import :syntax.dependency_graph;
 import :syntax.position;
+import :vfs.dir_cache;
+import :vfs.file_table;
+import :vfs.ids;
 
 namespace clice::feature {
 
@@ -155,5 +162,54 @@ auto unqualified_prefix(llvm::StringRef text, std::uint32_t offset)
 /// stay, ties by label, and a list cut short is marked incomplete.
 auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
     -> protocol::CompletionList;
+
+/// The most names of other namespaces one completion offers from the index
+/// (CodeCompletionOptions::all_scopes).
+constexpr inline std::size_t scope_candidate_limit = 100;
+
+/// The names of other namespaces the index offers where `prefix` is
+/// completed unqualified in `file`, appended to `candidates`; whether
+/// they are all of them.
+bool scope_candidates(const index::IndexQuery& query,
+                      const DependencyGraph& graph,
+                      llvm::StringRef prefix,
+                      Fid file,
+                      std::vector<ScopeCandidate>& candidates);
+
+/// A completion's reply finished (Completion): an item naming what the
+/// file does not include yet takes the `#include` of the header declaring
+/// it, at `include`; one whose header is unknown goes. The
+/// list is then cut to `limit`.
+auto finish_completion(protocol::CompletionList list,
+                       const IncludePlace& include,
+                       llvm::ArrayRef<ScopeCandidate> candidates,
+                       const index::IndexQuery& query,
+                       Fid file,
+                       const SearchConfig& search,
+                       vfs::Scope& scope,
+                       std::uint32_t limit) -> protocol::CompletionList;
+
+/// The paths an `#include` being typed (`completing`) may go on with in
+/// `text`, the file at `path`, as `search` finds them: a directory goes on
+/// past its `/`, a header closes the directive.
+auto include_completion(const CompletionName& completing,
+                        llvm::StringRef text,
+                        const PositionMap& map,
+                        llvm::StringRef path,
+                        const SearchConfig& search,
+                        vfs::Scope& scope,
+                        std::uint32_t limit) -> protocol::CompletionList;
+
+/// The modules an `import` or a module declaration being typed
+/// (`completing`) in `text`, the file at `path`, may name: the unit's own
+/// partitions first, then the modules whose interface lies nearest the
+/// file — the fewest directories up from it to one holding the interface.
+auto module_completion(const CompletionName& completing,
+                       llvm::StringRef text,
+                       const PositionMap& map,
+                       llvm::StringRef path,
+                       const DependencyGraph& graph,
+                       FileTable& files,
+                       std::uint32_t limit) -> protocol::CompletionList;
 
 }  // namespace clice::feature

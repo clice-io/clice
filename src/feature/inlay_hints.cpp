@@ -6,7 +6,11 @@ module clice;
 
 import :compile.compilation;
 import :feature.inlay_hints;
+import :feature.protocol;
 import :index.indexer;
+import :index.peer_queries;
+import :index.query;
+import :index.site;
 import :index.symbol;
 import :index.tu_index;
 import :semantic.decls;
@@ -15,8 +19,11 @@ import :semantic.display;
 import :semantic.identity;
 import :semantic.resolver;
 import :semantic.semantics;
+import :semantic.symbol;
 import :semantic.types;
 import :syntax.lexical_scan;
+import :vfs.file_table;
+import :vfs.path;
 
 namespace clice::feature {
 
@@ -1902,6 +1909,49 @@ auto inlay_hints_to_protocol(
     }
 
     return result;
+}
+
+auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
+                             const PositionMap& map,
+                             PositionEncoding encoding,
+                             const index::PeerQueries& queries,
+                             Fid file) -> std::vector<protocol::InlayHint> {
+    auto& files = queries.own.file_table();
+    // A reply names the same few types and parameters over and over.
+    llvm::DenseMap<std::pair<index::SymbolHash, Fid>, std::optional<protocol::Location>> located;
+    auto locate = [&](const InlayHintPart& part) -> std::optional<protocol::Location> {
+        if(part.target) {
+            auto position = map.position(*part.target, encoding);
+            if(!position) {
+                return std::nullopt;
+            }
+            return protocol::Location{
+                .uri = to_uri(files.display(file)),
+                .range = {*position, *position},
+            };
+        }
+        auto anchor = part.anchor.empty() ? file : files.intern(Spelling::absolute(part.anchor));
+        auto [it, inserted] = located.try_emplace({part.symbol, anchor});
+        if(!inserted) {
+            return it->second;
+        }
+        auto sites = queries.gather(part.symbol,
+                                    anchor,
+                                    [&](const index::IndexQuery& from, index::SymbolHash named) {
+                                        for(auto kind:
+                                            {RelationKind::Declaration, RelationKind::Definition}) {
+                                            if(auto site = from.first_site(named, anchor, kind)) {
+                                                return std::vector{std::move(*site)};
+                                            }
+                                        }
+                                        return std::vector<index::Site>{};
+                                    });
+        if(!sites.empty()) {
+            it->second = to_location(sites.front());
+        }
+        return it->second;
+    };
+    return inlay_hints_to_protocol(hints, map, encoding, locate);
 }
 
 }  // namespace clice::feature

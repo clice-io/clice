@@ -6,6 +6,7 @@ module clice:syntax.include_resolver;
 
 import :command.search_config;
 import :vfs.dir_cache;
+import :vfs.path;
 
 namespace clice {
 
@@ -75,5 +76,21 @@ std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
                                                     llvm::StringRef directory,
                                                     const ResolvedSearchConfig& config,
                                                     vfs::Scope& scope);
+
+/// The argument, quotes or brackets included, an include directive of
+/// `file` names `header` by, the header by identity and the file as the
+/// build reaches it: its path below the file's directory (where a quoted
+/// include looks first), else the shortest path below one of the command's
+/// search directories (resolved, however the command spells them), angled
+/// past the quoted segment — whichever of these the command's lookup order
+/// actually resolves to `header`, since a shorter one can name a same-named
+/// file in an earlier directory. None when that names a library's internal
+/// header, which its public headers include and its users never should:
+/// libstdc++'s and glibc's `bits/`, libc++'s `__`-prefixed directories and
+/// files.
+std::optional<std::string> include_argument(CanonicalRef header,
+                                            const SearchConfig& search,
+                                            const Spelling& file,
+                                            vfs::Scope& scope);
 
 }  // namespace clice

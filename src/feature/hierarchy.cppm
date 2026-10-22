@@ -7,6 +7,7 @@ module;
 
 module clice:feature.hierarchy;
 
+import :index.peer_queries;
 import :index.query;
 import :index.site;
 import :index.symbol;
@@ -67,17 +68,46 @@ TypeHierarchy type_hierarchy(const index::IndexQuery& index,
                              Fid anchor,
                              TypeHierarchyOptions options);
 
-/// Hierarchy items span the whole declaration (`extent`) and select its
-/// name (`site`); the detail shows a symbol's `qualified` name inside a
-/// namespace or a class, and a function's signature. They carry their
-/// symbol handle in `data` (see data_symbol).
-protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolInfo& symbol,
-                                                const index::Site& site,
-                                                const index::Site& extent,
-                                                llvm::StringRef qualified);
-protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolInfo& symbol,
-                                                const index::Site& site,
-                                                const index::Site& extent,
-                                                llvm::StringRef qualified);
+/// The items a hierarchy prepared at a cursor starts from, one per symbol
+/// under it: functions, and the variables, fields and enumerators the
+/// functions using them call; types for a type hierarchy. An item spans
+/// the whole declaration and selects its name; its detail shows the
+/// symbol's qualified name inside a namespace or a class, and a function's
+/// signature; it carries the symbol's handle in `data` (see data_symbol).
+/// It stands for the symbol, not the cursor: anchored at the symbol's
+/// canonical site, expanding from a use renders the same root as expanding
+/// from the declaration. A symbol no source places (an implicitly declared
+/// `operator delete`) has no item, nor has a function's local, which no
+/// function but its own calls.
+std::vector<protocol::CallHierarchyItem>
+    call_hierarchy_items(const index::PeerQueries& queries,
+                         const index::IndexQuery::Cursor& cursor);
+std::vector<protocol::TypeHierarchyItem>
+    type_hierarchy_items(const index::PeerQueries& queries,
+                         const index::IndexQuery::Cursor& cursor);
+
+/// The symbol a hierarchy item stands for: its handle when intact, else
+/// the symbol at the item's recorded range (`at_range`) in the serving
+/// source of `file`.
+std::optional<index::SymbolHash> item_symbol(const index::IndexQuery& query,
+                                             Fid file,
+                                             std::optional<index::IndexQuery::Cursor> at_range,
+                                             const std::optional<protocol::LSPAny>& data);
+
+/// A symbol's neighbours in the call graph and the type hierarchy, asked
+/// of every project knowing it (index::PeerQueries): each project's in the
+/// files it answers for, the same entity once.
+std::vector<protocol::CallHierarchyIncomingCall> incoming_calls(const index::PeerQueries& queries,
+                                                                index::SymbolHash symbol,
+                                                                Fid file);
+std::vector<protocol::CallHierarchyOutgoingCall> outgoing_calls(const index::PeerQueries& queries,
+                                                                index::SymbolHash symbol,
+                                                                Fid file);
+std::vector<protocol::TypeHierarchyItem> supertypes(const index::PeerQueries& queries,
+                                                    index::SymbolHash symbol,
+                                                    Fid file);
+std::vector<protocol::TypeHierarchyItem> subtypes(const index::PeerQueries& queries,
+                                                  index::SymbolHash symbol,
+                                                  Fid file);
 
 }  // namespace clice::feature

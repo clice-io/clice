@@ -17,7 +17,6 @@ import :feature.code_completion;
 import :feature.document_links;
 import :feature.document_symbols;
 import :feature.folding_ranges;
-import :feature.formatting;
 import :feature.hover;
 import :feature.index_check;
 import :feature.inlay_hints;
@@ -331,13 +330,8 @@ std::optional<kota::codec::RawValue> run_code_action(const FeatureParams& params
                 return false;
             };
             if(auto* request = std::get_if<feature::DefineRequest>(&*action.index)) {
-                auto text = feature::assemble_definitions(request->pieces, keep);
-                raw.edits = feature::format_edits(
-                    path,
-                    unit.focus_file().content(),
-                    {
-                        {request->range, request->before + *text + request->after}
-                });
+                raw.edits =
+                    *feature::define_edits(*request, path, unit.focus_file().content(), keep);
             } else if(auto* host = std::get_if<feature::DefineInHostRequest>(&*action.index)) {
                 raw.host_definitions.emplace();
                 for(const auto& piece: host->pieces) {

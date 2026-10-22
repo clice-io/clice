@@ -6,6 +6,8 @@ module clice:feature.protocol;
 
 import :index.site;
 import :index.symbol;
+import :syntax.position;
+import :syntax.token;
 import :vfs.path;
 
 namespace clice::feature {
@@ -30,6 +32,13 @@ protocol::Range to_range(const index::Site& site);
 protocol::Location to_location(const index::Site& site);
 std::vector<protocol::Location> to_locations(llvm::ArrayRef<index::Site> sites);
 std::vector<protocol::Range> to_ranges(llvm::ArrayRef<index::Site> sites);
+
+/// The replacements as LSP edits, all of them or none: half an edit set
+/// would corrupt the buffer.
+std::optional<std::vector<protocol::TextEdit>>
+    to_text_edits(llvm::ArrayRef<TextReplacement> replacements,
+                  const PositionMap& map,
+                  PositionEncoding encoding);
 
 /// The symbol an item's `data` carries, if intact: a prepared hierarchy
 /// item's, or a completion item's whose `#include` the server adds. Items

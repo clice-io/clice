@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :feature.folding_ranges;
 import :feature.index_entries;
+import :index.query;
 import :semantic.decls;
 import :semantic.semantics;
 import :support.text;
@@ -1084,6 +1085,15 @@ auto index_folding_ranges(SourceText& source,
     ranges.erase(duplicates.begin(), duplicates.end());
 
     return ranges;
+}
+
+auto index_folding_ranges(SourceText& source,
+                          const index::IndexQuery& query,
+                          const index::IndexSource& index) -> std::vector<FoldingRange> {
+    return index_folding_ranges(
+        source,
+        extract_index_entries(*index.shard).decls,
+        [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });
 }
 
 }  // namespace clice::feature

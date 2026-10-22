@@ -87,6 +87,10 @@ struct FileTable {
     /// this way; a lookup spelling (spelling()) never does.
     std::string display(Fid fid) const;
 
+    /// display() of the file a worker or an index names by its identity,
+    /// interned first, so that an open document shows its own spelling.
+    std::string display_identity(llvm::StringRef identity);
+
     /// A path by its identity, under the spelling of the workspace folder
     /// it lies in (a folder opened through a symlink) or as it is outside
     /// every folder.

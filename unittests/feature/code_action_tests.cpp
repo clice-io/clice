@@ -9,7 +9,6 @@ module;
 module clice;
 
 import :feature.code_action.code_action;
-import :feature.formatting;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -83,15 +82,12 @@ void apply(llvm::StringRef marker, llvm::StringRef title) {
     if(action->index) {
         auto* request = std::get_if<feature::DefineRequest>(&*action->index);
         ZASSERT(request != nullptr);
-        auto text =
-            feature::assemble_definitions(request->pieces, [](std::uint64_t) { return false; });
-        ZASSERT(text);
-        edits =
-            feature::format_edits(unit->file_path(unit->focus_file().file()),
-                                  original,
-                                  {
-                                      {request->range, request->before + *text + request->after}
-        });
+        auto defined = feature::define_edits(*request,
+                                             unit->file_path(unit->focus_file().file()),
+                                             original,
+                                             [](std::uint64_t) { return false; });
+        ZASSERT(defined);
+        edits = *defined;
     }
     std::ranges::sort(edits, [](const auto& lhs, const auto& rhs) {
         return lhs.range.begin > rhs.range.begin;

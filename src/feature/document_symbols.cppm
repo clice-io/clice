@@ -6,6 +6,7 @@ module clice:feature.document_symbols;
 
 import :compile.compilation;
 import :feature.index_entries;
+import :index.query;
 import :semantic.symbol;
 import :syntax.lexical_scan;
 import :syntax.position;
@@ -131,6 +132,12 @@ auto document_symbols_to_information(llvm::ArrayRef<DocumentSymbol> symbols,
 auto index_document_symbols(SourceText& source,
                             const IndexEntries& entries,
                             IndexSymbolResolver resolve,
+                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
+
+/// The same from the index serving the file (see index_semantic_tokens).
+auto index_document_symbols(SourceText& source,
+                            const index::IndexQuery& query,
+                            const index::IndexSource& index,
                             const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
 }  // namespace clice::feature

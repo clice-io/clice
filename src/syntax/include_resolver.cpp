@@ -6,6 +6,7 @@ module clice;
 
 import :syntax.include_resolver;
 import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -155,6 +156,64 @@ std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
                            std::nullopt,
                            config,
                            scope);
+}
+
+/// Whether an include's path names a library's internal header (see
+/// include_argument).
+static bool internal_header(bool angled, llvm::StringRef name) {
+    return angled && std::any_of(llvm::sys::path::begin(name),
+                                 llvm::sys::path::end(name),
+                                 [](llvm::StringRef part) {
+                                     return part == "bits" || part.starts_with("__");
+                                 });
+}
+
+std::optional<std::string> include_argument(CanonicalRef header,
+                                            const SearchConfig& search,
+                                            const Spelling& file,
+                                            vfs::Scope& scope) {
+    auto below = [&](CanonicalRef root) -> std::optional<llvm::StringRef> {
+        if(root.empty() || !path::under(header, root) || header.size() <= root.size()) {
+            return std::nullopt;
+        }
+        return llvm::StringRef(header).drop_front(root.size()).ltrim("/\\");
+    };
+
+    struct Candidate {
+        llvm::StringRef name;
+        bool angled;
+    };
+
+    std::vector<Candidate> candidates;
+    auto directory = file.parent();
+    if(auto relative = below(CanonicalPath(directory))) {
+        candidates.push_back({*relative, false});
+    }
+    std::vector<CanonicalPath> dirs;
+    for(auto& dir: search.dirs) {
+        dirs.push_back(CanonicalPath(Spelling::absolute(dir.path)));
+    }
+    for(auto [index, dir]: std::views::enumerate(dirs)) {
+        if(auto relative = below(dir)) {
+            candidates.push_back(
+                {*relative, static_cast<std::size_t>(index) >= search.angled_start_idx});
+        }
+    }
+    std::ranges::stable_sort(candidates, {}, [](const Candidate& candidate) {
+        return candidate.name.size();
+    });
+    for(const auto& candidate: candidates) {
+        auto resolved =
+            resolve_include(candidate.name, candidate.angled, directory, false, 0, search, scope);
+        if(resolved && CanonicalPath(Spelling::absolute(resolved->path)) == header) {
+            if(internal_header(candidate.angled, candidate.name)) {
+                return std::nullopt;
+            }
+            return candidate.angled ? std::format("<{}>", candidate.name)
+                                    : std::format("\"{}\"", candidate.name);
+        }
+    }
+    return std::nullopt;
 }
 
 }  // namespace clice

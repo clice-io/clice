@@ -4,13 +4,15 @@ module;
 
 module clice:server.features;
 
-import :command.search_config;
 import :feature.code_completion;
 import :feature.diagnostics;
 import :feature.document_symbols;
 import :feature.folding_ranges;
 import :feature.hover;
+import :feature.rename;
 import :feature.semantic_tokens;
+import :feature.workspace_symbols;
+import :index.peer_queries;
 import :index.query;
 import :project.project;
 import :sched.index.pump;
@@ -20,7 +22,6 @@ import :server.editor_context;
 import :server.session;
 import :server.session_store;
 import :syntax.source_text;
-import :vfs.dir_cache;
 
 namespace clice {
 
@@ -68,15 +69,9 @@ public:
 
     using RawResult = Dispatcher::RawResult;
 
-    /// The most workspace/symbol answers, from one project or all.
-    constexpr static std::size_t workspace_symbol_limit = 100;
-
     /// The other projects' index queries, and the query of the project a
     /// file open in the editor is routed to (null for a closed file), both
-    /// connected by the master. A symbol's navigation answers are also sought
-    /// in the peers declaring it in the same file — an application and the
-    /// library beside it see each other's uses — and an open file answers
-    /// only through the project serving its buffer (see gather).
+    /// connected by the master (see index::PeerQueries).
     std::function<llvm::SmallVector<const index::IndexQuery*>()> peers;
     std::function<const index::IndexQuery*(Fid)> open_in;
 
@@ -216,59 +211,20 @@ public:
     /// or an error saying why the symbol there cannot be renamed.
     RawResult prepare_rename(Ticket ticket, Fid path_id, const protocol::Position& position);
 
-    /// The edits of a rename, each file's versioned against its open
-    /// buffer, and what the user should hear about them: the warnings,
-    /// the tokens spelling the old name that were left alone, the edits
-    /// reached through a heuristic resolution.
-    struct Renamed {
-        protocol::WorkspaceEdit edit;
-        std::string notice;
-    };
-
     /// Nullopt when nothing at the position can be renamed or the file
     /// fails to compile; an error names the conflicts, or the files whose
     /// index is not current, that keep the rename from being made.
-    kota::task<std::optional<Renamed>, kota::ipc::Error> rename(Ticket ticket,
-                                                                Fid path_id,
-                                                                const protocol::Position& position,
-                                                                std::string new_name);
-
-    struct WorkspaceSymbol {
-        protocol::SymbolInformation info;
-        /// Its file's name relative to the project (path::portable) and the
-        /// hash of the text indexed, which another checkout of the same code
-        /// shares.
-        std::string file;
-        std::uint64_t content = 0;
-    };
+    kota::task<std::optional<feature::Renamed>, kota::ipc::Error>
+        rename(Ticket ticket,
+               Fid path_id,
+               const protocol::Position& position,
+               std::string new_name);
 
     /// The project's symbols matching `query`, best first; the master
     /// merges every project's list.
-    std::vector<WorkspaceSymbol> workspace_symbol(llvm::StringRef query);
+    std::vector<feature::WorkspaceSymbol> workspace_symbol(llvm::StringRef query);
 
 private:
-    /// The most names of other namespaces one completion offers from the
-    /// index (CodeCompletionOptions::all_scopes).
-    constexpr static std::size_t scope_candidate_limit = 100;
-
-    /// The names of other namespaces the index offers where `prefix` is
-    /// completed unqualified in `file`, appended to `candidates`; whether
-    /// they are all of them.
-    bool scope_candidates(llvm::StringRef prefix,
-                          Fid file,
-                          std::vector<feature::ScopeCandidate>& candidates) const;
-
-    /// The header, quotes or brackets included, an `#include` for
-    /// `candidate` names in `file`, as `search` finds it: a standard name's
-    /// from the standard library's own table (the C library's for a C
-    /// file), another's the header the index says declares it. None when
-    /// only a library's internal header is known.
-    std::optional<std::string> include_for(const feature::ScopeCandidate& candidate,
-                                           bool c,
-                                           Fid file,
-                                           const SearchConfig& search,
-                                           vfs::Scope& scope) const;
-
     /// Whether the worker's AST can answer for this session right now:
     /// compiled, current, and its compile not barred by a crash (the bar
     /// sits before ensure_compiled's clean-AST fast path, so a barred
@@ -350,82 +306,28 @@ private:
     std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
                                                        const protocol::Position& position) const;
 
+    /// This project's query and its peers', for one synchronous read: the
+    /// peers are those the master serves when it is taken.
+    index::PeerQueries peer_queries() const;
+
     /// The session's text, read in the dialect the server lexes it in
     /// (EditorContext::dialect).
     SourceText& text_of(Session& session);
 
-    /// The read-only hover card for the symbol under the cursor: name and
-    /// kind from the symbol tables, definition text sliced from stored
-    /// content, the documentation read from the indexed text. No Sema
-    /// products — see feature::index_hover.
+    /// The card the index gives for the symbol at a position of the
+    /// session's serving source (feature::index_hover).
     std::optional<feature::HoverInfo> index_hover_card(const Session& session,
                                                        const protocol::Position& position);
-
-    /// A module name's card: the module and the unit defining it, named
-    /// the way the user knows the file. Both routes answer it from the
-    /// index, which knows the defining unit across files.
-    feature::HoverInfo module_hover_card(const index::IndexQuery::Cursor& cursor,
-                                         const index::SymbolInfo& module);
 
     /// The preamble include links of a session's active PCH; empty when
     /// there is no PCH or its preamble no longer matches the buffer.
     std::vector<index::DocumentLink> find_preamble_links(const Session& session);
-
-    /// The modifiers a macro named in the preamble region takes from its
-    /// definition, which only the PCH's index knows: neither the worker's
-    /// AST nor the per-edit index covers the directives the preamble ran.
-    void merge_preamble_macros(const Session& session, std::vector<feature::SemanticToken>& tokens);
 
     /// The include-like directive links of a session's whole buffer: the
     /// PCH's cached preamble links, then the worker's AST's for the rest.
     /// Module names go through the ordinary index pipeline, not these.
     kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
         directive_links(const Ticket& ticket, kota::cancellation_token token);
-
-    /// Go-to-definition and hover on a directive's argument, naming its
-    /// target the way the user knows the file.
-    std::vector<protocol::Location> directive_definition(const index::DocumentLink& link);
-    std::optional<protocol::Hover> directive_hover(const Session& session,
-                                                   const index::DocumentLink& link,
-                                                   protocol::MarkupKind markup);
-
-    /// A project asked about a symbol, and the symbol as that project
-    /// names it: an id hashing its file (a macro, a file-local name) takes
-    /// the file relative to the compiling project's root, so a project
-    /// compiling the file from outside its root names it by another id.
-    struct Source {
-        const index::IndexQuery* query;
-        index::SymbolHash symbol;
-    };
-
-    /// The peers knowing the entity `symbol` names here: declaring it in a
-    /// file this project declares it in, or in `anchor`, the file it was
-    /// found in — under the same id or, at the same place in a file this
-    /// project declares it in, under another.
-    llvm::SmallVector<Source> peers_of(index::SymbolHash symbol, Fid anchor);
-
-    /// This project's query, then the peers of `symbol` (peers_of).
-    llvm::SmallVector<Source> sources(index::SymbolHash symbol, Fid anchor);
-
-    /// A symbol's qualified name, from this project or else the first peer
-    /// that knows it: a neighbour only a peer indexes carries its id.
-    /// `anchor` as for IndexQuery::symbol_info.
-    std::string qualified_name(index::SymbolHash symbol, Fid anchor);
-
-    /// Whether `from`'s shard for `file` stands among the answers of `asked`:
-    /// any project's for a closed file; for an open one only the project
-    /// serving its buffer — the others hold its disk shard, which the buffer
-    /// superseded — unless that project is not asked.
-    bool answers_for(const index::IndexQuery& from, Fid file, llvm::ArrayRef<Source> asked) const;
-
-    /// `ask`'s sites from every source of each of `symbols` (sources),
-    /// each asked under its own id, in the files each may answer for
-    /// (answers_for), deduplicated.
-    std::vector<index::Site> gather(
-        llvm::ArrayRef<index::SymbolHash> symbols,
-        Fid anchor,
-        llvm::function_ref<std::vector<index::Site>(const index::IndexQuery&, index::SymbolHash)>
-            ask);
 
     ASTFamily& ast;
     Dispatcher& dispatcher;

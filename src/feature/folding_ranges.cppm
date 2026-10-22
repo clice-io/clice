@@ -6,6 +6,7 @@ module clice:feature.folding_ranges;
 
 import :compile.compilation;
 import :feature.index_entries;
+import :index.query;
 import :semantic.symbol;
 import :syntax.position;
 import :syntax.source_text;
@@ -83,5 +84,10 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
 auto index_folding_ranges(SourceText& source,
                           llvm::ArrayRef<IndexDecl> decls,
                           IndexSymbolResolver resolve) -> std::vector<FoldingRange>;
+
+/// The same from the index serving the file (see index_semantic_tokens).
+auto index_folding_ranges(SourceText& source,
+                          const index::IndexQuery& query,
+                          const index::IndexSource& index) -> std::vector<FoldingRange>;
 
 }  // namespace clice::feature

@@ -5,10 +5,13 @@ module;
 module clice;
 
 import :feature.document_links;
+import :feature.protocol;
+import :index.query;
 import :index.symbol;
 import :index.tu_manifest;
 import :syntax.lexical_scan;
 import :syntax.source_text;
+import :vfs.file_table;
 
 namespace clice::feature {
 
@@ -118,6 +121,38 @@ auto index_document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge>
     links.erase(duplicates.begin(), duplicates.end());
 
     return links;
+}
+
+auto index_document_links(SourceText& source, const index::IndexQuery& query, Fid file)
+    -> std::vector<index::DocumentLink> {
+    if(!query.shard_matching(file, source.text())) {
+        return {};
+    }
+    return index_document_links(source, query.project().include_edges(file));
+}
+
+auto document_links_to_protocol(llvm::ArrayRef<index::DocumentLink> links,
+                                const PositionMap& map,
+                                FileTable& files) -> std::vector<protocol::DocumentLink> {
+    std::vector<protocol::DocumentLink> result;
+    for(const auto& link: links) {
+        auto range = map.range(link.range, PositionEncoding::UTF16);
+        if(!range)
+            continue;
+        protocol::DocumentLink out{.range = *range};
+        auto path = files.display_identity(link.target);
+        out.target = to_uri(path);
+        out.tooltip = std::move(path);
+        result.push_back(std::move(out));
+    }
+    return result;
+}
+
+auto directive_location(FileTable& files, const index::DocumentLink& link) -> protocol::Location {
+    return protocol::Location{
+        .uri = to_uri(files.display_identity(link.target)),
+        .range = protocol::Range{},
+    };
 }
 
 }  // namespace clice::feature

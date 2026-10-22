@@ -5,8 +5,10 @@ module;
 module clice:feature.inlay_hints;
 
 import :compile.compilation;
+import :index.peer_queries;
 import :index.symbol;
 import :syntax.position;
+import :vfs.ids;
 
 namespace clice::feature {
 
@@ -196,5 +198,16 @@ auto inlay_hints_to_protocol(
     PositionEncoding encoding,
     llvm::function_ref<std::optional<protocol::Location>(const InlayHintPart&)> locate = nullptr)
     -> std::vector<protocol::InlayHint>;
+
+/// The same with every piece naming a symbol or a target located: a
+/// target at that offset of `file`; a symbol, over the queries, at a
+/// declaration when one exists — the client runs go-to-definition there,
+/// and the definition answers it — else at its definition, which answers
+/// itself.
+auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
+                             const PositionMap& map,
+                             PositionEncoding encoding,
+                             const index::PeerQueries& queries,
+                             Fid file) -> std::vector<protocol::InlayHint>;
 
 }  // namespace clice::feature

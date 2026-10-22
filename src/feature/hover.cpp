@@ -7,7 +7,11 @@ module clice;
 import :compile.compilation;
 import :feature.documentation;
 import :feature.hover;
+import :feature.protocol;
+import :index.peer_queries;
+import :index.query;
 import :index.symbol;
+import :index.text;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
@@ -19,6 +23,7 @@ import :support.text;
 import :syntax.documentation;
 import :syntax.lexer;
 import :syntax.lexical_scan;
+import :vfs.file_table;
 
 namespace clice::feature {
 
@@ -2115,6 +2120,81 @@ auto index_hover(const index::SymbolInfo& info,
     }
     if(index::has_flag(info.flags, index::SymbolFlags::Exported)) {
         hover.definition.insert(0, "export ");
+    }
+    return hover;
+}
+
+auto index_hover(const index::PeerQueries& queries,
+                 const index::IndexQuery::Cursor& cursor,
+                 const DocumentationOptions& documentation) -> std::optional<HoverInfo> {
+    auto& query = queries.own;
+    auto symbol = cursor.symbols.front();
+    auto info = query.symbol_info(symbol, cursor.site.file);
+    if(!info) {
+        return std::nullopt;
+    }
+    if(info->kind == SymbolKind::Module) {
+        return module_hover(queries, cursor, *info);
+    }
+    std::string definition;
+    auto text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Definition);
+    if(!text) {
+        text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Declaration);
+    }
+    if(text) {
+        definition = std::move(text->text);
+    }
+    auto hover =
+        index_hover(*info,
+                    query.container_chain(symbol, cursor.site.file),
+                    definition,
+                    feature::documentation(query, symbol, cursor.site.file, documentation));
+    hover.symbol_range = cursor.site.range;
+    return hover;
+}
+
+auto module_hover(const index::PeerQueries& queries,
+                  const index::IndexQuery::Cursor& cursor,
+                  const index::SymbolInfo& module) -> HoverInfo {
+    HoverInfo hover;
+    hover.name = module.name;
+    hover.kind = SymbolKind::Module;
+    auto units =
+        queries.gather(module.hash,
+                       cursor.site.file,
+                       [&](const index::IndexQuery& from, index::SymbolHash named) {
+                           return from.sites(named, cursor.site.file, RelationKind::Definition);
+                       });
+    if(!units.empty()) {
+        hover.file = queries.own.file_table().display_identity(units.front().path);
+    }
+    hover.symbol_range = cursor.site.range;
+    return hover;
+}
+
+auto directive_hover(llvm::StringRef text,
+                     const PositionMap& map,
+                     FileTable& files,
+                     const index::DocumentLink& link,
+                     protocol::MarkupKind kind) -> std::optional<protocol::Hover> {
+    if(link.range.end > text.size()) {
+        return std::nullopt;
+    }
+    auto name = text.substr(link.range.begin, link.range.length()).trim();
+    if(name.size() >= 2 && ((name.front() == '"' && name.back() == '"') ||
+                            (name.front() == '<' && name.back() == '>'))) {
+        name = name.drop_front().drop_back();
+    }
+
+    HoverInfo info;
+    info.name = name.str();
+    info.kind = SymbolKind::Header;
+    info.file = files.display_identity(link.target);
+    info.symbol_range = link.range;
+
+    auto hover = to_protocol_hover(info, kind, map, PositionEncoding::UTF16);
+    if(!hover.range) {
+        return std::nullopt;
     }
     return hover;
 }

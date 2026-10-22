@@ -42,7 +42,7 @@ namespace {
 /// A path a worker reported, as the user knows the file; empty for none.
 void show_path(FileTable& files, std::string& path) {
     if(!path.empty()) {
-        path = files.display(files.intern(Spelling::absolute(path)));
+        path = files.display_identity(path);
     }
 }
 

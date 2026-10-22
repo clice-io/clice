@@ -4,17 +4,31 @@ module;
 
 module clice;
 
+import :command.file_kind;
+import :command.search_config;
 import :feature.code_action.action;
+import :feature.code_action.code_action;
 import :feature.code_completion;
 import :feature.documentation;
+import :feature.protocol;
+import :index.query;
+import :index.search;
+import :index.symbol;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
+import :semantic.symbol;
 import :support.fuzzy_matcher;
 import :support.markup;
 import :syntax.completion;
+import :syntax.dependency_graph;
 import :syntax.documentation;
+import :syntax.include_resolver;
 import :syntax.lexer;
+import :syntax.scan;
+import :vfs.dir_cache;
+import :vfs.file_table;
+import :vfs.path;
 
 namespace clice::feature {
 
@@ -2551,6 +2565,244 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
         list.is_incomplete = true;
     }
     return list;
+}
+
+bool scope_candidates(const index::IndexQuery& query,
+                      const DependencyGraph& graph,
+                      llvm::StringRef prefix,
+                      Fid file,
+                      std::vector<ScopeCandidate>& candidates) {
+    auto kind_of = [](SymbolKind kind) {
+        using Kind = protocol::CompletionItemKind;
+        switch(kind) {
+            case SymbolKind::Namespace: return Kind::Module;
+            case SymbolKind::Class:
+            case SymbolKind::Struct:
+            case SymbolKind::Union: return Kind::Class;
+            case SymbolKind::Enum: return Kind::Enum;
+            case SymbolKind::EnumMember: return Kind::EnumMember;
+            case SymbolKind::Function: return Kind::Function;
+            case SymbolKind::Variable: return Kind::Variable;
+            case SymbolKind::Type:
+            case SymbolKind::Concept: return Kind::TypeParameter;
+            default: return Kind::Text;
+        }
+    };
+    auto found = index::completables(query, prefix, file, scope_candidate_limit);
+    for(auto& [symbol, declared]: found.names) {
+        // A macro belongs to no namespace.
+        if(symbol.kind == SymbolKind::Macro) {
+            continue;
+        }
+        ScopeCandidate candidate{
+            .name = symbol.name,
+            .kind = kind_of(symbol.kind),
+            .is_template = index::has_flag(symbol.flags, index::SymbolFlags::Template),
+            .deprecated = index::has_flag(symbol.flags, index::SymbolFlags::Deprecated),
+            .symbol = symbol.hash,
+        };
+        // An enumerator keeps its enumeration in the qualifier: the index
+        // does not tell a scoped one, which needs it, and an unscoped one
+        // takes it as well.
+        auto chain = query.container_chain(symbol.hash, declared);
+        auto namespaces = llvm::ArrayRef(chain);
+        if(!namespaces.empty() && namespaces.back().kind == SymbolKind::Enum) {
+            namespaces = namespaces.drop_back();
+        }
+        if(std::ranges::any_of(namespaces, [](const index::SymbolInfo& container) {
+               return container.kind != SymbolKind::Namespace;
+           })) {
+            continue;
+        }
+        for(auto& container: chain) {
+            candidate.scope.push_back(container.name);
+        }
+        if(declared.valid() && index::has_flag(symbol.flags, index::SymbolFlags::Exported)) {
+            candidate.module = graph.module_of(declared).str();
+        }
+        candidates.push_back(std::move(candidate));
+    }
+    return found.exhausted;
+}
+
+/// The header, quotes or brackets included, an `#include` for `candidate`
+/// names in `file`, as `search` finds it: a standard name's from the
+/// standard library's own table (the C library's for a C file, `c`),
+/// another's the header the index says declares it. None when only a
+/// library's internal header is known.
+static std::optional<std::string> include_for(const index::IndexQuery& query,
+                                              const ScopeCandidate& candidate,
+                                              bool c,
+                                              Fid file,
+                                              const SearchConfig& search,
+                                              vfs::Scope& scope) {
+    auto& files = query.file_table();
+    namespace stdlib = clang::tooling::stdlib;
+    std::string qualifier;
+    for(const auto& segment: candidate.scope) {
+        qualifier += segment + "::";
+    }
+    if(auto symbol = stdlib::Symbol::named(qualifier,
+                                           candidate.name,
+                                           c ? stdlib::Lang::C : stdlib::Lang::CXX)) {
+        if(auto header = symbol->header()) {
+            return header->name().str();
+        }
+    }
+    // The canonical declaration's header first, a definition when there is
+    // one; then the headers declaring the symbol, for a definition in a
+    // source file or in a header no `#include` can name.
+    llvm::SmallVector<Fid, 2> headers;
+    if(auto located = query.resolve(candidate.symbol, file);
+       located && is_header_path(located->site.path)) {
+        headers.push_back(located->site.file);
+    }
+    for(const auto& site: query.sites(candidate.symbol, file, RelationKind::Declaration)) {
+        if(site.file.valid() && is_header_path(site.path) &&
+           !std::ranges::contains(headers, site.file)) {
+            headers.push_back(site.file);
+        }
+    }
+    auto includer = files.spelling(file);
+    for(auto header: headers) {
+        if(header == file || is_context_header_path(files.resolve(header))) {
+            continue;
+        }
+        if(auto argument = include_argument(files.resolve(header), search, includer, scope)) {
+            return argument;
+        }
+    }
+    return std::nullopt;
+}
+
+auto finish_completion(protocol::CompletionList list,
+                       const IncludePlace& include,
+                       llvm::ArrayRef<ScopeCandidate> candidates,
+                       const index::IndexQuery& query,
+                       Fid file,
+                       const SearchConfig& search,
+                       vfs::Scope& scope,
+                       std::uint32_t limit) -> protocol::CompletionList {
+    IncludeInsertion insertion{.opens_fragment = include.opens_fragment};
+    std::erase_if(list.items, [&](protocol::CompletionItem& item) {
+        auto symbol = data_symbol(item.data);
+        if(!symbol) {
+            return false;
+        }
+        item.data.reset();
+        auto candidate = std::ranges::find_if(candidates, [&](const ScopeCandidate& each) {
+            return each.symbol == *symbol;
+        });
+        assert(candidate != candidates.end() && "the worker names a candidate it was given");
+        auto header = include_for(query, *candidate, include.c, file, search, scope);
+        if(!header) {
+            return true;
+        }
+        protocol::TextEdit edit{
+            .range = {include.position, include.position},
+            .new_text = insertion.text(*header),
+        };
+        item.additional_text_edits = std::vector{std::move(edit)};
+        return false;
+    });
+    auto limited = completion_list(std::move(list.items), limit);
+    limited.is_incomplete = limited.is_incomplete || list.is_incomplete;
+    return limited;
+}
+
+auto include_completion(const CompletionName& completing,
+                        llvm::StringRef text,
+                        const PositionMap& map,
+                        llvm::StringRef path,
+                        const SearchConfig& search,
+                        vfs::Scope& scope,
+                        std::uint32_t limit) -> protocol::CompletionList {
+    bool angled = (completing.kind == CompletionName::Kind::IncludeAngled);
+    auto candidates =
+        complete_include_path(search, path::parent_path(path), completing.prefix, angled, scope);
+
+    // A directory continues the path, replacing a `/` already
+    // there; a header ends it and closes the directive, replacing
+    // the rest of the path through a closing delimiter already there.
+    char closer = angled ? '>' : '"';
+    auto edit = [&](const IncludeCandidate& candidate) {
+        auto end = completing.replace.end;
+        if(candidate.is_directory) {
+            if(text.substr(end).starts_with("/")) {
+                end += 1;
+            }
+        } else if(completing.closed) {
+            end = static_cast<std::uint32_t>(text.find(closer, end)) + 1;
+        }
+        return protocol::TextEdit{
+            .range = *map.range({completing.replace.begin, end}, PositionEncoding::UTF16),
+            .new_text = candidate.name + (candidate.is_directory ? '/' : closer),
+        };
+    };
+    std::vector<protocol::CompletionItem> items;
+    items.reserve(candidates.size());
+    for(auto& c: candidates) {
+        protocol::CompletionItem item;
+        item.label = c.is_directory ? c.name + "/" : c.name;
+        item.kind = protocol::CompletionItemKind::File;
+        item.sort_text = std::format("{:010}", c.order);
+        item.text_edit = edit(c);
+        items.push_back(std::move(item));
+    }
+    return completion_list(std::move(items), limit);
+}
+
+auto module_completion(const CompletionName& completing,
+                       llvm::StringRef text,
+                       const PositionMap& map,
+                       llvm::StringRef path,
+                       const DependencyGraph& graph,
+                       FileTable& files,
+                       std::uint32_t limit) -> protocol::CompletionList {
+    std::vector<std::string> module_names;
+    if(completing.kind == CompletionName::Kind::ModuleDeclaration) {
+        module_names = complete_module_declaration(graph, completing.prefix);
+    } else {
+        // The module declaration precedes every import, and the
+        // scan stops before the import being typed: the scanner
+        // rejects a buffer with an unclosed directive whole. Its
+        // lexer needs the NUL terminator a copy provides.
+        auto declared = text.take_front(text.rfind('\n', completing.replace.begin) + 1).str();
+        // FIXME: a module declaration inside `#if` scans as none, so the unit's own
+        // module is offered and its partitions are not; an import typed in the global
+        // module fragment, where none may go, is offered names too.
+        module_names = complete_module_import(graph, completing.prefix, scan_quick(declared));
+    }
+    auto directory = path::parent_path(path);
+    auto up_to = [&](Fid provider) {
+        std::uint32_t up = 0;
+        auto interface = llvm::StringRef(files.resolve(provider));
+        path::walk_ancestors(directory, "", [&](llvm::StringRef dir) {
+            up += 1;
+            return !path::under(interface, dir);
+        });
+        return up;
+    };
+    auto distance = [&](llvm::StringRef name) {
+        if(name.starts_with(":")) {
+            return std::uint32_t(0);
+        }
+        return std::ranges::min(graph.lookup_module(name) | std::views::transform(up_to));
+    };
+    std::vector<protocol::CompletionItem> items;
+    items.reserve(module_names.size());
+    for(auto& name: module_names) {
+        protocol::CompletionItem item;
+        item.label = name;
+        item.kind = protocol::CompletionItemKind::Module;
+        item.sort_text = std::format("{:05}", distance(name));
+        item.text_edit = protocol::TextEdit{
+            .range = *map.range(completing.replace, PositionEncoding::UTF16),
+            .new_text = completing.closed ? name : name + ";",
+        };
+        items.push_back(std::move(item));
+    }
+    return completion_list(std::move(items), limit);
 }
 
 }  // namespace clice::feature

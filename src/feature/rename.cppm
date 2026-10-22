@@ -14,6 +14,8 @@ import :index.query;
 
 namespace clice::feature {
 
+namespace protocol = kota::ipc::protocol;
+
 /// Why `name` cannot name a C or C++ declaration — not an identifier, or a
 /// keyword in either language; nullopt when it can.
 std::optional<std::string> invalid_identifier(llvm::StringRef name);
@@ -191,5 +193,24 @@ BatchPlan plan_renames(const index::IndexQuery& query,
 /// by the new name of its plan. Nullopt when a token no longer spells its
 /// old name — the text moved on since the plan was made.
 std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& batch, Fid file);
+
+/// Why a blocked plan (RenamePlan::blocked) cannot be made: its conflicts,
+/// then the files whose index is not current.
+std::string refusal(const RenamePlan& plan);
+
+/// The edits of a rename, each file's versioned against its open buffer,
+/// and what the user should hear about them: the warnings, the tokens
+/// spelling the old name that were left alone, the edits reached through a
+/// heuristic resolution.
+struct Renamed {
+    protocol::WorkspaceEdit edit;
+    std::string notice;
+};
+
+/// A plan's edits renaming to `new_name`, each file versioned by
+/// `version_of` (none for a file not open).
+Renamed rename_to_protocol(const RenamePlan& plan,
+                           llvm::StringRef new_name,
+                           llvm::function_ref<std::optional<int>(Fid)> version_of);
 
 }  // namespace clice::feature

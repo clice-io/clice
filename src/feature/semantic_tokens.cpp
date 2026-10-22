@@ -9,7 +9,9 @@ import :feature.inactive_regions;
 import :feature.index_entries;
 import :feature.semantic_token_stream;
 import :feature.semantic_tokens;
+import :index.query;
 import :index.symbol;
+import :index.tu_index;
 import :semantic.decls;
 import :semantic.resolver;
 import :semantic.semantics;
@@ -908,6 +910,37 @@ auto index_semantic_tokens(SourceText& source,
     }
 
     return semantic_token_stream(source, facts, options);
+}
+
+auto index_semantic_tokens(SourceText& source,
+                           const index::IndexQuery& query,
+                           const index::IndexSource& index,
+                           const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
+    return index_semantic_tokens(
+        source,
+        extract_index_entries(*index.shard),
+        [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
+        options);
+}
+
+void merge_preamble_macros(const index::TUIndex& preamble, std::vector<SemanticToken>& tokens) {
+    llvm::DenseMap<std::uint32_t, std::uint32_t> modifiers;
+    preamble.shard_of(preamble.path_count() - 1)
+        .for_each_occurrence([&](const index::Occurrence& occurrence) {
+            auto symbol = preamble.find_symbol(occurrence.target);
+            if(symbol && symbol->token_class.kind == SemanticTokenKind::Macro) {
+                modifiers.try_emplace(occurrence.range.begin, symbol->token_class.modifiers);
+            }
+            return true;
+        });
+    for(auto& token: tokens) {
+        if(token.kind != SemanticTokenKind::Macro) {
+            continue;
+        }
+        if(auto it = modifiers.find(token.range.begin); it != modifiers.end()) {
+            token.modifiers |= it->second;
+        }
+    }
 }
 
 }  // namespace clice::feature

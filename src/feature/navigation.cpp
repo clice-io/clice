@@ -8,6 +8,7 @@ module clice;
 
 import :feature.navigation;
 import :feature.protocol;
+import :index.peer_queries;
 import :index.query;
 import :index.search;
 import :index.symbol_query;
@@ -527,6 +528,100 @@ std::vector<protocol::DocumentHighlight>
         result.push_back({.range = to_range(highlight.site), .kind = kind_of(highlight.kind)});
     }
     return result;
+}
+
+std::vector<index::Site> definition(const index::PeerQueries& queries,
+                                    const index::IndexQuery::Cursor& cursor) {
+    auto file = cursor.site.file;
+    std::vector<index::Site> result;
+    for(auto symbol: cursor.symbols) {
+        auto defined = queries.gather(symbol,
+                                      file,
+                                      [&](const index::IndexQuery& from, index::SymbolHash named) {
+                                          return definition_sites(from, named, file);
+                                      });
+        if(defined.empty() || std::ranges::any_of(defined, [&](const index::Site& site) {
+               return index::covers(site, cursor.site);
+           })) {
+            defined = queries.gather(
+                symbol,
+                file,
+                [&](const index::IndexQuery& from, index::SymbolHash named) {
+                    return definition(from, {.symbols = {named}, .site = cursor.site});
+                });
+        }
+        result.append_range(std::move(defined));
+    }
+    index::dedup_sites(result);
+    return result;
+}
+
+std::vector<index::Site> references(const index::PeerQueries& queries,
+                                    const index::IndexQuery::Cursor& cursor,
+                                    bool include_declaration,
+                                    std::uint32_t limit) {
+    auto file = cursor.site.file;
+    auto sites = queries.gather(
+        cursor.symbols,
+        file,
+        [&](const index::IndexQuery& from, index::SymbolHash named) {
+            return references(from, {.symbols = {named}, .site = cursor.site}, include_declaration);
+        });
+    if(limit != 0 && sites.size() > limit) {
+        std::ranges::stable_partition(sites,
+                                      [&](const index::Site& site) { return site.file == file; });
+        sites.erase(sites.begin() + limit, sites.end());
+    }
+    return sites;
+}
+
+std::vector<index::Site> declaration(const index::PeerQueries& queries,
+                                     const index::IndexQuery::Cursor& cursor) {
+    auto file = cursor.site.file;
+    return queries.gather(cursor.symbols,
+                          file,
+                          [&](const index::IndexQuery& from, index::SymbolHash named) {
+                              return declaration(from, {.symbols = {named}, .site = cursor.site});
+                          });
+}
+
+std::vector<index::Site> type_definition(const index::PeerQueries& queries,
+                                         const index::IndexQuery::Cursor& cursor) {
+    auto file = cursor.site.file;
+    return queries.gather(cursor.symbols,
+                          file,
+                          [&](const index::IndexQuery& from, index::SymbolHash named) {
+                              return type_definition(from, cursor, named);
+                          });
+}
+
+std::vector<index::Site> implementation(const index::PeerQueries& queries,
+                                        const index::IndexQuery::Cursor& cursor) {
+    auto file = cursor.site.file;
+    std::vector<index::Site> sites;
+    for(auto symbol: cursor.symbols) {
+        if(names_weakly(queries.own, cursor, symbol)) {
+            sites.append_range(
+                queries.gather(symbol,
+                               file,
+                               [&](const index::IndexQuery& from, index::SymbolHash named) {
+                                   return from.sites(named, file, RelationKind::Definition);
+                               }));
+        }
+        sites.append_range(
+            queries.gather(symbol,
+                           file,
+                           [&](const index::IndexQuery& from, index::SymbolHash named) {
+                               std::vector<index::Site> placed;
+                               for(auto& located: implementation(from, named, file)) {
+                                   placed.push_back(std::move(located.site));
+                               }
+                               return placed;
+                           }));
+    }
+    index::dedup_sites(sites);
+    std::erase_if(sites, [&](const index::Site& site) { return index::covers(site, cursor.site); });
+    return sites;
 }
 
 }  // namespace clice::feature

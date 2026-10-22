@@ -9,9 +9,19 @@ import :compile.compilation;
 import :feature.code_action.action;
 import :feature.code_action.code_action;
 import :feature.formatting;
+import :index.query;
+import :index.search;
+import :index.shard;
+import :index.symbol;
+import :index.symbol_query;
+import :index.text;
 import :semantic.display;
 import :semantic.semantics;
+import :semantic.symbol;
 import :syntax.lexer;
+import :syntax.source_text;
+import :vfs.file_table;
+import :vfs.path;
 
 namespace clice::feature {
 
@@ -1106,6 +1116,133 @@ auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
         return std::nullopt;
     }
     return text;
+}
+
+bool admits(llvm::ArrayRef<protocol::CodeActionKind> only, llvm::StringRef kind) {
+    if(only.empty()) {
+        return true;
+    }
+    return std::ranges::any_of(only, [&](const protocol::CodeActionKind& wanted) {
+        llvm::StringRef prefix = wanted;
+        return kind == prefix || (kind.starts_with(prefix) && kind[prefix.size()] == '.');
+    });
+}
+
+protocol::CodeAction code_action_to_protocol(std::string title,
+                                             protocol::CodeActionKind kind,
+                                             FileEdit file) {
+    protocol::TextDocumentEdit change{
+        .text_document = {.uri = std::move(file.uri), .version = file.version},
+    };
+    for(auto& edit: file.edits) {
+        change.edits.emplace_back(std::move(edit));
+    }
+    protocol::WorkspaceEdit edit;
+    edit.document_changes = std::vector<protocol::variant<protocol::TextDocumentEdit,
+                                                          protocol::CreateFile,
+                                                          protocol::RenameFile,
+                                                          protocol::DeleteFile>>{};
+    edit.document_changes->emplace_back(std::move(change));
+    return protocol::CodeAction{
+        .title = std::move(title),
+        .kind = std::move(kind),
+        .edit = std::move(edit),
+    };
+}
+
+auto define_edits(const DefineRequest& request,
+                  llvm::StringRef file,
+                  llvm::StringRef content,
+                  llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
+    -> std::optional<std::vector<TextReplacement>> {
+    auto text = assemble_definitions(request.pieces, defined_elsewhere);
+    if(!text) {
+        return std::nullopt;
+    }
+    return format_edits(file,
+                        content,
+                        {
+                            {request.range, request.before + *text + request.after}});
+}
+
+auto host_edit(const index::IndexQuery& query,
+               Fid host,
+               std::uint64_t container,
+               llvm::StringRef text,
+               llvm::function_ref<SourceText*()> host_text) -> std::optional<protocol::TextEdit> {
+    std::optional<protocol::Position> after;
+    auto source = container != 0 ? query.serving(host) : std::nullopt;
+    if(source) {
+        source->shard->for_each_relation(
+            [&](index::SymbolHash hash, const index::Relation& relation) {
+                if(relation.kind != RelationKind::Definition) {
+                    return true;
+                }
+                auto chain = query.container_chain(hash, source->file);
+                if(std::ranges::none_of(chain, [&](const index::SymbolInfo& each) {
+                       return each.hash == container;
+                   })) {
+                    return true;
+                }
+                auto definition = index::declared_text(query, hash, host, RelationKind::Definition);
+                if(!definition) {
+                    return true;
+                }
+                protocol::Position end{.line = definition->extent.end.line,
+                                       .character = definition->extent.end.utf16_column};
+                if(!after ||
+                   std::pair(end.line, end.character) > std::pair(after->line, after->character)) {
+                    after = end;
+                }
+                return true;
+            });
+    }
+    protocol::TextEdit edit;
+    if(after) {
+        edit.range = {*after, *after};
+        edit.new_text = "\n\n" + text.str();
+        return edit;
+    }
+    auto* source_text = host_text();
+    if(!source_text) {
+        return std::nullopt;
+    }
+    auto content = source_text->text();
+    auto end = *source_text->positions().position(static_cast<std::uint32_t>(content.size()),
+                                                  PositionEncoding::UTF16);
+    edit.range = {end, end};
+    edit.new_text = (content.empty() || content.ends_with('\n') ? "\n" : "\n\n") + text.str();
+    return edit;
+}
+
+auto declaring_headers(const index::IndexQuery& query, const IncludeRequest& request, Fid file)
+    -> std::vector<CanonicalRef> {
+    auto& files = query.file_table();
+    index::SymbolQuery symbol_query;
+    symbol_query.mode = index::SymbolQuery::Mode::Exact;
+    symbol_query.pattern = request.name;
+    for(auto segment: llvm::split(llvm::StringRef(request.scope), "::")) {
+        if(!segment.empty()) {
+            symbol_query.scope.push_back({.name = segment.str()});
+        }
+    }
+    llvm::StringSet<> seen;
+    std::vector<CanonicalRef> headers;
+    for(const auto& located: index::locate(query, symbol_query)) {
+        if(located.symbol.name != request.name) {
+            continue;
+        }
+        for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+            for(const auto& site: query.sites(located.symbol.hash, located.site.file, kind)) {
+                if(site.file.valid() && site.file != file && is_header_path(site.path) &&
+                   !is_context_header_path(site.path) &&
+                   seen.insert(files.resolve(site.file)).second) {
+                    headers.push_back(files.resolve(site.file));
+                }
+            }
+        }
+    }
+    return headers;
 }
 
 }  // namespace clice::feature

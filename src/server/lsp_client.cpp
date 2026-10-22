@@ -1559,8 +1559,7 @@ void LSPClient::publish_config_diagnostics() {
 
     for(auto& [file, diagnostics]: by_file) {
         protocol::PublishDiagnosticsParams params;
-        params.uri = feature::to_uri(
-            server.files.display(server.files.intern(Spelling::absolute(file.str()))));
+        params.uri = feature::to_uri(server.files.display_identity(file));
         params.diagnostics = std::move(diagnostics);
         publish(peer, params);
     }

@@ -6,12 +6,15 @@ module clice:feature.hover;
 
 import :compile.compilation;
 import :feature.documentation;
+import :index.peer_queries;
+import :index.query;
 import :index.symbol;
 import :semantic.display;
 import :semantic.symbol;
 import :support.markup;
 import :syntax.documentation;
 import :syntax.position;
+import :vfs.file_table;
 
 namespace clice::feature {
 
@@ -176,5 +179,28 @@ auto index_hover(const index::SymbolInfo& info,
                  llvm::ArrayRef<index::SymbolInfo> scopes,
                  llvm::StringRef definition_text,
                  Documentation documentation) -> HoverInfo;
+
+/// The card the index gives for the symbol under the cursor: name and kind
+/// from the symbol tables, the definition text sliced from stored content,
+/// the documentation read from the indexed text (the overload above). A
+/// module's is module_hover.
+auto index_hover(const index::PeerQueries& queries,
+                 const index::IndexQuery::Cursor& cursor,
+                 const DocumentationOptions& documentation) -> std::optional<HoverInfo>;
+
+/// A module name's card: the module and the unit defining it, named the
+/// way the user knows the file. Only the index knows the defining unit,
+/// across files.
+auto module_hover(const index::PeerQueries& queries,
+                  const index::IndexQuery::Cursor& cursor,
+                  const index::SymbolInfo& module) -> HoverInfo;
+
+/// The card of a directive's argument, naming its target the way the user
+/// knows the file; none when the link's range no longer lies in `text`.
+auto directive_hover(llvm::StringRef text,
+                     const PositionMap& map,
+                     FileTable& files,
+                     const index::DocumentLink& link,
+                     protocol::MarkupKind kind) -> std::optional<protocol::Hover>;
 
 }  // namespace clice::feature

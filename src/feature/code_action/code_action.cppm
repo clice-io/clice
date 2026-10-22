@@ -5,7 +5,11 @@ module;
 module clice:feature.code_action.code_action;
 
 import :compile.compilation;
+import :index.query;
+import :syntax.source_text;
 import :syntax.token;
+import :vfs.ids;
+import :vfs.path;
 
 namespace clice::feature {
 
@@ -116,5 +120,50 @@ auto code_actions(CompilationUnit& unit, LocalSourceRange selection) -> std::vec
 auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
                           llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
     -> std::optional<std::string>;
+
+/// Whether a request's kind filter (LSP CodeActionContext.only) admits
+/// `kind`: LSP kinds are hierarchical, a requested "refactor" admits
+/// "refactor.rewrite"; an empty filter admits every kind.
+bool admits(llvm::ArrayRef<protocol::CodeActionKind> only, llvm::StringRef kind);
+
+/// One file an action edits, its edits in LSP form.
+struct FileEdit {
+    std::string uri;
+    std::optional<int> version;
+    std::vector<protocol::TextEdit> edits;
+};
+
+protocol::CodeAction code_action_to_protocol(std::string title,
+                                             protocol::CodeActionKind kind,
+                                             FileEdit file);
+
+/// A DefineRequest's edit of the focus file `file`, whose text is
+/// `content`: the pieces the index keeps (assemble_definitions) formatted
+/// in place; none when none survives.
+auto define_edits(const DefineRequest& request,
+                  llvm::StringRef file,
+                  llvm::StringRef content,
+                  llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
+    -> std::optional<std::vector<TextReplacement>>;
+
+/// The edit inserting a DefineInHostRequest's definitions, `text`
+/// formatted for the host file `host`: after the last definition of the
+/// container's members in the host's serving index, in the coordinates
+/// that source guarantees — the relations read directly, as an open host's
+/// own index knows its definitions before the background index merges them
+/// into the project index — else at the end of the host's text, which
+/// `host_text` reads only then; none when it cannot.
+auto host_edit(const index::IndexQuery& query,
+               Fid host,
+               std::uint64_t container,
+               llvm::StringRef text,
+               llvm::function_ref<SourceText*()> host_text) -> std::optional<protocol::TextEdit>;
+
+/// The headers declaring the name an IncludeRequest names, as the index
+/// knows them: the files of the declarations and definitions of the
+/// symbols spelling it exactly in its scope, each once; the focus file
+/// `file`, sources and context headers left out.
+auto declaring_headers(const index::IndexQuery& query, const IncludeRequest& request, Fid file)
+    -> std::vector<CanonicalRef>;
 
 }  // namespace clice::feature

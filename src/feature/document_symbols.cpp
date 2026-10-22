@@ -8,6 +8,7 @@ import :compile.compilation;
 import :feature.document_symbols;
 import :feature.inactive_regions;
 import :feature.index_entries;
+import :index.query;
 import :index.symbol;
 import :semantic.decls;
 import :semantic.display;
@@ -1127,6 +1128,17 @@ auto index_document_symbols(SourceText& source,
         }
     }
     return outline(std::move(declarations), source, macros, modules, marks, options);
+}
+
+auto index_document_symbols(SourceText& source,
+                            const index::IndexQuery& query,
+                            const index::IndexSource& index,
+                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+    return index_document_symbols(
+        source,
+        extract_index_entries(*index.shard),
+        [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
+        options);
 }
 
 }  // namespace clice::feature

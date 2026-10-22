@@ -11,6 +11,7 @@ module clice;
 import :config.config;
 import :feature.protocol;
 import :feature.semantic_tokens;
+import :feature.workspace_symbols;
 import :sched.graph;
 import :server.features;
 import :server.lsp_client;
@@ -849,7 +850,6 @@ void MasterServer::serve_again(ProjectServer& project, std::shared_ptr<Session> 
 }
 
 std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::StringRef query) {
-    constexpr std::size_t limit = Features::workspace_symbol_limit;
     // Another checkout of the same code opened beside it (a worktree) holds
     // a copy of each symbol at the same place in the same text of its
     // folder: the copy of a folder with open documents, the one being
@@ -863,44 +863,11 @@ std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::St
         });
         return open;
     });
-    llvm::SmallVector<std::vector<Features::WorkspaceSymbol>> ranked;
+    llvm::SmallVector<std::vector<feature::WorkspaceSymbol>> ranked;
     for(auto& project: ordered) {
         ranked.push_back(project->features.workspace_symbol(query));
     }
-    std::vector<protocol::SymbolInformation> merged;
-    // A file several projects see, a header of one an application includes,
-    // lists its symbols once too.
-    using Place = std::tuple<std::string, std::uint32_t, std::uint32_t, std::string, std::string>;
-    std::set<Place> places;
-    std::set<std::pair<Place, std::uint64_t>> copies;
-    for(std::size_t rank = 0; merged.size() < limit; rank += 1) {
-        bool any = false;
-        for(auto& list: ranked) {
-            if(rank >= list.size() || merged.size() == limit) {
-                continue;
-            }
-            any = true;
-            auto& [info, file, content] = list[rank];
-            auto& start = info.location.range.start;
-            auto container = info.container_name.value_or("");
-            bool new_place =
-                places.emplace(info.location.uri, start.line, start.character, info.name, container)
-                    .second;
-            bool new_copy =
-                copies
-                    .emplace(
-                        Place(std::move(file), start.line, start.character, info.name, container),
-                        content)
-                    .second;
-            if(new_place && new_copy) {
-                merged.push_back(std::move(info));
-            }
-        }
-        if(!any) {
-            break;
-        }
-    }
-    return merged;
+    return feature::merge_workspace_symbols(ranked);
 }
 
 void MasterServer::schedule_shutdown() {
@@ -970,7 +937,7 @@ std::vector<std::string> MasterServer::pending_work(const kota::ipc::JSONPeer& e
         if(hold.parked) {
             lines.push_back(std::format("{} {}: reply parked by hold {}",
                                         build_kind_name(hold.kind),
-                                        files.display(files.intern(Spelling::absolute(hold.file))),
+                                        files.display_identity(hold.file),
                                         hold.id));
         }
     }

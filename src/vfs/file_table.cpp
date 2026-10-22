@@ -68,6 +68,10 @@ Spelling FileTable::spelling(Fid fid) const {
     return Spelling(resolve(fid));
 }
 
+std::string FileTable::display_identity(llvm::StringRef identity) {
+    return display(intern(Spelling::absolute(identity)));
+}
+
 std::string FileTable::display(Fid fid) const {
     if(auto it = shown.find(fid); it != shown.end()) {
         return it->second;

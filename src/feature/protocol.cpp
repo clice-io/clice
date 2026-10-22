@@ -7,6 +7,8 @@ module clice;
 import :feature.protocol;
 import :index.site;
 import :index.symbol;
+import :syntax.position;
+import :syntax.token;
 
 namespace clice::feature {
 
@@ -37,6 +39,21 @@ std::vector<protocol::Range> to_ranges(llvm::ArrayRef<index::Site> sites) {
         result.push_back(to_range(site));
     }
     return result;
+}
+
+std::optional<std::vector<protocol::TextEdit>>
+    to_text_edits(llvm::ArrayRef<TextReplacement> replacements,
+                  const PositionMap& map,
+                  PositionEncoding encoding) {
+    std::vector<protocol::TextEdit> edits;
+    for(const auto& replacement: replacements) {
+        auto converted = map.range(replacement.range, encoding);
+        if(!converted) {
+            return std::nullopt;
+        }
+        edits.push_back({.range = *converted, .new_text = replacement.text});
+    }
+    return edits;
 }
 
 std::optional<index::SymbolHash> data_symbol(const std::optional<protocol::LSPAny>& data) {

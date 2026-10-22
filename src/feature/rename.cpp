@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :feature.hierarchy;
+import :feature.protocol;
 import :feature.rename;
 import :index.search;
 import :index.site;
@@ -862,6 +863,76 @@ std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& 
     }
     result += text.substr(copied);
     return result;
+}
+
+std::string refusal(const RenamePlan& plan) {
+    auto reasons = plan.conflicts;
+    if(!plan.stale.empty()) {
+        reasons.push_back(
+            std::format("these files changed since they were indexed, or were never indexed: {}",
+                        llvm::join(plan.stale, ", ")));
+    }
+    return std::format("cannot rename `{}`: {}", plan.old_name, llvm::join(reasons, "; "));
+}
+
+/// `title` and up to a handful of `items`, one a line.
+static void list_notice(std::string& notice,
+                        std::string_view title,
+                        llvm::ArrayRef<std::string> items) {
+    constexpr std::size_t shown_items = 5;
+    if(items.empty()) {
+        return;
+    }
+    notice += std::format("{}{}:", notice.empty() ? "" : "\n", title);
+    for(auto& item: items.take_front(shown_items)) {
+        notice += std::format("\n  {}", item);
+    }
+    if(items.size() > shown_items) {
+        notice += std::format("\n  and {} more", items.size() - shown_items);
+    }
+}
+
+Renamed rename_to_protocol(const RenamePlan& plan,
+                           llvm::StringRef new_name,
+                           llvm::function_ref<std::optional<int>(Fid)> version_of) {
+    Renamed renamed;
+    using DocumentChange = protocol::variant<protocol::TextDocumentEdit,
+                                             protocol::CreateFile,
+                                             protocol::RenameFile,
+                                             protocol::DeleteFile>;
+    std::vector<DocumentChange> changes;
+    protocol::TextDocumentEdit* change = nullptr;
+    std::vector<std::string> heuristic;
+    for(auto& edit: plan.edits) {
+        if(!change || change->text_document.uri != to_uri(edit.site.path)) {
+            protocol::TextDocumentEdit next{
+                .text_document = {.uri = to_uri(edit.site.path),
+                                  .version = version_of(edit.site.file)},
+            };
+            change = &std::get<protocol::TextDocumentEdit>(changes.emplace_back(std::move(next)));
+        }
+        change->edits.emplace_back(protocol::TextEdit{
+            .range = to_range(edit.site),
+            .new_text = new_name.str(),
+        });
+        if(edit.heuristic) {
+            heuristic.push_back(std::format("{}:{}", edit.site.path, edit.site.begin.line + 1));
+        }
+    }
+    renamed.edit.document_changes = std::move(changes);
+
+    list_notice(renamed.notice, std::format("Renaming `{}`", plan.old_name), plan.warnings);
+    std::vector<std::string> left;
+    for(auto& note: plan.unconfirmed) {
+        left.push_back(std::format("{}:{}: {} ({})",
+                                   note.site.path,
+                                   note.site.begin.line + 1,
+                                   note.line,
+                                   note.reason));
+    }
+    list_notice(renamed.notice, std::format("Spellings of `{}` left alone", plan.old_name), left);
+    list_notice(renamed.notice, "Renamed through a heuristic resolution", heuristic);
+    return renamed;
 }
 
 }  // namespace clice::feature
