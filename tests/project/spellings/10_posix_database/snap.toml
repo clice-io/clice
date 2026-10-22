@@ -60,6 +60,5 @@ errors = [
 ["no runtime on PATH".guidance]
 value = [
     "Compilation database ${WS}/compile_commands.json spells its paths POSIX-style (${WS}), and they cannot be mapped: PATH holds no Cygwin or MSYS2 runtime. Put the bin directory of the Cygwin or MSYS2 that wrote it on clice's PATH (in VS Code, clice.serverEnv); one written outside them names its directories with a drive.",
-    "No compile_commands.json found in workspace ${WS} or its direct subdirectories. Compile commands will be guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for setup.",
     "Compilation database ${WS}/compile_commands.json spells its paths POSIX-style (${WS}), and they cannot be mapped: PATH holds no Cygwin or MSYS2 runtime. Put the bin directory of the Cygwin or MSYS2 that wrote it on clice's PATH (in VS Code, clice.serverEnv); one written outside them names its directories with a drive.",
 ]
