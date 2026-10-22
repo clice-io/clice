@@ -709,23 +709,26 @@ class Run {
     }
 }
 
+/// Both servers leave by the protocol, judged by their exit code alone:
+/// the test harness's clean-exit gate scans stderr for sanitizer names,
+/// which a release build's log carries in LLVM's file names
+/// (AddressSanitizer.cpp).
 async function shutdownServer(client: CliceClient, server: ServerName): Promise<void> {
-    if (server === "clice") {
-        await client.shutdown();
-        return;
-    }
-    // clangd exits on its own protocol; skip clice's clean-exit gate
-    // (drop report, anomaly scan) which does not apply to it.
     try {
-        await client.sendRequest("shutdown");
+        await bounded(client.sendRequest("shutdown"), "shutdown");
         await client.sendNotification("exit");
     } finally {
         client.disposed = true;
-        // Hang detection: a clangd still running after `exit` is killed.
+        // Hang detection: a server still running a minute after `exit` is
+        // killed.
         setTimeout(() => {
             client.child.kill("SIGKILL");
         }, 60_000).unref();
         await client.exited;
+    }
+    const { exitCode, signalCode } = client.child;
+    if (exitCode !== 0) {
+        throw new Error(`${server} exited with ${signalCode ?? `code ${String(exitCode)}`}`);
     }
 }
 
