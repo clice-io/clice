@@ -424,7 +424,7 @@ async function sweepFile(
         // compile per place for completion and signature help: each gets a
         // client of its own places only.
         const inspect = (marks: MarkerAnchor[]) =>
-            new Inspect(options.root, marks, { sources: [file] });
+            new Inspect(options.root, marks, { sources: [file], timeout: REQUEST_MS });
         const atPoints = inspect(places.points);
         const atMembers = inspect(places.members);
         const atCalls = inspect(places.calls);

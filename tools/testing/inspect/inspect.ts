@@ -99,8 +99,7 @@ interface RawSignatureHelp {
               label: string;
               documentation?: string | null;
               parameters?:
-                  | { label: string | [number, number]; documentation?: string | null }[]
-                  | null;
+                  { label: string | [number, number]; documentation?: string | null }[] | null;
               active_parameter?: number | null;
           }[]
         | null;
@@ -218,6 +217,7 @@ export class Inspect extends Client {
     private readonly sources: readonly string[];
     private readonly importers: ReadonlySet<string>;
     private readonly config: Record<string, unknown> | undefined;
+    private readonly timeout: number;
     private readonly scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-markers-"));
     private readonly batches = new Map<string, Promise<Entry>>();
     private readonly documents = new Map<string, Promise<Entry>>();
@@ -230,7 +230,13 @@ export class Inspect extends Client {
     constructor(
         root: string,
         marks: readonly MarkerAnchor[],
-        options: { sources: readonly string[]; config?: Record<string, unknown> | undefined },
+        options: {
+            sources: readonly string[];
+            config?: Record<string, unknown> | undefined;
+            /// The bound on one run, which only a hang reaches: a case's unit
+            /// compiles in seconds, a real project's can take minutes.
+            timeout?: number;
+        },
     ) {
         super(marks);
         this.root = root;
@@ -239,6 +245,7 @@ export class Inspect extends Client {
         );
         this.sources = options.sources.filter((file) => !this.importers.has(file));
         this.config = options.config;
+        this.timeout = options.timeout ?? 300_000;
         if (options.config !== undefined) {
             recordConfig(options.config);
         }
@@ -661,7 +668,7 @@ export class Inspect extends Client {
         recordInvocation(args);
         const result = await runProcess(cliceExecutable(), args, {
             env: serverEnv(),
-            timeout: 300_000,
+            timeout: this.timeout,
         });
         if (result.status !== 0) {
             throw new Error(`clice inspect ${ending(result)}:\n${result.stderr}`);
