@@ -96,6 +96,9 @@ export interface StartOptions {
     /// Extra environment for the server process, which its workers inherit:
     /// the CLICE_TEST_* hooks.
     env?: Record<string, string> | undefined;
+    /// Whether the server runs under the harness's checks (serverEnv); a
+    /// benchmark switches them off to time what users run.
+    checked?: boolean | undefined;
 }
 
 export interface InitializeOptions {
@@ -292,7 +295,7 @@ export class CliceClient {
         const child = spawn(executable, options.args ?? ["serve"], {
             stdio: ["pipe", "pipe", "pipe"],
             cwd: options.cwd,
-            env: { ...serverEnv(), ...options.env },
+            env: { ...(options.checked === false ? process.env : serverEnv()), ...options.env },
         });
         const client = new CliceClient(child);
         client.stderrDrainedFromStart = options.drainStderr !== false;

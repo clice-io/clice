@@ -13,9 +13,12 @@ your question:
 
 2. **Scenario harness** — _what does the user experience end to end?_
    `tools/bench/bench.ts` drives a server over LSP through fixed scenarios
-   (cold start, warm start, edit loop, warm feature requests) on a real
-   workspace and reports client-observed percentiles. It is server-agnostic:
-   point it at clangd with `--server clangd` to A/B the same scenario.
+   (cold start, full background index, restart on the index, edit loop,
+   warm feature requests) on a real workspace and reports client-observed
+   latencies, the memory of the server's processes and the index's size.
+   It is server-agnostic: given `--server clice --server clangd` it
+   alternates the two run by run on the same files, and
+   `tools/bench/compare.ts` tabulates the medians side by side.
 
 3. **Component benchmarks** — _which design alternative is faster?_
    Standalone binaries in this directory, Bazel targets of their own
@@ -83,9 +86,9 @@ E2E scenarios, clice vs clangd:
 
 ```bash
 node tools/bench/bench.ts --workspace benchmarks/workloads/llvm \
-    --file clang/lib/Sema/SemaExpr.cpp --json /tmp/clice.json
-node tools/bench/bench.ts --workspace benchmarks/workloads/llvm \
-    --file clang/lib/Sema/SemaExpr.cpp --server clangd --json /tmp/clangd.json
+    --file clang/lib/Sema/SemaExpr.cpp --server clice --server clangd \
+    --scenario cold_start --runs 5 --json temp/semaexpr.json
+node tools/bench/compare.ts temp/semaexpr.json
 ```
 
 Breakdown of a real (non-benchmark) session from its logs:

@@ -38,6 +38,12 @@ test("values may contain spaces", () => {
     expect(events[0]?.values["results"]).toBe(2);
 });
 
+test("lines may end with CRLF", () => {
+    const events = parsePerfLines(`${LINE}\r\n[perf:startup] phase=cdb_load elapsed_ms=7\r\n`);
+    expect(events.map((event) => event.topic)).toEqual(["index", "startup"]);
+    expect(events[0]?.values["merge_ms"]).toBe(3);
+});
+
 test("summarize discriminates by kind and keeps only durations", () => {
     const summary = summarize(
         parsePerfLines(

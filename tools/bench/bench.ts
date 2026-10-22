@@ -1,85 +1,98 @@
-/// E2E benchmark harness: drive a language server over LSP through fixed
-/// scenarios on a real workspace and report client-observed latencies.
+/// E2E benchmark harness: drive language servers over LSP through fixed
+/// scenarios on a real workspace and report client-observed latencies, the
+/// memory of the server's processes and the size of its index.
 ///
 /// The harness is server-agnostic at the LSP level, so the same scenarios
-/// run against clice and clangd for A/B comparison. For clice it
-/// additionally parses the session's `[perf:*]` log lines — master and
-/// worker files under <workspace>/.clice/logs — into a server-side
-/// breakdown (see perf.ts).
+/// run against clice and clangd for A/B comparison: given both servers, it
+/// alternates them run by run on the same files. For clice it additionally
+/// parses the session's `[perf:*]` log lines — master and worker files
+/// under <workspace>/.clice/logs — into a server-side breakdown (see
+/// perf.ts). compare.ts turns the JSON of one or more runs into tables.
 ///
 /// Usage:
 ///   node tools/bench/bench.ts --workspace <dir> [options]
 ///
 /// Options:
-///   --server clice|clangd    which server to drive (default clice)
-///   --binary <path>          server executable (default: clice from
-///                            build/RelWithDebInfo/bin/bin, clangd from PATH)
+///   --server clice|clangd    a server to drive, repeatable (default clice)
+///   --clice <path>           clice executable (default
+///                            build/RelWithDebInfo/bin/bin/clice)
+///   --clangd <path>          clangd executable (default clangd from PATH)
+///   --clangd-arg <arg>       an extra clangd argument, repeatable
 ///   --file <rel>             file to open/edit (default: first CDB entry)
-///   --position <line:char>   position for warm requests (default: derived
-///                            from the file's first call-like identifier)
-///   --scenario <name>        cold_start | warm_start | edit_loop |
-///                            warm_requests; repeatable (default: all)
+///   --probe <kind>=<l>:<c>   a request position, repeatable. Kinds: symbol
+///                            (hover, definition, references, call
+///                            hierarchy; default: the file's first call-like
+///                            identifier), member, unqualified and template
+///                            (completion there), call (signature help).
+///                            A request without its probe is skipped.
+///   --query <text>           workspace symbol query (default: the
+///                            identifier at the symbol probe)
+///   --scenario <name>        cold_start | index | warm_start | edit_loop |
+///                            warm_requests; repeatable (default: all, in
+///                            this order)
+///   --runs <N>               runs of every scenario per server (default 1)
+///   --drop-caches            drop the OS file cache before every cold_start
+///                            and index run (Linux and macOS, through sudo)
 ///   --edits <N>              edit_loop iterations (default 10)
 ///   --repeats <N>            warm request repetitions (default 50)
 ///   --json <path>            write the full results as JSON
 ///
-/// The workspace must contain a compile_commands.json. cold_start wipes
-/// the selected server's cache first (clice's .clice dir, clangd's
-/// .cache/clangd); the other scenarios reuse whatever state the previous
-/// scenarios left, in order.
+/// The workspace must contain a compile_commands.json. Every run starts a
+/// fresh server in its default configuration. cold_start and index wipe
+/// the server's cache first (clice's .clice dir, clangd's .cache/clangd);
+/// the other scenarios reuse what the earlier ones left, so warm_start
+/// after index restarts on a full index.
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
+import type * as proto from "vscode-languageserver-protocol";
 import { CliceClient } from "../client/client.ts";
 import { Workspace } from "../client/workspace.ts";
 import { logFiles } from "../process_gate.ts";
 import { withTimeout } from "../promise.ts";
 import { REPO_ROOT } from "../repo.ts";
-import { computeStats, parsePerfLines, summarize, type Stats } from "./perf.ts";
+import { residentNow, watchMemory, type PeakMemory } from "./memory.ts";
+import { computeStats, parsePerfLines, summarize } from "./perf.ts";
+import {
+    PROBES,
+    SCENARIOS,
+    SERVERS,
+    type BenchResult,
+    type Position,
+    type ProbeKind,
+    type RunResult,
+    type ScenarioName,
+    type ServerName,
+} from "./results.ts";
 
-const ALL_SCENARIOS = ["cold_start", "warm_start", "edit_loop", "warm_requests"] as const;
-type ScenarioName = (typeof ALL_SCENARIOS)[number];
+/// Hang detection: a cold compile of a large project's largest file
+/// (LLVM's SemaExpr.cpp) on a 3-core runner, with room to spare.
+const COMPILE_BOUND = 600_000;
+/// Hang detection: a full background index of LLVM on a 3-core runner.
+const INDEX_BOUND = 6 * 3600_000;
+/// How long the background index must stay idle to count as done: both
+/// servers may end one round and begin another for files found meanwhile.
+const INDEX_QUIET_MS = 15_000;
 
 interface Options {
-    server: "clice" | "clangd";
-    binary: string;
+    servers: ServerName[];
+    binaries: Record<ServerName, string>;
+    clangdArgs: string[];
     workspace: string;
     /// Directory holding compile_commands.json; resolved in main().
     cdbDir: string;
-    file: string | null;
-    /// null = derive a symbol-bearing position from the file content.
-    position: { line: number; character: number } | null;
+    file: string;
+    probes: Partial<Record<ProbeKind, Position>>;
+    query: string;
     scenarios: ScenarioName[];
+    runs: number;
+    dropCaches: boolean;
     edits: number;
     repeats: number;
     jsonPath: string | null;
-}
-
-interface ScenarioResult {
-    /// Client-observed latency series, milliseconds.
-    measurements: Record<string, Stats>;
-    /// Server-side breakdown from the session's `[perf:*]` log lines
-    /// (clice only).
-    perf?: Record<string, Stats>;
-}
-
-interface BenchResult {
-    env: {
-        platform: string;
-        release: string;
-        arch: string;
-        cpus: number;
-        cpuModel: string;
-        node: string;
-        server: string;
-        binary: string;
-        date: string;
-    };
-    workspace: string;
-    file: string;
-    scenarios: Partial<Record<ScenarioName, ScenarioResult>>;
 }
 
 function fail(message: string): never {
@@ -87,15 +100,50 @@ function fail(message: string): never {
     process.exit(1);
 }
 
+function parsePosition(text: string, what: string): Position {
+    const parts = text.split(":");
+    const line = Number(parts[0]);
+    const character = Number(parts[1]);
+    if (
+        parts.length !== 2 ||
+        !Number.isInteger(line) ||
+        line < 0 ||
+        !Number.isInteger(character) ||
+        character < 0
+    ) {
+        fail(`bad ${what} '${text}' (expected line:char)`);
+    }
+    return { line, character };
+}
+
+function count(text: string, what: string): number {
+    const value = Number(text);
+    if (!Number.isInteger(value) || value < 0) {
+        fail(`${what} must be a non-negative integer`);
+    }
+    return value;
+}
+
+/// A path is anchored here, before clangd is started from the CDB
+/// directory instead; a bare name stays a PATH lookup.
+function anchored(binary: string): string {
+    return path.basename(binary) === binary ? binary : path.resolve(binary);
+}
+
 function parseOptions(): Options {
     const { values } = parseArgs({
         options: {
-            server: { type: "string", default: "clice" },
-            binary: { type: "string" },
+            server: { type: "string", multiple: true },
+            clice: { type: "string" },
+            clangd: { type: "string", default: "clangd" },
+            "clangd-arg": { type: "string", multiple: true },
             workspace: { type: "string" },
             file: { type: "string" },
-            position: { type: "string" },
+            probe: { type: "string", multiple: true },
+            query: { type: "string" },
             scenario: { type: "string", multiple: true },
+            runs: { type: "string", default: "1" },
+            "drop-caches": { type: "boolean", default: false },
             edits: { type: "string", default: "10" },
             repeats: { type: "string", default: "50" },
             json: { type: "string" },
@@ -109,59 +157,48 @@ function parseOptions(): Options {
         process.exit(values.help ? 0 : 1);
     }
 
-    const server = values.server;
-    if (server !== "clice" && server !== "clangd") {
-        fail(`unknown server '${server}' (expected clice or clangd)`);
-    }
-
-    const binary =
-        values.binary ??
-        (server === "clice"
-            ? path.join(REPO_ROOT, "build", "RelWithDebInfo", "bin", "bin", "clice")
-            : "clangd");
-
-    const scenarios = (values.scenario ?? [...ALL_SCENARIOS]).map((name) => {
-        if (!(ALL_SCENARIOS as readonly string[]).includes(name)) {
+    const servers = (values.server ?? ["clice"]).map((name) => {
+        if (!(SERVERS as readonly string[]).includes(name)) {
+            fail(`unknown server '${name}' (expected clice or clangd)`);
+        }
+        return name as ServerName;
+    });
+    const scenarios = (values.scenario ?? [...SCENARIOS]).map((name) => {
+        if (!(SCENARIOS as readonly string[]).includes(name)) {
             fail(`unknown scenario '${name}'`);
         }
         return name as ScenarioName;
     });
 
-    let position: { line: number; character: number } | null = null;
-    if (values.position !== undefined) {
-        const parts = values.position.split(":");
-        const line = Number(parts[0]);
-        const character = Number(parts[1]);
-        if (
-            parts.length !== 2 ||
-            !Number.isInteger(line) ||
-            line < 0 ||
-            !Number.isInteger(character) ||
-            character < 0
-        ) {
-            fail(`bad --position '${values.position}' (expected line:char)`);
+    const probes: Partial<Record<ProbeKind, Position>> = {};
+    for (const probe of values.probe ?? []) {
+        const [kind = "", at = ""] = probe.split("=");
+        if (!(PROBES as readonly string[]).includes(kind)) {
+            fail(`unknown probe '${kind}' (expected one of ${PROBES.join(", ")})`);
         }
-        position = { line, character };
-    }
-
-    const edits = Number(values.edits);
-    const repeats = Number(values.repeats);
-    if (!Number.isInteger(edits) || edits < 0 || !Number.isInteger(repeats) || repeats < 0) {
-        fail("--edits and --repeats must be non-negative integers");
+        probes[kind as ProbeKind] = parsePosition(at, `--probe ${kind}`);
     }
 
     return {
-        server,
-        // A bare name stays a PATH lookup; a path is anchored here, before
-        // the clangd process is started from the CDB directory instead.
-        binary: path.basename(binary) === binary ? binary : path.resolve(binary),
+        servers,
+        binaries: {
+            clice: anchored(
+                values.clice ??
+                    path.join(REPO_ROOT, "build", "RelWithDebInfo", "bin", "bin", "clice"),
+            ),
+            clangd: anchored(values.clangd),
+        },
+        clangdArgs: values["clangd-arg"] ?? [],
         workspace: path.resolve(values.workspace),
         cdbDir: "",
-        file: values.file ?? null,
-        position,
+        file: values.file ?? "",
+        probes,
+        query: values.query ?? "",
         scenarios,
-        edits,
-        repeats,
+        runs: count(values.runs, "--runs"),
+        dropCaches: values["drop-caches"],
+        edits: count(values.edits, "--edits"),
+        repeats: count(values.repeats, "--repeats"),
         jsonPath: values.json ?? null,
     };
 }
@@ -169,7 +206,7 @@ function parseOptions(): Options {
 /// Overwrite comment and string/char literal bytes with spaces, keeping
 /// offsets and newlines intact, so position derivation only ever sees
 /// code. Raw string literals are treated as ordinary strings — good
-/// enough for a probe heuristic with a --position override.
+/// enough for a probe heuristic with a --probe override.
 function blankNonCode(text: string): string {
     const out = text.split("");
     const blank = (index: number): void => {
@@ -220,8 +257,20 @@ function blankNonCode(text: string): string {
 /// do not count. The old 0:0 default usually landed on a license comment,
 /// so the positional features took their empty-result fast paths and
 /// measured nothing.
-function derivePosition(file: string): { line: number; character: number } {
-    const keywords = new Set(["if", "for", "while", "switch", "return", "sizeof", "catch"]);
+function derivePosition(file: string): Position {
+    const keywords = new Set([
+        "if",
+        "for",
+        "while",
+        "switch",
+        "return",
+        "sizeof",
+        "catch",
+        "static_assert",
+        "decltype",
+        "alignof",
+        "noexcept",
+    ]);
     const lines = blankNonCode(fs.readFileSync(file, "utf8")).split("\n");
     for (let line = 0; line < lines.length; line += 1) {
         const text = lines[line] ?? "";
@@ -235,7 +284,16 @@ function derivePosition(file: string): { line: number; character: number } {
             }
         }
     }
-    fail(`cannot derive a symbol-bearing position in ${file}; pass --position`);
+    fail(`cannot derive a symbol-bearing position in ${file}; pass --probe symbol=<l>:<c>`);
+}
+
+function identifierAt(file: string, at: Position): string {
+    const line = fs.readFileSync(file, "utf8").split("\n")[at.line] ?? "";
+    const name = /^[A-Za-z_]\w*/.exec(line.slice(at.character))?.[0];
+    if (name === undefined) {
+        fail(`no identifier at ${at.line}:${at.character} of ${file}; pass --query`);
+    }
+    return name;
 }
 
 /// Locate the CDB the way clice does: workspace root first, then any
@@ -275,119 +333,356 @@ function nowMs(): number {
     return Number(process.hrtime.bigint()) / 1e6;
 }
 
-async function timed(fn: () => Promise<unknown>): Promise<number> {
-    const start = nowMs();
-    await fn();
-    return nowMs() - start;
+function pause(ms: number): Promise<void> {
+    // No event: an empty answer or a quiet index announces nothing; the
+    // caller looks again after this pause.
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-class Bench {
-    series = new Map<string, number[]>();
-    /// Log files that existed before this scenario's server ran; every
-    /// scenario spawns a fresh server, so files beyond this set are exactly
-    /// this scenario's session logs.
-    priorLogs: Set<string>;
+/// The directories each server keeps its cache in: clice everything in
+/// the workspace's .clice (pinned by the client's initialize); clangd its
+/// index under .cache/clangd next to the workspace root and the CDB
+/// directory. The rest of a real project's .cache belongs to other tools.
+function cacheDirs(opts: Options, server: ServerName): string[] {
+    return server === "clice"
+        ? [path.join(opts.workspace, ".clice")]
+        : [...new Set([opts.workspace, opts.cdbDir])].map((dir) =>
+              path.join(dir, ".cache", "clangd"),
+          );
+}
+
+function wipeCache(opts: Options, server: ServerName): void {
+    for (const dir of cacheDirs(opts, server)) {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+}
+
+/// Megabytes the server's cache holds on disk, clice's logs aside: all of
+/// it, and its index alone. clangd keeps nothing but the index there (its
+/// preambles live in memory or in temporary files); clice keeps its index
+/// beside the PCHs and PCMs of its store, under cache/<version>/index.
+function cacheMB(opts: Options, server: ServerName): { diskMB: number; indexMB: number } {
+    const logs = path.join(opts.workspace, ".clice", "logs");
+    let disk = 0;
+    let index = 0;
+    for (const dir of cacheDirs(opts, server)) {
+        if (!fs.existsSync(dir)) {
+            continue;
+        }
+        for (const entry of fs.readdirSync(dir, { recursive: true, withFileTypes: true })) {
+            const file = path.join(entry.parentPath, entry.name);
+            if (!entry.isFile() || file.startsWith(logs + path.sep)) {
+                continue;
+            }
+            // The server may still move a file it is writing.
+            const bytes = fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0;
+            disk += bytes;
+            const parts = path.relative(dir, file).split(path.sep);
+            if (server === "clangd" || (parts[0] === "cache" && parts[2] === "index")) {
+                index += bytes;
+            }
+        }
+    }
+    const mb = (bytes: number): number => Math.round(bytes / 1024 / 1024);
+    return { diskMB: mb(disk), indexMB: mb(index) };
+}
+
+/// Drop the OS file cache, so that a cold run reads the project, the
+/// system headers and the server itself from disk. Windows has no command
+/// for it: its runs stay on a warm file cache.
+function dropFileCache(): boolean {
+    switch (process.platform) {
+        case "linux":
+            execFileSync("sudo", ["sh", "-c", "sync && echo 3 > /proc/sys/vm/drop_caches"]);
+            return true;
+        case "darwin":
+            execFileSync("sync");
+            execFileSync("sudo", ["purge"]);
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// What an editor announces: VS Code's capabilities for the features the
+/// scenarios ask, work done progress included — clangd reports its
+/// background index only to a client that takes it.
+const CAPABILITIES: proto.ClientCapabilities = {
+    window: { workDoneProgress: true },
+    workspace: {
+        workspaceEdit: { documentChanges: true },
+        symbol: {},
+    },
+    textDocument: {
+        synchronization: { didSave: true },
+        hover: { contentFormat: ["markdown", "plaintext"] },
+        completion: {
+            completionItem: { snippetSupport: true, labelDetailsSupport: true },
+            contextSupport: true,
+        },
+        signatureHelp: {
+            signatureInformation: {
+                parameterInformation: { labelOffsetSupport: true },
+                activeParameterSupport: true,
+            },
+            contextSupport: true,
+        },
+        definition: { linkSupport: true },
+        references: {},
+        publishDiagnostics: { relatedInformation: true },
+        documentSymbol: { hierarchicalDocumentSymbolSupport: true },
+        foldingRange: { lineFoldingOnly: true },
+        semanticTokens: {
+            requests: { full: { delta: true } },
+            tokenTypes: [],
+            tokenModifiers: [],
+            formats: ["relative"],
+        },
+        inlayHint: {},
+        callHierarchy: {},
+    },
+};
+
+/// The servers' background-index work done progress tokens.
+const INDEX_TOKENS: Record<ServerName, string> = {
+    clice: "clice/backgroundIndex",
+    clangd: "backgroundIndexProgress",
+};
+
+/// How much an answer holds: the items of a list, the tokens of semantic
+/// tokens, the characters of a hover, the signatures of signature help.
+function sizeOf(answer: unknown): number {
+    if (answer === null || answer === undefined) {
+        return 0;
+    }
+    if (Array.isArray(answer)) {
+        return answer.length;
+    }
+    const record = answer as Record<string, unknown>;
+    if (Array.isArray(record["items"])) {
+        return record["items"].length;
+    }
+    if (Array.isArray(record["data"])) {
+        return record["data"].length / 5;
+    }
+    if (Array.isArray(record["signatures"])) {
+        return record["signatures"].length;
+    }
+    if (record["contents"] !== undefined) {
+        return JSON.stringify(record["contents"]).length;
+    }
+    return 1;
+}
+
+/// Document symbols counted through their children.
+function symbolCount(answer: unknown): number {
+    if (!Array.isArray(answer)) {
+        return 0;
+    }
+    return (answer as { children?: unknown }[]).reduce(
+        (sum: number, symbol) => sum + 1 + symbolCount(symbol.children),
+        0,
+    );
+}
+
+/// The distinct files references reach.
+function filesOf(answer: unknown): number {
+    return Array.isArray(answer) ? new Set(answer.map((at: { uri: string }) => at.uri)).size : 0;
+}
+
+/// One run of one scenario by one server: its server process, the memory
+/// watch over it, and what it measured.
+class Run {
+    readonly result: RunResult;
+    readonly opts: Options;
+    client: CliceClient | null = null;
+    private memory: { stop: () => PeakMemory } | null = null;
+    /// Log files that existed before this run's server started; the files
+    /// beyond them are exactly this run's session logs.
+    private priorLogs = new Set<string>();
     /// When set (epoch ms), server-side perf events timestamped before this
     /// point are dropped: they belong to setup/warmup work the client
     /// series deliberately excludes.
     perfWindowStart: number | null = null;
-    opts: Options;
+    /// When the server process was spawned.
+    started = 0;
 
-    constructor(opts: Options) {
+    constructor(opts: Options, server: ServerName, scenario: ScenarioName, run: number) {
         this.opts = opts;
-        this.priorLogs = new Set(opts.server === "clice" ? logFiles(opts.workspace) : []);
+        this.result = { server, scenario, run, series: {}, sizes: {} };
+    }
+
+    get server(): ServerName {
+        return this.result.server;
     }
 
     record(name: string, ms: number): void {
-        const list = this.series.get(name) ?? [];
-        list.push(ms);
-        this.series.set(name, list);
+        (this.result.series[name] ??= []).push(ms);
     }
 
-    async measure(name: string, fn: () => Promise<unknown>): Promise<void> {
-        this.record(name, await timed(fn));
+    async measure(name: string, fn: () => Promise<unknown>): Promise<unknown> {
+        const start = nowMs();
+        const answer = await fn();
+        this.record(name, nowMs() - start);
+        return answer;
+    }
+
+    async start(): Promise<CliceClient> {
+        const opts = this.opts;
+        if (this.server === "clice") {
+            this.priorLogs = new Set(logFiles(opts.workspace));
+        }
+        this.started = nowMs();
+        const client = CliceClient.start(opts.binaries[this.server], {
+            args:
+                this.server === "clice"
+                    ? ["serve"]
+                    : [`--compile-commands-dir=${opts.cdbDir}`, ...opts.clangdArgs],
+            // A relative CDB `directory` anchors at the database for clice but
+            // at the process cwd for clangd; running clangd from the CDB
+            // directory makes both servers compile under the same command.
+            cwd: this.server === "clangd" ? opts.cdbDir : undefined,
+            checked: false,
+        });
+        this.client = client;
+        if (client.child.pid !== undefined) {
+            this.memory = watchMemory(client.child.pid);
+        }
+        await client.initialize(new Workspace(opts.workspace), {
+            initializationOptions: {
+                // Pin clice to the CDB selected for the comparison: a
+                // workspace clice.toml may declare databases elsewhere, while
+                // clangd always receives opts.cdbDir — both must open the file
+                // under the same compilation command. The overlay replaces the
+                // file's rules wholesale, so none of its flag edits apply
+                // either, matching clangd.
+                rules: [{ compile_commands: [opts.cdbDir] }],
+                project: {
+                    // Pin logs to where finish() reads them (logFiles searches
+                    // <workspace>/.clice/logs); a clice.toml logging_dir would
+                    // otherwise send the worker perf lines elsewhere.
+                    logging_dir: path.join(opts.workspace, ".clice", "logs"),
+                },
+            },
+            testDefaults: false,
+            capabilities: CAPABILITIES,
+        });
+        this.record("initialize", nowMs() - this.started);
+        return client;
+    }
+
+    /// Asks until an answer holds something; the time from `from` to that
+    /// answer is the series `name`. An empty answer to a question asked
+    /// once `settled` holds is the server's final word: the series gets no
+    /// sample, and the size records the empty answer.
+    async untilAnswered(
+        name: string,
+        from: number,
+        ask: () => Promise<unknown>,
+        settled: () => boolean,
+        size: (answer: unknown) => number = sizeOf,
+    ): Promise<void> {
+        for (;;) {
+            const final = settled();
+            const held = size(await ask());
+            if (held > 0) {
+                this.record(name, nowMs() - from);
+                this.result.sizes[name] = held;
+                return;
+            }
+            if (final) {
+                this.result.sizes[name] = 0;
+                console.warn(`${this.server}: ${name} answered empty`);
+                return;
+            }
+            await pause(50);
+        }
+    }
+
+    /// Waits until the background index is idle: no round running and none
+    /// begun for INDEX_QUIET_MS. With `round`, a round must have ended
+    /// first. Returns when the last round ended, and the most files a round
+    /// counted.
+    async indexIdle(round: boolean): Promise<{ ended: number; files: number }> {
+        const client = this.client;
+        if (client === null) {
+            throw new Error("the server is not running");
+        }
+        const token = INDEX_TOKENS[this.server];
+        let seen = 0;
+        let changed = nowMs();
+        let active = false;
+        let ended: number | null = null;
+        let files = 0;
+        while (nowMs() - this.started < INDEX_BOUND) {
+            const events = client.progressEvents;
+            for (; seen < events.length; seen += 1) {
+                const event = events[seen];
+                if (event?.token !== token) {
+                    continue;
+                }
+                const value = event.value as { kind?: string; message?: string };
+                changed = nowMs();
+                active = value.kind !== "end";
+                if (value.kind === "end") {
+                    ended = changed;
+                }
+                const counted = /(\d+)\/(\d+)/.exec(value.message ?? "");
+                if (counted?.[2] !== undefined) {
+                    files = Math.max(files, Number(counted[2]));
+                }
+            }
+            if (!active && (!round || ended !== null) && nowMs() - changed >= INDEX_QUIET_MS) {
+                return { ended: ended ?? changed, files };
+            }
+            await pause(250);
+        }
+        throw new Error(`${this.server}: the background index is not idle after ${INDEX_BOUND} ms`);
+    }
+
+    async finish(): Promise<RunResult> {
+        const client = this.client;
+        if (client === null) {
+            return this.result;
+        }
+        const pid = client.child.pid;
+        const end = pid === undefined ? undefined : residentNow(pid);
+        const peak = this.memory?.stop();
+        if (end !== undefined && peak !== undefined) {
+            this.result.memory = { peak, end };
+        }
+        if (this.server === "clice") {
+            this.collectPerf(client);
+        }
+        await shutdownServer(client, this.server);
+        return this.result;
     }
 
     /// Server-side breakdown from the session's log files — the worker
     /// processes' `[perf:build]`/`[perf:query]` lines only exist there
     /// (workers never mirror to stderr). Captured stderr, which carries the
     /// master's lines, is the fallback when no log files appeared.
-    result(client: CliceClient): ScenarioResult {
-        const measurements: Record<string, Stats> = {};
-        for (const [name, values] of this.series) {
-            const stats = computeStats(values);
-            if (stats !== null) {
-                measurements[name] = stats;
-            }
+    private collectPerf(client: CliceClient): void {
+        const fresh = logFiles(this.opts.workspace).filter((f) => !this.priorLogs.has(f));
+        // One pid per log file: master and workers are separate processes
+        // and keep separate trace lanes.
+        let events =
+            fresh.length > 0
+                ? fresh.flatMap((f, i) => parsePerfLines(fs.readFileSync(f, "utf8"), i + 1))
+                : parsePerfLines(client.drainedStderr().toString("utf8"));
+        const windowStart = this.perfWindowStart;
+        if (windowStart !== null) {
+            events = events.filter((e) => e.ts !== null && e.ts >= windowStart);
         }
-        const result: ScenarioResult = { measurements };
-        if (this.opts.server === "clice") {
-            const fresh = logFiles(this.opts.workspace).filter((f) => !this.priorLogs.has(f));
-            // One pid per log file: master and workers are separate
-            // processes and keep separate trace lanes.
-            let events =
-                fresh.length > 0
-                    ? fresh.flatMap((f, i) => parsePerfLines(fs.readFileSync(f, "utf8"), i + 1))
-                    : parsePerfLines(client.drainedStderr().toString("utf8"));
-            const windowStart = this.perfWindowStart;
-            if (windowStart !== null) {
-                events = events.filter((e) => e.ts !== null && e.ts >= windowStart);
-            }
-            const perf = summarize(events);
-            if (Object.keys(perf).length > 0) {
-                result.perf = perf;
-            }
+        const perf = summarize(events);
+        if (Object.keys(perf).length > 0) {
+            this.result.perf = perf;
         }
-        return result;
     }
 }
 
-/// clice takes the CDB via initialization options; clangd needs the CDB
-/// directory spelled out on the command line.
-function serverArgs(opts: Options): string[] {
-    return opts.server === "clice"
-        ? ["serve"]
-        : ["--background-index", `--compile-commands-dir=${opts.cdbDir}`];
-}
-
-/// Only what the comparison must pin; everything else runs at the
-/// server's real defaults (see startServer), including the background
-/// activity the tracker's polling loops generate.
-function initializationOptions(opts: Options): Record<string, unknown> {
-    return {
-        // Pin clice to the CDB selected for the comparison: a workspace
-        // clice.toml may declare databases elsewhere, while the clangd run
-        // always receives opts.cdbDir — the A/B must open the file under
-        // the same compilation command. The overlay replaces the file's
-        // rules wholesale, so none of its flag edits apply either, matching
-        // clangd.
-        rules: [{ compile_commands: [opts.cdbDir] }],
-        project: {
-            // Pin logs to where result() reads them (logFiles searches
-            // <workspace>/.clice/logs); a clice.toml logging_dir would
-            // otherwise send the worker perf lines elsewhere.
-            logging_dir: path.join(opts.workspace, ".clice", "logs"),
-        },
-    };
-}
-
-async function startServer(opts: Options): Promise<CliceClient> {
-    const client = CliceClient.start(opts.binary, {
-        args: serverArgs(opts),
-        // A relative CDB `directory` anchors at the database for clice but
-        // at the process cwd for clangd; running clangd from the CDB
-        // directory makes both servers compile under the same command.
-        cwd: opts.server === "clangd" ? opts.cdbDir : undefined,
-    });
-    await client.initialize(new Workspace(opts.workspace), {
-        initializationOptions: initializationOptions(opts),
-        testDefaults: false,
-    });
-    return client;
-}
-
-async function shutdownServer(client: CliceClient, opts: Options): Promise<void> {
-    if (opts.server === "clice") {
+async function shutdownServer(client: CliceClient, server: ServerName): Promise<void> {
+    if (server === "clice") {
         await client.shutdown();
         return;
     }
@@ -401,60 +696,102 @@ async function shutdownServer(client: CliceClient, opts: Options): Promise<void>
         // Hang detection: a clangd still running after `exit` is killed.
         setTimeout(() => {
             client.child.kill("SIGKILL");
-        }, 5_000).unref();
+        }, 60_000).unref();
         await client.exited;
     }
 }
 
-/// Server start → initialize response → first diagnostics of the opened file.
-///
-/// The hover poke that triggers compilation on clice stays off the timed
-/// path: diagnostics publish when compilation finishes and the hover is
-/// computed afterward, so awaiting its response first (as openAndWait
-/// does) would fold hover computation into every sample. The sample ends
-/// at the diagnostics notification; the poke is drained after the clock
-/// stops.
-async function runStartScenario(opts: Options, file: string): Promise<ScenarioResult> {
-    const bench = new Bench(opts);
-
-    const start = nowMs();
-    const client = await startServer(opts);
-    bench.record("initialize", nowMs() - start);
-
-    let poke: Promise<unknown> = Promise.resolve();
-    await bench.measure("open_to_diagnostics", async () => {
-        const [uri] = client.open(file);
-        const arrived = client.armDiagnostics(uri);
-        poke = client.hoverAt(uri, 0, 0);
-        await withTimeout(arrived, 300_000, `diagnostics ${uri}`);
-    });
-    await poke;
-
-    const result = bench.result(client);
-    await shutdownServer(client, opts);
-    return result;
-}
-
-async function runColdStart(opts: Options, file: string): Promise<ScenarioResult> {
-    // Wipe only the selected server's cache: clice keeps everything in the
-    // workspace's .clice (pinned by the client's initialize); clangd keeps
-    // its index under .cache/clangd next to the workspace root and the CDB
-    // directory. The rest of a real project's .cache belongs to other
-    // tools and must survive.
-    if (opts.server === "clice") {
-        fs.rmSync(path.join(opts.workspace, ".clice"), { recursive: true, force: true });
-    } else {
-        for (const dir of new Set([opts.workspace, opts.cdbDir])) {
-            fs.rmSync(path.join(dir, ".cache", "clangd"), { recursive: true, force: true });
-        }
+function symbolProbe(opts: Options): Position {
+    const symbol = opts.probes.symbol;
+    if (symbol === undefined) {
+        throw new Error("main() derives the symbol probe");
     }
-    return runStartScenario(opts, file);
+    return symbol;
 }
 
-async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult> {
-    const bench = new Bench(opts);
-    const client = await startServer(opts);
-    const [uri, content] = await client.openAndWait(file, 300_000);
+/// Server start → the opened file's first diagnostics, and the first
+/// non-empty semantic tokens, hover and definition at the symbol probe,
+/// asked right at the open as an editor does; a warm start also times the
+/// first workspace symbol answer and the first references reaching a
+/// second file — the index loaded. The open's samples count from the
+/// didOpen.
+async function runStart(run: Run, warm: boolean): Promise<void> {
+    const opts = run.opts;
+    const client = await run.start();
+    const { line, character } = symbolProbe(opts);
+    const opened = nowMs();
+    const [uri] = client.open(opts.file);
+    let built = false;
+    let indexed = false;
+    const afterBuild = (): boolean => built;
+    const waits = [
+        withTimeout(client.armDiagnostics(uri), COMPILE_BOUND, `diagnostics ${uri}`).then(() => {
+            run.record("open_to_diagnostics", nowMs() - opened);
+            built = true;
+        }),
+        run.untilAnswered(
+            "open_to_semantic_tokens",
+            opened,
+            () => client.semanticTokensFull(uri),
+            afterBuild,
+        ),
+        run.untilAnswered(
+            "open_to_hover",
+            opened,
+            () => client.hoverAt(uri, line, character),
+            afterBuild,
+        ),
+        run.untilAnswered(
+            "open_to_definition",
+            opened,
+            () => client.definitionAt(uri, line, character),
+            afterBuild,
+        ),
+    ];
+    if (warm) {
+        const afterLoad = (): boolean => built && indexed;
+        waits.push(
+            run.indexIdle(false).then(() => {
+                indexed = true;
+            }),
+            run.untilAnswered(
+                "open_to_workspace_symbol",
+                opened,
+                () => client.workspaceSymbols(opts.query),
+                afterLoad,
+            ),
+            run.untilAnswered(
+                "open_to_cross_file_references",
+                opened,
+                () => client.referencesAt(uri, line, character),
+                afterLoad,
+                (answer) => (filesOf(answer) >= 2 ? sizeOf(answer) : 0),
+            ),
+        );
+    }
+    await Promise.all(waits);
+}
+
+/// Server start → the background index of the whole project idle, the
+/// focus file open as the editor that started the server has it (clangd
+/// finds its database through an opened file).
+async function runIndex(run: Run): Promise<void> {
+    const opts = run.opts;
+    const client = await run.start();
+    const [uri] = client.open(opts.file);
+    await client.semanticTokensFull(uri);
+    const { ended, files } = await run.indexIdle(true);
+    run.record("index", ended - run.started);
+    run.result.index = { files, ...cacheMB(opts, run.server) };
+}
+
+async function runEditLoop(run: Run): Promise<void> {
+    const opts = run.opts;
+    const client = await run.start();
+    const [uri, content] = client.open(opts.file);
+    const opened = client.armDiagnostics(uri);
+    await client.semanticTokensFull(uri);
+    await withTimeout(opened, COMPILE_BOUND, `diagnostics ${uri}`);
 
     // Append at the end of the TU: every edit invalidates the opened file
     // but not the preamble — the interactive path the server optimizes.
@@ -465,42 +802,69 @@ async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult>
 
     for (let i = 1; i <= opts.edits; i += 1) {
         const comment = `// bench edit ${i}`;
-        // See runStartScenario: the sample ends at the diagnostics
-        // notification, with the triggering hover drained off the clock.
-        let poke: Promise<unknown> = Promise.resolve();
-        await bench.measure("edit_to_diagnostics", async () => {
-            const arrived = client.armDiagnostics(uri);
-            client.changeRange(uri, i, { start: end, end }, `\n${comment}`);
-            poke = client.hoverAt(uri, 0, 0);
-            await withTimeout(arrived, 300_000, `diagnostics ${uri}`);
-        });
-        await poke;
+        const edited = nowMs();
+        const arrived = client.armDiagnostics(uri);
+        client.changeRange(uri, i, { start: end, end }, `\n${comment}`);
+        // The semantic tokens an editor asks after every change; they also
+        // pull clice's rebuild.
+        await Promise.all([
+            withTimeout(arrived, COMPILE_BOUND, `diagnostics ${uri}`).then(() => {
+                run.record("edit_to_diagnostics", nowMs() - edited);
+            }),
+            client.semanticTokensFull(uri).then(() => {
+                run.record("edit_to_semantic_tokens", nowMs() - edited);
+            }),
+        ]);
         end = { line: end.line + 1, character: comment.length };
     }
-
-    const result = bench.result(client);
-    await shutdownServer(client, opts);
-    return result;
 }
 
-async function runWarmRequests(opts: Options, file: string): Promise<ScenarioResult> {
-    const bench = new Bench(opts);
-    const client = await startServer(opts);
-    const [uri] = await client.openAndWait(file, 300_000);
-    const position = opts.position ?? derivePosition(file);
-    if (opts.position === null) {
-        console.log(`derived probe position ${position.line}:${position.character}`);
-    }
-    const { line, character } = position;
+async function runWarmRequests(run: Run): Promise<void> {
+    const opts = run.opts;
+    const client = await run.start();
+    const [uri] = client.open(opts.file);
+    const opened = client.armDiagnostics(uri);
+    await client.semanticTokensFull(uri);
+    await withTimeout(opened, COMPILE_BOUND, `diagnostics ${uri}`);
+    // References and the call hierarchy read the whole index: it must be
+    // loaded first, as it is in a session that has run a while.
+    await run.indexIdle(false);
 
+    const { line, character } = symbolProbe(opts);
+    const shown = {
+        start: { line: Math.max(0, line - 50), character: 0 },
+        end: { line: line + 50, character: 0 },
+    };
     const requests: Record<string, () => Promise<unknown>> = {
         hover: () => client.hoverAt(uri, line, character),
         definition: () => client.definitionAt(uri, line, character),
         references: () => client.referencesAt(uri, line, character),
-        completion: () => client.completionAt(uri, line, character),
+        call_hierarchy: async () => {
+            const items = await client.prepareCallHierarchy(uri, line, character);
+            const item = items?.[0];
+            return item === undefined ? [] : client.callHierarchyIncoming(item);
+        },
+        workspace_symbol: () => client.workspaceSymbols(opts.query),
         document_symbol: () => client.documentSymbols(uri),
         semantic_tokens: () => client.semanticTokensFull(uri),
+        folding_range: () => client.foldingRanges(uri),
+        inlay_hint: () => client.inlayHints(uri, shown),
     };
+    const completions: [string, ProbeKind][] = [
+        ["completion_member", "member"],
+        ["completion_unqualified", "unqualified"],
+        ["completion_template", "template"],
+    ];
+    for (const [name, kind] of completions) {
+        const at = opts.probes[kind];
+        if (at !== undefined) {
+            requests[name] = () => client.completionAt(uri, at.line, at.character);
+        }
+    }
+    const call = opts.probes.call;
+    if (call !== undefined) {
+        requests["signature_help"] = () => client.signatureHelpAt(uri, call.line, call.character);
+    }
 
     // One unmeasured warmup per request absorbs lazy first-request work.
     // All warmups run before the measurement window opens, so the
@@ -517,49 +881,91 @@ async function runWarmRequests(opts: Options, file: string): Promise<ScenarioRes
         // Time is the feature: the wait is for the clock itself.
         await new Promise((resolve) => setTimeout(resolve, 1));
     }
-    bench.perfWindowStart = boundary + 1;
+    run.perfWindowStart = boundary + 1;
 
     for (const [name, request] of Object.entries(requests)) {
+        let answer: unknown = null;
         for (let i = 0; i < opts.repeats; i += 1) {
-            await bench.measure(name, request);
+            answer = await run.measure(name, request);
         }
+        run.result.sizes[name] = name === "document_symbol" ? symbolCount(answer) : sizeOf(answer);
     }
-
-    const result = bench.result(client);
-    await shutdownServer(client, opts);
-    return result;
 }
 
-function printScenario(name: string, result: ScenarioResult): void {
-    console.log(`\n=== ${name} ===`);
-    const rows = Object.entries(result.measurements);
-    console.log(
-        `  ${"series".padEnd(24)} ${"count".padStart(6)} ${"p50".padStart(9)} ` +
-            `${"p90".padStart(9)} ${"p99".padStart(9)} ${"max".padStart(9)}`,
-    );
-    for (const [series, stats] of rows) {
-        console.log(
-            `  ${series.padEnd(24)} ${String(stats.count).padStart(6)} ` +
-                `${stats.p50.toFixed(2).padStart(9)} ${stats.p90.toFixed(2).padStart(9)} ` +
-                `${stats.p99.toFixed(2).padStart(9)} ${stats.max.toFixed(2).padStart(9)}`,
-        );
-    }
-    if (result.perf !== undefined) {
-        console.log("  server-side breakdown ([perf:*], ms):");
-        for (const [series, stats] of Object.entries(result.perf)) {
-            console.log(
-                `    ${series.padEnd(38)} n=${String(stats.count).padStart(5)} ` +
-                    `p50=${stats.p50.toFixed(2).padStart(9)} max=${stats.max.toFixed(2).padStart(9)}`,
-            );
+async function runScenario(
+    opts: Options,
+    server: ServerName,
+    scenario: ScenarioName,
+    index: number,
+): Promise<RunResult> {
+    const run = new Run(opts, server, scenario, index);
+    if (scenario === "cold_start" || scenario === "index") {
+        wipeCache(opts, server);
+        if (opts.dropCaches) {
+            run.result.dropped = dropFileCache();
         }
     }
+    // A run that fails is a result too: the session goes on to the others.
+    try {
+        switch (scenario) {
+            case "cold_start":
+                await runStart(run, false);
+                break;
+            case "warm_start":
+                await runStart(run, true);
+                break;
+            case "index":
+                await runIndex(run);
+                break;
+            case "edit_loop":
+                await runEditLoop(run);
+                break;
+            case "warm_requests":
+                await runWarmRequests(run);
+                break;
+        }
+    } catch (error) {
+        run.result.error = String(error);
+    }
+    try {
+        await run.finish();
+    } catch (error) {
+        run.result.error ??= String(error);
+    }
+    return run.result;
+}
+
+function printRun(result: RunResult): void {
+    const parts = Object.entries(result.series).map(([name, values]) => {
+        const stats = computeStats(values);
+        return stats === null ? name : `${name}=${stats.p50.toFixed(1)}`;
+    });
+    if (result.memory !== undefined) {
+        parts.push(`peak_mb=${result.memory.peak.total}`);
+        parts.push(`end_mb=${result.memory.end.root + result.memory.end.children}`);
+    }
+    if (result.index !== undefined) {
+        parts.push(
+            `files=${result.index.files}`,
+            `index_mb=${result.index.indexMB}`,
+            `disk_mb=${result.index.diskMB}`,
+        );
+    }
+    if (result.error !== undefined) {
+        parts.push(`failed: ${result.error}`);
+    }
+    console.log(`[${result.scenario} #${result.run} ${result.server}] ${parts.join(" ")}`);
 }
 
 async function main(): Promise<void> {
     const opts = parseOptions();
     const cdb = findCDB(opts.workspace);
     opts.cdbDir = path.dirname(cdb);
-    const file = opts.file !== null ? path.resolve(opts.workspace, opts.file) : firstCDBEntry(cdb);
+    opts.file = opts.file !== "" ? path.resolve(opts.workspace, opts.file) : firstCDBEntry(cdb);
+    opts.probes.symbol ??= derivePosition(opts.file);
+    if (opts.query === "") {
+        opts.query = identifierAt(opts.file, opts.probes.symbol);
+    }
     const cpus = os.cpus();
 
     const result: BenchResult = {
@@ -569,35 +975,42 @@ async function main(): Promise<void> {
             arch: process.arch,
             cpus: cpus.length,
             cpuModel: cpus[0]?.model ?? "unknown",
+            memoryMB: Math.round(os.totalmem() / 1024 / 1024),
             node: process.version,
-            server: opts.server,
-            binary: opts.binary,
             date: new Date().toISOString(),
         },
+        binaries: Object.fromEntries(opts.servers.map((server) => [server, opts.binaries[server]])),
+        clangdArgs: opts.clangdArgs,
         workspace: opts.workspace,
-        file,
-        scenarios: {},
+        file: opts.file,
+        probes: opts.probes,
+        query: opts.query,
+        runs: [],
     };
 
-    console.log(`server: ${opts.server} (${opts.binary})`);
+    console.log(`servers: ${opts.servers.map((s) => `${s} (${opts.binaries[s]})`).join(", ")}`);
     console.log(`workspace: ${opts.workspace}`);
-    console.log(`file: ${file}`);
+    console.log(`file: ${opts.file}`);
+    console.log(`probes: ${JSON.stringify(opts.probes)}, query: ${opts.query}`);
 
-    const runners: Record<ScenarioName, () => Promise<ScenarioResult>> = {
-        cold_start: () => runColdStart(opts, file),
-        warm_start: () => runStartScenario(opts, file),
-        edit_loop: () => runEditLoop(opts, file),
-        warm_requests: () => runWarmRequests(opts, file),
+    const write = (): void => {
+        if (opts.jsonPath !== null) {
+            fs.writeFileSync(opts.jsonPath, JSON.stringify(result, null, 2));
+        }
     };
-
-    for (const name of opts.scenarios) {
-        const scenario = await runners[name]();
-        result.scenarios[name] = scenario;
-        printScenario(name, scenario);
+    // The servers alternate run by run: a drift of the machine over the
+    // session reaches both alike.
+    for (const scenario of opts.scenarios) {
+        for (let index = 1; index <= opts.runs; index += 1) {
+            for (const server of opts.servers) {
+                const run = await runScenario(opts, server, scenario, index);
+                result.runs.push(run);
+                printRun(run);
+                write();
+            }
+        }
     }
-
     if (opts.jsonPath !== null) {
-        fs.writeFileSync(opts.jsonPath, JSON.stringify(result, null, 2));
         console.log(`\nresults written to ${opts.jsonPath}`);
     }
 }

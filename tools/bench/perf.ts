@@ -25,7 +25,8 @@ const THREAD_PATTERN = /\[thread (\d+)\]/;
 
 export function parsePerfLines(text: string, pid = 1): PerfEvent[] {
     const events: PerfEvent[] = [];
-    for (const line of text.split("\n")) {
+    // Logs written on Windows end their lines with CRLF.
+    for (const line of text.split(/\r?\n/)) {
         const match = LINE_PATTERN.exec(line);
         if (match === null) {
             continue;
