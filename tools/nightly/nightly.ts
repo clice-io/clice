@@ -12,12 +12,19 @@ import { logFiles } from "../process_gate.ts";
 import { levelOf } from "../testing/logs/logs.ts";
 import { CRASHED_IN } from "../testing/server/serve.ts";
 import { confirm } from "./confirm.ts";
-import { includedHeaders, inJob, jobDatabase } from "./database.ts";
+import { includedHeaders, inJob, inside, jobDatabase } from "./database.ts";
 import { runIndex } from "./index.ts";
-import type { PeakMemory, Resident } from "./memory.ts";
+import type { PeakMemory } from "./memory.ts";
 import { prepare } from "./prepare.ts";
 import type { Job, Platform } from "./projects.ts";
-import { CONCURRENCY, sampleFiles, sampleHeaders, sweep, type Request } from "./sweep.ts";
+import {
+    CONCURRENCY,
+    sampleFiles,
+    sampleHeaders,
+    sweep,
+    type Request,
+    type SweepRun,
+} from "./sweep.ts";
 
 export type Step = "index" | "sweep";
 
@@ -68,17 +75,10 @@ export interface Results {
         compiledWithErrors: number;
         failed: number;
     };
-    sweep?: {
-        files: number;
-        serverOnly: { file: string; why: string }[];
-        requests: number;
-        inspectSeconds: number;
-        serverSeconds: number;
-        /// The server requests that took over a minute.
-        slow: { file: string; label: string; seconds: number }[];
-        /// Measured on Linux only.
-        memory?: { start: Resident; peak: PeakMemory; end: Resident };
-    };
+    sweep?: Pick<
+        SweepRun,
+        "serverOnly" | "requests" | "inspectSeconds" | "serverSeconds" | "slow" | "memory"
+    > & { files: number };
     /// Units clice reported errors on that the compiler rejects too.
     compilerRejects: { unit: string; output: string }[];
     /// Error-level lines of clice's logs: what went wrong without failing.
@@ -111,16 +111,6 @@ function rerun(options: NightlyOptions, extra: string): string {
 
 function cliceCommit(): string {
     return execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
-}
-
-/// The checkout-relative path of a unit inside the checkout; null for one
-/// outside it.
-function inside(checkout: string, file: string): string | null {
-    const real = fs.existsSync(file) ? fs.realpathSync(file) : file;
-    const relative = path.relative(fs.realpathSync(checkout), real);
-    return relative.startsWith("..") || path.isAbsolute(relative)
-        ? null
-        : relative.split(path.sep).join("/");
 }
 
 /// Crashes and anomalies in the logs of every clice process the job ran
@@ -170,7 +160,13 @@ function scanLogs(
 /// A failure for each unit clice failed or reported errors on that the
 /// compiler compiles or cannot check; the others are the compiler's too.
 async function judgeUnits(
-    units: { unit: string; errors?: string[]; request?: string; repro: string }[],
+    units: {
+        unit: string;
+        host?: string | undefined;
+        errors?: string[];
+        request?: string;
+        repro: string;
+    }[],
     entries: readonly DatabaseEntry[],
     checkout: string,
     results: Results,
@@ -287,7 +283,7 @@ async function sweepStep(
     // A machine asking fewer files at once samples fewer: a sweep takes the
     // same time everywhere.
     const sample = Math.ceil((job.project.sample * CONCURRENCY) / 3);
-    const hosts = includedHeaders(checkout, entries);
+    const hosts = await includedHeaders(checkout);
     const files = options.files ?? [
         ...sampleFiles(units, sample, seed),
         ...sampleHeaders(
@@ -303,14 +299,15 @@ async function sweepStep(
         deadline: Math.min(Date.now() + SWEEP_MS, jobEnd),
         ...(options.only === undefined ? {} : { only: options.only }),
     });
+    const { serverOnly, requests, inspectSeconds, serverSeconds, slow, memory } = run;
     results.sweep = {
         files: run.files.length,
-        serverOnly: run.serverOnly,
-        requests: run.requests,
-        inspectSeconds: run.inspectSeconds,
-        serverSeconds: run.serverSeconds,
-        slow: run.slow,
-        ...(run.memory === undefined ? {} : { memory: run.memory }),
+        serverOnly,
+        requests,
+        inspectSeconds,
+        serverSeconds,
+        slow,
+        ...(memory === undefined ? {} : { memory }),
     };
     if (run.unasked.length > 0 || run.cut.length > 0) {
         results.failures.push({
@@ -352,7 +349,7 @@ async function sweepStep(
             .filter(({ file }) => !judged.has(file))
             .map(({ file, errors }) => ({
                 unit: path.join(checkout, file),
-                ...(hosts.has(file) ? { host: hosts.get(file) } : {}),
+                host: hosts.get(file),
                 errors,
                 request: "errors",
                 repro: rerun(options, `--steps sweep --file ${file} --only errors`),

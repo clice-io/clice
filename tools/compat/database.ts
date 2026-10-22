@@ -133,6 +133,36 @@ export async function nativeEntries(
     }));
 }
 
+/// MSVC options carry their values joined.
+const OUTPUTS = new Set(["-c", "-MD", "-MMD", "-MP"]);
+const OUTPUTS_WITH_VALUE = new Set(["-o", "-MF", "-MT", "-MQ"]);
+const GCC_DEPENDENCIES = /^-Wp,-M+D,/;
+const MSVC_OUTPUTS = /^[/-](c|FS|showIncludes|Fo.*|Fd.*)$/;
+
+/// Whether a driver takes cl's options: cl and clang-cl.
+export function isMsvc(driver: string): boolean {
+    return /^(cl|clang-cl)(\.exe)?$/i.test(path.basename(driver));
+}
+
+/// An entry's argv, driver first, without the arguments that name the
+/// build's outputs or its own dependency files: rerunning the entry must
+/// neither overwrite them nor compile.
+export function withoutOutputs(args: readonly string[]): string[] {
+    const msvc = isMsvc(args[0] ?? "");
+    const out: string[] = [];
+    for (let i = 0; i < args.length; i += 1) {
+        const arg = args[i] ?? "";
+        if (!msvc && OUTPUTS_WITH_VALUE.has(arg)) {
+            i += 1;
+        } else if (
+            msvc ? !MSVC_OUTPUTS.test(arg) : !OUTPUTS.has(arg) && !GCC_DEPENDENCIES.test(arg)
+        ) {
+            out.push(arg);
+        }
+    }
+    return out;
+}
+
 export function entrySource(entry: DatabaseEntry): string {
     return path.resolve(entry.directory, entry.file);
 }

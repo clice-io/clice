@@ -34,9 +34,11 @@ import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { CliceClient } from "../client/client.ts";
 import { Workspace } from "../client/workspace.ts";
+import { KEYWORDS, lex, type Token } from "../lex.ts";
 import { logFiles } from "../process_gate.ts";
 import { withTimeout } from "../promise.ts";
 import { REPO_ROOT } from "../repo.ts";
+import { SourceText } from "../testing/render/position.ts";
 import { computeStats, parsePerfLines, summarize, type Stats } from "./perf.ts";
 
 const ALL_SCENARIOS = ["cold_start", "warm_start", "edit_loop", "warm_requests"] as const;
@@ -166,76 +168,27 @@ function parseOptions(): Options {
     };
 }
 
-/// Overwrite comment and string/char literal bytes with spaces, keeping
-/// offsets and newlines intact, so position derivation only ever sees
-/// code. Raw string literals are treated as ordinary strings — good
-/// enough for a probe heuristic with a --position override.
-function blankNonCode(text: string): string {
-    const out = text.split("");
-    const blank = (index: number): void => {
-        if (index < out.length && out[index] !== "\n") {
-            out[index] = " ";
-        }
-    };
-    let i = 0;
-    while (i < text.length) {
-        const two = text.slice(i, i + 2);
-        if (two === "//") {
-            while (i < text.length && text[i] !== "\n") {
-                blank(i);
-                i += 1;
-            }
-        } else if (two === "/*") {
-            while (i < text.length && text.slice(i, i + 2) !== "*/") {
-                blank(i);
-                i += 1;
-            }
-            blank(i);
-            blank(i + 1);
-            i += 2;
-        } else if (text[i] === '"' || text[i] === "'") {
-            const quote = text[i];
-            blank(i);
-            i += 1;
-            // An unterminated literal ends at the newline (blank keeps it).
-            while (i < text.length && text[i] !== quote && text[i] !== "\n") {
-                blank(i);
-                if (text[i] === "\\") {
-                    blank(i + 1);
-                    i += 1;
-                }
-                i += 1;
-            }
-            blank(i);
-            i += 1;
-        } else {
-            i += 1;
-        }
-    }
-    return out.join("");
-}
-
 /// Derive a symbol-bearing probe position: the first call-like identifier
-/// in code text — comments, string/char literals and preprocessor lines
-/// do not count. The old 0:0 default usually landed on a license comment,
-/// so the positional features took their empty-result fast paths and
-/// measured nothing.
+/// in code — comments, string/char literals and preprocessor lines do not
+/// count. The old 0:0 default usually landed on a license comment, so the
+/// positional features took their empty-result fast paths and measured
+/// nothing.
 function derivePosition(file: string): { line: number; character: number } {
-    const keywords = new Set(["if", "for", "while", "switch", "return", "sizeof", "catch"]);
-    const lines = blankNonCode(fs.readFileSync(file, "utf8")).split("\n");
-    for (let line = 0; line < lines.length; line += 1) {
-        const text = lines[line] ?? "";
-        if (text.trimStart().startsWith("#")) {
-            continue;
-        }
-        for (const match of text.matchAll(/\b([A-Za-z_]\w+)\s*\(/g)) {
-            const name = match[1];
-            if (name !== undefined && !keywords.has(name)) {
-                return { line, character: match.index };
-            }
-        }
+    const text = fs.readFileSync(file, "utf8");
+    const tokens = lex(text);
+    const word = (token: Token | undefined) =>
+        token === undefined ? "" : text.slice(token.begin, token.end);
+    const call = tokens.find(
+        (token, i) =>
+            token.kind === "ident" &&
+            !token.directive &&
+            !KEYWORDS.has(word(token)) &&
+            word(tokens[i + 1]) === "(",
+    );
+    if (call === undefined) {
+        fail(`cannot derive a symbol-bearing position in ${file}; pass --position`);
     }
-    fail(`cannot derive a symbol-bearing position in ${file}; pass --position`);
+    return new SourceText(file, text).positionAt(call.begin);
 }
 
 /// Locate the CDB the way clice does: workspace root first, then any

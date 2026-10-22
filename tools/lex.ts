@@ -1,5 +1,5 @@
-/// A raw C/C++ lexer: where tokens begin and end, which the sweep needs to
-/// pick the places it asks at.
+/// A raw C/C++ lexer: where tokens begin and end, which the nightly sweep
+/// and the benchmark need to pick the places they ask at.
 
 export type TokenKind = "ident" | "number" | "string" | "char" | "comment" | "punct" | "header";
 
@@ -58,7 +58,7 @@ export const KEYWORDS = new Set(
         "nullptr operator private protected public register reinterpret_cast requires return " +
         "short signed sizeof static static_assert static_cast struct switch template this " +
         "thread_local throw true try typedef typeid typename union unsigned using virtual void " +
-        "volatile wchar_t while define include include_next ifdef ifndef elif endif undef pragma"
+        "volatile wchar_t while"
     ).split(" "),
 );
 

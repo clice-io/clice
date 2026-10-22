@@ -3,10 +3,11 @@
 /// include written. A preparation that fails is the setup's failure, never
 /// clice's.
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { runProcess } from "../client/process.ts";
 import { REPO_ROOT } from "../repo.ts";
 import { currentPlatform, type Platform, type Project, type Step } from "./projects.ts";
 
@@ -27,26 +28,6 @@ export function stream(command: string, args: readonly string[], cwd: string): P
     });
 }
 
-function output(command: string, args: readonly string[], cwd: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "inherit"] });
-        let text = "";
-        child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
-            text += chunk;
-        });
-        child.on("error", reject);
-        child.on("close", (status) => {
-            if (status === 0) {
-                resolve(text);
-            } else {
-                reject(
-                    new Error(`${[command, ...args].join(" ")} in ${cwd}: exit ${String(status)}`),
-                );
-            }
-        });
-    });
-}
-
 /// Where the project is checked out: clice itself is the repository the
 /// run belongs to, every other project a directory of its own in `dir`.
 export function checkoutOf(project: Project, dir: string): string {
@@ -61,7 +42,10 @@ async function checkout(project: Project, target: string): Promise<boolean> {
         return false;
     }
     if (fs.existsSync(path.join(target, ".git"))) {
-        const head = (await output("git", ["rev-parse", "HEAD"], target)).trim();
+        const head = execFileSync("git", ["rev-parse", "HEAD"], {
+            cwd: target,
+            encoding: "utf8",
+        }).trim();
         if (head === commit) {
             return true;
         }
@@ -115,9 +99,13 @@ async function buildGenerated(build: string): Promise<void> {
     const file = path.join(build, "build.ninja");
     const { ninja, tablegenFiles } = withoutOrderOnly(fs.readFileSync(file, "utf8"));
     fs.writeFileSync(file, ninja);
-    const generated = (await output("ninja", ["-t", "targets", "rule", "CUSTOM_COMMAND"], build))
-        .split(/\r?\n/)
-        .filter((target) => !path.isAbsolute(target));
+    const listed = await runProcess("ninja", ["-t", "targets", "rule", "CUSTOM_COMMAND"], {
+        cwd: build,
+    });
+    if (listed.status !== 0) {
+        throw new Error(`ninja -t targets in ${build}: ${listed.stderr}`);
+    }
+    const generated = listed.stdout.split(/\r?\n/).filter((target) => !path.isAbsolute(target));
     // The TableGen files TableGen writes come first: the runs including them
     // came after them only through the dropped order-only dependencies. One
     // a tool of the tree writes (MLIR's yamlgen.td) its readers name as an

@@ -29,7 +29,7 @@ import { cliceExecutable } from "../client/session.ts";
 import { runNightly, type Results, type Step } from "./nightly.ts";
 import { currentPlatform, findJob, jobs, loadProjects, PLATFORMS } from "./projects.ts";
 import { report } from "./report.ts";
-import { NAVIGATION, REQUESTS, type Request } from "./sweep.ts";
+import { REQUESTS, type Request } from "./sweep.ts";
 
 const { values, positionals } = parseArgs({
     options: {
@@ -80,9 +80,7 @@ function list<T extends string>(text: string, known: readonly T[], what: string)
 
 const steps = list<Step>(values.steps, ["index", "sweep"], "steps");
 const only =
-    values.only === undefined
-        ? undefined
-        : list<Request>(values.only, [...REQUESTS, ...NAVIGATION, "errors"], "requests");
+    values.only === undefined ? undefined : list<Request>(values.only, REQUESTS, "requests");
 fs.mkdirSync(values.dir, { recursive: true });
 // Build systems write the physical paths into their databases.
 const dir = fs.realpathSync(values.dir);

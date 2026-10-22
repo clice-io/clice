@@ -36,7 +36,7 @@ export function missingInputs(args: readonly string[], directory: string): strin
 
 /// Each unit (`item.unit`) with what the compiler says of it; a header
 /// with what it says of the unit including it (`item.host`).
-export async function confirm<T extends { unit: string; host?: string }>(
+export async function confirm<T extends { unit: string; host?: string | undefined }>(
     entries: readonly DatabaseEntry[],
     items: readonly T[],
 ): Promise<(T & CompilerCheck)[]> {

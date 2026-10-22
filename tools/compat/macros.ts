@@ -7,7 +7,15 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { cygpath, entryArguments, entrySource, samePath, type DatabaseEntry } from "./database.ts";
+import {
+    cygpath,
+    entryArguments,
+    entrySource,
+    isMsvc,
+    samePath,
+    withoutOutputs,
+    type DatabaseEntry,
+} from "./database.ts";
 import { run } from "./scenario.ts";
 
 /// Macros whose values follow from the compiler, its target and the
@@ -93,13 +101,6 @@ const MSVC_MACROS = [
 /// in the device view.
 const NVCC_MACROS = ["__NVCC__", "__CUDACC__", "__CUDACC_VER_MAJOR__", "__CUDACC_VER_MINOR__"];
 
-/// Arguments that name the build's outputs or its own dependency files —
-/// rerunning the entry must neither overwrite them nor compile. MSVC
-/// options carry their values joined.
-const DROPPED = new Set(["-c", "-MD", "-MMD", "-MP"]);
-const DROPPED_WITH_VALUE = new Set(["-o", "-MF", "-MT", "-MQ"]);
-const MSVC_DROPPED = /^[/-](c|FS|showIncludes|Fo.*|Fd.*)$/;
-
 /// The macro values the entry's compiler has under the entry's flags:
 /// the entry rerun on a probe file of the same extension, preprocessing
 /// only. An undefined macro maps to undefined.
@@ -110,11 +111,11 @@ export async function compilerMacros(
     posix?: string,
 ): Promise<Map<string, string | undefined>> {
     const source = entrySource(entry);
-    const [driver, ...rest] = entryArguments(entry);
+    const [driver, ...rest] = withoutOutputs(entryArguments(entry));
     if (driver === undefined) {
         throw new Error(`${source}: empty compile command`);
     }
-    const msvc = /^(cl|clang-cl)(\.exe)?$/i.test(path.basename(driver));
+    const msvc = isMsvc(driver);
     const nvcc = /^nvcc(\.exe)?$/i.test(path.basename(driver));
     const macros = msvc ? MSVC_MACROS : nvcc ? NVCC_MACROS : GNU_MACROS;
     const probe = path.join(scratch, `probe${path.extname(source)}`);
@@ -131,18 +132,9 @@ export async function compilerMacros(
     const written = posix === undefined ? [] : rest.filter((arg) => arg.startsWith("/"));
     const mapped = posix === undefined || written.length === 0 ? [] : await cygpath(posix, written);
     const native = new Map(written.map((arg, i) => [arg, mapped[i] ?? arg]));
-    const args: string[] = [];
-    for (let i = 0; i < rest.length; i += 1) {
-        const arg = rest[i] ?? "";
-        if (!msvc && DROPPED_WITH_VALUE.has(arg)) {
-            i += 1;
-        } else if (
-            !(msvc ? MSVC_DROPPED.test(arg) : DROPPED.has(arg)) &&
-            !samePath(path.resolve(entry.directory, native.get(arg) ?? arg), source)
-        ) {
-            args.push(arg);
-        }
-    }
+    const args = rest.filter(
+        (arg) => !samePath(path.resolve(entry.directory, native.get(arg) ?? arg), source),
+    );
     // The probe takes the source's place; options stay before a `--` that
     // ends them (CMake writes one before the source for clang-cl).
     const end = args.indexOf("--");

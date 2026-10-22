@@ -10,10 +10,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { createTwoFilesPatch } from "diff";
-import * as proto from "vscode-languageserver-protocol";
 import { Workspace } from "../client/workspace.ts";
 import { withTimeout } from "../promise.ts";
 import type { MarkerAnchor } from "../testing/cases/anchors.ts";
+import { EDITOR_CAPABILITIES } from "../testing/cases/answers.ts";
 import { Disk } from "../testing/cases/disk.ts";
 import { importsModule, Inspect } from "../testing/inspect/inspect.ts";
 import type { Diagnostic } from "../testing/render/answers.ts";
@@ -23,7 +23,7 @@ import { block, type Shown } from "../testing/render/shown.ts";
 import { writeToml } from "../testing/render/value.ts";
 import { Serve } from "../testing/server/serve.ts";
 import { StepRecord } from "../testing/server/steps.ts";
-import { KEYWORDS, lex } from "./lex.ts";
+import { KEYWORDS, lex } from "../lex.ts";
 import { residentNow, watchMemory, type PeakMemory, type Resident } from "./memory.ts";
 
 /// Places per file: points for the requests about a symbol, a few member
@@ -49,45 +49,51 @@ const FINISH_MS = 30 * 60_000;
 /// are not, each compiling its file anew.
 const SLOW_MS = 60_000;
 
-/// The client an editor is: what the answers render for in the cases too.
-const CAPABILITIES: proto.ClientCapabilities = {
-    workspace: { workspaceEdit: { documentChanges: true } },
-    textDocument: {
-        hover: { contentFormat: ["markdown", "plaintext"] },
-        completion: {
-            completionItem: {
-                snippetSupport: true,
-                insertReplaceSupport: true,
-                documentationFormat: ["markdown", "plaintext"],
-            },
-        },
-        inlayHint: {},
-        rename: { prepareSupport: true },
-        publishDiagnostics: { relatedInformation: true },
-        documentSymbol: {
-            hierarchicalDocumentSymbolSupport: true,
-            symbolKind: { valueSet: Object.values(proto.SymbolKind) },
-        },
-    },
-};
+/// The requests compared between inspect and the server: about the whole
+/// file, and at each point; completion asks at member accesses and
+/// signature help inside calls.
+const ON_FILE = {
+    semanticTokens: (c, file) => c.semanticTokens(file),
+    foldingRanges: (c, file) => c.foldingRanges(file),
+    documentSymbols: (c, file) => c.documentSymbols(file),
+    documentLinks: (c, file) => c.documentLinks(file),
+    inlayHints: (c, file) => c.inlayHints(file),
+} satisfies Record<string, (client: Client, file: string) => Shown>;
 
-export const REQUESTS = [
-    "semanticTokens",
-    "foldingRanges",
-    "documentSymbols",
-    "documentLinks",
-    "inlayHints",
-    "hover",
-    "highlights",
-    "selectionRange",
-    "completion",
-    "signatureHelp",
-] as const;
+const AT_POINT = {
+    hover: (c, at) => c.hover(at),
+    highlights: (c, at) => c.highlights(at),
+    selectionRange: (c, at) => c.selectionRange(at),
+} satisfies Record<string, (client: Client, at: MarkerAnchor) => Shown>;
 
 /// The requests only the server answers: navigation over the index.
-export const NAVIGATION = ["definition", "references", "callHierarchy", "typeHierarchy"] as const;
+const NAVIGATION = {
+    definition: (c, at) => c.definition(at),
+    references: (c, at) => c.references(at),
+    callHierarchy: (c, at) => c.callHierarchy(at),
+    typeHierarchy: (c, at) => c.typeHierarchy(at),
+} satisfies Record<string, (client: Client, at: MarkerAnchor) => Shown>;
 
-export type Request = (typeof REQUESTS)[number] | (typeof NAVIGATION)[number] | "errors";
+export type Request =
+    | keyof typeof ON_FILE
+    | keyof typeof AT_POINT
+    | keyof typeof NAVIGATION
+    | "completion"
+    | "signatureHelp"
+    | "errors";
+
+function entries<K extends string, V>(table: Record<K, V>): [K, V][] {
+    return Object.entries(table) as [K, V][];
+}
+
+export const REQUESTS: Request[] = [
+    ...entries(ON_FILE).map(([request]) => request),
+    ...entries(AT_POINT).map(([request]) => request),
+    "completion",
+    "signatureHelp",
+    ...entries(NAVIGATION).map(([request]) => request),
+    "errors",
+];
 
 const SOURCE = /\.(c|cc|cpp|cxx|c\+\+|cppm|ixx|cu)$/;
 
@@ -235,71 +241,33 @@ function asksOf(
     places: ReturnType<typeof placesOf>,
     only: ReadonlySet<Request> | undefined,
 ): { compared: Ask[]; navigation: Ask[] } {
-    const asks: Ask[] = [
-        { request: "semanticTokens", label: "semanticTokens", ask: (c) => c.semanticTokens(file) },
-        { request: "foldingRanges", label: "foldingRanges", ask: (c) => c.foldingRanges(file) },
-        {
-            request: "documentSymbols",
-            label: "documentSymbols",
-            ask: (c) => c.documentSymbols(file),
-        },
-        { request: "documentLinks", label: "documentLinks", ask: (c) => c.documentLinks(file) },
-        { request: "inlayHints", label: "inlayHints", ask: (c) => c.inlayHints(file) },
-    ];
-    const navigation: Ask[] = [];
-    for (const point of places.points) {
-        asks.push(
-            { request: "hover", label: `hover ${point.name}`, ask: (c) => c.hover(point) },
-            {
-                request: "highlights",
-                label: `highlights ${point.name}`,
-                ask: (c) => c.highlights(point),
-            },
-            {
-                request: "selectionRange",
-                label: `selectionRange ${point.name}`,
-                ask: (c) => c.selectionRange(point),
-            },
+    const at = (request: Request, place: MarkerAnchor, ask: Ask["ask"]): Ask => ({
+        request,
+        label: `${request} ${place.name}`,
+        ask,
+    });
+    const atPoints = <K extends Request>(
+        table: Record<K, (c: Client, at: MarkerAnchor) => Shown>,
+    ) =>
+        places.points.flatMap((point) =>
+            entries(table).map(([request, ask]) => at(request, point, (c) => ask(c, point))),
         );
-        navigation.push(
-            {
-                request: "definition",
-                label: `definition ${point.name}`,
-                ask: (c) => c.definition(point),
-            },
-            {
-                request: "references",
-                label: `references ${point.name}`,
-                ask: (c) => c.references(point),
-            },
-            {
-                request: "callHierarchy",
-                label: `callHierarchy ${point.name}`,
-                ask: (c) => c.callHierarchy(point),
-            },
-            {
-                request: "typeHierarchy",
-                label: `typeHierarchy ${point.name}`,
-                ask: (c) => c.typeHierarchy(point),
-            },
-        );
-    }
-    for (const member of places.members) {
-        asks.push({
-            request: "completion",
-            label: `completion ${member.name}`,
-            ask: (c) => c.completion(member),
-        });
-    }
-    for (const call of places.calls) {
-        asks.push({
-            request: "signatureHelp",
-            label: `signatureHelp ${call.name}`,
-            ask: (c) => c.signatureHelp(call),
-        });
-    }
     const wanted = (ask: Ask) => only === undefined || only.has(ask.request);
-    return { compared: asks.filter(wanted), navigation: navigation.filter(wanted) };
+    return {
+        compared: [
+            ...entries(ON_FILE).map(([request, ask]) => ({
+                request,
+                label: request,
+                ask: (c: Client) => ask(c, file),
+            })),
+            ...atPoints(AT_POINT),
+            ...places.members.map((member) =>
+                at("completion", member, (c) => c.completion(member)),
+            ),
+            ...places.calls.map((call) => at("signatureHelp", call, (c) => c.signatureHelp(call))),
+        ].filter(wanted),
+        navigation: atPoints(NAVIGATION).filter(wanted),
+    };
 }
 
 /// What a client answered to one request: the answer itself, or why there
@@ -616,7 +584,7 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
     const steps = new StepRecord();
     const server = new Serve(
         new Workspace(options.root),
-        { capabilities: CAPABILITIES, config: { project: { enable_indexing: false } } },
+        { capabilities: EDITOR_CAPABILITIES, config: { project: { enable_indexing: false } } },
         { marks, steps, disk: new Disk(options.root, {}, steps) },
     );
     let watching: { pid: number; start: Resident; watch: { stop: () => PeakMemory } } | undefined;

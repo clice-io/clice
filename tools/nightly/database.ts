@@ -4,7 +4,14 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { entryArguments, entrySource, type DatabaseEntry } from "../compat/database.ts";
+import { runProcess } from "../client/process.ts";
+import { cliceExecutable } from "../client/session.ts";
+import {
+    entryArguments,
+    entrySource,
+    withoutOutputs,
+    type DatabaseEntry,
+} from "../compat/database.ts";
 import type { Job } from "./projects.ts";
 
 /// Where a job's own database goes, checkout-relative.
@@ -71,87 +78,55 @@ export function jobDatabase(job: Job, checkout: string): DatabaseEntry[] {
     return own;
 }
 
-const INCLUDE = /^[ \t]*#[ \t]*include[ \t]*([<"])([^>"\n]+)[>"]/gm;
-const SEARCH = ["-I", "-iquote", "-isystem", "-idirafter"];
+/// The checkout-relative path of a file inside the checkout; null for one
+/// outside it.
+export function inside(checkout: string, file: string): string | null {
+    const real = fs.existsSync(file) ? fs.realpathSync(file) : file;
+    const relative = path.relative(fs.realpathSync(checkout), real);
+    return relative.startsWith("..") || path.isAbsolute(relative)
+        ? null
+        : relative.split(path.sep).join("/");
+}
 
-/// The checkout-relative headers inside `checkout` the units include
-/// themselves, found as each unit's own search paths find them: the headers
-/// a reader of those units opens, each with the first unit including it.
-export function includedHeaders(
-    checkout: string,
-    entries: readonly DatabaseEntry[],
-): Map<string, string> {
+/// The checkout-relative files inside `checkout` the units include
+/// themselves, as clice's scan resolves them: the headers a reader of
+/// those units opens, each with the first unit including it.
+export async function includedHeaders(checkout: string): Promise<Map<string, string>> {
+    const scanned = await runProcess(cliceExecutable(), [
+        "scan",
+        "--json",
+        "--workspace",
+        checkout,
+    ]);
+    if (scanned.status !== 0) {
+        throw new Error(
+            `clice scan ${checkout}: ${scanned.error?.message ?? `exit ${String(scanned.status ?? scanned.signal)}`}\n${scanned.stderr}`,
+        );
+    }
+    const { files } = JSON.parse(scanned.stdout) as {
+        files: { path: string; source: boolean; includes: string[] }[];
+    };
     const headers = new Map<string, string>();
-    for (const entry of entries) {
-        const source = entrySource(entry);
-        let text: string;
-        try {
-            text = fs.readFileSync(source, "utf8");
-        } catch {
-            continue;
-        }
-        const args = entryArguments(entry);
-        const dirs = args.flatMap((arg, i) => {
-            const flag = SEARCH.find((each) => arg.startsWith(each));
-            if (flag === undefined) {
-                return [];
-            }
-            const dir = arg === flag ? args[i + 1] : arg.slice(flag.length);
-            return dir === undefined ? [] : [path.resolve(entry.directory, dir)];
-        });
-        for (const [, open, name] of text.matchAll(INCLUDE)) {
-            if (name === undefined) {
-                continue;
-            }
-            const found = [...(open === '"' ? [path.dirname(source)] : []), ...dirs]
-                .map((dir) => path.join(dir, name))
-                .find((file) => fs.existsSync(file));
-            const relative = found === undefined ? undefined : path.relative(checkout, found);
-            if (
-                relative !== undefined &&
-                !relative.startsWith("..") &&
-                !path.isAbsolute(relative)
-            ) {
-                const header = relative.split(path.sep).join("/");
-                if (!headers.has(header)) {
-                    headers.set(header, source);
-                }
+    for (const unit of files.filter((file) => file.source)) {
+        for (const included of unit.includes) {
+            const header = inside(checkout, included);
+            if (header !== null && !headers.has(header)) {
+                headers.set(header, unit.path);
             }
         }
     }
     return headers;
 }
 
-/// Arguments that write files beside a compile: the object and the
-/// dependency files.
-const WRITES_WITH_VALUE = new Set(["-o", "-MF", "-MT", "-MQ"]);
-const WRITES = new Set(["-c", "-MD", "-MMD"]);
-
 /// The entry's command checking the code only: what the build ran, without
 /// the files it writes, and `-fsyntax-only`. A CMake precompiled header is
 /// read from its source instead (the `-include` beside it stays): the
 /// preparation builds no `.pch`.
 export function syntaxOnly(entry: DatabaseEntry): string[] {
-    const args = entryArguments(entry);
-    const out: string[] = [];
-    for (let i = 0; i < args.length; i += 1) {
-        const arg = args[i] ?? "";
-        if (WRITES_WITH_VALUE.has(arg)) {
-            i += 1;
-        } else if (
-            arg === "-Xclang" &&
-            args[i + 1] === "-include-pch" &&
-            args[i + 2] === "-Xclang"
-        ) {
-            i += 3;
-        } else if (
-            !WRITES.has(arg) &&
-            !arg.startsWith("-Wp,-MD,") &&
-            !arg.startsWith("-Wp,-MMD,")
-        ) {
-            out.push(arg);
-        }
+    const args = withoutOutputs(entryArguments(entry));
+    const pch = args.findIndex((arg, i) => arg === "-Xclang" && args[i + 1] === "-include-pch");
+    if (pch !== -1) {
+        args.splice(pch, 4);
     }
-    out.push("-fsyntax-only");
-    return out;
+    return [...args, "-fsyntax-only"];
 }

@@ -66,7 +66,7 @@ export interface AnswersContext extends Requests {
 /// The client the answers render for: versioned edits, markdown hover
 /// cards, snippets, insert-and-replace ranges, markdown documentation,
 /// inlay hint label parts.
-const EDITOR_CAPABILITIES: proto.ClientCapabilities = {
+export const EDITOR_CAPABILITIES: proto.ClientCapabilities = {
     workspace: { workspaceEdit: { documentChanges: true } },
     textDocument: {
         hover: { contentFormat: ["markdown", "plaintext"] },
