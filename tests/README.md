@@ -452,10 +452,11 @@ an exemption naming nothing uncovered fails too.
   tests.
 - **`nightly/projects.json`**: real projects, each pinned to a commit (clice
   itself at the commit under test) with how its compilation database is made,
-  a project too large for one runner split into parts. Every night a free
-  runner per project or part and platform (Linux, macOS, Windows; a project
-  names the ones it builds on) (`nightly-projects.yml`) prepares it, indexes it
-  from a cold cache and asks the features on sampled sources: inspect and a
+  a project too large for one runner split into parts. For every nightly
+  release, a free runner per project or part and platform (Linux, macOS,
+  Windows; a project names the ones it builds on) (`nightly-projects.yml`)
+  prepares it, then the nightly's clice indexes it from a cold cache and
+  answers the features on sampled sources: inspect and a
   server the same requests at the same places, the server also navigation;
   headers those sources include are asked of the server alone, which compiles
   one inside a unit including it.
@@ -465,7 +466,7 @@ an exemption naming nothing uncovered fails too.
   compiles (or that the compiler cannot check), and a place where inspect and
   the server answer differently; a unit the compiler rejects too is listed, and
   so is a difference a case pins as accepted.
-  Counts, sizes, memory and time are recorded beside the previous night's,
+  Counts, sizes, memory and time are recorded beside the previous round's,
   never gated. Every failure names the command that reproduces it:
   `node tools/nightly/run.ts <job> --dir <dir>` prepares the project in
   `<dir>` (clice in the repository itself) and runs the job, `--steps`,

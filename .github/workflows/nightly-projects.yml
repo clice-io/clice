@@ -1,20 +1,24 @@
 name: nightly-projects
 
-# Every night, main's clice over real projects (tests/nightly/projects.json,
-# tests/README.md "Outside the topics"): each project, or each part of one
-# too large for a runner, prepared, indexed from a cold cache and asked the
-# features on sampled files. What fails a job is in tests/README.md; the
-# job summary lists each failure with the command that reproduces it,
-# beside the previous night's numbers.
+# A nightly's clice over real projects (tests/nightly/projects.json,
+# tests/README.md "Outside the topics"): nightly.yml dispatches a round with
+# the main CI run whose packages it promoted, and the round tests that run's
+# commit with the programs the run built; a dispatch by hand names any CI
+# run. Each project, or each part of one too large for a runner, is
+# prepared, indexed from a cold cache and asked the features on sampled
+# files. What fails a job is in tests/README.md; the job summary lists each
+# failure with the command that reproduces it, beside the previous round's
+# numbers. The round only reports: nothing waits on it but a stable
+# release, which tags a nightly whose round passed.
 on:
-  schedule:
-    - cron: "37 4 * * *"
   workflow_dispatch:
-  push:
-    branches: [test/nightly-projects]
+    inputs:
+      run:
+        description: "The CI run (main.yml) whose commit and build-* programs to test"
+        required: true
 
-# A dispatch on a branch replaces the branch's run still going; main's
-# nights all finish.
+# A dispatch on a branch replaces the branch's round still going; main's
+# rounds all finish.
 concurrency:
   group: nightly-projects-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -31,11 +35,22 @@ jobs:
   jobs:
     runs-on: ubuntu-24.04
     outputs:
+      commit: ${{ steps.commit.outputs.commit }}
       jobs: ${{ steps.list.outputs.jobs }}
     steps:
+      - name: Find the run's commit
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.run }}
+        run: |
+          COMMIT=$(gh run view "$RUN" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          ref: ${{ steps.commit.outputs.commit }}
           persist-credentials: false
 
       - uses: ./.github/actions/setup-pixi
@@ -49,69 +64,8 @@ jobs:
           pixi run -e node install-tests
           echo "jobs=$(pixi run -e node node tools/nightly/run.ts --jobs)" >> "$GITHUB_OUTPUT"
 
-  # clice for each platform, as test-leg.yml builds it: Windows's on Linux
-  # with xclang's toolchain for the target.
-  build:
-    name: build ${{ matrix.platform }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux
-            os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-          - platform: macos
-            os: macos-15
-            target: aarch64-apple-darwin
-          - platform: windows
-            os: ubuntu-24.04
-            target: x86_64-w64-mingw32
-            cross: true
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/setup-pixi
-
-      # Only restored: the caches are main's CI's (test-leg.yml saves them).
-      - name: Restore Bazel caches
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            ${{ runner.temp }}/bazel-disk
-            ${{ runner.temp }}/bazel-repo
-            /var/tmp/xclang-thinlto
-          key: bazel-${{ matrix.target }}-RelWithDebInfo-${{ github.sha }}
-          restore-keys: |
-            bazel-${{ matrix.target }}-RelWithDebInfo-
-
-      - name: Build
-        run: |
-          {
-            echo "common --disk_cache=$RUNNER_TEMP/bazel-disk"
-            echo "common --repository_cache=$RUNNER_TEMP/bazel-repo"
-          } > user.bazelrc
-          pixi run -e default build RelWithDebInfo -- \
-            ${{ matrix.cross && format('--platforms=@xclang//platforms:{0}', matrix.target) || '' }}
-
-      - name: Upload binaries
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-${{ matrix.target }}-RelWithDebInfo
-          include-hidden-files: true
-          path: |
-            build/RelWithDebInfo/bin/bin/
-            build/RelWithDebInfo/bin/lib/
-            !build/RelWithDebInfo/bin/bin/*.runfiles
-            !build/RelWithDebInfo/bin/bin/bin/*.dSYM
-          if-no-files-found: error
-          retention-days: 3
-
   run:
-    needs: [jobs, build]
+    needs: jobs
     name: ${{ matrix.name }} (${{ matrix.platform }})
     strategy:
       fail-fast: false
@@ -134,6 +88,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          ref: ${{ needs.jobs.outputs.commit }}
           persist-credentials: false
 
       - uses: ./.github/actions/download-programs
@@ -142,6 +97,7 @@ jobs:
           build_type: RelWithDebInfo
           environments: default
           activate-environment: default
+          run-id: ${{ inputs.run }}
 
       # clice's own project: its database comes from Bazel.
       - name: Restore Bazel caches
@@ -152,7 +108,7 @@ jobs:
             ${{ runner.temp }}/bazel-disk
             ${{ runner.temp }}/bazel-repo
             /var/tmp/xclang-thinlto
-          key: bazel-${{ env.TARGET }}-RelWithDebInfo-${{ github.sha }}
+          key: bazel-${{ env.TARGET }}-RelWithDebInfo-${{ needs.jobs.outputs.commit }}
           restore-keys: |
             bazel-${{ env.TARGET }}-RelWithDebInfo-
 
@@ -170,10 +126,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
 
-      # The newest finished run of this workflow on main that holds this
-      # job's results: what tonight's numbers stand beside. None on the
-      # first night.
-      - name: Fetch the previous night's results
+      # The newest finished round on main that holds this job's results:
+      # what this round's numbers stand beside. None on the first round.
+      - name: Fetch the previous round's results
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
