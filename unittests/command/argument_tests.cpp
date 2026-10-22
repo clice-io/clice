@@ -210,7 +210,7 @@ ZEST_CASE(EveryAliasRendersBack) {
                 arg = Arg{.opt_id = parsed->id, .alias = written_alias(*parsed)};
                 std::vector<const char*> values;
                 for(auto value: parsed->values) {
-                    values.push_back(strings.save(value).data());
+                    values.push_back(strings.save(llvm::StringRef(value)).data());
                 }
                 arg->values = llvm::ArrayRef(values).copy(allocator);
             }
