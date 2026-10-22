@@ -367,6 +367,8 @@ export interface SweepRun {
     accepted: { file: string; label: string; case: string }[];
     /// Why the server failed its clean exit: a crash, or no exit at all.
     serverExit: string[];
+    /// The work the server still had once every file closed.
+    unsettled?: string;
     /// The files the server opened with errors, the first few of each.
     serverErrors: { file: string; errors: string[] }[];
     /// The files left unasked when the sweep ran out of time, and those it
@@ -636,6 +638,11 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
             }
         };
         await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+        // A close is a notification: the end sample waits until the server
+        // has handled every one.
+        await server.sync().catch((error: unknown) => {
+            run.unsettled = error instanceof Error ? error.message : String(error);
+        });
     } finally {
         if (watching !== undefined) {
             run.memory = {

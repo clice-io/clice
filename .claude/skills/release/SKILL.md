@@ -46,7 +46,10 @@ stable releases. Promotion fails loudly
 if no packaged green run exists. Once tagged, a nightly also dispatches
 `nightly-projects.yml` with the CI run it promotes: the real-project round
 (`tests/README.md`) over that commit with that run's programs, a report
-only. A failed nightly just means no nightly
+only. Those programs are the run's `build-*` artifacts, kept 3 days: a
+nightly of an older run gets no round (its jobs fail to download them)
+until that run is rerun (`gh run rerun <run>`) and `nightly-projects.yml`
+dispatched with it again. A failed nightly just means no nightly
 that day — fix main and rerun via dispatch, with the maintainer's
 approval like any release trigger.
 

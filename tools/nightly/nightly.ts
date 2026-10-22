@@ -297,6 +297,11 @@ async function sweepStep(
     // same time everywhere.
     const sample = Math.ceil((job.project.sample * CONCURRENCY) / 3);
     const hosts = await includedHeaders(checkout);
+    // A unit that another unit includes too (CPython includes .c files) is
+    // asked of both clients and checked as itself.
+    for (const unit of units) {
+        hosts.delete(unit);
+    }
     const files = options.files ?? [
         ...sampleFiles(units, sample, seed),
         ...sampleHeaders(
@@ -308,7 +313,7 @@ async function sweepStep(
     const run = await sweep({
         root: checkout,
         files,
-        headers: new Set(files.filter((file) => hosts.has(file) && !units.includes(file))),
+        headers: new Set(files.filter((file) => hosts.has(file))),
         deadline: Math.min(Date.now() + SWEEP_MS, jobEnd),
         ...(options.only === undefined ? {} : { only: options.only }),
     });
@@ -330,6 +335,13 @@ async function sweepStep(
                 ...run.unasked,
                 ...run.cut.map((file) => `${file} (in part)`),
             ].join("\n"),
+            repro: rerun(options, "--steps sweep"),
+        });
+    }
+    if (run.unsettled !== undefined) {
+        results.failures.push({
+            kind: "hang",
+            detail: run.unsettled,
             repro: rerun(options, "--steps sweep"),
         });
     }
