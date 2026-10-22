@@ -28,10 +28,6 @@ std::vector<std::string> translate(std::vector<const char*> arguments,
     return translate_nvcc_command(arguments, directory, edit);
 }
 
-bool contains(llvm::ArrayRef<std::string> arguments, llvm::StringRef flag) {
-    return std::ranges::contains(arguments, flag);
-}
-
 ZEST_CASE(TranslateCMakeShape) {
     auto args = translate({"nvcc",
                            "-forward-unknown-to-host-compiler",
@@ -328,8 +324,7 @@ ZEST_CASE(OptionsFileMarkSkipped) {
     CompilationDatabase db{file_table, commands};
     auto entry = db.add_command(tmp.root, "kern.cu", "nvcc --options-file marked.rsp -c kern.cu"sv);
     ZASSERT(entry);
-    ZEXPECT(
-        std::ranges::contains(commands.render_full(entry->command), llvm::StringRef("MARKED=1")));
+    ZEXPECT(contains(commands.render_full(entry->command), "MARKED=1"));
 }
 
 ZEST_CASE(StdNormalized) {
@@ -563,16 +558,13 @@ ZEST_CASE(DatabaseTranslatesNVCC) {
     // Query tokens (-ccbin, ...) are unknown-class: visible in the full
     // view and the query, never in the compile render.
     auto flags = commands.render_full(db.candidate_entries("/tmp/kern.cu").front().command);
-    auto has = [&](llvm::StringRef flag) {
-        return std::ranges::contains(flags, flag);
-    };
     // --cuda-gpu-arch renders through its unaliased spelling.
-    ZEXPECT(has("--offload-arch=sm_75"));
-    ZEXPECT(has("-ccbin=/usr/bin/g++-12"));
-    ZEXPECT(has("--allow-unsupported-compiler"));
-    ZEXPECT(has("-x"));
-    ZEXPECT(has("cuda"));
-    ZEXPECT(has("MY_FLAG=1"));
+    ZEXPECT(contains(flags, "--offload-arch=sm_75"));
+    ZEXPECT(contains(flags, "-ccbin=/usr/bin/g++-12"));
+    ZEXPECT(contains(flags, "--allow-unsupported-compiler"));
+    ZEXPECT(contains(flags, "-x"));
+    ZEXPECT(contains(flags, "cuda"));
+    ZEXPECT(contains(flags, "MY_FLAG=1"));
     /// nvcc-only leftovers are unknown-class: full view keeps them for
     /// identity, the compile render must not pass them to clang.
     ZEXPECT(!std::ranges::contains(render_entry(db, "/tmp/kern.cu"),
@@ -608,12 +600,9 @@ ZEST_CASE(RuleFlagsTranslated) {
                                          file_table,
                                          db.candidate_entries("/tmp/kern.cu").front().command,
                                          options));
-    auto has = [&](llvm::StringRef flag) {
-        return std::ranges::contains(flags, flag);
-    };
-    ZEXPECT(!has("--offload-arch=sm_75"));
-    ZEXPECT(has("--offload-arch=sm_90a"));
-    ZEXPECT(has("__CUDACC_EXTENDED_LAMBDA__"));
+    ZEXPECT(!contains(flags, "--offload-arch=sm_75"));
+    ZEXPECT(contains(flags, "--offload-arch=sm_90a"));
+    ZEXPECT(contains(flags, "__CUDACC_EXTENDED_LAMBDA__"));
     for(llvm::StringRef flag: flags) {
         ZEXPECT(!flag.starts_with("--generate-code"));
         ZEXPECT(!flag.starts_with("--extended-lambda"));
@@ -880,12 +869,9 @@ ZEST_CASE(RemoveMatchesUnknownSpelling) {
                                          file_table,
                                          db.candidate_entries("/tmp/kern.cu").front().command,
                                          options));
-    auto has = [&](llvm::StringRef flag) {
-        return std::ranges::contains(flags, flag);
-    };
-    ZEXPECT(!has("--allow-unsupported-compiler"));
-    ZEXPECT(has("-ccbin=/usr/bin/g++-12"));
-    ZEXPECT(has("--target-directory=sbsa-linux"));
+    ZEXPECT(!contains(flags, "--allow-unsupported-compiler"));
+    ZEXPECT(contains(flags, "-ccbin=/usr/bin/g++-12"));
+    ZEXPECT(contains(flags, "--target-directory=sbsa-linux"));
 }
 
 ZEST_CASE(RemoveListAlternatives) {
@@ -914,11 +900,8 @@ ZEST_CASE(RemoveListAlternatives) {
                                          file_table,
                                          db.candidate_entries("/tmp/kern.cu").front().command,
                                          options));
-    auto has = [&](llvm::StringRef flag) {
-        return std::ranges::contains(flags, flag);
-    };
-    ZEXPECT(!has("-ccbin=/usr/bin/g++-12"));
-    ZEXPECT(!has("CUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
+    ZEXPECT(!contains(flags, "-ccbin=/usr/bin/g++-12"));
+    ZEXPECT(!contains(flags, "CUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
 }
 
 ZEST_CASE(WildcardRemovesQueryValue) {

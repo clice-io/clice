@@ -23,13 +23,6 @@ namespace {
 
 using namespace std::literals;
 
-/// `Command::directory` is stored in canonical spelling; expectations built
-/// from native paths must be too.
-std::string canonical_dir(std::string path) {
-    path::canonicalize(path);
-    return path;
-}
-
 ZEST_SUITE(Database) {
 
 #ifndef _WIN32
@@ -217,24 +210,6 @@ ZEST_CASE(MultipleSources) {
     ZEXPECT(database.entries().size() == 3U);
 };
 
-/// Write JSON to a temp file, load into a CDB, remove the file.
-/// Returns the number of entries loaded.
-std::size_t load_json(CompilationDatabase& database, llvm::StringRef json) {
-    auto path = vfs::temp_file("cdb", "json");
-    if(!path)
-        return 0;
-    {
-        std::error_code ec;
-        llvm::raw_fd_ostream out(*path, ec);
-        if(ec)
-            return 0;
-        out << json;
-    }
-    auto count = database.load(*path).value_or(0);
-    llvm::sys::fs::remove(*path);
-    return count;
-}
-
 ZEST_CASE(LoadMixedFormats) {
     /// "arguments" array and "command" string can coexist in the same CDB.
     TempDir tmp;
@@ -242,7 +217,7 @@ ZEST_CASE(LoadMixedFormats) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    auto count = load_json(database, R"([{"directory": ")" + dir + R"(", "file": "a.cpp",
+    auto count = write_cdb(tmp, database, R"([{"directory": ")" + dir + R"(", "file": "a.cpp",
           "arguments": ["clang++", "-std=c++20", "a.cpp"]},
          {"directory": ")" + dir + R"(", "file": "b.cpp",
           "command": "clang++ -std=c++23 b.cpp"}])");
@@ -271,7 +246,7 @@ ZEST_CASE(RelativeDirectoryAnchored) {
     auto candidates = database.candidate_entries(file);
     ZASSERT(candidates.size() == 1U);
     ZEXPECT(llvm::StringRef(commands.get(candidates.front().command).directory) ==
-            canonical_dir(path::join(tmp.root, "build")));
+            Spelling::absolute(path::join(tmp.root, "build")).str());
 };
 
 ZEST_CASE(RelativeLoadPathAnchored) {
@@ -296,7 +271,7 @@ ZEST_CASE(RelativeLoadPathAnchored) {
     auto candidates = database.candidate_entries(path::join(tmp.root, "build", "main.cpp"));
     ZASSERT(candidates.size() == 1U);
     ZEXPECT(llvm::StringRef(commands.get(candidates.front().command).directory) ==
-            canonical_dir(path::join(tmp.root, "build")));
+            Spelling::absolute(path::join(tmp.root, "build")).str());
 };
 
 ZEST_CASE(LoadErrorRecovery) {
@@ -306,7 +281,8 @@ ZEST_CASE(LoadErrorRecovery) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    auto count = load_json(database,
+    auto count = write_cdb(tmp,
+                           database,
                            R"([{"file": "no_dir.cpp",
           "arguments": ["clang++", "no_dir.cpp"]},
          {"directory": ")" + dir +
@@ -337,7 +313,7 @@ ZEST_CASE(LoadCudaHeader) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    auto count = load_json(database, R"([{"directory": ")" + dir + R"(", "file": "kernels.cuh",
+    auto count = write_cdb(tmp, database, R"([{"directory": ")" + dir + R"(", "file": "kernels.cuh",
           "command": "nvcc -c kernels.cuh -o kernels.o"},
          {"directory": ")" + dir + R"(", "file": "app.rc",
           "command": "rc /fo app.res app.rc"}])");
@@ -354,7 +330,7 @@ ZEST_CASE(LoadForcedLanguage) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    auto count = load_json(database, R"([{"directory": ")" + dir + R"(", "file": "a.ixx",
+    auto count = write_cdb(tmp, database, R"([{"directory": ")" + dir + R"(", "file": "a.ixx",
           "command": "clang++ -std=c++20 -x c++-module -c a.ixx"},
          {"directory": ")" + dir + R"(", "file": "b.ixx",
           "command": "clang++ -std=c++20 -c b.ixx"}])");
@@ -370,7 +346,8 @@ ZEST_CASE(LoadEmptyCommand) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    auto count = load_json(database,
+    auto count = write_cdb(tmp,
+                           database,
                            R"([{"directory": ")" + dir +
                                R"(", "file": "empty.cpp", "command": ""},
          {"directory": ")" + dir +
@@ -418,7 +395,7 @@ ZEST_CASE(LoadCommandQuoting) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    auto count = load_json(database, R"([{"directory": ")" + dir + R"(", "file": "main.cpp",
+    auto count = write_cdb(tmp, database, R"([{"directory": ")" + dir + R"(", "file": "main.cpp",
           "command": "clang++ -std=c++20 \"-DMSG=hello world\" -I\"/path with spaces\" main.cpp"}])");
 
     ZASSERT(count == 1U);
@@ -435,7 +412,8 @@ ZEST_CASE(LoadRelativePath) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    auto count = load_json(database,
+    auto count = write_cdb(tmp,
+                           database,
                            R"([{"directory": ")" + json_escape(project) +
                                R"(", "file": "src/main.cpp",
           "arguments": ["clang++", "-std=c++20", "src/main.cpp"]},
@@ -465,7 +443,8 @@ ZEST_CASE(LoadDotSegments) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    auto count = load_json(database,
+    auto count = write_cdb(tmp,
+                           database,
                            R"([{"directory": ")" + json_escape(build) +
                                R"(", "file": "../src/./main.cpp",
           "arguments": ["clang++", "-std=c++20", "../src/./main.cpp"]}])");
@@ -511,7 +490,7 @@ ZEST_CASE(FixtureLayouts) {
         auto candidates = database.candidate_entries(source("subdir_cdb"));
         ZASSERT(candidates.size() == 1U);
         ZEXPECT(llvm::StringRef(commands.get(candidates.front().command).directory) ==
-                canonical_dir(path::join(layouts, "subdir_cdb", "cmake")));
+                Spelling::absolute(path::join(layouts, "subdir_cdb", "cmake")).str());
         ZEXPECT(llvm::StringRef(print_argv(render_entry(database, source("subdir_cdb"))))
                     .contains("OUT"));
     }
@@ -553,7 +532,7 @@ ZEST_CASE(FixtureLayouts) {
         auto candidates = database.candidate_entries(file);
         ZASSERT(candidates.size() == 1U);
         ZEXPECT(llvm::StringRef(commands.get(candidates.front().command).directory) ==
-                canonical_dir(path::join(layouts, "relative_directory", "src")));
+                Spelling::absolute(path::join(layouts, "relative_directory", "src")).str());
         ZEXPECT(llvm::StringRef(print_argv(render_entry(database, file))).contains("RELATIVE"));
     }
 
@@ -583,15 +562,9 @@ ZEST_CASE(FixtureLayouts) {
 
 };  // ZEST_SUITE(Database)
 
-namespace ranges = std::ranges;
-
 /// path_id that `cdb` assigns to a file under the temp root.
 Fid id_of(CompilationDatabase& cdb, TempDir& tmp, llvm::StringRef rel) {
     return cdb.files().intern(Spelling::absolute(path::join(tmp.root.str(), rel)));
-}
-
-bool contains(llvm::ArrayRef<Fid> list, Fid id) {
-    return ranges::find(list, id) != list.end();
 }
 
 /// Overwrite compile_commands.json under the temp root (without loading it).
@@ -825,8 +798,8 @@ ZEST_CASE(FirstLoadAllAdded) {
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
     ZASSERT(diff->added.size() == 2U);
-    ZEXPECT(contains(diff->added, id_of(cdb, tmp, "a.cpp")));
-    ZEXPECT(contains(diff->added, id_of(cdb, tmp, "b.cpp")));
+    ZEXPECT(llvm::is_contained(diff->added, id_of(cdb, tmp, "a.cpp")));
+    ZEXPECT(llvm::is_contained(diff->added, id_of(cdb, tmp, "b.cpp")));
     ZEXPECT(diff->removed.empty());
     ZEXPECT(diff->changed.empty());
 };

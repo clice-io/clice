@@ -66,10 +66,11 @@ inline std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
     return json;
 }
 
-/// Write a compile_commands.json into the temp dir and load it into the given CDB.
-inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
+/// Write a compile_commands.json into the temp dir and load it into the
+/// given CDB; the number of entries loaded.
+inline std::size_t write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
     tmp.touch("compile_commands.json", json_content);
-    cdb.load(tmp.path("compile_commands.json"));
+    return cdb.load(tmp.path("compile_commands.json")).value_or(0);
 }
 
 /// Whether one argument contains `needle` once its separators are

@@ -126,46 +126,42 @@ ZEST_CASE(RenderRoundTrip) {
     ZASSERT(r4[0] == "-std=c++20");
 };
 
-void EXPECT_FAMILY(llvm::StringRef name, CompilerFamily family) {
-    ZASSERT(driver_family(name) == family);
-};
-
 ZEST_CASE(DriverFamily) {
     using enum CompilerFamily;
 
-    EXPECT_FAMILY("gcc", GCC);
-    EXPECT_FAMILY("g++", GCC);
-    EXPECT_FAMILY("cc", GCC);
-    EXPECT_FAMILY("c++", GCC);
-    EXPECT_FAMILY("gcc-13", GCC);
-    EXPECT_FAMILY("g++-13.2", GCC);
-    EXPECT_FAMILY("x86_64-linux-gnu-g++-14", GCC);
-    EXPECT_FAMILY("arm-none-eabi-gcc", GCC);
+    ZEXPECT(driver_family("gcc") == GCC);
+    ZEXPECT(driver_family("g++") == GCC);
+    ZEXPECT(driver_family("cc") == GCC);
+    ZEXPECT(driver_family("c++") == GCC);
+    ZEXPECT(driver_family("gcc-13") == GCC);
+    ZEXPECT(driver_family("g++-13.2") == GCC);
+    ZEXPECT(driver_family("x86_64-linux-gnu-g++-14") == GCC);
+    ZEXPECT(driver_family("arm-none-eabi-gcc") == GCC);
 
-    EXPECT_FAMILY("clang", Clang);
-    EXPECT_FAMILY("clang++", Clang);
-    EXPECT_FAMILY("clang.exe", Clang);
-    EXPECT_FAMILY("clang++.exe", Clang);
-    EXPECT_FAMILY("clang-20", Clang);
-    EXPECT_FAMILY("clang-20.exe", Clang);
-    EXPECT_FAMILY("clang++-21", Clang);
-    EXPECT_FAMILY("clang-cl", ClangCL);
-    EXPECT_FAMILY("clang-cl-20", ClangCL);
-    EXPECT_FAMILY("clang-cl-20.exe", ClangCL);
+    ZEXPECT(driver_family("clang") == Clang);
+    ZEXPECT(driver_family("clang++") == Clang);
+    ZEXPECT(driver_family("clang.exe") == Clang);
+    ZEXPECT(driver_family("clang++.exe") == Clang);
+    ZEXPECT(driver_family("clang-20") == Clang);
+    ZEXPECT(driver_family("clang-20.exe") == Clang);
+    ZEXPECT(driver_family("clang++-21") == Clang);
+    ZEXPECT(driver_family("clang-cl") == ClangCL);
+    ZEXPECT(driver_family("clang-cl-20") == ClangCL);
+    ZEXPECT(driver_family("clang-cl-20.exe") == ClangCL);
 
-    EXPECT_FAMILY("cl.exe", MSVC);
+    ZEXPECT(driver_family("cl.exe") == MSVC);
     /// Windows casing is free-form: CL.exe is how msbuild spells it.
-    EXPECT_FAMILY("CL.exe", MSVC);
-    EXPECT_FAMILY("CL.EXE", MSVC);
-    EXPECT_FAMILY("Clang-Cl.exe", ClangCL);
-    EXPECT_FAMILY("nvcc", NVCC);
-    EXPECT_FAMILY("icx", Intel);
-    EXPECT_FAMILY("icc", Intel);
-    EXPECT_FAMILY("icpc", Intel);
-    EXPECT_FAMILY("dpcpp", Intel);
+    ZEXPECT(driver_family("CL.exe") == MSVC);
+    ZEXPECT(driver_family("CL.EXE") == MSVC);
+    ZEXPECT(driver_family("Clang-Cl.exe") == ClangCL);
+    ZEXPECT(driver_family("nvcc") == NVCC);
+    ZEXPECT(driver_family("icx") == Intel);
+    ZEXPECT(driver_family("icc") == Intel);
+    ZEXPECT(driver_family("icpc") == Intel);
+    ZEXPECT(driver_family("dpcpp") == Intel);
 
-    EXPECT_FAMILY("zig", Zig);
-    EXPECT_FAMILY("zig.exe", Zig);
+    ZEXPECT(driver_family("zig") == Zig);
+    ZEXPECT(driver_family("zig.exe") == Zig);
 };
 
 };  // ZEST_SUITE(Argument)
