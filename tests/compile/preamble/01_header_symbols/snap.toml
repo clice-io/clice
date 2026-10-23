@@ -31,7 +31,13 @@ references = ["foo.h │ inline void ⟦foo⟧() {}", "⟦foo⟧();"]
 definition = ["#define ⟦ANSWER⟧ 42"]
 
 [indexed.call]
-references = ["foo.h │ inline void ⟦foo⟧() {}", "foo.h │ inline void bar() { ⟦foo⟧(); }", "⟦foo⟧();"]
+references = [
+    "foo.h │ inline void ⟦foo⟧() {}",
+    "foo.h │ inline void bar() { ⟦foo⟧(); }",
+    "foo.h │ #define CALLER(name) inline void name() { ⟦foo⟧(); }",
+    "foo.h │ ⟦CALLER⟧(baz)",
+    "⟦foo⟧();",
+]
 
 ["header edit refreshes".before]
 definition = ["foo.h │ inline void ⟦foo⟧() {}"]

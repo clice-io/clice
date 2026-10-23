@@ -391,7 +391,8 @@ public:
 
     /// Asked only under CompilationParams::skip_bodies.
     bool shouldSkipFunctionBody(clang::Decl* decl) final {
-        return unit.in_preamble(unit.file_id(decl->getLocation())) && !likely_forwarding(decl);
+        return unit.in_preamble(unit.produced_at(decl->getLocation()).file) &&
+               !likely_forwarding(decl);
     }
 
     void HandleCXXStaticMemberVarInstantiation(clang::VarDecl* decl) final {
