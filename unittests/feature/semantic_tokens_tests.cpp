@@ -80,10 +80,7 @@ void run(llvm::StringRef code) {
 }
 
 protocol::SemanticTokens encode(PositionEncoding encoding) {
-    return feature::semantic_tokens_to_protocol(tokens,
-                                                unit->focus_file().positions(),
-                                                encoding,
-                                                legend);
+    return feature::to_protocol(tokens, unit->focus_file().positions(), encoding, legend);
 }
 
 void EXPECT_TOKEN(llvm::StringRef name,
@@ -369,7 +366,7 @@ void expect_tokens_match_ast() {
     auto ast =
         feature::semantic_token_stream(source, feature::semantic_token_facts(*unit, {}, true), {});
     SourceText served(source.text(), dialect_of("main.cpp", false, "c++20"));
-    auto from_index = feature::index_semantic_tokens(served, entries, resolver(), {});
+    auto from_index = feature::semantic_tokens(served, entries, resolver(), {});
 
     ZASSERT(from_index.size() == ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {
@@ -387,7 +384,7 @@ auto tokens_from(llvm::StringRef content,
                  feature::IndexEntries synthetic,
                  llvm::ArrayRef<SemanticTokenKind> kinds) -> std::vector<feature::SemanticToken> {
     SourceText text(content, lang_opts);
-    return feature::index_semantic_tokens(
+    return feature::semantic_tokens(
         text,
         synthetic,
         [&](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {

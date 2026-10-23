@@ -892,9 +892,9 @@ static void list_notice(std::string& notice,
     }
 }
 
-Renamed rename_to_protocol(const RenamePlan& plan,
-                           llvm::StringRef new_name,
-                           llvm::function_ref<std::optional<int>(Fid)> version_of) {
+Renamed to_protocol(const RenamePlan& plan,
+                    llvm::StringRef new_name,
+                    llvm::function_ref<std::optional<int>(Fid)> version_of) {
     Renamed renamed;
     using DocumentChange = protocol::variant<protocol::TextDocumentEdit,
                                              protocol::CreateFile,

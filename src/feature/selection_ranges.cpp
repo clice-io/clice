@@ -892,9 +892,9 @@ auto lexical_selection_ranges(SourceText& source, llvm::ArrayRef<std::uint32_t> 
     return result;
 }
 
-auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
-                                 const PositionMap& map,
-                                 PositionEncoding encoding) -> protocol::SelectionRange {
+auto to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
+                 const PositionMap& map,
+                 PositionEncoding encoding) -> protocol::SelectionRange {
     std::unique_ptr<protocol::SelectionRange> parent;
     for(const auto& range: std::views::reverse(ranges)) {
         auto node = std::make_unique<protocol::SelectionRange>();

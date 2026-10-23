@@ -194,7 +194,7 @@ auto inlay_hints(CompilationUnit& unit,
 /// with a piece naming a symbol or a target keeps its pieces when `locate`
 /// gives the location each such piece navigates to; without it, and for
 /// every other label, the label is one string.
-auto inlay_hints_to_protocol(
+auto to_protocol(
     llvm::ArrayRef<InlayHint> hints,
     const PositionMap& map,
     PositionEncoding encoding,
@@ -206,10 +206,10 @@ auto inlay_hints_to_protocol(
 /// declaration when one exists — the client runs go-to-definition there,
 /// and the definition answers it — else at its definition, which answers
 /// itself.
-auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
-                             const PositionMap& map,
-                             PositionEncoding encoding,
-                             const index::PeerQueries& queries,
-                             Fid file) -> std::vector<protocol::InlayHint>;
+auto to_protocol(llvm::ArrayRef<InlayHint> hints,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 const index::PeerQueries& queries,
+                 Fid file) -> std::vector<protocol::InlayHint>;
 
 }  // namespace clice::feature

@@ -17,12 +17,12 @@ import :project.configuration;
 import :project.load;
 import :project.open_index;
 import :project.project;
+import :support.json;
 import :support.shell;
 import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
-import :worker.serialize;
 
 namespace clice::driver {
 

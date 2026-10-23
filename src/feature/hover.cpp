@@ -1682,10 +1682,10 @@ auto kind_noun(SymbolKind kind) -> llvm::StringRef {
     std::unreachable();
 }
 
-auto to_protocol_hover(const HoverInfo& info,
-                       protocol::MarkupKind kind,
-                       const PositionMap& map,
-                       PositionEncoding encoding) -> protocol::Hover {
+auto to_protocol(const HoverInfo& info,
+                 protocol::MarkupKind kind,
+                 const PositionMap& map,
+                 PositionEncoding encoding) -> protocol::Hover {
     auto document = info.present();
 
     protocol::Hover result{
@@ -1985,7 +1985,7 @@ auto hover(CompilationUnit& unit,
         return std::nullopt;
     }
 
-    return to_protocol_hover(*info, kind, unit.focus_file().positions(), encoding);
+    return to_protocol(*info, kind, unit.focus_file().positions(), encoding);
 }
 
 /// The text of a definition before the body its extent ends with, or
@@ -2002,10 +2002,10 @@ static std::optional<llvm::StringRef> before_body(const std::string& text) {
     return written.take_front(body->begin).rtrim();
 }
 
-auto index_hover(const index::SymbolInfo& info,
-                 llvm::ArrayRef<index::SymbolInfo> scopes,
-                 llvm::StringRef definition_text,
-                 Documentation documentation) -> HoverInfo {
+auto hover_info(const index::SymbolInfo& info,
+                llvm::ArrayRef<index::SymbolInfo> scopes,
+                llvm::StringRef definition_text,
+                Documentation documentation) -> HoverInfo {
     HoverInfo hover;
     hover.name = info.display_name();
     hover.kind = info.kind;
@@ -2083,9 +2083,9 @@ auto index_hover(const index::SymbolInfo& info,
     return hover;
 }
 
-auto index_hover(const index::PeerQueries& queries,
-                 const index::IndexQuery::Cursor& cursor,
-                 const DocumentationOptions& documentation) -> std::optional<HoverInfo> {
+auto hover_info(const index::PeerQueries& queries,
+                const index::IndexQuery::Cursor& cursor,
+                const DocumentationOptions& documentation) -> std::optional<HoverInfo> {
     auto& query = queries.own;
     auto symbol = cursor.symbols.front();
     auto info = query.symbol_info(symbol, cursor.site.file);
@@ -2103,11 +2103,10 @@ auto index_hover(const index::PeerQueries& queries,
     if(text) {
         definition = std::move(text->text);
     }
-    auto hover =
-        index_hover(*info,
-                    query.container_chain(symbol, cursor.site.file),
-                    definition,
-                    feature::documentation(query, symbol, cursor.site.file, documentation));
+    auto hover = hover_info(*info,
+                            query.container_chain(symbol, cursor.site.file),
+                            definition,
+                            feature::documentation(query, symbol, cursor.site.file, documentation));
     hover.symbol_range = cursor.site.range;
     return hover;
 }
@@ -2141,7 +2140,7 @@ auto directive_hover(llvm::StringRef text,
     }
     auto info = header_card(text, link.range, files.display_identity(link.target));
 
-    auto hover = to_protocol_hover(info, kind, map, PositionEncoding::UTF16);
+    auto hover = to_protocol(info, kind, map, PositionEncoding::UTF16);
     if(!hover.range) {
         return std::nullopt;
     }

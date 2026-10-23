@@ -315,7 +315,7 @@ private:
     SourceText& text_of(Session& session);
 
     /// The card the index gives for the symbol at a position of the
-    /// session's serving source (feature::index_hover).
+    /// session's serving source (feature::hover_info).
     std::optional<feature::HoverInfo> index_hover_card(const Session& session,
                                                        const protocol::Position& position);
 

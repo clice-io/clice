@@ -47,7 +47,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         if(!edits) {
             return;
         }
-        out.push_back(feature::code_action_to_protocol(
+        out.push_back(feature::to_protocol(
             std::move(title),
             std::move(kind),
             {.uri = uri, .version = session->version, .edits = std::move(*edits)}));
@@ -87,7 +87,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         if(!edit) {
             return;
         }
-        out.push_back(feature::code_action_to_protocol(
+        out.push_back(feature::to_protocol(
             std::format("{} in {}", action.title, llvm::sys::path::filename(host_path)),
             std::move(action.kind),
             {

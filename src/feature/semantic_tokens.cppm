@@ -114,12 +114,11 @@ auto semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& options
 /// those overlapping `window` alone when one is given — one encoder for the
 /// worker's AST results and the master's results from the index, so both paths
 /// emit byte-identical replies.
-auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
-                                 const PositionMap& map,
-                                 PositionEncoding encoding,
-                                 const SemanticTokenLegend& legend,
-                                 std::optional<LocalSourceRange> window = std::nullopt)
-    -> protocol::SemanticTokens;
+auto to_protocol(llvm::ArrayRef<SemanticToken> tokens,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 const SemanticTokenLegend& legend,
+                 std::optional<LocalSourceRange> window = std::nullopt) -> protocol::SemanticTokens;
 
 /// The one edit turning the encoded tokens `before` into `after`: what
 /// lies between their common prefix and suffix; none when they are equal.
@@ -130,17 +129,17 @@ auto semantic_tokens_edits(llvm::ArrayRef<std::uint32_t> before,
 /// The tokens of `source` as the AST's would be, from what the index
 /// records: each symbol's classified from `resolve` at its occurrences, the
 /// roles `decls` give, the writes `writes` record.
-auto index_semantic_tokens(SourceText& source,
-                           const IndexEntries& entries,
-                           IndexSymbolResolver resolve,
-                           const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
+auto semantic_tokens(SourceText& source,
+                     const IndexEntries& entries,
+                     IndexSymbolResolver resolve,
+                     const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
 
 /// The same from the index serving the file, `source`'s text the one it
 /// indexed or a buffer byte-identical to it.
-auto index_semantic_tokens(SourceText& source,
-                           const index::IndexQuery& query,
-                           const index::IndexSource& index,
-                           const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
+auto semantic_tokens(SourceText& source,
+                     const index::IndexQuery& query,
+                     const index::IndexSource& index,
+                     const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
 
 /// Adds to the macros the preamble region names the modifiers their
 /// definitions give, which only the PCH's index (`preamble`) knows: neither

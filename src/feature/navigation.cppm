@@ -97,8 +97,7 @@ struct PlacedHighlight {
 std::vector<PlacedHighlight> document_highlights(const index::IndexQuery& index,
                                                  const index::IndexQuery::Cursor& cursor);
 
-std::vector<protocol::DocumentHighlight>
-    document_highlights_to_protocol(llvm::ArrayRef<PlacedHighlight> highlights);
+std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighlight> highlights);
 
 /// Go-to-type-definition of a cursor's symbol: the declarations its
 /// type names — at a name of a member of a template's specialization,

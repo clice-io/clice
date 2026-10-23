@@ -767,7 +767,7 @@ ZEST_CASE(HoverDefinitionShape) {
                    llvm::StringRef text,
                    index::SymbolFlags flags = index::SymbolFlags::None) {
         index::SymbolInfo info{.name = "name", .kind = kind, .flags = flags};
-        return feature::index_hover(info, {}, text, {}).definition;
+        return feature::hover_info(info, {}, text, {}).definition;
     };
     ZASSERT(card(SymbolKind::Function, "int twice(int x) {\n    return x * 2;\n}") ==
             "int twice(int x)");

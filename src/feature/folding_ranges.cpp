@@ -840,12 +840,11 @@ std::string line_collapsed_text(llvm::StringRef content, const LineFold& fold) {
 
 }  // namespace
 
-auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
-                                llvm::StringRef content,
-                                const PositionMap& map,
-                                PositionEncoding encoding,
-                                const FoldingClient& client)
-    -> std::vector<protocol::FoldingRange> {
+auto to_protocol(llvm::ArrayRef<FoldingRange> ranges,
+                 llvm::StringRef content,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 const FoldingClient& client) -> std::vector<protocol::FoldingRange> {
     std::vector<protocol::FoldingRange> result;
     if(!client.line_folding_only) {
         result.reserve(ranges.size());
@@ -957,9 +956,9 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
     return result;
 }
 
-auto index_folding_ranges(SourceText& source,
-                          llvm::ArrayRef<IndexDecl> decls,
-                          IndexSymbolResolver resolve) -> std::vector<FoldingRange> {
+auto folding_ranges(SourceText& source,
+                    llvm::ArrayRef<IndexDecl> decls,
+                    IndexSymbolResolver resolve) -> std::vector<FoldingRange> {
     // The braces outside comments, literals and directive lines, and the
     // conditional levels: a branch switch or #endif observing a brace depth
     // other than its #if's means the branches unbalance braces — any raw
@@ -1069,10 +1068,10 @@ auto index_folding_ranges(SourceText& source,
     return ranges;
 }
 
-auto index_folding_ranges(SourceText& source,
-                          const index::IndexQuery& query,
-                          const index::IndexSource& index) -> std::vector<FoldingRange> {
-    return index_folding_ranges(
+auto folding_ranges(SourceText& source,
+                    const index::IndexQuery& query,
+                    const index::IndexSource& index) -> std::vector<FoldingRange> {
+    return folding_ranges(
         source,
         extract_index_entries(*index.shard).decls,
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });

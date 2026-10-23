@@ -133,9 +133,7 @@ struct FileEdit {
     std::vector<protocol::TextEdit> edits;
 };
 
-protocol::CodeAction code_action_to_protocol(std::string title,
-                                             protocol::CodeActionKind kind,
-                                             FileEdit file);
+protocol::CodeAction to_protocol(std::string title, protocol::CodeActionKind kind, FileEdit file);
 
 /// A DefineRequest's edit of the focus file `file`, whose text is
 /// `content`: the pieces the index keeps (assemble_definitions) formatted

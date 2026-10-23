@@ -93,7 +93,7 @@ auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
     return links;
 }
 
-auto index_document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges)
+auto document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges)
     -> std::vector<index::DocumentLink> {
     auto positions = source.positions();
 
@@ -123,17 +123,17 @@ auto index_document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge>
     return links;
 }
 
-auto index_document_links(SourceText& source, const index::IndexQuery& query, Fid file)
+auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)
     -> std::vector<index::DocumentLink> {
     if(!query.shard_matching(file, source.text())) {
         return {};
     }
-    return index_document_links(source, query.project().include_edges(file));
+    return document_links(source, query.project().include_edges(file));
 }
 
-auto document_links_to_protocol(llvm::ArrayRef<index::DocumentLink> links,
-                                const PositionMap& map,
-                                FileTable& files) -> std::vector<protocol::DocumentLink> {
+auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,
+                 const PositionMap& map,
+                 FileTable& files) -> std::vector<protocol::DocumentLink> {
     std::vector<protocol::DocumentLink> result;
     for(const auto& link: links) {
         auto range = map.range(link.range, PositionEncoding::UTF16);

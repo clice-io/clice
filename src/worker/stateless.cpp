@@ -20,6 +20,7 @@ import :index.include_tree;
 import :index.indexer;
 import :index.tu_index;
 import :support.bytes;
+import :support.json;
 import :support.logging;
 import :support.process;
 import :syntax.position;

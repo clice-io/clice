@@ -12,7 +12,6 @@ import :support.bytes;
 import :support.timer;
 import :vfs.file_system;
 import :worker.protocol;
-import :worker.serialize;
 
 namespace clice {
 

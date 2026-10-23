@@ -512,8 +512,7 @@ std::vector<index::IndexQuery::Located> implementation(const index::IndexQuery& 
     return result;
 }
 
-std::vector<protocol::DocumentHighlight>
-    document_highlights_to_protocol(llvm::ArrayRef<PlacedHighlight> highlights) {
+std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighlight> highlights) {
     auto kind_of = [](HighlightKind kind) {
         switch(kind) {
             case HighlightKind::Text: return protocol::DocumentHighlightKind::Text;

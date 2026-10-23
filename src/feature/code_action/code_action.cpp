@@ -1109,9 +1109,7 @@ bool admits(llvm::ArrayRef<protocol::CodeActionKind> only, llvm::StringRef kind)
     });
 }
 
-protocol::CodeAction code_action_to_protocol(std::string title,
-                                             protocol::CodeActionKind kind,
-                                             FileEdit file) {
+protocol::CodeAction to_protocol(std::string title, protocol::CodeActionKind kind, FileEdit file) {
     protocol::TextDocumentEdit change{
         .text_document = {.uri = std::move(file.uri), .version = file.version},
     };

@@ -159,7 +159,7 @@ interface RawLink {
     target: string;
 }
 
-/// Twin of to_protocol_symbol_kind (src/feature/document_symbols.cpp);
+/// Twin of to_protocol(SymbolKind) (src/feature/document_symbols.cpp);
 /// anything unlisted is Variable there too.
 const LSP_SYMBOL_KIND: Record<string, string> = {
     Module: "Module",

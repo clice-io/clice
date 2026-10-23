@@ -237,7 +237,7 @@ Item item_of(const index::PeerQueries& queries, const index::IndexQuery::Located
        detail != item.name) {
         item.detail = std::move(detail);
     }
-    item.kind = to_protocol_symbol_kind(symbol.kind);
+    item.kind = to_protocol(symbol.kind);
     item.uri = to_uri(located.site.path);
     item.range = to_range(located.extent);
     item.selection_range = to_range(located.site);

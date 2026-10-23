@@ -782,12 +782,11 @@ auto semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& options
     return semantic_tokens(unit, scan.regions, options);
 }
 
-auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
-                                 const PositionMap& map,
-                                 PositionEncoding encoding,
-                                 const SemanticTokenLegend& legend,
-                                 std::optional<LocalSourceRange> window)
-    -> protocol::SemanticTokens {
+auto to_protocol(llvm::ArrayRef<SemanticToken> tokens,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 const SemanticTokenLegend& legend,
+                 std::optional<LocalSourceRange> window) -> protocol::SemanticTokens {
     protocol::SemanticTokens result;
     result.data.reserve(tokens.size() * 5);
 
@@ -824,10 +823,10 @@ auto semantic_tokens_edits(llvm::ArrayRef<std::uint32_t> before,
     };
 }
 
-auto index_semantic_tokens(SourceText& source,
-                           const IndexEntries& entries,
-                           IndexSymbolResolver resolve,
-                           const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
+auto semantic_tokens(SourceText& source,
+                     const IndexEntries& entries,
+                     IndexSymbolResolver resolve,
+                     const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
     using Kind = SemanticTokenKind;
     using Modifier = SemanticTokenModifier;
 
@@ -912,11 +911,11 @@ auto index_semantic_tokens(SourceText& source,
     return semantic_token_stream(source, facts, options);
 }
 
-auto index_semantic_tokens(SourceText& source,
-                           const index::IndexQuery& query,
-                           const index::IndexSource& index,
-                           const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
-    return index_semantic_tokens(
+auto semantic_tokens(SourceText& source,
+                     const index::IndexQuery& query,
+                     const index::IndexSource& index,
+                     const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
+    return semantic_tokens(
         source,
         extract_index_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },

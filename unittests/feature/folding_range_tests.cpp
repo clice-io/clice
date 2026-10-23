@@ -43,7 +43,7 @@ int compute() {
 
     auto ast = feature::folding_ranges(*unit);
     SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
-    auto from_index = feature::index_folding_ranges(text, entries.decls, resolver());
+    auto from_index = feature::folding_ranges(text, entries.decls, resolver());
 
     ZASSERT(!from_index.empty());
     for(auto& fold: from_index) {
@@ -89,7 +89,7 @@ typedef struct {
 
     auto ast = feature::folding_ranges(*unit);
     SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
-    auto from_index = feature::index_folding_ranges(text, entries.decls, resolver());
+    auto from_index = feature::folding_ranges(text, entries.decls, resolver());
 
     ZASSERT(from_index.size() == std::size_t(3));
     for(auto& fold: from_index) {
@@ -117,7 +117,7 @@ int values[] =
     extract_entries();
 
     SourceText text(unit->focus_file().content(), dialect_of("main.cpp", false));
-    auto from_index = feature::index_folding_ranges(text, entries.decls, resolver());
+    auto from_index = feature::folding_ranges(text, entries.decls, resolver());
     ZASSERT(from_index.size() == std::size_t(1));
     ZASSERT(!from_index[0].lines.has_value());
 }
@@ -156,7 +156,7 @@ void g() {
     };
 
     SourceText text(content, dialect_of("main.cpp", false));
-    auto folds = feature::index_folding_ranges(text, entries, resolve_synthetic);
+    auto folds = feature::folding_ranges(text, entries, resolve_synthetic);
     ZASSERT(folds.size() == std::size_t(1));
     ZASSERT(folds[0].range.begin == static_cast<std::uint32_t>(content.find("{", g_begin)));
     ZASSERT(folds[0].range.end == g_end);

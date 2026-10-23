@@ -101,7 +101,7 @@ auto document_symbols(CompilationUnit& unit,
 
 /// The outline's SymbolKind -> LSP mapping, exhaustive over the enum so a
 /// new kind fails to compile rather than fall into a default.
-auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind;
+auto to_protocol(SymbolKind kind) -> protocol::SymbolKind;
 
 /// How a client takes document symbols: as a tree when it declares
 /// hierarchicalDocumentSymbolSupport, flat (`SymbolInformation`)
@@ -112,11 +112,10 @@ struct SymbolClient {
     bool all_kinds = false;
 };
 
-auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
-                                  const PositionMap& map,
-                                  PositionEncoding encoding,
-                                  const SymbolClient& client)
-    -> std::vector<protocol::DocumentSymbol>;
+auto to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 const SymbolClient& client) -> std::vector<protocol::DocumentSymbol>;
 
 /// The symbols flat, for a client taking no tree: each in `uri`, naming the
 /// symbol it nests in.
@@ -129,15 +128,15 @@ auto document_symbols_to_information(llvm::ArrayRef<DocumentSymbol> symbols,
 
 /// The outline of the file `source` holds, from its index entries: the
 /// AST's (outline()) without details, a macro's parameters aside.
-auto index_document_symbols(SourceText& source,
-                            const IndexEntries& entries,
-                            IndexSymbolResolver resolve,
-                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
+auto document_symbols(SourceText& source,
+                      const IndexEntries& entries,
+                      IndexSymbolResolver resolve,
+                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
-/// The same from the index serving the file (see index_semantic_tokens).
-auto index_document_symbols(SourceText& source,
-                            const index::IndexQuery& query,
-                            const index::IndexSource& index,
-                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
+/// The same from the index serving the file (see semantic_tokens).
+auto document_symbols(SourceText& source,
+                      const index::IndexQuery& query,
+                      const index::IndexSource& index,
+                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
 }  // namespace clice::feature

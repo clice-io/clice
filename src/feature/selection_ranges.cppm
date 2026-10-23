@@ -27,8 +27,8 @@ auto lexical_selection_ranges(SourceText& source, llvm::ArrayRef<std::uint32_t> 
     -> std::vector<std::vector<LocalSourceRange>>;
 
 /// Protocol encoding of one offset's ranges as a chain of parents.
-auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
-                                 const PositionMap& map,
-                                 PositionEncoding encoding) -> protocol::SelectionRange;
+auto to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
+                 const PositionMap& map,
+                 PositionEncoding encoding) -> protocol::SelectionRange;
 
 }  // namespace clice::feature

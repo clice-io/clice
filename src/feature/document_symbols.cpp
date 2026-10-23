@@ -21,7 +21,7 @@ import :syntax.source_text;
 
 namespace clice::feature {
 
-auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
+auto to_protocol(SymbolKind kind) -> protocol::SymbolKind {
     using enum protocol::SymbolKind;
 
     switch(kind) {
@@ -904,7 +904,7 @@ private:
 /// The protocol's kind of a symbol, as the client takes kinds: clangd's
 /// stand-ins for one it lacks.
 auto client_kind(SymbolKind kind, const SymbolClient& client) -> protocol::SymbolKind {
-    auto result = to_protocol_symbol_kind(kind);
+    auto result = to_protocol(kind);
     if(client.all_kinds || result <= protocol::SymbolKind::Array) {
         return result;
     }
@@ -990,11 +990,10 @@ auto document_symbols(CompilationUnit& unit,
                    options);
 }
 
-auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
-                                  const PositionMap& map,
-                                  PositionEncoding encoding,
-                                  const SymbolClient& client)
-    -> std::vector<protocol::DocumentSymbol> {
+auto to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 const SymbolClient& client) -> std::vector<protocol::DocumentSymbol> {
     std::vector<protocol::DocumentSymbol> result;
     result.reserve(symbols.size());
 
@@ -1041,10 +1040,10 @@ auto document_symbols_to_information(llvm::ArrayRef<DocumentSymbol> symbols,
     return result;
 }
 
-auto index_document_symbols(SourceText& source,
-                            const IndexEntries& entries,
-                            IndexSymbolResolver resolve,
-                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+auto document_symbols(SourceText& source,
+                      const IndexEntries& entries,
+                      IndexSymbolResolver resolve,
+                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
     // A name the text writes is where an occurrence of its symbol starts.
     llvm::DenseSet<std::pair<std::uint32_t, index::SymbolHash>> written;
     for(const auto& occurrence: entries.occurrences) {
@@ -1129,11 +1128,11 @@ auto index_document_symbols(SourceText& source,
     return outline(std::move(declarations), source, macros, modules, marks, options);
 }
 
-auto index_document_symbols(SourceText& source,
-                            const index::IndexQuery& query,
-                            const index::IndexSource& index,
-                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
-    return index_document_symbols(
+auto document_symbols(SourceText& source,
+                      const index::IndexQuery& query,
+                      const index::IndexSource& index,
+                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+    return document_symbols(
         source,
         extract_index_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },

@@ -21,6 +21,7 @@ import :feature.selection_ranges;
 import :feature.semantic_tokens;
 import :index.indexer;
 import :index.tu_index;
+import :support.json;
 import :support.logging;
 import :support.process;
 import :worker.common;

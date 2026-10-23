@@ -18,6 +18,7 @@ import :server.context_service;
 import :server.editor_context;
 import :support.anomaly;
 import :support.bytes;
+import :support.json;
 import :support.logging;
 import :support.timer;
 import :syntax.dependency_graph;
@@ -27,7 +28,6 @@ import :vfs.file_table;
 import :vfs.path;
 import :worker.common;
 import :worker.protocol;
-import :worker.serialize;
 
 namespace clice {
 

@@ -1832,11 +1832,10 @@ auto inlay_hints(CompilationUnit& unit, LocalSourceRange target, const InlayHint
     return hints;
 }
 
-auto inlay_hints_to_protocol(
-    llvm::ArrayRef<InlayHint> hints,
-    const PositionMap& map,
-    PositionEncoding encoding,
-    llvm::function_ref<std::optional<protocol::Location>(const InlayHintPart&)> locate)
+auto to_protocol(llvm::ArrayRef<InlayHint> hints,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 llvm::function_ref<std::optional<protocol::Location>(const InlayHintPart&)> locate)
     -> std::vector<protocol::InlayHint> {
     std::vector<protocol::InlayHint> result;
     result.reserve(hints.size());
@@ -1889,11 +1888,11 @@ auto inlay_hints_to_protocol(
     return result;
 }
 
-auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
-                             const PositionMap& map,
-                             PositionEncoding encoding,
-                             const index::PeerQueries& queries,
-                             Fid file) -> std::vector<protocol::InlayHint> {
+auto to_protocol(llvm::ArrayRef<InlayHint> hints,
+                 const PositionMap& map,
+                 PositionEncoding encoding,
+                 const index::PeerQueries& queries,
+                 Fid file) -> std::vector<protocol::InlayHint> {
     auto& files = queries.own.file_table();
     // A reply names the same few types and parameters over and over.
     llvm::DenseMap<std::pair<index::SymbolHash, Fid>, std::optional<protocol::Location>> located;
@@ -1929,7 +1928,7 @@ auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
         }
         return it->second;
     };
-    return inlay_hints_to_protocol(hints, map, encoding, locate);
+    return to_protocol(hints, map, encoding, locate);
 }
 
 }  // namespace clice::feature

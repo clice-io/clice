@@ -14,11 +14,11 @@ import :project.configuration;
 import :sched.batch;
 import :server.control_client;
 import :server.query_commands;
+import :support.json;
 import :support.logging;
 import :support.process;
 import :vfs.file_system;
 import :vfs.path;
-import :worker.serialize;
 
 namespace clice::driver {
 

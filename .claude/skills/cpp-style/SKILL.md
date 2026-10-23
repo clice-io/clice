@@ -149,6 +149,11 @@ defending against ghosts.
   (`PackForwardFinder`), or is named by what it gathers (`SpelledNames`); a
   clang callback that only records what clang reports is a `<What>Recorder`
   (`CompilationUnit::DiagnosticRecorder`).
+- **Overloads, not prefixes, tell one job's variants apart**: every
+  conversion to the LSP form is a `to_protocol` overload, and a feature's
+  answer from the index is an overload of its answer from the AST
+  (`semantic_tokens(SourceText&, …)` beside `semantic_tokens(CompilationUnit&,
+  …)`) — never `semantic_tokens_to_protocol` or `index_semantic_tokens`.
 - Doc comments on declarations use `///`; the bar for when to write a
   comment at all is in CLAUDE.md.
 
@@ -179,7 +184,7 @@ These were renamed out of the codebase; don't bring them back:
 | surface (verb), vouch for          | `report` / `show`, `guarantee` / `confirm`                                                                                                                                                                                            |
 | stamp outside `vfs`                | `version` / `generation`                                                                                                                                                                                                              |
 | collector                          | `Builder` / `<What>Finder` / `<What>Recorder` (see Naming Conventions)                                                                                                                                                                |
-| projection                         | what it is: a document's latest compile (`DocumentCompile`), a result computed from the index (`index_semantic_tokens`), the LSP form; only the indexer's step from the semantic map to entries is a projection (`project_semantics`) |
+| projection                         | what it is: a document's latest compile (`DocumentCompile`), a result computed from the index (the `SourceText` overloads of `semantic_tokens`), the LSP form; only the indexer's step from the semantic map to entries is a projection (`project_semantics`) |
 
 Domain words with one meaning each — use them only in that meaning:
 

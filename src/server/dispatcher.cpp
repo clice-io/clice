@@ -16,10 +16,10 @@ import :feature.semantic_tokens;
 import :server.dispatcher;
 import :server.editor_context;
 import :support.anomaly;
+import :support.json;
 import :support.logging;
 import :support.timer;
 import :worker.protocol;
-import :worker.serialize;
 
 namespace clice {
 

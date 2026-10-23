@@ -60,9 +60,9 @@ auto check_semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& o
                      legend);
     UnitIndex unit_index(unit);
     SourceText served(content, unit.lang_options());
-    auto from_index = named_tokens(
-        index_semantic_tokens(served, unit_index.entries(), unit_index.resolver(), options),
-        legend);
+    auto from_index =
+        named_tokens(semantic_tokens(served, unit_index.entries(), unit_index.resolver(), options),
+                     legend);
 
     auto spell = [](const NamedToken& token) {
         auto spelled = token.kind;
@@ -131,7 +131,7 @@ auto check_document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions&
     UnitIndex unit_index(unit);
     SourceText served(unit.focus_file().content(), unit.lang_options());
     auto from_index =
-        index_document_symbols(served, unit_index.entries(), unit_index.resolver(), options);
+        document_symbols(served, unit_index.entries(), unit_index.resolver(), options);
 
     struct Flat {
         const DocumentSymbol* symbol;
@@ -196,7 +196,7 @@ auto check_document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions&
                            converted->end.character + 1);
     };
     auto kind_name = [](SymbolKind kind) {
-        return std::string(kota::meta::enum_name(to_protocol_symbol_kind(kind), "?"));
+        return std::string(kota::meta::enum_name(to_protocol(kind), "?"));
     };
     auto parent_name = [](const std::vector<Flat>& flats, std::int32_t parent) {
         return parent == -1 ? std::string("(top level)") : flats[parent].symbol->name;

@@ -26,11 +26,11 @@ import :server.master_server;
 import :server.query_commands;
 import :server.uri;
 import :support.anomaly;
+import :support.json;
 import :support.logging;
 import :syntax.header_context;
 import :vfs.path;
 import :worker.probe;
-import :worker.serialize;
 
 namespace clice {
 
@@ -806,16 +806,14 @@ LSPClient::RawResult LSPClient::send_tokens(std::shared_ptr<ProjectServer> proje
             auto positions = session->positions();
             if(request.window) {
                 auto window = positions.offset_range(*request.window, PositionEncoding::UTF16);
-                co_return to_raw(feature::semantic_tokens_to_protocol(*found,
-                                                                      positions,
-                                                                      PositionEncoding::UTF16,
-                                                                      token_legend,
-                                                                      window));
+                co_return to_raw(feature::to_protocol(*found,
+                                                      positions,
+                                                      PositionEncoding::UTF16,
+                                                      token_legend,
+                                                      window));
             }
-            auto encoded = feature::semantic_tokens_to_protocol(*found,
-                                                                positions,
-                                                                PositionEncoding::UTF16,
-                                                                token_legend);
+            auto encoded =
+                feature::to_protocol(*found, positions, PositionEncoding::UTF16, token_legend);
             next_result_id += 1;
             encoded.result_id = std::to_string(next_result_id);
             auto& sent = sent_tokens[path_id];
