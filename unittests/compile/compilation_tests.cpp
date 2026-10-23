@@ -240,6 +240,7 @@ ZEST_CASE(CompletionSkipsOtherBodies) {
     llvm::StringRef text = "int other() { return missing; }\nint sum() { return 1 + oth; }\n";
     add_focus("main.cpp", text);
     prepare();
+    params.input.add_focus(TestVFS::path("main.cpp"), text);
     params.kind = CompilationKind::Completion;
     params.completion = {
         .offset = static_cast<std::uint32_t>(text.find("oth;") + 3),
