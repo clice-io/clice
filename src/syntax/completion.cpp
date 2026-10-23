@@ -214,7 +214,6 @@ CompletionName completion_name(llvm::StringRef text,
     };
 
     if(first.is_directive_hash() && before_cursor(first)) {
-        // Nothing after the `#` yet, or the cursor in the name or at its end.
         if(tokens.size() < 2 || tokens[1].is_eod()) {
             return {
                 .kind = CompletionName::Kind::Directive,

@@ -709,8 +709,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                                                            conditional,
                                                            dialect,
                                                            project.config.code_completion,
-                                                           client,
-                                                           project.config.code_completion.limit));
+                                                           client));
         }
         if(completing.kind == CompletionName::Kind::IncludeQuoted ||
            completing.kind == CompletionName::Kind::IncludeAngled) {

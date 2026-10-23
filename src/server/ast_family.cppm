@@ -272,8 +272,8 @@ private:
 
     /// What a buffer state owes the PCH family: nothing (an empty
     /// preamble with no injected prefix, or a module unit's global module
-    /// fragment that imports — a previously adopted key must be cleared),
-    /// or the acquisition of `request`.
+    /// fragment that imports — a previously adopted key must be cleared,
+    /// unless the plan is partial), or the acquisition of `request`.
     struct PCHPlan {
         enum class Decision : std::uint8_t { None, Acquire };
 
@@ -302,8 +302,9 @@ private:
     /// Revalidate or build the preamble PCH of `text` through the family,
     /// over the precompiled header the build declares for the command, and
     /// adopt the key of what the request loads under its license (see
-    /// prepare_stateless_inputs). Returns the key the request compiles
-    /// against, adopted or not; none when it compiles without a PCH.
+    /// prepare_stateless_inputs), but for a partial plan's. Returns the key
+    /// the request compiles against, adopted or not; none when it compiles
+    /// without a PCH.
     kota::task<std::optional<std::string>> ensure_pch(const std::shared_ptr<Session>& session,
                                                       llvm::StringRef text,
                                                       std::optional<std::uint32_t> point,

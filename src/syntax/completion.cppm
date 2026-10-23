@@ -13,8 +13,8 @@ import :vfs.file_table;
 
 namespace clice {
 
-/// The name the cursor is completing, where the text tells: a header name,
-/// or the name of an import or a module declaration.
+/// The name the cursor is completing, where the text tells: a directive's
+/// name, a header name, or the name of an import or a module declaration.
 struct CompletionName {
     enum class Kind : std::uint8_t {
         None,

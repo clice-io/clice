@@ -166,13 +166,13 @@ auto unqualified_prefix(llvm::StringRef text, std::uint32_t offset)
 auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
     -> protocol::CompletionList;
 
-/// The most names of other namespaces one completion offers from the index
-/// (CodeCompletionOptions::all_scopes).
+/// The most names one completion offers from the index (ScopeCandidate,
+/// CodeCompletionOptions::all_scopes).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
-/// The names of other namespaces the index offers where `prefix` is
-/// completed unqualified in `file`, appended to `candidates`; whether
-/// they are all of them.
+/// The names the index offers where `prefix` is completed unqualified in
+/// `file` (ScopeCandidate), appended to `candidates`; whether they are all
+/// of them.
 bool scope_candidates(const index::IndexQuery& query,
                       const DependencyGraph& graph,
                       llvm::StringRef prefix,
@@ -212,8 +212,7 @@ auto directive_completion(const CompletionName& completing,
                           bool conditional,
                           const clang::LangOptions& dialect,
                           const CodeCompletionOptions& options,
-                          const CompletionClient& client,
-                          std::uint32_t limit) -> protocol::CompletionList;
+                          const CompletionClient& client) -> protocol::CompletionList;
 
 /// The modules an `import` or a module declaration being typed
 /// (`completing`) in `text`, the file at `path`, may name: the unit's own

@@ -2768,8 +2768,7 @@ auto directive_completion(const CompletionName& completing,
                           bool conditional,
                           const clang::LangOptions& dialect,
                           const CodeCompletionOptions& options,
-                          const CompletionClient& client,
-                          std::uint32_t limit) -> protocol::CompletionList {
+                          const CompletionClient& client) -> protocol::CompletionList {
     // Clang's CodeCompletePreprocessorDirective, which a compile would
     // answer with, placeholders in braces.
     struct Pattern {
@@ -2870,7 +2869,7 @@ auto directive_completion(const CompletionName& completing,
         item.sort_text = sort_text(*score * priority_weight(clang::CCP_CodePattern), std::nullopt);
         items.push_back(std::move(item));
     }
-    return completion_list(std::move(items), limit);
+    return completion_list(std::move(items), options.limit.value);
 }
 
 auto module_completion(const CompletionName& completing,
