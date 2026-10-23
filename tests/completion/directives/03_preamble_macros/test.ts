@@ -18,7 +18,7 @@ test("a directive typed between the includes", async (t) => {
     const s = await t.start({ config: { project: { enable_indexing: false } } });
     await s.diagnostics("main.cpp");
     s.edit("main.cpp", { after: '#include "a.h"\n', insert: "#ifdef DIR_\n#endif\n" });
-    await s.sync();
+    await s.diagnostics("main.cpp");
     await t.show("macros", s.completion(t.at("main.cpp", "#ifdef DIR_|")));
     await t.show("names", s.completion(t.at("main.cpp", "beta_|")));
 });

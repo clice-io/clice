@@ -13,6 +13,7 @@ test("completion reuses the pch", async (t) => {
     await t.show("builds after open", await builds());
     s.edit("config.h", { after: "#define LIMIT 2\n", insert: "#ifdef LIM\n#endif\n" });
     await t.show("macros", s.completion(t.at("config.h", "#ifdef LIM|")));
+    expect(await s.errors("config.h")).toEqual([]);
     await s.sync();
     await t.show("builds after edit and completion", await builds());
 });

@@ -160,7 +160,7 @@
     },
     {
       "path": "sizes.h",
-      "text": "#ifndef SIZES_H\n#define SIZES_H\n\n#define SIZES_MAX 64\n#define SIZES_CLAMP(value) ((value) < SIZES_MAX ? (value) : SIZES_MAX)\n\n#endif\n",
+      "text": "#ifndef SIZES_H\n#define SIZES_H\n\n#define SIZES_MAX 64\n#define SIZES_CLAMP(value) ((value) < SIZES_MAX ? (value) : SIZES_MAX)\n\n#define SIZES_TWICE(value) ((value) * 2)\ninline constexpr int sizes_default = SIZES_TWICE(SIZES_MAX);\n#undef SIZES_TWICE\n\n#endif\n",
       "markers": []
     },
     {
@@ -648,6 +648,30 @@
                   "label": "SIZES_MAX",
                   "kind": "Constant",
                   "insert": "SIZES_MAX",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-17",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"sizes.h\"\n"
+                    }
+                  ]
+                },
+                {
+                  "label": "sizes_default",
+                  "kind": "Variable",
+                  "insert": "sizes_default",
                   "edits": [
                     {
                       "at": {

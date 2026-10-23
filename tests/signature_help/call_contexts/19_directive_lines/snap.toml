@@ -1,2 +1,6 @@
 ["an include line".include.signature_help]
 signatures = []
+
+["a condition".condition.signature_help]
+signatures = ["CHECK(left, ⟦right⟧)"]
+active = 0

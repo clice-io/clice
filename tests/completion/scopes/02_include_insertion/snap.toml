@@ -171,6 +171,14 @@ items = [
             { at = "⟦⟧ @-17", text = '#include "sizes.h"' },
         ],
     },
+    {
+        label = "sizes_default",
+        kind = "Variable",
+        insert = "sizes_default",
+        edits = [
+            { at = "⟦⟧ @-17", text = '#include "sizes.h"' },
+        ],
+    },
 ]
 
 [default.deprecated.completion]
