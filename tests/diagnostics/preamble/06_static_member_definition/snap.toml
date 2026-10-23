@@ -1,3 +1,16 @@
 [test."main.cpp"]
-wrong = "clang instantiates the definition at the end of the file and reports the error in its initializer; the precompiled preamble instantiates Counter<int>::value before main.cpp defines it, and drops it"
-diagnostics = []
+diagnostics = [
+    {
+        at = "int Counter<T>::value = ⟦T⟧::missing;",
+        severity = "error",
+        message = "type 'int' cannot be used prior to '::' because it has no members",
+        source = "clang",
+        code = "err_nested_name_spec_non_tag",
+        related = [
+            {
+                at = "counter.h │ return Counter<int>::⟦value⟧;",
+                message = "in instantiation of static data member 'Counter<int>::value' requested here",
+            },
+        ],
+    },
+]

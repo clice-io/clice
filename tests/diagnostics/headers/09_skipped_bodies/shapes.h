@@ -8,3 +8,8 @@ int area(const T& shape) {
 inline int unit() {
     return 1;
 }
+
+template <typename F>
+int apply(F f) {
+    return f(1);
+}

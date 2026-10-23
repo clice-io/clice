@@ -2,8 +2,9 @@ import { test } from "@clice/tools/testing";
 
 // The commands target MSVC before C++20, where clang defers template
 // bodies by default; clice parses them unless a command asks. main.cpp's
-// preamble is built over the target's PCH and instantiates twice() from it,
-// then main.cpp instantiates thrice(). A preamble storing again the
+// preamble is built over the target's PCH and instantiates twice() from it
+// in four(), whose body it parses for the type it deduces, then main.cpp
+// instantiates thrice(). A preamble storing again the
 // deferred bodies it read from the PCH crashes the parse reading it.
 
 test("templates instantiate across the pch", async (t) => {

@@ -1,8 +1,16 @@
 [editor."main.cpp"]
+wrong = "the editor skips the function bodies of compare.h, so it cannot tell which functions are unused; with background indexing off nothing reports them"
 diagnostics = []
 
 [indexed."main.cpp"]
 diagnostics = [
+    {
+        at = "int Point::⟦forgotten_member⟧() const {",
+        severity = "warning",
+        message = "unused member function 'forgotten_member'",
+        source = "clang",
+        code = "-Wunused-member-function",
+    },
     {
         at = "void ⟦forgotten⟧() {}",
         severity = "warning",

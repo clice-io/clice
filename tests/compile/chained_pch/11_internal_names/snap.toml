@@ -365,6 +365,7 @@ Size: 8 bytes, alignment 8 bytes
 range = "double total = twice(Local{1.0}) + twice(Scoped{}) + make().⟦value⟧;"
 
 [locations.helper]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/base.h │ static double ⟦helper⟧(double value) {"]
 declaration = ["include/base.h │ static double ⟦helper⟧(double value) {"]
 references = [
@@ -383,6 +384,7 @@ static double helper(double value)
 range = "total += ⟦helper⟧(scale) + ring_twice() + hidden_twice();"
 
 [locations.scale]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/base.h │ const double ⟦scale⟧ = 2.0;"]
 declaration = ["include/base.h │ const double ⟦scale⟧ = 2.0;"]
 references = [

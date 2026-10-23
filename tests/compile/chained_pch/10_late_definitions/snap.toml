@@ -160,6 +160,7 @@ document_links = [
 diagnostics = []
 
 [locations.run]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/extra.h │ int Lazy<T>::⟦run⟧() const {"]
 declaration = ["include/base.h │ int ⟦run⟧() const;", "include/extra.h │ int Lazy<T>::⟦run⟧() const {"]
 references = [

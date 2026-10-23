@@ -164,7 +164,6 @@ tests/diagnostics/suppression/01_by_code
 
 - [ ] Include-cleaner diagnostics for unused and missing `#include` directives
 - [x] Suppress false `-Wunused-function` for static inline functions in headers ([clangd#1211](https://github.com/clangd/clangd/issues/1211))
-- [x] No false `-Wunused-function` or `-Wunused-member-function` for a declaration used only inside a header's function body, which the editor skips: the background index reports the unused ones ([clangd#363](https://github.com/clangd/clangd/issues/363), [clangd#636](https://github.com/clangd/clangd/issues/636))
 
   ```cpp
   // utils.h
@@ -172,6 +171,7 @@ tests/diagnostics/suppression/01_by_code
   // should NOT warn "unused function" when checking header standalone
   ```
 
+- [x] No false `-Wunused-function` or `-Wunused-member-function` for a declaration used only inside a header's function body, which the editor skips: the background index reports the unused ones ([clangd#363](https://github.com/clangd/clangd/issues/363), [clangd#636](https://github.com/clangd/clangd/issues/636))
 - [ ] Propagate `-Wpadded` and similar layout warnings from headers ([clangd#1429](https://github.com/clangd/clangd/issues/1429))
 - [ ] Suppress false `-Wempty-translation-unit` from preamble optimization ([clangd#2358](https://github.com/clangd/clangd/issues/2358))
 - [ ] Thread safety analysis across header boundaries ([clangd#2386](https://github.com/clangd/clangd/issues/2386))

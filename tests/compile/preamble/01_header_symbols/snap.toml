@@ -9,7 +9,21 @@ range = '#include ⟦"foo.h"⟧'
 [include.past]
 hover = {}
 
+[include.get]
+wrong = "the editor skips the bodies of the header's functions, so hover cannot tell that the method returns a field"
+
+[include.get.hover]
+markdown = '''
+**method** `get` · struct `Box`
+
+```cpp
+int get() const
+```
+'''
+range = "return box.⟦get⟧() + ANSWER;"
+
 [unindexed.call]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["foo.h │ inline void ⟦foo⟧() {}"]
 references = ["foo.h │ inline void ⟦foo⟧() {}", "⟦foo⟧();"]
 

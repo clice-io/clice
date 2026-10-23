@@ -83,8 +83,8 @@ async function locations(
 for (const indexing of [false, true]) {
     test(indexing ? "indexed locations" : "locations", async (t) => {
         const config = { project: { enable_indexing: indexing } };
-        // Indexed before main.cpp opens: an open file's own compile stands
-        // in for its index run, which a later open would race.
+        // Indexed before main.cpp opens: what the index run adds to its
+        // diagnostics is there when it opens, not raced by the open.
         const start = async (): Promise<Serve> => {
             const s = await t.start({ config });
             if (indexing) {

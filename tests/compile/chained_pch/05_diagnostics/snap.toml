@@ -123,6 +123,7 @@ document_links = [
 ]
 
 [locations."main.cpp"]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing reports the errors inside them"
 diagnostics = [
     {
         at = "int a = ⟦stale⟧();",

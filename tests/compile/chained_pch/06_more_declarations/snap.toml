@@ -102,6 +102,7 @@ int peek(Token token)
 range = "int total = peek(token) + ::⟦peek⟧(token) + cell.get();"
 
 [features.cell]
+wrong = "the editor skips the bodies of the header's functions, so hover cannot tell that the method returns a field"
 highlights = [
     { at = "int total = peek(token) + ::peek(token) + cell.⟦get⟧();", kind = "text" },
 ]
@@ -297,6 +298,7 @@ diagnostics = [
 ]
 
 [locations.plain]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/base.h │ struct ⟦Plain⟧ {"]
 declaration = ["include/base.h │ struct ⟦Plain⟧ {"]
 references = [
@@ -417,6 +419,7 @@ int peek(Token token)
 range = "int total = peek(token) + ::⟦peek⟧(token) + cell.get();"
 
 [locations.cell]
+wrong = "the editor skips the bodies of the header's functions, so hover cannot tell that the method returns a field"
 definition = ["include/base.h │ T ⟦get⟧() const {"]
 declaration = ["include/base.h │ T ⟦get⟧() const {"]
 references = ["include/base.h │ T ⟦get⟧() const {", "int total = peek(token) + ::peek(token) + cell.⟦get⟧();"]
@@ -602,6 +605,7 @@ int peek(Token token)
 range = "int total = peek(token) + ::⟦peek⟧(token) + cell.get();"
 
 ["indexed locations".cell]
+wrong = "the editor skips the bodies of the header's functions, so hover cannot tell that the method returns a field"
 definition = ["include/base.h │ T ⟦get⟧() const {"]
 declaration = ["include/base.h │ T ⟦get⟧() const {"]
 references = ["include/base.h │ T ⟦get⟧() const {", "int total = peek(token) + ::peek(token) + cell.⟦get⟧();"]

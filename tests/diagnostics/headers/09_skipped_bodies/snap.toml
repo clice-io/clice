@@ -14,9 +14,27 @@ diagnostics = [
             },
         ],
     },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+        related = [
+            {
+                at = "shapes.h │ return ⟦f⟧(1);",
+                message = "in instantiation of function template specialization 'count()::(lambda)::operator()<int>' requested here",
+            },
+            {
+                at = "return ⟦apply⟧([](auto value) { return value.size(); });",
+                message = "in instantiation of function template specialization 'apply<(lambda at ${WS}/main.cpp:12:18)>' requested here",
+            },
+        ],
+    },
 ]
 
 ["as saved".edited]
+wrong = "the editor skips the function bodies of shapes.h: what goes wrong in them shows once the background index has compiled the file as saved"
 diagnostics = []
 
 ["as saved".saved]
@@ -28,6 +46,51 @@ diagnostics = [
         source = "clang",
         code = "err_no_member",
     },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+]
+
+[pushed.pushes]
+wrong = "the editor skips the function bodies of shapes.h: what goes wrong in them shows once the background index has compiled the file as saved"
+pushes = [
+    [
+        {
+            at = "return ⟦area⟧(Square{3}) + unit();",
+            severity = "error",
+            message = "In template: no member named 'width' in 'Square'",
+            source = "clang",
+            code = "err_no_member",
+        },
+        {
+            at = "return apply([](auto value) { return value⟦.⟧size(); });",
+            severity = "error",
+            message = "member reference base type 'int' is not a structure or union",
+            source = "clang",
+            code = "err_typecheck_member_reference_struct_union",
+        },
+    ],
+    [],
+    [
+        {
+            at = "return ⟦area⟧(Square{3}) + unit();",
+            severity = "error",
+            message = "In template: no member named 'width' in 'Square'",
+            source = "clang",
+            code = "err_no_member",
+        },
+        {
+            at = "return apply([](auto value) { return value⟦.⟧size(); });",
+            severity = "error",
+            message = "member reference base type 'int' is not a structure or union",
+            source = "clang",
+            code = "err_typecheck_member_reference_struct_union",
+        },
+    ],
 ]
 
 ["a saved header"."saved header"]
@@ -46,6 +109,49 @@ diagnostics = [
         source = "clang",
         code = "err_no_member",
     },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+]
+
+["a saved header"."fixed header"]
+diagnostics = [
+    {
+        at = "return ⟦area⟧(Square{2}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+    },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+]
+
+["after a restart".restarted]
+diagnostics = [
+    {
+        at = "return ⟦area⟧(Square{2}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+    },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
 ]
 
 ["bodies parsed".parsed]
@@ -56,5 +162,12 @@ diagnostics = [
         message = "In template: no member named 'width' in 'Square'",
         source = "clang",
         code = "err_no_member",
+    },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
     },
 ]

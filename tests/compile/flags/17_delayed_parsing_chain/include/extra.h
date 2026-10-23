@@ -6,7 +6,7 @@ struct Item {
     int value;
 };
 
-inline int use_base() {
+inline auto use_base() {
     return base_template(Item{1});
 }
 

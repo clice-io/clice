@@ -2,7 +2,7 @@
 
 #include "numbers.h"
 
-inline int four() {
+inline auto four() {
     return twice(2);
 }
 

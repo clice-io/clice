@@ -309,6 +309,7 @@ document_links = [
 diagnostics = []
 
 [locations.make]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/base.h │ auto ⟦make⟧(T value) {"]
 declaration = ["include/base.h │ auto ⟦make⟧(T value) {"]
 references = [
@@ -343,6 +344,7 @@ int size() const
 range = "int total = made + wrapped->⟦size⟧() + apply(Local{});"
 
 [locations.apply]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing finds the references inside them"
 definition = ["include/base.h │ int ⟦apply⟧(T value) {"]
 declaration = ["include/base.h │ int ⟦apply⟧(T value) {"]
 references = [

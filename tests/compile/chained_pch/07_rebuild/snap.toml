@@ -1,4 +1,5 @@
 ["a header of the base changes".edited]
+wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing reports the errors inside them"
 errors = [
     {
         at = "return ⟦area⟧(3) + twice_area(2);",
