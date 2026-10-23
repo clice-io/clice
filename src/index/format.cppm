@@ -100,10 +100,12 @@ namespace clice::index {
 /// hash; v45: a manifest keeps the memory its unit's worker reached; v46: a
 /// relation names the occurrence whose range it spans, masks are columns of
 /// their own, symbol records are varint-packed bytes, and file sets are
-/// varint lists unless a roaring image is smaller; v47: a preamble's TU index
-/// carries the search blob of its completable names, and an include guard is
-/// not completable.
-constexpr inline std::uint32_t index_format_version = 47;
+/// varint lists unless a roaring image is smaller; v47: manifests name their
+/// file versions by the ids of the database's version records, and their
+/// imports and failed lookups as Elias–Fano sets; v48: a preamble's TU index
+/// carries the search blob of its completable names, and neither an include
+/// guard nor a macro its own file undefines is completable.
+constexpr inline std::uint32_t index_format_version = 48;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it (LLVM's search blob, the
@@ -591,6 +593,12 @@ struct HeaderBlobOf {
     /// The path id the next file the database names receives.
     std::uint32_t next_path = 0;
 
+    /// The id the next file version the manifests name receives.
+    std::uint32_t next_version = 0;
+
+    /// The units the database holds a manifest of.
+    std::uint32_t unit_count = 0;
+
     /// The generation of the search blob saved with this header, and the
     /// symbols and the files (path ids) whose names of internal linkage
     /// changed since that blob was built, ascending.
@@ -666,6 +674,11 @@ struct DependentsBlobOf {
     Seq<UnitSetOf<Seq>> uses;
     /// The distinct resolutions of the file's own `#include` lines.
     Seq<IncludeResolutionOf<Seq>> resolutions;
+    /// The versions of the file the manifests name, ascending by content
+    /// hash: each one's version record id and how many manifests name it.
+    Seq<std::uint64_t> version_hashes;
+    Seq<std::uint32_t> version_ids;
+    Seq<std::uint32_t> version_manifests;
 };
 
 using DependentsBlob = DependentsBlobOf<codec::blob::Owned>;
@@ -770,12 +783,13 @@ struct SearchIndexBlobOf {
 
 using SearchIndexBlob = SearchIndexBlobOf<codec::blob::Owned>;
 
-/// The manifest's persisted form. Its file versions are a table of its
-/// own, (path id, content hash) each, which every other field indexes; a
-/// path appears twice when the modules a unit imports were built from two
-/// versions of it. Node and contribution payloads are varint-packed by
-/// hand: a big TU enters thousands of files, and LEB128 on the small ids
-/// and lines roughly halves the blob against fixed-width columns.
+/// The manifest's persisted form. Its file versions are the ids of the
+/// database's version records, which every other field indexes by their
+/// position; a path appears twice when the modules a unit imports were
+/// built from two versions of it. Node and contribution payloads are
+/// varint-packed by hand: a big TU enters thousands of files, and LEB128 on
+/// the small ids and lines roughly halves the blob against fixed-width
+/// columns.
 template <template <typename> typename Seq>
 struct TUManifestBlobOf {
     std::uint32_t format_version = 0;
@@ -784,8 +798,10 @@ struct TUManifestBlobOf {
 
     std::uint64_t peak = 0;
 
-    Seq<std::uint32_t> version_paths;
-    Seq<std::uint64_t> version_hashes;
+    /// The version ids, ascending, as postings below `version_bound`
+    /// (write_postings).
+    std::uint32_t version_bound = 0;
+    Seq<std::uint8_t> versions;
 
     std::uint32_t tu_version = 0;
 
@@ -804,9 +820,9 @@ struct TUManifestBlobOf {
     /// hashes are random bits, varint would only inflate them)
     Seq<std::uint8_t> contributions;
 
-    Seq<std::uint32_t> absent;
-
-    Seq<std::uint32_t> imports;
+    /// Sets of versions, as postings below their count.
+    Seq<std::uint8_t> absent;
+    Seq<std::uint8_t> imports;
 
     /// TUManifest::shared_locals as columns: the symbols ascending, each
     /// one's file versions back to back.

@@ -67,6 +67,8 @@ ZEST_CASE(FileSetForms) {
 ZEST_CASE(HeaderRoundTrip) {
     index::Header header{
         .next_path = 12,
+        .next_version = 30,
+        .unit_count = 7,
         .search_generation = 3,
         .search_pending = {5, 8},
         .search_pending_files = {2, 11},
@@ -76,13 +78,19 @@ ZEST_CASE(HeaderRoundTrip) {
     auto read = index::decode_header(buffer->getBuffer());
     ZASSERT(read);
     ZEXPECT(read->next_path == 12);
+    ZEXPECT(read->next_version == 30);
+    ZEXPECT(read->unit_count == 7);
     ZEXPECT(read->search_generation == 3);
     ZEXPECT(read->search_pending == header.search_pending);
     ZEXPECT(read->search_pending_files == header.search_pending_files);
     ZEXPECT(read->owed_units == header.owed_units);
 
-    // A pending file past the path ids handed out is no header, nor is a
-    // pending symbol of a reserved hash.
+    // More units than path ids handed out, or a pending file past them,
+    // is no header, nor is a pending symbol of a reserved hash.
+    header.unit_count = 13;
+    auto crowded = aligned(index::encode_record(header));
+    ZEXPECT(!index::decode_header(crowded->getBuffer()));
+    header.unit_count = 7;
     header.search_pending_files = {2, 12};
     auto past = aligned(index::encode_record(header));
     ZEXPECT(!index::decode_header(past->getBuffer()));
@@ -121,6 +129,17 @@ ZEST_CASE(FileRoundTrip) {
     ZEXPECT(!index::decode_file(unordered->getBuffer()));
 }
 
+ZEST_CASE(VersionRoundTrip) {
+    index::PersistedVersion version{.path = 70000, .content_hash = 0xfeedfacecafebeefull};
+    auto bytes = index::encode_record(version);
+    auto read = index::decode_version(as_chars(bytes));
+    ZASSERT(read);
+    ZEXPECT(*read == version);
+
+    bytes.pop_back();
+    ZEXPECT(!index::decode_version(as_chars(bytes)));
+}
+
 ZEST_CASE(DependentsRoundTrip) {
     index::Dependents dependents;
     index::add_unit(dependents.readers, 20, 7);
@@ -136,6 +155,10 @@ ZEST_CASE(DependentsRoundTrip) {
     };
     resolution.units = ids({3, 9});
     dependents.resolutions.push_back(std::move(resolution));
+    dependents.versions = {
+        {.content_hash = 10, .id = 3, .manifests = 2},
+        {.content_hash = 20, .id = 7, .manifests = 1},
+    };
     auto buffer = aligned(index::encode_record(dependents));
     auto read = index::decode_dependents(buffer->getBuffer());
     ZASSERT(read);
@@ -147,6 +170,29 @@ ZEST_CASE(DependentsRoundTrip) {
     ZASSERT(read->resolutions.size() == std::size_t(1));
     ZEXPECT(read->resolutions[0].edges == dependents.resolutions[0].edges);
     ZEXPECT(read->resolutions[0].units == dependents.resolutions[0].units);
+    ZEXPECT(read->versions == dependents.versions);
+
+    // Versions out of order, one no manifest names, or columns of other
+    // lengths are no dependents record.
+    auto versions = dependents.versions;
+    ranges::reverse(dependents.versions);
+    auto reversed = aligned(index::encode_record(dependents));
+    ZEXPECT(!index::decode_dependents(reversed->getBuffer()));
+    dependents.versions = versions;
+    dependents.versions[1].manifests = 0;
+    auto unnamed = aligned(index::encode_record(dependents));
+    ZEXPECT(!index::decode_dependents(unnamed->getBuffer()));
+    dependents.versions = versions;
+    index::DependentsBlob blob;
+    blob.version_hashes = {10, 20};
+    blob.version_ids = {3, 7};
+    blob.version_manifests = {2};
+    auto short_column = aligned(index::encode(blob));
+    ZEXPECT(!index::decode_dependents(short_column->getBuffer()));
+    blob.version_ids = {3};
+    blob.version_manifests = {2, 1};
+    short_column = aligned(index::encode(blob));
+    ZEXPECT(!index::decode_dependents(short_column->getBuffer()));
 
     // The last unit leaving a key takes the key with it.
     index::remove_unit(dependents.readers, 20, 7);

@@ -53,6 +53,11 @@ struct IndexInternals {
         return index.path_id(file);
     }
 
+    /// The units the header counts a manifest of.
+    static std::uint32_t unit_count(const index::ProjectIndex& index) {
+        return index.header.unit_count;
+    }
+
     /// The key of `file`'s records, its shards' and its manifest's.
     static std::string file_key(const index::ProjectIndex& index, Fid file) {
         return index.file_key(file);
