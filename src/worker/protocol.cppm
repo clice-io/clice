@@ -291,10 +291,12 @@ struct TURunParams {
     /// clice; empty for none.
     std::string pch;
 
-    /// Products of the run: the index, the errors the compile reports, and
-    /// a clang-tidy pass under this frozen configuration.
+    /// Products of the run: the index, the errors the compile reports, the
+    /// diagnostics an editor shows on the file, and a clang-tidy pass under
+    /// this frozen configuration.
     bool index = false;
     bool errors = false;
+    bool diagnostics = false;
     std::optional<tidy::TidyParams> tidy;
 
     /// Variant identities the master stores for the files this TU is
@@ -456,6 +458,11 @@ struct TURunResult {
 
     /// Findings of the tidy pass (plan product `tidy`).
     std::vector<TidyDiagnostic> tidy_diagnostics;
+
+    /// The diagnostics an editor shows on the file, and the hash of the text
+    /// they describe (plan product `diagnostics`).
+    std::vector<feature::FileDiagnostic> diagnostics;
+    std::uint64_t text_hash = 0;
 };
 
 /// Preprocess a unit for its include tree: where its compile enters each

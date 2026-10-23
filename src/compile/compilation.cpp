@@ -529,12 +529,7 @@ CompilationStatus CompilationUnit::run() {
                                            clang::diag::Severity::Error,
                                            {});
     if(params.skip_bodies) {
-        for(auto id: {clang::diag::warn_unused_function,
-                      clang::diag::warn_unused_member_function,
-                      clang::diag::warn_unused_template,
-                      clang::diag::warn_unneeded_internal_decl,
-                      clang::diag::warn_unneeded_static_internal_decl,
-                      clang::diag::warn_unneeded_member_function}) {
+        for(auto id: unused_declaration_warnings) {
             instance->getDiagnostics().setSeverity(id, clang::diag::Severity::Ignored, {});
         }
     }

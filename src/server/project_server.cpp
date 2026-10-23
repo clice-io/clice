@@ -10,6 +10,7 @@ module clice;
 
 import :command.file_kind;
 import :command.table;
+import :feature.diagnostics;
 import :index.project_index;
 import :index.writer_lock;
 import :project.build;
@@ -59,9 +60,20 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
 
     // The pump is serving-neutral; the session-side policy hooks live on
     // this class and are installed here.
+    // A compile skipping the bodies of the headers stands in for no
+    // background run: the run shows what it cannot (ASTFamily::checked).
     sched.pump.compiled_by_session = [this](Fid path_id) {
         auto session = sessions.find(path_id);
-        return session && session->serving == ServingMode::Escalated;
+        return !project.config.project.skip_header_bodies && session &&
+               session->serving == ServingMode::Escalated;
+    };
+    sched.pump.shown = [this](Fid path_id) {
+        return project.config.project.skip_header_bodies && sessions.find(path_id) != nullptr;
+    };
+    sched.pump.on_diagnostics = [this](Fid path_id,
+                                       std::uint64_t text_hash,
+                                       std::vector<feature::FileDiagnostic> diagnostics) {
+        ast.checked(path_id, text_hash, std::move(diagnostics));
     };
     sched.pump.on_attempt_finished = [this](Fid path_id) {
         index_attempt_finished(path_id);
@@ -247,6 +259,15 @@ void ProjectServer::discover_around(Fid path_id) {
 }
 
 void ProjectServer::saved(Fid path_id) {
+    // The open files the save made stale show what their background run
+    // finds as soon as it can (ASTFamily::checked).
+    if(project.config.project.skip_header_bodies) {
+        for(auto& [open, session]: sessions.sessions) {
+            if(sched.pump.pending_reason(open)) {
+                sched.pump.boost(open);
+            }
+        }
+    }
     // A header compiles through a host or a lender, never as a member; a
     // build tree or the cache holds no sources of the workspace's own.
     auto path = project.file_table.resolve(path_id);

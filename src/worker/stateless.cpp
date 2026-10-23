@@ -471,6 +471,10 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     if(params.errors) {
         result.errors = located_errors(*unit);
     }
+    if(params.diagnostics) {
+        result.diagnostics = feature::diagnostics(*unit);
+        result.text_hash = llvm::xxh3_64bits(unit->focus_file().content());
+    }
 
     // AST teardown for a large TU is material work that belongs to this
     // task: sample the total only after the unit is gone, so the logged

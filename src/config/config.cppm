@@ -230,10 +230,11 @@ struct ProjectConfig {
                          "parses. The file opens and rebuilds after an edit several "
                          "times faster and holds less memory; the price is the "
                          "errors and warnings inside those bodies, a header "
-                         "template's instantiated from the file among them, which "
-                         "the editor does not report. The background index and "
-                         "every command but `clice inspect` still compile the "
-                         "bodies.")
+                         "template's instantiated from the file among them, and "
+                         "whether a declaration is unused, which show only when "
+                         "the background index has compiled the file as it is "
+                         "saved. The background index and every command but "
+                         "`clice inspect` still compile the bodies.")
     <bool> skip_header_bodies = true;
 
     KOTATSU_ANNOTATE(defaulted = true,

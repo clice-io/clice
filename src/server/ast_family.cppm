@@ -200,6 +200,14 @@ public:
     /// push path (the didClose diagnostics retraction).
     void publish_output(const std::shared_ptr<Session>& session, CompileOutput output);
 
+    /// A background index run of the open file finished with `diagnostics`
+    /// for the text hashing to `text_hash`: keep what the editor's compile
+    /// cannot show (DocumentCompiles::Check), and show it while the
+    /// document holds that text.
+    void checked(Fid path_id,
+                 std::uint64_t text_hash,
+                 std::vector<feature::FileDiagnostic> diagnostics);
+
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The rounds themselves finish in TaskGraph::shutdown — the
     /// interruption is what keeps that finish prompt (a round's stateful

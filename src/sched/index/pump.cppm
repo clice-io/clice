@@ -4,6 +4,7 @@ module;
 
 module clice:sched.index.pump;
 
+import :feature.diagnostics;
 import :index.project_index;
 import :project.command_resolver;
 import :project.project;
@@ -54,6 +55,16 @@ public:
     /// compile, which would compile the file a second time. The serving
     /// side enqueues the file again when the document closes.
     std::function<bool(Fid path_id)> compiled_by_session;
+
+    /// Whether an editor shows the file: its index runs then also bring back
+    /// the diagnostics an editor shows on it, handed to on_diagnostics with
+    /// the hash of the text they describe once a run completes.
+    std::function<bool(Fid path_id)> shown;
+
+    std::function<void(Fid path_id,
+                       std::uint64_t text_hash,
+                       std::vector<feature::FileDiagnostic> diagnostics)>
+        on_diagnostics;
 
     /// Emitted when shards that may be index-served changed (merged,
     /// re-masked, dropped or shed). Carries the affected path_ids; the

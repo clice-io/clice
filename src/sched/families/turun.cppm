@@ -5,6 +5,7 @@ module;
 module clice:sched.families.turun;
 
 import :compile.compilation;
+import :feature.diagnostics;
 import :project.command_resolver;
 import :index.project_index;
 import :project.project;
@@ -50,6 +51,9 @@ public:
 
         /// The errors the compile reports, in the outcome.
         bool errors = false;
+
+        /// The diagnostics an editor shows on the file, in the outcome.
+        bool diagnostics = false;
 
         /// A tidy pass under this frozen configuration.
         std::optional<tidy::TidyParams> tidy;
@@ -107,6 +111,11 @@ public:
         /// The errors a completed run compiled with (plan product
         /// `errors`).
         std::vector<worker::LocatedMessage> errors;
+
+        /// The diagnostics an editor shows on the file, and the hash of the
+        /// text they describe (plan product `diagnostics`).
+        std::vector<feature::FileDiagnostic> diagnostics;
+        std::uint64_t text_hash = 0;
 
         struct Perf {
             std::size_t bytes = 0;

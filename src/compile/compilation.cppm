@@ -720,6 +720,17 @@ constexpr llvm::StringRef pch_build_rule(bool skip_bodies) {
     return skip_bodies ? "size,instantiated,undeferred,skipped" : "size,instantiated,undeferred";
 }
 
+/// The warnings that a declaration is unused: a use in a body skip_bodies
+/// skipped goes unseen, so compiles under it report none of them.
+constexpr inline std::array<unsigned, 6> unused_declaration_warnings = {
+    clang::diag::warn_unused_function,
+    clang::diag::warn_unused_member_function,
+    clang::diag::warn_unused_template,
+    clang::diag::warn_unneeded_internal_decl,
+    clang::diag::warn_unneeded_static_internal_decl,
+    clang::diag::warn_unneeded_member_function,
+};
+
 /// The messages of a finished compilation's error-level diagnostics, in
 /// the order clang raised them.
 std::vector<std::string> collect_errors(CompilationUnit& unit);

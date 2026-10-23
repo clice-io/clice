@@ -340,9 +340,10 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     bool served = !content_changed && compiled_by_session && compiled_by_session(server_path_id);
     if(!served && (content_changed || project.index.needs_reindex(server_path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
+        bool diagnostics = shown && shown(server_path_id);
         auto outcome = co_await turun.run(
             server_path_id,
-            {.index = true, .errors = errors_wanted},
+            {.index = true, .errors = errors_wanted, .diagnostics = diagnostics},
             {.superseded = [this, taken] { return pending_table.superseded(taken); }});
         if(outcome.result == TURunFamily::Result::Shutdown) {
             // The graph refused the round: nothing ran, so the debt
@@ -362,6 +363,11 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
         switch(outcome.result) {
             case TURunFamily::Result::Completed: {
                 record_indexed(server_path_id, std::move(outcome.errors));
+                if(diagnostics) {
+                    on_diagnostics(server_path_id,
+                                   outcome.text_hash,
+                                   std::move(outcome.diagnostics));
+                }
                 indexed_total += 1;
                 LOG_PERF("index",
                          "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",

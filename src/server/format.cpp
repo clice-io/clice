@@ -51,6 +51,13 @@ std::vector<feature::FileDiagnostic>
     // would pile up on its #include.
     std::set<std::tuple<std::uint32_t, std::uint32_t, bool>> relocated;
     auto diagnostics = output.diagnostics;
+    for(const auto& checked: output.checked) {
+        if(ranges::none_of(output.diagnostics, [&](const feature::FileDiagnostic& own) {
+               return own.range.start == checked.range.start && own.message == checked.message;
+           })) {
+            diagnostics.push_back(checked);
+        }
+    }
     std::erase_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
         auto start = diagnostic.range.start;
         return ranges::contains(options.suppress, diagnostic.code) ||

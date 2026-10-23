@@ -8,6 +8,7 @@ module;
 module clice;
 
 import :command.argument;
+import :compile.compilation;
 import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
@@ -315,7 +316,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
         base_blob = it->second.blob;
     }
     auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
-    auto skip_bodies = project.config.project.skip_header_bodies;
+    bool skip_bodies = project.config.project.skip_header_bodies;
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               pch_build_rule(skip_bodies),
                               project.build.active_configuration(),
@@ -488,6 +489,30 @@ void ASTFamily::saved(Session& session) {
 void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileOutput output) {
     compiles.set_output(session->path_id, std::move(output));
     on_output.emit(session);
+}
+
+void ASTFamily::checked(Fid path_id,
+                        std::uint64_t text_hash,
+                        std::vector<feature::FileDiagnostic> diagnostics) {
+    // Closed while the run went on: nothing shows the file.
+    auto session = sessions.find(path_id);
+    if(!session) {
+        return;
+    }
+    std::erase_if(diagnostics, [](const feature::FileDiagnostic& diagnostic) {
+        return diagnostic.origin == feature::DiagnosticOrigin::File &&
+               !ranges::contains(unused_declaration_warnings, diagnostic.id);
+    });
+    compiles.entries[path_id].check =
+        DocumentCompiles::Check{.text_hash = text_hash, .diagnostics = diagnostics};
+    if(session->hash != text_hash) {
+        return;
+    }
+    if(auto compiled = compiles.latest_at(path_id, session->version)) {
+        auto output = *compiled->output;
+        output.checked = std::move(diagnostics);
+        publish_output(session, std::move(output));
+    }
 }
 
 void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit) const {
@@ -1359,6 +1384,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
+        auto& entry = compiles.entries[path_id];
         next->output = CompileOutput{
             .version = session->version,
             .source = source,
@@ -1367,8 +1393,10 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                   ? project.file_table.display(resolution.unmatched_host)
                                   : std::string(),
         };
+        if(entry.check && entry.check->text_hash == session->hash) {
+            next->output->checked = entry.check->diagnostics;
+        }
 
-        auto& entry = compiles.entries[path_id];
         // A document moving off a preamble it failed on releases that
         // failure: only the preamble's consumers would ever retry it.
         // FIXME: released even while another open document still fails on that
