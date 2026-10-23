@@ -87,44 +87,56 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
     return found.str().str();
 }
 
-/// The triple of a cc1 job and the CPU, tuning and ABI names it gives that
-/// clang's target for the triple does not know.
-std::pair<std::string, llvm::StringSet<>> unknown_names(const Job& job) {
+/// The names a cc1 job gives that clang's target does not know, each with
+/// its option (-target-cpu, -tune-cpu, -target-abi), and the job's triple.
+struct UnknownNames {
+    std::string triple;
+
+    std::set<std::pair<unsigned, std::string>> names;
+};
+
+UnknownNames unknown_names(const Job& job) {
     std::vector<std::string> cc1(job.begin() + 2, job.end());
     auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
-    std::string triple;
+    UnknownNames result;
     std::vector<kota::option::ParsedArg> given;
     for(auto& parsed: option::table().parse(cc1, parse_options)) {
         if(!parsed) {
             continue;
         }
         if(parsed->id == option::OPT_triple) {
-            triple = parsed->values[0];
+            result.triple = parsed->values[0];
         } else if(!parsed->values.empty()) {
             given.push_back(std::move(*parsed));
         }
     }
-    TargetNames names(triple);
-    llvm::StringSet<> unknown;
+    TargetNames names(result.triple);
     for(auto& arg: given) {
         if(!names.knows(arg.id, arg.values[0])) {
-            unknown.insert(arg.values[0]);
+            result.names.emplace(arg.id, arg.values[0]);
         }
     }
-    return {std::move(triple), std::move(unknown)};
+    return result;
 }
 
-/// Whether a driver option names one of `unknown` as the CPU, tuning or ABI
-/// (`-mcpu=cortex-a72+crc` names cortex-a72).
-bool names_unknown(const kota::option::ParsedArg& arg, const llvm::StringSet<>& unknown) {
+/// Whether a driver option names one of `unknown`: the CPU of -mcpu and
+/// -march (`-mcpu=cortex-a72+crc` names cortex-a72, `native` this
+/// machine's), the tuning CPU of -mtune, the ABI of -mabi.
+bool names_unknown(const kota::option::ParsedArg& arg,
+                   const std::set<std::pair<unsigned, std::string>>& unknown) {
+    unsigned given = 0;
     switch(arg.id) {
         case option::OPT_mcpu_EQ:
-        case option::OPT_march_EQ:
-        case option::OPT_mtune_EQ:
-        case option::OPT_mabi_EQ:
-            return unknown.contains(llvm::StringRef(arg.values[0]).split('+').first);
+        case option::OPT_march_EQ: given = option::OPT_target_cpu; break;
+        case option::OPT_mtune_EQ: given = option::OPT_tune_cpu; break;
+        case option::OPT_mabi_EQ: given = option::OPT_target_abi; break;
         default: return false;
     }
+    auto name = llvm::StringRef(arg.values[0]).split('+').first;
+    if(name == "native") {
+        name = llvm::sys::getHostCPUName();
+    }
+    return unknown.contains({given, name.str()});
 }
 
 }  // namespace
@@ -209,30 +221,32 @@ ClangReading read_as_clang(std::vector<std::string> args,
 
     ClangReading reading{.argv = clang_argv(args, mode)};
     reading.job = query_driver(reading.argv, cwd, quiet);
-    if(!reading.job) {
-        return reading;
-    }
     // The options naming what clang's target does not know go, and the
-    // driver reads the command again without them.
-    auto [triple, unknown] = unknown_names(*reading.job);
-    if(unknown.empty()) {
-        return reading;
-    }
-    flags.assign(reading.argv.begin() + 1, reading.argv.end());
-    std::vector<std::string> argv = {reading.argv[0]};
-    std::size_t next = 0;
-    for(auto& parsed: option::table().parse(flags, parse_options)) {
-        if(parsed && names_unknown(*parsed, unknown)) {
-            LOG_INFO("clang's target {} knows no CPU or ABI {} names: its default stands in",
-                     triple,
-                     flags[parsed->index]);
-            argv.insert(argv.end(), flags.begin() + next, flags.begin() + parsed->index);
-            next = parsed->index + 1;
+    // driver reads the command again without them; one a later option
+    // overrode names it only once that one goes (`-mabi=eabi -mabi=o64`).
+    while(reading.job) {
+        auto unknown = unknown_names(*reading.job);
+        flags.assign(reading.argv.begin() + 1, reading.argv.end());
+        std::vector<std::string> argv = {reading.argv[0]};
+        std::size_t next = 0;
+        bool dropped = false;
+        for(auto& parsed: option::table().parse(flags, parse_options)) {
+            if(parsed && names_unknown(*parsed, unknown.names)) {
+                LOG_INFO("clang's target {} knows no CPU or ABI {} names: its default stands in",
+                         unknown.triple,
+                         flags[parsed->index]);
+                argv.insert(argv.end(), flags.begin() + next, flags.begin() + parsed->index);
+                next = parsed->index + 1;
+                dropped = true;
+            }
         }
+        if(!dropped) {
+            break;
+        }
+        argv.insert(argv.end(), flags.begin() + next, flags.end());
+        reading.argv = std::move(argv);
+        reading.job = query_driver(reading.argv, cwd, quiet);
     }
-    argv.insert(argv.end(), flags.begin() + next, flags.end());
-    reading.argv = std::move(argv);
-    reading.job = query_driver(reading.argv, cwd, quiet);
     return reading;
 }
 

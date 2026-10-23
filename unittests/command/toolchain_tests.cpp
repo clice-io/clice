@@ -228,6 +228,23 @@ ZEST_CASE(ReadAsClangSpellings) {
     ZEXPECT(adjacent(f.resolve(arm), "-target-cpu", "cortex-a72"));
 }
 
+ZEST_CASE(ReadAsClangUnknownNames) {
+    // Only the option naming what clang's target does not know goes: an
+    // architecture x86 knows that it knows as no tuning CPU stays for
+    // -march; one -mabi overriding another goes, and then so does that.
+    auto x86 =
+        add("a.c", {tmp.c_path("x86_64-linux-gnu-gcc"), "-march=x86-64-v3", "-mtune=x86-64-v3"});
+    auto argv = f.toolchain.render_for_clang(x86, f.db.spelling(x86.file));
+    ZEXPECT(contains(argv, "-march=x86-64-v3"));
+    ZEXPECT(!contains(argv, "-mtune=x86-64-v3"));
+    ZEXPECT(adjacent(f.resolve(x86), "-target-cpu", "x86-64-v3"));
+
+    auto abi = add("b.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mabi=ilp64x", "-mabi=lp64"});
+    argv = f.toolchain.render_for_clang(abi, f.db.spelling(abi.file));
+    ZEXPECT(!contains(argv, "-mabi=lp64"));
+    ZEXPECT(!contains(argv, "-mabi=ilp64x"));
+}
+
 ZEST_CASE(WarmPartialFailure, skip = Windows) {
     auto driver = fake_clang(clang_job);
     auto good = add("a.cpp", {driver.c_str()});
