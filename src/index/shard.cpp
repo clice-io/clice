@@ -208,7 +208,14 @@ struct RelationTable {
         if(entry % rank_block == 0) {
             cursor.occurrence = 0;
         }
-        auto code = read_varint(codes, cursor.code);
+        // Most codes are one byte, which needs no varint decode.
+        std::optional<std::uint64_t> code;
+        if(cursor.code < codes.size() && codes[cursor.code] < 0x80) {
+            code = codes[cursor.code];
+            cursor.code += 1;
+        } else {
+            code = read_varint(codes, cursor.code);
+        }
         if(!code) {
             return std::nullopt;
         }
@@ -530,6 +537,11 @@ CheckResult relations_ok(const Root& root) {
     if(auto ok = ids_ok(table.explicit_ranks, blocks, explicit_count + 1); !ok) {
         return ok;
     }
+    if(extent_lengths.size() != extent_heads.size() ||
+       root.relation_far_ends.size() != far_begins.size() ||
+       !escapes_ok(extent_heads, extent_escape, root.relation_far_extents, far_begins.size())) {
+        return std::unexpected("relation extent columns do not line up");
+    }
     // An occurrence code names the first occurrence of its range, and an
     // explicit range is one no occurrence has: one range, one encoding.
     std::vector<LocalSourceRange> spans;
@@ -544,23 +556,30 @@ CheckResult relations_ok(const Root& root) {
     auto spanned = [&](LocalSourceRange range) {
         return ranges::binary_search(spans, bounds(range), {}, bounds);
     };
-    std::vector<LocalSourceRange> entry_ranges;
-    entry_ranges.reserve(table.size());
-    RelationTable::Cursor counted;
+
+    // Entries of one relation group two-way merge under the full (kind,
+    // begin, end, payload) key with equal-key entries combined at write time,
+    // so the key must ascend strictly within each group — out-of-order or
+    // repeated entries would mis-merge silently instead of being rejected.
+    std::tuple<std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t> previous{};
+    std::uint32_t group = 0;
+    RelationTable::Cursor cursor;
     for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
         if(entry % rank_block == 0) {
             auto block = entry / rank_block;
-            if(table.target_ranks[block] != counted.target ||
-               table.extent_ranks[block] != counted.extent ||
-               table.range_ranks[block] != counted.code ||
-               table.explicit_ranks[block] != counted.explicit_range) {
+            if(table.target_ranks[block] != cursor.target ||
+               table.extent_ranks[block] != cursor.extent ||
+               table.range_ranks[block] != cursor.code ||
+               table.explicit_ranks[block] != cursor.explicit_range) {
                 return std::unexpected("relation block counts are wrong");
             }
         }
-        auto at = table.advance(counted, entry);
+        auto payload = cursor;
+        auto at = table.advance(cursor, entry);
         if(!at) {
             return std::unexpected("relation range code is not one");
         }
+        LocalSourceRange range;
         switch(at->code) {
             case range_none: {
                 // Pair relations carry no range of their own; every other
@@ -568,18 +587,16 @@ CheckResult relations_ok(const Root& root) {
                 if(!table.kind_of(entry).isBetweenSymbol()) {
                     return std::unexpected("no range on a relation that carries one");
                 }
-                entry_ranges.emplace_back();
                 break;
             }
             case range_explicit: {
                 if(at->index >= explicit_count) {
                     return std::unexpected("explicit relation range past its column");
                 }
-                auto range = range_of(table.explicit_ranges, at->index);
+                range = range_of(table.explicit_ranges, at->index);
                 if(spanned(range)) {
                     return std::unexpected("explicit relation range is not the canonical one");
                 }
-                entry_ranges.push_back(range);
                 break;
             }
             default: {
@@ -587,55 +604,49 @@ CheckResult relations_ok(const Root& root) {
                    (at->index != 0 && spans[at->index - 1] == spans[at->index])) {
                     return std::unexpected("relation occurrence is not the canonical one");
                 }
-                entry_ranges.push_back(spans[at->index]);
+                range = spans[at->index];
                 break;
             }
         }
+        if(payload.target != cursor.target &&
+           (payload.target >= table.targets.size() ||
+            table.targets[payload.target] >= symbol_hashes.size())) {
+            return std::unexpected("relation target past its table");
+        }
+        if(payload.extent != cursor.extent && payload.extent >= extent_heads.size()) {
+            return std::unexpected("relation extent past its column");
+        }
+        auto relation = table.with_payload(entry, payload, range);
+        if(payload.extent != cursor.extent) {
+            auto k = payload.extent;
+            auto extent = relation.extent();
+            bool escaped = extent_heads[k] == extent_escape;
+            if(escaped ? extent_lengths[k] != 0 || fits_extent_columns(relation.range, extent)
+                       : extent_heads[k] > relation.range.begin) {
+                return std::unexpected("relation extent is not the canonical one");
+            }
+            if(extent.end < extent.begin || extent.end > content_size) {
+                return std::unexpected("definition range past the content");
+            }
+        }
+        while(entry >= table.offsets[group + 1]) {
+            group += 1;
+        }
+        std::tuple key{static_cast<std::uint8_t>(relation.kind),
+                       relation.range.begin,
+                       relation.range.end,
+                       relation.target};
+        if(entry != table.offsets[group] && key <= previous) {
+            return std::unexpected("relations of one symbol are not strictly ascending");
+        }
+        previous = key;
     }
-    if(counted.code != table.codes.size() || counted.explicit_range != explicit_count) {
+    if(cursor.code != table.codes.size() || cursor.explicit_range != explicit_count) {
         return std::unexpected("relation ranges do not match the relation count");
     }
-    if(auto ok = ids_ok(table.targets, counted.target, symbol_hashes.size()); !ok) {
-        return ok;
-    }
-    if(extent_heads.size() != counted.extent || extent_lengths.size() != counted.extent ||
-       root.relation_far_ends.size() != far_begins.size() ||
-       !escapes_ok(extent_heads, extent_escape, root.relation_far_extents, far_begins.size())) {
-        return std::unexpected("relation extent columns do not line up");
-    }
-
-    // Entries of one relation group two-way merge under the full (kind,
-    // begin, end, payload) key with equal-key entries combined at write time,
-    // so the key must ascend strictly within each group — out-of-order or
-    // repeated entries would mis-merge silently instead of being rejected.
-    RelationTable::Cursor cursor;
-    for(std::uint32_t id = 0; id < symbol_hashes.size(); id += 1) {
-        std::tuple<std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t> prev{};
-        for(auto entry = table.offsets[id]; entry < table.offsets[id + 1]; entry += 1) {
-            auto payload = cursor;
-            table.advance(cursor, entry);
-            auto relation = table.with_payload(entry, payload, entry_ranges[entry]);
-            auto k = payload.extent;
-            if(k != cursor.extent) {
-                auto extent = relation.extent();
-                bool escaped = extent_heads[k] == extent_escape;
-                if(escaped ? extent_lengths[k] != 0 || fits_extent_columns(relation.range, extent)
-                           : extent_heads[k] > relation.range.begin) {
-                    return std::unexpected("relation extent is not the canonical one");
-                }
-                if(extent.end < extent.begin || extent.end > content_size) {
-                    return std::unexpected("definition range past the content");
-                }
-            }
-            std::tuple key{static_cast<std::uint8_t>(relation.kind),
-                           relation.range.begin,
-                           relation.range.end,
-                           relation.target};
-            if(entry != table.offsets[id] && key <= prev) {
-                return std::unexpected("relations of one symbol are not strictly ascending");
-            }
-            prev = key;
-        }
+    if(table.targets.bytes.size() != std::size_t(cursor.target) * table.targets.width ||
+       cursor.extent != extent_heads.size()) {
+        return std::unexpected("relation payloads do not match their columns");
     }
     return {};
 }
