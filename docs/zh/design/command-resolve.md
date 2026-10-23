@@ -218,7 +218,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 - **只有 GCC 接受的语言特性按 clang 的理解解析。** 只有 GCC 能编译的代码——GCC 专有的内建函数和扩展、在 clang 不支持它的目标上使用 `__float128`、嵌套函数——会显示 clang 的报错；只有 GCC 认识的 CPU 名称会丢失其特性对应的宏。
 
-- **写给其他工具的命令仍包含 clice 从中隐藏了文件的目录。** `clice command convert` 写出的是 clice 编译时所用的命令，它紧接在 clice 自己的内置头文件之后搜索 GCC 的私有 include 目录或另一个 clang 的内置头文件。读取这条命令的工具能看到这些目录中的所有文件：clang 自己的内置头文件经由 `#include_next` 到达 GCC 的同名版本时（C 的 `<stdatomic.h>`），工具就会去解析这些 GCC 版本。`clice command --json` 列出每个目录中被隐藏的文件（`hidden`）：需要同样效果的工具可以用自己的文件系统覆盖层（overlay）隐藏它们，例如 clang 的 `-ivfsoverlay`。
+- **写给其他工具的命令略去了 clice 从中隐藏了文件的目录。** `clice command convert` 写出的是 clice 编译时所用的命令，但去掉了 GCC 的私有 include 目录和另一个 clang 的内置头文件目录：若保留它们，读取命令的工具会看到其中的所有文件，clang 自己的内置头文件也会经由 `#include_next` 进入它们的同名版本（另一个 clang 的 `stdint.h` 会让这条链在到达 C 库的版本之前就终止）。因此，读取转换后命令的工具找不到只有那个编译器才有的头文件（`omp.h`）。`clice command --json` 给出完整的命令，并列出每个目录中被隐藏的文件（`hidden`）：需要这些头文件的工具可以重新搜索该目录，再用自己的文件系统覆盖层（overlay）隐藏列出的文件，例如 clang 的 `-ivfsoverlay`。
 
 - **SearchConfig 不支持所有搜索路径选项。** `-cxx-isystem`（仅 C++ 模式生效的系统目录）、`-iwithsysroot`（在路径前拼接 sysroot）和 HeaderMap 支持尚未实现。这些选项在实际项目中不常见，但可能出现在某些 Apple 工具链或交叉编译工具链中。
 
