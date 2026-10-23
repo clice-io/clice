@@ -91,7 +91,9 @@ struct IncludeCandidate {
 
     /// Where the search found it, ascending: the includer's directory, the
     /// quoted then the angled search directories, the system ones the
-    /// command names, last the toolchain's own; in search order within each.
+    /// command names, last the toolchain's own; in search order within each,
+    /// after the others of its group when the name is reserved (`_`-led: a
+    /// library's internals, libc++'s `__algorithm/`, MinGW's `_mingw.h`).
     std::uint32_t order = 0;
 };
 

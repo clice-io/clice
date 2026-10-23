@@ -2742,7 +2742,8 @@ auto include_completion(const CompletionName& completing,
     for(auto& c: candidates) {
         protocol::CompletionItem item;
         item.label = c.is_directory ? c.name + "/" : c.name;
-        item.kind = protocol::CompletionItemKind::File;
+        item.kind = c.is_directory ? protocol::CompletionItemKind::Folder
+                                   : protocol::CompletionItemKind::File;
         item.sort_text = std::format("{:010}", c.order);
         item.text_edit = edit(c);
         items.push_back(std::move(item));

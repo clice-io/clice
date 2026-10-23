@@ -357,7 +357,10 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
     std::vector<IncludeCandidate> results;
     llvm::StringSet<> seen;
 
-    auto collect = [&](llvm::StringRef search_dir, bool system, std::uint32_t order) {
+    auto collect = [&](llvm::StringRef search_dir,
+                       bool system,
+                       std::uint32_t tier,
+                       std::uint32_t position) {
         llvm::SmallString<256> dir(search_dir);
         if(!dir_prefix.empty()) {
             llvm::sys::path::append(dir, dir_prefix);
@@ -374,20 +377,21 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
             }
 
             seen.insert(name);
-            results.push_back({name.str(), is_dir, order});
+            std::uint32_t reserved = name.starts_with("_");
+            results.push_back({name.str(), is_dir, (tier << 17) | (reserved << 16) | position});
         }
     };
 
     // A quoted include looks next to the file that contains it first.
     if(!angled) {
-        collect(includer_dir, false, 0);
+        collect(includer_dir, false, 0, 0);
     }
     for(unsigned i = angled ? config.angled_start_idx : 0; i < config.dirs.size(); i += 1) {
         std::uint32_t tier = i < config.angled_start_idx   ? 1
                              : i < config.system_start_idx ? 2
                              : config.dirs[i].driver       ? 4
                                                            : 3;
-        collect(config.dirs[i].path, i >= config.system_start_idx, (tier << 16) | (i + 1));
+        collect(config.dirs[i].path, i >= config.system_start_idx, tier, i + 1);
     }
 
     return results;

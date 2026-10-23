@@ -1,5 +1,5 @@
 [answers.pos.completion]
 items = [
-    { label = "snap_dir/", kind = "File", insert = "snap_dir/", replace = "#include <⟦snap⟧>" },
+    { label = "snap_dir/", kind = "Folder", insert = "snap_dir/", replace = "#include <⟦snap⟧>" },
     { label = "snap_header.h", kind = "File", insert = "snap_header.h>", replace = "#include <⟦snap>⟧" },
 ]
