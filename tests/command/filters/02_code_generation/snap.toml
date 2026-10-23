@@ -2,7 +2,7 @@
 stdout = "missing-clang++ -resource-dir ${RESOURCE} -std=c++20 -fPIC -fstack-protector-strong ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
@@ -10,7 +10,7 @@ exit = 1
 stdout = "missing-clang++ -resource-dir ${RESOURCE} -flto ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
@@ -18,7 +18,7 @@ exit = 1
 stdout = "missing-clang++ -resource-dir ${RESOURCE} -flto=thin ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
@@ -26,7 +26,7 @@ exit = 1
 stdout = "missing-clang++ -resource-dir ${RESOURCE} -flto=auto ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
@@ -34,7 +34,7 @@ exit = 1
 stdout = "missing-g++ -resource-dir ${RESOURCE} -flto=jobserver ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1
 
@@ -42,6 +42,6 @@ exit = 1
 stdout = "missing-g++ -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1

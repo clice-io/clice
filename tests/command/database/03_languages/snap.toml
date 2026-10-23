@@ -41,6 +41,6 @@ stdout = '''
 stderr = '''
 error: Toolchain query failed: Cannot find driver: nvcc-missing
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: 2 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+error: 2 of the entries stay driver commands: the errors above say why
 '''
 exit = 1

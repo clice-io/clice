@@ -72,6 +72,6 @@ error: Invalid compilation database in ${WS}/compile_commands.json. Skipping ite
 error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 4: item is not an object.
 error: Toolchain query failed: Cannot find driver: missing-clang++
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: 3 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+error: 3 of the entries stay driver commands: the errors above say why
 '''
 exit = 1

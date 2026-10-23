@@ -2,7 +2,7 @@
 stdout = "missing-clang++ -resource-dir ${RESOURCE} -std=c++20 -fno-exceptions -fno-rtti -pedantic ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
@@ -10,7 +10,7 @@ exit = 1
 stdout = "missing-clang++ -resource-dir ${RESOURCE} -std=c++20 -Wall -Werror ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
@@ -51,6 +51,6 @@ stdout = '''
 '''
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: 2 of the converted entries could not be resolved: the compiler could not be queried, so they are clice's own reading of their command
+error: 2 of the entries stay driver commands: the errors above say why
 '''
 exit = 1

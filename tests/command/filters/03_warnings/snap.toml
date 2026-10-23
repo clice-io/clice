@@ -2,7 +2,7 @@
 stdout = "missing-clang++ -resource-dir ${RESOURCE} -Wall -Wextra -Wconversion ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
@@ -10,7 +10,7 @@ exit = 1
 stdout = "missing-clang-cl -resource-dir ${RESOURCE} /W4 -Wextra ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang-cl
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang-cl
 '''
 exit = 1
 
@@ -18,7 +18,7 @@ exit = 1
 stdout = "missing-clang++ -resource-dir ${RESOURCE} -Wlogical-op ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-clang++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
 
@@ -26,6 +26,6 @@ exit = 1
 stdout = "missing-g++ -resource-dir ${RESOURCE} -Wall -Wformat=2 -Wno-error=unused-variable -Werror -Wfatal-errors ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-g++
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1

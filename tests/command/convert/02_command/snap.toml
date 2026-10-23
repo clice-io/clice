@@ -2,7 +2,7 @@
 stdout = "missing-cc -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-cc
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-cc
 '''
 exit = 1
 
@@ -24,7 +24,7 @@ stdout = '''
 '''
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-cc
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-cc
 '''
 exit = 1
 
@@ -32,7 +32,7 @@ exit = 1
 stdout = "missing-cc -resource-dir ${RESOURCE} -x c++ -D FROM_RULE ${WS}/tool"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-cc
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-cc
 '''
 exit = 1
 
@@ -40,7 +40,7 @@ exit = 1
 stdout = "missing-cc -resource-dir ${RESOURCE} -working-directory ${WS}/sub -D FROM_RULE ${WS}/sub/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-cc
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-cc
 '''
 exit = 1
 
@@ -48,7 +48,7 @@ exit = 1
 stdout = "missing-cc -resource-dir ${RESOURCE} -x c++ -D FROM_RULE ${WS}/main.c -x c"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-cc
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-cc
 '''
 exit = 1
 
@@ -56,7 +56,7 @@ exit = 1
 stdout = "missing-cc -resource-dir ${RESOURCE} --driver-mode=cl /TP -D FROM_RULE ${WS}/tool"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-cc
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-cc
 '''
 exit = 1
 
@@ -64,7 +64,7 @@ exit = 1
 stdout = "missing-cc -resource-dir ${RESOURCE} -D FROM_RULE ${WS}/sub/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: missing-cc
-error: The compiler could not be queried, so the command is clice's own reading of it
+error: The command stays a driver command: Cannot find driver: missing-cc
 '''
 exit = 1
 
