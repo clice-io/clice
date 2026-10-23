@@ -53,7 +53,9 @@ std::vector<feature::FileDiagnostic>
     auto diagnostics = output.diagnostics;
     for(const auto& checked: output.checked) {
         if(ranges::none_of(output.diagnostics, [&](const feature::FileDiagnostic& own) {
-               return own.range.start == checked.range.start && own.message == checked.message;
+               return own.range.start.line == checked.range.start.line &&
+                      own.range.start.character == checked.range.start.character &&
+                      own.message == checked.message;
            })) {
             diagnostics.push_back(checked);
         }
