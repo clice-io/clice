@@ -850,14 +850,14 @@ void set_occurrences(index::ShardBlob& blob,
 
 /// One block of relations' range codes, and the explicit ranges the
 /// range_explicit ones take, packed.
-void set_relation_ranges(index::ShardBlob& blob,
-                         std::initializer_list<std::uint64_t> codes,
-                         std::initializer_list<std::uint32_t> explicit_ranges = {}) {
-    blob.relation_ranges.clear();
+void set_range_codes(index::ShardBlob& blob,
+                     std::initializer_list<std::uint64_t> codes,
+                     std::initializer_list<std::uint32_t> explicit_ranges = {}) {
+    blob.relation_range_codes.clear();
     for(auto code: codes) {
-        index::write_varint(blob.relation_ranges, code);
+        index::write_varint(blob.relation_range_codes, code);
     }
-    blob.relation_range_ranks = {0};
+    blob.relation_code_ranks = {0};
     blob.relation_explicit_ranges = {};
     blob.relation_explicit_ranges.packed = explicit_ranges;
     blob.relation_explicit_ranks = {0};
@@ -1132,9 +1132,9 @@ ZEST_CASE(UnsortedRelationsRejected) {
     blob.relation_offsets = {0, 2};
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Reference),
                            static_cast<std::uint8_t>(RelationKind::Reference)};
-    set_relation_ranges(blob,
-                        {index::range_explicit, index::range_explicit},
-                        {index::pack_range(0, 3), index::pack_range(4, 3)});
+    set_range_codes(blob,
+                    {index::range_explicit, index::range_explicit},
+                    {index::pack_range(0, 3), index::pack_range(4, 3)});
     blob.relation_target_ranks = {0};
     blob.relation_extent_ranks = {0};
 
@@ -1195,9 +1195,7 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     });
     blob.relation_offsets = {0, 1};
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
-    set_relation_ranges(blob,
-                        {index::range_explicit},
-                        {index::pack_range(4, index::length_escape)});
+    set_range_codes(blob, {index::range_explicit}, {index::pack_range(4, index::length_escape)});
     blob.relation_target_ranks = {0};
     blob.relation_extent_ranks = {0};
     ZASSERT(!make_shard(bytes_of()).loaded());
@@ -1232,9 +1230,7 @@ ZEST_CASE(ShortEscapedLengthRejected) {
     // The explicit relation ranges alike.
     blob.relation_offsets = {0, 1};
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
-    set_relation_ranges(blob,
-                        {index::range_explicit},
-                        {index::pack_range(4, index::length_escape)});
+    set_range_codes(blob, {index::range_explicit}, {index::pack_range(4, index::length_escape)});
     blob.relation_explicit_ranges.long_entries = {0};
     blob.relation_explicit_ranges.long_ends = {259};
     blob.relation_target_ranks = {0};
@@ -1261,7 +1257,7 @@ ZEST_CASE(RangesBeyondContentRejected) {
     });
     blob.occurrence_symbols = {0};
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
-    set_relation_ranges(blob, {0});
+    set_range_codes(blob, {0});
     blob.relation_target_ranks = {0};
     blob.relation_extent_ranks = {0};
 
@@ -1293,17 +1289,17 @@ ZEST_CASE(RangesBeyondContentRejected) {
     blob.occurrences.long_ends = {};
 
     // Explicit relation ranges are bounded alike.
-    set_relation_ranges(blob, {index::range_explicit}, {index::pack_range(0, 100)});
+    set_range_codes(blob, {index::range_explicit}, {index::pack_range(0, 100)});
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // A pair relation legitimately carries no range — on a source-located
     // kind that is corruption.
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Base)};
-    set_relation_ranges(blob, {index::range_none});
+    set_range_codes(blob, {index::range_none});
     ZASSERT(make_shard(bytes_of()).loaded());
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
     ZASSERT(!make_shard(bytes_of()).loaded());
-    set_relation_ranges(blob, {0});
+    set_range_codes(blob, {0});
 
     // And definition-range payloads.
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) |
@@ -1419,7 +1415,7 @@ ZEST_CASE(StraySymbolIdRejected) {
     });
     blob.occurrence_symbols = {0};
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Base) | index::payload_bit};
-    set_relation_ranges(blob, {index::range_explicit}, {index::pack_range(4, 3)});
+    set_range_codes(blob, {index::range_explicit}, {index::pack_range(4, 3)});
     blob.relation_target_ranks = {0};
     blob.relation_extent_ranks = {0};
     blob.relation_targets = {0};
@@ -1450,7 +1446,7 @@ ZEST_CASE(RelationPayloadColumnsRejected) {
     blob.relation_offsets = {0, 1};
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Definition) |
                            index::payload_bit};
-    set_relation_ranges(blob, {index::range_explicit}, {index::pack_range(4, 3)});
+    set_range_codes(blob, {index::range_explicit}, {index::pack_range(4, 3)});
     blob.relation_target_ranks = {0};
     blob.relation_extent_ranks = {0};
     blob.relation_extent_heads = {4};
@@ -1517,7 +1513,7 @@ ZEST_CASE(RelationRangeCodes) {
     blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Reference),
                            static_cast<std::uint8_t>(RelationKind::Reference),
                            static_cast<std::uint8_t>(RelationKind::Reference)};
-    set_relation_ranges(blob, {2 << 1, 1 << 1, index::range_explicit}, {index::pack_range(8, 3)});
+    set_range_codes(blob, {2 << 1, 1 << 1, index::range_explicit}, {index::pack_range(8, 3)});
     blob.relation_target_ranks = {0};
     blob.relation_extent_ranks = {0};
 
@@ -1562,45 +1558,61 @@ ZEST_CASE(RelationRangeCodesRejected) {
     auto bytes_of = [&] {
         return index::encode(blob);
     };
-    set_relation_ranges(blob, {0, 2 << 1});
+    set_range_codes(blob, {0, 2 << 1});
     ZASSERT(make_shard(bytes_of()).loaded());
 
-    // Past the occurrences; the second occurrence of a range; an explicit
-    // range an occurrence has; an odd code that is neither.
-    set_relation_ranges(blob, {0, 6 << 1});
+    // Past the occurrences, or past them by a distance that wraps to one;
+    // the second occurrence of a range; an explicit range an occurrence has;
+    // an odd code that is neither.
+    set_range_codes(blob, {0, 6 << 1});
     ZEXPECT(!make_shard(bytes_of()).loaded());
-    set_relation_ranges(blob, {0, 4 << 1});
+    set_range_codes(blob, {0, ((std::uint64_t(1) << 32) + 1) << 2});
     ZEXPECT(!make_shard(bytes_of()).loaded());
-    set_relation_ranges(blob, {0, index::range_explicit}, {index::pack_range(4, 3)});
+    set_range_codes(blob, {0, 4 << 1});
     ZEXPECT(!make_shard(bytes_of()).loaded());
-    set_relation_ranges(blob, {0, 5});
+    set_range_codes(blob, {0, index::range_explicit}, {index::pack_range(4, 3)});
+    ZEXPECT(!make_shard(bytes_of()).loaded());
+    set_range_codes(blob, {0, 5});
     ZEXPECT(!make_shard(bytes_of()).loaded());
 
-    // Codes or explicit ranges left over, or the block's counts off.
-    set_relation_ranges(blob, {0, 2 << 1, 0});
+    // Codes or explicit ranges left over, a code taking an explicit range
+    // past them, or the block's counts off.
+    set_range_codes(blob, {0, 2 << 1, 0});
     ZEXPECT(!make_shard(bytes_of()).loaded());
-    set_relation_ranges(blob, {0, 2 << 1}, {index::pack_range(8, 3)});
+    set_range_codes(blob, {0, 2 << 1}, {index::pack_range(8, 3)});
     ZEXPECT(!make_shard(bytes_of()).loaded());
-    set_relation_ranges(blob, {0, 2 << 1});
-    blob.relation_range_ranks = {1};
+    set_range_codes(blob, {0, index::range_explicit});
+    ZEXPECT(!make_shard(bytes_of()).loaded());
+    set_range_codes(blob, {0, 2 << 1});
+    blob.relation_code_ranks = {1};
+    ZEXPECT(!make_shard(bytes_of()).loaded());
+    set_range_codes(blob, {0, index::range_explicit}, {index::pack_range(8, 3)});
+    ZASSERT(make_shard(bytes_of()).loaded());
+    blob.relation_explicit_ranks = {1};
     ZEXPECT(!make_shard(bytes_of()).loaded());
 }
 
 ZEST_CASE(RelationRangesAcrossBlocks) {
     // Over several rank blocks, a cursor placed mid-way reads each relation's
-    // range as a walk from the start does: occurrence codes, explicit ranges
-    // and pair relations without one.
-    std::string content(4000, 'a');
+    // range as a walk from the start does: occurrence codes, a kind's run
+    // stepping back past the previous one's, occurrences whose begin or
+    // length escapes, explicit ranges and pair relations without one.
+    std::string content(60000, 'a');
     index::FileIndex file_index;
+    std::uint32_t begin = 0;
     for(std::uint32_t i = 0; i < 300; i += 1) {
         auto symbol = 1 + i % 3;
-        LocalSourceRange name{i * 10, i * 10 + 3};
+        std::uint32_t length = i % 5 == 0 ? 260 : 3;
+        LocalSourceRange name{begin, begin + length};
+        begin += length + (i % 3 == 0 ? 300 : 2);
         file_index.occurrences.push_back({name, symbol});
         file_index.relations[symbol].push_back(
             {.kind = RelationKind::Reference, .range = name, .target = 0});
+        file_index.relations[symbol].push_back(
+            {.kind = RelationKind::Write, .range = name, .target = 0});
         file_index.relations[symbol].push_back({
             .kind = RelationKind::Caller,
-            .range = {i * 10, i * 10 + 5},
+            .range = {name.begin, name.end + 1},
             .target = 1 + (i + 1) % 3
         });
         if(i % 7 == 0) {
@@ -1611,8 +1623,10 @@ ZEST_CASE(RelationRangesAcrossBlocks) {
     auto shard = make_shard(write_fresh(file_index, content));
     ZASSERT(shard.loaded());
     for(index::SymbolHash symbol = 1; symbol <= 3; symbol += 1) {
-        for(auto kind:
-            {RelationKind::Reference, RelationKind::Caller, RelationKind::TypeDefinition}) {
+        for(auto kind: {RelationKind::Reference,
+                        RelationKind::Write,
+                        RelationKind::Caller,
+                        RelationKind::TypeDefinition}) {
             std::vector<index::Relation> expected;
             for(auto& relation: file_index.relations[symbol]) {
                 if(relation.kind == kind) {
@@ -1638,6 +1652,36 @@ ZEST_CASE(RelationRangesAcrossBlocks) {
             }
         }
     }
+}
+
+ZEST_CASE(OwnerlessRelationMaskRejected) {
+    // The relations' masks are checked as the occurrences' are.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, "aaaa");
+    blob.variants = {1, 2};
+    blob.symbol_hashes = {111};
+    blob.relation_offsets = {0, 1};
+    set_occurrences(blob,
+                    {
+                        {0, 3}
+    });
+    blob.occurrence_symbols = {0};
+    blob.occurrence_masks.masks8 = {0b01};
+    blob.relation_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
+    set_range_codes(blob, {0});
+    blob.relation_target_ranks = {0};
+    blob.relation_extent_ranks = {0};
+    blob.relation_masks.masks8 = {0b10};
+
+    auto bytes_of = [&] {
+        return index::encode(blob);
+    };
+    ZASSERT(make_shard(bytes_of()).loaded());
+    blob.relation_masks.masks8 = {0};
+    ZEXPECT(!make_shard(bytes_of()).loaded());
+    blob.relation_masks.masks8 = {};
+    ZEXPECT(!make_shard(bytes_of()).loaded());
 }
 
 ZEST_CASE(OwnerlessMaskRejected) {

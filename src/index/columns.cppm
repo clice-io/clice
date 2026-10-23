@@ -123,11 +123,6 @@ bool strictly_ascending(Column&& column) {
 /// log, or success.
 using CheckResult = std::expected<void, llvm::StringRef>;
 
-/// The no-range sentinel of pair relations: the default LocalSourceRange.
-inline bool is_no_range(std::uint32_t begin, std::uint32_t end) {
-    return LocalSourceRange{begin, end} == LocalSourceRange{};
-}
-
 /// The width in bytes of ids into a table of `table_size` entries.
 inline std::uint8_t id_width(std::uint32_t table_size) {
     return table_size <= 0x100 ? 1 : table_size <= 0x10000 ? 2 : 4;
@@ -388,9 +383,6 @@ inline CheckResult range_encoding_ok(const RangeColumnsView& side,
     if(!encoding_ok) {
         return std::unexpected("range encoding is not the canonical one");
     }
-    auto packed_length = [](std::uint32_t word) {
-        return static_cast<std::uint8_t>(word & 0xff);
-    };
     bool escaped_ok =
         packed.empty()
             ? escapes_ok(lengths, length_escape, side.long_entries, side.long_ends.size())
@@ -398,7 +390,7 @@ inline CheckResult range_encoding_ok(const RangeColumnsView& side,
                          length_escape,
                          side.long_entries,
                          side.long_ends.size(),
-                         packed_length);
+                         [](std::uint32_t word) { return static_cast<std::uint8_t>(word & 0xff); });
     if(!escaped_ok) {
         return std::unexpected("range escape table does not pair with its entries");
     }

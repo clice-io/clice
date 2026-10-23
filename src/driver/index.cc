@@ -453,15 +453,7 @@ Stats collect_stats(Project& project) {
     });
     db.for_each(index::BlobKind::Symbol, [&](llvm::StringRef, index::ReadBlob blob) {
         stats.symbol_bytes += blob.buffer->getBufferSize();
-        if(auto symbol = index::decode_symbol(blob.buffer->getBuffer())) {
-            stats.symbol_fields.add("text",
-                                    symbol->name.size() + symbol->args.size() +
-                                        symbol->signature.size());
-            std::vector<std::uint8_t> files;
-            index::append_file_set(files, symbol->reference_files);
-            index::append_file_set(files, symbol->instantiation_files);
-            stats.symbol_fields.add("files", files.size());
-        }
+        index::measure_symbol(blob.buffer->getBuffer(), stats.symbol_fields);
         return true;
     });
     if(auto blob = db.read(index::BlobKind::SearchIndex, "search")) {

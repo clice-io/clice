@@ -94,8 +94,7 @@ std::optional<Bitmap> read_file_set(llvm::ArrayRef<std::uint8_t> bytes) {
         }
         // read_bitmap's view borrows `bytes`, which outlive no decode.
         ids = Bitmap(*image);
-        if(ids.isEmpty() || ids.getSizeInBytes(true) != bytes.size() - 1 ||
-           list_size(ids) <= bytes.size()) {
+        if(ids.getSizeInBytes(true) != bytes.size() - 1 || list_size(ids) <= bytes.size()) {
             return std::nullopt;
         }
         return ids;
@@ -387,6 +386,32 @@ std::optional<Symbol> decode_symbol(llvm::StringRef data) {
         .reference_files = std::move(*references),
         .instantiation_files = std::move(*instantiations),
     };
+}
+
+void measure_symbol(llvm::StringRef data, FieldBytes& bytes) {
+    auto symbol = decode_symbol(data);
+    if(!symbol) {
+        return;
+    }
+    auto varints = [](std::initializer_list<std::uint64_t> values) {
+        std::vector<std::uint8_t> encoded;
+        for(auto value: values) {
+            write_varint(encoded, value);
+        }
+        return encoded.size();
+    };
+    auto references = file_set(symbol->reference_files).size();
+    bytes.add("text",
+              varints({symbol->name.size(), symbol->args.size(), symbol->signature.size()}) +
+                  symbol->name.size() + symbol->args.size() + symbol->signature.size());
+    bytes.add("parent", sizeof(SymbolHash));
+    bytes.add("file, modifiers, flags, kinds",
+              varints({symbol->file == no_file ? 0 : std::uint64_t(symbol->file) + 1,
+                       symbol->token_class.modifiers,
+                       static_cast<std::uint16_t>(symbol->flags)}) +
+                  2);
+    bytes.add("reference files", varints({references}) + references);
+    bytes.add("instantiation files", file_set(symbol->instantiation_files).size());
 }
 
 std::vector<std::byte> encode_record(const SharedLocalSets& local) {

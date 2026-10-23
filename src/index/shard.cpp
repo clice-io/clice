@@ -154,13 +154,13 @@ struct RelationTable {
         return {
             .root = root,
             .occurrences = root.occurrences,
-            .codes = {root.relation_ranges.data(), root.relation_ranges.size()},
+            .codes = {root.relation_range_codes.data(), root.relation_range_codes.size()},
             .explicit_ranges = explicit_ranges,
             .masks = root.relation_masks,
             .target_ranks = ids_of(root.relation_target_ranks, targets.size() + 1),
             .extent_ranks =
                 ids_of(root.relation_extent_ranks, root.relation_extent_heads.size() + 1),
-            .range_ranks = ids_of(root.relation_range_ranks, root.relation_ranges.size() + 1),
+            .range_ranks = ids_of(root.relation_code_ranks, root.relation_range_codes.size() + 1),
             .explicit_ranks =
                 ids_of(root.relation_explicit_ranks, entry_count(explicit_ranges) + 1),
             .targets = targets,
@@ -225,7 +225,11 @@ struct RelationTable {
         auto zigzag = *code >> 1;
         auto distance =
             static_cast<std::int64_t>(zigzag >> 1) ^ -static_cast<std::int64_t>(zigzag & 1);
-        cursor.occurrence = static_cast<std::uint32_t>(cursor.occurrence + distance);
+        auto occurrence = cursor.occurrence + distance;
+        if(occurrence < 0 || occurrence > std::numeric_limits<std::uint32_t>::max()) {
+            return std::nullopt;
+        }
+        cursor.occurrence = static_cast<std::uint32_t>(occurrence);
         return RangeAt{.index = cursor.occurrence};
     }
 
@@ -524,7 +528,7 @@ CheckResult relations_ok(const Root& root) {
         return ok;
     }
     // An occurrence code names the first occurrence of its range, and an
-    // explicit range is one no occurrence has: one range, one spelling.
+    // explicit range is one no occurrence has: one range, one encoding.
     std::vector<LocalSourceRange> spans;
     spans.reserve(occurrences.size());
     for_each_range(occurrences.columns, [&](std::uint32_t, LocalSourceRange range) {
@@ -1577,7 +1581,7 @@ std::vector<std::byte> emit_blob(const MergedEntries<MaskT>& merged,
                 target_ranks.push_back(static_cast<std::uint32_t>(targets.size()));
                 extent_ranks.push_back(
                     static_cast<std::uint32_t>(blob.relation_extent_heads.size()));
-                range_ranks.push_back(static_cast<std::uint32_t>(blob.relation_ranges.size()));
+                range_ranks.push_back(static_cast<std::uint32_t>(blob.relation_range_codes.size()));
                 explicit_ranks.push_back(explicit_ranges.count);
                 previous_occurrence = 0;
             }
@@ -1605,18 +1609,18 @@ std::vector<std::byte> emit_blob(const MergedEntries<MaskT>& merged,
             }
             blob.relation_kinds.push_back(kind);
             auto range = relation.range;
-            if(is_no_range(range.begin, range.end)) {
-                write_varint(blob.relation_ranges, range_none);
+            if(range == LocalSourceRange{}) {
+                write_varint(blob.relation_range_codes, range_none);
             } else if(auto found =
                           occurrence_of.find((std::uint64_t(range.begin) << 32) | range.end);
                       found != occurrence_of.end()) {
                 auto distance = static_cast<std::int64_t>(found->second) - previous_occurrence;
                 auto zigzag = (static_cast<std::uint64_t>(distance) << 1) ^
                               static_cast<std::uint64_t>(distance >> 63);
-                write_varint(blob.relation_ranges, zigzag << 1);
+                write_varint(blob.relation_range_codes, zigzag << 1);
                 previous_occurrence = found->second;
             } else {
-                write_varint(blob.relation_ranges, range_explicit);
+                write_varint(blob.relation_range_codes, range_explicit);
                 explicit_ranges.add(range);
             }
             relation_masks.add(entry.mask);
@@ -1630,7 +1634,7 @@ std::vector<std::byte> emit_blob(const MergedEntries<MaskT>& merged,
     write_ids(blob.relation_targets, targets, blob.symbol_hashes.size());
     write_ids(blob.relation_target_ranks, target_ranks, targets.size() + 1);
     write_ids(blob.relation_extent_ranks, extent_ranks, blob.relation_extent_heads.size() + 1);
-    write_ids(blob.relation_range_ranks, range_ranks, blob.relation_ranges.size() + 1);
+    write_ids(blob.relation_code_ranks, range_ranks, blob.relation_range_codes.size() + 1);
     write_ids(blob.relation_explicit_ranks, explicit_ranks, explicit_ranges.count + 1);
 
     return encode(blob);

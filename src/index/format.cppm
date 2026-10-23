@@ -250,10 +250,12 @@ struct MaskColumnsOf {
 
 using MaskColumns = MaskColumnsOf<kota::codec::blob::Owned>;
 
-/// Relations per block of the payload counts (ShardBlob::relation_target_ranks).
+/// Relations per block of the counts placing a relation's payload, range
+/// code and explicit range (ShardBlob::relation_target_ranks and the other
+/// ranks); an occurrence code's distance restarts at each block.
 constexpr inline std::uint32_t rank_block = 64;
 
-/// The odd codes of a relation's range (ShardBlob::relation_ranges): the
+/// The odd codes of a relation's range (ShardBlob::relation_range_codes): the
 /// relation has no range, or its range is the next of the explicit ranges.
 constexpr inline std::uint64_t range_none = 1;
 constexpr inline std::uint64_t range_explicit = 3;
@@ -359,8 +361,8 @@ struct ShardBlobOf {
     /// range_explicit for a range no occurrence has, the next of the
     /// explicit ranges. Per rank block, the code bytes and the explicit
     /// ranges before it.
-    Seq<std::uint8_t> relation_ranges;
-    IdColumnOf<Seq> relation_range_ranks;
+    Seq<std::uint8_t> relation_range_codes;
+    IdColumnOf<Seq> relation_code_ranks;
     RangeColumnsOf<Seq> relation_explicit_ranges;
     IdColumnOf<Seq> relation_explicit_ranks;
     MaskColumnsOf<Seq> relation_masks;

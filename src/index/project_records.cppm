@@ -148,6 +148,10 @@ std::optional<Internals> decode_internals(llvm::StringRef data);
 
 std::optional<Symbol> decode_symbol(llvm::StringRef data);
 
+/// Add the parts of the symbol record `data` to `bytes`, as measure_blob
+/// does a blob's fields; nothing for bytes that are no record.
+void measure_symbol(llvm::StringRef data, FieldBytes& bytes);
+
 std::optional<SharedLocalSets> decode_shared_local(llvm::StringRef data);
 
 }  // namespace clice::index

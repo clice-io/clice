@@ -49,14 +49,13 @@ ZEST_CASE(FileSetForms) {
     index::append_file_set(image, dense);
     ZEXPECT(image.front() == 0);
 
-    // One set, one spelling: no zero distance, no list where the image is
+    // One set, one encoding: no zero distance, no list where the image is
     // shorter, no image where the list is.
     ZEXPECT(!index::read_file_set(std::vector<std::uint8_t>{4, 0}));
-    std::vector<std::uint8_t> list;
-    for(std::uint32_t id = 0; id < 10000; id += 1) {
-        list.push_back(1);
-    }
-    ZEXPECT(!index::read_file_set(list));
+    std::vector<std::uint8_t> wrapping;
+    index::write_varint(wrapping, (std::uint64_t(1) << 32) + 5);
+    ZEXPECT(!index::read_file_set(wrapping));
+    ZEXPECT(!index::read_file_set(std::vector<std::uint8_t>(10000, 1)));
     auto small = index::write_bitmap(ids({3, 9}));
     std::vector<std::uint8_t> small_image = {0};
     for(auto byte: small) {
@@ -159,13 +158,13 @@ ZEST_CASE(SymbolRoundTrip) {
         .name = "find",
         .args = "<int>",
         .signature = "(char c) const",
-        .parent = 77,
+        .parent = 0x0123456789abcdef,
         .kind = SymbolKind::Method,
         .flags = index::SymbolFlags::HasDefinition,
         .token_class = {.kind = SemanticTokenKind::Method, .modifiers = 3},
         .file = 2,
     };
-    symbol.reference_files = ids({2, 5, 9, 40});
+    symbol.reference_files = ids({2, 5, 9, 400});
     symbol.instantiation_files = ids({5});
     auto buffer = aligned(index::encode_record(symbol));
     auto read = index::decode_symbol(buffer->getBuffer());
@@ -191,9 +190,6 @@ ZEST_CASE(SymbolRoundTrip) {
 ZEST_CASE(SymbolBytesChecked) {
     index::Symbol symbol{.name = "name", .file = index::no_file};
     auto bytes = index::encode_record(symbol);
-    auto at = [&](std::uint32_t i) -> std::byte& {
-        return bytes[i];
-    };
     auto decode = [&] {
         return index::decode_symbol(as_chars(bytes));
     };
@@ -203,14 +199,36 @@ ZEST_CASE(SymbolBytesChecked) {
     // file, the modifiers and the flags (a byte each), the kind, the token
     // kind and the reference files' size.
     ZASSERT(bytes.size() == std::size_t(21));
-    at(19) = std::byte(0xff);
+    bytes[19] = std::byte(0xff);
     ZEXPECT(!decode());
-    at(19) = std::byte(0);
-    at(0) = std::byte(30);
+    bytes[19] = std::byte(0);
+    bytes[0] = std::byte(30);
     ZEXPECT(!decode());
-    at(0) = std::byte(4);
-    bytes.pop_back();
-    ZEXPECT(!decode());
+    bytes[0] = std::byte(4);
+
+    // The file, the modifiers and the flags past their widths.
+    auto with = [&](std::uint32_t at, std::uint64_t value) {
+        std::vector<std::uint8_t> varint;
+        index::write_varint(varint, value);
+        auto changed = bytes;
+        changed.erase(changed.begin() + at);
+        for(auto byte: std::views::reverse(varint)) {
+            changed.insert(changed.begin() + at, std::byte(byte));
+        }
+        return index::decode_symbol(as_chars(changed));
+    };
+    ZASSERT(with(15, index::no_file));
+    ZEXPECT(!with(15, std::uint64_t(index::no_file) + 1));
+    ZEXPECT(!with(16, std::uint64_t(1) << 32));
+    ZEXPECT(!with(17, 0x10000));
+
+    // Cut inside the parent, before the token kind, or before the reference
+    // files' size.
+    for(std::size_t size: {10, 19, 20}) {
+        auto cut = bytes;
+        cut.resize(size);
+        ZEXPECT(!index::decode_symbol(as_chars(cut)));
+    }
 }
 
 ZEST_CASE(InternalsRoundTrip) {
