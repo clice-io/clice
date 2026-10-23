@@ -292,8 +292,8 @@ struct TURunParams {
     std::string pch;
 
     /// Products of the run: the index, the errors the compile reports, the
-    /// diagnostics an editor shows on the file, and a clang-tidy pass under
-    /// this frozen configuration.
+    /// diagnostics an editor skipping header bodies misses, and a clang-tidy
+    /// pass under this frozen configuration.
     bool index = false;
     bool errors = false;
     bool diagnostics = false;
@@ -459,8 +459,11 @@ struct TURunResult {
     /// Findings of the tidy pass (plan product `tidy`).
     std::vector<TidyDiagnostic> tidy_diagnostics;
 
-    /// The diagnostics an editor shows on the file, and the hash of the text
-    /// they describe (plan product `diagnostics`).
+    /// The diagnostics an editor shows on the file that a compile skipping
+    /// the function bodies of its headers misses: those raised in another
+    /// file and those of a declaration unused (CompilationParams::
+    /// skip_bodies). With the hash of the text they describe (plan product
+    /// `diagnostics`).
     std::vector<feature::FileDiagnostic> diagnostics;
     std::uint64_t text_hash = 0;
 };

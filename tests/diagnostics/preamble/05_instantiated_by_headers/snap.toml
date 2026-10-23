@@ -1,3 +1,2 @@
 [test."main.cpp"]
-wrong = "clang reports the warning on main.cpp's call; the precompiled preamble instantiates less<int> for the header, and a warning inside a header is not shown"
 diagnostics = []

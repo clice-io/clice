@@ -340,7 +340,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     bool served = !content_changed && compiled_by_session && compiled_by_session(server_path_id);
     if(!served && (content_changed || project.index.needs_reindex(server_path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
-        bool diagnostics = shown && shown(server_path_id);
+        bool diagnostics = on_diagnostics && project.config.project.skip_header_bodies;
         auto outcome = co_await turun.run(
             server_path_id,
             {.index = true, .errors = errors_wanted, .diagnostics = diagnostics},

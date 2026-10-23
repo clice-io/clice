@@ -52,7 +52,8 @@ public:
         /// The errors the compile reports, in the outcome.
         bool errors = false;
 
-        /// The diagnostics an editor shows on the file, in the outcome.
+        /// The diagnostics an editor skipping header bodies misses, in the
+        /// outcome.
         bool diagnostics = false;
 
         /// A tidy pass under this frozen configuration.
@@ -112,8 +113,8 @@ public:
         /// `errors`).
         std::vector<worker::LocatedMessage> errors;
 
-        /// The diagnostics an editor shows on the file, and the hash of the
-        /// text they describe (plan product `diagnostics`).
+        /// See worker::TURunResult::diagnostics (plan product
+        /// `diagnostics`).
         std::vector<feature::FileDiagnostic> diagnostics;
         std::uint64_t text_hash = 0;
 

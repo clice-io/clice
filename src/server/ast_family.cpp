@@ -491,38 +491,50 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
     on_output.emit(session);
 }
 
-/// Whether two lists show the same: the same messages at the same places.
-static bool same_diagnostics(llvm::ArrayRef<feature::FileDiagnostic> left,
-                             llvm::ArrayRef<feature::FileDiagnostic> right) {
-    return ranges::equal(left, right, [](const auto& a, const auto& b) {
-        return a.range.start.line == b.range.start.line &&
-               a.range.start.character == b.range.start.character && a.message == b.message;
-    });
+/// Whether two diagnostics show the same: one message at one place.
+static bool same_diagnostic(const feature::FileDiagnostic& left,
+                            const feature::FileDiagnostic& right) {
+    return left.range.start.line == right.range.start.line &&
+           left.range.start.character == right.range.start.character &&
+           left.message == right.message;
+}
+
+/// What of a background run's diagnostics a compile does not report itself.
+static std::vector<feature::FileDiagnostic>
+    unshown(const CompileOutput& output, llvm::ArrayRef<feature::FileDiagnostic> checked) {
+    std::vector<feature::FileDiagnostic> result;
+    for(const auto& diagnostic: checked) {
+        if(ranges::none_of(output.diagnostics, [&](const feature::FileDiagnostic& own) {
+               return same_diagnostic(own, diagnostic);
+           })) {
+            result.push_back(diagnostic);
+        }
+    }
+    return result;
 }
 
 void ASTFamily::checked(Fid path_id,
                         std::uint64_t text_hash,
                         std::vector<feature::FileDiagnostic> diagnostics) {
-    // Closed while the run went on: nothing shows the file.
-    auto session = sessions.find(path_id);
-    if(!session) {
-        return;
+    if(diagnostics.empty()) {
+        checks.erase(path_id);
+    } else {
+        checks[path_id] = {.text_hash = text_hash, .diagnostics = diagnostics};
     }
-    std::erase_if(diagnostics, [](const feature::FileDiagnostic& diagnostic) {
-        return diagnostic.origin == feature::DiagnosticOrigin::File &&
-               !ranges::contains(unused_declaration_warnings, diagnostic.id);
-    });
-    compiles.entries[path_id].check =
-        DocumentCompiles::Check{.text_hash = text_hash, .diagnostics = diagnostics};
-    if(session->hash != text_hash) {
+    auto session = sessions.find(path_id);
+    if(!session || session->hash != text_hash) {
         return;
     }
     auto compiled = compiles.latest_at(path_id, session->version);
-    if(!compiled || same_diagnostics(compiled->output->checked, diagnostics)) {
+    if(!compiled) {
+        return;
+    }
+    auto shown = unshown(*compiled->output, diagnostics);
+    if(ranges::equal(compiled->output->checked, shown, same_diagnostic)) {
         return;
     }
     auto output = *compiled->output;
-    output.checked = std::move(diagnostics);
+    output.checked = std::move(shown);
     compiles.set_output(path_id, std::move(output));
     on_diagnostics.emit(session);
 }
@@ -1405,8 +1417,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                   ? project.file_table.display(resolution.unmatched_host)
                                   : std::string(),
         };
-        if(entry.check && entry.check->text_hash == session->hash) {
-            next->output->checked = entry.check->diagnostics;
+        if(auto it = checks.find(path_id);
+           it != checks.end() && it->second.text_hash == session->hash) {
+            next->output->checked = unshown(*next->output, it->second.diagnostics);
         }
 
         // A document moving off a preamble it failed on releases that

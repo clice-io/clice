@@ -30,8 +30,8 @@ struct CompileOutput {
     std::vector<feature::FileDiagnostic> diagnostics;
 
     /// What the background index's compile of the same text reported that
-    /// this one cannot (DocumentCompiles::Check), shown beside the
-    /// compile's own.
+    /// this one cannot and does not report itself (ASTFamily::checked),
+    /// shown after the compile's own.
     std::vector<feature::FileDiagnostic> checked;
 
     /// The host whose includer context the compile needed but could not
@@ -85,18 +85,6 @@ struct DocumentCompile {
 /// Features, transports) only look things up. A separate type so
 /// read-side tests can populate one without the family's machinery.
 struct DocumentCompiles {
-    /// What a whole compile of the file, the background index's, reported
-    /// that the editor's compile cannot, which skips the function bodies of
-    /// the headers the file includes at its top: the errors and warnings
-    /// raised inside those bodies, a template's instantiated from the file
-    /// among them, and the declarations reported unused. Shown while the
-    /// buffer holds the text that compile read, the file as saved.
-    struct Check {
-        std::uint64_t text_hash = 0;
-
-        std::vector<feature::FileDiagnostic> diagnostics;
-    };
-
     struct Entry {
         std::shared_ptr<const DocumentCompile> latest;
 
@@ -117,9 +105,6 @@ struct DocumentCompiles {
         /// of the retired pch_key write license (a Lost-type invalidation
         /// means the resolved command may describe nothing).
         std::uint64_t epoch = 0;
-
-        /// The latest background index run's diagnostics of the file.
-        std::optional<Check> check;
     };
 
     llvm::DenseMap<Fid, Entry> entries;

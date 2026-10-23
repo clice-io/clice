@@ -204,13 +204,20 @@ public:
     /// push path (the didClose diagnostics retraction).
     void publish_output(const std::shared_ptr<Session>& session, CompileOutput output);
 
-    /// A background index run of the open file finished with `diagnostics`
-    /// for the text hashing to `text_hash`: keep what the editor's compile
-    /// cannot show (DocumentCompiles::Check), and show it while the
-    /// document holds that text.
+    /// A background index run of the file reported `diagnostics` for the
+    /// text hashing to `text_hash`: what the editor's compile cannot, which
+    /// skips the function bodies of the headers the file includes at its
+    /// top (worker::TURunResult::diagnostics). They show on the document
+    /// while it holds that text, open now or later.
     void checked(Fid path_id,
                  std::uint64_t text_hash,
                  std::vector<feature::FileDiagnostic> diagnostics);
+
+    /// What the file reads changed on disk: its last run's diagnostics no
+    /// longer describe it.
+    void forget_check(Fid path_id) {
+        checks.erase(path_id);
+    }
 
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The rounds themselves finish in TaskGraph::shutdown — the
@@ -296,6 +303,13 @@ private:
     /// invalidation kind.
     void touch(Fid path_id);
 
+    /// A background run's diagnostics of a file (see checked).
+    struct Check {
+        std::uint64_t text_hash = 0;
+
+        std::vector<feature::FileDiagnostic> diagnostics;
+    };
+
 private:
     Project& project;
 
@@ -318,6 +332,10 @@ private:
     /// The cancel of each document's in-flight compile send, which
     /// supersede() and stop() fire to interrupt the worker's parse.
     llvm::DenseMap<Fid, std::unique_ptr<kota::cancellation_source>> compile_interrupts;
+
+    /// The last background run's diagnostics of every file that had some,
+    /// open or not.
+    llvm::DenseMap<Fid, Check> checks;
 };
 
 /// Discriminators for Quarantine's per-kind records.

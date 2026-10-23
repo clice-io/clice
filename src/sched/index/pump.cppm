@@ -56,11 +56,9 @@ public:
     /// side enqueues the file again when the document closes.
     std::function<bool(Fid path_id)> compiled_by_session;
 
-    /// Whether an editor shows the file: its index runs then also bring back
-    /// the diagnostics an editor shows on it, handed to on_diagnostics with
-    /// the hash of the text they describe once a run completes.
-    std::function<bool(Fid path_id)> shown;
-
+    /// Under `skip_header_bodies`, every index run also brings back the
+    /// diagnostics an editor misses on its file (TURunFamily::Plan::
+    /// diagnostics), handed here with the hash of the text they describe.
     std::function<void(Fid path_id,
                        std::uint64_t text_hash,
                        std::vector<feature::FileDiagnostic> diagnostics)>

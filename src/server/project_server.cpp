@@ -70,9 +70,6 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
         return !project.config.project.skip_header_bodies && session &&
                session->serving == ServingMode::Escalated;
     };
-    sched.pump.shown = [this](Fid path_id) {
-        return project.config.project.skip_header_bodies && sessions.find(path_id) != nullptr;
-    };
     sched.pump.on_diagnostics = [this](Fid path_id,
                                        std::uint64_t text_hash,
                                        std::vector<feature::FileDiagnostic> diagnostics) {
@@ -453,6 +450,7 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // its product as bounded staleness; the next request recompiles.
     bool inputs_changed = false;
     for(auto path_id: dirty.mark_ast_dirty) {
+        ast.forget_check(path_id);
         if(auto session = sessions.find(path_id)) {
             ast.invalidate(path_id);
             session->trial_done = false;
