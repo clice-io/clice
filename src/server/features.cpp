@@ -31,6 +31,7 @@ import :support.json;
 import :support.text;
 import :syntax.completion;
 import :syntax.lexer;
+import :syntax.lexical_scan;
 import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_system;
@@ -695,7 +696,22 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
         }
     }
 
+    // A directive's line names no namespace member: its names are
+    // directives, macros and headers.
+    const LexicalInfo::Directive* directive = nullptr;
     if(offset) {
+        directive = text_of(*session).lexical().directive_at(session->text(), *offset);
+        if(completing.kind == CompletionName::Kind::Directive) {
+            assert(directive && "a directive's name is on its line");
+            bool conditional = directive->depth > 0 || directive->opening != LexicalInfo::none;
+            co_return to_raw(feature::directive_completion(completing,
+                                                           map,
+                                                           conditional,
+                                                           dialect,
+                                                           project.config.code_completion,
+                                                           client,
+                                                           project.config.code_completion.limit));
+        }
         if(completing.kind == CompletionName::Kind::IncludeQuoted ||
            completing.kind == CompletionName::Kind::IncludeAngled) {
             std::string directory;
@@ -727,7 +743,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     std::vector<feature::ScopeCandidate> candidates;
     bool exhausted = true;
     if(auto prefix = offset ? feature::unqualified_prefix(session->text(), *offset) : std::nullopt;
-       prefix && project.config.code_completion.all_scopes) {
+       prefix && project.config.code_completion.all_scopes && !directive) {
         exhausted =
             feature::scope_candidates(query, project.dep_graph, *prefix, path_id, candidates);
     }
@@ -761,6 +777,11 @@ Features::RawResult Features::signature_help(std::shared_ptr<Session> session,
                                              const protocol::Position& position,
                                              std::string selected,
                                              kota::cancellation_token token) {
+    // A directive takes no call's arguments: `#include <` asks for none.
+    if(auto offset = session->positions().offset(position, PositionEncoding::UTF16);
+       offset && text_of(*session).lexical().directive_at(session->text(), *offset)) {
+        return kota::co_invoke([]() -> RawResult { co_return serde_raw{"null"}; });
+    }
     ast.escalate(*session);
     return kota::co_invoke([this,
                             ticket = Ticket::take(std::move(session)),

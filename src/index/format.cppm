@@ -98,7 +98,7 @@ namespace clice::index {
 /// per file and per path behind a header, manifests name their files by
 /// path id and content hash, and producers name their unit by its path
 /// hash; v45: a manifest keeps the memory its unit's worker reached.
-constexpr inline std::uint32_t index_format_version = 45;
+constexpr inline std::uint32_t index_format_version = 46;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it (LLVM's search blob, the
@@ -548,6 +548,12 @@ struct TUIndexBlobOf {
     /// as published (a JSON array of LSP diagnostics) — a compile that
     /// consumes the PCH never raises them again.
     Seq<char> diagnostics;
+
+    /// Preamble ride-along: the search blob (build_search_blob) of the
+    /// names unqualified completion may offer from the preamble —
+    /// SymbolFlags::Completable, of external scope — looked up by name as
+    /// the project's search index is.
+    Seq<std::byte> names;
 };
 
 using TUIndexBlob = TUIndexBlobOf<codec::blob::Owned>;

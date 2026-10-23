@@ -39,6 +39,7 @@ struct ASTFamilyFixture {
         };
         auto key = co_await ast.ensure_pch(session,
                                            session->text(),
+                                           std::nullopt,
                                            license_generation,
                                            license_epoch,
                                            directory,

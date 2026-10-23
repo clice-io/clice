@@ -272,21 +272,18 @@ Completables
         seen.insert(hit.symbol.hash);
     }
     if(auto preamble = index.preamble_index(file)) {
-        NameRanker ranker(query);
-        preamble->for_each_symbol(
-            [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t>) {
-                if(!has_flag(identity.flags, SymbolFlags::Completable) ||
-                   identity.scope != SymbolScope::External || !is_searchable_kind(identity.kind) ||
-                   !seen.insert(hash).second) {
-                    return true;
-                }
-                auto quality = symbol_quality(identity.name, identity.kind, identity.flags, 0);
-                if(auto rank = ranker.rank(identity.name, identity.args, quality)) {
-                    ranked.hits.push_back(
-                        {.rank = *rank, .symbol = SymbolInfo::from(hash, identity), .anchor = {}});
-                }
-                return true;
-            });
+        auto found = preamble->names().search(query, limit, index.project().workspace);
+        for(auto& hit: found.hits) {
+            if(!seen.insert(hit.hash).second) {
+                continue;
+            }
+            if(auto identity = preamble->find_symbol(hit.hash)) {
+                ranked.hits.push_back({.rank = hit.rank,
+                                       .symbol = SymbolInfo::from(hit.hash, *identity),
+                                       .anchor = {}});
+            }
+        }
+        ranked.exhausted = ranked.exhausted && found.exhausted;
         ranges::sort(ranked.hits, ranked_before);
     }
 

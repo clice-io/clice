@@ -76,6 +76,11 @@ export module foo;
     ZEXPECT(preamble_bound(marker_only) == marker_only.find(';') + 1);
 }
 
+ZEST_CASE(BoundBeforeLimit) {
+    llvm::StringRef content = "#include <vector>\n#ifdef FO\n#endif\nint x;";
+    ZEXPECT(preamble_bound(content, content.find("#ifdef")) == content.find('\n'));
+}
+
 ZEST_CASE(StopsAtCode) {
     llvm::StringRef src = R"(
 #include <a>

@@ -109,6 +109,7 @@ public:
     /// that did not build is the compile's to report.
     kota::task<bool> prepare_stateless_inputs(const Ticket& ticket,
                                               llvm::StringRef text,
+                                              std::uint32_t point,
                                               const std::string& directory,
                                               const std::vector<std::string>& arguments,
                                               const Resolution& resolution,
@@ -254,12 +255,19 @@ private:
         Decision decision = Decision::None;
 
         PCHFamily::Request request;
+
+        /// The preamble ends before the text's own, at a completion's point:
+        /// what the request loads is its own, not the document's.
+        bool partial = false;
     };
 
     /// `base` is the key of the precompiled header the build declares for
-    /// the command, built already; empty for none.
+    /// the command, built already; empty for none. `point` is where a
+    /// completion's parse stops: the preamble ends before the line holding
+    /// it, so the lines typed there keep the PCH of the lines above them.
     PCHPlan plan_pch(Fid path_id,
                      llvm::StringRef text,
+                     std::optional<std::uint32_t> point,
                      const std::string& directory,
                      const std::vector<std::string>& arguments,
                      const SynthesizedContext* synthesized,
@@ -273,6 +281,7 @@ private:
     /// against, adopted or not; none when it compiles without a PCH.
     kota::task<std::optional<std::string>> ensure_pch(const std::shared_ptr<Session>& session,
                                                       llvm::StringRef text,
+                                                      std::optional<std::uint32_t> point,
                                                       std::uint64_t license_generation,
                                                       std::uint64_t license_epoch,
                                                       const std::string& directory,

@@ -67,9 +67,9 @@ struct CodeCompletionOptions {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "With `all_scopes`, also offer names declared in headers "
-                         "the file does not include yet, adding the `#include` "
-                         "of the header that declares them.")
+                         "With `all_scopes`, also offer names declared, and macros "
+                         "defined, in headers the file does not include yet, adding "
+                         "the `#include` of the header that holds them.")
     <bool> insert_includes = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -100,9 +100,10 @@ struct CompletionClient {
     bool markdown = false;
 };
 
-/// A name of another namespace unqualified completion may offer, found in
-/// the index: the completion looks it up to tell whether the file reaches
-/// it already (CodeCompletionOptions::all_scopes).
+/// A name unqualified completion may offer from the index — of another
+/// namespace, or a macro of a header the file does not include: the
+/// completion looks it up to tell whether the file reaches it already
+/// (CodeCompletionOptions::all_scopes).
 struct ScopeCandidate {
     std::string name;
 
@@ -111,6 +112,10 @@ struct ScopeCandidate {
     std::vector<std::string> scope;
 
     protocol::CompletionItemKind kind = protocol::CompletionItemKind::Text;
+
+    /// A macro, named in no namespace and declaring nothing.
+    bool macro = false;
+
     bool is_template = false;
     bool deprecated = false;
 
@@ -188,8 +193,8 @@ auto finish_completion(protocol::CompletionList list,
                        std::uint32_t limit) -> protocol::CompletionList;
 
 /// The paths an `#include` being typed (`completing`) may go on with in
-/// `text`, the file at `path`, as `search` finds them: a directory goes on
-/// past its `/`, a header closes the directive.
+/// `text`, the file at `path`, as `search` finds them: a directory leaves
+/// the path open for the `/` typed next, a header closes the directive.
 auto include_completion(const CompletionName& completing,
                         llvm::StringRef text,
                         const PositionMap& map,
@@ -197,6 +202,18 @@ auto include_completion(const CompletionName& completing,
                         const SearchConfig& search,
                         vfs::Scope& scope,
                         std::uint32_t limit) -> protocol::CompletionList;
+
+/// The directives a directive name being typed (`completing`) may name,
+/// as a compile's completion offers them: `#elif`, `#else` and `#endif`
+/// where the line is `conditional`, inside an `#if` block. A directive's
+/// arguments come as placeholders with statement snippets.
+auto directive_completion(const CompletionName& completing,
+                          const PositionMap& map,
+                          bool conditional,
+                          const clang::LangOptions& dialect,
+                          const CodeCompletionOptions& options,
+                          const CompletionClient& client,
+                          std::uint32_t limit) -> protocol::CompletionList;
 
 /// The modules an `import` or a module declaration being typed
 /// (`completing`) in `text`, the file at `path`, may name: the unit's own

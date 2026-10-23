@@ -10,12 +10,12 @@ import :syntax.preamble;
 
 namespace clice {
 
-std::uint32_t preamble_bound(llvm::StringRef content) {
+std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
     std::uint32_t bound = 0;
     Lexer lexer(content, dialect_of());
     while(true) {
         auto token = lexer.advance();
-        if(token.is_eof()) {
+        if(token.is_eof() || token.range.begin >= limit) {
             break;
         }
         if(!token.is_at_start_of_line) {

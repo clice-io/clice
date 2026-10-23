@@ -214,7 +214,22 @@ CompletionName completion_name(llvm::StringRef text,
     };
 
     if(first.is_directive_hash() && before_cursor(first)) {
-        if(tokens.size() < 2 || !tokens[1].is_identifier() || !before_cursor(tokens[1])) {
+        // Nothing after the `#` yet, or the cursor in the name or at its end.
+        if(tokens.size() < 2 || tokens[1].is_eod()) {
+            return {
+                .kind = CompletionName::Kind::Directive,
+                .replace = {offset, offset}
+            };
+        }
+        if(tokens[1].is_identifier() && tokens[1].range.begin <= offset &&
+           offset <= tokens[1].range.end) {
+            return {
+                .kind = CompletionName::Kind::Directive,
+                .prefix = text.slice(tokens[1].range.begin, offset).str(),
+                .replace = tokens[1].range,
+            };
+        }
+        if(!tokens[1].is_identifier() || !before_cursor(tokens[1])) {
             return {};
         }
         auto& keyword = tokens[1];
@@ -357,30 +372,31 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
     std::vector<IncludeCandidate> results;
     llvm::StringSet<> seen;
 
-    auto collect = [&](llvm::StringRef search_dir,
-                       bool system,
-                       std::uint32_t tier,
-                       std::uint32_t position) {
-        llvm::SmallString<256> dir(search_dir);
-        if(!dir_prefix.empty()) {
-            llvm::sys::path::append(dir, dir_prefix);
-        }
-        for(auto& entry: scope.list(dir).entries) {
-            auto name = entry.getKey();
-            if(!name.starts_with(file_prefix) || seen.contains(name)) {
-                continue;
+    auto collect =
+        [&](llvm::StringRef search_dir, bool system, std::uint32_t tier, std::uint32_t position) {
+            llvm::SmallString<256> dir(search_dir);
+            if(!dir_prefix.empty()) {
+                llvm::sys::path::append(dir, dir_prefix);
             }
+            for(auto& entry: scope.list(dir).entries) {
+                auto name = entry.getKey();
+                if(!name.starts_with(file_prefix) || seen.contains(name)) {
+                    continue;
+                }
 
-            bool is_dir = entry.getValue();
-            if(!is_dir && !looks_like_header(name, dir, search_dir, system)) {
-                continue;
+                bool is_dir = entry.getValue();
+                if(!is_dir && !looks_like_header(name, dir, search_dir, system)) {
+                    continue;
+                }
+
+                seen.insert(name);
+                std::uint32_t hidden = name.starts_with(".");
+                std::uint32_t reserved = name.starts_with("_");
+                results.push_back({name.str(),
+                                   is_dir,
+                                   (hidden << 20) | (tier << 17) | (reserved << 16) | position});
             }
-
-            seen.insert(name);
-            std::uint32_t reserved = name.starts_with("_");
-            results.push_back({name.str(), is_dir, (tier << 17) | (reserved << 16) | position});
-        }
-    };
+        };
 
     // A quoted include looks next to the file that contains it first.
     if(!angled) {

@@ -152,6 +152,27 @@ items = [
     { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
 ]
 
+[default.macro_not_included.completion]
+items = [
+    {
+        label = "SIZES_CLAMP",
+        kind = "Function",
+        insert = "SIZES_CLAMP($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-17", text = '#include "sizes.h"' },
+        ],
+    },
+    {
+        label = "SIZES_MAX",
+        kind = "Constant",
+        insert = "SIZES_MAX",
+        edits = [
+            { at = "⟦⟧ @-17", text = '#include "sizes.h"' },
+        ],
+    },
+]
+
 [default.deprecated.completion]
 items = [
     {
@@ -160,7 +181,7 @@ items = [
         insert = "shapes::repaint_all($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-17", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-18", text = '#include "shapes.h"' },
         ],
     },
     {
@@ -170,7 +191,7 @@ items = [
         insert = "shapes::repaint($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-17", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-18", text = '#include "shapes.h"' },
         ],
     },
 ]
@@ -257,6 +278,9 @@ items = []
 items = [
     { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
 ]
+
+[configured.macro_not_included.completion]
+items = []
 
 [configured.deprecated.completion]
 items = []

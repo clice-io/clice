@@ -11,6 +11,7 @@ import :index.format;
 import :index.include_tree;
 import :index.indexer;
 import :index.instantiation_shard;
+import :index.search_index;
 import :index.shard;
 import :index.symbol;
 import :semantic.decls;
@@ -439,7 +440,9 @@ public:
             symbol.name = unit.token_spelling(location);
             symbol.kind = SymbolKind::Macro;
             symbol.scope = SymbolScope::External;
-            symbol.flags = SymbolFlags::Completable;
+            // An include guard is no name to complete.
+            symbol.flags =
+                def && def->isUsedForHeaderGuard() ? SymbolFlags::None : SymbolFlags::Completable;
             symbol.token_class = def ? token_class(*def, unit.context().getSourceManager())
                                      : TokenClass{.kind = SemanticTokenKind::Macro};
         }
@@ -2020,6 +2023,24 @@ public:
         }
         blob.sections = std::move(sections);
         blob.instantiations = std::move(instantiation_sections);
+        if(preamble) {
+            SearchSnapshot names;
+            for(auto hash: table) {
+                auto& symbol = symbols.find(hash)->second;
+                if(has_flag(symbol.flags, SymbolFlags::Completable) &&
+                   symbol.scope == SymbolScope::External) {
+                    names.entries.push_back({
+                        .hash = hash,
+                        .name = symbol.name,
+                        .args = symbol.args,
+                        .parent = symbol.parent,
+                        .kind = symbol.kind,
+                        .flags = symbol.flags,
+                    });
+                }
+            }
+            blob.names = build_search_blob(names);
+        }
 
         ScopedTimer pack_timer;
         auto bytes = encode(blob);

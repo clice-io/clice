@@ -18,6 +18,7 @@ import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
 import :semantic.symbol;
+import :semantic.token_class;
 import :support.fuzzy_matcher;
 import :support.markup;
 import :syntax.completion;
@@ -2281,7 +2282,13 @@ public:
                    })) {
                     continue;
                 }
-                clang::DeclContext* scope = ast.getTranslationUnitDecl();
+                // Sema offers the macros defined here already; a macro is
+                // no declaration to look up.
+                if(candidate.macro && sema.getPreprocessor().isMacroDefined(candidate.name)) {
+                    continue;
+                }
+                clang::DeclContext* scope =
+                    candidate.macro ? nullptr : ast.getTranslationUnitDecl();
                 for(const auto& segment: segments) {
                     auto found = visible(scope, segment);
                     auto space =
@@ -2588,13 +2595,14 @@ bool scope_candidates(const index::IndexQuery& query,
     };
     auto found = index::completables(query, prefix, file, scope_candidate_limit);
     for(auto& [symbol, declared]: found.names) {
-        // A macro belongs to no namespace.
-        if(symbol.kind == SymbolKind::Macro) {
-            continue;
-        }
+        bool macro = symbol.kind == SymbolKind::Macro;
         ScopeCandidate candidate{
             .name = symbol.name,
-            .kind = kind_of(symbol.kind),
+            .kind = !macro ? kind_of(symbol.kind)
+                    : symbol.token_class.has(SemanticTokenModifier::Callable)
+                        ? protocol::CompletionItemKind::Function
+                        : protocol::CompletionItemKind::Constant,
+            .macro = macro,
             .is_template = index::has_flag(symbol.flags, index::SymbolFlags::Template),
             .deprecated = index::has_flag(symbol.flags, index::SymbolFlags::Deprecated),
             .symbol = symbol.hash,
@@ -2719,22 +2727,19 @@ auto include_completion(const CompletionName& completing,
     auto candidates =
         complete_include_path(search, path::parent_path(path), completing.prefix, angled, scope);
 
-    // A directory continues the path, replacing a `/` already
-    // there; a header ends it and closes the directive, replacing
-    // the rest of the path through a closing delimiter already there.
+    // A directory leaves the path open: the `/` typed after it asks
+    // again, for the directory's own entries. A header ends the path
+    // and closes the directive, replacing the rest of the path through
+    // a closing delimiter already there.
     char closer = angled ? '>' : '"';
     auto edit = [&](const IncludeCandidate& candidate) {
         auto end = completing.replace.end;
-        if(candidate.is_directory) {
-            if(text.substr(end).starts_with("/")) {
-                end += 1;
-            }
-        } else if(completing.closed) {
+        if(!candidate.is_directory && completing.closed) {
             end = static_cast<std::uint32_t>(text.find(closer, end)) + 1;
         }
         return protocol::TextEdit{
             .range = *map.range({completing.replace.begin, end}, PositionEncoding::UTF16),
-            .new_text = candidate.name + (candidate.is_directory ? '/' : closer),
+            .new_text = candidate.is_directory ? candidate.name : candidate.name + closer,
         };
     };
     std::vector<protocol::CompletionItem> items;
@@ -2746,6 +2751,116 @@ auto include_completion(const CompletionName& completing,
                                    : protocol::CompletionItemKind::File;
         item.sort_text = std::format("{:010}", c.order);
         item.text_edit = edit(c);
+        items.push_back(std::move(item));
+    }
+    return completion_list(std::move(items), limit);
+}
+
+auto directive_completion(const CompletionName& completing,
+                          const PositionMap& map,
+                          bool conditional,
+                          const clang::LangOptions& dialect,
+                          const CodeCompletionOptions& options,
+                          const CompletionClient& client,
+                          std::uint32_t limit) -> protocol::CompletionList {
+    // Clang's CodeCompletePreprocessorDirective, which a compile would
+    // answer with, placeholders in braces.
+    struct Pattern {
+        llvm::StringLiteral name;
+        llvm::StringLiteral arguments;
+    };
+
+    llvm::SmallVector<Pattern, 32> patterns = {
+        {"if",     " {condition}"},
+        {"ifdef",  " {macro}"    },
+        {"ifndef", " {macro}"    },
+    };
+    if(conditional) {
+        patterns.append({
+            {"elif",     " {condition}"},
+            {"elifdef",  " {macro}"    },
+            {"elifndef", " {macro}"    },
+            {"else",     ""            },
+            {"endif",    ""            },
+        });
+    }
+    patterns.append({
+        {"include", R"( "{header}")"           },
+        {"include", " <{header}>"              },
+        {"define",  " {macro}"                 },
+        {"define",  " {macro}({args})"         },
+        {"undef",   " {macro}"                 },
+        {"line",    " {number}"                },
+        {"line",    R"( {number} "{filename}")"},
+        {"error",   " {message}"               },
+        {"pragma",  " {arguments}"             },
+    });
+    if(dialect.ObjC) {
+        patterns.append({
+            {"import", R"( "{header}")"},
+            {"import", " <{header}>"   },
+        });
+    }
+    patterns.append({
+        {"include_next", R"( "{header}")"},
+        {"include_next", " <{header}>"   },
+        {"warning",      " {message}"    },
+    });
+    if(dialect.C23) {
+        patterns.append({
+            {"embed", R"( "{file}")"},
+            {"embed", " <{file}>"   },
+        });
+    }
+
+    LocalSourceRange typed(completing.replace.begin,
+                           completing.replace.begin +
+                               static_cast<std::uint32_t>(completing.prefix.size()));
+    auto typed_range = map.range(typed, PositionEncoding::UTF16);
+    auto whole_range = map.range(completing.replace, PositionEncoding::UTF16);
+    bool snippets = options.statement_snippets && client.snippets;
+    FuzzyMatcher matcher(completing.prefix);
+    llvm::StringSet<> listed;
+    std::vector<protocol::CompletionItem> items;
+    for(auto& pattern: patterns) {
+        auto score = matcher.match(pattern.name);
+        // Without its placeholders a pattern is its name: the variants of
+        // one directive collapse.
+        if(!score || (!snippets && !listed.insert(pattern.name).second)) {
+            continue;
+        }
+        protocol::CompletionItem item{.label = pattern.name.str()};
+        item.kind = snippets ? protocol::CompletionItemKind::Snippet
+                             : protocol::CompletionItemKind::Keyword;
+        std::string text = pattern.name.str();
+        if(snippets && !pattern.arguments.empty()) {
+            std::string shown;
+            unsigned placeholders = 0;
+            for(auto rest = llvm::StringRef(pattern.arguments); !rest.empty();) {
+                auto [literal, placeholder] = rest.split('{');
+                auto [name, after] = placeholder.split('}');
+                text += escape_snippet(literal);
+                shown += literal;
+                if(!name.empty()) {
+                    placeholders += 1;
+                    text += std::format("${{{}:{}}}", placeholders, name);
+                    shown += name;
+                }
+                rest = after;
+            }
+            item.insert_text_format = protocol::InsertTextFormat::Snippet;
+            item.label_details = protocol::CompletionItemLabelDetails{.detail = std::move(shown)};
+        }
+        if(client.insert_replace && typed != completing.replace) {
+            item.text_edit = protocol::InsertReplaceEdit{
+                .new_text = std::move(text),
+                .insert = *typed_range,
+                .replace = *whole_range,
+            };
+        } else {
+            item.text_edit = protocol::TextEdit{.range = *whole_range, .new_text = std::move(text)};
+        }
+        item.sort_text = sort_text(*score * priority_weight(clang::CCP_CodePattern), std::nullopt);
         items.push_back(std::move(item));
     }
     return completion_list(std::move(items), limit);

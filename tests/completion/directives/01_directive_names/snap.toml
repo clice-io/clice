@@ -1,0 +1,59 @@
+[default.empty.completion]
+items = [
+    { label = "define", kind = "Keyword", insert = "define" },
+    { label = "error", kind = "Keyword", insert = "error" },
+    { label = "if", kind = "Keyword", insert = "if" },
+    { label = "ifdef", kind = "Keyword", insert = "ifdef" },
+    { label = "ifndef", kind = "Keyword", insert = "ifndef" },
+    { label = "include", kind = "Keyword", insert = "include" },
+    { label = "include_next", kind = "Keyword", insert = "include_next" },
+    { label = "line", kind = "Keyword", insert = "line" },
+    { label = "pragma", kind = "Keyword", insert = "pragma" },
+    { label = "undef", kind = "Keyword", insert = "undef" },
+]
+more = 1
+
+[default.include.completion]
+items = [
+    { label = "include", kind = "Keyword", insert = "include" },
+    { label = "include_next", kind = "Keyword", insert = "include_next" },
+]
+
+[default.conditional.completion]
+items = [
+    { label = "elif", kind = "Keyword", insert = "elif" },
+    { label = "elifdef", kind = "Keyword", insert = "elifdef" },
+    { label = "elifndef", kind = "Keyword", insert = "elifndef" },
+    { label = "else", kind = "Keyword", insert = "else" },
+]
+
+[configured.empty.completion]
+items = [
+    { label = "define macro", kind = "Snippet", insert = "define ${1:macro}", snippet = true },
+    { label = "define macro(args)", kind = "Snippet", insert = "define ${1:macro}(${2:args})", snippet = true },
+    { label = "error message", kind = "Snippet", insert = "error ${1:message}", snippet = true },
+    { label = "if condition", kind = "Snippet", insert = "if ${1:condition}", snippet = true },
+    { label = "ifdef macro", kind = "Snippet", insert = "ifdef ${1:macro}", snippet = true },
+    { label = "ifndef macro", kind = "Snippet", insert = "ifndef ${1:macro}", snippet = true },
+    { label = 'include "header"', kind = "Snippet", insert = 'include "${1:header}"', snippet = true },
+    { label = "include <header>", kind = "Snippet", insert = "include <${1:header}>", snippet = true },
+    { label = 'include_next "header"', kind = "Snippet", insert = 'include_next "${1:header}"', snippet = true },
+    { label = "include_next <header>", kind = "Snippet", insert = "include_next <${1:header}>", snippet = true },
+]
+more = 5
+
+[configured.include.completion]
+items = [
+    { label = 'include "header"', kind = "Snippet", insert = 'include "${1:header}"', snippet = true },
+    { label = "include <header>", kind = "Snippet", insert = "include <${1:header}>", snippet = true },
+    { label = 'include_next "header"', kind = "Snippet", insert = 'include_next "${1:header}"', snippet = true },
+    { label = "include_next <header>", kind = "Snippet", insert = "include_next <${1:header}>", snippet = true },
+]
+
+[configured.conditional.completion]
+items = [
+    { label = "elif condition", kind = "Snippet", insert = "elif ${1:condition}", snippet = true },
+    { label = "elifdef macro", kind = "Snippet", insert = "elifdef ${1:macro}", snippet = true },
+    { label = "elifndef macro", kind = "Snippet", insert = "elifndef ${1:macro}", snippet = true },
+    { label = "else", kind = "Snippet", insert = "else" },
+]

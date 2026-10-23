@@ -20,7 +20,7 @@
     },
     {
       "path": "main.cpp",
-      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    using Shape = circ;\n    on_rese;\n    void (*handler)(int) = on_resi;\n    redra;\n    Gri grid;\n    Ro row;\n    int size = grid_si;\n    int shade = shade_d;\n    auto tone = tone_br;\n    int count = circle_cou;\n    vecto values;\n    double scale = GEO_SC;\n    repai;\n    return geo::area(c.radius) * scale;\n}\n\n}  // namespace app\n",
+      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    using Shape = circ;\n    on_rese;\n    void (*handler)(int) = on_resi;\n    redra;\n    Gri grid;\n    Ro row;\n    int size = grid_si;\n    int shade = shade_d;\n    auto tone = tone_br;\n    int count = circle_cou;\n    vecto values;\n    double scale = GEO_SC;\n    int most = SIZES_;\n    repai;\n    return geo::area(c.radius) * scale;\n}\n\n}  // namespace app\n",
       "markers": [
         {
           "name": "not_included",
@@ -101,9 +101,15 @@
           "range": false
         },
         {
+          "name": "macro_not_included",
+          "begin": 346,
+          "end": 346,
+          "range": false
+        },
+        {
           "name": "deprecated",
-          "begin": 334,
-          "end": 334,
+          "begin": 357,
+          "end": 357,
           "range": false
         }
       ]
@@ -144,12 +150,17 @@
     },
     {
       "path": "shapes.cpp",
-      "text": "#include \"shapes.h\"\n#include \"standard.h\"\n#include <bits/shapes_impl.h>\n\nnamespace shapes {\n\nvoid on_resize(int width) {}\n\n}  // namespace shapes\n\nnamespace art {\n\nint redraw_budget = 0;\n\n}  // namespace art\n",
+      "text": "#include \"shapes.h\"\n#include \"sizes.h\"\n#include \"standard.h\"\n#include <bits/shapes_impl.h>\n\nnamespace shapes {\n\nvoid on_resize(int width) {}\n\n}  // namespace shapes\n\nnamespace art {\n\nint redraw_budget = 0;\n\n}  // namespace art\n",
       "markers": []
     },
     {
       "path": "shapes.h",
       "text": "#pragma once\n\nnamespace shapes {\n\nstruct Circle {\n    double radius;\n    static int circle_count;\n};\n\nvoid on_resize(int width);\nvoid on_reset();\n\nint circle_total = 0;\nvoid redraw();\nvoid redraw(int times);\n\n[[deprecated(\"use redraw\")]] void repaint();\nvoid repaint_all();\n\ntemplate <class T>\nstruct Grid {};\n\ntemplate <class T>\nusing Row = Grid<T>;\n\ntemplate <class T>\nconstexpr int grid_size = 4;\n\nenum Shade { shade_dark };\n\nenum class Tone { tone_bright };\n\n}  // namespace shapes\n",
+      "markers": []
+    },
+    {
+      "path": "sizes.h",
+      "text": "#ifndef SIZES_H\n#define SIZES_H\n\n#define SIZES_MAX 64\n#define SIZES_CLAMP(value) ((value) < SIZES_MAX ? (value) : SIZES_MAX)\n\n#endif\n",
       "markers": []
     },
     {
@@ -603,6 +614,65 @@
           }
         },
         {
+          "label": "macro_not_included",
+          "marker": "macro_not_included",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "SIZES_CLAMP",
+                  "kind": "Function",
+                  "insert": "SIZES_CLAMP($0)",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-17",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"sizes.h\"\n"
+                    }
+                  ]
+                },
+                {
+                  "label": "SIZES_MAX",
+                  "kind": "Constant",
+                  "insert": "SIZES_MAX",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-17",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"sizes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
           "label": "deprecated",
           "marker": "deprecated",
           "value": {
@@ -616,7 +686,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-17",
+                        "$place": "⟦⟧ @-18",
                         "path": "main.cpp",
                         "range": {
                           "start": {
@@ -642,7 +712,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-17",
+                        "$place": "⟦⟧ @-18",
                         "path": "main.cpp",
                         "range": {
                           "start": {
@@ -903,6 +973,15 @@
                   "insert": "GEO_SCALE"
                 }
               ]
+            }
+          }
+        },
+        {
+          "label": "macro_not_included",
+          "marker": "macro_not_included",
+          "value": {
+            "completion": {
+              "items": []
             }
           }
         },

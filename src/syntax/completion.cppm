@@ -18,6 +18,8 @@ namespace clice {
 struct CompletionName {
     enum class Kind : std::uint8_t {
         None,
+        /// The name of a directive, after its `#`.
+        Directive,
         IncludeQuoted,
         IncludeAngled,
         Import,
@@ -37,9 +39,9 @@ struct CompletionName {
     bool closed = false;
 };
 
-/// The name the cursor at `offset` is in: the header name of an #include
-/// or a `__has_include`, or the name of an import or a module declaration.
-/// Pure text parsing — no compiler state needed.
+/// The name the cursor at `offset` is in: a directive's name, the header
+/// name of an #include or a `__has_include`, or the name of an import or a
+/// module declaration. Pure text parsing — no compiler state needed.
 CompletionName completion_name(llvm::StringRef text,
                                std::uint32_t offset,
                                const clang::LangOptions& dialect);
@@ -94,6 +96,7 @@ struct IncludeCandidate {
     /// command names, last the toolchain's own; in search order within each,
     /// after the others of its group when the name is reserved (`_`-led: a
     /// library's internals, libc++'s `__algorithm/`, MinGW's `_mingw.h`).
+    /// A hidden name (`.git/`) follows all the others.
     std::uint32_t order = 0;
 };
 

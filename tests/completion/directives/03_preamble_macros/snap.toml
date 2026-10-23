@@ -1,0 +1,5 @@
+["a directive typed after the includes".macros.completion]
+items = [
+    { label = "DIR_ALPHA", kind = "Keyword" },
+    { label = "DIR_BETA", kind = "Keyword" },
+]
