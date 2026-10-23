@@ -429,6 +429,7 @@ Toolchain::Frontend Toolchain::frontend(const Job& job) {
         auto base = Spelling::cwd();
         std::vector<Spelling> spelled;
         for(auto& dir: shadowed) {
+            result.shadowed.push_back(commands.intern(dir));
             spelled.emplace_back(dir, base);
         }
         result.hidden = hidden_files(extract_search_config(result.args, base), spelled);
@@ -480,8 +481,10 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
         }
     }
 
-    resolved_configs.push_back(
-        {.driver = query.driver, .args = commands.persist(staged), .hidden = query.hidden});
+    resolved_configs.push_back({.driver = query.driver,
+                                .args = commands.persist(staged),
+                                .hidden = query.hidden,
+                                .shadowed = query.shadowed});
     return static_cast<ResolvedID>(resolved_configs.size() - 1);
 }
 
@@ -687,6 +690,10 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
     std::size_t last_user_content = argv.size();
     std::size_t includes = 0;
     for(auto& arg: rc.args) {
+        if(!opts.shadowed_dirs && names_search_dir(arg.opt_id) &&
+           ranges::contains(rc.shadowed, llvm::StringRef(arg.values[0]))) {
+            continue;
+        }
         if(arg.opt_id == option::OPT_include) {
             includes += 1;
             if(includes > opts.kept_includes) {

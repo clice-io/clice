@@ -196,12 +196,12 @@ struct Rendered {
     vfs::HiddenFiles hidden;
 };
 
-Rendered render_command(Project& project, const CommandRef& ref) {
+Rendered render_command(Project& project, const CommandRef& ref, const RenderOptions& opts = {}) {
     auto path = project.cdb.spelling(ref.file);
     auto resolution = project.toolchain.resolve(ref.command, ref.input);
     if(resolution && resolution->query_failure.empty()) {
         // The resolution is cached: rendering resolves it the same.
-        auto rendered = project.toolchain.render(ref, path);
+        auto rendered = project.toolchain.render(ref, path, opts);
         return {
             .arguments = {rendered.argv.begin(), rendered.argv.end()},
             .hidden = std::move(rendered.hidden),
@@ -406,7 +406,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
                                      identity,
                                      identity);
     project.toolchain.warm(ref);
-    auto rendered = render_command(project, ref);
+    auto rendered = render_command(project, ref, {.shadowed_dirs = false});
     if(json) {
         print_json(DatabaseEntry{.directory = directory.str(),
                                  .file = sources.front().str(),
@@ -493,7 +493,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
         // The command of one clice does not compile, another language's
         // source, is left as it is too.
         if(ref != refs.end()) {
-            auto rendered = render_command(project, ref->second);
+            auto rendered = render_command(project, ref->second, {.shadowed_dirs = false});
             if(rendered.error) {
                 unconverted += 1;
             }

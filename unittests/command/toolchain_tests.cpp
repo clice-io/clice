@@ -412,6 +412,12 @@ ZEST_CASE(OtherBuiltinHeadersStay, skip = Windows) {
     auto hidden = f.toolchain.render(ref, f.db.spelling(ref.file)).hidden;
     ZEXPECT(hidden.hides(path::join(theirs, "stddef.h")));
     ZEXPECT(!hidden.hides(path::join(theirs, "xray", "xray_interface.h")));
+
+    /// A command another tool reads, which could not hide them, leaves
+    /// them out.
+    auto converted = f.toolchain.render(ref, f.db.spelling(ref.file), {.shadowed_dirs = false});
+    ZEXPECT(!contains(converted.argv, theirs));
+    ZEXPECT(adjacent(converted.argv, "-internal-isystem", builtin_headers));
 }
 
 ZEST_CASE(AliasedBuiltinHeaders, skip = Windows) {

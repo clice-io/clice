@@ -93,6 +93,11 @@ struct RenderOptions {
     /// How many of the command's `-include`s to keep, in order: the ones
     /// past them are left out.
     std::size_t kept_includes = std::numeric_limits<std::size_t>::max();
+
+    /// Keep the directories of another compiler's builtin headers that
+    /// clang's own shadow; a command another tool reads leaves them out,
+    /// since it cannot hide the files of them clang's stand in for.
+    bool shadowed_dirs = true;
 };
 
 /// Get the resource directory for clang builtin headers. Computed once

@@ -40,6 +40,9 @@ public:
 
         /// The files its compiles do not see (Frontend::hidden).
         std::shared_ptr<const vfs::HiddenFiles> hidden;
+
+        /// Frontend::shadowed.
+        std::vector<llvm::StringRef> shadowed;
     };
 
     /// `failed_retry` bounds the negative cache: a failed key is retried
@@ -161,10 +164,14 @@ private:
         /// installation, whose builtin headers and libc++ belong together.
         bool own_resource_dir = false;
 
-        /// What the job's compiles do not see of the builtin headers of
-        /// another compiler the job keeps behind clang's own (GCC's, another
-        /// clang's): those clang has as well, which clang's stand in for,
-        /// and further down the search list the copies that compiler never
+        /// The directories of another compiler's builtin headers the job
+        /// keeps behind clang's own (GCC's, another clang's), as `args`
+        /// names them.
+        std::vector<llvm::StringRef> shadowed;
+
+        /// What the job's compiles do not see of the `shadowed` directories:
+        /// the headers clang has as well, which clang's stand in for, and
+        /// further down the search list the copies that compiler never
         /// reaches. Null when the job keeps none.
         std::shared_ptr<const vfs::HiddenFiles> hidden;
     };
