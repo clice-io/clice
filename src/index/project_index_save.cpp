@@ -278,8 +278,6 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     }
     internals_changed.clear();
 
-    // Everything below hands out path ids before the records are taken:
-    // the header names its files by them.
     auto& blobs = batch.blobs;
     for(auto& [tu, manifest]: changed_manifests) {
         auto key = file_key(tu);
@@ -289,6 +287,8 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         }
         blobs.push_back({BlobKind::TUManifest, std::move(key), encode_manifest(*manifest)});
     }
+    // The header names its files by path ids, handed out before the
+    // records are taken.
     header.search_pending.assign(pending_symbols.begin(), pending_symbols.end());
     ranges::sort(header.search_pending);
     header.search_pending_files.clear();

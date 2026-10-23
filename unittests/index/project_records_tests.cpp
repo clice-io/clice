@@ -98,28 +98,15 @@ ZEST_CASE(FileRoundTrip) {
     index::FileRecord file{
         .path = 4,
         .absent = true,
-        .consumed = {10,                                            20 },
+        .consumed = {10,  20 },
         .generation = 20,
-        .stored = {111,                                           222},
+        .stored = {111, 222},
         .run = 1700000000000,
-        .versions = {{.content_hash = 10, .id = 3, .manifests = 2},
-                     {.content_hash = 20, .id = 7, .manifests = 1}     },
     };
     auto buffer = aligned(index::encode_record(file));
     auto read = index::decode_file(buffer->getBuffer());
     ZASSERT(read);
     ZEXPECT(*read == file);
-
-    // Versions out of order, or one no manifest names, are no file record.
-    auto versions = file.versions;
-    ranges::reverse(file.versions);
-    auto reversed = aligned(index::encode_record(file));
-    ZEXPECT(!index::decode_file(reversed->getBuffer()));
-    file.versions = versions;
-    file.versions[1].manifests = 0;
-    auto unnamed = aligned(index::encode_record(file));
-    ZEXPECT(!index::decode_file(unnamed->getBuffer()));
-    file.versions = versions;
 
     // A shard generation without the variants it stores, or the other way
     // round, is no file record; nor are consumed hashes out of order.
@@ -162,6 +149,10 @@ ZEST_CASE(DependentsRoundTrip) {
     };
     resolution.units = ids({3, 9});
     dependents.resolutions.push_back(std::move(resolution));
+    dependents.versions = {
+        {.content_hash = 10, .id = 3, .manifests = 2},
+        {.content_hash = 20, .id = 7, .manifests = 1},
+    };
     auto buffer = aligned(index::encode_record(dependents));
     auto read = index::decode_dependents(buffer->getBuffer());
     ZASSERT(read);
@@ -173,6 +164,29 @@ ZEST_CASE(DependentsRoundTrip) {
     ZASSERT(read->resolutions.size() == std::size_t(1));
     ZEXPECT(read->resolutions[0].edges == dependents.resolutions[0].edges);
     ZEXPECT(read->resolutions[0].units == dependents.resolutions[0].units);
+    ZEXPECT(read->versions == dependents.versions);
+
+    // Versions out of order, one no manifest names, or columns of other
+    // lengths are no dependents record.
+    auto versions = dependents.versions;
+    ranges::reverse(dependents.versions);
+    auto reversed = aligned(index::encode_record(dependents));
+    ZEXPECT(!index::decode_dependents(reversed->getBuffer()));
+    dependents.versions = versions;
+    dependents.versions[1].manifests = 0;
+    auto unnamed = aligned(index::encode_record(dependents));
+    ZEXPECT(!index::decode_dependents(unnamed->getBuffer()));
+    dependents.versions = versions;
+    index::DependentsBlob blob;
+    blob.version_hashes = {10, 20};
+    blob.version_ids = {3, 7};
+    blob.version_manifests = {2};
+    auto short_column = aligned(index::encode(blob));
+    ZEXPECT(!index::decode_dependents(short_column->getBuffer()));
+    blob.version_ids = {3};
+    blob.version_manifests = {2, 1};
+    short_column = aligned(index::encode(blob));
+    ZEXPECT(!index::decode_dependents(short_column->getBuffer()));
 
     // The last unit leaving a key takes the key with it.
     index::remove_unit(dependents.readers, 20, 7);

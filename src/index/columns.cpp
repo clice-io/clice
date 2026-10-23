@@ -198,7 +198,9 @@ std::optional<Bitmap> read_postings(llvm::ArrayRef<std::uint8_t> bytes, std::uin
     if(count == 0) {
         return highs.empty() ? std::optional(Bitmap()) : std::nullopt;
     }
-    if(highs.empty() || highs.back() == 0) {
+    // Each id sets one high bit, so a count past them is refused before it
+    // sizes an allocation.
+    if(highs.empty() || highs.back() == 0 || count > highs.size() * 8) {
         return std::nullopt;
     }
     std::vector<std::uint32_t> ids;

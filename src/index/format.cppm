@@ -625,12 +625,6 @@ struct FileBlobOf {
 
     /// For a unit, its manifest's built_at; 0 when the file is no unit.
     std::uint64_t run = 0;
-
-    /// The versions of the file the manifests name, ascending by content
-    /// hash: each one's version record id and how many manifests name it.
-    Seq<std::uint64_t> version_hashes;
-    Seq<std::uint32_t> version_ids;
-    Seq<std::uint32_t> version_manifests;
 };
 
 using FileBlob = FileBlobOf<codec::blob::Owned>;
@@ -669,6 +663,11 @@ struct DependentsBlobOf {
     Seq<UnitSetOf<Seq>> uses;
     /// The distinct resolutions of the file's own `#include` lines.
     Seq<IncludeResolutionOf<Seq>> resolutions;
+    /// The versions of the file the manifests name, ascending by content
+    /// hash: each one's version record id and how many manifests name it.
+    Seq<std::uint64_t> version_hashes;
+    Seq<std::uint32_t> version_ids;
+    Seq<std::uint32_t> version_manifests;
 };
 
 using DependentsBlob = DependentsBlobOf<codec::blob::Owned>;

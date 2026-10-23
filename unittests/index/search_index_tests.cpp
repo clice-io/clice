@@ -232,6 +232,8 @@ ZEST_CASE(PostingListRejected) {
     ZEXPECT(rejects({0x05}, 4));
     ZEXPECT(rejects({0x00, 0x01}, 100));
     ZEXPECT(rejects({0x80, 0x80, 0x80, 0x80, 0x80, 0x01}, 100));
+    // A count of ids taking no low bits, far past the high bits.
+    ZEXPECT(rejects({0xff, 0xff, 0xff, 0xff, 0x0f, 0x01}, ~0u));
 
     // 8 and 9 in a universe of 16: a count, three low bits each, then the
     // high parts.

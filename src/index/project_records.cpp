@@ -177,25 +177,16 @@ std::vector<std::byte> encode_record(const FileRecord& file) {
     blob.generation = file.generation;
     blob.stored = file.stored;
     blob.run = file.run;
-    for(auto& version: file.versions) {
-        blob.version_hashes.push_back(version.content_hash);
-        blob.version_ids.push_back(version.id);
-        blob.version_manifests.push_back(version.manifests);
-    }
     return encode(blob);
 }
 
 std::optional<FileRecord> decode_file(llvm::StringRef data) {
     auto* root = view_record<FileBlob>(data);
     if(!root || !strictly_ascending(root->consumed) ||
-       (root->generation == 0) != root->stored.empty() ||
-       !strictly_ascending(root->version_hashes) ||
-       root->version_ids.size() != root->version_hashes.size() ||
-       root->version_manifests.size() != root->version_hashes.size() ||
-       ranges::contains(root->version_manifests, 0u)) {
+       (root->generation == 0) != root->stored.empty()) {
         return std::nullopt;
     }
-    FileRecord file{
+    return FileRecord{
         .path = root->path,
         .absent = root->absent,
         .consumed = {root->consumed.begin(), root->consumed.end()},
@@ -203,14 +194,6 @@ std::optional<FileRecord> decode_file(llvm::StringRef data) {
         .stored = {root->stored.begin(),   root->stored.end()  },
         .run = root->run,
     };
-    for(std::uint32_t i = 0; i < root->version_hashes.size(); i += 1) {
-        file.versions.push_back({
-            .content_hash = root->version_hashes[i],
-            .id = root->version_ids[i],
-            .manifests = root->version_manifests[i],
-        });
-    }
-    return file;
 }
 
 std::vector<std::byte> encode_record(const Dependents& dependents) {
@@ -228,6 +211,11 @@ std::vector<std::byte> encode_record(const Dependents& dependents) {
             out.targets.push_back(target);
         }
         out.units = file_set(resolution.units);
+    }
+    for(auto& version: dependents.versions) {
+        blob.version_hashes.push_back(version.content_hash);
+        blob.version_ids.push_back(version.id);
+        blob.version_manifests.push_back(version.manifests);
     }
     return encode(blob);
 }
@@ -265,6 +253,19 @@ std::optional<Dependents> decode_dependents(llvm::StringRef data) {
             decoded.edges.emplace_back(resolution.lines[i], resolution.targets[i]);
         }
         decoded.units = std::move(*units);
+    }
+    if(!strictly_ascending(root->version_hashes) ||
+       root->version_ids.size() != root->version_hashes.size() ||
+       root->version_manifests.size() != root->version_hashes.size() ||
+       ranges::contains(root->version_manifests, 0u)) {
+        return std::nullopt;
+    }
+    for(std::uint32_t i = 0; i < root->version_hashes.size(); i += 1) {
+        dependents.versions.push_back({
+            .content_hash = root->version_hashes[i],
+            .id = root->version_ids[i],
+            .manifests = root->version_manifests[i],
+        });
     }
     return dependents;
 }

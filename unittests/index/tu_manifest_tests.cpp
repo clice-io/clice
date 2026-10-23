@@ -93,7 +93,7 @@ ZEST_CASE(ManifestVersionSetsRejected) {
 
     // A set of versions past the table.
     layout = valid;
-    layout.imports = index::write_postings(Bitmap({3}), 4);
+    layout.imports = index::write_postings(Bitmap({3}), 3);
     ZEXPECT(!decodes(layout));
 
     layout = valid;

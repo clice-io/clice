@@ -617,31 +617,29 @@ VersionID ProjectIndex::version_of(std::uint32_t id) const {
     return version;
 }
 
-void ProjectIndex::name_version(VersionID version) {
-    auto& named = files.version(version);
-    auto& file = change_file(named.fid);
-    auto it =
-        ranges::lower_bound(file.versions, named.content_hash, {}, &NamedVersion::content_hash);
-    if(it == file.versions.end() || it->content_hash != named.content_hash) {
-        it = file.versions.insert(it,
-                                  {.content_hash = named.content_hash, .id = header.next_version});
+void ProjectIndex::retain_version(VersionID version) {
+    auto& record = files.version(version);
+    auto& versions = change_dependents(record.fid).versions;
+    auto it = ranges::lower_bound(versions, record.content_hash, {}, &NamedVersion::content_hash);
+    if(it == versions.end() || it->content_hash != record.content_hash) {
+        it = versions.insert(it, {.content_hash = record.content_hash, .id = header.next_version});
         header.next_version += 1;
         version_records.changed[number_key(it->id)] =
-            PersistedVersion{.path = file.path, .content_hash = named.content_hash};
+            PersistedVersion{.path = path_id(record.fid), .content_hash = record.content_hash};
     }
     it->manifests += 1;
     id_versions.try_emplace(it->id, version);
     version_ids.try_emplace(version, it->id);
 }
 
-void ProjectIndex::unname_version(VersionID version) {
-    auto& named = files.version(version);
-    auto& file = change_file(named.fid);
-    auto it =
-        ranges::lower_bound(file.versions, named.content_hash, {}, &NamedVersion::content_hash);
-    // Only a stored manifest whose file record lost the version gets here.
-    if(it == file.versions.end() || it->content_hash != named.content_hash) {
-        damaged_record(BlobKind::File, file_key(named.fid));
+void ProjectIndex::release_version(VersionID version) {
+    auto& record = files.version(version);
+    auto& versions = change_dependents(record.fid).versions;
+    auto it = ranges::lower_bound(versions, record.content_hash, {}, &NamedVersion::content_hash);
+    // Only a stored manifest whose dependents record lost the version gets
+    // here.
+    if(it == versions.end() || it->content_hash != record.content_hash) {
+        damaged_record(BlobKind::Dependents, file_key(record.fid));
         return;
     }
     it->manifests -= 1;
@@ -649,7 +647,7 @@ void ProjectIndex::unname_version(VersionID version) {
         version_records.changed[number_key(it->id)] = std::nullopt;
         id_versions.erase(it->id);
         version_ids.erase(version);
-        file.versions.erase(it);
+        versions.erase(it);
     }
 }
 
@@ -668,8 +666,6 @@ std::optional<TUManifest> ProjectIndex::decode_manifest(llvm::StringRef data) co
     }
     auto& manifest = persisted->manifest;
     for_each_version(manifest, [&](std::uint32_t& id) { id = versions[id].raw; });
-    ranges::sort(manifest.absent);
-    ranges::sort(manifest.imports);
     return std::move(manifest);
 }
 
@@ -694,10 +690,8 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(Fid tu, TUManifest manifest)
     // The run is what tells a unit with a manifest (FileRecord::run).
     assert(manifest.built_at != 0 && "a manifest names the run that built it");
     assert(manifest.tu_version.valid() && "a manifest names the unit's version");
-    for(auto* versions: {&manifest.absent, &manifest.imports}) {
-        ranges::sort(*versions);
-        versions->erase(ranges::unique(*versions).begin(), versions->end());
-    }
+    ranges::sort(manifest.absent);
+    manifest.absent.erase(ranges::unique(manifest.absent).begin(), manifest.absent.end());
     return replace_manifest(tu, std::move(manifest));
 }
 
@@ -916,12 +910,12 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
     auto new_versions = versions_of(manifest);
     for(auto version: new_versions) {
         if(!old_versions.contains(version)) {
-            name_version(version);
+            retain_version(version);
         }
     }
     for(auto version: old_versions) {
         if(!new_versions.contains(version)) {
-            unname_version(version);
+            release_version(version);
         }
     }
 

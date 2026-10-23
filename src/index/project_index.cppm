@@ -544,13 +544,13 @@ private:
     /// holds no such version.
     VersionID version_of(std::uint32_t id) const;
 
-    /// A manifest about to be installed names `version`: count it, handing
-    /// out a version id when no manifest named it yet.
-    void name_version(VersionID version);
+    /// A manifest being installed names `version`: count it, handing out a
+    /// version id when no other manifest names it.
+    void retain_version(VersionID version);
 
-    /// A manifest about to be replaced names `version` no more: when no
-    /// other one does, its version id goes.
-    void unname_version(VersionID version);
+    /// A manifest being replaced no longer names `version`: when no other
+    /// one does, its version record goes.
+    void release_version(VersionID version);
 
     /// The manifest the bytes hold, its versions interned into the file
     /// table; nullopt when they are not one.

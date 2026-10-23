@@ -655,6 +655,7 @@ ZEST_CASE(FailedWriteNotCounted) {
     ZASSERT(reader.open(*project.database) == index::LoadOutcome::Loaded);
     auto unit = files.intern(Spelling::absolute(indexed.tu_path));
     ZEXPECT(reader.indexed(unit));
+    ZEXPECT(reader.manifest(unit).has_value());
     Fid declared;
     reader.for_each_symbol([&](index::SymbolHash, const index::SymbolView& view, std::uint32_t) {
         if(view.name == "uncommitted") {

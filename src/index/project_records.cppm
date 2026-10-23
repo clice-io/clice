@@ -42,18 +42,6 @@ struct Header {
     std::vector<std::uint32_t> owed_units;
 };
 
-/// A version of a file the manifests name: its content hash, its version
-/// record's id and how many manifests name it.
-struct NamedVersion {
-    std::uint64_t content_hash = 0;
-
-    std::uint32_t id = 0;
-
-    std::uint32_t manifests = 0;
-
-    friend bool operator==(const NamedVersion&, const NamedVersion&) = default;
-};
-
 /// FileBlob decoded.
 struct FileRecord {
     std::uint32_t path = 0;
@@ -67,9 +55,6 @@ struct FileRecord {
     std::vector<VariantHash> stored;
 
     std::uint64_t run = 0;
-
-    /// Ascending by content hash.
-    std::vector<NamedVersion> versions;
 
     friend bool operator==(const FileRecord&, const FileRecord&) = default;
 };
@@ -101,6 +86,18 @@ struct IncludeResolution {
     Bitmap units;
 };
 
+/// A version of a file the manifests name: its content hash, its version
+/// record's id and how many manifests name it.
+struct NamedVersion {
+    std::uint64_t content_hash = 0;
+
+    std::uint32_t id = 0;
+
+    std::uint32_t manifests = 0;
+
+    friend bool operator==(const NamedVersion&, const NamedVersion&) = default;
+};
+
 /// DependentsBlob decoded.
 struct Dependents {
     KeyedUnits readers;
@@ -115,9 +112,12 @@ struct Dependents {
 
     std::vector<IncludeResolution> resolutions;
 
+    /// Ascending by content hash.
+    std::vector<NamedVersion> versions;
+
     bool empty() const {
         return readers.empty() && contributors.empty() && absent.isEmpty() && importers.empty() &&
-               uses.empty() && resolutions.empty();
+               uses.empty() && resolutions.empty() && versions.empty();
     }
 };
 
