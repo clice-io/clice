@@ -34,7 +34,8 @@ struct DriverErrors : clang::DiagnosticConsumer {
 }  // namespace
 
 std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
-                                             llvm::StringRef cwd) {
+                                             llvm::StringRef cwd,
+                                             bool quiet) {
     clang::DiagnosticOptions options;
     DriverErrors errors;
     clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
@@ -90,8 +91,10 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
         return std::unexpected(failure("No clang job found"));
     }
 
-    for(auto& message: errors.messages) {
-        LOG_WARN("clang's driver, reading the command of {}: {}", args.front(), message);
+    if(!quiet) {
+        for(auto& message: errors.messages) {
+            LOG_WARN("clang's driver, reading the command of {}: {}", args.front(), message);
+        }
     }
     Job job{arguments[0]};
     job.insert(job.end(), cmd->getArguments().begin(), cmd->getArguments().end());
@@ -104,9 +107,8 @@ bool names_standard(llvm::ArrayRef<std::string> args) {
     });
 }
 
-std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,
-                                          llvm::ArrayRef<std::string> mode,
-                                          llvm::StringRef cwd) {
+std::vector<std::string> clang_argv(llvm::ArrayRef<std::string> args,
+                                    llvm::ArrayRef<std::string> mode) {
     // Before C++20, clang defers template bodies on MSVC targets so that
     // code written for MSVC's lookup rules compiles, but a deferred body has
     // no AST: every feature inside it goes blind. Placed before the
@@ -118,19 +120,33 @@ std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,
     clang_args.insert(clang_args.end(), mode.begin(), mode.end());
     clang_args.push_back("-fno-delayed-template-parsing");
     clang_args.insert(clang_args.end(), args.begin() + 1, args.end());
-    return query_driver(clang_args, cwd);
+    return clang_args;
 }
 
-std::expected<Job, std::string> ask_clang_for(std::vector<std::string> args,
-                                              std::size_t driver_tokens,
-                                              std::vector<std::string> mode,
-                                              llvm::StringRef cwd) {
-    args.erase(args.begin() + 1, args.begin() + driver_tokens);
-    if(auto target = name_target(args[0]); !target.empty()) {
-        LOG_INFO("clang reads the command of {} for {}, the target its name sets", args[0], target);
-        mode.push_back("--target=" + target);
+std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,
+                                          llvm::ArrayRef<std::string> mode,
+                                          llvm::StringRef cwd) {
+    return query_driver(clang_argv(args, mode), cwd);
+}
+
+TargetNames::TargetNames(llvm::StringRef triple) :
+    engine(new clang::DiagnosticIDs(), diagnostic_options, new clang::IgnoringDiagConsumer()) {
+    if(!triple.empty()) {
+        target_options.Triple = triple.str();
+        target = clang::TargetInfo::CreateTargetInfo(engine, target_options);
     }
-    return ask_clang(args, mode, cwd);
+}
+
+bool TargetNames::knows(unsigned id, llvm::StringRef name) {
+    if(!target) {
+        return true;
+    }
+    switch(id) {
+        case option::OPT_target_cpu: return target->isValidCPUName(name);
+        case option::OPT_tune_cpu: return target->isValidTuneCPUName(name);
+        case option::OPT_target_abi: return target->setABI(name.str());
+        default: return true;
+    }
 }
 
 std::string standard_from_macros(llvm::StringRef cplusplus,

@@ -190,11 +190,8 @@ std::string riscv_isa_for_clang(llvm::StringRef isa) {
     return result;
 }
 
-/// An option of GCC's as clang's driver takes it: GCC's two-core tuning
-/// form, `-mcpu=cortex-a72.cortex-a53`, as the first core alone (clang
-/// knows no such name, and the first core's architecture is the code's;
-/// the features after the cores keep their dots, `-mcpu=cortex-m7+nofp.dp`),
-/// and a RISC-V ISA string as clang can read it.
+}  // namespace
+
 std::string for_clang(llvm::StringRef arg, const llvm::Triple& target) {
     if(arg.starts_with("-mcpu=")) {
         auto features = arg.find('+');
@@ -210,8 +207,6 @@ std::string for_clang(llvm::StringRef arg, const llvm::Triple& target) {
     }
     return arg.str();
 }
-
-}  // namespace
 
 GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) {
     GCCStyleOutput output;

@@ -88,6 +88,14 @@ public:
                            llvm::StringRef path,
                            const RenderOptions& opts = {});
 
+    /// The driver command clang's own driver reads in place of the compiler
+    /// of `ref` (read_as_clang), naming the input `path`: what `clice
+    /// command` shows of a command whose compiler could not be queried, and
+    /// the compile's last resort when that driver builds no job.
+    std::vector<const char*> render_for_clang(const CommandRef& ref,
+                                              llvm::StringRef path,
+                                              const RenderOptions& opts = {});
+
     /// Header search configuration of a ref, extracted from the resolved
     /// (cc1) command — memoized — else from the driver-level command.
     SearchConfig search_config(const CommandRef& ref);

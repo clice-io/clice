@@ -203,7 +203,7 @@ Rendered render_command(Project& project, const CommandRef& ref) {
     // Shown as clang's own driver reads it, a command whose compiler could
     // not be queried reads the same on every machine; its cc1 names the
     // machine's own headers.
-    auto argv = project.commands.render_driver(ref, path);
+    auto argv = project.toolchain.render_for_clang(ref, path);
     return {
         .arguments = {argv.begin(), argv.end()},
         .error = resolution ? std::move(resolution->query_failure) : std::move(resolution.error()),

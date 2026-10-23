@@ -224,30 +224,6 @@ ZEST_CASE(ResourceDir) {
     ZEXPECT(count == 1);
 };
 
-ZEST_CASE(TargetFromName) {
-    /// clang's own driver reads a command for the target its compiler's
-    /// name sets, unless the command names one.
-    FileTable file_table;
-    CommandTable commands;
-    CompilationDatabase database{file_table, commands};
-    database.add_command("/fake", "a.c", "riscv32-wch-elf-gcc -mcmodel=medany -c a.c"sv);
-    database.add_command("/fake", "b.c", "riscv32-wch-elf-gcc -target riscv64-unknown-elf b.c"sv);
-
-    auto render = [&](llvm::StringRef file) {
-        auto& entry = database.candidate_entries(fake(file)).front();
-        CommandRef ref{entry.file,
-                       entry.command,
-                       commands.input_kind(entry.command, file),
-                       CommandSource::CDBExact};
-        auto argv = commands.render_driver(ref, database.spelling(ref.file));
-        return std::vector<std::string>(argv.begin(), argv.end());
-    };
-    ZEXPECT(ranges::contains(render("a.c"), "--target=riscv32-wch-elf"));
-    auto own = render("b.c");
-    ZEXPECT(!ranges::contains(own, "--target=riscv32-wch-elf"));
-    ZEXPECT(ranges::contains(own, "riscv64-unknown-elf"));
-};
-
 };  // ZEST_SUITE(CommandTable)
 
 }  // namespace

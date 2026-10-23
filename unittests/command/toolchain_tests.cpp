@@ -191,6 +191,41 @@ ZEST_CASE(FailedQueryUnqueried) {
     ZEXPECT(llvm::StringRef(rendered.query_failure).contains("not found"));
     ZEXPECT(adjacent(rendered.argv, "-triple", "aarch64-unknown-linux-gnu"));
     ZEXPECT(!contains(rendered.argv, "lp64"));
+
+    /// The driver command it reads goes without the ABI name too.
+    auto driver = f.toolchain.render_for_clang(ref, f.db.spelling(ref.file));
+    ZEXPECT(contains(driver, "--target=aarch64-linux-gnu"));
+    ZEXPECT(contains(driver, "-fno-delayed-template-parsing"));
+    ZEXPECT(!contains(driver, "-mabi=lp64"));
+}
+
+ZEST_CASE(ReadAsClangTarget) {
+    // clang's own driver reads a command for the target its compiler's
+    // name sets, unless the command names one.
+    auto ref = add("a.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-mcmodel=medany", "-c"});
+    auto argv = f.toolchain.render_for_clang(ref, f.db.spelling(ref.file));
+    ZEXPECT(contains(argv, "--target=riscv32-wch-elf"));
+
+    auto own = add("b.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-target", "riscv64-unknown-elf"});
+    argv = f.toolchain.render_for_clang(own, f.db.spelling(own.file));
+    ZEXPECT(!contains(argv, "--target=riscv32-wch-elf"));
+    ZEXPECT(adjacent(argv, "-target", "riscv64-unknown-elf"));
+}
+
+ZEST_CASE(ReadAsClangSpellings) {
+    // GCC's own spellings reach clang's own driver as it takes them, in
+    // the command it reads and in the job it builds: WCH's `xw` goes from
+    // the ISA string, the two-core tuning form keeps its first core.
+    auto riscv =
+        add("a.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-march=rv32imc_zba_xw", "-mabi=ilp32"});
+    ZEXPECT(contains(f.toolchain.render_for_clang(riscv, f.db.spelling(riscv.file)),
+                     "-march=rv32imc_zba"));
+    ZEXPECT(contains(f.resolve(riscv), "+zba"));
+
+    auto arm = add("b.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mcpu=cortex-a72.cortex-a53"});
+    ZEXPECT(
+        contains(f.toolchain.render_for_clang(arm, f.db.spelling(arm.file)), "-mcpu=cortex-a72"));
+    ZEXPECT(adjacent(f.resolve(arm), "-target-cpu", "cortex-a72"));
 }
 
 ZEST_CASE(WarmPartialFailure, skip = Windows) {

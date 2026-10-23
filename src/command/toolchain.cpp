@@ -12,6 +12,7 @@ import :command.search_config;
 import :command.table;
 import :command.toolchain;
 import :command.toolchain_query;
+import :command.toolchains.clang;
 import :command.toolchains.nvcc;
 import :support.logging;
 import :vfs.file_system;
@@ -302,29 +303,8 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
         kept.push_back(std::move(*parsed));
     }
 
-    // CPU and ABI names clang's target does not know fail the whole
-    // compile: GCC accepts names of its own (`-mtune=intel`, `-mabi=lp64`
-    // on Darwin), and a newer external clang knows newer CPUs. The target's
-    // defaults stand in.
-    clang::DiagnosticOptions diagnostic_options;
-    clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
-                                    diagnostic_options,
-                                    new clang::IgnoringDiagConsumer());
-    // The target keeps a pointer to its options.
-    clang::TargetOptions target_options;
-    llvm::IntrusiveRefCntPtr<clang::TargetInfo> target;
-    if(!triple.empty()) {
-        target_options.Triple = triple.str();
-        target = clang::TargetInfo::CreateTargetInfo(engine, target_options);
-    }
-    auto known_name = [&](const kota::option::ParsedArg& arg) {
-        switch(arg.id) {
-            case option::OPT_target_cpu: return target->isValidCPUName(arg.values[0]);
-            case option::OPT_tune_cpu: return target->isValidTuneCPUName(arg.values[0]);
-            case option::OPT_target_abi: return target->setABI(std::string(arg.values[0]));
-            default: return true;
-        }
-    };
+    // The target's defaults stand in for the names it does not know.
+    TargetNames names(triple);
 
     Frontend result{.driver = commands.intern(job[0]).data(),
                     .job_resource_dir = commands.intern(job_resource_dir)};
@@ -332,7 +312,7 @@ Toolchain::Frontend Toolchain::frontend(llvm::ArrayRef<std::string> job) {
         llvm::Triple(triple).isWindowsGNUEnvironment() && vfs::is_directory(job_resource_dir);
     std::vector<LocalArg> staged;
     for(auto& arg: kept) {
-        if(target && !known_name(arg)) {
+        if(!arg.values.empty() && !names.knows(arg.id, arg.values[0])) {
             LOG_INFO("clang's target {} knows no CPU or ABI named {} ({}): its default stands in",
                      triple,
                      arg.values[0],
@@ -583,7 +563,7 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
         LOG_WARN("Toolchain resolve failed for {}: {}",
                  files.resolve(ref.file),
                  resolution.error());
-        return {.argv = commands.render_driver(ref, path, opts)};
+        return {.argv = render_for_clang(ref, path, opts)};
     }
 
     auto& rc = resolved(resolution->id);
@@ -623,6 +603,24 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
 
     argv.push_back(source.data());
     return {.argv = std::move(argv), .query_failure = std::move(resolution->query_failure)};
+}
+
+std::vector<const char*> Toolchain::render_for_clang(const CommandRef& ref,
+                                                     llvm::StringRef path,
+                                                     const RenderOptions& opts) {
+    auto& command = commands.get(ref.command);
+    auto driver = commands.render_driver(ref, path, opts);
+    // Resolving the command read it already, and logged what the driver said.
+    auto reading = read_as_clang({driver.begin(), driver.end()},
+                                 command.family,
+                                 command.directory,
+                                 /*quiet=*/true);
+    std::vector<const char*> argv;
+    argv.reserve(reading.argv.size());
+    for(auto& arg: reading.argv) {
+        argv.push_back(commands.intern(arg).data());
+    }
+    return argv;
 }
 
 SearchConfig Toolchain::search_config(const CommandRef& ref) {

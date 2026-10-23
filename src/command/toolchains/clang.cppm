@@ -10,23 +10,46 @@ namespace clice {
 using Job = std::vector<std::string>;
 
 /// The job clang's own driver builds for `args` (a driver, its flags and
-/// the input) when run in `cwd`, the process's own when empty.
-std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args, llvm::StringRef cwd);
+/// the input) when run in `cwd`, the process's own when empty. The errors
+/// the driver reports though it builds one are logged unless `quiet`.
+std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
+                                             llvm::StringRef cwd,
+                                             bool quiet = false);
 
-/// The job clang's own driver builds for `args`, with `mode` (what the
-/// driver's name does not tell clang) ahead of the command's own flags.
+/// `args` (a driver and its flags) as clang's own driver is handed them,
+/// with `mode` (what the driver's name does not tell clang) ahead of the
+/// command's own flags.
+std::vector<std::string> clang_argv(llvm::ArrayRef<std::string> args,
+                                    llvm::ArrayRef<std::string> mode);
+
+/// The job clang's own driver builds for clang_argv(args, mode).
 std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,
                                           llvm::ArrayRef<std::string> mode,
                                           llvm::StringRef cwd);
 
-/// A driver clice does not query: clang's own driver stands in for it, as a
-/// clang installed under its name would — the name's mode (`g++` compiles
-/// C++) and target prefix (`arm-none-eabi-gcc`, when its architecture is
-/// one clang knows), clang's defaults for the rest. `mode` as for ask_clang.
-std::expected<Job, std::string> ask_clang_for(std::vector<std::string> args,
-                                              std::size_t driver_tokens,
-                                              std::vector<std::string> mode,
-                                              llvm::StringRef cwd);
+/// The CPU, tuning and ABI names clang's target for a triple knows. A name
+/// it does not know fails the whole compile: GCC accepts names of its own
+/// (`-mtune=intel`, `-mabi=lp64` on Darwin), and a newer external clang
+/// knows newer CPUs.
+class TargetNames {
+public:
+    explicit TargetNames(llvm::StringRef triple);
+
+    /// Whether the target knows the name the cc1 option `id` gives
+    /// (-target-cpu, -tune-cpu, -target-abi); true for any other option,
+    /// and for a target clang does not know.
+    bool knows(unsigned id, llvm::StringRef name);
+
+private:
+    clang::DiagnosticOptions diagnostic_options;
+
+    clang::DiagnosticsEngine engine;
+
+    /// The target keeps a pointer to its options.
+    clang::TargetOptions target_options;
+
+    llvm::IntrusiveRefCntPtr<clang::TargetInfo> target;
+};
 
 /// The first clang job a driver prints under `-v`: its program, -cc1 and
 /// its arguments as printed. Empty when there is none.

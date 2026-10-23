@@ -173,11 +173,9 @@ public:
     /// command_hash formatted as the persistent/protocol form (16 hex chars).
     std::string command_hash_hex(CommandID id);
 
-    /// Driver-level render (no toolchain query), naming the input `path`,
-    /// for the target the driver's name sets: the command clang's own driver
-    /// reads in place of a compiler clice does not run, as `clice command`
-    /// shows it, and the compile's last resort when that driver builds no
-    /// job.
+    /// Driver-level render (no toolchain query), naming the input `path`:
+    /// the base of the command clang's own driver reads in place of a
+    /// compiler clice does not run (Toolchain::render_for_clang).
     std::vector<const char*> render_driver(const CommandRef& ref,
                                            llvm::StringRef path,
                                            const RenderOptions& opts = {});
