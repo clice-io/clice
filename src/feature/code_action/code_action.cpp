@@ -15,9 +15,11 @@ import :index.shard;
 import :index.symbol;
 import :index.symbol_query;
 import :index.text;
+import :semantic.decls;
 import :semantic.display;
 import :semantic.semantics;
 import :semantic.symbol;
+import :support.text;
 import :syntax.lexer;
 import :syntax.source_text;
 import :vfs.file_table;
@@ -122,17 +124,6 @@ std::string bind_declarators(std::string text) {
     return text;
 }
 
-/// The parameters a class template or partial specialization declares.
-const clang::TemplateParameterList* template_parameters(const clang::CXXRecordDecl* record) {
-    if(auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(record)) {
-        return partial->getTemplateParameters();
-    }
-    if(auto* described = record->getDescribedClassTemplate()) {
-        return described->getTemplateParameters();
-    }
-    return nullptr;
-}
-
 /// The name a class template's parameter is spelled with out of line. An
 /// unnamed one needs a name the class qualifier can refer to: `T<index>`,
 /// made unlike every identifier the classes enclosing it spell (the
@@ -167,7 +158,7 @@ std::string parameter_name(const clang::NamedDecl* param, std::size_t index) {
             taken.insert(word);
             text = text.drop_front(word.size());
         }
-        auto* params = template_parameters(record);
+        auto* params = record->getDescribedTemplateParams();
         if(scope == param->getDeclContext() || !params) {
             continue;
         }
@@ -325,13 +316,7 @@ void add_template_parameters(Entities& entities,
     if(const auto* params = decl->getDescribedTemplateParams()) {
         add(params);
     }
-    llvm::ArrayRef<clang::TemplateParameterList*> outer;
-    if(const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(decl)) {
-        outer = declarator->getTemplateParameterLists();
-    } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
-        outer = tag->getTemplateParameterLists();
-    }
-    for(const auto* params: outer) {
+    for(const auto* params: decls::outer_template_parameters(decl)) {
         add(params);
     }
 }
@@ -740,7 +725,7 @@ std::string template_head(CompilationUnit& unit,
     for(const clang::DeclContext* context = record;
         auto* enclosing = llvm::dyn_cast<clang::CXXRecordDecl>(context);
         context = context->getParent()) {
-        if(auto* list = template_parameters(enclosing)) {
+        if(auto* list = enclosing->getDescribedTemplateParams()) {
             for(const auto* param: *list) {
                 parameters.insert(param->getName());
             }
@@ -964,7 +949,7 @@ std::string template_heads(CompilationUnit& unit,
             break;
         }
         auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(context);
-        if(auto* params = record ? template_parameters(record) : nullptr) {
+        if(auto* params = record ? record->getDescribedTemplateParams() : nullptr) {
             lists.emplace_back(params, record);
         }
     }
@@ -986,8 +971,7 @@ std::optional<TextReplacement> insert_members(CompilationUnit& unit,
     }
     auto content = unit.focus_file().content();
     auto record_indent = line_indent(content, head->begin);
-    auto begin = line_begin(content, brace->begin);
-    bool own_line = content.substr(begin, brace->begin - begin).trim().empty();
+    bool own_line = begins_line(content, brace->begin);
 
     std::string indent;
     for(const auto* member: record->decls()) {
@@ -1022,7 +1006,7 @@ std::optional<TextReplacement> insert_members(CompilationUnit& unit,
     if(!own_line) {
         text += record_indent;
     }
-    auto offset = own_line ? begin : brace->begin;
+    auto offset = own_line ? line_begin(content, brace->begin) : brace->begin;
     return TextReplacement{
         {offset, offset},
         std::move(text)};
@@ -1062,10 +1046,7 @@ std::vector<const clang::FunctionDecl*>
     std::vector<const clang::FunctionDecl*> definitions;
     const auto* canonical = record->getCanonicalDecl();
     for_each_file_scope_decl(unit, [&](const clang::Decl* decl) {
-        if(auto* described = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl)) {
-            decl = described->getTemplatedDecl();
-        }
-        auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl);
+        const auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(decl->getAsFunction());
         if(method && method->isThisDeclarationADefinition() && method->isOutOfLine() &&
            method->getParent()->getCanonicalDecl() == canonical) {
             definitions.push_back(method);

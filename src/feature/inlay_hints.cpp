@@ -22,6 +22,7 @@ import :semantic.semantics;
 import :semantic.symbol;
 import :semantic.types;
 import :syntax.lexical_scan;
+import :syntax.position;
 import :vfs.file_table;
 import :vfs.path;
 
@@ -185,14 +186,9 @@ bool is_simple_builtin(const clang::FunctionDecl* callee) {
     return false;
 }
 
-/// Whether `c` continues a UTF-8 character rather than starting one.
-bool continues_character(char c) {
-    return (c & 0xC0) == 0x80;
-}
-
 /// The length of `text` in characters.
 std::size_t characters(llvm::StringRef text) {
-    return std::ranges::count_if(text, [](char c) { return !continues_character(c); });
+    return kota::ipc::lsp::encoded_length(text, PositionEncoding::UTF32);
 }
 
 /// `text` within `limit` characters, cut with `…` where it no longer fits;
@@ -201,17 +197,10 @@ std::string truncate(llvm::StringRef text, std::size_t limit) {
     if(limit == 0 || characters(text) <= limit) {
         return text.str();
     }
-    std::size_t kept = 0;
-    std::size_t end = 0;
-    for(; end < text.size(); end += 1) {
-        if(!continues_character(text[end])) {
-            if(kept + 1 == limit) {
-                break;
-            }
-            kept += 1;
-        }
-    }
-    return (text.take_front(end) + "…").str();
+    auto kept = kota::ipc::lsp::encoded_offset(text,
+                                               static_cast<std::uint32_t>(limit - 1),
+                                               PositionEncoding::UTF32);
+    return (text.take_front(*kept) + "…").str();
 }
 
 /// The first template argument list at the top level of a printed type,
@@ -1549,19 +1538,12 @@ private:
             if(auto* shadow = dyn_cast<clang::UsingShadowDecl>(target)) {
                 target = shadow->getTargetDecl();
             }
-            if(auto* FTD = dyn_cast<clang::FunctionTemplateDecl>(target)) {
-                callee.decl = FTD->getTemplatedDecl();
-            } else {
-                callee.decl = dyn_cast<clang::FunctionDecl>(target);
-            }
+            callee.decl = target->getAsFunction();
             if(!callee.decl) {
                 return;
             }
-        } else if(const auto* FD = dyn_cast_or_null<clang::FunctionDecl>(expr->getCalleeDecl())) {
-            callee.decl = FD;
-        } else if(const auto* FTD =
-                      dyn_cast_or_null<clang::FunctionTemplateDecl>(expr->getCalleeDecl())) {
-            callee.decl = FTD->getTemplatedDecl();
+        } else if(const auto* decl = expr->getCalleeDecl(); decl && decl->getAsFunction()) {
+            callee.decl = decl->getAsFunction();
         } else if(auto loc = clang::HeuristicResolver(unit.context())
                                  .getFunctionProtoTypeLoc(expr->getCallee())) {
             callee.loc = loc;
@@ -1826,12 +1808,8 @@ auto inlay_hints(CompilationUnit& unit, LocalSourceRange target, const InlayHint
         return std::tie(lhs.offset, lhs.label, lhs.kind, lhs.padding_left, lhs.padding_right) <
                std::tie(rhs.offset, rhs.label, rhs.kind, rhs.padding_left, rhs.padding_right);
     });
-    auto unique_begin =
-        std::ranges::unique(raw_hints, [](const InlayHint& lhs, const InlayHint& rhs) {
-            return lhs.offset == rhs.offset && lhs.kind == rhs.kind && lhs.label == rhs.label &&
-                   lhs.padding_left == rhs.padding_left && lhs.padding_right == rhs.padding_right;
-        });
-    raw_hints.erase(unique_begin.begin(), unique_begin.end());
+    auto duplicates = std::ranges::unique(raw_hints);
+    raw_hints.erase(duplicates.begin(), duplicates.end());
 
     // Editors show a few dozen characters of hints on a line: the thousands
     // of a generated one-line table would only be sent to be dropped.

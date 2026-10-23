@@ -656,14 +656,8 @@ llvm::SmallVector<clang::SourceRange, 2> angles(const SelectionTree::Node& node)
             lists.push_back(*arguments);
         }
     } else if(const auto* decl = node.get<clang::Decl>()) {
-        if(const auto* temp = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
-            add_parameters(temp->getTemplateParameters());
-        } else if(const auto* partial =
-                      llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(decl)) {
-            add_parameters(partial->getTemplateParameters());
-        } else if(const auto* partial =
-                      llvm::dyn_cast<clang::VarTemplatePartialSpecializationDecl>(decl)) {
-            add_parameters(partial->getTemplateParameters());
+        if(const auto* parameters = decls::own_template_parameters(decl)) {
+            add_parameters(parameters);
         }
         if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
             add_arguments(spec->getTemplateArgsAsWritten());

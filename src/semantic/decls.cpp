@@ -31,6 +31,30 @@ bool is_templated(const clang::Decl* decl) {
     return false;
 }
 
+auto own_template_parameters(const clang::Decl* decl) -> const clang::TemplateParameterList* {
+    if(const auto* templated = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
+        return templated->getTemplateParameters();
+    }
+    if(const auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(decl)) {
+        return partial->getTemplateParameters();
+    }
+    if(const auto* partial = llvm::dyn_cast<clang::VarTemplatePartialSpecializationDecl>(decl)) {
+        return partial->getTemplateParameters();
+    }
+    return nullptr;
+}
+
+auto outer_template_parameters(const clang::Decl* decl)
+    -> llvm::ArrayRef<clang::TemplateParameterList*> {
+    if(const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(decl)) {
+        return declarator->getTemplateParameterLists();
+    }
+    if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
+        return tag->getTemplateParameterLists();
+    }
+    return {};
+}
+
 namespace {
 
 /// Where the attribute specifier holding `attr`, the first attribute of

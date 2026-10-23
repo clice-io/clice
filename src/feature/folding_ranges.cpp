@@ -369,23 +369,10 @@ private:
     /// A template's own parameter list, and the outer lists an out-of-line
     /// member definition repeats for its enclosing templates.
     void collect_template_parameters(const clang::Decl* decl) {
-        if(const auto* templated = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
-            add_template_parameters(templated->getTemplateParameters());
-        } else if(const auto* partial =
-                      llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(decl)) {
-            add_template_parameters(partial->getTemplateParameters());
-        } else if(const auto* partial =
-                      llvm::dyn_cast<clang::VarTemplatePartialSpecializationDecl>(decl)) {
-            add_template_parameters(partial->getTemplateParameters());
+        if(const auto* parameters = decls::own_template_parameters(decl)) {
+            add_template_parameters(parameters);
         }
-
-        llvm::ArrayRef<clang::TemplateParameterList*> outer;
-        if(const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(decl)) {
-            outer = declarator->getTemplateParameterLists();
-        } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
-            outer = tag->getTemplateParameterLists();
-        }
-        for(const auto* parameters: outer) {
+        for(const auto* parameters: decls::outer_template_parameters(decl)) {
             add_template_parameters(parameters);
         }
     }
@@ -496,7 +483,7 @@ private:
         for(const auto& comment: comments) {
             if(comment.kind == LexicalInfo::Comment::Kind::Line) {
                 line_comments.push_back(comment.range);
-            } else if(begins_line(comment.range.begin)) {
+            } else if(begins_line(content, comment.range.begin)) {
                 // A block comment trailing code would cut across the folds
                 // that start at the end of that code's line.
                 add_range(comment.range,
@@ -683,7 +670,7 @@ private:
 
         for(auto item: items) {
             auto rest = content.slice(item.end, line_text_end(item.end)).ltrim(" \t;");
-            if(!begins_line(item.begin) || !(rest.empty() || rest.starts_with("//"))) {
+            if(!begins_line(content, item.begin) || !(rest.empty() || rest.starts_with("//"))) {
                 continue;
             }
             if(first) {
@@ -715,11 +702,6 @@ private:
             begin = comment->range.end;
         }
         return content.slice(begin, range.end).trim().empty();
-    }
-
-    /// Whether only blanks precede `offset` on its line.
-    bool begins_line(std::uint32_t offset) {
-        return content.slice(line_begin(content, offset), offset).trim(" \t").empty();
     }
 
     /// Where a section under a label ending at `label_end` begins: at the

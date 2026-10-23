@@ -942,10 +942,7 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
     std::vector<const clang::FunctionDecl*> placed;
     auto placement = member_placement(unit, record);
     for(const auto* member: record->decls()) {
-        if(auto* described = llvm::dyn_cast<clang::FunctionTemplateDecl>(member)) {
-            member = described->getTemplatedDecl();
-        }
-        auto* function = llvm::dyn_cast<clang::FunctionDecl>(member);
+        const auto* function = member->getAsFunction();
         if(!function || !definable(function) || !qualifiable(function)) {
             continue;
         }

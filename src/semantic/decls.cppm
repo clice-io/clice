@@ -13,6 +13,15 @@ namespace clice::decls {
 /// specializations, we consider it as a template while clang does not.
 bool is_templated(const clang::Decl* decl);
 
+/// The parameter list a template or a partial specialization declares;
+/// none for any other declaration.
+auto own_template_parameters(const clang::Decl* decl) -> const clang::TemplateParameterList*;
+
+/// The parameter lists an out-of-line definition repeats for the class
+/// templates enclosing it.
+auto outer_template_parameters(const clang::Decl* decl)
+    -> llvm::ArrayRef<clang::TemplateParameterList*>;
+
 /// The source range the decl is written over: a template's from its
 /// `template` keyword and the attributes leading it, which the templated
 /// decl's own range leaves out; an instantiation's, its pattern's. A bound

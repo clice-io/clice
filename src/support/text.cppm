@@ -22,6 +22,11 @@ inline std::uint32_t logical_line_begin(llvm::StringRef content, std::uint32_t o
     return begin;
 }
 
+/// Whether only whitespace precedes `offset` on its line.
+inline bool begins_line(llvm::StringRef content, std::uint32_t offset) {
+    return content.slice(line_begin(content, offset), offset).trim().empty();
+}
+
 /// One past the newline ending the line containing `offset`, or the
 /// content's end.
 inline std::uint32_t line_end(llvm::StringRef content, std::uint32_t offset) {

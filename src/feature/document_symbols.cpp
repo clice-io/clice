@@ -419,8 +419,7 @@ struct Node {
 /// Whether `outer` holds `inner` in the outline.
 bool holds(llvm::ArrayRef<Node> nodes, std::uint32_t outer_index, const Node& inner) {
     const auto& outer = nodes[outer_index];
-    if(outer.entry.range.begin > inner.entry.range.begin ||
-       inner.entry.range.end > outer.entry.range.end) {
+    if(!outer.entry.range.contains(inner.entry.range)) {
         return false;
     }
     if(inner.group == outer_index) {

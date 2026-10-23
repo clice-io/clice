@@ -55,6 +55,10 @@ public:
         return away;
     }
 
+    /// The index of the first spelled token at or after focus-file offset
+    /// `offset`.
+    std::uint32_t spelled_at_or_after(std::uint32_t offset) const;
+
     /// The spelled tokens touching `location`, at most two, neither a
     /// comment nor a directive end: the one containing it or starting
     /// there, and the one ending there.
@@ -133,10 +137,6 @@ private:
     std::uint32_t focus_offset(clang::SourceLocation location) const {
         return location.getRawEncoding() - focus_begin.getRawEncoding();
     }
-
-    /// The index of the first spelled token at or after focus-file offset
-    /// `offset`.
-    std::uint32_t spelled_at_or_after(std::uint32_t offset) const;
 
     /// The spelled token starting at `location`, if one does.
     const Token* spelled_at(clang::SourceLocation location) const;

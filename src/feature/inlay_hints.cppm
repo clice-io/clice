@@ -182,6 +182,8 @@ struct InlayHint {
     std::vector<InlayHintPart> label;
     bool padding_left = false;
     bool padding_right = false;
+
+    friend bool operator==(const InlayHint&, const InlayHint&) = default;
 };
 
 auto inlay_hints(CompilationUnit& unit,

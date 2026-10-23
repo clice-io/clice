@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.semantics;
+import :support.text;
 import :syntax.lexical_scan;
 
 namespace clice::feature::action {
@@ -76,17 +77,10 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     // Attribute specifiers right before the declaration (`[[deprecated]]`
     // on a line of its own, or a macro spelling one) lie outside its
     // range.
-    auto tokens = focus.tokens().spelled();
+    auto& token_map = focus.tokens();
+    auto tokens = token_map.spelled();
     auto& SM = unit.context().getSourceManager();
-    auto token_at = [&](std::uint32_t offset) {
-        return static_cast<std::size_t>(std::ranges::partition_point(tokens,
-                                                                     [&](const Token& token) {
-                                                                         return token.range.begin <
-                                                                                offset;
-                                                                     }) -
-                                        tokens.begin());
-    };
-    auto first = token_at(begin);
+    std::size_t first = token_map.spelled_at_or_after(begin);
     while(auto previous = code_before(tokens, first)) {
         if(auto second = code_before(tokens, *previous);
            second && tokens[*previous].kind == clang::tok::r_square &&
@@ -124,7 +118,7 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
         if(!invocation) {
             break;
         }
-        first = token_at(unit.seen_at(*invocation).offset);
+        first = token_map.spelled_at_or_after(unit.seen_at(*invocation).offset);
     }
     begin = tokens[first].range.begin;
     // Comments directly above the definition travel with it: each on
@@ -139,17 +133,15 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     while(it != comments.begin()) {
         --it;
         auto [comment_begin, comment_end] = it->range;
-        auto line = line_begin(content, comment_begin);
         auto gap = content.substr(comment_end, begin - comment_end);
         if(comment_end > begin || !gap.trim().empty() || gap.count('\n') != 1 ||
-           !content.substr(line, comment_begin - line).trim().empty()) {
+           !begins_line(content, comment_begin)) {
             break;
         }
         begin = comment_begin;
     }
-    auto line = line_begin(content, begin);
-    if(content.substr(line, begin - line).trim().empty()) {
-        begin = line;
+    if(begins_line(content, begin)) {
+        begin = line_begin(content, begin);
     }
     LocalSourceRange lines{begin, line_end(content, range->end - 1)};
 
@@ -450,11 +442,8 @@ void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
         }
         llvm::DenseMap<const clang::Decl*, std::uint32_t> ranks;
         for(const auto* member: record->decls()) {
-            if(auto* described = llvm::dyn_cast<clang::FunctionTemplateDecl>(member)) {
-                member = described->getTemplatedDecl();
-            }
-            if(llvm::isa<clang::FunctionDecl>(member)) {
-                ranks.try_emplace(member->getCanonicalDecl(), ranks.size());
+            if(const auto* function = member->getAsFunction()) {
+                ranks.try_emplace(function->getCanonicalDecl(), ranks.size());
             }
         }
         for(const auto* definition: out_of_line_definitions(unit, record)) {
@@ -482,10 +471,7 @@ void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
         }
         auto declaring = unit.file_id(first->getLocation());
         for_each_file_scope_decl(unit, [&](const clang::Decl* decl) {
-            if(auto* described = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl)) {
-                decl = described->getTemplatedDecl();
-            }
-            auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
+            const auto* function = decl->getAsFunction();
             if(!function || !function->isThisDeclarationADefinition() ||
                llvm::isa<clang::CXXMethodDecl>(function)) {
                 return;
