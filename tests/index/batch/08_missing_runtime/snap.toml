@@ -6,6 +6,5 @@ Session log: ${WS}/.clice/logs/${SESSION}
 stderr = '''
 warning: The toolchain query ${WS}/gcc.exe -E -dM -v ${QUERY_INPUT} failed: Process ${WS}/gcc.exe ended with exception 0xC0000135 (a DLL it loads is missing: the bin directory of its runtime, Cygwin's or MSYS2's, belongs on clice's PATH, which clice.serverEnv sets in VS Code)
 error: Toolchain query failed: Process ${WS}/gcc.exe ended with exception 0xC0000135 (a DLL it loads is missing: the bin directory of its runtime, Cygwin's or MSYS2's, belongs on clice's PATH, which clice.serverEnv sets in VS Code)
-warning: Toolchain resolve failed for ${WS}/main.cpp: Process ${WS}/gcc.exe ended with exception 0xC0000135 (a DLL it loads is missing: the bin directory of its runtime, Cygwin's or MSYS2's, belongs on clice's PATH, which clice.serverEnv sets in VS Code)
 '''
 exit = 0
