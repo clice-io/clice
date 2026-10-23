@@ -2782,14 +2782,16 @@ auto directive_completion(const CompletionName& completing,
         {"ifdef",  " {macro}"    },
         {"ifndef", " {macro}"    },
     };
-    if(completing.conditional) {
+    if(completing.conditional == CompletionName::Conditional::Open) {
         patterns.append({
             {"elif",     " {condition}"},
             {"elifdef",  " {macro}"    },
             {"elifndef", " {macro}"    },
             {"else",     ""            },
-            {"endif",    ""            },
         });
+    }
+    if(completing.conditional != CompletionName::Conditional::None) {
+        patterns.push_back({"endif", ""});
     }
     patterns.append({
         {"include", R"( "{header}")"           },

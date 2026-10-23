@@ -152,19 +152,22 @@ CompletionName completion_name(llvm::StringRef text,
     // cursor applies as a logical bound: a keyword must end at or before it
     // to count as typed.
     llvm::SmallVector<Token, 16> tokens;
-    // The conditional blocks the lines before it leave open.
-    std::uint32_t open = 0;
+    // The conditional blocks the lines before it leave open, innermost
+    // last: whether each has taken its `#else`.
+    llvm::SmallVector<bool, 8> open;
     {
         Lexer lexer(text, dialect);
-        auto count = [&] {
+        auto track = [&] {
             if(tokens.size() < 2 || !tokens[0].is_directive_hash() || !tokens[1].is_identifier()) {
                 return;
             }
             auto name = tokens[1].text(text);
             if(name == "if" || name == "ifdef" || name == "ifndef") {
-                open += 1;
-            } else if(name == "endif" && open > 0) {
-                open -= 1;
+                open.push_back(false);
+            } else if(name == "else" && !open.empty()) {
+                open.back() = true;
+            } else if(name == "endif" && !open.empty()) {
+                open.pop_back();
             }
         };
         for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
@@ -172,7 +175,7 @@ CompletionName completion_name(llvm::StringRef text,
                 if(token.range.begin > offset) {
                     break;
                 }
-                count();
+                track();
                 tokens.clear();
             }
             tokens.push_back(token);
@@ -228,12 +231,14 @@ CompletionName completion_name(llvm::StringRef text,
     };
 
     if(first.is_directive_hash() && before_cursor(first)) {
+        using enum CompletionName::Conditional;
+        auto conditional = open.empty() ? None : open.back() ? Else : Open;
         if((tokens.size() < 2 || tokens[1].is_eod()) &&
            ranges::all_of(text.slice(first.range.end, offset), clang::isHorizontalWhitespace)) {
             return {
                 .kind = CompletionName::Kind::Directive,
                 .replace = {offset, offset},
-                .conditional = open > 0,
+                .conditional = conditional,
             };
         }
         if(tokens[1].is_identifier() && tokens[1].range.begin <= offset &&
@@ -242,7 +247,7 @@ CompletionName completion_name(llvm::StringRef text,
                 .kind = CompletionName::Kind::Directive,
                 .prefix = text.slice(tokens[1].range.begin, offset).str(),
                 .replace = tokens[1].range,
-                .conditional = open > 0,
+                .conditional = conditional,
             };
         }
         if(!tokens[1].is_identifier() || !before_cursor(tokens[1])) {
@@ -251,7 +256,7 @@ CompletionName completion_name(llvm::StringRef text,
         auto& keyword = tokens[1];
         auto name = keyword.text(text);
         CompletionName result;
-        if(name == "include") {
+        if(name == "include" || name == "include_next") {
             result = header_name(keyword.range.end, /*parenthesized=*/false);
         } else if(name == "if" || name == "elif") {
             // In a condition, a `__has_include(` whose header name the cursor

@@ -246,8 +246,11 @@ ZEST_CASE(HashOnly) {
 }
 
 ZEST_CASE(DirectiveInConditional) {
-    ZEXPECT(completion_name("#ifndef G\n#el", 13).conditional);
-    ZEXPECT(!completion_name("#if A\n#endif\n#el", 16).conditional);
+    using enum CompletionName::Conditional;
+    ZEXPECT(completion_name("#ifndef G\n#el", 13).conditional == Open);
+    ZEXPECT(completion_name("#if A\n#endif\n#el", 16).conditional == None);
+    ZEXPECT(completion_name("#if A\n#else\n#e", 15).conditional == Else);
+    ZEXPECT(completion_name("#if A\n#else\n#if B\n#e", 21).conditional == Open);
 }
 
 ZEST_CASE(DirectiveArgument) {
@@ -255,6 +258,7 @@ ZEST_CASE(DirectiveArgument) {
     ZEXPECT(ctx.kind == CompletionName::Kind::None);
     ZEXPECT(ctx.directive == "ifdef");
     ZEXPECT(completion_name("#include <ve", 12).directive == "include");
+    ZEXPECT(completion_name("#include_next <ve", 17).kind == CompletionName::Kind::IncludeAngled);
 }
 
 ZEST_CASE(CommentAfterHash) {

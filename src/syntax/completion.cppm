@@ -43,9 +43,16 @@ struct CompletionName {
     /// while the name itself is typed (Kind::Directive).
     std::string directive;
 
-    /// For Kind::Directive: a conditional block is open around the line,
-    /// which `#elif`, `#else` and `#endif` may continue.
-    bool conditional = false;
+    /// For Kind::Directive: the conditional block open around the line.
+    enum class Conditional : std::uint8_t {
+        None,
+        /// `#elif`, `#else` and `#endif` continue it.
+        Open,
+        /// It has taken its `#else`: only `#endif` continues it.
+        Else,
+    };
+
+    Conditional conditional = Conditional::None;
 };
 
 /// The name the cursor at `offset` is in: a directive's name, the header
