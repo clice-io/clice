@@ -245,6 +245,10 @@ ZEST_CASE(HashOnly) {
     ZEXPECT(ctx.replace == LocalSourceRange(1, 1));
 }
 
+ZEST_CASE(CommentAfterHash) {
+    ZEXPECT(completion_name("# // see fo", 11).kind == CompletionName::Kind::None);
+}
+
 ZEST_CASE(DirectiveAfterSpaces) {
     auto ctx = completion_name("#  if", 5);
     ZEXPECT(ctx.kind == CompletionName::Kind::Directive);

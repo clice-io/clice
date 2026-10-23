@@ -1581,7 +1581,9 @@ public:
                 score *= 0.5F;
             }
 
-            int priority = dedup_priority(candidate.kind, candidate.macro);
+            // A name the file does not reach yet yields to one it does.
+            int priority =
+                candidate.include != 0 ? -1 : dedup_priority(candidate.kind, candidate.macro);
 
             if(!candidate.bundle.empty()) {
                 auto [it, inserted] =

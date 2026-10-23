@@ -697,13 +697,16 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     }
 
     // A directive's line names no namespace member: its names are
-    // directives, macros and headers.
+    // directives, macros and headers. A buffer too large to lex whole
+    // offers every directive.
     const LexicalInfo::Directive* directive = nullptr;
-    if(offset) {
+    if(offset && session->text().size() <= full_lex_cap) {
         directive = text_of(*session).lexical().directive_at(session->text(), *offset);
+    }
+    if(offset) {
         if(completing.kind == CompletionName::Kind::Directive) {
-            assert(directive && "a directive's name is on its line");
-            bool conditional = directive->depth > 0 || directive->opening != LexicalInfo::none;
+            bool conditional =
+                !directive || directive->depth > 0 || directive->opening != LexicalInfo::none;
             co_return to_raw(feature::directive_completion(completing,
                                                            map,
                                                            conditional,
@@ -778,7 +781,8 @@ Features::RawResult Features::signature_help(std::shared_ptr<Session> session,
                                              kota::cancellation_token token) {
     // A directive takes no call's arguments: `#include <` asks for none.
     if(auto offset = session->positions().offset(position, PositionEncoding::UTF16);
-       offset && text_of(*session).lexical().directive_at(session->text(), *offset)) {
+       offset && session->text().size() <= full_lex_cap &&
+       text_of(*session).lexical().directive_at(session->text(), *offset)) {
         return kota::co_invoke([]() -> RawResult { co_return serde_raw{"null"}; });
     }
     ast.escalate(*session);

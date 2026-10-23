@@ -214,7 +214,8 @@ CompletionName completion_name(llvm::StringRef text,
     };
 
     if(first.is_directive_hash() && before_cursor(first)) {
-        if(tokens.size() < 2 || tokens[1].is_eod()) {
+        if((tokens.size() < 2 || tokens[1].is_eod()) &&
+           ranges::all_of(text.slice(first.range.end, offset), clang::isHorizontalWhitespace)) {
             return {
                 .kind = CompletionName::Kind::Directive,
                 .replace = {offset, offset}
