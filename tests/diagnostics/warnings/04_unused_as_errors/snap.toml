@@ -1,0 +1,9 @@
+[answers.equal.hover]
+markdown = '''
+**function** `operator==` · namespace `(anonymous)`
+
+```cpp
+bool operator==(const Point &a, const Point &b)
+```
+'''
+range = "bool ⟦operator⟧==(const Point& a, const Point& b) {"
