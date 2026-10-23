@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -51,12 +51,12 @@ bool fits(const SimSpec& spec, const UnitLoad& unit, std::uint64_t reserve) {
 /// missed.
 std::size_t too_big_for(const SimSpec& spec, bool keep_reserve) {
     auto reserve = keep_reserve ? sim::reserve(spec.machine) : 0;
-    return std::ranges::count_if(spec.units,
-                                 [&](const UnitLoad& unit) { return !fits(spec, unit, reserve); });
+    return ranges::count_if(spec.units,
+                            [&](const UnitLoad& unit) { return !fits(spec, unit, reserve); });
 }
 
 double max_wait(const SimResult& result) {
-    return result.foreground_waits.empty() ? 0 : std::ranges::max(result.foreground_waits);
+    return result.foreground_waits.empty() ? 0 : ranges::max(result.foreground_waits);
 }
 
 /// The properties every run keeps: no kill by the kernel, every unit done

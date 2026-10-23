@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -135,7 +134,7 @@ const clang::NamedDecl* type_definition_of(const clang::ValueDecl* decl,
 /// written name — the class in `~Foo` — is that name's, and the symbol it
 /// names keeps only its relation there.
 void drop_nested(std::vector<Occurrence>& occurrences) {
-    std::ranges::sort(occurrences, [](const Occurrence& lhs, const Occurrence& rhs) {
+    ranges::sort(occurrences, [](const Occurrence& lhs, const Occurrence& rhs) {
         return std::tuple(lhs.range.begin, rhs.range.end) <
                std::tuple(rhs.range.begin, lhs.range.end);
     });
@@ -385,7 +384,7 @@ public:
             flags |= SymbolFlags::TemplateParameter;
         }
         // `FWD(Expr)` forward-declares a class defined by hand.
-        if(std::ranges::all_of(decl->redecls(), [](const clang::Decl* redecl) {
+        if(ranges::all_of(decl->redecls(), [](const clang::Decl* redecl) {
                return redecl->getLocation().isMacroID();
            })) {
             flags |= SymbolFlags::SpelledInMacro;
@@ -1332,7 +1331,7 @@ public:
                 continue;
             }
             auto key = unit.get<EntityTable>().entity(llvm::cast<clang::NamedDecl>(decl));
-            if(std::ranges::binary_search(known_instantiations, key)) {
+            if(ranges::binary_search(known_instantiations, key)) {
                 resolved[home].skipped.push_back(key);
                 continue;
             }
@@ -1364,7 +1363,7 @@ public:
         auto before = [&](clang::SourceLocation left, clang::SourceLocation right) {
             return SM.isBeforeInTranslationUnit(left, right);
         };
-        std::ranges::sort(expansions, before);
+        ranges::sort(expansions, before);
         llvm::DenseSet<const clang::Decl*> own(unit.top_level_decls().begin(),
                                                unit.top_level_decls().end());
         std::vector<const clang::Decl*> decls;
@@ -1377,7 +1376,7 @@ public:
             if(range.isInvalid()) {
                 continue;
             }
-            auto first = std::ranges::lower_bound(expansions, range.getBegin(), before);
+            auto first = ranges::lower_bound(expansions, range.getBegin(), before);
             if(first != expansions.end() && !before(range.getEnd(), *first)) {
                 decls.push_back(decl);
             }
@@ -1515,11 +1514,9 @@ public:
                 return it != internal_decls.end() &&
                        SM.getFileID(SM.getFileLoc(it->second->getLocation())) != home;
             };
-            bool names_foreign =
-                std::ranges::any_of(records, [&](const InstantiationRecord& record) {
-                    return foreign(record.target) ||
-                           (has_from(record.kind) && foreign(record.from));
-                });
+            bool names_foreign = ranges::any_of(records, [&](const InstantiationRecord& record) {
+                return foreign(record.target) || (has_from(record.kind) && foreign(record.from));
+            });
             if(!spilled && !names_foreign) {
                 add_walked(home, decl, std::move(records));
             } else if(!records.empty()) {
@@ -1535,7 +1532,7 @@ public:
         const auto* pattern = record->getTemplateInstantiationPattern();
         if(!pattern || !record->hasDefinition() ||
            (!standard_library && decls::in_standard_library(record)) ||
-           std::ranges::none_of(pattern->bases(), [](const clang::CXXBaseSpecifier& base) {
+           ranges::none_of(pattern->bases(), [](const clang::CXXBaseSpecifier& base) {
                return base.getType()->isDependentType();
            })) {
             return;
@@ -1621,9 +1618,8 @@ public:
                 .expansion = true
             });
         };
-        for(auto& directive: std::views::transform(unit.directives(), [](auto& entry) -> auto& {
-                return entry.second;
-            })) {
+        for(auto& directive: views::transform(unit.directives(),
+                                              [](auto& entry) -> auto& { return entry.second; })) {
             for(auto& macro: directive.macros) {
                 if(macro.kind == MacroRef::Ref && macro.loc.isMacroID()) {
                     add(macro.loc, entities.entity(macro.macro), InstantiationKind::Reference);
@@ -1644,7 +1640,7 @@ public:
                 add(name.location, ensure_symbol(decls::normalize(name.decl)), *kind);
             }
         }
-        for(auto& [home, records]: std::views::values(expansions)) {
+        for(auto& [home, records]: views::values(expansions)) {
             resolved[home].walked.resolutions.push_back(std::move(records));
         }
     }
@@ -1758,7 +1754,7 @@ public:
             indexed_fids.push_back(fid);
         }
         for(auto fid:
-            std::views::transform(resolved, [](auto& entry) -> auto& { return entry.first; })) {
+            views::transform(resolved, [](auto& entry) -> auto& { return entry.first; })) {
             if(!file_indices.contains(fid)) {
                 indexed_fids.push_back(fid);
             }
@@ -1827,7 +1823,7 @@ public:
         }
 
         for(auto& file_index:
-            std::views::transform(by_path, [](auto& entry) -> auto& { return entry.second; })) {
+            views::transform(by_path, [](auto& entry) -> auto& { return entry.second; })) {
             drop_nested(file_index.occurrences);
         }
 
@@ -1929,10 +1925,10 @@ public:
         llvm::SmallVector<std::uint32_t> path_ids;
         path_ids.reserve(by_path.size());
         for(auto path_id:
-            std::views::transform(by_path, [](auto& entry) -> auto& { return entry.first; })) {
+            views::transform(by_path, [](auto& entry) -> auto& { return entry.first; })) {
             path_ids.push_back(path_id);
         }
-        std::ranges::sort(path_ids);
+        ranges::sort(path_ids);
         std::vector<FileSection> sections;
         llvm::BitVector known_paths(tree.paths.size());
         for(auto path_id: path_ids) {
@@ -1942,7 +1938,7 @@ public:
             }
             auto bytes = write_shard(file_index, resolve, unit.file_content(path_fids[path_id]));
             auto hash = llvm::xxh3_64bits(as_chars(bytes));
-            if(std::ranges::binary_search(known_variants, hash)) {
+            if(ranges::binary_search(known_variants, hash)) {
                 known_paths.set(path_id);
                 sections.push_back({path_id, hash, {}});
                 continue;
@@ -1950,9 +1946,9 @@ public:
             sections.push_back({path_id, hash, std::move(bytes)});
         }
         std::vector<InstantiationSection> instantiation_sections;
-        auto resolved_paths = std::ranges::to<llvm::SmallVector<std::uint32_t>>(
-            std::views::transform(resolved_by_path, [](auto& entry) { return entry.first; }));
-        std::ranges::sort(resolved_paths);
+        auto resolved_paths = ranges::to<llvm::SmallVector<std::uint32_t>>(
+            views::transform(resolved_by_path, [](auto& entry) { return entry.first; }));
+        ranges::sort(resolved_paths);
         for(auto path_id: resolved_paths) {
             auto& file = resolved_by_path[path_id];
             InstantiationSection section{.path_id = path_id};
@@ -1962,8 +1958,8 @@ public:
                                                     llvm::xxh3_64bits(content),
                                                     static_cast<std::uint32_t>(content.size()));
             }
-            std::ranges::sort(file.skipped);
-            file.skipped.erase(std::ranges::unique(file.skipped).begin(), file.skipped.end());
+            ranges::sort(file.skipped);
+            file.skipped.erase(ranges::unique(file.skipped).begin(), file.skipped.end());
             section.skipped = std::move(file.skipped);
             instantiation_sections.push_back(std::move(section));
         }
@@ -1992,7 +1988,7 @@ public:
             }
             table.push_back(hash);
         }
-        std::ranges::sort(table);
+        ranges::sort(table);
         for(auto hash: table) {
             auto& symbol = symbols.find(hash)->second;
             blob.symbol_hashes.push_back(hash);

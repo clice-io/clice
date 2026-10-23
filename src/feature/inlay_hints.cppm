@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.inlay_hints;
 
@@ -11,8 +11,6 @@ import :syntax.position;
 import :vfs.ids;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// Corresponds to the `[inlay_hints.max_length]` section in clice.toml.
 struct InlayHintLengths {

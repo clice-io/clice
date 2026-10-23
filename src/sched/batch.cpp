@@ -1,9 +1,8 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -318,8 +317,8 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
             result.failed.emplace_back(project.file_table.display(file));
         }
     }
-    std::ranges::sort(result.failed);
-    std::ranges::sort(result.too_big, {}, &BatchResult::TooBig::unit);
+    ranges::sort(result.failed);
+    ranges::sort(result.too_big, {}, &BatchResult::TooBig::unit);
     for(auto& [unit, errors]: stack.sched.pump.compiled_with_errors()) {
         auto& shown = result.compiled_with_errors.emplace_back(
             BatchResult::UnitErrors{.unit = project.file_table.display(unit), .errors = errors});
@@ -327,7 +326,7 @@ kota::task<> run(Stack& stack, const BatchOptions& options, BatchResult& result)
             show_path(project.file_table, error.file);
         }
     }
-    std::ranges::sort(result.compiled_with_errors, {}, &BatchResult::UnitErrors::unit);
+    ranges::sort(result.compiled_with_errors, {}, &BatchResult::UnitErrors::unit);
     if(!result.failed.empty() || !result.too_big.empty() || result.unsaved || result.damaged) {
         result.exit_code = 1;
     }
@@ -356,11 +355,9 @@ auto finding_key(const worker::TidyDiagnostic& d) {
 /// reports the same line from two units with notes pointing at different
 /// declarations, and each is a mismatch of its own.
 void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
-    std::ranges::stable_sort(findings,
-                             [](auto& a, auto& b) { return finding_key(a) < finding_key(b); });
-    auto duplicates = std::ranges::unique(findings, [](auto& a, auto& b) {
-        return finding_key(a) == finding_key(b);
-    });
+    ranges::stable_sort(findings, [](auto& a, auto& b) { return finding_key(a) < finding_key(b); });
+    auto duplicates =
+        ranges::unique(findings, [](auto& a, auto& b) { return finding_key(a) == finding_key(b); });
     findings.erase(duplicates.begin(), duplicates.end());
 }
 
@@ -422,14 +419,14 @@ kota::task<> lint_one(Stack& stack, bool with_index, Fid path_id, LintPass& pass
             // it reports nothing. A compiler error stays wherever it is:
             // broken code is not a clean run. So does a finding no file
             // holds (the configuration's).
-            std::ranges::copy_if(outcome.tidy_diagnostics,
-                                 std::back_inserter(pass.findings),
-                                 [&](const worker::TidyDiagnostic& d) {
-                                     auto& files = stack.project.file_table;
-                                     return d.compiler_error || d.file.empty() ||
-                                            stack.project.build.lintable(files.resolve(
-                                                files.intern(Spelling::absolute(d.file))));
-                                 });
+            ranges::copy_if(outcome.tidy_diagnostics,
+                            std::back_inserter(pass.findings),
+                            [&](const worker::TidyDiagnostic& d) {
+                                auto& files = stack.project.file_table;
+                                return d.compiler_error || d.file.empty() ||
+                                       stack.project.build.lintable(
+                                           files.resolve(files.intern(Spelling::absolute(d.file))));
+                            });
             break;
         }
         case TURunFamily::Result::Skipped:
@@ -437,7 +434,7 @@ kota::task<> lint_one(Stack& stack, bool with_index, Fid path_id, LintPass& pass
             // Skipped means no real compile command (the index path keeps
             // the last-known index then; lint has nothing to keep) — either way
             // the TU went unchecked. A command clang rejected says why.
-            std::ranges::move(outcome.tidy_diagnostics, std::back_inserter(pass.findings));
+            ranges::move(outcome.tidy_diagnostics, std::back_inserter(pass.findings));
             failed = true;
             LOG_WARN("Lint failed for {}: {}",
                      file,
@@ -638,7 +635,7 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
                          : CanonicalPath(Spelling::absolute(project.config.project.cache_dir));
     std::vector<CanonicalPath> skipped_dirs;
     auto skip = [&](CanonicalPath dir) {
-        if(!std::ranges::contains(skipped_dirs, dir)) {
+        if(!ranges::contains(skipped_dirs, dir)) {
             skipped_dirs.push_back(std::move(dir));
         }
     };
@@ -679,7 +676,7 @@ std::vector<FormatFile> project_files(Project& project, llvm::ArrayRef<Fid> memb
         if(!formats(path) || !build.formattable(path) ||
            (unit.contains(fid) ? !workspace_file(root, cache_dir, path)
                                : project.dep_graph.get_includers(fid).empty() ||
-                                     std::ranges::any_of(skipped_dirs, [&](auto& dir) {
+                                     ranges::any_of(skipped_dirs, [&](auto& dir) {
                                          return path::under(path, dir);
                                      }))) {
             continue;
@@ -829,7 +826,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             }
         }
         for(auto& file: project_files(project, load.members)) {
-            if(!directories.empty() && std::ranges::none_of(directories, [&](auto& directory) {
+            if(!directories.empty() && ranges::none_of(directories, [&](auto& directory) {
                    return path::under(file.path, directory);
                })) {
                 continue;
@@ -842,8 +839,8 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         }
     }
     // A file named and also under a named directory keeps the name given.
-    std::ranges::stable_sort(files, {}, &FormatFile::path);
-    auto duplicates = std::ranges::unique(files, {}, &FormatFile::path);
+    ranges::stable_sort(files, {}, &FormatFile::path);
+    auto duplicates = ranges::unique(files, {}, &FormatFile::path);
     files.erase(duplicates.begin(), duplicates.end());
     result.files = files.size();
     if(files.empty()) {
@@ -870,8 +867,8 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     }
 
     llvm::SetVector<llvm::StringRef> errors;
-    assert(std::ranges::size(files) == std::ranges::size(formats));
-    for(auto [file, format]: std::views::zip(files, formats)) {
+    assert(ranges::size(files) == ranges::size(formats));
+    for(auto [file, format]: views::zip(files, formats)) {
         result.output += format.violations;
         if(!format.error.empty()) {
             errors.insert(format.error);

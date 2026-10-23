@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.diagnostics;
 
@@ -9,8 +9,6 @@ import :compile.diagnostic;
 import :syntax.position;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// Corresponds to the `[diagnostics]` section in clice.toml.
 struct DiagnosticsOptions {

@@ -1,9 +1,8 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -30,8 +29,6 @@ import :worker.common;
 import :worker.protocol;
 
 namespace clice {
-
-namespace protocol = kota::ipc::protocol;
 
 namespace {
 
@@ -99,14 +96,12 @@ void append_crash_notes(const Session& session, std::vector<feature::FileDiagnos
 static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TUIndex& preamble) {
     std::vector<feature::FileDiagnostic> diagnostics;
     [[maybe_unused]] auto status =
-        kota::codec::json::from_string<kota::ipc::lsp_config>(preamble.preamble_diagnostics(),
-                                                              diagnostics);
+        json::from_string<ipc::lsp_config>(preamble.preamble_diagnostics(), diagnostics);
     return diagnostics;
 }
 
 static bool kept_errors(const std::shared_ptr<index::TUIndex>& preamble) {
-    return preamble &&
-           std::ranges::any_of(preamble_diagnostics(*preamble), [](const auto& diagnostic) {
+    return preamble && ranges::any_of(preamble_diagnostics(*preamble), [](const auto& diagnostic) {
                return diagnostic.level >= DiagnosticLevel::Error;
            });
 }
@@ -138,7 +133,7 @@ static std::vector<feature::FileDiagnostic> with_preamble(std::vector<feature::F
     std::erase_if(merged, [&](const feature::FileDiagnostic& diagnostic) {
         return raised.contains(to_client_json(diagnostic, ""));
     });
-    std::ranges::move(own, std::back_inserter(merged));
+    ranges::move(own, std::back_inserter(merged));
     return merged;
 }
 
@@ -193,8 +188,8 @@ static void note_provider_choices(std::vector<feature::FileDiagnostic>& diagnost
                                   const Project& project,
                                   const Session& session) {
     auto& graph = project.dep_graph;
-    assert(std::ranges::size(imports.declared) == std::ranges::size(imports.offsets));
-    for(auto [dep, offset]: std::views::zip(imports.declared, imports.offsets)) {
+    assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
+    for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
         if(PCMFamily::is_unresolved(dep)) {
             continue;
         }
@@ -276,8 +271,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     std::string pcm_keys;
     llvm::SmallVector<Fid> modules;
     bool imported = false;
-    assert(std::ranges::size(imports.declared) == std::ranges::size(imports.offsets));
-    for(auto [dep, offset]: std::views::zip(imports.declared, imports.offsets)) {
+    assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
+    for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
         if(offset != 0 && offset >= bound) {
             continue;
         }
@@ -368,7 +363,7 @@ void ASTFamily::register_runner() {
 
 void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
                              std::uint8_t kind,
-                             const kota::ipc::Error& error) {
+                             const ipc::Error& error) {
     LOG_WARN("{} crashed a worker while serving {}: {}",
              project.file_table.resolve(session->path_id),
              crash_subject(kind).work,
@@ -905,7 +900,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // resolve again: under it, another host may come first.
         llvm::SmallVector<Fid, 2> retried;
         while(resolution.tree_wanted.valid() &&
-              !std::ranges::contains(retried, resolution.tree_wanted)) {
+              !ranges::contains(retried, resolution.tree_wanted)) {
             auto host = resolution.tree_wanted;
             retried.push_back(host);
             if(!enterings(project, host, path_id)) {
@@ -1132,13 +1127,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             [&]() -> RequestResult<worker::CompileParams> {
                 if(session->generation != gen) {
                     co_await kota::fail(
-                        kota::ipc::Error{worker::dispatch_errc::cancelled, "Compile superseded"});
+                        ipc::Error{worker::dispatch_errc::cancelled, "Compile superseded"});
                 }
                 co_return co_await pool.send_stateful(path_id.raw,
                                                       params,
                                                       {.token = interrupt_token});
             },
-            [&](const kota::ipc::Error& error) {
+            [&](const ipc::Error& error) {
                 // The checks run in the parse (their preprocessor
                 // callbacks) and after it: they are the first suspect,
                 // tried by a compile without them. One that crashes as

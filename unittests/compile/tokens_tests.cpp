@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -80,11 +80,9 @@ std::string spelled_for(llvm::StringRef sequence) {
     auto stream = unit->focus_file().tokens().expanded();
     for(std::size_t i = 0; i + words.size() <= stream.size(); i += 1) {
         auto run = stream.slice(i, words.size());
-        if(std::ranges::equal(run,
-                              words,
-                              [&](const clang::syntax::Token& token, llvm::StringRef word) {
-                                  return token.text(SM) == word;
-                              })) {
+        if(ranges::equal(run, words, [&](const clang::syntax::Token& token, llvm::StringRef word) {
+               return token.text(SM) == word;
+           })) {
             auto range = clang::SourceRange(run.front().location(), run.back().location());
             return text(unit->focus_file().tokens().spelled_for(range));
         }
@@ -109,7 +107,7 @@ std::string origins() {
     auto content = unit->focus_file().content();
     auto spelled = unit->focus_file().tokens().spelled();
     std::string out;
-    for(auto [index, token]: std::views::enumerate(unit->focus_file().tokens().expanded())) {
+    for(auto [index, token]: views::enumerate(unit->focus_file().tokens().expanded())) {
         if(token.kind() == clang::tok::eof) {
             continue;
         }
@@ -363,12 +361,12 @@ ZEST_CASE(PreambleAway) {
 ZEST_CASE(AssemblerComment) {
     add_focus("main.S", "# comment\n.text\n");
     prepare("-std=c11");
-    auto language = std::ranges::find(params.input.arguments, "c");
+    auto language = ranges::find(params.input.arguments, "c");
     ZASSERT(language != params.input.arguments.end());
     *language = "assembler-with-cpp";
     ZASSERT(try_compile());
     ZEXPECT(spelled_where(false) == "# comment . text");
-    ZEXPECT(std::ranges::none_of(
+    ZEXPECT(ranges::none_of(
         unit->focus_file().tokens().expanded(),
         [](const clang::syntax::Token& token) { return token.kind() == clang::tok::eod; }));
     unit->get<Semantics>();

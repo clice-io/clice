@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -298,7 +298,7 @@ ZEST_CASE(RetiredDuringMigration) {
         planted.push_back(plant(std::format("/proj/f{}.cpp", i)));
     }
     // The last the migration reaches: past its first batch.
-    auto last = std::ranges::max(planted);
+    auto last = ranges::max(planted);
     fx.save();
     plant("/proj/next.cpp");
 
@@ -844,8 +844,8 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
 
     // The shards commit without the search index a cold round never built.
     ZASSERT(log.writes.size() == 1u);
-    ZASSERT(std::ranges::contains(log.writes[0], index::BlobKind::TUManifest));
-    ZASSERT(!std::ranges::contains(log.writes[0], index::BlobKind::SearchIndex));
+    ZASSERT(ranges::contains(log.writes[0], index::BlobKind::TUManifest));
+    ZASSERT(!ranges::contains(log.writes[0], index::BlobKind::SearchIndex));
     ZASSERT(!project.index.search_index().loaded());
 }
 
@@ -890,7 +890,7 @@ void a() { Box<A>{}.show(); }
     auto box_id = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
     auto* instantiations = f.project.index.instantiation_shard(box_id);
     ZASSERT(instantiations);
-    ZEXPECT(std::ranges::equal(instantiations->resolutions(), stored));
+    ZEXPECT(ranges::equal(instantiations->resolutions(), stored));
     ZEXPECT(f.project.index.live_uses(box_id).size() == 1u);
     ZEXPECT(count(*instantiations) == records);
     ZEXPECT(

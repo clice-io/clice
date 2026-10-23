@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -193,13 +193,13 @@ std::optional<std::string> include_argument(CanonicalRef header,
     for(auto& dir: search.dirs) {
         dirs.push_back(CanonicalPath(Spelling::absolute(dir.path)));
     }
-    for(auto [index, dir]: std::views::enumerate(dirs)) {
+    for(auto [index, dir]: views::enumerate(dirs)) {
         if(auto relative = below(dir)) {
             candidates.push_back(
                 {*relative, static_cast<std::size_t>(index) >= search.angled_start_idx});
         }
     }
-    std::ranges::stable_sort(candidates, {}, [](const Candidate& candidate) {
+    ranges::stable_sort(candidates, {}, [](const Candidate& candidate) {
         return candidate.name.size();
     });
     for(const auto& candidate: candidates) {

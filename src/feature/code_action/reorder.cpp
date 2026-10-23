@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -126,10 +126,9 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     // whitespace holding a single line break. A comment trailing the
     // previous definition's line belongs to that line.
     auto comments = unit.comments(focus.file());
-    auto it =
-        std::ranges::lower_bound(comments, begin, {}, [](const LexicalInfo::Comment& comment) {
-            return comment.range.begin;
-        });
+    auto it = ranges::lower_bound(comments, begin, {}, [](const LexicalInfo::Comment& comment) {
+        return comment.range.begin;
+    });
     while(it != comments.begin()) {
         --it;
         auto [comment_begin, comment_end] = it->range;
@@ -146,8 +145,8 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     LocalSourceRange lines{begin, line_end(content, range->end - 1)};
 
     using enum LexicalInfo::Directive::Kind;
-    if(std::ranges::any_of(unit.focus_file().lexical().directives, [&](const auto& directive) {
-           return std::ranges::contains(std::array{If, Else, EndIf}, directive.kind) &&
+    if(ranges::any_of(unit.focus_file().lexical().directives, [&](const auto& directive) {
+           return ranges::contains(std::array{If, Else, EndIf}, directive.kind) &&
                   directive.range.begin >= lines.begin && directive.range.begin < lines.end;
        })) {
         return std::nullopt;
@@ -271,9 +270,8 @@ std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot>
         }
         auto include = directive.range;
         if(include.begin <= region.begin || include.begin >= region.end ||
-           std::ranges::any_of(slots, [&](const Slot& slot) {
-               return slot.range.contains(include.begin);
-           })) {
+           ranges::any_of(slots,
+                          [&](const Slot& slot) { return slot.range.contains(include.begin); })) {
             continue;
         }
         for(const auto& slot: slots) {
@@ -313,8 +311,8 @@ std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot>
 /// order the text relies on stays where it is, the others ordered around
 /// it.
 std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot> slots) {
-    std::ranges::sort(slots, {}, [](const Slot& slot) { return slot.range.begin; });
-    for(auto [previous, slot]: std::views::zip(slots, std::views::drop(slots, 1))) {
+    ranges::sort(slots, {}, [](const Slot& slot) { return slot.range.begin; });
+    for(auto [previous, slot]: views::zip(slots, views::drop(slots, 1))) {
         if(slot.range.begin < previous.range.end) {
             return {};
         }
@@ -322,7 +320,7 @@ std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot
     llvm::MapVector<std::pair<const clang::DeclContext*, std::optional<std::uint32_t>>,
                     llvm::SmallVector<std::size_t>>
         blocks;
-    for(auto [index, slot]: std::views::enumerate(slots)) {
+    for(auto [index, slot]: views::enumerate(slots)) {
         blocks[{slot.block, slot.branch}].push_back(static_cast<std::size_t>(index));
     }
 
@@ -333,7 +331,7 @@ std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot
     std::vector<bool> pinned(slots.size(), false);
     // Orders each block's unpinned slots by rank; whether any text moves.
     auto assign = [&] {
-        for(const auto& members: std::views::values(blocks)) {
+        for(const auto& members: views::values(blocks)) {
             llvm::SmallVector<std::size_t> movable;
             for(auto index: members) {
                 if(pinned[index]) {
@@ -343,20 +341,20 @@ std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot
                 }
             }
             auto ordered = movable;
-            std::ranges::sort(ordered, {}, [&](std::size_t index) { return slots[index].rank; });
-            for(auto [position, text]: std::views::zip(movable, ordered)) {
+            ranges::sort(ordered, {}, [&](std::size_t index) { return slots[index].rank; });
+            for(auto [position, text]: views::zip(movable, ordered)) {
                 source[position] = text;
             }
         }
         bool moves = false;
-        for(auto [position, text]: std::views::enumerate(source)) {
+        for(auto [position, text]: views::enumerate(source)) {
             target[text] = static_cast<std::size_t>(position);
             moves |= static_cast<std::size_t>(position) != text;
         }
         return moves;
     };
     auto slot_of = [&](std::uint32_t offset) -> std::optional<std::size_t> {
-        auto it = std::ranges::upper_bound(slots, offset, {}, [](const Slot& slot) {
+        auto it = ranges::upper_bound(slots, offset, {}, [](const Slot& slot) {
             return slot.range.begin;
         });
         if(it == slots.begin() || offset >= std::prev(it)->range.end) {
@@ -397,7 +395,7 @@ std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot
 
     auto content = unit.focus_file().content();
     std::vector<TextReplacement> edits;
-    for(auto [position, text]: std::views::enumerate(source)) {
+    for(auto [position, text]: views::enumerate(source)) {
         if(static_cast<std::size_t>(position) == text) {
             continue;
         }

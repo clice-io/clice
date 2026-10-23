@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -73,7 +73,7 @@ std::pair<std::size_t, std::size_t> tree_distance(llvm::StringRef path, llvm::St
         shared -= 1;
     }
     return {path.size() - shared,
-            static_cast<std::size_t>(std::ranges::count_if(other.substr(shared), separator))};
+            static_cast<std::size_t>(ranges::count_if(other.substr(shared), separator))};
 }
 
 /// enterings() by one include tree, rooted at `root`.
@@ -86,7 +86,7 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     using CheckResult = vfs::DiskState::CheckResult;
     auto& files = project.file_table;
     if(files.check_version(root) != CheckResult::Fresh ||
-       std::ranges::any_of(absent, [&](VersionID place) {
+       ranges::any_of(absent, [&](VersionID place) {
            return files.disk.present(files.version(place).fid);
        })) {
         return std::nullopt;
@@ -103,7 +103,7 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     // FIXME: another file defining the same guard skips the first include too:
     // a header included once is not checked, so fixing its guard keeps the
     // tree's answer until the host's tree is taken again.
-    auto repeated = std::ranges::count_if(nodes, [&](const index::IncludeNode& node) {
+    auto repeated = ranges::count_if(nodes, [&](const index::IncludeNode& node) {
                         return files.version(VersionID{node.file}).fid == header;
                     }) > 1;
 
@@ -134,15 +134,14 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
         // FIXME: by file, not by node: a file without a guard that the unit both
         // forces in and includes at its top level is taken for the forced one at
         // either root.
-        bool forced =
-            std::ranges::contains(project.dep_graph.get_forcing_units(file_of(root)), host);
+        bool forced = ranges::contains(project.dep_graph.get_forcing_units(file_of(root)), host);
         Entering entering{.host = {.file = host}};
         entering.order = forced ? llvm::SmallVector<std::uint32_t>{0, nodes[root].line}
                                 : llvm::SmallVector<std::uint32_t>{1};
         if(!forced) {
             entering.host.chain.push_back(host);
         }
-        for(auto node: std::views::reverse(path)) {
+        for(auto node: views::reverse(path)) {
             if((node != i || repeated) && !fresh(node)) {
                 return std::nullopt;
             }
@@ -157,8 +156,8 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     // Nodes are numbered by includer, not by when the compile entered
     // them; within one file the directives run top to bottom, so the
     // first line where two chains part orders them.
-    std::ranges::sort(found, [](const Entering& a, const Entering& b) {
-        return std::ranges::lexicographical_compare(a.order, b.order);
+    ranges::sort(found, [](const Entering& a, const Entering& b) {
+        return ranges::lexicographical_compare(a.order, b.order);
     });
     llvm::SmallVector<Host> hosts;
     for(auto& entering: found) {
@@ -206,7 +205,7 @@ const LenderIndex& lender_index(Project& project) {
     index.commands.clear();
     index.search_dirs.clear();
     auto members = project.build.members();
-    std::ranges::sort(members, {}, [&](Fid unit) { return project.file_table.resolve(unit); });
+    ranges::sort(members, {}, [&](Fid unit) { return project.file_table.resolve(unit); });
     llvm::StringMap<CanonicalPath> identities;
     for(auto member: members) {
         // A member a rule covers with a default command that is no compile
@@ -262,12 +261,12 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
         return files.resolve(lender.unit);
     };
 
-    auto siblings = std::ranges::to<llvm::SmallVector<Lender>>(
-        std::views::filter(units, [&](const Lender& lender) {
+    auto siblings =
+        ranges::to<llvm::SmallVector<Lender>>(views::filter(units, [&](const Lender& lender) {
             return path::parent_path(unit_path(lender)) == dir;
         }));
     if(!siblings.empty()) {
-        return *std::ranges::min_element(siblings, {}, [&](const Lender& lender) {
+        return *ranges::min_element(siblings, {}, [&](const Lender& lender) {
             return std::tuple(path::stem(unit_path(lender)) != stem, unit_path(lender));
         });
     }
@@ -294,7 +293,7 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
     }
 
     // The closest unit in the directory tree, then by name.
-    return *std::ranges::min_element(units, {}, [&](const Lender& lender) {
+    return *ranges::min_element(units, {}, [&](const Lender& lender) {
         return std::tuple(tree_distance(path, unit_path(lender)), unit_path(lender));
     });
 }
@@ -389,13 +388,13 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
         // database.
         std::size_t source_rank = sources.size();
         if(auto entries = project.build.entries(host); !entries.empty()) {
-            source_rank = std::ranges::find(sources, entries.front().source) - sources.begin();
+            source_rank = ranges::find(sources, entries.front().source) - sources.begin();
         }
         int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
         int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
         return {source_rank, stem_match, same_dir, tree_distance(header_path, host_path)};
     };
-    std::ranges::sort(hosts, [&](Fid a, Fid b) {
+    ranges::sort(hosts, [&](Fid a, Fid b) {
         auto sa = score(a), sb = score(b);
         if(sa != sb) {
             return sa < sb;

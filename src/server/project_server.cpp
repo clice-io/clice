@@ -1,10 +1,9 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "version.h"
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -84,7 +83,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
 
 ProjectServer::~ProjectServer() = default;
 
-void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init_options,
+void ProjectServer::configure(const std::optional<codec::dyn::Value>& init_options,
                               llvm::ArrayRef<CanonicalPath> taken_cache_dirs) {
     config_issues.clear();
     config_path.clear();
@@ -100,7 +99,7 @@ void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init
     }
     std::string own_cache_dir = project.config.project.cache_dir;
     if(init_options) {
-        if(auto ov = kota::codec::dyn::from_dyn(*init_options, project.config); !ov) {
+        if(auto ov = codec::dyn::from_dyn(*init_options, project.config); !ov) {
             LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
         }
     }
@@ -114,8 +113,7 @@ void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init
     auto& cache_dir = project.config.project.cache_dir;
     auto taken = [&] {
         return !cache_dir.empty() &&
-               (std::ranges::contains(taken_cache_dirs,
-                                      CanonicalPath(Spelling::absolute(cache_dir))) ||
+               (ranges::contains(taken_cache_dirs, CanonicalPath(Spelling::absolute(cache_dir))) ||
                 owned_elsewhere(cache_dir, root));
     };
     if(!root.empty() && taken()) {
@@ -401,7 +399,7 @@ void ProjectServer::on_index_changed(llvm::ArrayRef<Fid> path_ids) {
     // Sessions without a current file index serve these very shards
     // (freshness clause 4); index_served says the client pulled from
     // them. Tell subscribers so those results get re-pulled.
-    if(std::ranges::any_of(path_ids, [&](Fid id) { return session_served_by_shard(id); })) {
+    if(ranges::any_of(path_ids, [&](Fid id) { return session_served_by_shard(id); })) {
         server.on_serving_index_changed.emit();
     }
 }
@@ -493,7 +491,7 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
 
     // The database gained or lost entries: an open document may belong to
     // another project now.
-    if(std::ranges::any_of(events, [](const FileEvent& event) {
+    if(ranges::any_of(events, [](const FileEvent& event) {
            return event.kind == FileEvent::Kind::CDBChanged &&
                   (!event.cdb.added.empty() || !event.cdb.removed.empty());
        })) {
@@ -550,7 +548,7 @@ void ProjectServer::drain_store_evictions() {
         if(evicted.ns != "pch") {
             continue;
         }
-        auto it = std::ranges::find_if(project.pch_cache, [&](const auto& entry) {
+        auto it = ranges::find_if(project.pch_cache, [&](const auto& entry) {
             return entry.second.blob == evicted.key;
         });
         if(it != project.pch_cache.end() && !sched.pch.building(it->getKey())) {

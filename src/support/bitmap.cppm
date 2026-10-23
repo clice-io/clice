@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #define ROARING_EXCEPTIONS 0
 #define ROARING_TERMINATE(message) std::abort()

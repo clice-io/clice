@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.document_symbols;
 
@@ -13,8 +13,6 @@ import :syntax.position;
 import :syntax.source_text;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// Corresponds to the `[document_symbols]` section in clice.toml.
 struct DocumentSymbolsOptions {

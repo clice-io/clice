@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:index.shard;
 
@@ -141,7 +141,7 @@ private:
 
     /// The live mask resolved against one side's mask columns, built once
     /// per query.
-    LiveFilter live_filter(const RangeColumnsOf<kota::codec::blob::Vec>& columns) const;
+    LiveFilter live_filter(const RangeColumnsOf<codec::blob::Vec>& columns) const;
 
 private:
     std::unique_ptr<llvm::MemoryBuffer> buffer;

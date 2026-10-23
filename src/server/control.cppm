@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.control;
 
@@ -26,7 +26,7 @@ struct IndexResult {
 
 }  // namespace clice::control
 
-namespace kota::ipc::protocol {
+namespace ipc::protocol {
 
 template <>
 struct RequestTraits<clice::control::IndexParams> {
@@ -34,4 +34,4 @@ struct RequestTraits<clice::control::IndexParams> {
     constexpr inline static std::string_view method = "clice/index";
 };
 
-}  // namespace kota::ipc::protocol
+}  // namespace ipc::protocol

@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -19,10 +18,10 @@ namespace clice::index {
 
 namespace {
 
-using Root = kota::codec::blob::view_t<TUIndexBlob>;
+using Root = codec::blob::view_t<TUIndexBlob>;
 
 const Root& view_of(llvm::StringRef data) {
-    return kota::codec::blob::view_verified<TUIndexBlob>(as_bytes(data));
+    return codec::blob::view_verified<TUIndexBlob>(as_bytes(data));
 }
 
 SymbolView symbol_at(const Root& root, std::uint32_t entry) {
@@ -116,8 +115,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     auto past_paths = [&](std::uint32_t file) {
         return file >= count;
     };
-    if(std::ranges::any_of(references, past_paths) ||
-       std::ranges::any_of(instantiations, past_paths)) {
+    if(ranges::any_of(references, past_paths) || ranges::any_of(instantiations, past_paths)) {
         LOG_DEBUG("Rejecting TU index: reference file past the path table");
         return {};
     }
@@ -217,8 +215,8 @@ llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {
 }
 
 std::optional<std::uint32_t> TUIndex::section_of(std::uint32_t path_id) const {
-    auto sections = std::views::iota(std::uint32_t(0), section_count());
-    auto it = std::ranges::lower_bound(sections, path_id, {}, [&](std::uint32_t i) {
+    auto sections = views::iota(std::uint32_t(0), section_count());
+    auto it = ranges::lower_bound(sections, path_id, {}, [&](std::uint32_t i) {
         return section_path(i);
     });
     if(it == sections.end() || section_path(*it) != path_id) {
@@ -294,8 +292,8 @@ const InstantiationShard& TUIndex::instantiation_shard(std::uint32_t i) const {
 }
 
 std::optional<std::uint32_t> TUIndex::instantiation_section_of(std::uint32_t path_id) const {
-    auto sections = std::views::iota(std::uint32_t(0), instantiation_count());
-    auto it = std::ranges::lower_bound(sections, path_id, {}, [&](std::uint32_t i) {
+    auto sections = views::iota(std::uint32_t(0), instantiation_count());
+    auto it = ranges::lower_bound(sections, path_id, {}, [&](std::uint32_t i) {
         return instantiation_path(i);
     });
     if(it == sections.end() || instantiation_path(*it) != path_id) {
@@ -355,22 +353,21 @@ std::optional<std::vector<TUSharedLocal>>
     TUIndex::shared_locals(const llvm::BitVector& held) const {
     std::vector<TUSharedLocal> result;
     bool valid = true;
-    for_each_symbol([&](SymbolHash hash,
-                        const SymbolView& identity,
-                        llvm::ArrayRef<std::uint32_t> files) {
-        if(identity.scope == SymbolScope::External || files.size() < 2) {
+    for_each_symbol(
+        [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t> files) {
+            if(identity.scope == SymbolScope::External || files.size() < 2) {
+                return true;
+            }
+            if(ranges::any_of(files, [&](std::uint32_t path_id) { return !held.test(path_id); })) {
+                valid = false;
+                return false;
+            }
+            result.push_back({
+                .symbol = hash,
+                .paths = {files.begin(), files.end()}
+            });
             return true;
-        }
-        if(std::ranges::any_of(files, [&](std::uint32_t path_id) { return !held.test(path_id); })) {
-            valid = false;
-            return false;
-        }
-        result.push_back({
-            .symbol = hash,
-            .paths = {files.begin(), files.end()}
         });
-        return true;
-    });
     if(!valid) {
         return std::nullopt;
     }

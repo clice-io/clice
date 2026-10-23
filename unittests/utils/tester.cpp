@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #ifdef _WIN32
 // See cache_store.cpp: windows.h must not spill min/max macros.

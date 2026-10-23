@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -74,7 +73,7 @@ std::uint64_t WorkerScheduler::finish(RequestId id, SchedulerTime now) {
     if(request.priority == Priority::High) {
         last_activity = now;
     } else if(request.slot && !request.cancel_asked && request.max_memory > 0) {
-        peaks.insert(std::ranges::upper_bound(peaks, request.max_memory), request.max_memory);
+        peaks.insert(ranges::upper_bound(peaks, request.max_memory), request.max_memory);
     }
     last_busy = now;
     decide(now);
@@ -86,7 +85,7 @@ void WorkerScheduler::stateful_begin(RequestId id,
                                      std::uint32_t document,
                                      bool build,
                                      SchedulerTime now) {
-    auto waiting = std::ranges::any_of(requests, [&](const auto& entry) {
+    auto waiting = ranges::any_of(requests, [&](const auto& entry) {
         auto& other = entry.second;
         return other.stateful && other.slot == slot && other.document == document;
     });
@@ -202,7 +201,7 @@ std::chrono::milliseconds WorkerScheduler::sample_interval() const {
 }
 
 std::size_t WorkerScheduler::running_on(std::size_t slot, bool stateful) const {
-    return std::ranges::count_if(requests, [&](const auto& entry) {
+    return ranges::count_if(requests, [&](const auto& entry) {
         return entry.second.stateful == stateful && entry.second.slot == slot;
     });
 }
@@ -213,7 +212,7 @@ bool WorkerScheduler::runs_alone(std::size_t slot) const {
 }
 
 bool WorkerScheduler::one_running() const {
-    return std::ranges::count_if(requests, [](const auto& entry) {
+    return ranges::count_if(requests, [](const auto& entry) {
                return entry.second.stateful || entry.second.slot.has_value();
            }) == 1;
 }
@@ -238,7 +237,7 @@ bool WorkerScheduler::user_active(SchedulerTime now) const {
     if(last_activity && now - *last_activity < foreground_hold) {
         return true;
     }
-    return std::ranges::any_of(requests, [&](const auto& entry) {
+    return ranges::any_of(requests, [&](const auto& entry) {
         auto& request = entry.second;
         return request.priority == Priority::High &&
                now - request.submitted < foreground_request_hold;
@@ -246,7 +245,7 @@ bool WorkerScheduler::user_active(SchedulerTime now) const {
 }
 
 std::size_t WorkerScheduler::running(Priority priority) const {
-    return std::ranges::count_if(slots, [&](const auto& entry) {
+    return ranges::count_if(slots, [&](const auto& entry) {
         auto& slot = entry.second;
         return slot.request && requests.at(*slot.request).priority == priority;
     });
@@ -267,7 +266,7 @@ std::uint64_t WorkerScheduler::estimate(const Request& request) const {
 }
 
 std::size_t WorkerScheduler::unknown_ahead(const Request& request) const {
-    return std::ranges::count_if(slots, [&](const auto& entry) {
+    return ranges::count_if(slots, [&](const auto& entry) {
         auto& slot = entry.second;
         if(!slot.request || *slot.request == request.id) {
             return false;
@@ -333,7 +332,7 @@ WorkerScheduler::Slot* WorkerScheduler::idle_slot() {
 }
 
 bool WorkerScheduler::busy() const {
-    return std::ranges::any_of(requests, [](const auto& entry) { return !entry.second.stateful; });
+    return ranges::any_of(requests, [](const auto& entry) { return !entry.second.stateful; });
 }
 
 void WorkerScheduler::start(Request& request, Slot& slot, SchedulerTime now) {
@@ -357,8 +356,8 @@ void WorkerScheduler::cancel_newest_low(std::size_t count, SchedulerTime now) {
             }
         }
     }
-    auto asked = std::ranges::count_if(low, [](Request* r) { return r->cancel_asked.has_value(); });
-    std::ranges::sort(low, std::greater{}, &Request::order);
+    auto asked = ranges::count_if(low, [](Request* r) { return r->cancel_asked.has_value(); });
+    ranges::sort(low, std::greater{}, &Request::order);
     for(auto* request: low) {
         if(static_cast<std::size_t>(asked) >= count) {
             break;
@@ -445,8 +444,8 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
         if(now - held->second >= long_wait) {
             break;
         }
-        auto behind = low_queue | std::views::drop(1) | std::views::take(backfill_depth);
-        auto later = std::ranges::find_if(behind, [&](RequestId id) {
+        auto behind = low_queue | views::drop(1) | views::take(backfill_depth);
+        auto later = ranges::find_if(behind, [&](RequestId id) {
             return memory_admits(requests.at(id), *slot);
         });
         if(later == behind.end()) {
@@ -460,9 +459,9 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
 
 bool WorkerScheduler::retire_idle() {
     auto serving =
-        std::ranges::count_if(slots, [](const auto& entry) { return !entry.second.retiring; });
+        ranges::count_if(slots, [](const auto& entry) { return !entry.second.retiring; });
     bool retired = false;
-    for(auto& [index, slot]: slots | std::views::reverse) {
+    for(auto& [index, slot]: slots | views::reverse) {
         if(static_cast<std::size_t>(serving) <= options.min_workers) {
             break;
         }
@@ -512,7 +511,7 @@ void WorkerScheduler::check_memory(SchedulerTime now) {
         memory_kill = *newest->slot;
         // What it reached counts among the peaks: the units killed are the
         // big ones, and the finished ones alone would leave them out.
-        peaks.insert(std::ranges::upper_bound(peaks, newest->memory), newest->memory);
+        peaks.insert(ranges::upper_bound(peaks, newest->memory), newest->memory);
         kill({newest}, scheduler::KillReason::Memory);
     }
 }
@@ -550,7 +549,7 @@ void WorkerScheduler::check_deadlines(SchedulerTime now) {
         // FIXME: a query hung in its own work is spared as well, up to the build
         // deadline, while any build of its worker is listed, even one waiting behind
         // it: only the worker can tell when a request really starts.
-        auto building = std::ranges::any_of(list, &Request::build);
+        auto building = ranges::any_of(list, &Request::build);
         llvm::SmallVector<const Request*> late;
         for(auto* request: list) {
             auto running = now - request->started;
@@ -592,12 +591,12 @@ void WorkerScheduler::scale(SchedulerTime now) {
         return;
     }
     auto serving =
-        std::ranges::count_if(slots, [](const auto& entry) { return !entry.second.retiring; });
+        ranges::count_if(slots, [](const auto& entry) { return !entry.second.retiring; });
     if(static_cast<std::size_t>(serving) <= options.min_workers) {
         return;
     }
-    auto newest = std::ranges::find_if(slots | std::views::reverse,
-                                       [](const auto& entry) { return !entry.second.retiring; });
+    auto newest = ranges::find_if(slots | views::reverse,
+                                  [](const auto& entry) { return !entry.second.retiring; });
     newest->second.retiring = true;
     last_busy = now;
     actions.push_back(scheduler::Retire{.slot = newest->first});

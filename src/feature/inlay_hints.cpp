@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -188,7 +188,7 @@ bool is_simple_builtin(const clang::FunctionDecl* callee) {
 
 /// The length of `text` in characters.
 std::size_t characters(llvm::StringRef text) {
-    return kota::ipc::lsp::encoded_length(text, PositionEncoding::UTF32);
+    return lsp::encoded_length(text, PositionEncoding::UTF32);
 }
 
 /// `text` within `limit` characters, cut with `…` where it no longer fits;
@@ -197,9 +197,8 @@ std::string truncate(llvm::StringRef text, std::size_t limit) {
     if(limit == 0 || characters(text) <= limit) {
         return text.str();
     }
-    auto kept = kota::ipc::lsp::encoded_offset(text,
-                                               static_cast<std::uint32_t>(limit - 1),
-                                               PositionEncoding::UTF32);
+    auto kept =
+        lsp::encoded_offset(text, static_cast<std::uint32_t>(limit - 1), PositionEncoding::UTF32);
     return (text.take_front(*kept) + "…").str();
 }
 
@@ -280,7 +279,7 @@ std::optional<std::string> elide(llvm::StringRef text, std::size_t limit) {
     std::string result = (list->head + "<").str();
     std::size_t used = 0;
     bool elided = false;
-    for(auto [index, argument]: std::views::enumerate(list->arguments)) {
+    for(auto [index, argument]: views::enumerate(list->arguments)) {
         std::size_t separator = index == 0 ? 0 : 2;
         std::size_t reserved = static_cast<std::size_t>(index) + 1 < list->arguments.size() ? 3 : 0;
         std::optional<std::string> kept;
@@ -332,7 +331,7 @@ bool names_result(const clang::CallExpr* call, clang::QualType type) {
         return false;
     }
     auto core = named_core(type);
-    if(std::ranges::contains(written, core)) {
+    if(ranges::contains(written, core)) {
         return true;
     }
     llvm::ArrayRef<clang::TemplateArgument> arguments;
@@ -346,9 +345,9 @@ bool names_result(const clang::CallExpr* call, clang::QualType type) {
         arguments = arguments.drop_back();
     }
     return !arguments.empty() &&
-           std::ranges::all_of(arguments, [&](const clang::TemplateArgument& argument) {
+           ranges::all_of(arguments, [&](const clang::TemplateArgument& argument) {
                return argument.getKind() == clang::TemplateArgument::Type &&
-                      std::ranges::contains(written, named_core(argument.getAsType()));
+                      ranges::contains(written, named_core(argument.getAsType()));
            });
 }
 
@@ -847,7 +846,7 @@ private:
             const auto limit = options.max_length.default_arguments;
             std::vector<InlayHintPart> hint;
             std::size_t size = 0;
-            for(auto&& [index, element]: std::views::enumerate(formatted_default_args)) {
+            for(auto&& [index, element]: views::enumerate(formatted_default_args)) {
                 std::size_t separator = hint.empty() ? 0 : 2;
                 // While more defaults follow, `, …` must still fit after this one.
                 std::size_t rest =
@@ -927,7 +926,7 @@ private:
         auto words = lexical.words(opening);
         std::string condition = words.front().text(content) == "ifndef" ? "!" : "";
         std::optional<std::uint32_t> previous;
-        for(const auto& token: std::views::drop(words, 1)) {
+        for(const auto& token: views::drop(words, 1)) {
             if(previous && *previous < token.range.begin) {
                 condition += ' ';
             }
@@ -999,7 +998,7 @@ private:
         // part ways; an instantiated parameter keeps the location of the
         // one it was written as, the parameters of a pack all the pack's.
         auto parameters = pattern->parameters();
-        auto written = std::ranges::find_if(parameters, [&](const auto* each) {
+        auto written = ranges::find_if(parameters, [&](const auto* each) {
             return each->getLocation() == param->getLocation();
         });
         return written == parameters.end() ? param : *written;
@@ -1038,7 +1037,7 @@ private:
         // can take its place in the search: such names stay plain.
         auto ambiguous = [&](llvm::StringRef name, const clang::NamedDecl* decl) {
             return text.contains("…") &&
-                   std::ranges::any_of(spelled.names, [&](const SpelledName& other) {
+                   ranges::any_of(spelled.names, [&](const SpelledName& other) {
                        return other.name == name &&
                               other.decl->getCanonicalDecl() != decl->getCanonicalDecl();
                    });
@@ -1804,11 +1803,11 @@ auto inlay_hints(CompilationUnit& unit, LocalSourceRange target, const InlayHint
     Builder builder(raw_hints, unit, target, options);
     builder.run();
 
-    std::ranges::sort(raw_hints, [](const InlayHint& lhs, const InlayHint& rhs) {
+    ranges::sort(raw_hints, [](const InlayHint& lhs, const InlayHint& rhs) {
         return std::tie(lhs.offset, lhs.label, lhs.kind, lhs.padding_left, lhs.padding_right) <
                std::tie(rhs.offset, rhs.label, rhs.kind, rhs.padding_left, rhs.padding_right);
     });
-    auto duplicates = std::ranges::unique(raw_hints);
+    auto duplicates = ranges::unique(raw_hints);
     raw_hints.erase(duplicates.begin(), duplicates.end());
 
     // Editors show a few dozen characters of hints on a line: the thousands
@@ -1849,7 +1848,7 @@ auto to_protocol(llvm::ArrayRef<InlayHint> hints,
         auto links = [](const InlayHintPart& part) {
             return part.symbol != 0 || part.target;
         };
-        if(locate && std::ranges::any_of(hint.label, links)) {
+        if(locate && ranges::any_of(hint.label, links)) {
             std::vector<protocol::InlayHintLabelPart> parts;
             for(const auto& part: hint.label) {
                 parts.push_back(

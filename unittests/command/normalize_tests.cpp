@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -109,7 +109,7 @@ ZEST_CASE(InternedCommand) {
                    commands.input_kind(spelled, "/ws/src/a.cpp"),
                    CommandSource::Default};
     auto rendered = commands.render_driver(ref, database.spelling(ref.file));
-    ZEXPECT(std::ranges::contains(rendered, "-std=c++20"sv));
+    ZEXPECT(ranges::contains(rendered, "-std=c++20"sv));
     ZEXPECT(has_arg(rendered, "/ws/include"));
     ZEXPECT(std::string_view(rendered.back()) == file_table.resolve(ref.file).str());
 };

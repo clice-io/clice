@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -119,7 +119,7 @@ auto check_semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& o
     for(auto [begin, token]: by_begin) {
         report(*token, "only_index", "", spell(*token));
     }
-    std::ranges::stable_sort(check.differences, {}, [](const TokenDifference& difference) {
+    ranges::stable_sort(check.differences, {}, [](const TokenDifference& difference) {
         return std::pair(difference.line, difference.column);
     });
     return check;
@@ -154,14 +154,14 @@ auto check_document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions&
     flatten(from_index, -1, right);
 
     std::multimap<std::pair<std::uint32_t, std::uint32_t>, std::int32_t> by_name_range;
-    for(auto [at, flat]: std::views::enumerate(right)) {
+    for(auto [at, flat]: views::enumerate(right)) {
         auto selection = flat.symbol->selection_range;
         by_name_range.emplace(std::pair(selection.begin, selection.end),
                               static_cast<std::int32_t>(at));
     }
     std::vector<std::int32_t> partner(left.size(), -1);
     std::vector<bool> taken(right.size(), false);
-    for(auto [at, flat]: std::views::enumerate(left)) {
+    for(auto [at, flat]: views::enumerate(left)) {
         auto selection = flat.symbol->selection_range;
         auto [first, last] = by_name_range.equal_range(std::pair(selection.begin, selection.end));
         std::int32_t chosen = -1;
@@ -219,7 +219,7 @@ auto check_document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions&
             .index = std::move(index_value),
         });
     };
-    for(auto [at, flat]: std::views::enumerate(left)) {
+    for(auto [at, flat]: views::enumerate(left)) {
         const auto& lhs = *flat.symbol;
         if(partner[at] == -1) {
             report(lhs, "only_ast", std::format("{} {}", kind_name(lhs.kind), lhs.name), "");
@@ -251,13 +251,13 @@ auto check_document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions&
                    rhs.deprecated ? "true" : "false");
         }
     }
-    for(auto [at, flat]: std::views::enumerate(right)) {
+    for(auto [at, flat]: views::enumerate(right)) {
         if(!taken[at]) {
             const auto& rhs = *flat.symbol;
             report(rhs, "only_index", "", std::format("{} {}", kind_name(rhs.kind), rhs.name));
         }
     }
-    std::ranges::stable_sort(check.differences, {}, [](const OutlineDifference& difference) {
+    ranges::stable_sort(check.differences, {}, [](const OutlineDifference& difference) {
         return std::pair(difference.line, difference.column);
     });
     return check;

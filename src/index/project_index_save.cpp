@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -68,7 +67,7 @@ Internals ProjectIndex::internal_names(Fid file) const {
         }
         return true;
     });
-    std::ranges::sort(names, [](const InternalName& lhs, const InternalName& rhs) {
+    ranges::sort(names, [](const InternalName& lhs, const InternalName& rhs) {
         return lhs.hash < rhs.hash;
     });
     return names;
@@ -191,7 +190,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     // The pinning TUs are re-enqueued: no in-process event would rebuild
     // their variants otherwise (a reverted file even reads fresh by hash).
     llvm::SmallVector<Fid> marked(compact.begin(), compact.end());
-    std::ranges::sort(marked);
+    ranges::sort(marked);
     compact.clear();
     for(auto file: marked) {
         auto* current = shard(file);
@@ -199,8 +198,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
             continue;
         }
         auto live = live_variants(file);
-        if(std::ranges::none_of(live,
-                                [&](std::uint64_t hash) { return current->has_variant(hash); })) {
+        if(ranges::none_of(live, [&](std::uint64_t hash) { return current->has_variant(hash); })) {
             // Held empty: the database keeps the blob until the batch
             // commits, and it must not be read back meanwhile.
             shards[file] = Shard();
@@ -291,17 +289,17 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         blobs.push_back({BlobKind::TUManifest, std::move(key), encode_manifest(*manifest)});
     }
     header.search_pending.assign(pending_symbols.begin(), pending_symbols.end());
-    std::ranges::sort(header.search_pending);
+    ranges::sort(header.search_pending);
     header.search_pending_files.clear();
     for(auto file: pending_files) {
         header.search_pending_files.push_back(path_id(file));
     }
-    std::ranges::sort(header.search_pending_files);
+    ranges::sort(header.search_pending_files);
     header.owed_units.clear();
     for(auto unit: owed) {
         header.owed_units.push_back(path_id(unit));
     }
-    std::ranges::sort(header.owed_units);
+    ranges::sort(header.owed_units);
 
     for(auto file: changed_shards) {
         blobs.push_back(
@@ -413,10 +411,9 @@ void ProjectIndex::abandon_save(SaveBatch& batch) {
     written_retired_instantiations.clear();
     header_changed = true;
     if(writing_search) {
-        search_bytes =
-            std::move(std::ranges::find_if(batch.blobs, [](const BlobDatabase::Blob& blob) {
-                          return blob.kind == BlobKind::SearchIndex;
-                      })->bytes);
+        search_bytes = std::move(ranges::find_if(batch.blobs, [](const BlobDatabase::Blob& blob) {
+                                     return blob.kind == BlobKind::SearchIndex;
+                                 })->bytes);
         writing_search = false;
     }
     writing_shards = 0;

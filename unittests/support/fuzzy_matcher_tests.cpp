@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -66,7 +66,7 @@ llvm::SmallVector<NameToken> tokens_of(llvm::StringRef name) {
 }
 
 bool subset(llvm::ArrayRef<NameToken> part, llvm::ArrayRef<NameToken> whole) {
-    return std::ranges::all_of(part, [&](NameToken t) { return std::ranges::contains(whole, t); });
+    return ranges::all_of(part, [&](NameToken t) { return ranges::contains(whole, t); });
 }
 
 /// The letters of `text` (its non-separators, as the tokens see them).
@@ -307,7 +307,7 @@ ZEST_CASE(Bounds) {
     // Tokens stop at the bound too: a long name's tail is not keyed,
     // which the index makes up for by scanning such names.
     auto tail = tokens_of(long_name + "xyz");
-    ZEXPECT(!std::ranges::contains(tail, token("xyz")));
+    ZEXPECT(!ranges::contains(tail, token("xyz")));
     ZEXPECT(!tail.empty());
 }
 
@@ -330,37 +330,37 @@ ZEST_CASE(Typos) {
 
 ZEST_CASE(NameTokens) {
     auto tokens = tokens_of("unique_ptr");
-    ZEXPECT(std::ranges::contains(tokens, token("uni")));
-    ZEXPECT(std::ranges::contains(tokens, token("unp")));
-    ZEXPECT(std::ranges::contains(tokens, token("upt")));
-    ZEXPECT(std::ranges::contains(tokens, token("ptr")));
-    ZEXPECT(std::ranges::contains(tokens, token("u")));
-    ZEXPECT(std::ranges::contains(tokens, token("un")));
-    ZEXPECT(std::ranges::contains(tokens, token("up")));
-    ZEXPECT(std::ranges::contains(tokens, token("p")));
-    ZEXPECT(std::ranges::contains(tokens, token("pt")));
-    ZEXPECT(!std::ranges::contains(tokens, token("n")));
-    ZEXPECT(!std::ranges::contains(tokens, token("uq")));
-    ZEXPECT(!std::ranges::contains(tokens, token("nqp")));
-    ZEXPECT(std::ranges::is_sorted(tokens));
+    ZEXPECT(ranges::contains(tokens, token("uni")));
+    ZEXPECT(ranges::contains(tokens, token("unp")));
+    ZEXPECT(ranges::contains(tokens, token("upt")));
+    ZEXPECT(ranges::contains(tokens, token("ptr")));
+    ZEXPECT(ranges::contains(tokens, token("u")));
+    ZEXPECT(ranges::contains(tokens, token("un")));
+    ZEXPECT(ranges::contains(tokens, token("up")));
+    ZEXPECT(ranges::contains(tokens, token("p")));
+    ZEXPECT(ranges::contains(tokens, token("pt")));
+    ZEXPECT(!ranges::contains(tokens, token("n")));
+    ZEXPECT(!ranges::contains(tokens, token("uq")));
+    ZEXPECT(!ranges::contains(tokens, token("nqp")));
+    ZEXPECT(ranges::is_sorted(tokens));
     ZEXPECT(tokens_of("").empty());
     ZEXPECT(tokens_of("__").empty());
     // Short tokens come from the first two heads only.
     auto three = tokens_of("foo_bar_baz");
-    ZEXPECT(std::ranges::contains(three, token("fb")));
-    ZEXPECT(std::ranges::contains(three, token("b")));
-    ZEXPECT(std::ranges::contains(three, token("bb")));
-    ZEXPECT(!std::ranges::contains(three, token("bz")));
+    ZEXPECT(ranges::contains(three, token("fb")));
+    ZEXPECT(ranges::contains(three, token("b")));
+    ZEXPECT(ranges::contains(three, token("bb")));
+    ZEXPECT(!ranges::contains(three, token("bz")));
 }
 
 ZEST_CASE(QueryTokens) {
     llvm::SmallVector<NameToken> tokens;
     query_tokens("getFoo", tokens);
     ZEXPECT(tokens.size() == std::size_t(4));
-    ZEXPECT(std::ranges::contains(tokens, token("get")));
-    ZEXPECT(std::ranges::contains(tokens, token("etf")));
-    ZEXPECT(std::ranges::contains(tokens, token("tfo")));
-    ZEXPECT(std::ranges::contains(tokens, token("foo")));
+    ZEXPECT(ranges::contains(tokens, token("get")));
+    ZEXPECT(ranges::contains(tokens, token("etf")));
+    ZEXPECT(ranges::contains(tokens, token("tfo")));
+    ZEXPECT(ranges::contains(tokens, token("foo")));
     query_tokens("u_p", tokens);
     ZEXPECT(tokens.size() == std::size_t(1));
     ZEXPECT(tokens.front() == token("up"));
@@ -425,7 +425,7 @@ ZEST_CASE(TokensCoverMatches) {
                     llvm::SmallVector<TypoAlternative> alternatives;
                     typo_tokens(pattern, alternatives);
                     bool covered = alternatives.empty() ||
-                                   std::ranges::any_of(alternatives, [&](const TypoAlternative& a) {
+                                   ranges::any_of(alternatives, [&](const TypoAlternative& a) {
                                        return subset(a.tokens, name_keys);
                                    });
                     if(!covered && uncovered.empty()) {

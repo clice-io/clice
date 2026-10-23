@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:unittests.worker.simulator;
 
@@ -233,7 +233,7 @@ inline SimResult simulate(const SimSpec& spec) {
             typing_times.push_back(t);
         }
     }
-    std::ranges::sort(typing_times);
+    ranges::sort(typing_times);
     std::size_t next_typing = 0;
     std::size_t open_completions = 0;
 
@@ -301,7 +301,7 @@ inline SimResult simulate(const SimSpec& spec) {
                     proc.respawn = true;
                     core.worker_gone(kill->slot, false, at(t));
                 } else if(std::holds_alternative<scheduler::Spawn>(action)) {
-                    auto vacant = std::ranges::find_if(procs, [](const Proc& proc) {
+                    auto vacant = ranges::find_if(procs, [](const Proc& proc) {
                         return !proc.alive && !proc.ready_at && !proc.exit_at;
                     });
                     if(vacant == procs.end()) {
@@ -463,7 +463,7 @@ inline SimResult simulate(const SimSpec& spec) {
         auto working = [](const Proc& proc) {
             return proc.alive && proc.job && !proc.job->stops && !proc.kill;
         };
-        std::size_t busy = std::ranges::count_if(procs, working);
+        std::size_t busy = ranges::count_if(procs, working);
         if(busy > 0) {
             auto bytes = used();
             auto factor = 1.0;
@@ -499,7 +499,7 @@ inline SimResult simulate(const SimSpec& spec) {
         result.min_headroom =
             std::min(result.min_headroom, std::int64_t(machine.memory) - std::int64_t(bytes));
         if(machine.oom_kills && bytes > machine.memory) {
-            auto largest = std::ranges::max_element(procs, {}, [](const Proc& proc) {
+            auto largest = ranges::max_element(procs, {}, [](const Proc& proc) {
                 return proc.alive && proc.job ? sim::memory_at(proc.job->peak, proc.job->progress)
                                               : 0;
             });

@@ -1,10 +1,9 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "version.h"
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -84,7 +83,7 @@ MasterServer::~MasterServer() {
 /// never needs a support round-trip; the stderr mirror puts all of it in
 /// the editor's output panel.
 static void log_configuration(const ProjectServer& project,
-                              const std::optional<kota::codec::dyn::Value>& init_options) {
+                              const std::optional<codec::dyn::Value>& init_options) {
     if(project.config_path.empty()) {
         LOG_INFO("Configuration file: Missing (project {})", project.root);
     } else {
@@ -95,12 +94,12 @@ static void log_configuration(const ProjectServer& project,
     }
     if(!init_options) {
         LOG_INFO("initializationOptions: Missing");
-    } else if(auto json = kota::codec::json::to_string(*init_options)) {
-        auto pretty = kota::codec::json::prettify(*json);
+    } else if(auto json = json::to_string(*init_options)) {
+        auto pretty = json::prettify(*json);
         LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : *json);
     }
-    if(auto json = kota::codec::json::to_string(project.project.config)) {
-        auto pretty = kota::codec::json::prettify(*json);
+    if(auto json = json::to_string(project.project.config)) {
+        auto pretty = json::prettify(*json);
         LOG_INFO("Effective configuration:\n{}", pretty ? *pretty : *json);
     }
 }
@@ -268,7 +267,7 @@ ProjectServer* MasterServer::compiler(Fid path_id) {
     if(auto* listing = deepest_holding(projects, path, lists)) {
         return listing;
     }
-    if(auto it = std::ranges::find_if(projects, [&](auto& project) { return lists(*project); });
+    if(auto it = ranges::find_if(projects, [&](auto& project) { return lists(*project); });
        it != projects.end()) {
         return it->get();
     }
@@ -278,8 +277,7 @@ ProjectServer* MasterServer::compiler(Fid path_id) {
     if(auto* hosting = deepest_holding(projects, path, includes)) {
         return hosting;
     }
-    auto borrowed =
-        std::ranges::find_if(projects, [&](auto& project) { return includes(*project); });
+    auto borrowed = ranges::find_if(projects, [&](auto& project) { return includes(*project); });
     return borrowed != projects.end() ? borrowed->get() : nullptr;
 }
 
@@ -385,7 +383,7 @@ void MasterServer::open_session(Fid path_id, std::string text, int version) {
             Spelling spelled(root);
             return cdb.find_source(spelled) || cdb.find_source(Spelling("build", spelled));
         };
-        if(!root.empty() && std::ranges::none_of(projects, covered)) {
+        if(!root.empty() && ranges::none_of(projects, covered)) {
             workspace_roots.push_back(std::move(root));
             serve_folders();
         }
@@ -463,18 +461,18 @@ void MasterServer::change_folders(std::vector<Spelling> removed, std::vector<Spe
         files.spell_root(root);
     }
     auto identities = [](llvm::ArrayRef<Spelling> roots) {
-        return std::ranges::to<llvm::SmallVector<CanonicalPath>>(
-            std::views::transform(roots, [](auto& root) { return CanonicalPath(root); }));
+        return ranges::to<llvm::SmallVector<CanonicalPath>>(
+            views::transform(roots, [](auto& root) { return CanonicalPath(root); }));
     };
     auto gone = identities(removed);
     auto fresh = identities(added);
     for(auto& root: gone) {
-        if(!std::ranges::contains(fresh, root)) {
+        if(!ranges::contains(fresh, root)) {
             std::erase(workspace_roots, root);
         }
     }
     for(auto& root: fresh) {
-        if(!std::ranges::contains(workspace_roots, root)) {
+        if(!ranges::contains(workspace_roots, root)) {
             workspace_roots.push_back(std::move(root));
         }
     }
@@ -507,7 +505,7 @@ feature::SemanticTokensOptions MasterServer::startup_token_options() const {
                                               /*finalized=*/false);
     if(init_options) {
         // ProjectServer::configure reports a bad overlay.
-        [[maybe_unused]] auto overlaid = kota::codec::dyn::from_dyn(*init_options, config);
+        [[maybe_unused]] auto overlaid = codec::dyn::from_dyn(*init_options, config);
     }
     return config.semantic_tokens;
 }
@@ -516,7 +514,7 @@ std::vector<CanonicalPath> MasterServer::project_roots() const {
     std::vector<CanonicalPath> roots;
     for(auto& folder: workspace_roots) {
         auto root = root_of(folder);
-        if(!std::ranges::contains(roots, root)) {
+        if(!ranges::contains(roots, root)) {
             roots.push_back(std::move(root));
         }
     }
@@ -532,7 +530,7 @@ void MasterServer::serve_folders() {
     llvm::SmallVector<ProjectServer*> fresh;
     auto serve = [&](CanonicalPath root) {
         if(auto it =
-               std::ranges::find_if(projects, [&](auto& project) { return project->root == root; });
+               ranges::find_if(projects, [&](auto& project) { return project->root == root; });
            it != projects.end()) {
             serving.push_back(*it);
             return;
@@ -543,7 +541,7 @@ void MasterServer::serve_folders() {
     };
     for(auto& root: project_roots()) {
         // A removed project holds its cache directory until it is gone.
-        if(std::ranges::none_of(retired, [&](auto& weak) {
+        if(ranges::none_of(retired, [&](auto& weak) {
                auto project = weak.lock();
                return project && project->root == root;
            })) {
@@ -556,7 +554,7 @@ void MasterServer::serve_folders() {
 
     std::vector<std::shared_ptr<ProjectServer>> leaving;
     for(auto& project: projects) {
-        if(!std::ranges::contains(serving, project)) {
+        if(!ranges::contains(serving, project)) {
             leaving.push_back(project);
         }
     }
@@ -607,7 +605,7 @@ void MasterServer::carry(const IndexPump::Progress& progress) {
 void MasterServer::index_progress_changed(ProjectServer& changed) {
     using Stage = IndexPump::Progress::Stage;
     // A retiring project's pump winds down outside the round.
-    if(std::ranges::none_of(projects, [&](auto& project) { return project.get() == &changed; })) {
+    if(ranges::none_of(projects, [&](auto& project) { return project.get() == &changed; })) {
         return;
     }
     auto& now = changed.sched.pump.progress();
@@ -629,8 +627,7 @@ void MasterServer::fold_index_progress() {
     using Stage = IndexPump::Progress::Stage;
     IndexPump::Progress all = carried;
     bool active = false;
-    for(auto& one:
-        std::views::transform(round, [](auto& entry) -> auto& { return entry.second; })) {
+    for(auto& one: views::transform(round, [](auto& entry) -> auto& { return entry.second; })) {
         active = active || one.stage != Stage::End;
         all.total += one.total;
         all.completed += one.completed;
@@ -733,7 +730,7 @@ ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
                 return known.uri == item.uri && known.occurrence == item.occurrence &&
                        known.command_hash == item.command_hash;
             };
-            if(std::ranges::none_of(items, same)) {
+            if(ranges::none_of(items, same)) {
                 items.push_back(std::move(item));
             }
         }
@@ -765,16 +762,16 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     // The listing spells the URIs the server's way, not the client's.
     auto context_uri = feature::to_uri(files.display(context_path_id));
     auto offers = [&](ProjectServer& project) {
-        return std::ranges::any_of(project.context_service.contexts(path_id),
-                                   [&](const ext::ContextItem& item) {
-                                       return item.uri == context_uri &&
-                                              item.occurrence == params.occurrence &&
-                                              item.command_hash == params.command_hash;
-                                   });
+        return ranges::any_of(project.context_service.contexts(path_id),
+                              [&](const ext::ContextItem& item) {
+                                  return item.uri == context_uri &&
+                                         item.occurrence == params.occurrence &&
+                                         item.command_hash == params.command_hash;
+                              });
     };
     auto target = owner;
     if(!offers(*owner)) {
-        auto it = std::ranges::find_if(projects, [&](auto& project) { return offers(*project); });
+        auto it = ranges::find_if(projects, [&](auto& project) { return offers(*project); });
         if(it == projects.end()) {
             co_return result;
         }
@@ -855,7 +852,7 @@ std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::St
     // folder: the copy of a folder with open documents, the one being
     // edited, stands for them.
     auto ordered = projects;
-    std::ranges::stable_partition(ordered, [](const std::shared_ptr<ProjectServer>& project) {
+    ranges::stable_partition(ordered, [](const std::shared_ptr<ProjectServer>& project) {
         bool open = false;
         project->sessions.for_each([&](Fid, const Session&) {
             open = true;
@@ -893,19 +890,19 @@ static bool working(ProjectServer& project) {
 }
 
 /// The requests of `editor` wait_idle() waits for: all but syncs.
-static auto awaited_requests(const kota::ipc::JSONPeer& editor) {
+static auto awaited_requests(const ipc::JSONPeer& editor) {
     auto requests = editor.incoming_requests();
     std::erase_if(requests,
                   [](const auto& request) { return request.method == "clice/internal/sync"; });
     return requests;
 }
 
-kota::task<> MasterServer::wait_idle(const kota::ipc::JSONPeer& editor) {
+kota::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
     auto quiet = [&] {
         drain_disk_changes();
         return awaited_requests(editor).empty() &&
-               std::ranges::none_of(projects, [](auto& project) { return working(*project); }) &&
-               std::ranges::all_of(retired, [](auto& weak) { return weak.expired(); });
+               ranges::none_of(projects, [](auto& project) { return working(*project); }) &&
+               ranges::all_of(retired, [](auto& weak) { return weak.expired(); });
     };
     while(true) {
         if(quiet()) {
@@ -921,7 +918,7 @@ kota::task<> MasterServer::wait_idle(const kota::ipc::JSONPeer& editor) {
     }
 }
 
-std::vector<std::string> MasterServer::pending_work(const kota::ipc::JSONPeer& editor) {
+std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor) {
     std::vector<std::string> lines;
     for(auto& request: awaited_requests(editor)) {
         lines.push_back(std::visit(
@@ -1056,15 +1053,15 @@ static kota::task<> serve(MasterServer& server, kota::task<> serving) {
 /// The client's transport, reporting the end of its input as soon as the
 /// read sees it: a client that went away without `exit` must not wait for
 /// the request handlers a hung worker keeps running.
-class InputEndWatch final : public kota::ipc::Transport {
+class InputEndWatch final : public ipc::Transport {
 public:
-    InputEndWatch(std::unique_ptr<kota::ipc::Transport> inner, std::function<void()> on_end) :
+    InputEndWatch(std::unique_ptr<ipc::Transport> inner, std::function<void()> on_end) :
         inner(std::move(inner)), on_end(std::move(on_end)) {}
 
-    kota::task<std::string, kota::ipc::ReadError> read_message() override {
+    kota::task<std::string, ipc::ReadError> read_message() override {
         auto message = co_await inner->read_message();
         if(message.has_error()) {
-            if(message.error().kind != kota::ipc::ReadError::Kind::Oversized) {
+            if(message.error().kind != ipc::ReadError::Kind::Oversized) {
                 on_end();
             }
             co_await kota::fail(std::move(message).error());
@@ -1072,20 +1069,19 @@ public:
         co_return std::move(*message);
     }
 
-    kota::task<void, kota::ipc::Error> write_message(std::string_view payload) override {
+    kota::task<void, ipc::Error> write_message(std::string_view payload) override {
         co_await inner->write_message(payload).or_fail();
     }
 
-    kota::task<void, kota::ipc::Error>
-        write_messages(std::span<const std::string> payloads) override {
+    kota::task<void, ipc::Error> write_messages(std::span<const std::string> payloads) override {
         co_await inner->write_messages(payloads).or_fail();
     }
 
-    kota::task<void, kota::ipc::Error> close_output() override {
+    kota::task<void, ipc::Error> close_output() override {
         co_await inner->close_output().or_fail();
     }
 
-    kota::ipc::Result<void> close() override {
+    ipc::Result<void> close() override {
         return inner->close();
     }
 
@@ -1094,16 +1090,16 @@ public:
     }
 
 private:
-    std::unique_ptr<kota::ipc::Transport> inner;
+    std::unique_ptr<ipc::Transport> inner;
     std::function<void()> on_end;
 };
 
 struct Connection {
-    std::unique_ptr<kota::ipc::JSONPeer> peer;
+    std::unique_ptr<ipc::JSONPeer> peer;
     std::unique_ptr<LSPClient> lsp_client;
 };
 
-static kota::task<> run_connection(kota::ipc::JSONPeer* peer,
+static kota::task<> run_connection(ipc::JSONPeer* peer,
                                    std::list<Connection>& connections,
                                    std::list<Connection>::iterator pos) {
     co_await peer->run();
@@ -1133,8 +1129,8 @@ static kota::task<> accept_connections(MasterServer& server,
 
             LOG_INFO("Client connected");
 
-            auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-            auto peer = std::make_unique<kota::ipc::JSONPeer>(loop, std::move(transport));
+            auto transport = std::make_unique<ipc::StreamTransport>(std::move(*conn));
+            auto peer = std::make_unique<ipc::JSONPeer>(loop, std::move(transport));
 
             std::unique_ptr<LSPClient> lsp;
             if(!lsp_registered) {
@@ -1184,27 +1180,27 @@ int run_serve_mode(const ServerOptions& opts,
     MasterServer server(loop, self_path, configuration.str());
 
     if(mode == ServerMode::Pipe) {
-        auto transport = kota::ipc::StreamTransport::open_stdio(loop);
+        auto transport = ipc::StreamTransport::open_stdio(loop);
         if(!transport) {
             LOG_ERROR("failed to open stdio transport");
             return 1;
         }
 
-        std::unique_ptr<kota::ipc::Transport> final_transport = std::move(*transport);
+        std::unique_ptr<ipc::Transport> final_transport = std::move(*transport);
         if(!record.empty()) {
             final_transport =
-                std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport), record);
+                std::make_unique<ipc::RecordingTransport>(std::move(final_transport), record);
         }
         final_transport = std::make_unique<InputEndWatch>(std::move(final_transport), [&server] {
             server.schedule_shutdown();
         });
 
         server.client_on_host = true;
-        kota::ipc::JSONPeer lsp_peer(loop, std::move(final_transport));
+        ipc::JSONPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
 
         loop.schedule(
-            [](MasterServer& server, kota::ipc::JSONPeer& peer, std::string root) -> kota::task<> {
+            [](MasterServer& server, ipc::JSONPeer& peer, std::string root) -> kota::task<> {
                 // Pre-initialize for standalone (no-editor) use; LSP initialize
                 // will be rejected. Runs inside the loop — before the peer
                 // reads its first message — because initialize() spawns

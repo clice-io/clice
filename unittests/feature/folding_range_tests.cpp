@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -47,7 +47,7 @@ int compute() {
 
     ZASSERT(!from_index.empty());
     for(auto& fold: from_index) {
-        bool known = std::ranges::any_of(ast, [&](const feature::FoldingRange& twin) {
+        bool known = ranges::any_of(ast, [&](const feature::FoldingRange& twin) {
             return twin.range == fold.range;
         });
         ZASSERT(known);
@@ -56,7 +56,7 @@ int compute() {
     // The constructor's fold anchors at its body, not the member
     // initializer's braces.
     auto body = unit->focus_file().content().find("{\n        value += 1;");
-    bool anchored = std::ranges::any_of(from_index, [&](const feature::FoldingRange& fold) {
+    bool anchored = ranges::any_of(from_index, [&](const feature::FoldingRange& fold) {
         return fold.range.begin == body;
     });
     ZASSERT(anchored);
@@ -93,7 +93,7 @@ typedef struct {
 
     ZASSERT(from_index.size() == std::size_t(3));
     for(auto& fold: from_index) {
-        auto twin = std::ranges::find_if(ast, [&](const feature::FoldingRange& candidate) {
+        auto twin = ranges::find_if(ast, [&](const feature::FoldingRange& candidate) {
             return candidate.range == fold.range;
         });
         ZASSERT(twin != ast.end());

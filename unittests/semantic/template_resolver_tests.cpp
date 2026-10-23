@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -4582,7 +4582,7 @@ ZEST_CASE(MemberChainLookup) {
     ZASSERT(finder.outer != nullptr);
 
     auto members = unit->get<types::TemplateResolver>().lookup(finder.outer);
-    ZASSERT(std::ranges::distance(members) == 1);
+    ZASSERT(ranges::distance(members) == 1);
     ZEXPECT(llvm::isa<clang::FieldDecl>(members.front()));
 }
 
@@ -4616,7 +4616,7 @@ ZEST_CASE(PackParameterMember) {
     ZASSERT(finder.expr != nullptr);
 
     auto members = unit->get<types::TemplateResolver>().lookup(finder.expr);
-    ZASSERT(std::ranges::distance(members) == 1);
+    ZASSERT(ranges::distance(members) == 1);
     ZEXPECT(llvm::isa<clang::FieldDecl>(members.front()));
 }
 
@@ -4647,7 +4647,7 @@ ZEST_CASE(ReferenceParameterMember) {
     ZASSERT(finder.expr != nullptr);
 
     auto members = unit->get<types::TemplateResolver>().lookup(finder.expr);
-    ZASSERT(std::ranges::distance(members) == 1);
+    ZASSERT(ranges::distance(members) == 1);
     ZEXPECT(llvm::isa<clang::FieldDecl>(members.front()));
 }
 

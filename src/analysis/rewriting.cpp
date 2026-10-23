@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -158,7 +158,7 @@ struct Rewriter {
                 counts[spelled] += 1;
             }
         }
-        auto best = std::ranges::max_element(counts, {}, [](auto& entry) { return entry.second; });
+        auto best = ranges::max_element(counts, {}, [](auto& entry) { return entry.second; });
         if(best != counts.end()) {
             return best->first.str();
         }
@@ -181,11 +181,10 @@ struct Rewriter {
     /// presumed line may coincide with a directive's; the operand's file name
     /// tells them apart.
     std::uint32_t resolve(std::uint32_t file, std::uint32_t line, llvm::StringRef operand) const {
-        auto [begin, end] =
-            std::ranges::equal_range(facts.files[file].directives,
-                                     line + 1,
-                                     {},
-                                     &std::pair<std::uint32_t, std::uint32_t>::first);
+        auto [begin, end] = ranges::equal_range(facts.files[file].directives,
+                                                line + 1,
+                                                {},
+                                                &std::pair<std::uint32_t, std::uint32_t>::first);
         if(end - begin > 1 && operand.size() > 2) {
             auto name = llvm::sys::path::filename(operand.drop_front().drop_back(), posix);
             for(auto it = begin; it != end; ++it) {
@@ -340,7 +339,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             files.push_back(file);
             continue;
         }
-        auto includes_rewritten = std::ranges::any_of(info.includes, [&](std::uint32_t included) {
+        auto includes_rewritten = ranges::any_of(info.includes, [&](std::uint32_t included) {
             return rewriter.rewritten(included) && rewriter.header(included);
         });
         if(!includes_rewritten || units[file].kind == Unit::Kind::Fragment) {
@@ -492,7 +491,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             if(action == Action::Import) {
                 draft.modules.insert(partition.modules[partition.module_of[named]]);
             } else if(action == Action::Keep && rewriter.textual(named) &&
-                      !std::ranges::contains(info.includes, named)) {
+                      !ranges::contains(info.includes, named)) {
                 draft.needed.insert(named);
             }
         }
@@ -501,8 +500,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         for(auto defining: units[file].macros) {
             if(rewriter.rewritten(defining) && rewriter.header(defining)) {
                 draft.macro_headers.insert(defining);
-            } else if(rewriter.textual(defining) &&
-                      !std::ranges::contains(info.includes, defining)) {
+            } else if(rewriter.textual(defining) && !ranges::contains(info.includes, defining)) {
                 draft.needed.insert(defining);
             }
         }
@@ -528,7 +526,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 pending.push_back(next);
                 if(units[next].kind == Unit::Kind::Internal) {
                     for(auto header: drafts.at(next).textual) {
-                        if(!std::ranges::contains(facts.files[file].includes, header)) {
+                        if(!ranges::contains(facts.files[file].includes, header)) {
                             draft.needed.insert(header);
                         }
                     }
@@ -649,7 +647,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             entry.sources.push_back(path);
         }
         for(auto& imported: draft.modules) {
-            if(!std::ranges::contains(entry.imports, imported)) {
+            if(!ranges::contains(entry.imports, imported)) {
                 entry.imports.push_back(imported);
             }
         }
@@ -658,9 +656,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     for(auto& [module, entry]: modules) {
         entry.name = partition.modules[module];
         entry.primary = partition.primaries[module];
-        std::ranges::sort(entry.interfaces);
-        std::ranges::sort(entry.partitions);
-        std::ranges::sort(entry.sources);
+        ranges::sort(entry.interfaces);
+        ranges::sort(entry.partitions);
+        ranges::sort(entry.sources);
         llvm::StringMap<std::string> names;
         std::vector<std::string> lines{std::format("export module {};", entry.name), ""};
         for(auto* group: {&entry.interfaces, &entry.partitions}) {
@@ -683,7 +681,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             return std::unexpected(*taken);
         }
         result.files.push_back({.path = entry.primary, .content = assemble(lines)});
-        std::ranges::sort(entry.imports);
+        ranges::sort(entry.imports);
         plan.modules.push_back(std::move(entry));
     }
 
@@ -724,9 +722,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         plan.macros.push_back(std::move(path));
     }
     for(auto* list: {&plan.importers, &plan.macros, &plan.removed, &plan.warnings}) {
-        std::ranges::sort(*list);
+        ranges::sort(*list);
     }
-    plan.warnings.erase(std::ranges::unique(plan.warnings).begin(), plan.warnings.end());
+    plan.warnings.erase(ranges::unique(plan.warnings).begin(), plan.warnings.end());
     return result;
 }
 

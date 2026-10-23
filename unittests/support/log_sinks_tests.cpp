@@ -1,8 +1,8 @@
 module;
 
-#include "modules/prelude.h"
-
 #include <fcntl.h>
+
+#include "support/prelude.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -59,7 +59,7 @@ ZEST_CASE(BusyPipeSwitchesLater) {
 
     std::string out;
     char buf[4096];
-    while(std::ranges::count(out, '\n') < 2) {
+    while(ranges::count(out, '\n') < 2) {
         auto n = ::_read(fds[0], buf, sizeof(buf));
         ZASSERT(n > 0);
         out.append(buf, static_cast<std::size_t>(n));

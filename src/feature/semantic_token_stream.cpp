@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -459,16 +459,16 @@ private:
                (spelling == "module" || spelling == "import")) {
                 auto following = next();
                 bool opens = spelling == "module"
-                                 ? std::ranges::contains(std::array{clang::tok::raw_identifier,
-                                                                    clang::tok::colon,
-                                                                    clang::tok::semi},
-                                                         following.kind)
-                                 : std::ranges::contains(std::array{clang::tok::raw_identifier,
-                                                                    clang::tok::colon,
-                                                                    clang::tok::less,
-                                                                    clang::tok::header_name,
-                                                                    clang::tok::string_literal},
-                                                         following.kind);
+                                 ? ranges::contains(std::array{clang::tok::raw_identifier,
+                                                               clang::tok::colon,
+                                                               clang::tok::semi},
+                                                    following.kind)
+                                 : ranges::contains(std::array{clang::tok::raw_identifier,
+                                                               clang::tok::colon,
+                                                               clang::tok::less,
+                                                               clang::tok::header_name,
+                                                               clang::tok::string_literal},
+                                                    following.kind);
                 if(opens) {
                     return {{.kind = Kind::Keyword}, true};
                 }
@@ -494,7 +494,7 @@ private:
                 piece.classified = {.kind = Kind::Directive};
                 if(spelling == "define") {
                     directive = Directive::AfterDefine;
-                } else if(std::ranges::contains(
+                } else if(ranges::contains(
                               std::array{"ifdef", "ifndef", "elifdef", "elifndef", "undef"},
                               spelling)) {
                     directive = Directive::MacroName;
@@ -534,7 +534,7 @@ private:
             }
             case Directive::Body: {
                 definition_control |= leaves_enclosing(kind);
-                if(word && std::ranges::contains(macro_parameters, spelling)) {
+                if(word && ranges::contains(macro_parameters, spelling)) {
                     piece = {{.kind = Kind::MacroParameter}, true};
                 }
                 break;

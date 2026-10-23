@@ -1,9 +1,8 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 #include "kota/ipc/framing.h"
 
@@ -83,19 +82,19 @@ std::size_t WorkerPool::schedulable_stateless() const {
     if(stop_scope.cancelled()) {
         return 0;
     }
-    return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
+    return ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
         return w.state == SlotState::Alive && !w.retiring;
     });
 }
 
 std::size_t WorkerPool::stateless_capacity() const {
-    return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
+    return ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
         return w.state != SlotState::Dead && w.state != SlotState::Retired && !w.retiring;
     });
 }
 
 std::size_t WorkerPool::stateless_footprint() const {
-    return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
+    return ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
         return w.state != SlotState::Dead && w.state != SlotState::Retired;
     });
 }
@@ -142,10 +141,10 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
 
     // StreamTransport: input = child's stdout (parent reads), output = child's
     // stdin (parent writes).
-    auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(spawn.stdout_pipe),
-                                                                  std::move(spawn.stdin_pipe));
-    transport->set_remote_max_payload(kota::ipc::default_max_payload);
-    auto peer = std::make_shared<kota::ipc::BincodePeer>(loop, std::move(transport));
+    auto transport = std::make_unique<ipc::StreamTransport>(std::move(spawn.stdout_pipe),
+                                                            std::move(spawn.stdin_pipe));
+    transport->set_remote_max_payload(ipc::default_max_payload);
+    auto peer = std::make_shared<ipc::BincodePeer>(loop, std::move(transport));
 
     auto stderr_tail = std::make_shared<StderrTail>();
     worker_tasks.spawn(drain_stderr(std::move(spawn.stderr_pipe), "[" + name + "]", stderr_tail));
@@ -154,7 +153,7 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
     return SpawnedProcess{std::move(spawn.proc), std::move(peer), std::move(stderr_tail)};
 }
 
-kota::task<> WorkerPool::run_peer(std::shared_ptr<kota::ipc::BincodePeer> peer,
+kota::task<> WorkerPool::run_peer(std::shared_ptr<ipc::BincodePeer> peer,
                                   std::size_t index,
                                   bool stateful,
                                   unsigned generation) {
@@ -667,35 +666,35 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     return info.will_restart;
 }
 
-kota::ipc::Error WorkerPool::death_error(const WorkerDeath& death,
-                                         llvm::StringRef tag,
-                                         kota::codec::dyn::Value identity) {
+ipc::Error WorkerPool::death_error(const WorkerDeath& death,
+                                   llvm::StringRef tag,
+                                   codec::dyn::Value identity) {
     namespace errc = worker::dispatch_errc;
     if(death.out_of_memory) {
-        return kota::ipc::Error{
+        return ipc::Error{
             errc::out_of_memory,
             death.cause,
-            kota::codec::dyn::Value{{"memory", death.memory}, {"alone", death.alone}},
+            codec::dyn::Value{{"memory", death.memory}, {"alone", death.alone}},
         };
     }
     auto named = !death.culprits.empty();
-    auto code = named && std::ranges::contains(death.culprits, tag)       ? errc::worker_crashed
+    auto code = named && ranges::contains(death.culprits, tag)            ? errc::worker_crashed
                 : !named && death.in_flight <= 1 && !death.ignored_cancel ? errc::worker_died
                                                                           : errc::worker_lost;
-    return kota::ipc::Error{code, death.cause, std::move(identity)};
+    return ipc::Error{code, death.cause, std::move(identity)};
 }
 
 kota::task<bool> WorkerPool::await_capacity(bool stateful) {
     while(!stop_scope.cancelled()) {
         auto& workers = stateful ? stateful_workers : stateless_workers;
-        auto serving = std::ranges::any_of(workers, [](const WorkerProcess& w) {
+        auto serving = ranges::any_of(workers, [](const WorkerProcess& w) {
             return w.state == SlotState::Alive && !w.retiring;
         });
         if(serving) {
             co_return true;
         }
         auto revives = revives_slots();
-        auto returning = std::ranges::any_of(workers, [&](const WorkerProcess& w) {
+        auto returning = ranges::any_of(workers, [&](const WorkerProcess& w) {
             return w.state == SlotState::Dying || w.state == SlotState::Respawning ||
                    (revives && w.state == SlotState::Dead);
         });
@@ -1027,7 +1026,7 @@ bool WorkerPool::scale_up_worker() {
     // cycle, and for a Dead slot the cooldown revival would later fire too
     // and grow the pool past what was asked for. The pending revive_slot
     // task no-ops once the state is no longer Dead.
-    auto vacant = std::ranges::find_if(stateless_workers, [](const WorkerProcess& w) {
+    auto vacant = ranges::find_if(stateless_workers, [](const WorkerProcess& w) {
         return w.state == SlotState::Dead || w.state == SlotState::Retired;
     });
     if(vacant != stateless_workers.end()) {

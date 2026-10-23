@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 #ifdef _WIN32
 // See cache_store.cpp: windows.h must not spill min/max macros.
@@ -134,7 +134,7 @@ void WriterLock::release() {
 }
 
 bool write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint) {
-    auto json = kota::codec::json::to_string(endpoint);
+    auto json = json::to_string(endpoint);
     if(!json) {
         LOG_WARN("Failed to serialize the server endpoint record: {}", json.error().to_string());
         return false;
@@ -186,7 +186,7 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
         return probe;
     }
     ServerEndpoint endpoint;
-    if(auto parsed = kota::codec::json::from_string((*record)->getBuffer(), endpoint); !parsed) {
+    if(auto parsed = json::from_string((*record)->getBuffer(), endpoint); !parsed) {
         return probe;
     }
     // A record from a server that died holding the lock survives until the

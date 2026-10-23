@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -95,9 +95,8 @@ ZEST_CASE(UnqueriedRelativeConfig) {
     auto config = "--config=" + tmp.path("toolchain.cfg");
     auto argv = f.resolve(
         unqueried(add("a.cpp", {"bin/g++", "--target=x86_64-linux-gnu", config.c_str()})));
-    ZEXPECT(std::ranges::any_of(argv, [](llvm::StringRef arg) {
-        return arg.ends_with("include/c++/99");
-    }));
+    ZEXPECT(
+        ranges::any_of(argv, [](llvm::StringRef arg) { return arg.ends_with("include/c++/99"); }));
 }
 
 };  // ZEST_SUITE(ClangTests)

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// The questions an editor asks at a cursor: where a symbol is defined and
 /// declared, its references, highlights, type definition and implementations.
@@ -16,8 +16,6 @@ import :index.symbol;
 import :semantic.symbol;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// How the code at a highlighted name accesses its symbol.
 enum class HighlightKind : std::uint8_t {

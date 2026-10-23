@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -40,9 +39,8 @@ std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagn
         diag::err_pp_hash_error,
         diag::err_pp_unterminated_conditional,
     };
-    return std::ranges::count_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
-        return diagnostic.level >= DiagnosticLevel::Error &&
-               std::ranges::contains(ids, diagnostic.id);
+    return ranges::count_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
+        return diagnostic.level >= DiagnosticLevel::Error && ranges::contains(ids, diagnostic.id);
     });
 }
 
@@ -77,9 +75,8 @@ static std::string flags_label(Project& ws, CommandID command, llvm::ArrayRef<Co
     }
     std::string label;
     for(auto& flag: state_flags(ws, command)) {
-        if(!others.empty() && std::ranges::all_of(others, [&](auto& flags) {
-               return std::ranges::contains(flags, flag);
-           })) {
+        if(!others.empty() &&
+           ranges::all_of(others, [&](auto& flags) { return ranges::contains(flags, flag); })) {
             continue;
         }
         if(!label.empty()) {
@@ -242,10 +239,10 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
             return;
         }
         auto entry = pick_pinned_command(ws, path_id, commands, path, path, hash, base);
-        auto index = std::ranges::find_if(commands,
-                                          [&](const Candidate& candidate) {
-                                              return candidate.command == entry.command;
-                                          }) -
+        auto index = ranges::find_if(commands,
+                                     [&](const Candidate& candidate) {
+                                         return candidate.command == entry.command;
+                                     }) -
                      commands.begin();
         result.context = own_item(ws, path_id, index, own_commands(ws, path_id, commands));
     };

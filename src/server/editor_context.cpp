@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -157,7 +156,7 @@ Resolution EditorContext::resolve_command(Fid path_id,
 llvm::SmallVector<Fid> EditorContext::chain_dependents(Fid path_id) const {
     llvm::SmallVector<Fid> result;
     for(auto& [header_id, context]: header_contexts) {
-        if(std::ranges::contains(context.chain, path_id)) {
+        if(ranges::contains(context.chain, path_id)) {
             result.push_back(header_id);
         }
     }
@@ -196,7 +195,7 @@ std::string EditorContext::serialize() const {
         data.contexts.push_back(std::move(entry));
     }
 
-    auto json = kota::codec::json::to_string<PathJsonConfig>(data);
+    auto json = json::to_string<PathJsonConfig>(data);
     if(!json) {
         LOG_WARN("Failed to serialize the context choices");
         return {};
@@ -209,7 +208,7 @@ void EditorContext::load() {
         return;
     }
     Blob data;
-    if(!kota::codec::json::from_string(blob.bytes, data)) {
+    if(!json::from_string(blob.bytes, data)) {
         LOG_WARN("Failed to parse the context choices");
         return;
     }

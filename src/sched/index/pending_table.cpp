@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -114,7 +114,7 @@ PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& 
 llvm::SmallVector<Fid> PendingTable::pending_files() const {
     llvm::SmallVector<Fid> files;
     files.reserve(entries.size());
-    for(auto id: std::views::transform(entries, [](auto& entry) -> auto& { return entry.first; })) {
+    for(auto id: views::transform(entries, [](auto& entry) -> auto& { return entry.first; })) {
         files.push_back(id);
     }
     return files;

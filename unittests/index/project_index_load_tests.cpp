@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -156,7 +156,7 @@ ZEST_CASE(StaleUnitsFollowDisk) {
     for(auto unit: f.project.index.stale_units()) {
         stale.push_back(llvm::sys::path::filename(f.project.file_table.resolve(unit)).str());
     }
-    std::ranges::sort(stale);
+    ranges::sort(stale);
     ZEXPECT(stale == std::vector<std::string>{"late.cpp", "main.cpp"});
     auto file_of = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));

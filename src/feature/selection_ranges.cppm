@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.selection_ranges;
 
@@ -9,8 +9,6 @@ import :syntax.position;
 import :syntax.source_text;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// The ranges an expanding selection steps through from each offset of the
 /// focus file, innermost first, each strictly containing the one before:

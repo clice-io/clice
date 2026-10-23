@@ -1,9 +1,8 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -216,11 +215,11 @@ std::string deeper_databases_hint(const Project& project) {
 }
 
 bool found_unreadable_database(const Project& project) {
-    return std::ranges::any_of(std::views::iota(std::size_t(0), project.cdb.source_count()),
-                               [&](std::size_t i) {
-                                   return !project.cdb.loaded(SourceID(i)) &&
-                                          vfs::exists(project.cdb.source_path(SourceID(i)));
-                               });
+    return ranges::any_of(views::iota(std::size_t(0), project.cdb.source_count()),
+                          [&](std::size_t i) {
+                              return !project.cdb.loaded(SourceID(i)) &&
+                                     vfs::exists(project.cdb.source_path(SourceID(i)));
+                          });
 }
 
 std::string why_no_members(const Project& project, llvm::StringRef root) {
@@ -265,15 +264,15 @@ void load_sources(Project& project,
         // serving meanwhile. Sorted like Build::source_order ranks them, so
         // registration order — which the persisted command sequences
         // follow — does not depend on the order files were opened in.
-        auto stable = std::ranges::to<llvm::SmallVector<Spelling>>(
-            std::views::filter(nearby, [&](const Spelling& source) {
+        auto stable = ranges::to<llvm::SmallVector<Spelling>>(
+            views::filter(nearby, [&](const Spelling& source) {
                 // Where the database sits, as the walks below the root spell
                 // it, not what it links to: a compile_commands.json or a build
                 // directory symlinked to a tree outside still belongs to the
                 // root.
                 return path::under(llvm::StringRef(source), llvm::StringRef(root));
             }));
-        std::ranges::sort(stable, {}, [](const Spelling& source) {
+        ranges::sort(stable, {}, [](const Spelling& source) {
             return discovery_rank(llvm::StringRef(source));
         });
         paths.append(stable.begin(), stable.end());
@@ -287,7 +286,7 @@ void load_sources(Project& project,
            project.cdb.find_same_file(path)) {
             continue;
         }
-        if(auto id = project.cdb.add_source(path); !std::ranges::contains(sources, id)) {
+        if(auto id = project.cdb.add_source(path); !ranges::contains(sources, id)) {
             sources.push_back(id);
         }
     }
@@ -299,8 +298,7 @@ void load_sources(Project& project,
             "compile_commands = [\"...\"]",
             sources.size(),
             llvm::join(
-                std::views::transform(sources,
-                                      [&](SourceID id) { return project.cdb.source_path(id); }),
+                views::transform(sources, [&](SourceID id) { return project.cdb.source_path(id); }),
                 ", "));
     }
     for(auto id: sources) {

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 /// Primary semantic-tokens coverage lives in the cases
 /// (tests/semantic_tokens/), which pin both the inspect and the
 /// server path. This file drives the feature layer directly: preamble
@@ -24,9 +24,6 @@ import :unittests.utils.index_entries_tester;
 namespace clice::testing {
 
 namespace {
-
-namespace lsp = kota::ipc::lsp;
-namespace protocol = kota::ipc::protocol;
 
 struct DecodedToken {
     /// Absolute positions are accumulated in 64 bits so that a broken delta
@@ -87,7 +84,7 @@ void EXPECT_TOKEN(llvm::StringRef name,
                   SemanticTokenKind expected_kind,
                   std::uint32_t expected_modifiers = 0) {
     auto expected = range(name);
-    auto it = std::ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
+    auto it = ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
         return token.range == expected;
     });
     ZASSERT(it != tokens.end());
@@ -173,7 +170,7 @@ u8"你";
     auto wide = encode(PositionEncoding::UTF16);
     auto length = [&](const protocol::SemanticTokens& encoded) {
         auto decoded = decode_relative_tokens(encoded);
-        auto it = std::ranges::find_if(decoded, [&](const DecodedToken& token) {
+        auto it = ranges::find_if(decoded, [&](const DecodedToken& token) {
             return token.type == string_type && token.length > 2;
         });
         return it == decoded.end() ? 0u : it->length;
@@ -529,7 +526,7 @@ ZEST_CASE(ModuleNameComponents) {
 
 /// The kind of the token beginning at `begin`, None without one.
 SemanticTokenKind kind_at(llvm::ArrayRef<feature::SemanticToken> tokens, std::uint32_t begin) {
-    auto token = std::ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
+    auto token = ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
         return token.range.begin == begin;
     });
     return token == tokens.end() ? SemanticTokenKind::None : token->kind;
@@ -565,7 +562,7 @@ ZEST_CASE(ModuleKeywordsNeedModules) {
     // Before C++20 a line-leading `module` is a plain name.
     llvm::StringRef content = "module m;\n";
     auto tokens = tokens_from(content, dialect_of("main.cpp", false, "c++17"), {}, {});
-    ZASSERT(std::ranges::none_of(tokens, [](const feature::SemanticToken& token) {
+    ZASSERT(ranges::none_of(tokens, [](const feature::SemanticToken& token) {
         return token.kind == SemanticTokenKind::Keyword;
     }));
 }

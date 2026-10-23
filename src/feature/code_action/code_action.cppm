@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.code_action.code_action;
 
@@ -12,8 +12,6 @@ import :vfs.ids;
 import :vfs.path;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// One kind per refactoring, below the standard `refactor.rewrite` and
 /// `refactor.inline`, so that a client can ask for one alone: an editor

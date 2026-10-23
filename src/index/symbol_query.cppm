@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// The one grammar every symbol lookup speaks: the locators the clice
 /// commands take, and workspace/symbol.

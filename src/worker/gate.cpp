@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -30,7 +30,7 @@ struct Gates {
     /// Read without the mutex: while no gate stands, a request's start
     /// takes no lock.
     std::atomic<std::size_t> count = 0;
-    kota::ipc::BincodePeer* peer = nullptr;
+    ipc::BincodePeer* peer = nullptr;
 };
 
 Gates gates;
@@ -42,7 +42,7 @@ void erase_gate(std::vector<Gate>::iterator it) {
 
 }  // namespace
 
-void install_test_gates(kota::ipc::BincodePeer& peer, kota::event_loop& loop) {
+void install_test_gates(ipc::BincodePeer& peer, kota::event_loop& loop) {
     gates.peer = &peer;
     peer.on_notification([&loop](const worker::GateParams& params) {
         std::lock_guard lock(gates.mutex);
@@ -52,8 +52,8 @@ void install_test_gates(kota::ipc::BincodePeer& peer, kota::event_loop& loop) {
     });
     peer.on_notification([](const worker::GateReleaseParams& params) {
         std::lock_guard lock(gates.mutex);
-        auto it = std::ranges::find_if(gates.standing,
-                                       [&](const Gate& gate) { return gate.id == params.id; });
+        auto it =
+            ranges::find_if(gates.standing, [&](const Gate& gate) { return gate.id == params.id; });
         assert(it != gates.standing.end());
         if(!it->parked) {
             erase_gate(it);
@@ -70,9 +70,8 @@ void park_at_test_gate(llvm::StringRef tag) {
         return;
     }
     std::unique_lock lock(gates.mutex);
-    auto it = std::ranges::find_if(gates.standing, [&](const Gate& gate) {
-        return !gate.parked && gate.tag == tag;
-    });
+    auto it = ranges::find_if(gates.standing,
+                              [&](const Gate& gate) { return !gate.parked && gate.tag == tag; });
     if(it == gates.standing.end()) {
         return;
     }
@@ -80,8 +79,7 @@ void park_at_test_gate(llvm::StringRef tag) {
     auto id = it->id;
     it->relay.send([id] { gates.peer->send_notification(worker::GateParkedParams{id}); });
     auto find = [id] {
-        return std::ranges::find_if(gates.standing,
-                                    [id](const Gate& gate) { return gate.id == id; });
+        return ranges::find_if(gates.standing, [id](const Gate& gate) { return gate.id == id; });
     };
     gates.changed.wait(lock, [&] { return find()->released; });
     erase_gate(find());

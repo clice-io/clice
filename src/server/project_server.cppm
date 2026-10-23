@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.project_server;
 
@@ -44,7 +44,7 @@ public:
     /// to one project: when the one configured is among
     /// `taken_cache_dirs`, this project falls back to its clice.toml's,
     /// then the default, then runs without one.
-    void configure(const std::optional<kota::codec::dyn::Value>& init_options,
+    void configure(const std::optional<codec::dyn::Value>& init_options,
                    llvm::ArrayRef<CanonicalPath> taken_cache_dirs);
 
     /// Load the project from disk (see bootstrap_project), restore the

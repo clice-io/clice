@@ -22,10 +22,9 @@
 
 module;
 
-#include "modules/prelude.h"
-
 #include "stats.h"
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -379,7 +378,7 @@ void print_summary(std::vector<FileResult>& results) {
         if(stage.values.empty()) {
             continue;
         }
-        std::ranges::sort(stage.values);
+        ranges::sort(stage.values);
         std::println("    {:<17}{:>13} {:>8.1f} {:>8.1f} {:>8.1f} {:>8.1f}",
                      stage.name.str(),
                      stage.values.size(),
@@ -389,16 +388,16 @@ void print_summary(std::vector<FileResult>& results) {
                      stage.values.back());
     }
 
-    auto slowest = results | std::views::filter([](auto& r) { return r.parse_ms >= 0; }) |
-                   std::ranges::to<std::vector>();
-    std::ranges::sort(slowest, std::greater{}, &FileResult::parse_ms);
+    auto slowest = results | views::filter([](auto& r) { return r.parse_ms >= 0; }) |
+                   ranges::to<std::vector>();
+    ranges::sort(slowest, std::greater{}, &FileResult::parse_ms);
     std::println("");
     std::println("  Slowest TUs by parse time");
-    for(auto& result: slowest | std::views::take(10)) {
+    for(auto& result: slowest | views::take(10)) {
         std::println("    {:>8.1f}ms  {}", result.parse_ms, result.file);
     }
 
-    auto failed = std::ranges::count_if(results, [](auto& r) { return !r.error.empty(); });
+    auto failed = ranges::count_if(results, [](auto& r) { return !r.error.empty(); });
     if(failed > 0) {
         std::println("");
         std::println("  {} file(s) had a failing stage (see JSON `error` fields)", failed);
@@ -481,9 +480,9 @@ extern "C++" int main(int argc, const char** argv) {
             }
             sized.emplace_back(size, path);
         }
-        std::ranges::stable_sort(sized, std::greater{}, [](auto& pair) { return pair.first; });
+        ranges::stable_sort(sized, std::greater{}, [](auto& pair) { return pair.first; });
         files.clear();
-        for(auto& [size, path]: sized | std::views::take(*opts.limit)) {
+        for(auto& [size, path]: sized | views::take(*opts.limit)) {
             files.push_back(path);
         }
     }
@@ -519,7 +518,7 @@ extern "C++" int main(int argc, const char** argv) {
     print_summary(output.files);
 
     if(opts.json_path.has_value()) {
-        auto json = kota::codec::json::to_string(output);
+        auto json = json::to_string(output);
         if(!json) {
             std::println(stderr, "Failed to serialize results");
             return 1;

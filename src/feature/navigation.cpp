@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -20,7 +19,7 @@ namespace clice::feature {
 namespace {
 
 bool is_class(SymbolKind kind) {
-    return std::ranges::contains(
+    return ranges::contains(
         std::array<SymbolKind, 3>{SymbolKind::Class, SymbolKind::Struct, SymbolKind::Union},
         kind);
 }
@@ -59,7 +58,7 @@ std::vector<index::Site> mismatched_declarations(const index::IndexQuery& index,
             {},
             [&](const index::IndexSource& source, const index::Relation& relation) {
                 auto extent = index::extent_of(source, relation);
-                in_class = extent && std::ranges::any_of(defined, [&](const index::Site& site) {
+                in_class = extent && ranges::any_of(defined, [&](const index::Site& site) {
                                return index::covers(*extent, site);
                            });
                 return !in_class;
@@ -87,8 +86,8 @@ std::vector<index::Site> mismatched_declarations(const index::IndexQuery& index,
         for(auto& site: index.sites(other.hash, namesake.site.file, RelationKind::Declaration)) {
             // Two files' internal functions are never one.
             if(info->scope == index::SymbolScope::External ||
-               std::ranges::any_of(defined,
-                                   [&](const index::Site& own) { return own.path == site.path; })) {
+               ranges::any_of(defined,
+                              [&](const index::Site& own) { return own.path == site.path; })) {
                 result.push_back(std::move(site));
             }
         }
@@ -138,11 +137,10 @@ std::vector<Highlight>
     for(auto symbol: symbols) {
         auto kind = kind_of(symbol);
         // Only a variable is read or written; any other symbol is named.
-        bool accessed =
-            kind && std::ranges::contains(std::array<SymbolKind, 3>{SymbolKind::Variable,
-                                                                    SymbolKind::Field,
-                                                                    SymbolKind::Parameter},
-                                          *kind);
+        bool accessed = kind && ranges::contains(std::array<SymbolKind, 3>{SymbolKind::Variable,
+                                                                           SymbolKind::Field,
+                                                                           SymbolKind::Parameter},
+                                                 *kind);
         auto used = accessed ? HighlightKind::Read : HighlightKind::Text;
         add(symbol, RelationKind::Declaration, HighlightKind::Text);
         add(symbol, RelationKind::Definition, HighlightKind::Text);
@@ -181,11 +179,11 @@ std::vector<Highlight>
         }
     }
     // The strongest kind of a range sorts first and survives the dedup.
-    std::ranges::sort(result, [](const Highlight& lhs, const Highlight& rhs) {
+    ranges::sort(result, [](const Highlight& lhs, const Highlight& rhs) {
         return std::tuple(lhs.range.begin, lhs.range.end, rhs.kind) <
                std::tuple(rhs.range.begin, rhs.range.end, lhs.kind);
     });
-    auto duplicates = std::ranges::unique(result, {}, &Highlight::range);
+    auto duplicates = ranges::unique(result, {}, &Highlight::range);
     result.erase(duplicates.begin(), duplicates.end());
     return result;
 }
@@ -228,7 +226,7 @@ std::vector<index::Site> definition(const index::IndexQuery& index,
         // one, is defined by its overrides; a use of it still reaches the
         // declaration.
         auto at_declaration = [&] {
-            return std::ranges::any_of(
+            return ranges::any_of(
                 index.sites(symbol, anchor, RelationKind::Declaration),
                 [&](const index::Site& site) { return index::covers(site, cursor.site); });
         };
@@ -240,7 +238,7 @@ std::vector<index::Site> definition(const index::IndexQuery& index,
                 }
             }
         }
-        if(found.empty() || std::ranges::any_of(found, [&](const index::Site& site) {
+        if(found.empty() || ranges::any_of(found, [&](const index::Site& site) {
                return index::covers(site, cursor.site);
            })) {
             found.append_range(index.sites(symbol, anchor, RelationKind::Declaration));
@@ -284,9 +282,8 @@ std::vector<index::Site> declaration(const index::IndexQuery& index,
     index::dedup_sites(result);
     drop_cursor_site(result, cursor.site);
     // Only the cursor's own site is left when the symbol has no other.
-    if(std::ranges::all_of(result, [&](const index::Site& site) {
-           return index::covers(site, cursor.site);
-       })) {
+    if(ranges::all_of(result,
+                      [&](const index::Site& site) { return index::covers(site, cursor.site); })) {
         std::vector<index::Site> mismatched;
         for(auto symbol: cursor.symbols) {
             mismatched.append_range(mismatched_declarations(index, symbol, cursor.site.file));
@@ -331,7 +328,7 @@ std::vector<index::Site> references(const index::IndexQuery& index,
                 auto direct = index.sites(base.symbol, base.anchor, RelationKind::Direct);
                 for(auto kind: {RelationKind::Reference, RelationKind::WeakReference}) {
                     for(auto& site: index.sites(base.symbol, base.anchor, kind)) {
-                        if(std::ranges::none_of(direct, [&](const index::Site& call) {
+                        if(ranges::none_of(direct, [&](const index::Site& call) {
                                return index::site_key(call) == index::site_key(site);
                            })) {
                             result.push_back(std::move(site));
@@ -539,7 +536,7 @@ std::vector<index::Site> definition(const index::PeerQueries& queries,
                                       [&](const index::IndexQuery& from, index::SymbolHash named) {
                                           return definition_sites(from, named, file);
                                       });
-        if(defined.empty() || std::ranges::any_of(defined, [&](const index::Site& site) {
+        if(defined.empty() || ranges::any_of(defined, [&](const index::Site& site) {
                return index::covers(site, cursor.site);
            })) {
             defined = queries.gather(
@@ -567,8 +564,7 @@ std::vector<index::Site> references(const index::PeerQueries& queries,
             return references(from, {.symbols = {named}, .site = cursor.site}, include_declaration);
         });
     if(limit != 0 && sites.size() > limit) {
-        std::ranges::stable_partition(sites,
-                                      [&](const index::Site& site) { return site.file == file; });
+        ranges::stable_partition(sites, [&](const index::Site& site) { return site.file == file; });
         sites.erase(sites.begin() + limit, sites.end());
     }
     return sites;

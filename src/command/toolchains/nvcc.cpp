@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -83,7 +83,7 @@ std::pair<unsigned, int> arch_rank(const ArchToken& arch) {
 }
 
 std::string select_gpu_arch(llvm::ArrayRef<ArchToken> archs) {
-    auto best = *std::ranges::max_element(archs, {}, arch_rank);
+    auto best = *ranges::max_element(archs, {}, arch_rank);
 
     auto result = std::format("sm_{}", best.number);
     if(best.suffix != 0)
@@ -314,7 +314,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         }
         /// nvcc reads joined -O3 as its own option, not host passthrough.
         if(arg.size() > 2 && arg.starts_with("-O") &&
-           std::ranges::all_of(arg.drop_front(2), llvm::isDigit)) {
+           ranges::all_of(arg.drop_front(2), llvm::isDigit)) {
             optimize = arg.drop_front(2);
             continue;
         }
@@ -529,16 +529,16 @@ std::optional<llvm::SmallVector<std::size_t>>
             if(removed.empty())
                 return std::nullopt;
             auto matched = [&](const ArchToken& token) {
-                return std::ranges::contains(removed, token);
+                return ranges::contains(removed, token);
             };
             for(std::size_t j = active.size(); j > 0;) {
                 j -= 1;
                 auto& entry = active[j];
-                if(std::ranges::none_of(entry.tokens, matched))
+                if(ranges::none_of(entry.tokens, matched))
                     continue;
                 /// A flag naming both erased and surviving architectures
                 /// cannot drop at flag granularity — bail like below.
-                if(!std::ranges::all_of(entry.tokens, matched))
+                if(!ranges::all_of(entry.tokens, matched))
                     return std::nullopt;
                 active.erase(active.begin() + j);
             }
@@ -552,13 +552,13 @@ std::optional<llvm::SmallVector<std::size_t>>
         /// ranking — leave the whole command to clang's own semantics.
         if(tokens.empty())
             return std::nullopt;
-        auto rank = arch_rank(*std::ranges::max_element(tokens, {}, arch_rank));
+        auto rank = arch_rank(*ranges::max_element(tokens, {}, arch_rank));
         active.push_back({.index = i, .tokens = std::move(tokens), .rank = rank});
     }
     if(active.size() < 2)
         return llvm::SmallVector<std::size_t>{};
 
-    auto best = std::ranges::max(active, {}, &ActiveArch::rank).rank;
+    auto best = ranges::max(active, {}, &ActiveArch::rank).rank;
     llvm::SmallVector<std::size_t> dropped;
     for(auto& arch: active) {
         if(arch.rank < best)
@@ -660,7 +660,7 @@ void collapse_gpu_arch_args(std::vector<LocalArg>& args) {
     if(!dropped) {
         return;
     }
-    for(auto index: *dropped | std::views::reverse) {
+    for(auto index: *dropped | views::reverse) {
         args.erase(args.begin() + positions[index]);
     }
 }
@@ -751,11 +751,11 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
         if(first_command.empty())
             first_command.assign(tokens.begin(), tokens.end());
 
-        bool is_preprocess = std::ranges::contains(tail, llvm::StringRef("-E"));
+        bool is_preprocess = ranges::contains(tail, llvm::StringRef("-E"));
         if(!is_preprocess)
             continue;
 
-        bool is_device = std::ranges::any_of(tail, [](llvm::StringRef token) {
+        bool is_device = ranges::any_of(tail, [](llvm::StringRef token) {
             return token.starts_with("-D__CUDA_ARCH__");
         });
 
@@ -887,7 +887,7 @@ kota::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string>
 
         /// An `-arch=` query token is an explicit selection too: its
         /// resolution replaces it in place below.
-        bool selects_arch = std::ranges::any_of(args, [](llvm::StringRef arg) {
+        bool selects_arch = ranges::any_of(args, [](llvm::StringRef arg) {
             return arg.starts_with("--offload-arch=") || arg.starts_with("-arch=");
         });
         if(!selects_arch && !info->default_arch.empty()) {

@@ -1,14 +1,12 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
 import :sched.graph;
 
 namespace clice {
-
-namespace ranges = std::ranges;
 
 /// Request scope: holds the root reference for one request() join. The
 /// destructor runs on every exit path, including cancellation unwind of

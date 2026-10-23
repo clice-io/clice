@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:server.features;
 
@@ -24,8 +24,6 @@ import :server.session_store;
 import :syntax.source_text;
 
 namespace clice {
-
-namespace protocol = kota::ipc::protocol;
 
 /// The server's language features, each assembled from its providers.
 ///
@@ -81,7 +79,7 @@ public:
 
     /// Full document-link result for a session: the worker's focus-file links
     /// merged behind the PCH's cached preamble links.
-    kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
+    kota::task<std::vector<protocol::DocumentLink>, ipc::Error>
         document_links(Ticket ticket, kota::cancellation_token token = {});
 
     /// The diagnostics of the document's buffer as it is now: awaits the
@@ -122,8 +120,7 @@ public:
                     kota::cancellation_token token = {});
     /// The document's semantic tokens, none when nothing serves them yet;
     /// the caller encodes them against the session's text right away.
-    using TokensResult =
-        kota::task<std::optional<std::vector<feature::SemanticToken>>, kota::ipc::Error>;
+    using TokensResult = kota::task<std::optional<std::vector<feature::SemanticToken>>, ipc::Error>;
     TokensResult semantic_tokens(Ticket ticket, kota::cancellation_token token = {});
     RawResult inlay_hints(Ticket ticket,
                           const protocol::Range& range,
@@ -151,7 +148,7 @@ public:
     /// declaring a name) are resolved here, at the reply edge. Every edit
     /// is versioned against the buffer it was computed for. `only` is the
     /// client's kind filter (LSP CodeActionContext.only); empty keeps all.
-    kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
+    kota::task<std::vector<protocol::CodeAction>, ipc::Error>
         code_action(Ticket ticket,
                     const protocol::Range& range,
                     llvm::ArrayRef<protocol::CodeActionKind> only,
@@ -214,7 +211,7 @@ public:
     /// Nullopt when nothing at the position can be renamed or the file
     /// fails to compile; an error names the conflicts, or the files whose
     /// index is not current, that keep the rename from being made.
-    kota::task<std::optional<feature::Renamed>, kota::ipc::Error>
+    kota::task<std::optional<feature::Renamed>, ipc::Error>
         rename(Ticket ticket,
                Fid path_id,
                const protocol::Position& position,
@@ -285,7 +282,7 @@ private:
     /// What a gate decided instead of the feature's own answer: null (no
     /// source can answer — a failed compile) or ContentModified.
     struct Stop {
-        std::optional<kota::ipc::Error> error;
+        std::optional<ipc::Error> error;
     };
 
     RawResult stop_reply(Stop stop);
@@ -326,7 +323,7 @@ private:
     /// The include-like directive links of a session's whole buffer: the
     /// PCH's cached preamble links, then the worker's AST's for the rest.
     /// Module names go through the ordinary index pipeline, not these.
-    kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
+    kota::task<std::vector<index::DocumentLink>, ipc::Error>
         directive_links(const Ticket& ticket, kota::cancellation_token token);
 
     ASTFamily& ast;

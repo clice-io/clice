@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:unittests.utils.toolchain_fixture;
 
@@ -126,7 +126,7 @@ inline bool adjacent(llvm::ArrayRef<const char*> argv,
 
 /// Whether `argv`, of `const char*` or of strings, holds `arg`.
 inline bool contains(const auto& argv, llvm::StringRef arg) {
-    return std::ranges::contains(argv, arg);
+    return ranges::contains(argv, arg);
 }
 
 }  // namespace clice::testing

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -153,7 +153,7 @@ public:
         inactive_regions(inactive_regions), index_known(index_known) {}
 
     auto build() -> TokenFacts {
-        for(auto [entry_index, entry]: std::views::enumerate(semantics.node_entries())) {
+        for(auto [entry_index, entry]: views::enumerate(semantics.node_entries())) {
             visit(static_cast<std::uint32_t>(entry_index), entry);
         }
         for(auto& reference: references) {
@@ -425,7 +425,7 @@ private:
             }
             const auto& macro = *ref->macro;
             auto used = [&](const clang::IdentifierInfo* parameter) {
-                return std::ranges::any_of(macro.tokens(), [&](const clang::Token& token) {
+                return ranges::any_of(macro.tokens(), [&](const clang::Token& token) {
                     return token.getIdentifierInfo() == parameter;
                 });
             };
@@ -469,7 +469,7 @@ private:
         for(std::size_t i = 0; i + 1 < inactive_regions.size(); i += 2) {
             dropped.emplace_back(inactive_regions[i], inactive_regions[i + 1]);
         }
-        std::ranges::sort(dropped);
+        ranges::sort(dropped);
         for(auto [begin, end]: dropped) {
             if(!facts.inactive.empty() && begin <= facts.inactive.back()) {
                 facts.inactive.back() = std::max(facts.inactive.back(), end);
@@ -509,7 +509,7 @@ private:
             return std::nullopt;
         }
         auto spelled = semantics.spelled_tokens();
-        auto it = std::ranges::partition_point(spelled, [&](const Token& token) {
+        auto it = ranges::partition_point(spelled, [&](const Token& token) {
             return token.range.begin <= offset;
         });
         if(it == spelled.begin()) {
@@ -701,7 +701,7 @@ auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticToke
         return it == names.end() ? name : it->second;
     };
     auto position = [](std::vector<std::string>& names, const std::string& name) {
-        auto it = std::ranges::find(names, name);
+        auto it = ranges::find(names, name);
         if(it == names.end()) {
             names.push_back(name);
             return static_cast<std::uint32_t>(names.size() - 1);
@@ -753,7 +753,7 @@ auto named_tokens(llvm::ArrayRef<SemanticToken> tokens, const SemanticTokenLegen
         }
         NamedToken entry{.range = token.range, .kind = legend.types[*type]};
         auto bits = legend.bits(token.modifiers);
-        for(auto [position, name]: std::views::enumerate(legend.modifiers)) {
+        for(auto [position, name]: views::enumerate(legend.modifiers)) {
             if(bits & (std::uint32_t(1) << position)) {
                 entry.modifiers.push_back(name);
             }

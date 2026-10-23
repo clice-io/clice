@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.hover;
 
@@ -17,8 +17,6 @@ import :syntax.position;
 import :vfs.file_table;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// Corresponds to the `[hover]` section in clice.toml.
 struct HoverOptions {

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -17,7 +17,7 @@ namespace {
 /// `void f(), g();` declares two functions in one declaration: the text
 /// belongs to both, so neither can be rewritten on its own.
 bool shares_declaration(const clang::FunctionDecl* decl) {
-    return std::ranges::any_of(decl->getDeclContext()->decls(), [&](const clang::Decl* sibling) {
+    return ranges::any_of(decl->getDeclContext()->decls(), [&](const clang::Decl* sibling) {
         return sibling != decl && !sibling->isImplicit() &&
                sibling->getBeginLoc() == decl->getBeginLoc();
     });
@@ -99,7 +99,7 @@ struct Patch {
 /// type before the name, defaults inside the parameters, `override` past
 /// them. Insertions at one offset keep the order they were made in.
 std::string apply(llvm::StringRef text, std::vector<Patch> patches) {
-    std::ranges::stable_sort(patches, {}, [](const Patch& patch) {
+    ranges::stable_sort(patches, {}, [](const Patch& patch) {
         return std::pair(patch.begin, patch.end);
     });
     std::string result;
@@ -445,7 +445,7 @@ private:
                             {},
                             decl->getDeclContext());
         if(spelled) {
-            for(auto offset: std::views::reverse(parameter_names(*spelled))) {
+            for(auto offset: views::reverse(parameter_names(*spelled))) {
                 spelled->insert(offset, "::");
             }
         }
@@ -542,14 +542,13 @@ private:
         if(!spelling) {
             return;
         }
-        auto first = std::ranges::find_if(tokens, [&](const Token& token) {
+        auto first = ranges::find_if(tokens, [&](const Token& token) {
             return token.range.begin >= *begin;
         });
         // The end may fall inside a token: the `>` of `A<B<int>>` is half
         // of a `>>`.
-        auto last = std::prev(std::ranges::find_if(tokens, [&](const Token& token) {
-            return token.range.begin > *end;
-        }));
+        auto last = std::prev(
+            ranges::find_if(tokens, [&](const Token& token) { return token.range.begin > *end; }));
         auto absorbed = [](const Token& token) {
             return is_cv(token.kind) || is_specifier(token.kind);
         };
@@ -560,7 +559,7 @@ private:
             ++last;
         }
         std::string text;
-        for(const auto& token: std::ranges::subrange(first, std::next(last))) {
+        for(const auto& token: ranges::subrange(first, std::next(last))) {
             if(is_specifier(token.kind) && !declaration_only(token.kind)) {
                 text += token.text(source);
                 text += ' ';
@@ -631,7 +630,7 @@ const clang::CXXRecordDecl* outermost_record(const clang::CXXRecordDecl* record)
 std::optional<std::uint32_t> semicolon_after(CompilationUnit& unit, clang::SourceLocation end) {
     auto& sm = unit.context().getSourceManager();
     auto tokens = unit.focus_file().tokens().expanded();
-    auto token = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
+    auto token = ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
         return !sm.isBeforeInTranslationUnit(end, token.location());
     });
     while(token != tokens.end() && token->kind() == clang::tok::kw___attribute) {

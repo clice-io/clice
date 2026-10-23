@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -37,7 +36,7 @@ static bool rule_active(const CompiledRule& rule, llvm::StringRef active) {
 }
 
 bool Build::declares_sources() const {
-    return std::ranges::any_of(config.compiled_rules, [&](const CompiledRule& rule) {
+    return ranges::any_of(config.compiled_rules, [&](const CompiledRule& rule) {
         return rule_active(rule, active) && rule.declares_sources();
     });
 }
@@ -49,7 +48,7 @@ llvm::SmallVector<Spelling> Build::declared_sources() const {
             continue;
         }
         for(auto& database: rule.compile_commands) {
-            if(!std::ranges::contains(result, database)) {
+            if(!ranges::contains(result, database)) {
                 result.push_back(database);
             }
         }
@@ -85,7 +84,7 @@ std::optional<SourceID> Build::declared_source(const Spelling& database) const {
 }
 
 bool Build::discovered(SourceID id) const {
-    return !std::ranges::contains(declared_ids(), id);
+    return !ranges::contains(declared_ids(), id);
 }
 
 llvm::SmallVector<SourceID, 4> Build::source_order(CanonicalRef path) const {
@@ -94,31 +93,31 @@ llvm::SmallVector<SourceID, 4> Build::source_order(CanonicalRef path) const {
     auto declared = declared_ids();
     auto add_sources = [&](const CompiledRule& rule) {
         for(auto& database: rule.compile_commands) {
-            if(auto id = declared_source(database); id && !std::ranges::contains(order, *id)) {
+            if(auto id = declared_source(database); id && !ranges::contains(order, *id)) {
                 order.push_back(*id);
             }
         }
     };
     for(auto& rule: config.compiled_rules) {
-        if(rule_active(rule, active) && std::ranges::contains(matched, &rule)) {
+        if(rule_active(rule, active) && ranges::contains(matched, &rule)) {
             add_sources(rule);
         }
     }
     for(auto& rule: config.compiled_rules) {
-        if(rule_active(rule, active) && !std::ranges::contains(matched, &rule)) {
+        if(rule_active(rule, active) && !ranges::contains(matched, &rule)) {
             add_sources(rule);
         }
     }
     llvm::SmallVector<SourceID, 4> discovered;
     for(std::size_t i = 0; i < cdb.source_count(); i += 1) {
         auto id = SourceID(i);
-        if(!std::ranges::contains(order, id) && !std::ranges::contains(declared, id)) {
+        if(!ranges::contains(order, id) && !ranges::contains(declared, id)) {
             discovered.push_back(id);
         }
     }
     // A vanished database keeps serving its entries, but one regenerated
     // elsewhere takes over the files both list.
-    std::ranges::sort(discovered, {}, [&](SourceID id) {
+    ranges::sort(discovered, {}, [&](SourceID id) {
         return std::pair(!cdb.present(id), discovery_rank(cdb.source_path(id)));
     });
     order.append(discovered);
@@ -126,7 +125,7 @@ llvm::SmallVector<SourceID, 4> Build::source_order(CanonicalRef path) const {
 }
 
 std::pair<std::uint32_t, llvm::StringRef> discovery_rank(llvm::StringRef database) {
-    auto depth = std::ranges::count_if(database, [](char c) { return path::is_separator(c); });
+    auto depth = ranges::count_if(database, [](char c) { return path::is_separator(c); });
     return {static_cast<std::uint32_t>(depth), database};
 }
 
@@ -165,7 +164,7 @@ Edits Build::edits(llvm::ArrayRef<CanonicalRef> paths) const {
     llvm::SmallVector<const CompiledRule*> matched;
     for(auto path: paths) {
         for(auto* rule: matching(path)) {
-            if(!std::ranges::contains(matched, rule)) {
+            if(!ranges::contains(matched, rule)) {
                 matched.push_back(rule);
             }
         }
@@ -176,7 +175,7 @@ Edits Build::edits(llvm::ArrayRef<CanonicalRef> paths) const {
 Edits Build::edits_of(llvm::ArrayRef<const CompiledRule*> matched) const {
     Edits result;
     for(auto& rule: config.compiled_rules) {
-        if(!std::ranges::contains(matched, &rule)) {
+        if(!ranges::contains(matched, &rule)) {
             continue;
         }
         result.query_toolchain = result.query_toolchain && rule.query_toolchain;
@@ -324,16 +323,14 @@ std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
 }
 
 bool Build::indexed(CanonicalRef path) const {
-    return std::ranges::all_of(matching(path),
-                               [](const CompiledRule* rule) { return rule->index; });
+    return ranges::all_of(matching(path), [](const CompiledRule* rule) { return rule->index; });
 }
 
 bool Build::inside(CanonicalRef path, bool CompiledRule::* field) const {
     if(!path::under(path, config.workspace_root)) {
         return false;
     }
-    return std::ranges::all_of(matching(path),
-                               [&](const CompiledRule* rule) { return rule->*field; });
+    return ranges::all_of(matching(path), [&](const CompiledRule* rule) { return rule->*field; });
 }
 
 bool Build::lintable(CanonicalRef path) const {
@@ -353,11 +350,11 @@ llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {
         auto first = result.size();
         for(auto& candidate: commands(member)) {
             auto unit = resolve(member, candidate.command, candidate.source, path, path);
-            bool seen = std::ranges::any_of(llvm::ArrayRef(result).drop_front(first),
-                                            [&](const CommandRef& other) {
-                                                return other.command == unit.command &&
-                                                       other.input.value == unit.input.value;
-                                            });
+            bool seen = ranges::any_of(llvm::ArrayRef(result).drop_front(first),
+                                       [&](const CommandRef& other) {
+                                           return other.command == unit.command &&
+                                                  other.input.value == unit.input.value;
+                                       });
             if(!seen) {
                 result.push_back(unit);
             }
@@ -383,9 +380,9 @@ std::vector<Fid> Build::members() {
             result.push_back(file);
         }
     }
-    auto borrowing = std::ranges::to<llvm::SmallVector<Fid>>(
-        std::views::transform(provisional, [](auto& entry) { return entry.first; }));
-    std::ranges::sort(borrowing, {}, [&](Fid file) { return files.resolve(file); });
+    auto borrowing = ranges::to<llvm::SmallVector<Fid>>(
+        views::transform(provisional, [](auto& entry) { return entry.first; }));
+    ranges::sort(borrowing, {}, [&](Fid file) { return files.resolve(file); });
     result.append_range(borrowing);
     return result;
 }
@@ -422,11 +419,11 @@ std::optional<CommandID> Build::borrow(Fid file, std::optional<CommandID> comman
 CommandID Build::lend(CommandID command, CanonicalRef lender, CanonicalRef file) {
     auto own = matching(file);
     auto matched = matching(lender);
-    matched.erase(std::ranges::remove_if(
-                      matched,
-                      [&](const CompiledRule* rule) { return std::ranges::contains(own, rule); })
-                      .begin(),
-                  matched.end());
+    matched.erase(
+        ranges::remove_if(matched,
+                          [&](const CompiledRule* rule) { return ranges::contains(own, rule); })
+            .begin(),
+        matched.end());
     return apply(command, edits_of(matched).options());
 }
 
@@ -463,10 +460,9 @@ bool Build::default_source(CanonicalRef path) {
         return false;
     }
     auto another_name = llvm::StringRef(path).str() + "~";
-    bool singled_out =
-        std::ranges::any_of(rule->patterns, [&](const CompiledRule::Pattern& pattern) {
-            return pattern.glob.match(llvm::StringRef(path)) && !pattern.glob.match(another_name);
-        });
+    bool singled_out = ranges::any_of(rule->patterns, [&](const CompiledRule::Pattern& pattern) {
+        return pattern.glob.match(llvm::StringRef(path)) && !pattern.glob.match(another_name);
+    });
     if(!singled_out) {
         return false;
     }
@@ -503,10 +499,9 @@ std::optional<CommandRef> Build::pch_unit(CommandID command,
             continue;
         }
         for(auto& writer: cdb.pch_writers(*pch)) {
-            bool active =
-                std::ranges::any_of(entries(writer.file), [&](const CompilationEntry& entry) {
-                    return entry.source == writer.source && entry.ordinal == writer.ordinal;
-                });
+            bool active = ranges::any_of(entries(writer.file), [&](const CompilationEntry& entry) {
+                return entry.source == writer.source && entry.ordinal == writer.ordinal;
+            });
             if(active) {
                 return resolve(writer.file,
                                writer.command,
@@ -542,7 +537,7 @@ Build::SourceWalk Build::source_walk() const {
     // whole workspace for a rule without patterns. A root inside another
     // is walked as part of it.
     auto add_root = [&](CanonicalRef root) {
-        if(!root.empty() && !std::ranges::contains(walk.roots, CanonicalPath(root))) {
+        if(!root.empty() && !ranges::contains(walk.roots, CanonicalPath(root))) {
             walk.roots.emplace_back(root);
         }
     };
@@ -556,13 +551,12 @@ Build::SourceWalk Build::source_walk() const {
         }
     }
     walk.roots.erase(
-        std::ranges::remove_if(
-            walk.roots,
-            [&](const CanonicalPath& root) {
-                return std::ranges::any_of(walk.roots, [&](const CanonicalPath& other) {
-                    return other != root && path::under(root, other);
-                });
-            })
+        ranges::remove_if(walk.roots,
+                          [&](const CanonicalPath& root) {
+                              return ranges::any_of(walk.roots, [&](const CanonicalPath& other) {
+                                  return other != root && path::under(root, other);
+                              });
+                          })
             .begin(),
         walk.roots.end());
     if(!config.project.cache_dir.empty()) {
@@ -576,8 +570,8 @@ void Build::collect_covered_sources(llvm::ArrayRef<CanonicalPath> walked, std::v
     llvm::DenseSet<Fid> seen(out.begin(), out.end());
     for(auto& path: walked) {
         auto matched = matching(path);
-        if(!std::ranges::any_of(rules, [&](const CompiledRule* rule) {
-               return std::ranges::contains(matched, rule);
+        if(!ranges::any_of(rules, [&](const CompiledRule* rule) {
+               return ranges::contains(matched, rule);
            })) {
             continue;
         }
@@ -608,7 +602,7 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
                             ? CanonicalRef(root).entry(spelled)
                             : CanonicalPath(Spelling::absolute(spelled));
             if(suffix_type(path) != clang::driver::types::TY_INVALID ||
-               std::ranges::any_of(walk.patterned, [&](const CanonicalPath& patterned) {
+               ranges::any_of(walk.patterned, [&](const CanonicalPath& patterned) {
                    return path::under(path, patterned);
                })) {
                 walked.push_back(std::move(path));

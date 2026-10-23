@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice:worker.pool;
 
@@ -20,7 +19,7 @@ struct WorkerPoolFixture;
 
 }
 
-using kota::ipc::RequestResult;
+using ipc::RequestResult;
 
 /// Information about a worker crash, delivered via WorkerPool::on_crash.
 struct WorkerCrashInfo {
@@ -232,7 +231,7 @@ public:
     template <typename Params>
     RequestResult<Params> send_stateful(std::uint32_t path_id,
                                         const Params& params,
-                                        kota::ipc::request_options opts = {});
+                                        ipc::request_options opts = {});
 
     /// Send a request to a stateless worker, placed by the scheduler.
     ///
@@ -346,7 +345,7 @@ private:
         /// Shared with every coroutine that awaits on it (request senders,
         /// the IO pump), so a slot can drop its reference the moment the
         /// process dies without racing in-flight users.
-        std::shared_ptr<kota::ipc::BincodePeer> peer;
+        std::shared_ptr<ipc::BincodePeer> peer;
 
         /// Written by the stderr drain, read by the crash report.
         std::shared_ptr<StderrTail> stderr_tail;
@@ -468,9 +467,9 @@ private:
     /// worker's memory ran out; worker_lost when it names another, names
     /// none while other requests were in flight, or the request ignored a
     /// cancel; worker_died when it names none and this request ran alone.
-    static kota::ipc::Error death_error(const WorkerDeath& death,
-                                        llvm::StringRef tag,
-                                        kota::codec::dyn::Value identity);
+    static ipc::Error death_error(const WorkerDeath& death,
+                                  llvm::StringRef tag,
+                                  codec::dyn::Value identity);
 
     static SchedulerTime now() {
         return std::chrono::steady_clock::now();
@@ -575,7 +574,7 @@ private:
 
     struct SpawnedProcess {
         kota::process proc;
-        std::shared_ptr<kota::ipc::BincodePeer> peer;
+        std::shared_ptr<ipc::BincodePeer> peer;
         std::shared_ptr<StderrTail> stderr_tail;
     };
 
@@ -588,7 +587,7 @@ private:
     /// The IO pump, owning a peer reference so the peer outlives its own
     /// run() no matter when the slot drops its copy. The incarnation dies
     /// when its link ends.
-    kota::task<> run_peer(std::shared_ptr<kota::ipc::BincodePeer> peer,
+    kota::task<> run_peer(std::shared_ptr<ipc::BincodePeer> peer,
                           std::size_t index,
                           bool stateful,
                           unsigned generation);
@@ -620,7 +619,7 @@ private:
     template <typename Params>
     RequestResult<Params> dispatch_stateful(std::uint32_t path_id,
                                             const Params& params,
-                                            kota::ipc::request_options opts,
+                                            ipc::request_options opts,
                                             bool& sent);
 
     template <typename Params>
@@ -730,7 +729,7 @@ std::optional<std::pair<BuildKind, llvm::StringRef>> ran_build(const Params& par
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
                                                 const Params& params,
-                                                kota::ipc::request_options opts) {
+                                                ipc::request_options opts) {
     bool sent = false;
     auto result = co_await dispatch_stateful(path_id, params, std::move(opts), sent);
     if(auto build = ran_build(params, result, sent); build && probe) {
@@ -757,7 +756,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
 template <typename Params>
 RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
                                                     const Params& params,
-                                                    kota::ipc::request_options opts,
+                                                    ipc::request_options opts,
                                                     bool& sent) {
     stateful_inflight += 1;
 
@@ -773,8 +772,8 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     if(idx == SIZE_MAX) {
         scheduler.user_activity(now());
         execute();
-        co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
-                                             "No stateful workers available"});
+        co_await kota::fail(
+            ipc::Error{worker::dispatch_errc::worker_unavailable, "No stateful workers available"});
     }
 
     // Own a peer reference across the await: the slot drops its copy the
@@ -832,8 +831,8 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         if(stop_scope.cancelled() || !has_future_capacity() || cancel.cancelled()) {
             co_await kota::fail(
                 cancel.cancelled()
-                    ? kota::ipc::Error{cancelled, "Request cancelled by its round"}
-                    : kota::ipc::Error{worker_unavailable, "No stateless workers available"});
+                    ? ipc::Error{cancelled, "Request cancelled by its round"}
+                    : ipc::Error{worker_unavailable, "No stateless workers available"});
         }
 
         auto id = next_request;
@@ -866,7 +865,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // Asked to stop before it reached the worker: giving the slot back
         // costs nothing.
         if(request.preempt.cancelled()) {
-            co_await kota::fail(kota::ipc::Error{cancelled, "Request preempted by the scheduler"});
+            co_await kota::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
         }
 
         auto peer = stateless_workers[idx].peer;
@@ -899,7 +898,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // its death record is not done yet, so it is requeued unblamed and crashes
         // its worker once more.
         if(request.preempt.cancelled() && !death->out_of_memory && !death->ignored_cancel) {
-            co_await kota::fail(kota::ipc::Error{cancelled, "Request preempted by the scheduler"});
+            co_await kota::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
         }
         // An error returned by the worker's handler leaves the worker
         // healthy; pass it through untouched.

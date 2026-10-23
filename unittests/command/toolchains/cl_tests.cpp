@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -46,7 +46,7 @@ echo 'msc_full_ver 194435207'
 
 /// The standard the cc1 command compiles in: its last -std.
 llvm::StringRef last_standard(llvm::ArrayRef<const char*> argv) {
-    for(llvm::StringRef arg: std::views::reverse(argv)) {
+    for(llvm::StringRef arg: views::reverse(argv)) {
         if(arg.starts_with("-std=")) {
             return arg;
         }

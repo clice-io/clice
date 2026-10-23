@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -14,8 +13,6 @@ import :command.table;
 import :support.logging;
 
 namespace clice {
-
-namespace ranges = std::ranges;
 
 std::string CommandEdits::key() const {
     std::string key;
@@ -180,7 +177,7 @@ CommandID
             // A remove reaches the appends before it, so a later rule can
             // take back what an earlier one added.
             std::erase_if(append_args, [&](const LocalArg& local) {
-                return std::ranges::any_of(removes, [&](const RemovePattern& remove) {
+                return ranges::any_of(removes, [&](const RemovePattern& remove) {
                     return removes_arg(remove, local);
                 });
             });
@@ -202,7 +199,7 @@ CommandID
     parse_edit(edits.extra_prepend, entry_directory, prepend_args);
 
     auto matches_remove = [&](const Arg& arg) {
-        return std::ranges::any_of(remove_args, [&](const RemovePattern& remove) {
+        return ranges::any_of(remove_args, [&](const RemovePattern& remove) {
             return removes_arg(remove, arg);
         });
     };
@@ -252,7 +249,7 @@ CommandID
     // the family follows the edited command's last driver mode, as it
     // follows the loaded one's.
     command.family = driver_family(base.driver);
-    for(auto& local: std::views::reverse(edited)) {
+    for(auto& local: views::reverse(edited)) {
         if(local.opt_id == option::OPT_driver_mode && local.values.size() == 1) {
             if(llvm::StringRef(local.values[0]) == "cl") {
                 command.family = CompilerFamily::ClangCL;

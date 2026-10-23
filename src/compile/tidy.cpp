@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 #include "clang-tidy/ClangTidyForceLinker.h"
 
@@ -756,7 +755,7 @@ TidyResolution resolve_tidy_params(llvm::StringRef file) {
         params.options.emplace_back(key.str(), value.Value);
     }
     // Deterministic plan bytes: the option map's iteration order is not.
-    std::ranges::sort(params.options);
+    ranges::sort(params.options);
     params.warnings_as_errors = opts.WarningsAsErrors.value_or(std::string());
     params.header_filter = opts.HeaderFilterRegex.value_or(std::string());
     params.exclude_header_filter = opts.ExcludeHeaderFilterRegex.value_or(std::string());

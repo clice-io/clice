@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 #include "kota/ipc/framing.h"
 
@@ -33,8 +32,8 @@ import :worker.stateless;
 
 namespace clice {
 
-using kota::ipc::RequestResult;
-using RequestContext = kota::ipc::BincodePeer::RequestContext;
+using ipc::RequestResult;
+using RequestContext = ipc::BincodePeer::RequestContext;
 
 /// Serialize the preamble's index blob (full index + document links
 /// + inactive regions + diagnostics) into a string. Runs while the freshly parsed AST
@@ -318,7 +317,7 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
             auto entry = sm.getFileManager().getOptionalFileRef(message.FilePath);
             file.path = unit.file_path(*entry);
             file.content = sm.getMemoryBufferForFileOrNone(*entry)->getBuffer();
-            file.lines = kota::ipc::lsp::line_starts(file.content);
+            file.lines = lsp::line_starts(file.content);
         }
         auto position = PositionMap(file.content, file.lines)
                             .position(message.FileOffset, PositionEncoding::UTF8);
@@ -521,8 +520,8 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
     return {.list = to_raw(completion.list), .include = completion.include};
 }
 
-static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpParams& params,
-                                                   const std::shared_ptr<std::atomic_bool>& stop) {
+static codec::RawValue handle_signature_help(const worker::SignatureHelpParams& params,
+                                             const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp{
@@ -590,10 +589,8 @@ static auto run_lowered(Work& work) {
 /// it after every top-level declaration, so even the parse itself stops
 /// instead of running to completion for a result nobody will read.
 template <typename Params, typename Result, typename Handler>
-static void serve(kota::ipc::BincodePeer& peer,
-                  Result cancelled,
-                  Handler handler,
-                  ServeOptions options = {}) {
+static void
+    serve(ipc::BincodePeer& peer, Result cancelled, Handler handler, ServeOptions options = {}) {
     peer.on_request([cancelled, handler, options](RequestContext&,
                                                   const Params& params) -> RequestResult<Params> {
         auto stop = std::make_shared<std::atomic_bool>(false);
@@ -638,14 +635,14 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 
     kota::event_loop loop;
 
-    auto transport_result = kota::ipc::StreamTransport::open_stdio(loop);
+    auto transport_result = ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {
         LOG_ERROR("Failed to open stdio transport");
         return 1;
     }
-    (*transport_result)->set_remote_max_payload(kota::ipc::default_max_payload);
+    (*transport_result)->set_remote_max_payload(ipc::default_max_payload);
 
-    kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
+    ipc::BincodePeer peer(loop, std::move(*transport_result));
     install_test_gates(peer, loop);
 
     const worker::ArtifactBuildResult cancelled_build{.success = false, .error = "Build cancelled"};
@@ -659,7 +656,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         peer,
         worker::IncludeTreeResult{.success = false, .error = "Preprocessing cancelled"},
         &handle_include_tree);
-    const kota::codec::RawValue cancelled_query{"null"};
+    const codec::RawValue cancelled_query{"null"};
     serve<worker::CompletionParams>(peer, worker::CompletionResult{}, &handle_completion);
     serve<worker::SignatureHelpParams>(peer, cancelled_query, &handle_signature_help);
     serve<worker::FormatParams>(

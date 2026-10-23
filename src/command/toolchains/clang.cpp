@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -83,7 +82,7 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
     // particular job, it should be controlled via options (e.g.
     // --cuda-{host|device}-only for CUDA) passed to the driver.
     const clang::driver::JobList& jobs = compilation->getJobs();
-    auto cmd = std::ranges::find_if(jobs, [](const clang::driver::Command& cmd) {
+    auto cmd = ranges::find_if(jobs, [](const clang::driver::Command& cmd) {
         return cmd.getCreator().getName() == llvm::StringRef("clang");
     });
     if(cmd == jobs.end()) {
@@ -99,7 +98,7 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
 }
 
 bool names_standard(llvm::ArrayRef<std::string> args) {
-    return std::ranges::any_of(args, [](llvm::StringRef arg) {
+    return ranges::any_of(args, [](llvm::StringRef arg) {
         return arg.starts_with("-std=") || arg == "--std";
     });
 }

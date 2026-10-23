@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -139,7 +138,7 @@ std::string serialize_artifact_records(Project& project, CommandResolver& comman
 
     commands.dump_context_headers(data.header_modes, intern);
 
-    auto json = kota::codec::json::to_string<PathJsonConfig>(data);
+    auto json = json::to_string<PathJsonConfig>(data);
     if(!json) {
         LOG_WARN("Failed to serialize the artifact records");
         return {};
@@ -152,7 +151,7 @@ void load_artifact_records(Project& project, CommandResolver& commands, llvm::St
         return;
     }
     ArtifactRecords data;
-    if(!kota::codec::json::from_string(bytes, data)) {
+    if(!json::from_string(bytes, data)) {
         LOG_WARN("Failed to parse the artifact records");
         return;
     }

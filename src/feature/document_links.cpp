@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -88,7 +88,7 @@ auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
 
     // Directives are collected grouped by kind; the reply promises
     // document order.
-    std::ranges::sort(links, {}, [](const index::DocumentLink& link) { return link.range.begin; });
+    ranges::sort(links, {}, [](const index::DocumentLink& link) { return link.range.begin; });
 
     return links;
 }
@@ -110,14 +110,13 @@ auto document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges
         links.push_back({.range = *range, .target = edge.target});
     }
 
-    std::ranges::sort(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
+    ranges::sort(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
         return std::tie(lhs.range.begin, lhs.target) < std::tie(rhs.range.begin, rhs.target);
     });
     auto duplicates =
-        std::ranges::unique(links,
-                            [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
-                                return lhs.range == rhs.range && lhs.target == rhs.target;
-                            });
+        ranges::unique(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
+            return lhs.range == rhs.range && lhs.target == rhs.target;
+        });
     links.erase(duplicates.begin(), duplicates.end());
 
     return links;

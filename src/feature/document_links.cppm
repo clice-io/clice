@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.document_links;
 
@@ -14,8 +14,6 @@ import :vfs.file_table;
 import :vfs.ids;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// Include-directive links of the focus file, in byte offsets; the
 /// reply edge converts them with the session's line map.

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:support.shell;
 
@@ -123,8 +123,7 @@ inline std::string print_argv(llvm::ArrayRef<const char*> args) {
         if(sep)
             os << ' ';
         sep = true;
-        if(!std::ranges::any_of(arg, control) &&
-           arg.find_first_of(R"( "\)") == llvm::StringRef::npos) {
+        if(!ranges::any_of(arg, control) && arg.find_first_of(R"( "\)") == llvm::StringRef::npos) {
             os << arg;
             continue;
         }

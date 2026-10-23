@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// The inside of the code action layer: what an action reads, how the
 /// table anchors it, and the floor every action stands on. An action is a

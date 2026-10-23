@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -25,8 +25,8 @@ auto SourceText::positions() -> PositionMap {
     if(!lines) {
         std::string_view text(content);
         lines = LineTables{
-            .starts = kota::ipc::lsp::line_starts(text),
-            .non_ascii = kota::ipc::lsp::non_ascii_lines(text),
+            .starts = lsp::line_starts(text),
+            .non_ascii = lsp::non_ascii_lines(text),
         };
     }
     return {content, lines->starts, lines->non_ascii};

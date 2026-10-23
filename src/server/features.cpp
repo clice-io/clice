@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -38,12 +38,12 @@ import :worker.protocol;
 
 namespace clice {
 
-using serde_raw = kota::codec::RawValue;
+using serde_raw = codec::RawValue;
 
 /// The link whose argument covers `offset`.
 const static index::DocumentLink* link_at(llvm::ArrayRef<index::DocumentLink> links,
                                           std::uint32_t offset) {
-    auto it = std::ranges::find_if(links, [&](const index::DocumentLink& link) {
+    auto it = ranges::find_if(links, [&](const index::DocumentLink& link) {
         return link.range.contains(offset);
     });
     return it != links.end() ? &*it : nullptr;
@@ -56,15 +56,15 @@ static bool is_null(const serde_raw& raw) {
 }
 
 /// Error response for feature requests on files with no open session.
-static kota::ipc::Error document_not_open() {
-    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams, "Document not open"};
+static ipc::Error document_not_open() {
+    return ipc::Error{protocol::ErrorCode::InvalidParams, "Document not open"};
 }
 
 /// Error response when a call/type hierarchy item cannot be resolved back to
 /// an indexed symbol.
-static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
-    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                            std::format("Failed to resolve {} item", kind)};
+static ipc::Error item_not_resolved(llvm::StringRef kind) {
+    return ipc::Error{protocol::ErrorCode::InvalidParams,
+                      std::format("Failed to resolve {} item", kind)};
 }
 
 /// The largest buffer the master lexes whole on its own thread.
@@ -197,7 +197,7 @@ std::vector<index::DocumentLink> Features::find_preamble_links(const Session& se
     return state ? state->links() : std::vector<index::DocumentLink>{};
 }
 
-kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
+kota::task<std::vector<index::DocumentLink>, ipc::Error>
     Features::directive_links(const Ticket& ticket, kota::cancellation_token token) {
     auto result = co_await dispatcher.document_links(ticket, std::move(token)).or_fail();
     // The preamble is compiled into the PCH, so the worker's AST only
@@ -207,7 +207,7 @@ kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
     co_return links;
 }
 
-kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
+kota::task<std::vector<protocol::DocumentLink>, ipc::Error>
     Features::document_links(Ticket ticket, kota::cancellation_token token) {
     auto& session = ticket.session;
 
@@ -740,8 +740,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     }
 
     protocol::CompletionList list;
-    [[maybe_unused]] auto decoded =
-        kota::codec::json::from_string<kota::ipc::lsp_config>(result.list.data, list);
+    [[maybe_unused]] auto decoded = json::from_string<ipc::lsp_config>(result.list.data, list);
     assert(decoded && "the worker encodes the list");
     std::string directory;
     std::vector<std::string> arguments;
@@ -820,13 +819,13 @@ Features::RawResult Features::document_highlight(Ticket ticket,
     co_return to_raw(feature::to_protocol(feature::document_highlights(query, *cursor)));
 }
 
-static kota::ipc::Error rename_refused(std::string message) {
-    return kota::ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
-                            std::move(message)};
+static ipc::Error rename_refused(std::string message) {
+    return ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
+                      std::move(message)};
 }
 
 /// Refused up front, before the cursor costs a compile.
-static std::optional<kota::ipc::Error> refuse_rootless(const Project& project) {
+static std::optional<ipc::Error> refuse_rootless(const Project& project) {
     if(project.config.workspace_root.empty()) {
         return rename_refused("a rename edits the sources of a workspace folder; open one");
     }
@@ -858,7 +857,7 @@ Features::RawResult Features::prepare_rename(Ticket ticket,
     });
 }
 
-kota::task<std::optional<feature::Renamed>, kota::ipc::Error>
+kota::task<std::optional<feature::Renamed>, ipc::Error>
     Features::rename(Ticket ticket,
                      Fid path_id,
                      const protocol::Position& position,

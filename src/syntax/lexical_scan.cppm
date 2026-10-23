@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:syntax.lexical_scan;
 
@@ -166,9 +166,8 @@ struct LexicalInfo {
 
     /// The tokens from the one holding `offset` on, comments left out.
     auto code_from(std::uint32_t offset) const {
-        return std::views::filter(
-            llvm::ArrayRef(tokens).drop_front(token_at(offset)),
-            [](const Token& token) { return token.kind != clang::tok::comment; });
+        return views::filter(llvm::ArrayRef(tokens).drop_front(token_at(offset)),
+                             [](const Token& token) { return token.kind != clang::tok::comment; });
     }
 
     /// The directive whose logical line holds `offset`, from the start of

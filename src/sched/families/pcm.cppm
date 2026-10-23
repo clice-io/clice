@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:sched.families.pcm;
 
@@ -120,7 +120,7 @@ public:
     /// The death the module's last build caused, while the module's
     /// content is still what crashed: every importer that finds it books
     /// it against its own document instead of burning a worker of its own.
-    const kota::ipc::Error* crashed(Fid module);
+    const ipc::Error* crashed(Fid module);
 
     /// An importer holding a license to retry (see server/quarantine.cppm)
     /// lifts the module's refusal.
@@ -238,7 +238,7 @@ private:
     /// and the death.
     struct Crash {
         std::uint64_t content = 0;
-        kota::ipc::Error error;
+        ipc::Error error;
     };
 
     std::uint64_t content_hash(Fid module);

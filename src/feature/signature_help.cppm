@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.signature_help;
 
@@ -8,8 +8,6 @@ import :compile.compilation;
 import :feature.documentation;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// Corresponds to the `[signature_help]` section in clice.toml.
 struct SignatureHelpOptions {

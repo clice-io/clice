@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.workspace_symbols;
 
@@ -10,8 +10,6 @@ import :index.symbol;
 import :vfs.path;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// `container` is the qualified name of the symbol's parent, empty at the
 /// translation unit. A function is named with its signature, which tells

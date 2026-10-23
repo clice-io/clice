@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -217,7 +217,7 @@ ZEST_CASE(CrashPublishesNote) {
     stack.ast.record_crash(
         session,
         evidence_kind(EvidenceKind::Compile),
-        kota::ipc::Error{worker::dispatch_errc::worker_crashed, "killed by signal 11 (SIGSEGV)"});
+        ipc::Error{worker::dispatch_errc::worker_crashed, "killed by signal 11 (SIGSEGV)"});
     ZEXPECT(emits == 1);
     auto compiled = stack.ast.compiles.latest(session->path_id);
     ZASSERT((compiled && compiled->output.has_value()));
@@ -553,8 +553,7 @@ ZEST_CASE(DiamondDepsDeduplicated) {
     ZASSERT(entry != stack.project.pcm_builds.end());
     auto base = stack.project.file_table.intern(Spelling::absolute(tmp.path("base.cppm")));
     auto& deps = entry->second.deps;
-    ZEXPECT(std::ranges::count_if(deps, [&](const DepState& dep) { return dep.path_id == base; }) ==
-            1);
+    ZEXPECT(ranges::count_if(deps, [&](const DepState& dep) { return dep.path_id == base; }) == 1);
 }
 
 ZEST_CASE(ImportScanPerUnit) {
@@ -668,7 +667,7 @@ ZEST_CASE(BufferImportRecorded) {
     // The sentinel edge survives the commit: a first provider's update
     // must reach this document's node.
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -715,7 +714,7 @@ ZEST_CASE(IncludeImportRecorded) {
     ZEXPECT(done);
 
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -763,7 +762,7 @@ ZEST_CASE(HostImportRecorded) {
     auto* context = stack.contexts.header_context(session->path_id);
     ZASSERT((context != nullptr && context->synthesized != nullptr));
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -811,7 +810,7 @@ ZEST_CASE(SuffixImportRecorded) {
     auto* context = stack.contexts.header_context(session->path_id);
     ZASSERT((context != nullptr && context->synthesized != nullptr));
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }

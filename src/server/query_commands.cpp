@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -140,11 +140,11 @@ std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::Sy
         return located;
     }
     std::erase_if(located, [&](const index::IndexQuery::Located& hit) {
-        if(!query.kinds.empty() && !std::ranges::contains(query.kinds, hit.symbol.kind)) {
+        if(!query.kinds.empty() && !ranges::contains(query.kinds, hit.symbol.kind)) {
             return true;
         }
         return !query.handle && !query.paths.empty() &&
-               std::ranges::none_of(query.paths, [&](const std::string& wanted) {
+               ranges::none_of(query.paths, [&](const std::string& wanted) {
                    return hit.site.file.valid() &&
                           index::path_matches(wanted,
                                               ctx.project.file_table.resolve(hit.site.file));
@@ -224,8 +224,8 @@ bool one_overload_set(llvm::ArrayRef<const index::IndexQuery::Located*> symbols)
     auto one_file = [&](const index::IndexQuery::Located* located) {
         return located->site.file == first.site.file;
     };
-    return std::ranges::all_of(symbols, overloaded) &&
-           (std::ranges::none_of(symbols, internal) || std::ranges::all_of(symbols, one_file));
+    return ranges::all_of(symbols, overloaded) &&
+           (ranges::none_of(symbols, internal) || ranges::all_of(symbols, one_file));
 }
 
 /// The rename target of the symbols a locator names: one symbol's, or,
@@ -250,7 +250,7 @@ Outcome<feature::RenameTarget> target_of(Context& ctx, index::SymbolQuery locato
             return ambiguous(ctx, *candidates);
         }
         auto root = target->symbol.symbol.hash;
-        if(std::ranges::none_of(targets, [&](const feature::RenameTarget& known) {
+        if(ranges::none_of(targets, [&](const feature::RenameTarget& known) {
                return known.symbol.symbol.hash == root;
            })) {
             targets.push_back(std::move(*target));
@@ -266,7 +266,7 @@ Outcome<feature::RenameTarget> target_of(Context& ctx, index::SymbolQuery locato
         }
     }
     auto merged = std::move(targets.front());
-    for(auto& other: std::views::drop(targets, 1)) {
+    for(auto& other: views::drop(targets, 1)) {
         merged.group.append_range(other.group);
     }
     return merged;
@@ -326,7 +326,7 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<feature::CallEdge> edges) {
         auto& entry = entries.emplace_back(graph_entry<GraphEntry>(edge.symbol));
         // An edge is a call: only an instantiation makes one the written
         // code does not.
-        bool instantiated = std::ranges::all_of(edge.sites, [](const index::Site& site) {
+        bool instantiated = ranges::all_of(edge.sites, [](const index::Site& site) {
             return site.origin == index::SiteOrigin::Instantiation;
         });
         entry.via =
@@ -338,8 +338,8 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<feature::CallEdge> edges) {
 }  // namespace
 
 Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) {
-    if(!std::ranges::contains(std::array<llvm::StringRef, 4>{"all", "source", "header", "module"},
-                              filter)) {
+    if(!ranges::contains(std::array<llvm::StringRef, 4>{"all", "source", "header", "module"},
+                         filter)) {
         return std::unexpected(
             std::format("invalid filter '{}': expected all, source, header or module",
                         std::string_view(filter)));
@@ -380,8 +380,8 @@ Outcome<ProjectFilesResult> project_files(Context& ctx, llvm::StringRef filter) 
 
 Outcome<FileDepsResult>
     file_deps(Context& ctx, const Spelling& path, llvm::StringRef direction, int depth) {
-    if(!std::ranges::contains(std::array<llvm::StringRef, 3>{"includes", "includers", "both"},
-                              direction)) {
+    if(!ranges::contains(std::array<llvm::StringRef, 3>{"includes", "includers", "both"},
+                         direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected includes, includers or both",
                         std::string_view(direction)));
@@ -434,11 +434,11 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     // including them.
     llvm::SmallVector<Fid> importers;
     ws.index.for_each_importer(*file, [&](Fid importer) { importers.push_back(importer); });
-    std::ranges::sort(importers, [&](Fid lhs, Fid rhs) {
+    ranges::sort(importers, [&](Fid lhs, Fid rhs) {
         return ws.file_table.resolve(lhs) < ws.file_table.resolve(rhs);
     });
     for(auto importer: importers) {
-        if(!std::ranges::contains(readers, importer)) {
+        if(!ranges::contains(readers, importer)) {
             readers.push_back(importer);
         }
     }
@@ -616,9 +616,9 @@ Outcome<ReferencesResult> references(Context& ctx,
     auto sites = feature::references(ctx.query, cursor, include_declaration);
     auto contexts = index::context_lines(ctx.query, sites);
     auto functions = feature::enclosing_functions(ctx.query, sites);
-    assert(std::ranges::size(sites) == std::ranges::size(contexts) &&
-           std::ranges::size(sites) == std::ranges::size(functions));
-    for(auto [site, context, function]: std::views::zip(sites, contexts, functions)) {
+    assert(ranges::size(sites) == ranges::size(contexts) &&
+           ranges::size(sites) == ranges::size(functions));
+    for(auto [site, context, function]: views::zip(sites, contexts, functions)) {
         ReferenceEntry entry{
             .file = std::string(site.path),
             .line = lines_of(site).start,
@@ -635,7 +635,7 @@ Outcome<ReferencesResult> references(Context& ctx,
 }
 
 bool units_pending(Project& project) {
-    return std::ranges::any_of(project.build.members(), [&](Fid unit) {
+    return ranges::any_of(project.build.members(), [&](Fid unit) {
         return project.build.indexed(project.file_table.resolve(unit)) &&
                !project.index.indexed(unit);
     });
@@ -735,11 +735,10 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
             });
         }
     }
-    std::ranges::sort(result.unconfirmed,
-                      [](const RenameNoteEntry& lhs, const RenameNoteEntry& rhs) {
-                          return std::tie(lhs.file, lhs.line, lhs.column, lhs.name) <
-                                 std::tie(rhs.file, rhs.line, rhs.column, rhs.name);
-                      });
+    ranges::sort(result.unconfirmed, [](const RenameNoteEntry& lhs, const RenameNoteEntry& rhs) {
+        return std::tie(lhs.file, lhs.line, lhs.column, lhs.name) <
+               std::tie(rhs.file, rhs.line, rhs.column, rhs.name);
+    });
     for(auto& [edit, owner]: planned.plan.edits) {
         auto& site = edit.site;
         if(result.files.empty() || result.files.back().file != site.path) {
@@ -761,8 +760,7 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
 Outcome<CallGraphResult> call_graph(Context& ctx,
                                     index::SymbolQuery locator,
                                     llvm::StringRef direction) {
-    if(!std::ranges::contains(std::array<llvm::StringRef, 3>{"callers", "callees", "both"},
-                              direction)) {
+    if(!ranges::contains(std::array<llvm::StringRef, 3>{"callers", "callees", "both"}, direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected callers, callees or both",
                         std::string_view(direction)));
@@ -833,8 +831,8 @@ Outcome<ImplementationResult> implementation(Context& ctx, index::SymbolQuery lo
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
                                             index::SymbolQuery locator,
                                             llvm::StringRef direction) {
-    if(!std::ranges::contains(std::array<llvm::StringRef, 3>{"supertypes", "subtypes", "both"},
-                              direction)) {
+    if(!ranges::contains(std::array<llvm::StringRef, 3>{"supertypes", "subtypes", "both"},
+                         direction)) {
         return std::unexpected(
             std::format("invalid direction '{}': expected supertypes, subtypes or both",
                         std::string_view(direction)));

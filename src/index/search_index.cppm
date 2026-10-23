@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 /// The name search index: the project's symbols laid out for lookup by
 /// name — quality-ordered entries, a posting list per name token (the

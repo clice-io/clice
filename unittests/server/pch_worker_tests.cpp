@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -79,7 +79,7 @@ ZEST_CASE(BuildPCHThenCompile) {
     // carry the preamble's document links (the #include of common.h).
     auto state = load_pch_index(tmp.path("preamble.pch.idx"));
     ZASSERT(state != nullptr);
-    bool has_common_link = std::ranges::any_of(state->links(), [&](auto& link) {
+    bool has_common_link = ranges::any_of(state->links(), [&](auto& link) {
         return llvm::StringRef(link.target).ends_with("common.h");
     });
     ZEXPECT(has_common_link);
@@ -172,7 +172,7 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
         ZASSERT(result);
         ZEXPECT(result.value().status == worker::CompileStatus::Done);
         ZEXPECT(!result.value().pch_suspect);
-        ZEXPECT(std::ranges::any_of(result.value().diagnostics, [](auto& diagnostic) {
+        ZEXPECT(ranges::any_of(result.value().diagnostics, [](auto& diagnostic) {
             return llvm::StringRef(diagnostic.message).contains("module 'missing' not found");
         }));
         done = true;

@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:feature.folding_ranges;
 
@@ -12,8 +12,6 @@ import :syntax.position;
 import :syntax.source_text;
 
 namespace clice::feature {
-
-namespace protocol = kota::ipc::protocol;
 
 /// A fold in byte offsets of the focus file; it becomes an LSP FoldingRange
 /// only at the reply edge, which knows how the client folds.

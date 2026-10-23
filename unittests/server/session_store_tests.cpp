@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -9,8 +9,6 @@ import :unittests.utils;
 
 namespace clice::testing {
 namespace {
-
-namespace protocol = kota::ipc::protocol;
 
 protocol::TextDocumentContentChangeEvent partial_change(std::uint32_t start_line,
                                                         std::uint32_t start_char,

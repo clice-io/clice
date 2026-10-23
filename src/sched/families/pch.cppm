@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice:sched.families.pch;
 
@@ -100,7 +100,7 @@ public:
     /// round's crash is recorded whatever became of the request that
     /// spawned it (contract 12), and every consumer that finds it books it
     /// against its own document instead of burning a worker of its own.
-    const kota::ipc::Error* crashed(llvm::StringRef pch_key) const {
+    const ipc::Error* crashed(llvm::StringRef pch_key) const {
         auto it = build_crashes.find(pch_key);
         return it != build_crashes.end() ? &it->second : nullptr;
     }
@@ -220,7 +220,7 @@ private:
     /// and therefore the key — changes. One document's quarantine cannot
     /// contain it alone: the artifact is shared, so every session with the
     /// same preamble would burn a worker of its own.
-    llvm::StringMap<kota::ipc::Error> build_crashes;
+    llvm::StringMap<ipc::Error> build_crashes;
 
     /// The keys whose build failed on errors in the user's code, with what
     /// that build read and looked for: refused until one of those files

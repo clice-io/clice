@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -302,7 +302,7 @@ std::uint32_t CompilationUnit::source_offset(clang::FileID fid, std::uint32_t of
     if(!found) {
         return offset;
     }
-    auto run = std::ranges::upper_bound(found->runs, offset, {}, &SourceRun::offset);
+    auto run = ranges::upper_bound(found->runs, offset, {}, &SourceRun::offset);
     assert(run != found->runs.begin() && offset - std::prev(run)->offset < std::prev(run)->length &&
            "a position the context did not copy from its file");
     run = std::prev(run);
@@ -453,7 +453,7 @@ auto CompilationUnit::macro_definitions(llvm::StringRef name)
             definitions.push_back(definition->getInfo());
         }
     }
-    std::ranges::reverse(definitions);
+    ranges::reverse(definitions);
     return definitions;
 }
 
@@ -576,7 +576,7 @@ std::vector<std::string> CompilationUnit::absent() {
             result.emplace_back(entry.getKey());
         }
     }
-    std::ranges::sort(result);
+    ranges::sort(result);
     return result;
 }
 

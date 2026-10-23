@@ -1,9 +1,8 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -37,7 +36,7 @@ llvm::StringRef fallback_configuration(const Config& config) {
         return {};
     }
     llvm::StringRef preferred = config.default_configuration;
-    return std::ranges::contains(tags, preferred) ? preferred : tags.front();
+    return ranges::contains(tags, preferred) ? preferred : tags.front();
 }
 
 std::string read_selection(llvm::StringRef cache_dir) {
@@ -53,7 +52,7 @@ std::string read_selection(llvm::StringRef cache_dir) {
         return {};
     }
     PersistedState state;
-    if(auto parsed = kota::codec::json::from_string((*content)->getBuffer(), state); !parsed) {
+    if(auto parsed = json::from_string((*content)->getBuffer(), state); !parsed) {
         LOG_WARN("Ignoring malformed {}: {}", path, parsed.error().message);
         return {};
     }
@@ -68,7 +67,7 @@ std::expected<void, std::error_code> write_selection(llvm::StringRef cache_dir,
     if(auto ec = vfs::create_directories(cache_dir)) {
         return std::unexpected(ec);
     }
-    auto json = kota::codec::json::to_string(PersistedState{.configuration = configuration.str()});
+    auto json = json::to_string(PersistedState{.configuration = configuration.str()});
     if(!json) {
         return std::unexpected(std::make_error_code(std::errc::invalid_argument));
     }
@@ -79,7 +78,7 @@ std::expected<void, std::error_code> write_selection(llvm::StringRef cache_dir,
 }
 
 bool declares_configuration(const Config& config, llvm::StringRef name) {
-    return std::ranges::contains(config.configurations(), name);
+    return ranges::contains(config.configurations(), name);
 }
 
 std::expected<void, std::string> check_requested_configuration(const Config& config,
@@ -105,7 +104,7 @@ std::string resolve_configuration(const Config& config, llvm::StringRef requeste
     }
     auto fallback = fallback_configuration(config);
     if(!requested.empty()) {
-        if(std::ranges::contains(tags, requested)) {
+        if(ranges::contains(tags, requested)) {
             LOG_INFO("Active configuration: {} (--configuration)", requested);
             return requested.str();
         }
@@ -114,7 +113,7 @@ std::string resolve_configuration(const Config& config, llvm::StringRef requeste
                      llvm::join(tags, ", "));
     }
     if(auto selected = read_selection(config.project.cache_dir); !selected.empty()) {
-        if(std::ranges::contains(tags, llvm::StringRef(selected))) {
+        if(ranges::contains(tags, llvm::StringRef(selected))) {
             LOG_INFO("Active configuration: {} (selected)", selected);
             return selected;
         }

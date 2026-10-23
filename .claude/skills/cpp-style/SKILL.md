@@ -47,13 +47,19 @@ defending against ghosts.
   sources are implementation units `.cpp`, entry points `.cc` (`clice.cc`,
   `src/driver/*.cc`).
 - Every module unit but the primary interface (`src/module.cppm`, which
-  exports nothing) opens with `module;` and `#include "modules/prelude.h"`,
-  which imports the third-party module (`modules/`) and `std.compat` and
-  replays their macros; then the macro headers it uses, the module
-  declaration, and one `import :<partition>;` per partition it names.
-- `.h` is left for what a module cannot carry — macros (`*.macros.h`) and
-  platform headers (`vfs/win32.h`) — with `#pragma once`, never include
-  guards.
+  exports nothing) opens with `module;` and `#include "support/prelude.h"`:
+  it includes the generated `modules/prelude.h`, which imports the
+  third-party module (`modules/`) and `std.compat` and replays their
+  macros, and gives the namespaces clice uses everywhere their short names
+  in `clice` — `ranges`, `views`, `ipc`, `lsp`, `protocol`, `codec`,
+  `json`. Code inside `clice` writes those names (`ranges::sort`,
+  `protocol::Range`), never `std::ranges::` or `kota::ipc::protocol::`, and
+  no file declares them again. Then come the macro headers the unit uses,
+  the module declaration, and one `import :<partition>;` per partition it
+  names.
+- `.h` is left for what a module cannot carry — the prelude, macros
+  (`*.macros.h`) and platform headers (`vfs/win32.h`) — with `#pragma
+  once`, never include guards.
 - File names are `snake_case`.
 - Every file sees the names of all it imports: a file-local helper can
   clash with a name of another partition or lose overload resolution and
@@ -219,8 +225,8 @@ Domain words with one meaning each — use them only in that meaning:
 ## Modern C++ Usage
 
 - Use C++20/23 APIs whenever possible. Do NOT use `<iostream>` facilities (`std::cout`, `std::cin`, `std::cerr`, etc.). Also do NOT use C-style I/O (`printf`, `fprintf`, etc.).
-- Prefer `std::ranges` / `std::views` APIs over raw loops and traditional `<algorithm>` calls.
-- Range helpers come from the standard library, never LLVM's `STLExtras`: `std::ranges::contains` not `llvm::is_contained` (a set or map uses its own `.contains()`), `std::ranges::any_of` / `find_if` / `sort` not `llvm::`'s, `std::views::enumerate` / `zip` / `reverse` / `transform` not `llvm::enumerate` / `zip` / `reverse` / `map_range`. Only `llvm::concat` (C++26 in the standard) and `llvm::interleave` stay.
+- Prefer `ranges` / `views` APIs over raw loops and traditional `<algorithm>` calls.
+- Range helpers come from the standard library, never LLVM's `STLExtras`: `ranges::contains` not `llvm::is_contained` (a set or map uses its own `.contains()`), `ranges::any_of` / `find_if` / `sort` not `llvm::`'s, `views::enumerate` / `zip` / `reverse` / `transform` not `llvm::enumerate` / `zip` / `reverse` / `map_range`. Only `llvm::concat` (C++26 in the standard) and `llvm::interleave` stay.
 - Prefer LLVM's efficient data structures (e.g., `llvm::SmallVector`, `llvm::DenseMap`, `llvm::StringMap`, `llvm::StringRef`) over their `std` counterparts when appropriate.
 
 ## Parameter Passing Preferences

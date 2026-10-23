@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -23,7 +22,7 @@ namespace {
 /// A path compared lexically: forward slashes, `.` and `..` folded.
 std::string lexical(llvm::StringRef path) {
     llvm::SmallString<256> folded(path);
-    std::ranges::replace(folded, '\\', '/');
+    ranges::replace(folded, '\\', '/');
     llvm::sys::path::remove_dots(folded, /*remove_dot_dot=*/true, llvm::sys::path::Style::posix);
     return folded.str().str();
 }
@@ -262,7 +261,7 @@ GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) 
     // `include` beside the libraries of GCC's own library directory, which
     // LIBRARY_PATH lists after any multilib variant (thumb/v7e-m+fp/hard/).
     for(std::size_t i = 0; i < output.search_dirs.size() && !output.private_dir; i += 1) {
-        if(std::ranges::contains(library_path, lexical(output.search_dirs[i].path))) {
+        if(ranges::contains(library_path, lexical(output.search_dirs[i].path))) {
             output.private_dir = i;
         }
     }
@@ -417,7 +416,7 @@ kota::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::strin
         // As for cl: an MSVC target's default template deferral leaves
         // deferred bodies without an AST, so it stays only when the command
         // asks for it.
-        if(!std::ranges::contains(args, "-fdelayed-template-parsing")) {
+        if(!ranges::contains(args, "-fdelayed-template-parsing")) {
             std::erase(job, "-fdelayed-template-parsing");
         }
         if(!standard.empty()) {

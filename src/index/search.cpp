@@ -1,8 +1,7 @@
 module;
 
-#include "modules/prelude.h"
-
 #include "support/logging.macros.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -99,11 +98,10 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
            (query.external_only && identity.scope != SymbolScope::External)) {
             return;
         }
-        if(!query.kinds.empty() && !std::ranges::contains(query.kinds, identity.kind)) {
+        if(!query.kinds.empty() && !ranges::contains(query.kinds, identity.kind)) {
             return;
         }
-        if(!query.paths.empty() &&
-           std::ranges::none_of(query.paths, [&](const std::string& wanted) {
+        if(!query.paths.empty() && ranges::none_of(query.paths, [&](const std::string& wanted) {
                return !path.empty() && path_matches(wanted, path);
            })) {
             return;
@@ -199,7 +197,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         }
         for(auto file: candidates) {
             llvm::StringRef path = files.resolve(file);
-            if(std::ranges::none_of(query.paths, [&](const std::string& wanted) {
+            if(ranges::none_of(query.paths, [&](const std::string& wanted) {
                    return path_matches(wanted, path);
                })) {
                 continue;
@@ -217,7 +215,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         }
     }
 
-    std::ranges::sort(hits, ranked_before);
+    ranges::sort(hits, ranked_before);
     if(hits.size() > limit) {
         hits.resize(limit);
         exhausted = false;
@@ -288,7 +286,7 @@ Completables
                 }
                 return true;
             });
-        std::ranges::sort(ranked.hits, ranked_before);
+        ranges::sort(ranked.hits, ranked_before);
     }
 
     Completables result{.exhausted = ranked.exhausted};
@@ -401,7 +399,7 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
             continue;
         }
         if(query.args.empty() && has_flag(hit.symbol.flags, SymbolFlags::Specialization) &&
-           std::ranges::any_of(
+           ranges::any_of(
                index.targets(hit.symbol.hash, hit.anchor, RelationKind::Primary),
                [&](const IndexQuery::Target& primary) { return exact.contains(primary.symbol); })) {
             continue;

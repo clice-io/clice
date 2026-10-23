@@ -1,6 +1,6 @@
 module;
 
-#include "modules/prelude.h"
+#include "support/prelude.h"
 
 module clice;
 
@@ -157,11 +157,10 @@ CallGraph call_graph(const index::IndexQuery& index,
     CallGraph graph;
     if(options.callers) {
         auto info = index.symbol_info(root, anchor);
-        bool value =
-            info && std::ranges::contains(std::array<SymbolKind, 3>{SymbolKind::Variable,
-                                                                    SymbolKind::Field,
-                                                                    SymbolKind::EnumMember},
-                                          info->kind);
+        bool value = info && ranges::contains(std::array<SymbolKind, 3>{SymbolKind::Variable,
+                                                                        SymbolKind::Field,
+                                                                        SymbolKind::EnumMember},
+                                              info->kind);
         if(value) {
             // A function's local has no caller but that function.
             if(info->kind != SymbolKind::Variable ||
@@ -190,7 +189,7 @@ CallGraph call_graph(const index::IndexQuery& index,
                             // one macro invocation spells share the
                             // invocation's site, so the qualified one hides
                             // the other and the override loses this caller.
-                            if(std::ranges::none_of(direct, [&](const index::Site& site) {
+                            if(ranges::none_of(direct, [&](const index::Site& site) {
                                    return index::covers(call, site);
                                })) {
                                 by_caller[caller].push_back(std::move(call));
@@ -273,7 +272,7 @@ std::vector<CallEdge> call_edges(const index::PeerQueries& queries,
             if(edge.sites.empty()) {
                 continue;
             }
-            auto known = std::ranges::find_if(into, [&](const CallEdge& other) {
+            auto known = ranges::find_if(into, [&](const CallEdge& other) {
                 return same_entity(other.symbol, edge.symbol);
             });
             if(known == into.end()) {
@@ -311,7 +310,7 @@ std::vector<protocol::TypeHierarchyItem> type_neighbours(const index::PeerQuerie
             type_hierarchy(*from, named, file, {.supertypes = supertypes, .subtypes = !supertypes});
         for(auto& one: supertypes ? hierarchy.supertypes : hierarchy.subtypes) {
             if(queries.answers_for(*from, one.site.file, asked) &&
-               std::ranges::none_of(types, [&](const index::IndexQuery::Located& other) {
+               ranges::none_of(types, [&](const index::IndexQuery::Located& other) {
                    return same_entity(other, one);
                })) {
                 types.push_back(std::move(one));
