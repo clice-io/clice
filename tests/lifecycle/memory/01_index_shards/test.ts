@@ -14,8 +14,8 @@ test("a round leaves no shard in memory", async (t) => {
 
 test("a save writes the changed shard", async (t) => {
     // Open before the project starts: its first round leaves the open file
-    // to the file's own compile.
-    const s = await t.spawn();
+    // to the file's own compile, which parses every function body.
+    const s = await t.spawn({ config: { project: { skip_header_bodies: false } } });
     s.open("file0.cpp", { pull: false });
     await s.initialize();
     await s.diagnostics("file0.cpp");

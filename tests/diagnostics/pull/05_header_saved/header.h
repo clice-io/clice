@@ -1,2 +1,2 @@
 #pragma once
-inline int value() { return 1; }
+constexpr int value() { return 1; }

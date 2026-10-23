@@ -183,6 +183,7 @@ private:
     /// Forward the AST family's outputs and the pump's progress to the
     /// master's signals, which the transports subscribe to.
     Signal<std::shared_ptr<Session>>::Connection output_conn;
+    Signal<std::shared_ptr<Session>>::Connection diagnostics_conn;
     Signal<>::Connection progress_conn;
 
     /// When this project holds its cache directory's writer lock, the

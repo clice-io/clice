@@ -491,6 +491,15 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
     on_output.emit(session);
 }
 
+/// Whether two lists show the same: the same messages at the same places.
+static bool same_diagnostics(llvm::ArrayRef<feature::FileDiagnostic> left,
+                             llvm::ArrayRef<feature::FileDiagnostic> right) {
+    return ranges::equal(left, right, [](const auto& a, const auto& b) {
+        return a.range.start.line == b.range.start.line &&
+               a.range.start.character == b.range.start.character && a.message == b.message;
+    });
+}
+
 void ASTFamily::checked(Fid path_id,
                         std::uint64_t text_hash,
                         std::vector<feature::FileDiagnostic> diagnostics) {
@@ -508,11 +517,14 @@ void ASTFamily::checked(Fid path_id,
     if(session->hash != text_hash) {
         return;
     }
-    if(auto compiled = compiles.latest_at(path_id, session->version)) {
-        auto output = *compiled->output;
-        output.checked = std::move(diagnostics);
-        publish_output(session, std::move(output));
+    auto compiled = compiles.latest_at(path_id, session->version);
+    if(!compiled || same_diagnostics(compiled->output->checked, diagnostics)) {
+        return;
     }
+    auto output = *compiled->output;
+    output.checked = std::move(diagnostics);
+    compiles.set_output(path_id, std::move(output));
+    on_diagnostics.emit(session);
 }
 
 void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit) const {

@@ -1,5 +1,5 @@
 #pragma once
 
-inline int base() {
+constexpr int base() {
     return 1;
 }

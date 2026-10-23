@@ -156,6 +156,10 @@ public:
     /// subscriber connected the output simply stays there.
     Signal<std::shared_ptr<Session>> on_output;
 
+    /// Emitted when the diagnostics a document shows changed with no
+    /// compile: a background run's check arrived (checked).
+    Signal<std::shared_ptr<Session>> on_diagnostics;
+
     /// Callback invoked when indexing should be scheduled.
     std::function<void()> on_indexing_needed;
 

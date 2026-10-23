@@ -1,3 +1,3 @@
-inline int header() {
+constexpr int header() {
     return FORCED;
 }

@@ -9,7 +9,8 @@ answers("include", async (a) => {
 });
 
 // Background indexing is off: only what the precompiled preamble recorded
-// knows the header and the macro.
+// knows the header and the macro. The preamble skips the header's function
+// bodies: the call in bar() waits for the index.
 answers("unindexed", { paths: SERVER }, async (a) => {
     await a.show("call", {
         definition: a.definition(a.marker("call")),

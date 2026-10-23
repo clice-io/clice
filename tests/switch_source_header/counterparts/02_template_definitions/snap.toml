@@ -11,7 +11,6 @@ candidates = [
 ]
 
 ["opened first"."matrix.h"]
-wrong = "matrix.tpp should count as defining both declarations, as it does when main.cpp was closed while the index ran"
 
 ["opened first"."matrix.h".counterparts]
 preferred = "matrix.tpp"

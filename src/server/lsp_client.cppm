@@ -62,6 +62,11 @@ private:
     /// client was ready. No-op until client_ready.
     void push_output(ProjectServer& project, const Session& session);
 
+    /// The diagnostics half of push_output: to a pushing client the
+    /// session's diagnostics, to a pulling one a refresh when the answer it
+    /// holds went stale. Invoked alone by the on_diagnostics signal.
+    void push_diagnostics(ProjectServer& project, const Session& session);
+
     /// React to a background-indexing progress change: drive the LSP
     /// work-done progress token through its begin/report/end lifecycle,
     /// reading the counts from MasterServer::index_progress. Invoked by
@@ -242,6 +247,10 @@ private:
 
     /// Subscription to compile outputs; disconnects on destruction.
     Signal<ProjectServer&, std::shared_ptr<Session>>::Connection output_conn;
+
+    /// Subscription to diagnostics changing with no compile; disconnects on
+    /// destruction.
+    Signal<ProjectServer&, std::shared_ptr<Session>>::Connection diagnostics_conn;
 
     /// Subscription to the served projects changing; disconnects on
     /// destruction.

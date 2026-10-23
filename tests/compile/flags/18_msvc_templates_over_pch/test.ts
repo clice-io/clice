@@ -15,8 +15,10 @@ test("templates instantiate across the pch", async (t) => {
 test("the pchs index template bodies", async (t) => {
     // Nothing is indexed: the uses of one() in the headers come from the
     // indexes of the target's PCH and of main.cpp's preamble, inside
-    // templates nothing instantiates.
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    // templates nothing instantiates, which keep the bodies they read.
+    const s = await t.start({
+        config: { project: { enable_indexing: false, skip_header_bodies: false } },
+    });
     await s.diagnostics("src/main.cpp");
     await t.show("one", s.references(t.marker("use")));
 });

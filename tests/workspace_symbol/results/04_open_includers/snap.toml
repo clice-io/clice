@@ -4,11 +4,9 @@ workspace_symbols = [
 ]
 
 [test."open Shape"]
-wrong = "should find Shape in widget.h, which the open main.cpp includes, as it does once main.cpp closes"
 workspace_symbols = []
 
 [test."open area"]
-wrong = "should find area in widget.h, which the open main.cpp includes, as it does once main.cpp closes"
 workspace_symbols = []
 
 [test."closed Shape"]

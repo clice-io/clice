@@ -123,6 +123,10 @@ LSPClient::LSPClient(MasterServer& server, ipc::JSONPeer& peer) : server(server)
         [this](ProjectServer& project, const std::shared_ptr<Session>& session) {
             push_output(project, *session);
         });
+    diagnostics_conn = server.on_diagnostics.connect(
+        [this](ProjectServer& project, const std::shared_ptr<Session>& session) {
+            push_diagnostics(project, *session);
+        });
     projects_conn = server.on_projects_changed.connect([this]() {
         if(client_ready) {
             publish_config_diagnostics();
@@ -1559,7 +1563,7 @@ void LSPClient::publish_config_diagnostics() {
     }
 }
 
-void LSPClient::push_output(ProjectServer& project, const Session& session) {
+void LSPClient::push_diagnostics(ProjectServer& project, const Session& session) {
     // Held back until the handshake completes (the LSP spec forbids
     // publishDiagnostics before the initialize response); the output stays
     // materialized in the latest compile and the initialized handler replays it.
@@ -1590,6 +1594,18 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
         publish(peer, params);
         publish_aliases(session.path_id);
     }
+}
+
+void LSPClient::push_output(ProjectServer& project, const Session& session) {
+    push_diagnostics(project, session);
+    if(!client_ready) {
+        return;
+    }
+    auto compiled = project.ast.compiles.latest(session.path_id);
+    if(!compiled || !compiled->output.has_value()) {
+        return;
+    }
+    auto& output = *compiled->output;
 
     // Two cases make the client re-pull whole-document results it already
     // holds: results computed from the index served while this compile was pending

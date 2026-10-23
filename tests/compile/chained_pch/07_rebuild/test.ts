@@ -49,11 +49,11 @@ test("two edits in a row", async (t) => {
 test("the base fails to build", async (t) => {
     const s = await t.start({ config });
     expect(await s.errors("main.cpp")).toEqual([]);
-    t.disk.edit("include/base.h", { replace: "side * side", with: "side * missing" });
+    t.disk.edit("include/base.h", { replace: "area(int side)", with: "area(missing side)" });
     await t.show("broken", s.diagnostics("main.cpp"));
     // Built without the base, over the header's text.
     expect(await builds(s)).toEqual({ base: 2, top: 2 });
-    t.disk.edit("include/base.h", { replace: "side * missing", with: "side * side" });
+    t.disk.edit("include/base.h", { replace: "area(missing side)", with: "area(int side)" });
     expect(await s.errors("main.cpp")).toEqual([]);
     // The header reads as the first build had it: both PCHs of then serve.
     expect(await builds(s)).toEqual({ base: 2, top: 2 });

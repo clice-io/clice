@@ -34,9 +34,10 @@ test("units share the target's pch", async (t) => {
         await t.show(file, s.diagnostics(file));
     }
     await s.indexed();
-    // One build of each target's PCH serves the open files and the index:
-    // area.cpp's preamble PCH is built over app's, main.cpp's and
-    // tool.cpp's parses load theirs. Those three, nothing else.
+    // Each target's PCH is built twice, for the open files, skipping the
+    // function bodies, and for the index, keeping them: area.cpp's
+    // preamble PCH is built over app's, main.cpp's and tool.cpp's parses
+    // load theirs. Those five, nothing else.
     const { files } = await s.counts();
     expect({
         app: files[app]?.pch,
@@ -44,7 +45,7 @@ test("units share the target's pch", async (t) => {
         main: files["src/main.cpp"]?.pch,
         area: files["src/area.cpp"]?.pch,
         built: (await s.stats()).pchCacheEntries,
-    }).toEqual({ app: 1, tool: 1, main: 0, area: 1, built: 3 });
+    }).toEqual({ app: 2, tool: 2, main: 0, area: 1, built: 5 });
     await t.show("area", s.references(t.at("include/shapes.h", "inline double |area(")));
     await t.show("completion", s.completion(t.at("src/main.cpp", "return are|a(")));
 });
@@ -71,11 +72,11 @@ test("a header of the pch changes", async (t) => {
     );
     await t.show("main.cpp", s.errors("src/main.cpp"));
     await s.indexed();
-    // The PCH is built again for the new header, and the closed unit over
-    // it indexes again.
+    // Both PCHs are built again for the new header, and the closed unit
+    // over the index's indexes again.
     const { files } = await s.counts();
     expect({ app: files[app]?.pch, area: files["src/area.cpp"]?.index }).toEqual({
-        app: 2,
+        app: 4,
         area: 2,
     });
     await t.show("circle_area", s.workspaceSymbols("circle_area"));
