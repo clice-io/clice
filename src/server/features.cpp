@@ -31,7 +31,6 @@ import :support.json;
 import :support.text;
 import :syntax.completion;
 import :syntax.lexer;
-import :syntax.lexical_scan;
 import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_system;
@@ -696,20 +695,10 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
         }
     }
 
-    // A directive's line names no namespace member: its names are
-    // directives, macros and headers. A buffer too large to lex whole
-    // offers every directive.
-    const LexicalInfo::Directive* directive = nullptr;
-    if(offset && session->text().size() <= full_lex_cap) {
-        directive = text_of(*session).lexical().directive_at(session->text(), *offset);
-    }
     if(offset) {
         if(completing.kind == CompletionName::Kind::Directive) {
-            bool conditional =
-                !directive || directive->depth > 0 || directive->opening != LexicalInfo::none;
             co_return to_raw(feature::directive_completion(completing,
                                                            map,
-                                                           conditional,
                                                            dialect,
                                                            project.config.code_completion,
                                                            client));
@@ -745,7 +734,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     std::vector<feature::ScopeCandidate> candidates;
     bool exhausted = true;
     if(auto prefix = offset ? feature::unqualified_prefix(session->text(), *offset) : std::nullopt;
-       prefix && project.config.code_completion.all_scopes && !directive) {
+       prefix && project.config.code_completion.all_scopes && completing.directive.empty()) {
         exhausted =
             feature::scope_candidates(query, project.dep_graph, *prefix, path_id, candidates);
     }
@@ -779,11 +768,16 @@ Features::RawResult Features::signature_help(std::shared_ptr<Session> session,
                                              const protocol::Position& position,
                                              std::string selected,
                                              kota::cancellation_token token) {
-    // A directive takes no call's arguments: `#include <` asks for none.
-    if(auto offset = session->positions().offset(position, PositionEncoding::UTF16);
-       offset && session->text().size() <= full_lex_cap &&
-       text_of(*session).lexical().directive_at(session->text(), *offset)) {
-        return kota::co_invoke([]() -> RawResult { co_return serde_raw{"null"}; });
+    // A directive takes no call's arguments, but for a macro's in a
+    // condition (`#if CHECK(1, 2)`): `#include <` asks for none.
+    if(auto offset = session->positions().offset(position, PositionEncoding::UTF16)) {
+        auto completing =
+            completion_name(session->text(), *offset, contexts.dialect(session->path_id));
+        if(completing.kind == CompletionName::Kind::Directive ||
+           (!completing.directive.empty() && completing.directive != "if" &&
+            completing.directive != "elif")) {
+            return kota::co_invoke([]() -> RawResult { co_return serde_raw{"null"}; });
+        }
     }
     ast.escalate(*session);
     return kota::co_invoke([this,

@@ -37,6 +37,15 @@ struct CompletionName {
     /// The name ends in its delimiter already: a header name's `>` or `"`,
     /// an import's or a module declaration's semicolon.
     bool closed = false;
+
+    /// On a directive's line past its name, the name: `include` in
+    /// `#include <vec`, `ifdef` in `#ifdef FO`. Empty off a directive, and
+    /// while the name itself is typed (Kind::Directive).
+    std::string directive;
+
+    /// For Kind::Directive: a conditional block is open around the line,
+    /// which `#elif`, `#else` and `#endif` may continue.
+    bool conditional = false;
 };
 
 /// The name the cursor at `offset` is in: a directive's name, the header

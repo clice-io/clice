@@ -2767,7 +2767,6 @@ auto include_completion(const CompletionName& completing,
 
 auto directive_completion(const CompletionName& completing,
                           const PositionMap& map,
-                          bool conditional,
                           const clang::LangOptions& dialect,
                           const CodeCompletionOptions& options,
                           const CompletionClient& client) -> protocol::CompletionList {
@@ -2783,7 +2782,7 @@ auto directive_completion(const CompletionName& completing,
         {"ifdef",  " {macro}"    },
         {"ifndef", " {macro}"    },
     };
-    if(conditional) {
+    if(completing.conditional) {
         patterns.append({
             {"elif",     " {condition}"},
             {"elifdef",  " {macro}"    },

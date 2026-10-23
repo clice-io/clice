@@ -205,11 +205,10 @@ auto include_completion(const CompletionName& completing,
 
 /// The directives a directive name being typed (`completing`) may name,
 /// as a compile's completion offers them: `#elif`, `#else` and `#endif`
-/// where the line is `conditional`, inside an `#if` block. A directive's
+/// inside a conditional block (CompletionName::conditional). A directive's
 /// arguments come as placeholders with statement snippets.
 auto directive_completion(const CompletionName& completing,
                           const PositionMap& map,
-                          bool conditional,
                           const clang::LangOptions& dialect,
                           const CodeCompletionOptions& options,
                           const CompletionClient& client) -> protocol::CompletionList;

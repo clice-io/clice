@@ -245,6 +245,18 @@ ZEST_CASE(HashOnly) {
     ZEXPECT(ctx.replace == LocalSourceRange(1, 1));
 }
 
+ZEST_CASE(DirectiveInConditional) {
+    ZEXPECT(completion_name("#ifndef G\n#el", 13).conditional);
+    ZEXPECT(!completion_name("#if A\n#endif\n#el", 16).conditional);
+}
+
+ZEST_CASE(DirectiveArgument) {
+    auto ctx = completion_name("#ifdef FO", 9);
+    ZEXPECT(ctx.kind == CompletionName::Kind::None);
+    ZEXPECT(ctx.directive == "ifdef");
+    ZEXPECT(completion_name("#include <ve", 12).directive == "include");
+}
+
 ZEST_CASE(CommentAfterHash) {
     ZEXPECT(completion_name("# // see fo", 11).kind == CompletionName::Kind::None);
 }

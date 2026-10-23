@@ -9,3 +9,10 @@ test("an include line", async (t) => {
     await t.show("include", s.signatureHelp(t.marker("include")));
     await park.release();
 });
+
+// A condition may call a function-like macro, whose parameters it shows.
+test("a condition", async (t) => {
+    const s = await t.start();
+    await s.diagnostics("main.cpp");
+    await t.show("condition", s.signatureHelp(t.marker("condition")));
+});

@@ -152,13 +152,27 @@ CompletionName completion_name(llvm::StringRef text,
     // cursor applies as a logical bound: a keyword must end at or before it
     // to count as typed.
     llvm::SmallVector<Token, 16> tokens;
+    // The conditional blocks the lines before it leave open.
+    std::uint32_t open = 0;
     {
         Lexer lexer(text, dialect);
+        auto count = [&] {
+            if(tokens.size() < 2 || !tokens[0].is_directive_hash() || !tokens[1].is_identifier()) {
+                return;
+            }
+            auto name = tokens[1].text(text);
+            if(name == "if" || name == "ifdef" || name == "ifndef") {
+                open += 1;
+            } else if(name == "endif" && open > 0) {
+                open -= 1;
+            }
+        };
         for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
             if(token.is_at_start_of_line) {
                 if(token.range.begin > offset) {
                     break;
                 }
+                count();
                 tokens.clear();
             }
             tokens.push_back(token);
@@ -218,7 +232,8 @@ CompletionName completion_name(llvm::StringRef text,
            ranges::all_of(text.slice(first.range.end, offset), clang::isHorizontalWhitespace)) {
             return {
                 .kind = CompletionName::Kind::Directive,
-                .replace = {offset, offset}
+                .replace = {offset, offset},
+                .conditional = open > 0,
             };
         }
         if(tokens[1].is_identifier() && tokens[1].range.begin <= offset &&
@@ -227,35 +242,41 @@ CompletionName completion_name(llvm::StringRef text,
                 .kind = CompletionName::Kind::Directive,
                 .prefix = text.slice(tokens[1].range.begin, offset).str(),
                 .replace = tokens[1].range,
+                .conditional = open > 0,
             };
         }
         if(!tokens[1].is_identifier() || !before_cursor(tokens[1])) {
             return {};
         }
         auto& keyword = tokens[1];
-        if(keyword.text(text) == "include") {
-            return header_name(keyword.range.end, /*parenthesized=*/false);
-        }
-        // In a condition, a `__has_include(` whose header name the cursor
-        // is in: the lexer reads a whole one as a single token.
-        if(keyword.text(text) != "if" && keyword.text(text) != "elif") {
-            return {};
-        }
-        std::optional<std::uint32_t> header_begin;
-        bool after_has_include = false;
-        for(auto& token: after(1)) {
-            if(token.is_eod() || !before_cursor(token)) {
-                break;
+        auto name = keyword.text(text);
+        CompletionName result;
+        if(name == "include") {
+            result = header_name(keyword.range.end, /*parenthesized=*/false);
+        } else if(name == "if" || name == "elif") {
+            // In a condition, a `__has_include(` whose header name the cursor
+            // is in: the lexer reads a whole one as a single token.
+            std::optional<std::uint32_t> header_begin;
+            bool after_has_include = false;
+            for(auto& token: after(1)) {
+                if(token.is_eod() || !before_cursor(token)) {
+                    break;
+                }
+                if(after_has_include && token.kind == clang::tok::l_paren) {
+                    header_begin = token.range.end;
+                } else if(token.is_header_name()) {
+                    header_begin.reset();
+                }
+                after_has_include =
+                    token.is_identifier() && (token.text(text) == "__has_include" ||
+                                              token.text(text) == "__has_include_next");
             }
-            if(after_has_include && token.kind == clang::tok::l_paren) {
-                header_begin = token.range.end;
-            } else if(token.is_header_name()) {
-                header_begin.reset();
+            if(header_begin) {
+                result = header_name(*header_begin, /*parenthesized=*/true);
             }
-            after_has_include = token.is_identifier() && (token.text(text) == "__has_include" ||
-                                                          token.text(text) == "__has_include_next");
         }
-        return header_begin ? header_name(*header_begin, /*parenthesized=*/true) : CompletionName{};
+        result.directive = name.str();
+        return result;
     }
 
     // `[export] import` opening a logical line always means an import
