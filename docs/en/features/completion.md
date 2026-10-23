@@ -438,6 +438,26 @@ tests/completion/overrides/01_override_declaration
 
 <!-- END GENERATED ITEMS -->
 
+## Preprocessor Directives
+
+After the `#` that opens a line, the preprocessor directives complete, and after `#ifdef` the macros defined above it.
+
+<!-- BEGIN GENERATED ITEMS: completion/directives -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Directive names**
+
+After a `#`, the directives complete, and `#elif`, `#else` and `#endif` only inside a conditional block; with `statement_snippets`, each form with placeholders for its arguments
+
+```case
+tests/completion/directives/01_directive_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## Include Paths
 
 After `#include`, header names complete: a quoted one from the includer's own directory first, then from the include directories, the system's last. Only files that look like headers are candidates: header extensions everywhere, extensionless files in system directories and other places such headers live.
@@ -502,6 +522,18 @@ Header names list the includer's directory first, then the quoted include direct
 
 ```case
 tests/completion/include_path_completion/09_header_order
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Library internals last**
+
+A library's reserved names (`__algorithm/`, `_mingw.h`) come after the other names of their search group, hidden ones (`.git/`) after all the others
+
+```case
+tests/completion/include_path_completion/11_reserved_names
 ```
 
 <!-- END CAPABILITY -->

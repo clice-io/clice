@@ -652,7 +652,7 @@ Where an unqualified name is being typed, also offer the project's names of othe
 | ----------------- | ------ | ------- |
 | `insert_includes` | `bool` | `true`  |
 
-With `all_scopes`, also offer names declared in headers the file does not include yet, adding the `#include` of the header that declares them.
+With `all_scopes`, also offer names declared, and macros defined, in headers the file does not include yet, adding the `#include` of the header that holds them.
 
 </div>
 
