@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["**/*.cpp"]
+append = ["-fnot-a-real-flag"]

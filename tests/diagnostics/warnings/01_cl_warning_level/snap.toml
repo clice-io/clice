@@ -3,7 +3,7 @@ diagnostics = [
     {
         at = "⟦⟧int main() {",
         severity = "warning",
-        message = "The compiler of this file's compile command could not be queried (Cannot find driver: cl.exe), so clang read the command on its own: system headers, predefined macros and the default standard may differ from the compiler's.",
+        message = "The compiler of this file's compile command could not be queried (Cannot find driver: cl-missing.exe), so clang read the command on its own: system headers, predefined macros and the default standard may differ from the compiler's.",
         source = "clice",
         code = "toolchain-query-failed",
     },

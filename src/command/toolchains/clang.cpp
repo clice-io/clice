@@ -123,9 +123,9 @@ std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,
 
 std::expected<Job, std::string> ask_clang_for(std::vector<std::string> args,
                                               std::size_t driver_tokens,
+                                              std::vector<std::string> mode,
                                               llvm::StringRef cwd) {
     args.erase(args.begin() + 1, args.begin() + driver_tokens);
-    std::vector<std::string> mode;
     if(auto target = name_target(args[0]); !target.empty()) {
         LOG_INFO("clang reads the command of {} for {}, the target its name sets", args[0], target);
         mode.push_back("--target=" + target);

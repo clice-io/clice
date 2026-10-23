@@ -122,8 +122,11 @@ kota::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     std::expected<Job, std::string> job;
     bool cl = cl_mode(spec.family);
     if(!spec.query_toolchain) {
-        job = cl ? ask_clang(args, {"--driver-mode=cl"}, spec.cwd)
-                 : ask_clang_for(std::move(args), driver_tokens, spec.cwd);
+        std::vector<std::string> mode;
+        if(cl) {
+            mode.push_back("--driver-mode=cl");
+        }
+        job = ask_clang_for(std::move(args), driver_tokens, std::move(mode), spec.cwd);
     } else if(cl) {
         job = co_await ask_cl(args, spec.family, *input, spec.cwd);
     } else if(spec.family == CompilerFamily::NVCC) {

@@ -22,9 +22,10 @@ std::expected<Job, std::string> ask_clang(llvm::ArrayRef<std::string> args,
 /// A driver clice does not query: clang's own driver stands in for it, as a
 /// clang installed under its name would — the name's mode (`g++` compiles
 /// C++) and target prefix (`arm-none-eabi-gcc`, when its architecture is
-/// one clang knows), clang's defaults for the rest.
+/// one clang knows), clang's defaults for the rest. `mode` as for ask_clang.
 std::expected<Job, std::string> ask_clang_for(std::vector<std::string> args,
                                               std::size_t driver_tokens,
+                                              std::vector<std::string> mode,
                                               llvm::StringRef cwd);
 
 /// The first clang job a driver prints under `-v`: its program, -cc1 and

@@ -94,6 +94,16 @@ ZEST_CASE(UnqueriedCLRunsNothing, skip = Windows) {
     ZEXPECT(!vfs::exists(ran));
 }
 
+ZEST_CASE(UnqueriedCLTargetFromName) {
+    // A clang-cl that is not here reads for the target its name sets, as
+    // any other unqueried driver does.
+    auto cl = tmp.path("aarch64-pc-windows-msvc-clang-cl");
+    auto argv = f.resolve(unqueried(add("a.cpp", {cl.c_str(), "/c"})));
+    auto triple = std::ranges::find_if(argv, [](llvm::StringRef arg) { return arg == "-triple"; });
+    ZASSERT(triple != argv.end() && triple + 1 != argv.end());
+    ZEXPECT(llvm::StringRef(*(triple + 1)).starts_with("aarch64-pc-windows-msvc"));
+}
+
 };  // ZEST_SUITE(CLTests)
 
 }  // namespace
