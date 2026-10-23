@@ -1,0 +1,17 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "⟦⟧int main() {",
+        severity = "warning",
+        message = "The compiler of this file's compile command could not be queried (Cannot find driver: missing-clang++), so clang read the command on its own: system headers, predefined macros and the default standard may differ from the compiler's.",
+        source = "clice",
+        code = "toolchain-query-failed",
+    },
+    {
+        at = "⟦⟧int main() {",
+        severity = "error",
+        message = "unknown target triple 'bogus-unknown-none'",
+        source = "clang",
+        code = "err_target_unknown_triple",
+    },
+]
