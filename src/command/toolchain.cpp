@@ -512,6 +512,9 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::read_unqueried(Comm
 }
 
 std::optional<std::string> Toolchain::query_failure(CommandID id, InputKind input) {
+    if(!commands.get(id).query_toolchain) {
+        return std::nullopt;
+    }
     if(auto it = failed.find(query_key(id, input).key); it != failed.end()) {
         return it->second.first;
     }

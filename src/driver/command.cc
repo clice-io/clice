@@ -195,8 +195,8 @@ Rendered render_command(Project& project, const CommandRef& ref) {
     auto resolved = project.toolchain.resolve(ref.command, ref.input);
     auto failure = project.toolchain.query_failure(ref.command, ref.input);
     // Shown as clang's own driver reads it, a command whose compiler could
-    // not be queried reads the same on every host; its cc1 names the host's
-    // own headers.
+    // not be queried reads the same on every machine; its cc1 names the
+    // machine's own headers.
     auto argv = resolved && !failure ? project.toolchain.render(ref, path)
                                      : project.commands.render_driver(ref, path);
     Rendered rendered{
@@ -400,7 +400,7 @@ int convert_command(Workspace& workspace, llvm::ArrayRef<std::string> command, b
         driver::println("{}", join_command(rendered.arguments));
     }
     if(rendered.error) {
-        LOG_ERROR("The compiler could not be queried, so clang's own driver reads the command");
+        LOG_ERROR("The command stays a driver command: {}", *rendered.error);
         return 1;
     }
     return 0;
@@ -455,7 +455,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
     // A relative directory is relative to the database's own; written out,
     // the database is read from anywhere.
     auto base = database.parent();
-    std::size_t unresolved = 0;
+    std::size_t unconverted = 0;
     std::vector<kota::codec::RawValue> converted;
     converted.reserve(written->entries.size());
     for(std::uint32_t index = 0; index < written->entries.size(); index += 1) {
@@ -480,7 +480,7 @@ int convert_database(Workspace& workspace, const Spelling& path) {
         if(ref != refs.end()) {
             auto rendered = render_command(project, ref->second);
             if(rendered.error) {
-                unresolved += 1;
+                unconverted += 1;
             }
             entry.arguments = to_raw(rendered.arguments);
             entry.command = std::nullopt;
@@ -488,11 +488,8 @@ int convert_database(Workspace& workspace, const Spelling& path) {
         converted.push_back(to_raw(entry));
     }
     print_json(converted);
-    if(unresolved != 0) {
-        LOG_ERROR(
-            "{} of the converted entries could not be resolved: the compiler could not be "
-            "queried, so clang's own driver reads their command",
-            unresolved);
+    if(unconverted != 0) {
+        LOG_ERROR("{} of the entries stay driver commands: the errors above say why", unconverted);
         return 1;
     }
     return 0;

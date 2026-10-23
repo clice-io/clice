@@ -201,7 +201,8 @@ ZEST_CASE(WarmPartialFailure, skip = Windows) {
     f.toolchain.warm(refs);
 
     // The successful query is cached; the failed one is negatively cached
-    // so later resolve() calls fail fast without re-querying the driver.
+    // so later resolve() calls read the command unqueried without
+    // re-querying the driver.
     ZEXPECT(f.toolchain.query_count() == std::size_t(1));
     ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
     ZEXPECT(f.toolchain.resolve(good.command, good.input).has_value());

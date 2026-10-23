@@ -982,10 +982,7 @@ ZEST_CASE(NVCCUnknownHost, skip = Windows) {
     /// A host compiler that is neither GCC nor clang.
     auto nvcc = fake_nvcc(fake_driver("icpc", ""));
     auto ref = add("a.cpp", {nvcc.c_str(), "-c"});
-    [[maybe_unused]] auto resolved = f.toolchain.resolve(ref.command, ref.input);
-    auto failure = f.toolchain.query_failure(ref.command, ref.input);
-    ZASSERT(failure);
-    ZEXPECT(llvm::StringRef(*failure).starts_with("Unsupported nvcc host compiler"));
+    ZEXPECT(llvm::StringRef(f.failure(ref)).starts_with("Unsupported nvcc host compiler"));
 }
 
 ZEST_CASE(UnqueriedNVCC) {

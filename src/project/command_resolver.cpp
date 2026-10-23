@@ -322,7 +322,11 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         directory = project.commands.get(ref.command).directory;
         auto argv = project.toolchain.render(ref, project.cdb.spelling(ref.file), options);
         arguments.assign(argv.begin(), argv.end());
-        resolution.query_failure = project.toolchain.query_failure(ref.command, ref.input);
+        // The builtin command names a compiler no build chose: clang's own
+        // reading of it, when that compiler is missing, loses nothing.
+        if(ref.source != CommandSource::Fallback) {
+            resolution.query_failure = project.toolchain.query_failure(ref.command, ref.input);
+        }
         resolution.ref = ref;
         resolution.source = ref.source;
         log_command_decision(path, tried, ref.source, arguments);

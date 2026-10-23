@@ -74,6 +74,18 @@ ZEST_CASE(NoJobSaysWhy) {
     auto resolved = f.toolchain.resolve(ref.command, ref.input);
     ZASSERT(!resolved);
     ZEXPECT(llvm::StringRef(resolved.error()).contains("language not recognized: 'bogus'"));
+    ZEXPECT(!f.toolchain.query_failure(ref.command, ref.input));
+}
+
+ZEST_CASE(NoJobAfterFailedQuery) {
+    // A compiler that is not here, on a command clang's driver builds no
+    // job for either, names both reasons.
+    auto argv0 = tmp.path("g++");
+    auto ref = add("a.cpp", {argv0.c_str(), "-x", "bogus"});
+    auto resolved = f.toolchain.resolve(ref.command, ref.input);
+    ZASSERT(!resolved);
+    ZEXPECT(llvm::StringRef(resolved.error()).contains("not found"));
+    ZEXPECT(llvm::StringRef(resolved.error()).contains("language not recognized: 'bogus'"));
 }
 
 ZEST_CASE(UnqueriedTargetFromName) {
