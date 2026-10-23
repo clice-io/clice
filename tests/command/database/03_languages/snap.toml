@@ -8,6 +8,7 @@ stdout = '''
       "nvcc-missing",
       "-resource-dir",
       "${RESOURCE}",
+      "--cuda-path=${WS}/missing-cuda",
       "-x",
       "cuda",
       "${WS}/kernels.cuh"
