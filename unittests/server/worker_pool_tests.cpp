@@ -207,7 +207,7 @@ struct WorkerPoolFixture {
 
     /// deliver() over sends that fail with `codes` in turn and answer once
     /// the codes run out.
-    Delivery deliver_through(std::vector<worker::protocol::integer> codes) {
+    Delivery deliver_through(std::vector<protocol::integer> codes) {
         Delivery delivery;
         run([&]() -> kota::task<> {
             auto result = co_await deliver(
@@ -217,8 +217,7 @@ struct WorkerPoolFixture {
                     auto attempt = static_cast<std::size_t>(delivery.sends);
                     delivery.sends += 1;
                     if(attempt < codes.size()) {
-                        co_return kota::outcome_error(
-                            worker::protocol::Error{codes[attempt], "scripted"});
+                        co_return kota::outcome_error(protocol::Error{codes[attempt], "scripted"});
                     }
                     co_return codec::RawValue{"null"};
                 },
@@ -919,7 +918,7 @@ ZEST_CASE(SpawnFailReportsAnomaly) {
 
 ZEST_CASE(OperationalErrorCodes) {
     /// Dispatch failures marked operational must never classify as anomalies.
-    using worker::protocol::Error;
+    using protocol::Error;
     ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::cancelled, "x"}));
     ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_unavailable, "x"}));
     ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_crashed, "x"}));
@@ -933,8 +932,8 @@ ZEST_CASE(OperationalErrorCodes) {
 ZEST_CASE(TransportErrorClassification) {
     /// A closed link is ConnectionClosed; remote handler errors carry other
     /// codes and must pass through.
-    using worker::protocol::Error;
-    using worker::protocol::ErrorCode;
+    using protocol::Error;
+    using protocol::ErrorCode;
     ZEXPECT(worker::is_transport_error(Error{ErrorCode::ConnectionClosed, "peer closed"}));
     ZEXPECT(!worker::is_transport_error(Error{"handler failed"}));
     ZEXPECT(!worker::is_transport_error(Error{ErrorCode::InternalError, "handler threw"}));
@@ -1287,7 +1286,7 @@ ZEST_CASE(DeadPoolReturnsError) {
     f.simulate_crash(0, false);
     ZEXPECT(f.capacity() == 0u);
 
-    std::optional<worker::protocol::integer> code;
+    std::optional<protocol::integer> code;
     f.run([&]() -> kota::task<> {
         auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params("/a.cpp"),
                                                      worker::Priority::High);
@@ -1400,7 +1399,7 @@ ZEST_CASE(StoppedPoolBlamesNothing) {
     // and be blamed for killing its worker.
     WorkerPoolFixture f;
     int blames = 0;
-    std::optional<worker::protocol::integer> code;
+    std::optional<protocol::integer> code;
     f.run([&]() -> kota::task<> {
         ZASSERT(f.start(0, 2));
         co_await f.stop();
@@ -1800,7 +1799,7 @@ ZEST_CASE(MemoryKillBeatsCancel) {
         ZASSERT(f.start(2, 0));
 
         kota::cancellation_source source;
-        worker::protocol::integer code = 0;
+        protocol::integer code = 0;
         kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
             auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
@@ -1834,7 +1833,7 @@ ZEST_CASE(CancelledCrashRetiresSlot) {
     f.run([&]() -> kota::task<> {
         ZASSERT(f.start(1, 0));
 
-        worker::protocol::integer code = 0;
+        protocol::integer code = 0;
         kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
             auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),

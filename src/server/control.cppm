@@ -26,7 +26,7 @@ struct IndexResult {
 
 }  // namespace clice::control
 
-namespace ipc::protocol {
+namespace kota::ipc::protocol {
 
 template <>
 struct RequestTraits<clice::control::IndexParams> {
@@ -34,4 +34,4 @@ struct RequestTraits<clice::control::IndexParams> {
     constexpr inline static std::string_view method = "clice/index";
 };
 
-}  // namespace ipc::protocol
+}  // namespace kota::ipc::protocol

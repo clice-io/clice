@@ -124,7 +124,7 @@ struct HoverParams {
     uint32_t offset = 0;
 
     /// What a hover card renders as: the markup the client shows it in.
-    feature::protocol::MarkupKind markup = feature::protocol::MarkupKind::Markdown;
+    protocol::MarkupKind markup = protocol::MarkupKind::Markdown;
 
     /// The workspace config, carried whole on every request — the worker
     /// holds no config state and a config change simply shows up on the
@@ -573,7 +573,7 @@ constexpr inline bool is_build =
 
 }  // namespace clice::worker
 
-namespace ipc::protocol {
+namespace kota::ipc::protocol {
 
 template <>
 struct RequestTraits<clice::worker::CompileParams> {
@@ -701,4 +701,4 @@ struct NotificationTraits<clice::worker::GateReleaseParams> {
     constexpr inline static std::string_view method = "clice/worker/gateRelease";
 };
 
-}  // namespace ipc::protocol
+}  // namespace kota::ipc::protocol

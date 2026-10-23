@@ -142,7 +142,7 @@ std::optional<codec::RawValue> to_raw_json(const T& value) {
 /// symbol range still in byte offsets.
 struct HoverResult {
     std::optional<LocalSourceRange> range;
-    feature::protocol::MarkupKind kind;
+    protocol::MarkupKind kind;
     std::string contents;
 };
 
@@ -356,7 +356,7 @@ std::optional<codec::RawValue> run_hover(const FeatureParams& params) {
         return codec::RawValue{};
     }
     return to_raw_json(HoverResult{info->symbol_range,
-                                   feature::protocol::MarkupKind::Markdown,
+                                   protocol::MarkupKind::Markdown,
                                    info->present().as_markdown()});
 }
 
